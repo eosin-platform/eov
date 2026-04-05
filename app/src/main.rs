@@ -1276,17 +1276,47 @@ fn blit_tile(
     
     for y in start_y..end_y {
         for x in start_x..end_x {
-            let src_x = (((x as i32 - dest_x) as f64 * scale_x) as u32).min(src_width - 1);
-            let src_y = (((y as i32 - dest_y) as f64 * scale_y) as u32).min(src_height - 1);
+            // Calculate source position with sub-pixel precision
+            let src_x_f = (x as i32 - dest_x) as f64 * scale_x;
+            let src_y_f = (y as i32 - dest_y) as f64 * scale_y;
             
-            let src_idx = ((src_y * src_width + src_x) * 4) as usize;
+            // Bilinear interpolation
+            let x0 = src_x_f.floor() as i32;
+            let y0 = src_y_f.floor() as i32;
+            let x1 = (x0 + 1).min(src_width as i32 - 1);
+            let y1 = (y0 + 1).min(src_height as i32 - 1);
+            let x0 = x0.max(0).min(src_width as i32 - 1) as u32;
+            let y0 = y0.max(0).min(src_height as i32 - 1) as u32;
+            let x1 = x1.max(0) as u32;
+            let y1 = y1.max(0) as u32;
+            
+            // Fractional parts for interpolation weights
+            let fx = (src_x_f - src_x_f.floor()).max(0.0).min(1.0);
+            let fy = (src_y_f - src_y_f.floor()).max(0.0).min(1.0);
+            
+            // Get the four neighboring pixels
+            let idx00 = ((y0 * src_width + x0) * 4) as usize;
+            let idx10 = ((y0 * src_width + x1) * 4) as usize;
+            let idx01 = ((y1 * src_width + x0) * 4) as usize;
+            let idx11 = ((y1 * src_width + x1) * 4) as usize;
+            
             let dest_idx = ((y * dest_width + x) * 4) as usize;
             
-            if src_idx + 3 < src.len() && dest_idx + 3 < dest.len() {
-                dest[dest_idx] = src[src_idx];
-                dest[dest_idx + 1] = src[src_idx + 1];
-                dest[dest_idx + 2] = src[src_idx + 2];
-                dest[dest_idx + 3] = src[src_idx + 3];
+            if idx11 + 3 < src.len() && dest_idx + 3 < dest.len() {
+                // Bilinear interpolation for each channel
+                for c in 0..4 {
+                    let p00 = src[idx00 + c] as f64;
+                    let p10 = src[idx10 + c] as f64;
+                    let p01 = src[idx01 + c] as f64;
+                    let p11 = src[idx11 + c] as f64;
+                    
+                    // Interpolate horizontally, then vertically
+                    let top = p00 * (1.0 - fx) + p10 * fx;
+                    let bottom = p01 * (1.0 - fx) + p11 * fx;
+                    let value = top * (1.0 - fy) + bottom * fy;
+                    
+                    dest[dest_idx + c] = value.round() as u8;
+                }
             }
         }
     }

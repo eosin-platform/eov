@@ -16,8 +16,11 @@ pub const MAX_ZOOM: f64 = 100.0;
 /// Default zoom factor per mouse wheel tick
 pub const ZOOM_FACTOR: f64 = 1.15;
 
-/// Animation duration for smooth transitions (300ms)
+/// Animation duration for smooth zoom transitions (300ms)
 pub const ANIMATION_DURATION_MS: u64 = 300;
+
+/// Pan inertia duration (500ms for more perceptible glide)
+pub const INERTIA_DURATION_MS: u64 = 500;
 
 /// Pan margin ratio (can pan past edges by this percentage)
 pub const PAN_MARGIN_RATIO: f64 = 0.5;
@@ -302,11 +305,11 @@ impl ViewportState {
             if total_time > 0.001 {
                 // Velocity in screen pixels per second
                 let velocity = total_delta / total_time;
-                // Only apply inertia if velocity is significant
-                if velocity.length() > 50.0 {
+                // Only apply inertia if velocity is significant (lowered threshold for responsiveness)
+                if velocity.length() > 20.0 {
                     self.inertia_start_velocity = velocity;
                     self.inertia_start_time = Some(now);
-                    trace!("Starting pan inertia: velocity={:?}", velocity);
+                    trace!("Starting pan inertia: velocity={:?} length={:.1}", velocity, velocity.length());
                 }
             }
         }
@@ -322,17 +325,18 @@ impl ViewportState {
         }
 
         let now = Instant::now();
-        let animation_duration = Duration::from_millis(ANIMATION_DURATION_MS);
+        let zoom_duration = Duration::from_millis(ANIMATION_DURATION_MS);
+        let inertia_duration = Duration::from_millis(INERTIA_DURATION_MS);
         let mut is_animating = false;
 
         // --- Pan inertia animation ---
         if let Some(start_time) = self.inertia_start_time {
             let elapsed = now.duration_since(start_time);
             
-            if elapsed < animation_duration {
-                // Ease-out: velocity decreases linearly to zero
-                let t = elapsed.as_secs_f64() / animation_duration.as_secs_f64();
-                let ease_out = 1.0 - t; // Linear ease-out
+            if elapsed < inertia_duration {
+                // Ease-out: velocity decreases over time (quadratic for smoother feel)
+                let t = elapsed.as_secs_f64() / inertia_duration.as_secs_f64();
+                let ease_out = (1.0 - t) * (1.0 - t); // Quadratic ease-out
                 
                 let dt = now.duration_since(self.last_update).as_secs_f64();
                 let current_velocity = self.inertia_start_velocity * ease_out;
@@ -353,9 +357,9 @@ impl ViewportState {
         if let Some(start_time) = self.zoom_start_time {
             let elapsed = now.duration_since(start_time);
             
-            if elapsed < animation_duration {
+            if elapsed < zoom_duration {
                 // Ease-out cubic: fast start, slow end
-                let t = elapsed.as_secs_f64() / animation_duration.as_secs_f64();
+                let t = elapsed.as_secs_f64() / zoom_duration.as_secs_f64();
                 let ease_out = 1.0 - (1.0 - t).powi(3);
                 
                 // Interpolate zoom in log space for perceptually linear zoom
