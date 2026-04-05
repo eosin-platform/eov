@@ -329,12 +329,9 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         let state = Arc::clone(&state);
         
         ui.on_viewport_start_pan(move |x, y| {
-            trace!("viewport_start_pan called: x={}, y={}", x, y);
             let mut state = state.write();
             if let Some(viewport) = state.active_viewport_mut() {
                 viewport.start_drag(x as f64, y as f64);
-            } else {
-                trace!("viewport_start_pan: no active viewport!");
             }
         });
     }
@@ -621,21 +618,15 @@ fn generate_thumbnail(wsi: &WsiFile, max_size: u32) -> Option<Vec<u8>> {
         }
     }
     
-    // Level is too large - read a smaller region from center
-    // This avoids loading the entire level into memory
-    let sample_size = max_size * 2;
-    let center_x = (level_info.width / 2).saturating_sub(sample_size as u64 / 2);
-    let center_y = (level_info.height / 2).saturating_sub(sample_size as u64 / 2);
-    let read_w = sample_size.min(level_info.width as u32);
-    let read_h = sample_size.min(level_info.height as u32);
-    
-    // Convert to level 0 coordinates for read_region
-    let x0 = (center_x as f64 * level_info.downsample) as i64;
-    let y0 = (center_y as f64 * level_info.downsample) as i64;
-    
-    match wsi.read_region(x0, y0, level, read_w, read_h) {
+    // Level is too large - read the full level anyway (it's still the smallest level)
+    // and resize down to thumbnail size
+    match wsi.read_region(0, 0, level, level_info.width as u32, level_info.height as u32) {
         Ok(data) => {
-            if let Some(img) = image::RgbaImage::from_raw(read_w, read_h, data) {
+            if let Some(img) = image::RgbaImage::from_raw(
+                level_info.width as u32, 
+                level_info.height as u32, 
+                data
+            ) {
                 let resized = image::imageops::resize(
                     &img, thumb_w, thumb_h,
                     image::imageops::FilterType::Triangle,

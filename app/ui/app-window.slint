@@ -339,6 +339,9 @@ component ContextMenu inherits Rectangle {
 component Minimap inherits Rectangle {
     in property <image> thumbnail;
     in property <MinimapRect> viewport-rect;
+    // Image dimensions for calculating contain fit
+    in property <float> image-width: 1.0;
+    in property <float> image-height: 1.0;
     callback navigate(float, float);
     
     // Track if we're in a drag operation
@@ -349,6 +352,22 @@ component Minimap inherits Rectangle {
     property <length> content-y: 5px;
     property <length> content-width: self.width - 10px;
     property <length> content-height: self.height - 10px;
+    
+    // Calculate actual image display area within content (accounting for contain fit)
+    // When image-fit: contain is used, the image is scaled to fit while preserving aspect ratio
+    property <float> image-aspect: image-width / max(image-height, 0.001);
+    property <float> content-aspect: (content-width / 1px) / max(content-height / 1px, 0.001);
+    
+    // If image is wider than container (relative to aspect), it fills width and has vertical padding
+    // If image is taller than container (relative to aspect), it fills height and has horizontal padding
+    property <length> img-display-width: image-aspect > content-aspect 
+        ? content-width 
+        : content-height * image-aspect;
+    property <length> img-display-height: image-aspect > content-aspect 
+        ? content-width / image-aspect 
+        : content-height;
+    property <length> img-display-x: content-x + (content-width - img-display-width) / 2;
+    property <length> img-display-y: content-y + (content-height - img-display-height) / 2;
     
     width: 150px;
     height: 150px;
@@ -368,12 +387,12 @@ component Minimap inherits Rectangle {
     }
     
     // Viewport indicator rectangle
-    // Maps normalized 0-1 coordinates to the content area
+    // Maps normalized 0-1 coordinates to the actual displayed image area
     Rectangle {
-        x: content-x + viewport-rect.x * content-width;
-        y: content-y + viewport-rect.y * content-height;
-        width: viewport-rect.width * content-width;
-        height: viewport-rect.height * content-height;
+        x: img-display-x + viewport-rect.x * img-display-width;
+        y: img-display-y + viewport-rect.y * img-display-height;
+        width: viewport-rect.width * img-display-width;
+        height: viewport-rect.height * img-display-height;
         background: transparent;
         border-width: 2px;
         border-color: Theme.minimap-rect;
@@ -387,15 +406,15 @@ component Minimap inherits Rectangle {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 root.is-dragging = true;
-                // Convert click to normalized coordinates (0-1) within the content area
-                let rel-x = (self.mouse-x - root.content-x) / root.content-width;
-                let rel-y = (self.mouse-y - root.content-y) / root.content-height;
+                // Convert click to normalized coordinates (0-1) within the actual image area
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
                 root.navigate(rel-x, rel-y);
             } else if e.kind == PointerEventKind.up {
                 root.is-dragging = false;
             } else if e.kind == PointerEventKind.move && root.is-dragging {
-                let rel-x = (self.mouse-x - root.content-x) / root.content-width;
-                let rel-y = (self.mouse-y - root.content-y) / root.content-height;
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
                 root.navigate(rel-x, rel-y);
             }
         }
@@ -608,7 +627,17 @@ component Viewport inherits Rectangle {
         property <bool> is-dragging: false;
         property <bool> is-tool-dragging: false;
         
+        // Forward focus to keyboard handler on any click
+        clicked => {
+            focus-scope.focus();
+        }
+        
         pointer-event(e) => {
+            // Request keyboard focus on any mouse down
+            if e.kind == PointerEventKind.down {
+                focus-scope.focus();
+            }
+            
             // Right mouse button: always pan regardless of tool
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                 self.is-dragging = true;
@@ -668,6 +697,8 @@ component Viewport inherits Rectangle {
         y: parent.height - self.height - 16px - 24px;
         thumbnail: minimap-thumbnail;
         viewport-rect: minimap-rect;
+        image-width: viewport-info.image-width;
+        image-height: viewport-info.image-height;
         navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
     }
     
@@ -701,10 +732,8 @@ component Viewport inherits Rectangle {
         }
     }
     
-    // Focus for keyboard input - positioned at end for keyboard events but doesn't block mouse
+    // Focus for keyboard input - zero size, receives focus via forward-focus
     focus-scope := FocusScope {
-        x: 0px;
-        y: 0px;
         width: 0px;
         height: 0px;
         key-pressed(e) => {

@@ -1,10 +1,10 @@
 //! Viewport management for WSI rendering
 //!
 //! Handles viewport state, transformations, pan/zoom calculations,
-//! and smooth inertia for navigation.
+//! and smooth animations for navigation.
 
 use glam::DVec2;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::trace;
 
 /// Minimum zoom level (zoomed out)
@@ -16,14 +16,8 @@ pub const MAX_ZOOM: f64 = 100.0;
 /// Default zoom factor per mouse wheel tick
 pub const ZOOM_FACTOR: f64 = 1.15;
 
-/// Inertia decay factor (0-1, lower = faster decay)
-pub const INERTIA_DECAY: f64 = 0.92;
-
-/// Minimum velocity before stopping movement
-pub const MIN_VELOCITY: f64 = 0.1;
-
-/// Velocity scale factor for pan
-pub const VELOCITY_SCALE: f64 = 0.1;
+/// Animation duration for smooth transitions (300ms)
+pub const ANIMATION_DURATION_MS: u64 = 300;
 
 /// Pan margin ratio (can pan past edges by this percentage)
 pub const PAN_MARGIN_RATIO: f64 = 0.5;
@@ -114,10 +108,12 @@ impl Viewport {
         self.zoom = new_zoom;
 
         // Adjust center so the image point stays under the cursor
+        // screen_dx = where we want it - where it actually is
+        // positive dx means image drifted left, need to pan right (positive)
         let new_screen_pos = self.image_to_screen(image_pos.x, image_pos.y);
         let screen_dx = screen_x - new_screen_pos.x;
         let screen_dy = screen_y - new_screen_pos.y;
-        self.pan(-screen_dx, -screen_dy);
+        self.pan(screen_dx, screen_dy);
     }
 
     /// Zoom by the given factor around the center
@@ -190,36 +186,58 @@ pub struct MinimapRect {
     pub height: f32,
 }
 
-/// Viewport state with velocity for smooth movement
+/// Viewport state with smooth animations for zoom and pan
 #[derive(Debug, Clone)]
 pub struct ViewportState {
     /// Base viewport
     pub viewport: Viewport,
-    /// Current velocity in screen pixels per second
-    velocity: DVec2,
-    /// Last update time for physics
-    last_update: Instant,
+    
+    // --- Pan inertia animation ---
     /// Is currently dragging
     is_dragging: bool,
     /// Last drag position
     drag_start: DVec2,
-    /// Velocity samples for averaging
-    velocity_samples: Vec<DVec2>,
-    /// Maximum samples to keep
-    max_samples: usize,
+    /// Velocity samples for averaging (screen pixels per second)
+    velocity_samples: Vec<(DVec2, Instant)>,
+    /// Inertia animation: initial velocity when drag ended
+    inertia_start_velocity: DVec2,
+    /// Inertia animation: start time
+    inertia_start_time: Option<Instant>,
+    
+    // --- Zoom animation ---
+    /// Target zoom level (for smooth zoom)
+    target_zoom: f64,
+    /// Zoom start value (for animation)
+    zoom_start: f64,
+    /// Screen position to zoom around
+    zoom_anchor_screen: DVec2,
+    /// Image position to keep under cursor during zoom
+    zoom_anchor_image: DVec2,
+    /// Zoom animation start time
+    zoom_start_time: Option<Instant>,
+    
+    /// Last update time for physics
+    last_update: Instant,
 }
 
 impl ViewportState {
     /// Create a new viewport state
     pub fn new(width: f64, height: f64, image_width: f64, image_height: f64) -> Self {
+        let viewport = Viewport::new(width, height, image_width, image_height);
+        let initial_zoom = viewport.zoom;
         Self {
-            viewport: Viewport::new(width, height, image_width, image_height),
-            velocity: DVec2::ZERO,
-            last_update: Instant::now(),
+            viewport,
             is_dragging: false,
             drag_start: DVec2::ZERO,
             velocity_samples: Vec::with_capacity(10),
-            max_samples: 5,
+            inertia_start_velocity: DVec2::ZERO,
+            inertia_start_time: None,
+            target_zoom: initial_zoom,
+            zoom_start: initial_zoom,
+            zoom_anchor_screen: DVec2::ZERO,
+            zoom_anchor_image: DVec2::ZERO,
+            zoom_start_time: None,
+            last_update: Instant::now(),
         }
     }
 
@@ -227,8 +245,9 @@ impl ViewportState {
     pub fn start_drag(&mut self, x: f64, y: f64) {
         self.is_dragging = true;
         self.drag_start = DVec2::new(x, y);
-        self.velocity = DVec2::ZERO;
         self.velocity_samples.clear();
+        self.inertia_start_time = None; // Cancel any ongoing inertia
+        self.zoom_start_time = None; // Cancel any ongoing zoom animation to prevent snap-back
         self.last_update = Instant::now();
     }
 
@@ -239,19 +258,14 @@ impl ViewportState {
         }
 
         let now = Instant::now();
-        let dt = now.duration_since(self.last_update).as_secs_f64();
-        
         let current = DVec2::new(x, y);
         let delta = current - self.drag_start;
         
-        // Calculate instantaneous velocity
-        if dt > 0.0 {
-            let instant_velocity = delta / dt;
-            self.velocity_samples.push(instant_velocity);
-            if self.velocity_samples.len() > self.max_samples {
-                self.velocity_samples.remove(0);
-            }
-        }
+        // Store sample with timestamp for velocity calculation
+        self.velocity_samples.push((delta, now));
+        // Keep only recent samples (last 100ms)
+        let cutoff = now - Duration::from_millis(100);
+        self.velocity_samples.retain(|(_, t)| *t > cutoff);
 
         // Pan viewport
         self.viewport.pan(delta.x, delta.y);
@@ -260,7 +274,7 @@ impl ViewportState {
         self.last_update = now;
     }
 
-    /// End a drag operation
+    /// End a drag operation - start inertia animation
     pub fn end_drag(&mut self) {
         if !self.is_dragging {
             return;
@@ -268,55 +282,165 @@ impl ViewportState {
 
         self.is_dragging = false;
         
-        // Calculate average velocity from samples
-        if !self.velocity_samples.is_empty() {
-            let sum: DVec2 = self.velocity_samples.iter().copied().sum();
-            self.velocity = sum / self.velocity_samples.len() as f64;
-            self.velocity *= VELOCITY_SCALE;
+        // Calculate average velocity from recent samples
+        if self.velocity_samples.len() >= 2 {
+            let now = Instant::now();
+            let mut total_delta = DVec2::ZERO;
+            let mut total_time = 0.0;
+            
+            for (delta, _) in &self.velocity_samples {
+                total_delta += *delta;
+            }
+            
+            // Calculate time span of samples
+            if let (Some((_, first_time)), Some((_, last_time))) = 
+                (self.velocity_samples.first(), self.velocity_samples.last()) 
+            {
+                total_time = last_time.duration_since(*first_time).as_secs_f64();
+            }
+            
+            if total_time > 0.001 {
+                // Velocity in screen pixels per second
+                let velocity = total_delta / total_time;
+                // Only apply inertia if velocity is significant
+                if velocity.length() > 50.0 {
+                    self.inertia_start_velocity = velocity;
+                    self.inertia_start_time = Some(now);
+                    trace!("Starting pan inertia: velocity={:?}", velocity);
+                }
+            }
         }
-
+        
+        self.velocity_samples.clear();
         self.last_update = Instant::now();
     }
 
-    /// Update physics (call every frame)
+    /// Update animations (call every frame). Returns true if still animating.
     pub fn update(&mut self) -> bool {
         if self.is_dragging {
             return false;
         }
 
         let now = Instant::now();
-        let dt = now.duration_since(self.last_update).as_secs_f64();
-        self.last_update = now;
+        let animation_duration = Duration::from_millis(ANIMATION_DURATION_MS);
+        let mut is_animating = false;
 
-        // Apply velocity with inertia
-        if self.velocity.length() > MIN_VELOCITY {
-            self.viewport.pan(-self.velocity.x * dt, -self.velocity.y * dt);
-            self.velocity *= INERTIA_DECAY.powf(dt * 60.0); // Normalize to ~60fps
+        // --- Pan inertia animation ---
+        if let Some(start_time) = self.inertia_start_time {
+            let elapsed = now.duration_since(start_time);
             
-            trace!("Inertia velocity: {:?}", self.velocity);
-            return true; // Still moving
-        } else {
-            self.velocity = DVec2::ZERO;
-            return false; // Stopped
+            if elapsed < animation_duration {
+                // Ease-out: velocity decreases linearly to zero
+                let t = elapsed.as_secs_f64() / animation_duration.as_secs_f64();
+                let ease_out = 1.0 - t; // Linear ease-out
+                
+                let dt = now.duration_since(self.last_update).as_secs_f64();
+                let current_velocity = self.inertia_start_velocity * ease_out;
+                
+                // Apply panning - velocity was measured in screen-space drag direction
+                // which matches pan() semantics (positive = image moves right)
+                self.viewport.pan(current_velocity.x * dt, current_velocity.y * dt);
+                
+                is_animating = true;
+                trace!("Pan inertia: t={:.2}, velocity={:?}", t, current_velocity);
+            } else {
+                // Animation complete
+                self.inertia_start_time = None;
+            }
         }
+
+        // --- Zoom animation ---
+        if let Some(start_time) = self.zoom_start_time {
+            let elapsed = now.duration_since(start_time);
+            
+            if elapsed < animation_duration {
+                // Ease-out cubic: fast start, slow end
+                let t = elapsed.as_secs_f64() / animation_duration.as_secs_f64();
+                let ease_out = 1.0 - (1.0 - t).powi(3);
+                
+                // Interpolate zoom in log space for perceptually linear zoom
+                let log_start = self.zoom_start.ln();
+                let log_target = self.target_zoom.ln();
+                let log_current = log_start + (log_target - log_start) * ease_out;
+                let new_zoom = log_current.exp().max(MIN_ZOOM).min(MAX_ZOOM);
+                
+                // Apply zoom while keeping anchor point fixed
+                self.viewport.zoom = new_zoom;
+                
+                // Adjust center to keep the image anchor under the screen anchor
+                // screen_dx = where we want it - where it actually is
+                // positive dx means image drifted left, need to pan right (positive)
+                let new_screen_pos = self.viewport.image_to_screen(
+                    self.zoom_anchor_image.x, 
+                    self.zoom_anchor_image.y
+                );
+                let screen_dx = self.zoom_anchor_screen.x - new_screen_pos.x;
+                let screen_dy = self.zoom_anchor_screen.y - new_screen_pos.y;
+                self.viewport.pan(screen_dx, screen_dy);
+                
+                is_animating = true;
+                trace!("Zoom animation: t={:.2}, zoom={:.4}", t, new_zoom);
+            } else {
+                // Animation complete - snap to target
+                self.viewport.zoom = self.target_zoom;
+                
+                // Final adjustment to keep anchor point
+                let new_screen_pos = self.viewport.image_to_screen(
+                    self.zoom_anchor_image.x, 
+                    self.zoom_anchor_image.y
+                );
+                let screen_dx = self.zoom_anchor_screen.x - new_screen_pos.x;
+                let screen_dy = self.zoom_anchor_screen.y - new_screen_pos.y;
+                self.viewport.pan(screen_dx, screen_dy);
+                
+                self.zoom_start_time = None;
+            }
+        }
+
+        self.last_update = now;
+        is_animating
     }
 
-    /// Stop all movement
+    /// Stop all movement and animations
     pub fn stop(&mut self) {
-        self.velocity = DVec2::ZERO;
+        self.inertia_start_time = None;
+        self.zoom_start_time = None;
         self.is_dragging = false;
+        self.target_zoom = self.viewport.zoom;
     }
 
-    /// Zoom at screen position
+    /// Zoom at screen position with smooth animation
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
-        self.stop();
-        self.viewport.zoom_at(factor, screen_x, screen_y);
+        // Calculate new target zoom
+        let new_target = (self.target_zoom * factor).max(MIN_ZOOM).min(MAX_ZOOM);
+        
+        // If already animating, update the target but keep the same anchor
+        // If not animating, start a new animation
+        if self.zoom_start_time.is_none() {
+            self.zoom_start = self.viewport.zoom;
+            self.zoom_anchor_screen = DVec2::new(screen_x, screen_y);
+            self.zoom_anchor_image = self.viewport.screen_to_image(screen_x, screen_y);
+            self.zoom_start_time = Some(Instant::now());
+        } else {
+            // Update start to current animated position for smooth chaining
+            self.zoom_start = self.viewport.zoom;
+            // Keep the same screen anchor but update image anchor for current zoom
+            self.zoom_anchor_image = self.viewport.screen_to_image(
+                self.zoom_anchor_screen.x, 
+                self.zoom_anchor_screen.y
+            );
+            self.zoom_start_time = Some(Instant::now());
+        }
+        
+        self.target_zoom = new_target;
+        trace!("Zoom requested: factor={}, target={}", factor, new_target);
     }
 
-    /// Fit entire image in view
+    /// Fit entire image in view (immediate, no animation)
     pub fn fit_to_view(&mut self) {
         self.stop();
         self.viewport.fit_to_view();
+        self.target_zoom = self.viewport.zoom;
     }
 
     /// Set viewport size
@@ -330,9 +454,9 @@ impl ViewportState {
         (result.x, result.y)
     }
 
-    /// Check if the viewport is currently moving
+    /// Check if the viewport is currently animating
     pub fn is_moving(&self) -> bool {
-        self.is_dragging || self.velocity.length() > MIN_VELOCITY
+        self.is_dragging || self.inertia_start_time.is_some() || self.zoom_start_time.is_some()
     }
 }
 
