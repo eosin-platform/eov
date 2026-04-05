@@ -154,11 +154,17 @@ pub struct AppState {
     pub candidate_point: Option<ImagePoint>,
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
+    /// Debug mode enabled (--debug flag)
+    pub debug_mode: bool,
+    /// Frame timestamps for FPS calculation
+    pub frame_times: Vec<std::time::Instant>,
+    /// Current FPS value
+    pub current_fps: f32,
 }
 
 impl AppState {
     /// Create a new application state
-    pub fn new() -> Self {
+    pub fn new(debug_mode: bool) -> Self {
         Self {
             open_files: Vec::new(),
             active_file_id: None,
@@ -170,7 +176,23 @@ impl AppState {
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
             ant_offset: 0.0,
+            debug_mode,
+            frame_times: Vec::with_capacity(60),
+            current_fps: 0.0,
         }
+    }
+    
+    /// Update FPS counter (call once per frame)
+    pub fn update_fps(&mut self) {
+        let now = std::time::Instant::now();
+        self.frame_times.push(now);
+        
+        // Keep only timestamps from the last second
+        let one_second_ago = now - std::time::Duration::from_secs(1);
+        self.frame_times.retain(|t| *t > one_second_ago);
+        
+        // FPS = number of frames in the last second
+        self.current_fps = self.frame_times.len() as f32;
     }
 
     /// Add a new open file
@@ -346,6 +368,6 @@ impl AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }

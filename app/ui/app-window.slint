@@ -430,6 +430,8 @@ component Viewport inherits Rectangle {
     in property <bool> show-minimap: true;
     in property <string> status-text: "";
     in property <bool> is-loading: false;
+    in property <bool> debug-mode: false;
+    in property <float> fps: 0;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -702,6 +704,25 @@ component Viewport inherits Rectangle {
         navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
     }
     
+    // FPS overlay in top right corner (debug mode only)
+    if debug-mode: Rectangle {
+        x: parent.width - self.width - 8px;
+        y: 8px;
+        width: 70px;
+        height: 24px;
+        background: #000000aa;
+        border-radius: 4px;
+        
+        Text {
+            x: 8px;
+            y: 4px;
+            text: Math.round(fps) + " FPS";
+            color: fps >= 25 ? #00ff00 : fps >= 15 ? #ffff00 : #ff0000;
+            font-size: 12px;
+            font-weight: 600;
+        }
+    }
+    
     // Status bar
     Rectangle {
         x: 0;
@@ -765,6 +786,8 @@ component SplitPaneContainer inherits Rectangle {
     in property <bool> split-enabled: false;
     in property <float> split-position: 0.5;
     in property <int> focused-pane: 0; // 0 = primary, 1 = secondary
+    in property <bool> debug-mode: false;
+    in property <float> fps: 0;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -830,6 +853,8 @@ component SplitPaneContainer inherits Rectangle {
                     roi-rect: root.roi-rect;
                     measurements: root.measurements;
                     candidate-measurement: root.candidate-measurement;
+                    debug-mode: root.debug-mode;
+                    fps: root.fps;
                     
                     pan(dx, dy) => { root.pane-focused(0); root.viewport-pan(dx, dy); }
                     zoom(f, x, y) => { root.pane-focused(0); root.viewport-zoom(f, x, y); }
@@ -884,6 +909,8 @@ component SplitPaneContainer inherits Rectangle {
                     roi-rect: root.roi-rect;
                     measurements: root.measurements;
                     candidate-measurement: root.candidate-measurement;
+                    debug-mode: root.debug-mode;
+                    fps: root.fps;
                     
                     pan(dx, dy) => { root.pane-focused(1); root.viewport-pan(dx, dy); }
                     zoom(f, x, y) => { root.pane-focused(1); root.viewport-zoom(f, x, y); }
@@ -947,6 +974,10 @@ export component AppWindow inherits Window {
     in-out property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
     in-out property <[MeasurementLine]> measurements: [];
     in-out property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    
+    // Debug mode
+    in-out property <bool> debug-mode: false;
+    in-out property <float> fps: 0;
     
     // Callbacks
     callback open-file-requested();
@@ -1064,6 +1095,8 @@ export component AppWindow inherits Window {
                 roi-rect: root.roi-rect;
                 measurements: root.measurements;
                 candidate-measurement: root.candidate-measurement;
+                debug-mode: root.debug-mode;
+                fps: root.fps;
                 
                 tab-activated(id) => { root.tab-activated(id); }
                 tab-close-requested(id) => { root.tab-close-requested(id); }

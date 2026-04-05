@@ -46,18 +46,24 @@ fn main() -> Result<()> {
 
     // Parse command-line arguments
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let debug_mode = args.iter().any(|a| a == "--debug" || a == "-d");
     let files_to_open: Vec<PathBuf> = args
         .into_iter()
+        .filter(|a| a != "--debug" && a != "-d")
         .map(PathBuf::from)
         .filter(|p| p.exists())
         .collect();
+    
+    if debug_mode {
+        info!("Debug mode enabled - FPS overlay will be shown");
+    }
     
     if !files_to_open.is_empty() {
         info!("Opening {} file(s) from command line", files_to_open.len());
     }
 
     // Create application state
-    let state = Arc::new(RwLock::new(AppState::new()));
+    let state = Arc::new(RwLock::new(AppState::new(debug_mode)));
     let tile_cache = Arc::new(TileCache::new());
 
     // Create UI
@@ -66,6 +72,9 @@ fn main() -> Result<()> {
 
     // Set up callbacks
     setup_callbacks(&ui, Arc::clone(&state), Arc::clone(&tile_cache));
+    
+    // Set debug mode on UI
+    ui.set_debug_mode(debug_mode);
 
     // Open files from command line
     for path in files_to_open {
@@ -667,6 +676,11 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     // Check 1: Can we acquire state lock?
     let mut state = state.write();
     dbg_print!("[UPDATE] got lock");
+    
+    // Update FPS counter
+    state.update_fps();
+    let fps = state.current_fps;
+    ui.set_fps(fps);
     
     let Some(file_id) = state.active_file_id else {
         return;
