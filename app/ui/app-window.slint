@@ -260,6 +260,8 @@ component Minimap inherits Rectangle {
     in property <MinimapRect> viewport-rect;
     callback navigate(float, float);
     
+    property <bool> is-dragging: false;
+    
     width: 150px;
     height: 150px;
     background: Theme.minimap-bg;
@@ -288,12 +290,22 @@ component Minimap inherits Rectangle {
         border-color: Theme.minimap-rect;
     }
     
-    TouchArea {
-        clicked => {
-            // Calculate normalized click position
-            let nx = (self.mouse-x - 5px) / (parent.width - 10px);
-            let ny = (self.mouse-y - 5px) / (parent.height - 10px);
-            root.navigate(nx, ny);
+    touch := TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.is-dragging = true;
+                // Navigate on click
+                let nx = (self.mouse-x - 5px) / (parent.width - 10px);
+                let ny = (self.mouse-y - 5px) / (parent.height - 10px);
+                root.navigate(nx, ny);
+            } else if e.kind == PointerEventKind.up {
+                root.is-dragging = false;
+            } else if e.kind == PointerEventKind.move && root.is-dragging {
+                // Navigate while dragging
+                let nx = (self.mouse-x - 5px) / (parent.width - 10px);
+                let ny = (self.mouse-y - 5px) / (parent.height - 10px);
+                root.navigate(nx, ny);
+            }
         }
     }
 }
@@ -313,19 +325,26 @@ component Viewport inherits Rectangle {
     callback fit-to-view();
     callback start-pan(float, float);
     callback end-pan();
+    callback minimap-navigate(float, float);
+    callback file-dropped(string);
+    
+    // Export viewport dimensions for rendering
+    out property <length> viewport-width: self.width;
+    out property <length> viewport-height: self.height - 24px;
     
     background: Theme.viewport-bg;
     
     // Main content area
     Rectangle {
         clip: true;
+        height: parent.height - 24px;
         
-        // Rendered image
+        // Rendered image - use fill to match buffer size exactly
         Image {
             width: 100%;
             height: 100%;
             source: content;
-            image-fit: contain;
+            image-fit: fill;
         }
         
         // Loading indicator
@@ -353,6 +372,7 @@ component Viewport inherits Rectangle {
         y: parent.height - self.height - 16px - 24px;
         thumbnail: minimap-thumbnail;
         viewport-rect: minimap-rect;
+        navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
     }
     
     // Status bar
@@ -438,6 +458,10 @@ component SplitPaneContainer inherits Rectangle {
     in property <string> status-text;
     in property <bool> is-loading: false;
     
+    // Output viewport dimensions
+    out property <length> viewport-width: viewport.viewport-width;
+    out property <length> viewport-height: viewport.viewport-height;
+    
     callback tab-activated(int);
     callback tab-close-requested(int);
     callback tab-context-menu(int, length, length);
@@ -446,6 +470,8 @@ component SplitPaneContainer inherits Rectangle {
     callback viewport-fit-to-view();
     callback viewport-start-pan(float, float);
     callback viewport-end-pan();
+    callback minimap-navigate(float, float);
+    callback file-dropped(string);
     
     background: Theme.background;
     
@@ -459,7 +485,7 @@ component SplitPaneContainer inherits Rectangle {
         }
         
         // Viewport
-        Viewport {
+        viewport := Viewport {
             vertical-stretch: 1;
             content: viewport-content;
             viewport-info: root.viewport-info;
@@ -473,6 +499,8 @@ component SplitPaneContainer inherits Rectangle {
             fit-to-view => { root.viewport-fit-to-view(); }
             start-pan(x, y) => { root.viewport-start-pan(x, y); }
             end-pan => { root.viewport-end-pan(); }
+            minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
+            file-dropped(path) => { root.file-dropped(path); }
         }
     }
 }
@@ -497,6 +525,10 @@ export component AppWindow inherits Window {
     in-out property <string> status-text: "Ready";
     in-out property <bool> is-loading: false;
     
+    // Viewport dimensions for rendering - calculated from content area
+    out property <float> viewport-width: content-area.width / 1px;
+    out property <float> viewport-height: (content-area.height - 35px - 24px) / 1px; // Subtract tab bar and status bar
+    
     // Context menu state
     in-out property <bool> context-menu-visible: false;
     in-out property <length> context-menu-x: 0px;
@@ -519,6 +551,8 @@ export component AppWindow inherits Window {
     callback viewport-fit-to-view();
     callback viewport-start-pan(float, float);
     callback viewport-end-pan();
+    callback minimap-navigate(float, float);
+    callback file-dropped(string);
     callback request-render();
     
     // Main layout
@@ -559,7 +593,7 @@ export component AppWindow inherits Window {
         }
         
         // Main content area
-        Rectangle {
+        content-area := Rectangle {
             vertical-stretch: 1;
             
             if tabs.length > 0: SplitPaneContainer {
@@ -593,6 +627,8 @@ export component AppWindow inherits Window {
                 viewport-fit-to-view => { root.viewport-fit-to-view(); }
                 viewport-start-pan(x, y) => { root.viewport-start-pan(x, y); }
                 viewport-end-pan => { root.viewport-end-pan(); }
+                minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
+                file-dropped(path) => { root.file-dropped(path); }
             }
             
             // Empty state

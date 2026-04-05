@@ -156,14 +156,17 @@ impl TileManager {
     }
 
     /// Calculate visible tiles for a given viewport
+    /// 
+    /// Arguments:
+    /// - level: the resolution level to use
+    /// - bounds_left, bounds_top, bounds_right, bounds_bottom: visible area in level 0 coordinates
     pub fn visible_tiles(
         &self,
         level: u32,
-        view_x: f64,
-        view_y: f64,
-        view_width: f64,
-        view_height: f64,
-        zoom: f64,
+        bounds_left: f64,
+        bounds_top: f64,
+        bounds_right: f64,
+        bounds_bottom: f64,
     ) -> Vec<TileCoord> {
         let level_info = match self.wsi.level(level) {
             Some(info) => info,
@@ -172,22 +175,22 @@ impl TileManager {
 
         let tile_size = self.tile_size as f64;
         
-        // Calculate visible area in level coordinates
-        let level_x = view_x / level_info.downsample;
-        let level_y = view_y / level_info.downsample;
-        let level_width = view_width / (zoom * level_info.downsample);
-        let level_height = view_height / (zoom * level_info.downsample);
+        // Convert bounds from level 0 to current level coordinates
+        let level_left = bounds_left / level_info.downsample;
+        let level_top = bounds_top / level_info.downsample;
+        let level_right = bounds_right / level_info.downsample;
+        let level_bottom = bounds_bottom / level_info.downsample;
 
         // Calculate tile range (with 1 tile margin for smooth scrolling)
-        let start_tile_x = ((level_x / tile_size).floor() as i64 - 1).max(0) as u64;
-        let start_tile_y = ((level_y / tile_size).floor() as i64 - 1).max(0) as u64;
-        let end_tile_x = (((level_x + level_width) / tile_size).ceil() as u64 + 1)
+        let start_tile_x = ((level_left / tile_size).floor() as i64 - 1).max(0) as u64;
+        let start_tile_y = ((level_top / tile_size).floor() as i64 - 1).max(0) as u64;
+        let end_tile_x = ((level_right / tile_size).ceil() as u64 + 1)
             .min(level_info.tiles_x(self.tile_size));
-        let end_tile_y = (((level_y + level_height) / tile_size).ceil() as u64 + 1)
+        let end_tile_y = ((level_bottom / tile_size).ceil() as u64 + 1)
             .min(level_info.tiles_y(self.tile_size));
 
         let mut tiles = Vec::with_capacity(
-            ((end_tile_x - start_tile_x) * (end_tile_y - start_tile_y)) as usize
+            ((end_tile_x.saturating_sub(start_tile_x)) * (end_tile_y.saturating_sub(start_tile_y))) as usize
         );
 
         for y in start_tile_y..end_tile_y {

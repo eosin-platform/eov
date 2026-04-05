@@ -34,6 +34,18 @@ fn main() -> Result<()> {
 
     info!("Starting EosMol WSI Viewer");
 
+    // Parse command-line arguments
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let files_to_open: Vec<PathBuf> = args
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .collect();
+    
+    if !files_to_open.is_empty() {
+        info!("Opening {} file(s) from command line", files_to_open.len());
+    }
+
     // Create application state
     let state = Arc::new(RwLock::new(AppState::new()));
     let tile_cache = Arc::new(TileCache::new());
@@ -44,6 +56,11 @@ fn main() -> Result<()> {
 
     // Set up callbacks
     setup_callbacks(&ui, Arc::clone(&state), Arc::clone(&tile_cache));
+
+    // Open files from command line
+    for path in files_to_open {
+        open_file(&ui, &state, &tile_cache, path);
+    }
 
     // Set up render timer
     let render_timer = Timer::default();
@@ -288,6 +305,56 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
             }
         });
     }
+
+    // Minimap navigation callback
+    {
+        let state = Arc::clone(&state);
+        
+        ui.on_minimap_navigate(move |nx, ny| {
+            let mut state = state.write();
+            let active_id = state.active_file_id;
+            if let Some(file) = state.open_files.iter_mut().find(|f| Some(f.id) == active_id) {
+                let vp = &mut file.viewport.viewport;
+                // Convert normalized (0-1) coordinates to image coordinates
+                // nx, ny represent the center of the desired view
+                let new_center_x = nx as f64 * vp.image_width;
+                let new_center_y = ny as f64 * vp.image_height;
+                vp.center.x = new_center_x;
+                vp.center.y = new_center_y;
+            }
+        });
+    }
+
+    // File dropped callback
+    {
+        let state = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let ui_weak = ui.as_weak();
+        
+        ui.on_file_dropped(move |path_str| {
+            // Parse dropped path - may include file:// prefix or be a path list
+            let path_string = path_str.to_string();
+            let paths: Vec<&str> = path_string
+                .lines()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            for path_str in paths {
+                let path = if path_str.starts_with("file://") {
+                    PathBuf::from(path_str.strip_prefix("file://").unwrap_or(path_str))
+                } else {
+                    PathBuf::from(path_str)
+                };
+                
+                if path.exists() {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        open_file(&ui, &state, &tile_cache, path);
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, _tile_cache: &Arc<TileCache>, path: PathBuf) {
@@ -416,9 +483,11 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     // Update viewport physics
     let _needs_redraw = file.viewport.update();
     
-    // Get viewport dimensions from window (approximate)
-    let viewport_width = 1024.0; // Will be updated properly in a full implementation
-    let viewport_height = 700.0;
+    // Get viewport dimensions from window
+    let window_width = ui.get_viewport_width() as f64;
+    let window_height = ui.get_viewport_height() as f64;
+    let viewport_width = window_width.max(100.0);
+    let viewport_height = (window_height - 24.0).max(100.0); // Account for status bar
     file.viewport.set_size(viewport_width, viewport_height);
     
     // Update viewport info
@@ -469,14 +538,14 @@ fn render_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCac
     let level = file.wsi.best_level_for_downsample(vp.effective_downsample());
     let tile_size = file.tile_manager.tile_size();
     
-    // Get visible tiles
+    // Get visible tiles using viewport bounds
+    let bounds = vp.bounds();
     let visible_tiles = file.tile_manager.visible_tiles(
         level,
-        vp.center.x,
-        vp.center.y,
-        vp.width,
-        vp.height,
-        vp.zoom,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
     );
     
     // Create a buffer for rendering
