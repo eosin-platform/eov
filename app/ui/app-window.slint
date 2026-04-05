@@ -169,8 +169,19 @@ component Tab inherits Rectangle {
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
     background: data.is-active ? Theme.tab-active : Theme.tab-inactive;
-    border-width: data.is-active ? 1px : 0px;
-    border-color: data.is-active ? Theme.accent : transparent;
+    border-width: 0px;
+    border-color: transparent;
+    
+    // Active tab indicator (top border accent)
+    if data.is-active: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 2px;
+        background: Theme.accent;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
     
     states [
         hovered when touch.has-hover && !data.is-active: {
@@ -189,8 +200,10 @@ component Tab inherits Rectangle {
     
     HorizontalLayout {
         padding-left: 12px;
-        padding-right: 4px;
-        spacing: 8px;
+        padding-right: 8px;
+        padding-top: 2px;
+        spacing: 6px;
+        alignment: center;
         
         Text {
             text: data.title + (data.is-modified ? " •" : "");
@@ -198,11 +211,12 @@ component Tab inherits Rectangle {
             font-size: 12px;
             vertical-alignment: center;
             overflow: elide;
+            horizontal-stretch: 1;
         }
         
         Rectangle {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             border-radius: 3px;
             background: close-touch.has-hover ? Theme.surface-hover : transparent;
             
@@ -213,7 +227,7 @@ component Tab inherits Rectangle {
             Text {
                 text: "×";
                 color: close-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
-                font-size: 16px;
+                font-size: 14px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -231,8 +245,18 @@ component TabBar inherits Rectangle {
     height: 35px;
     background: Theme.surface;
     
+    // Bottom border line
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border;
+    }
+    
     HorizontalLayout {
         alignment: start;
+        spacing: 1px;
+        padding-left: 4px;
         
         for tab in tabs: Tab {
             data: tab;
