@@ -2,6 +2,7 @@ target
 node_modules
 secrets
 notes.txt
+notes.txt.*
 .buildx-cache
 .env.test
 !.env.test.example

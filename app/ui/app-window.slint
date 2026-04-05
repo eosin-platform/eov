@@ -69,7 +69,63 @@ export struct ViewportInfo {
     level: int,
 }
 
+// Region of Interest
+export struct ROIRect {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    visible: bool,
+}
+
+// Measurement line
+export struct MeasurementLine {
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    distance-um: float,
+    visible: bool,
+}
+
+// Tool types
+export enum ToolType {
+    navigate,
+    region-of-interest,
+    measure-distance,
+}
+
 // ============ Custom Components ============
+
+// Tool button with active state
+component ToolButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+    border-width: is-active ? 0px : 0px;
+    
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+    
+    HorizontalLayout {
+        alignment: center;
+        Text {
+            text: root.icon;
+            color: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+            font-size: 14px;
+            vertical-alignment: center;
+        }
+    }
+}
 
 // Icon button with hover effect
 component IconButton inherits Rectangle {
@@ -260,7 +316,14 @@ component Minimap inherits Rectangle {
     in property <MinimapRect> viewport-rect;
     callback navigate(float, float);
     
+    // Track if we're in a drag operation
     property <bool> is-dragging: false;
+    
+    // Minimap drawing area (padding of 5px on each side)
+    property <length> content-x: 5px;
+    property <length> content-y: 5px;
+    property <length> content-width: self.width - 10px;
+    property <length> content-height: self.height - 10px;
     
     width: 150px;
     height: 150px;
@@ -269,42 +332,46 @@ component Minimap inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     
-    // Thumbnail
+    // Thumbnail - uses contain so aspect ratio is preserved
     Image {
-        x: 5px;
-        y: 5px;
-        width: parent.width - 10px;
-        height: parent.height - 10px;
+        x: content-x;
+        y: content-y;
+        width: content-width;
+        height: content-height;
         source: thumbnail;
         image-fit: contain;
     }
     
     // Viewport indicator rectangle
+    // Maps normalized 0-1 coordinates to the content area
     Rectangle {
-        x: 5px + viewport-rect.x * (parent.width - 10px);
-        y: 5px + viewport-rect.y * (parent.height - 10px);
-        width: viewport-rect.width * (parent.width - 10px);
-        height: viewport-rect.height * (parent.height - 10px);
+        x: content-x + viewport-rect.x * content-width;
+        y: content-y + viewport-rect.y * content-height;
+        width: viewport-rect.width * content-width;
+        height: viewport-rect.height * content-height;
         background: transparent;
         border-width: 2px;
         border-color: Theme.minimap-rect;
     }
     
+    // Touch handling for navigation - covers entire minimap
     touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 root.is-dragging = true;
-                // Navigate on click
-                let nx = (self.mouse-x - 5px) / (parent.width - 10px);
-                let ny = (self.mouse-y - 5px) / (parent.height - 10px);
-                root.navigate(nx, ny);
+                // Convert click to normalized coordinates (0-1) within the content area
+                let rel-x = (self.mouse-x - root.content-x) / root.content-width;
+                let rel-y = (self.mouse-y - root.content-y) / root.content-height;
+                root.navigate(rel-x, rel-y);
             } else if e.kind == PointerEventKind.up {
                 root.is-dragging = false;
             } else if e.kind == PointerEventKind.move && root.is-dragging {
-                // Navigate while dragging
-                let nx = (self.mouse-x - 5px) / (parent.width - 10px);
-                let ny = (self.mouse-y - 5px) / (parent.height - 10px);
-                root.navigate(nx, ny);
+                let rel-x = (self.mouse-x - root.content-x) / root.content-width;
+                let rel-y = (self.mouse-y - root.content-y) / root.content-height;
+                root.navigate(rel-x, rel-y);
             }
         }
     }
@@ -320,6 +387,12 @@ component Viewport inherits Rectangle {
     in property <string> status-text: "";
     in property <bool> is-loading: false;
     
+    // Tool system properties
+    in property <ToolType> current-tool: ToolType.navigate;
+    in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in property <[MeasurementLine]> measurements: [];
+    in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    
     callback pan(float, float);
     callback zoom(float, float, float);
     callback fit-to-view();
@@ -328,13 +401,83 @@ component Viewport inherits Rectangle {
     callback minimap-navigate(float, float);
     callback file-dropped(string);
     
+    // Tool callbacks
+    callback tool-mouse-down(float, float);
+    callback tool-mouse-move(float, float);
+    callback tool-mouse-up(float, float);
+    callback cancel-tool();
+    
     // Export viewport dimensions for rendering
     out property <length> viewport-width: self.width;
     out property <length> viewport-height: self.height - 24px;
     
     background: Theme.viewport-bg;
     
-    // Main content area
+    // Input handling - MUST be declared BEFORE minimap so minimap is on top
+    touch := TouchArea {
+        width: 100%;
+        height: parent.height - 24px; // Only cover the viewport area, not status bar
+        
+        property <length> drag-start-x;
+        property <length> drag-start-y;
+        property <bool> is-dragging: false;
+        property <bool> is-tool-dragging: false;
+        
+        pointer-event(e) => {
+            // Right mouse button: always pan regardless of tool
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                self.is-dragging = true;
+                self.drag-start-x = self.mouse-x;
+                self.drag-start-y = self.mouse-y;
+                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                self.is-dragging = false;
+                root.end-pan();
+            }
+            // Left mouse button: tool-dependent behavior
+            else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                if root.current-tool == ToolType.navigate {
+                    // Navigate tool: LMB also pans
+                    self.is-dragging = true;
+                    self.drag-start-x = self.mouse-x;
+                    self.drag-start-y = self.mouse-y;
+                    root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else {
+                    // Other tools: fire tool callback
+                    self.is-tool-dragging = true;
+                    root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if root.current-tool == ToolType.navigate {
+                    self.is-dragging = false;
+                    root.end-pan();
+                } else {
+                    self.is-tool-dragging = false;
+                    root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            }
+            // Handle move events
+            else if e.kind == PointerEventKind.move {
+                if self.is-dragging {
+                    let dx = (self.mouse-x - self.drag-start-x) / 1px;
+                    let dy = (self.mouse-y - self.drag-start-y) / 1px;
+                    self.drag-start-x = self.mouse-x;
+                    self.drag-start-y = self.mouse-y;
+                    root.pan(dx, dy);
+                } else if self.is-tool-dragging || root.current-tool != ToolType.navigate {
+                    root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            }
+        }
+        
+        scroll-event(e) => {
+            let factor = e.delta-y > 0 ? 1.15 : (1.0 / 1.15);
+            root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
+            return accept;
+        }
+    }
+    
+    // Main content area (visual only, no input handling)
     Rectangle {
         clip: true;
         height: parent.height - 24px;
@@ -345,6 +488,39 @@ component Viewport inherits Rectangle {
             height: 100%;
             source: content;
             image-fit: fill;
+        }
+        
+        // ROI overlay - dimmed area outside the rectangle
+        if root.roi-rect.visible: Rectangle {
+            // Dim the entire viewport
+            background: #00000080;
+            
+            // Clear rectangle for the ROI area
+            Rectangle {
+                x: root.roi-rect.x * 1px;
+                y: root.roi-rect.y * 1px;
+                width: root.roi-rect.width * 1px;
+                height: root.roi-rect.height * 1px;
+                background: transparent;
+                border-width: 2px;
+                border-color: #ffcc00;
+            }
+        }
+        
+        // Measurement lines overlay
+        for measurement in root.measurements: Path {
+            stroke: #00ff00;
+            stroke-width: 2px;
+            MoveTo { x: measurement.x1; y: measurement.y1; }
+            LineTo { x: measurement.x2; y: measurement.y2; }
+        }
+        
+        // Candidate measurement line (while drawing)
+        if root.candidate-measurement.visible: Path {
+            stroke: #ffcc00;
+            stroke-width: 2px;
+            MoveTo { x: root.candidate-measurement.x1; y: root.candidate-measurement.y1; }
+            LineTo { x: root.candidate-measurement.x2; y: root.candidate-measurement.y2; }
         }
         
         // Loading indicator
@@ -366,7 +542,7 @@ component Viewport inherits Rectangle {
         }
     }
     
-    // Minimap in bottom right
+    // Minimap in bottom right - declared AFTER touch area so it receives events first
     if show-minimap: Minimap {
         x: parent.width - self.width - 16px;
         y: parent.height - self.height - 16px - 24px;
@@ -405,42 +581,15 @@ component Viewport inherits Rectangle {
         }
     }
     
-    // Input handling
-    touch := TouchArea {
-        property <length> drag-start-x;
-        property <length> drag-start-y;
-        property <bool> is-dragging: false;
-        
-        pointer-event(e) => {
-            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
-                self.is-dragging = true;
-                self.drag-start-x = self.mouse-x;
-                self.drag-start-y = self.mouse-y;
-                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
-                self.is-dragging = false;
-                root.end-pan();
-            } else if e.kind == PointerEventKind.move && self.is-dragging {
-                let dx = (self.mouse-x - self.drag-start-x) / 1px;
-                let dy = (self.mouse-y - self.drag-start-y) / 1px;
-                self.drag-start-x = self.mouse-x;
-                self.drag-start-y = self.mouse-y;
-                root.pan(dx, dy);
-            }
-        }
-        
-        scroll-event(e) => {
-            let factor = e.delta-y > 0 ? 1.15 : (1.0 / 1.15);
-            root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
-            return accept;
-        }
-    }
-    
     // Focus for keyboard input
     FocusScope {
         key-pressed(e) => {
             if e.text == "f" || e.text == "F" {
                 root.fit-to-view();
+                return accept;
+            }
+            if e.text == Key.Escape {
+                root.cancel-tool();
                 return accept;
             }
             return reject;
@@ -452,15 +601,30 @@ component Viewport inherits Rectangle {
 component SplitPaneContainer inherits Rectangle {
     in property <[TabData]> tabs;
     in property <image> viewport-content;
+    in property <image> secondary-viewport-content;
     in property <ViewportInfo> viewport-info;
+    in property <ViewportInfo> secondary-viewport-info;
     in property <image> minimap-thumbnail;
     in property <MinimapRect> minimap-rect;
+    in property <MinimapRect> secondary-minimap-rect;
     in property <string> status-text;
     in property <bool> is-loading: false;
+    in property <bool> split-enabled: false;
+    in property <float> split-position: 0.5;
+    in property <int> focused-pane: 0; // 0 = primary, 1 = secondary
+    
+    // Tool system properties
+    in property <ToolType> current-tool: ToolType.navigate;
+    in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in property <[MeasurementLine]> measurements: [];
+    in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     
     // Output viewport dimensions
-    out property <length> viewport-width: viewport.viewport-width;
-    out property <length> viewport-height: viewport.viewport-height;
+    out property <length> viewport-width: split-enabled ? 
+        (self.width * split-position - 3px) : self.width;
+    out property <length> viewport-height: self.height - 35px - 24px;
+    out property <length> secondary-viewport-width: self.width * (1 - split-position) - 3px;
+    out property <length> secondary-viewport-height: self.height - 35px - 24px;
     
     callback tab-activated(int);
     callback tab-close-requested(int);
@@ -472,6 +636,14 @@ component SplitPaneContainer inherits Rectangle {
     callback viewport-end-pan();
     callback minimap-navigate(float, float);
     callback file-dropped(string);
+    callback pane-focused(int);
+    callback split-position-changed(float);
+    
+    // Tool callbacks
+    callback tool-mouse-down(float, float);
+    callback tool-mouse-move(float, float);
+    callback tool-mouse-up(float, float);
+    callback cancel-tool();
     
     background: Theme.background;
     
@@ -484,23 +656,95 @@ component SplitPaneContainer inherits Rectangle {
             tab-context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
         }
         
-        // Viewport
-        viewport := Viewport {
+        // Content area with optional split
+        HorizontalLayout {
             vertical-stretch: 1;
-            content: viewport-content;
-            viewport-info: root.viewport-info;
-            minimap-thumbnail: minimap-thumbnail;
-            minimap-rect: minimap-rect;
-            status-text: root.status-text;
-            is-loading: root.is-loading;
             
-            pan(dx, dy) => { root.viewport-pan(dx, dy); }
-            zoom(f, x, y) => { root.viewport-zoom(f, x, y); }
-            fit-to-view => { root.viewport-fit-to-view(); }
-            start-pan(x, y) => { root.viewport-start-pan(x, y); }
-            end-pan => { root.viewport-end-pan(); }
-            minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
-            file-dropped(path) => { root.file-dropped(path); }
+            // Primary viewport
+            primary-container := Rectangle {
+                width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
+                border-width: root.focused-pane == 0 && root.split-enabled ? 2px : 0px;
+                border-color: Theme.accent;
+                
+                primary-viewport := Viewport {
+                    content: viewport-content;
+                    viewport-info: root.viewport-info;
+                    minimap-thumbnail: minimap-thumbnail;
+                    minimap-rect: minimap-rect;
+                    status-text: root.status-text;
+                    is-loading: root.is-loading;
+                    current-tool: root.current-tool;
+                    roi-rect: root.roi-rect;
+                    measurements: root.measurements;
+                    candidate-measurement: root.candidate-measurement;
+                    
+                    pan(dx, dy) => { root.pane-focused(0); root.viewport-pan(dx, dy); }
+                    zoom(f, x, y) => { root.pane-focused(0); root.viewport-zoom(f, x, y); }
+                    fit-to-view => { root.pane-focused(0); root.viewport-fit-to-view(); }
+                    start-pan(x, y) => { root.pane-focused(0); root.viewport-start-pan(x, y); }
+                    end-pan => { root.viewport-end-pan(); }
+                    minimap-navigate(nx, ny) => { root.pane-focused(0); root.minimap-navigate(nx, ny); }
+                    file-dropped(path) => { root.file-dropped(path); }
+                    tool-mouse-down(x, y) => { root.pane-focused(0); root.tool-mouse-down(x, y); }
+                    tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+                    tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+                    cancel-tool => { root.cancel-tool(); }
+                }
+            }
+            
+            // Splitter (only visible when split is enabled)
+            if root.split-enabled: Rectangle {
+                width: 6px;
+                background: splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border;
+                
+                splitter-touch := TouchArea {
+                    property <length> drag-start-x;
+                    
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                            self.drag-start-x = self.mouse-x;
+                        } else if e.kind == PointerEventKind.move && self.pressed {
+                            let delta = (self.mouse-x - self.drag-start-x) / root.width;
+                            let new-pos = (root.split-position + delta).clamp(0.2, 0.8);
+                            root.split-position-changed(new-pos);
+                            self.drag-start-x = self.mouse-x;
+                        }
+                    }
+                    mouse-cursor: ew-resize;
+                }
+            }
+            
+            // Secondary viewport (only visible when split is enabled)  
+            if root.split-enabled: Rectangle {
+                horizontal-stretch: 1;
+                border-width: root.focused-pane == 1 ? 2px : 0px;
+                border-color: Theme.accent;
+                
+                secondary-viewport := Viewport {
+                    content: secondary-viewport-content;
+                    viewport-info: root.secondary-viewport-info;
+                    minimap-thumbnail: minimap-thumbnail;
+                    minimap-rect: secondary-minimap-rect;
+                    status-text: root.status-text;
+                    is-loading: false;
+                    current-tool: root.current-tool;
+                    roi-rect: root.roi-rect;
+                    measurements: root.measurements;
+                    candidate-measurement: root.candidate-measurement;
+                    
+                    pan(dx, dy) => { root.pane-focused(1); root.viewport-pan(dx, dy); }
+                    zoom(f, x, y) => { root.pane-focused(1); root.viewport-zoom(f, x, y); }
+                    fit-to-view => { root.pane-focused(1); root.viewport-fit-to-view(); }
+                    start-pan(x, y) => { root.pane-focused(1); root.viewport-start-pan(x, y); }
+                    end-pan => { root.viewport-end-pan(); }
+                    minimap-navigate(nx, ny) => { root.pane-focused(1); root.minimap-navigate(nx, ny); }
+                    file-dropped(path) => { root.file-dropped(path); }
+                    tool-mouse-down(x, y) => { root.pane-focused(1); root.tool-mouse-down(x, y); }
+                    tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+                    tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+                    cancel-tool => { root.cancel-tool(); }
+                }
+            }
         }
     }
 }
@@ -519,15 +763,24 @@ export component AppWindow inherits Window {
     in-out property <[TabData]> tabs: [];
     in-out property <int> active-tab-id: -1;
     in-out property <image> viewport-content;
+    in-out property <image> secondary-viewport-content;
     in-out property <ViewportInfo> viewport-info;
+    in-out property <ViewportInfo> secondary-viewport-info;
     in-out property <image> minimap-thumbnail;
     in-out property <MinimapRect> minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
+    in-out property <MinimapRect> secondary-minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
     in-out property <string> status-text: "Ready";
     in-out property <bool> is-loading: false;
+    in-out property <bool> split-enabled: false;
+    in-out property <float> split-position: 0.5;
+    in-out property <int> focused-pane: 0;
     
     // Viewport dimensions for rendering - calculated from content area
-    out property <float> viewport-width: content-area.width / 1px;
-    out property <float> viewport-height: (content-area.height - 35px - 24px) / 1px; // Subtract tab bar and status bar
+    out property <float> viewport-width: split-enabled ? 
+        (content-area.width * split-position - 3px) / 1px : content-area.width / 1px;
+    out property <float> viewport-height: (content-area.height - 35px - 24px) / 1px;
+    out property <float> secondary-viewport-width: (content-area.width * (1 - split-position) - 3px) / 1px;
+    out property <float> secondary-viewport-height: (content-area.height - 35px - 24px) / 1px;
     
     // Context menu state
     in-out property <bool> context-menu-visible: false;
@@ -535,6 +788,12 @@ export component AppWindow inherits Window {
     in-out property <length> context-menu-y: 0px;
     in-out property <[ContextMenuItem]> context-menu-items: [];
     in-out property <int> context-menu-tab-id: -1;
+    
+    // Tool system state
+    in-out property <ToolType> current-tool: ToolType.navigate;
+    in-out property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in-out property <[MeasurementLine]> measurements: [];
+    in-out property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     
     // Callbacks
     callback open-file-requested();
@@ -546,6 +805,7 @@ export component AppWindow inherits Window {
     callback open-containing-folder(int);
     callback copy-path(int);
     callback split-right(int);
+    callback close-split();
     callback viewport-pan(float, float);
     callback viewport-zoom(float, float, float);
     callback viewport-fit-to-view();
@@ -553,7 +813,16 @@ export component AppWindow inherits Window {
     callback viewport-end-pan();
     callback minimap-navigate(float, float);
     callback file-dropped(string);
+    callback pane-focused(int);
+    callback split-position-changed(float);
     callback request-render();
+    
+    // Tool system callbacks
+    callback tool-selected(ToolType);
+    callback viewport-tool-mouse-down(float, float);
+    callback viewport-tool-mouse-move(float, float);
+    callback viewport-tool-mouse-up(float, float);
+    callback cancel-tool();
     
     // Main layout
     VerticalLayout {
@@ -570,6 +839,34 @@ export component AppWindow inherits Window {
                 IconButton {
                     text: "📂 Open";
                     clicked => { root.open-file-requested(); }
+                }
+                
+                Rectangle {
+                    width: 1px;
+                    height: 24px;
+                    background: Theme.border;
+                }
+                
+                // Tool buttons
+                ToolButton {
+                    icon: "✥";
+                    tooltip-text: "Navigate (Pan)";
+                    is-active: root.current-tool == ToolType.navigate;
+                    clicked => { root.tool-selected(ToolType.navigate); }
+                }
+                
+                ToolButton {
+                    icon: "▢";
+                    tooltip-text: "Region of Interest";
+                    is-active: root.current-tool == ToolType.region-of-interest;
+                    clicked => { root.tool-selected(ToolType.region-of-interest); }
+                }
+                
+                ToolButton {
+                    icon: "📏";
+                    tooltip-text: "Measure Distance";
+                    is-active: root.current-tool == ToolType.measure-distance;
+                    clicked => { root.tool-selected(ToolType.measure-distance); }
                 }
                 
                 Rectangle {
@@ -599,11 +896,21 @@ export component AppWindow inherits Window {
             if tabs.length > 0: SplitPaneContainer {
                 tabs: root.tabs;
                 viewport-content: root.viewport-content;
+                secondary-viewport-content: root.secondary-viewport-content;
                 viewport-info: root.viewport-info;
+                secondary-viewport-info: root.secondary-viewport-info;
                 minimap-thumbnail: root.minimap-thumbnail;
                 minimap-rect: root.minimap-rect;
+                secondary-minimap-rect: root.secondary-minimap-rect;
                 status-text: root.status-text;
                 is-loading: root.is-loading;
+                split-enabled: root.split-enabled;
+                split-position: root.split-position;
+                focused-pane: root.focused-pane;
+                current-tool: root.current-tool;
+                roi-rect: root.roi-rect;
+                measurements: root.measurements;
+                candidate-measurement: root.candidate-measurement;
                 
                 tab-activated(id) => { root.tab-activated(id); }
                 tab-close-requested(id) => { root.tab-close-requested(id); }
@@ -618,7 +925,7 @@ export component AppWindow inherits Window {
                         { id: "close-all", label: "Close All", shortcut: "", enabled: true, separator-after: true },
                         { id: "open-folder", label: "Open Containing Folder", shortcut: "", enabled: true, separator-after: false },
                         { id: "copy-path", label: "Copy Path", shortcut: "", enabled: true, separator-after: true },
-                        { id: "split-right", label: "Split Right", shortcut: "", enabled: true, separator-after: false },
+                        { id: "split-right", label: root.split-enabled ? "Close Split" : "Split Right", shortcut: "", enabled: true, separator-after: false },
                     ];
                     root.context-menu-visible = true;
                 }
@@ -629,6 +936,12 @@ export component AppWindow inherits Window {
                 viewport-end-pan => { root.viewport-end-pan(); }
                 minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
                 file-dropped(path) => { root.file-dropped(path); }
+                pane-focused(pane) => { root.pane-focused(pane); }
+                split-position-changed(pos) => { root.split-position-changed(pos); }
+                tool-mouse-down(x, y) => { root.viewport-tool-mouse-down(x, y); }
+                tool-mouse-move(x, y) => { root.viewport-tool-mouse-move(x, y); }
+                tool-mouse-up(x, y) => { root.viewport-tool-mouse-up(x, y); }
+                cancel-tool => { root.cancel-tool(); }
             }
             
             // Empty state

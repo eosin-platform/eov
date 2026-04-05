@@ -324,6 +324,12 @@ impl ViewportState {
         self.viewport.set_size(width, height);
     }
 
+    /// Convert screen coordinates to image coordinates
+    pub fn screen_to_image(&self, screen_x: f64, screen_y: f64) -> (f64, f64) {
+        let result = self.viewport.screen_to_image(screen_x, screen_y);
+        (result.x, result.y)
+    }
+
     /// Check if the viewport is currently moving
     pub fn is_moving(&self) -> bool {
         self.is_dragging || self.velocity.length() > MIN_VELOCITY

@@ -9,7 +9,7 @@ use common::{TileCache, TileManager, ViewportState, WsiFile};
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
-use state::{AppState, OpenFile};
+use state::{AppState, OpenFile, PaneId};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -241,10 +241,62 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         });
     }
 
-    // Split right (placeholder for future implementation)
-    ui.on_split_right(move |_id| {
-        info!("Split right requested (not yet implemented)");
-    });
+    // Split right - toggle split view
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_split_right(move |_id| {
+            let mut state = state.write();
+            if state.split_enabled {
+                // Close split
+                state.disable_split();
+                info!("Split view disabled");
+            } else {
+                // Enable split
+                state.enable_split();
+                info!("Split view enabled");
+            }
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_split_enabled(state.split_enabled);
+                ui.set_focused_pane(match state.focused_pane {
+                    PaneId::Primary => 0,
+                    PaneId::Secondary => 1,
+                });
+            }
+        });
+    }
+
+    // Pane focused callback
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_pane_focused(move |pane| {
+            let mut state = state.write();
+            state.focused_pane = if pane == 0 { PaneId::Primary } else { PaneId::Secondary };
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_focused_pane(pane);
+            }
+        });
+    }
+
+    // Split position changed callback
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_split_position_changed(move |pos| {
+            let mut state = state.write();
+            state.split_position = pos;
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_split_position(pos);
+            }
+        });
+    }
 
     // Viewport pan
     {
@@ -311,16 +363,37 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         let state = Arc::clone(&state);
         
         ui.on_minimap_navigate(move |nx, ny| {
+            info!("Minimap navigate called: nx={}, ny={}", nx, ny);
             let mut state = state.write();
             let active_id = state.active_file_id;
+            let focused_pane = state.focused_pane;
+            let split_enabled = state.split_enabled;
+            
             if let Some(file) = state.open_files.iter_mut().find(|f| Some(f.id) == active_id) {
-                let vp = &mut file.viewport.viewport;
-                // Convert normalized (0-1) coordinates to image coordinates
-                // nx, ny represent the center of the desired view
-                let new_center_x = nx as f64 * vp.image_width;
-                let new_center_y = ny as f64 * vp.image_height;
-                vp.center.x = new_center_x;
-                vp.center.y = new_center_y;
+                // Clamp normalized coordinates to 0-1 range
+                let nx = (nx as f64).clamp(0.0, 1.0);
+                let ny = (ny as f64).clamp(0.0, 1.0);
+                
+                // Get the viewport to update based on focused pane
+                let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
+                    file.secondary_viewport.as_mut()
+                } else {
+                    Some(&mut file.viewport)
+                };
+                
+                if let Some(vs) = viewport_state {
+                    // Stop any existing movement (important!)
+                    vs.stop();
+                    
+                    // Convert normalized (0-1) coordinates to image coordinates
+                    // nx, ny represent where the viewport CENTER should be
+                    let vp = &mut vs.viewport;
+                    let new_x = nx * vp.image_width;
+                    let new_y = ny * vp.image_height;
+                    info!("Setting viewport center: ({}, {}) -> ({}, {})", vp.center.x, vp.center.y, new_x, new_y);
+                    vp.center.x = new_x;
+                    vp.center.y = new_y;
+                }
             }
         });
     }
@@ -352,6 +425,85 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
                         open_file(&ui, &state, &tile_cache, path);
                     }
                 }
+            }
+        });
+    }
+    
+    // Tool selected callback
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_tool_selected(move |tool_type| {
+            let mut state = state.write();
+            let tool = match tool_type {
+                ToolType::Navigate => state::Tool::Navigate,
+                ToolType::RegionOfInterest => state::Tool::RegionOfInterest,
+                ToolType::MeasureDistance => state::Tool::MeasureDistance,
+            };
+            state.set_tool(tool);
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tool_state(&ui, &state);
+            }
+        });
+    }
+    
+    // Tool mouse events
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_viewport_tool_mouse_down(move |x, y| {
+            let mut state = state.write();
+            handle_tool_mouse_down(&mut state, x as f64, y as f64);
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tool_overlays(&ui, &state);
+            }
+        });
+    }
+    
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_viewport_tool_mouse_move(move |x, y| {
+            let mut state = state.write();
+            handle_tool_mouse_move(&mut state, x as f64, y as f64);
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tool_overlays(&ui, &state);
+            }
+        });
+    }
+    
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_viewport_tool_mouse_up(move |x, y| {
+            let mut state = state.write();
+            handle_tool_mouse_up(&mut state, x as f64, y as f64);
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tool_overlays(&ui, &state);
+            }
+        });
+    }
+    
+    // Cancel tool callback
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_cancel_tool(move || {
+            let mut state = state.write();
+            state.cancel_tool();
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tool_state(&ui, &state);
+                update_tool_overlays(&ui, &state);
             }
         });
     }
@@ -476,21 +628,30 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         return;
     };
     
+    let split_enabled = state.split_enabled;
+    let split_position = state.split_position;
+    
     let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
         return;
     };
 
-    // Update viewport physics
-    let _needs_redraw = file.viewport.update();
-    
     // Get viewport dimensions from window
     let window_width = ui.get_viewport_width() as f64;
     let window_height = ui.get_viewport_height() as f64;
-    let viewport_width = window_width.max(100.0);
-    let viewport_height = (window_height - 24.0).max(100.0); // Account for status bar
-    file.viewport.set_size(viewport_width, viewport_height);
     
-    // Update viewport info
+    // Calculate primary viewport size
+    let primary_width = if split_enabled {
+        (window_width * split_position as f64 - 3.0).max(100.0)
+    } else {
+        window_width.max(100.0)
+    };
+    let primary_height = window_height.max(100.0);
+    
+    // Update primary viewport physics
+    let _needs_redraw = file.viewport.update();
+    file.viewport.set_size(primary_width, primary_height);
+    
+    // Update primary viewport info
     let vp = &file.viewport.viewport;
     ui.set_viewport_info(ViewportInfo {
         center_x: vp.center.x as f32,
@@ -501,7 +662,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         level: file.wsi.best_level_for_downsample(vp.effective_downsample()) as i32,
     });
     
-    // Update minimap
+    // Update primary minimap
     let rect = vp.minimap_rect();
     ui.set_minimap_rect(MinimapRect {
         x: rect.x,
@@ -510,7 +671,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         height: rect.height,
     });
     
-    // Set thumbnail for minimap
+    // Set thumbnail for minimap (once, shared between both panes)
     if let Some(ref thumb_data) = file.thumbnail {
         let level = file.wsi.level_count().saturating_sub(1);
         if let Some(level_info) = file.wsi.level(level) {
@@ -527,11 +688,46 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         }
     }
     
-    // Render tiles to viewport
-    render_viewport(ui, file, tile_cache);
+    // Render primary viewport
+    render_viewport_to_buffer(ui, file, tile_cache, true);
+    
+    // Handle secondary viewport if split is enabled
+    if split_enabled {
+        if let Some(ref mut secondary) = file.secondary_viewport {
+            // Update secondary viewport physics
+            let secondary_width = (window_width * (1.0 - split_position as f64) - 3.0).max(100.0);
+            let secondary_height = window_height.max(100.0);
+            
+            secondary.update();
+            secondary.set_size(secondary_width, secondary_height);
+            
+            // Update secondary viewport info
+            let vp2 = &secondary.viewport;
+            ui.set_secondary_viewport_info(ViewportInfo {
+                center_x: vp2.center.x as f32,
+                center_y: vp2.center.y as f32,
+                zoom: vp2.zoom as f32,
+                image_width: vp2.image_width as f32,
+                image_height: vp2.image_height as f32,
+                level: file.wsi.best_level_for_downsample(vp2.effective_downsample()) as i32,
+            });
+            
+            // Update secondary minimap
+            let rect2 = vp2.minimap_rect();
+            ui.set_secondary_minimap_rect(MinimapRect {
+                x: rect2.x,
+                y: rect2.y,
+                width: rect2.width,
+                height: rect2.height,
+            });
+            
+            // Render secondary viewport
+            render_secondary_viewport(ui, file, tile_cache);
+        }
+    }
 }
 
-fn render_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>) {
+fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>, is_primary: bool) {
     let vp = &file.viewport.viewport;
     
     // Determine best level for current zoom
@@ -612,6 +808,94 @@ fn render_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCac
     }
 }
 
+fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>) {
+    let Some(ref secondary) = file.secondary_viewport else {
+        return;
+    };
+    
+    let vp = &secondary.viewport;
+    
+    // Determine best level for current zoom
+    let level = file.wsi.best_level_for_downsample(vp.effective_downsample());
+    let tile_size = file.tile_manager.tile_size();
+    
+    // Get visible tiles using viewport bounds
+    let bounds = vp.bounds();
+    let visible_tiles = file.tile_manager.visible_tiles(
+        level,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+    );
+    
+    // Create a buffer for rendering
+    let render_width = vp.width as u32;
+    let render_height = vp.height as u32;
+    
+    if render_width == 0 || render_height == 0 {
+        return;
+    }
+    
+    let mut buffer = vec![30u8; (render_width * render_height * 4) as usize]; // Dark background
+    
+    // Set alpha channel
+    for i in (3..buffer.len()).step_by(4) {
+        buffer[i] = 255;
+    }
+    
+    let level_info = match file.wsi.level(level) {
+        Some(info) => info,
+        None => return,
+    };
+    
+    // Render each visible tile
+    for coord in &visible_tiles {
+        // Try to get from cache first
+        let tile_data = if let Some(tile) = tile_cache.get(coord) {
+            tile
+        } else {
+            // Load tile synchronously
+            match file.tile_manager.load_tile_sync(*coord) {
+                Ok(tile) => {
+                    tile_cache.insert(tile.clone());
+                    tile
+                }
+                Err(_) => continue,
+            }
+        };
+        
+        // Calculate tile position on screen
+        let tile_x = coord.x as f64 * tile_size as f64;
+        let tile_y = coord.y as f64 * tile_size as f64;
+        
+        // Convert to screen coordinates
+        let screen_x = ((tile_x * level_info.downsample - bounds.left) * vp.zoom) as i32;
+        let screen_y = ((tile_y * level_info.downsample - bounds.top) * vp.zoom) as i32;
+        let screen_w = (tile_data.width as f64 * level_info.downsample * vp.zoom) as i32;
+        let screen_h = (tile_data.height as f64 * level_info.downsample * vp.zoom) as i32;
+        
+        // Blit tile to buffer
+        blit_tile(
+            &mut buffer,
+            render_width,
+            render_height,
+            &tile_data.data,
+            tile_data.width,
+            tile_data.height,
+            screen_x,
+            screen_y,
+            screen_w,
+            screen_h,
+        );
+    }
+    
+    // Create image from buffer
+    if let Some(pixel_buffer) = create_image_buffer(&buffer, render_width, render_height) {
+        ui.set_secondary_viewport_content(Image::from_rgba8(pixel_buffer));
+    }
+}
+
 fn blit_tile(
     dest: &mut [u8],
     dest_width: u32,
@@ -663,4 +947,220 @@ fn create_image_buffer(data: &[u8], width: u32, height: u32) -> Option<SharedPix
     let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
     buffer.make_mut_bytes().copy_from_slice(&data[..expected_len]);
     Some(buffer)
+}
+
+// ============ Tool handling functions ============
+
+fn update_tool_state(ui: &AppWindow, state: &AppState) {
+    let tool_type = match state.current_tool {
+        state::Tool::Navigate => ToolType::Navigate,
+        state::Tool::RegionOfInterest => ToolType::RegionOfInterest,
+        state::Tool::MeasureDistance => ToolType::MeasureDistance,
+    };
+    ui.set_current_tool(tool_type);
+}
+
+fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
+    let Some(file_id) = state.active_file_id else {
+        return;
+    };
+    
+    let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
+        return;
+    };
+    
+    // Get the active viewport for coordinate conversion
+    let viewport_state = if state.split_enabled && state.focused_pane == PaneId::Secondary {
+        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
+    } else {
+        &file.viewport
+    };
+    let vp = &viewport_state.viewport;
+    
+    // Update ROI overlay
+    if let Some(roi) = &file.roi {
+        let bounds = vp.bounds();
+        let screen_x = (roi.x - bounds.left) * vp.zoom;
+        let screen_y = (roi.y - bounds.top) * vp.zoom;
+        let screen_w = roi.width * vp.zoom;
+        let screen_h = roi.height * vp.zoom;
+        
+        ui.set_roi_rect(ROIRect {
+            x: screen_x as f32,
+            y: screen_y as f32,
+            width: screen_w as f32,
+            height: screen_h as f32,
+            visible: true,
+        });
+    } else {
+        ui.set_roi_rect(ROIRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            visible: false,
+        });
+    }
+    
+    // Update candidate measurement
+    if let (state::ToolInteractionState::Dragging(start) | state::ToolInteractionState::FirstPointPlaced(start), 
+            Some(end)) = (&state.tool_state, &state.candidate_point) 
+    {
+        if state.current_tool == state::Tool::MeasureDistance || state.current_tool == state::Tool::RegionOfInterest {
+            let bounds = vp.bounds();
+            let x1 = (start.x - bounds.left) * vp.zoom;
+            let y1 = (start.y - bounds.top) * vp.zoom;
+            let x2 = (end.x - bounds.left) * vp.zoom;
+            let y2 = (end.y - bounds.top) * vp.zoom;
+            
+            // For ROI, update the roi_rect
+            if state.current_tool == state::Tool::RegionOfInterest {
+                let roi = state::RegionOfInterest::from_points(*start, *end);
+                let screen_x = (roi.x - bounds.left) * vp.zoom;
+                let screen_y = (roi.y - bounds.top) * vp.zoom;
+                let screen_w = roi.width * vp.zoom;
+                let screen_h = roi.height * vp.zoom;
+                
+                ui.set_roi_rect(ROIRect {
+                    x: screen_x as f32,
+                    y: screen_y as f32,
+                    width: screen_w as f32,
+                    height: screen_h as f32,
+                    visible: true,
+                });
+            } else {
+                // For measurement, update candidate line
+                ui.set_candidate_measurement(MeasurementLine {
+                    x1: x1 as f32,
+                    y1: y1 as f32,
+                    x2: x2 as f32,
+                    y2: y2 as f32,
+                    distance_um: 0.0, // TODO: Calculate actual distance in microns
+                    visible: true,
+                });
+            }
+        }
+    } else {
+        ui.set_candidate_measurement(MeasurementLine {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 0.0,
+            y2: 0.0,
+            distance_um: 0.0,
+            visible: false,
+        });
+    }
+}
+
+fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
+    let Some(file_id) = state.active_file_id else {
+        return;
+    };
+    
+    let focused_pane = state.focused_pane;
+    let split_enabled = state.split_enabled;
+    
+    let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
+        return;
+    };
+    
+    // Get the active viewport for coordinate conversion
+    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
+        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
+    } else {
+        &file.viewport
+    };
+    
+    // Convert screen coordinates to image coordinates
+    let image_point = viewport_state.screen_to_image(screen_x, screen_y);
+    let point = state::ImagePoint { x: image_point.0, y: image_point.1 };
+    
+    match state.current_tool {
+        state::Tool::Navigate => {
+            // Should not happen - Navigate uses LMB for panning
+        }
+        state::Tool::RegionOfInterest | state::Tool::MeasureDistance => {
+            state.tool_state = state::ToolInteractionState::Dragging(point);
+            state.candidate_point = Some(point);
+        }
+    }
+}
+
+fn handle_tool_mouse_move(state: &mut AppState, screen_x: f64, screen_y: f64) {
+    let Some(file_id) = state.active_file_id else {
+        return;
+    };
+    
+    let focused_pane = state.focused_pane;
+    let split_enabled = state.split_enabled;
+    
+    let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
+        return;
+    };
+    
+    // Get the active viewport for coordinate conversion
+    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
+        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
+    } else {
+        &file.viewport
+    };
+    
+    // Convert screen coordinates to image coordinates
+    let image_point = viewport_state.screen_to_image(screen_x, screen_y);
+    let point = state::ImagePoint { x: image_point.0, y: image_point.1 };
+    
+    // Update candidate point during drag
+    if matches!(state.tool_state, state::ToolInteractionState::Dragging(_)) {
+        state.candidate_point = Some(point);
+    }
+}
+
+fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
+    let Some(file_id) = state.active_file_id else {
+        return;
+    };
+    
+    let focused_pane = state.focused_pane;
+    let split_enabled = state.split_enabled;
+    let current_tool = state.current_tool;
+    
+    let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
+        return;
+    };
+    
+    // Get the active viewport for coordinate conversion
+    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
+        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
+    } else {
+        &file.viewport
+    };
+    
+    // Convert screen coordinates to image coordinates
+    let image_point = viewport_state.screen_to_image(screen_x, screen_y);
+    let end_point = state::ImagePoint { x: image_point.0, y: image_point.1 };
+    
+    if let state::ToolInteractionState::Dragging(start) = state.tool_state {
+        match current_tool {
+            state::Tool::Navigate => {}
+            state::Tool::RegionOfInterest => {
+                // Create ROI from the two points
+                let roi = state::RegionOfInterest::from_points(start, end_point);
+                if roi.is_valid() {
+                    file.roi = Some(roi);
+                }
+            }
+            state::Tool::MeasureDistance => {
+                // Create measurement from the two points
+                let measurement = state::Measurement {
+                    start,
+                    end: end_point,
+                };
+                file.measurements.push(measurement);
+            }
+        }
+    }
+    
+    // Reset tool state
+    state.tool_state = state::ToolInteractionState::Idle;
+    state.candidate_point = None;
 }
