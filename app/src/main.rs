@@ -31,7 +31,7 @@ macro_rules! dbg_print {
 slint::include_modules!();
 
 /// Frame rate for viewport updates
-const TARGET_FPS: f64 = 30.0;
+const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 
 fn main() -> Result<()> {
@@ -1279,58 +1279,81 @@ fn blit_tile(
         return;
     }
     
-    let scale_x = src_width as f64 / scaled_width as f64;
-    let scale_y = src_height as f64 / scaled_height as f64;
-    
     // Calculate visible region (clamp to destination bounds)
     let start_x = dest_x.max(0) as u32;
     let start_y = dest_y.max(0) as u32;
     let end_x = (dest_x + scaled_width).min(dest_width as i32) as u32;
     let end_y = (dest_y + scaled_height).min(dest_height as i32) as u32;
     
+    // Use 16.16 fixed-point for sub-pixel precision (much faster than f64)
+    let scale_x_fp = ((src_width as u64) << 16) / scaled_width as u64;
+    let scale_y_fp = ((src_height as u64) << 16) / scaled_height as u64;
+    
+    let src_width_minus_1 = (src_width - 1) as u32;
+    let src_height_minus_1 = (src_height - 1) as u32;
+    let dest_stride = dest_width * 4;
+    let src_stride = src_width * 4;
+    
     for y in start_y..end_y {
+        let src_y_fp = ((y as i32 - dest_y) as u64 * scale_y_fp) as u32;
+        let y0 = (src_y_fp >> 16).min(src_height_minus_1);
+        let y1 = (y0 + 1).min(src_height_minus_1);
+        let fy = ((src_y_fp & 0xFFFF) >> 8) as u32; // 8-bit fraction
+        let inv_fy = 256 - fy;
+        
+        let dest_row = (y * dest_stride) as usize;
+        let src_row0 = (y0 * src_stride) as usize;
+        let src_row1 = (y1 * src_stride) as usize;
+        
         for x in start_x..end_x {
-            // Calculate source position with sub-pixel precision
-            let src_x_f = (x as i32 - dest_x) as f64 * scale_x;
-            let src_y_f = (y as i32 - dest_y) as f64 * scale_y;
+            let src_x_fp = ((x as i32 - dest_x) as u64 * scale_x_fp) as u32;
+            let x0 = (src_x_fp >> 16).min(src_width_minus_1);
+            let x1 = (x0 + 1).min(src_width_minus_1);
+            let fx = ((src_x_fp & 0xFFFF) >> 8) as u32; // 8-bit fraction
+            let inv_fx = 256 - fx;
             
-            // Bilinear interpolation
-            let x0 = src_x_f.floor() as i32;
-            let y0 = src_y_f.floor() as i32;
-            let x1 = (x0 + 1).min(src_width as i32 - 1);
-            let y1 = (y0 + 1).min(src_height as i32 - 1);
-            let x0 = x0.max(0).min(src_width as i32 - 1) as u32;
-            let y0 = y0.max(0).min(src_height as i32 - 1) as u32;
-            let x1 = x1.max(0) as u32;
-            let y1 = y1.max(0) as u32;
-            
-            // Fractional parts for interpolation weights
-            let fx = (src_x_f - src_x_f.floor()).max(0.0).min(1.0);
-            let fy = (src_y_f - src_y_f.floor()).max(0.0).min(1.0);
-            
-            // Get the four neighboring pixels
-            let idx00 = ((y0 * src_width + x0) * 4) as usize;
-            let idx10 = ((y0 * src_width + x1) * 4) as usize;
-            let idx01 = ((y1 * src_width + x0) * 4) as usize;
-            let idx11 = ((y1 * src_width + x1) * 4) as usize;
-            
-            let dest_idx = ((y * dest_width + x) * 4) as usize;
+            let idx00 = src_row0 + (x0 * 4) as usize;
+            let idx10 = src_row0 + (x1 * 4) as usize;
+            let idx01 = src_row1 + (x0 * 4) as usize;
+            let idx11 = src_row1 + (x1 * 4) as usize;
+            let dest_idx = dest_row + (x * 4) as usize;
             
             if idx11 + 3 < src.len() && dest_idx + 3 < dest.len() {
-                // Bilinear interpolation for each channel
-                for c in 0..4 {
-                    let p00 = src[idx00 + c] as f64;
-                    let p10 = src[idx10 + c] as f64;
-                    let p01 = src[idx01 + c] as f64;
-                    let p11 = src[idx11 + c] as f64;
-                    
-                    // Interpolate horizontally, then vertically
-                    let top = p00 * (1.0 - fx) + p10 * fx;
-                    let bottom = p01 * (1.0 - fx) + p11 * fx;
-                    let value = top * (1.0 - fy) + bottom * fy;
-                    
-                    dest[dest_idx + c] = value.round() as u8;
-                }
+                // Bilinear interpolation using fixed-point math
+                // Weight factors (8-bit precision, sum to 256*256 = 65536)
+                let w00 = inv_fx * inv_fy;
+                let w10 = fx * inv_fy;
+                let w01 = inv_fx * fy;
+                let w11 = fx * fy;
+                
+                // Unrolled channel interpolation
+                dest[dest_idx] = ((
+                    src[idx00] as u32 * w00 +
+                    src[idx10] as u32 * w10 +
+                    src[idx01] as u32 * w01 +
+                    src[idx11] as u32 * w11
+                ) >> 16) as u8;
+                
+                dest[dest_idx + 1] = ((
+                    src[idx00 + 1] as u32 * w00 +
+                    src[idx10 + 1] as u32 * w10 +
+                    src[idx01 + 1] as u32 * w01 +
+                    src[idx11 + 1] as u32 * w11
+                ) >> 16) as u8;
+                
+                dest[dest_idx + 2] = ((
+                    src[idx00 + 2] as u32 * w00 +
+                    src[idx10 + 2] as u32 * w10 +
+                    src[idx01 + 2] as u32 * w01 +
+                    src[idx11 + 2] as u32 * w11
+                ) >> 16) as u8;
+                
+                dest[dest_idx + 3] = ((
+                    src[idx00 + 3] as u32 * w00 +
+                    src[idx10 + 3] as u32 * w10 +
+                    src[idx01 + 3] as u32 * w01 +
+                    src[idx11 + 3] as u32 * w11
+                ) >> 16) as u8;
             }
         }
     }
