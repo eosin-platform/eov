@@ -916,14 +916,29 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     
     trace!("render: set_wanted_tiles done");
     
-    // Throttle tile update renders to max 4x per second (250ms between renders)
+    // Throttle tile-only update renders to max 4x per second (250ms between renders)
+    // But ALWAYS render immediately when new tiles become available for the first time
     let time_since_render = file.last_render_time.elapsed();
     let throttle_ok = time_since_render.as_millis() >= 250;
     
-    // Skip rendering if nothing changed (but always render first frame and viewport changes)
-    if !is_first_frame && !viewport_changed && (!new_tiles_loaded || !throttle_ok) {
+    // Skip rendering if nothing changed
+    // - Always render first frame
+    // - Always render if viewport changed (pan/zoom)
+    // - Always render if new tiles loaded (even if throttled, for responsiveness)
+    // - Throttle only affects continuous renders with no changes
+    if !is_first_frame && !viewport_changed && !new_tiles_loaded {
         trace!("render: skipping (no changes)");
         return;
+    }
+    
+    // Additional throttle: if viewport unchanged and tiles still loading, limit to 4fps
+    // This prevents excessive re-renders during initial tile population
+    if !viewport_changed && new_tiles_loaded && !throttle_ok && !is_first_frame {
+        // But still render if this is the first tile update after opening
+        if file.tiles_loaded_since_render > 0 {
+            trace!("render: throttling tile updates");
+            return;
+        }
     }
     
     dbg_print!("[RENDER] proceeding with render");

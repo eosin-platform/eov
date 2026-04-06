@@ -13,10 +13,10 @@ use std::thread;
 use tracing::trace;
 
 /// Number of background worker threads for tile loading
-const WORKER_COUNT: usize = 1;
+const WORKER_COUNT: usize = 2;
 
 /// Maximum tiles to send to workers per frame
-const MAX_TILES_PER_FRAME: usize = 4;
+const MAX_TILES_PER_FRAME: usize = 16;
 
 /// Background tile loader with automatic cancellation of stale requests
 pub struct TileLoader {
@@ -37,8 +37,8 @@ pub struct TileLoader {
 impl TileLoader {
     /// Create a new tile loader
     pub fn new(tile_manager: Arc<TileManager>, cache: Arc<TileCache>) -> Self {
-        // Use a small bounded channel - we don't want to queue too many requests
-        let (request_tx, request_rx) = bounded::<TileCoord>(8);
+        // Bounded channel for tile requests - sized for good throughput without excessive memory
+        let (request_tx, request_rx) = bounded::<TileCoord>(32);
         let failed = Arc::new(Mutex::new(HashSet::new()));
         let generation = Arc::new(AtomicU64::new(0));
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
