@@ -10,7 +10,7 @@ use common::{TileCache, TileManager, ViewportState, WsiFile};
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
-use state::{AppState, OpenFile, PaneId};
+use state::{AppState, OpenFile, PaneId, RenderBackend};
 use tile_loader::{TileLoader, calculate_wanted_tiles};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -33,6 +33,61 @@ slint::include_modules!();
 /// Frame rate for viewport updates
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
+
+fn gpu_backend_available() -> bool {
+    false
+}
+
+fn ui_render_mode(backend: RenderBackend) -> RenderMode {
+    match backend {
+        RenderBackend::Cpu => RenderMode::Cpu,
+        RenderBackend::Gpu => RenderMode::Gpu,
+    }
+}
+
+fn request_render_loop(
+    render_timer: &Rc<Timer>,
+    ui_weak: &slint::Weak<AppWindow>,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+) {
+    let should_start = {
+        let mut state = state.write();
+        state.request_render();
+        if state.render_loop_running {
+            false
+        } else {
+            state.render_loop_running = true;
+            true
+        }
+    };
+
+    if !should_start {
+        return;
+    }
+
+    let timer_for_callback = Rc::clone(render_timer);
+    let ui_weak = ui_weak.clone();
+    let state = Arc::clone(state);
+    let tile_cache = Arc::clone(tile_cache);
+    render_timer.start(
+        TimerMode::Repeated,
+        Duration::from_millis(FRAME_DURATION_MS),
+        move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                timer_for_callback.stop();
+                state.write().render_loop_running = false;
+                return;
+            };
+
+            if !update_and_render(&ui, &state, &tile_cache) {
+                timer_for_callback.stop();
+                let mut state = state.write();
+                state.render_loop_running = false;
+            }
+        },
+    );
+}
 
 fn main() -> Result<()> {
     // Initialize logging - RUST_LOG env controls level
@@ -70,11 +125,23 @@ fn main() -> Result<()> {
     let ui = AppWindow::new()?;
     let ui_weak = ui.as_weak();
 
+    let render_timer = Rc::new(Timer::default());
+
     // Set up callbacks
-    setup_callbacks(&ui, Arc::clone(&state), Arc::clone(&tile_cache));
+    setup_callbacks(
+        &ui,
+        Arc::clone(&state),
+        Arc::clone(&tile_cache),
+        Rc::clone(&render_timer),
+    );
     
     // Set debug mode on UI
     ui.set_debug_mode(debug_mode);
+    {
+        let mut state = state.write();
+        state.gpu_backend_available = gpu_backend_available();
+        update_render_backend(&ui, &state);
+    }
     
     // Initialize recent files list
     {
@@ -84,28 +151,10 @@ fn main() -> Result<()> {
 
     // Open files from command line
     for path in files_to_open {
-        open_file(&ui, &state, &tile_cache, path);
+        open_file(&ui, &state, &tile_cache, &render_timer, path);
     }
-    
-    dbg_print!("[MAIN] Files opened, starting render timer");
 
-    // Set up render timer
-    let render_timer = Timer::default();
-    {
-        let ui_weak = ui_weak.clone();
-        let state = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        
-        render_timer.start(
-            TimerMode::Repeated,
-            Duration::from_millis(FRAME_DURATION_MS),
-            move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    update_and_render(&ui, &state, &tile_cache);
-                }
-            },
-        );
-    }
+    request_render_loop(&render_timer, &ui_weak, &state, &tile_cache);
     
     dbg_print!("[MAIN] Timer started, running UI");
 
@@ -116,13 +165,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc<TileCache>) {
+fn setup_callbacks(
+    ui: &AppWindow,
+    state: Arc<RwLock<AppState>>,
+    tile_cache: Arc<TileCache>,
+    render_timer: Rc<Timer>,
+) {
     let ui_weak = ui.as_weak();
     
     // Open file callback
     {
         let state = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_open_file_requested(move || {
@@ -134,22 +189,29 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
                 .add_filter("All Files", &["*"]);
             
             if let Some(path) = dialog.pick_file() {
-                open_file(&ui, &state, &tile_cache, path);
+                open_file(&ui, &state, &tile_cache, &render_timer, path);
             }
         });
     }
 
     // New tab callback - creates a home tab
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_new_tab_requested(move || {
-            let mut state = state.write();
-            state.create_home_tab();
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.create_home_tab();
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
@@ -158,149 +220,218 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
     {
         let state = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_open_recent_file(move |path_str| {
             let path = PathBuf::from(path_str.as_str());
             if path.exists() {
                 if let Some(ui) = ui_weak.upgrade() {
-                    open_file(&ui, &state, &tile_cache, path);
+                    open_file(&ui, &state, &tile_cache, &render_timer, path);
                 }
+            }
+        });
+    }
+
+    // Render backend callback
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_render_backend_selected(move |mode| {
+            let backend = match mode {
+                RenderMode::Cpu => RenderBackend::Cpu,
+                RenderMode::Gpu => RenderBackend::Gpu,
+            };
+            let gpu_fallback = {
+                let mut state = state_handle.write();
+                state.select_render_backend(backend);
+                backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu
+            };
+
+            if let Some(ui) = ui_weak.upgrade() {
+                let state = state_handle.read();
+                update_render_backend(&ui, &state);
+                if gpu_fallback {
+                    ui.set_status_text(SharedString::from("GPU renderer unavailable, using CPU renderer"));
+                }
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_request_render(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Tab activated callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_tab_activated(move |id| {
-            let mut state = state.write();
-            // Activate whether it's a file tab or home tab
-            if state.is_home_tab(id) {
-                state.active_file_id = Some(id);
-            } else {
-                state.activate_file(id);
-            }
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    if state.is_home_tab(id) {
+                        state.active_file_id = Some(id);
+                    } else {
+                        state.activate_file(id);
+                    }
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Tab close callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_tab_close_requested(move |id| {
-            let mut state = state.write();
-            // Close whether it's a file tab or home tab
-            if state.is_home_tab(id) {
-                state.close_home_tab(id);
-            } else {
-                state.close_file(id);
-            }
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    if state.is_home_tab(id) {
+                        state.close_home_tab(id);
+                    } else {
+                        state.close_file(id);
+                    }
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Close other tabs
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_close_other_tabs(move |keep_id| {
-            let mut state = state.write();
-            
-            // Collect file tab IDs to close
-            let file_ids_to_close: Vec<i32> = state.open_files
-                .iter()
-                .map(|f| f.id)
-                .filter(|&id| id != keep_id)
-                .collect();
-            
-            // Collect home tab IDs to close
-            let home_ids_to_close: Vec<i32> = state.home_tabs
-                .iter()
-                .copied()
-                .filter(|&id| id != keep_id)
-                .collect();
-            
-            for id in file_ids_to_close {
-                state.close_file(id);
-            }
-            for id in home_ids_to_close {
-                state.close_home_tab(id);
-            }
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    let file_ids_to_close: Vec<i32> = state.open_files
+                        .iter()
+                        .map(|f| f.id)
+                        .filter(|&id| id != keep_id)
+                        .collect();
+                    let home_ids_to_close: Vec<i32> = state.home_tabs
+                        .iter()
+                        .copied()
+                        .filter(|&id| id != keep_id)
+                        .collect();
+                    for id in file_ids_to_close {
+                        state.close_file(id);
+                    }
+                    for id in home_ids_to_close {
+                        state.close_home_tab(id);
+                    }
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Close tabs to the right
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_close_tabs_to_right(move |from_id| {
-            let mut state = state.write();
-            
-            // Build a combined list of all tab IDs in order
-            let mut all_tabs: Vec<i32> = state.open_files.iter().map(|f| f.id).collect();
-            all_tabs.extend(&state.home_tabs);
-            all_tabs.sort();
-            
-            // Find the position of from_id and close everything after
-            let mut found = false;
-            let ids_to_close: Vec<i32> = all_tabs
-                .iter()
-                .filter_map(|&id| {
-                    if id == from_id {
-                        found = true;
-                        None
-                    } else if found {
-                        Some(id)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            
-            for id in ids_to_close {
-                if state.is_home_tab(id) {
-                    state.close_home_tab(id);
-                } else {
-                    state.close_file(id);
-                }
-            }
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    let mut all_tabs: Vec<i32> = state.open_files.iter().map(|f| f.id).collect();
+                    all_tabs.extend(&state.home_tabs);
+                    all_tabs.sort();
+                    let mut found = false;
+                    let ids_to_close: Vec<i32> = all_tabs
+                        .iter()
+                        .filter_map(|&id| {
+                            if id == from_id {
+                                found = true;
+                                None
+                            } else if found {
+                                Some(id)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    for id in ids_to_close {
+                        if state.is_home_tab(id) {
+                            state.close_home_tab(id);
+                        } else {
+                            state.close_file(id);
+                        }
+                    }
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Close all tabs
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_close_all_tabs(move || {
-            let mut state = state.write();
-            state.open_files.clear();
-            state.home_tabs.clear();
-            state.active_file_id = None;
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.open_files.clear();
+                    state.home_tabs.clear();
+                    state.active_file_id = None;
+                    state.request_render();
+                }
+                let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
@@ -337,157 +468,254 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
 
     // Split right - toggle split view
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_split_right(move |_id| {
-            let mut state = state.write();
-            if state.split_enabled {
-                // Close split
-                state.disable_split();
-                info!("Split view disabled");
-            } else {
-                // Enable split
-                state.enable_split();
-                info!("Split view enabled");
-            }
-            
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_split_enabled(state.split_enabled);
-                ui.set_focused_pane(match state.focused_pane {
+                let (split_enabled, focused_pane) = {
+                    let mut state = state_handle.write();
+                    if state.split_enabled {
+                        state.disable_split();
+                        info!("Split view disabled");
+                    } else {
+                        state.enable_split();
+                        info!("Split view enabled");
+                    }
+                    (state.split_enabled, state.focused_pane)
+                };
+                ui.set_split_enabled(split_enabled);
+                ui.set_focused_pane(match focused_pane {
                     PaneId::Primary => 0,
                     PaneId::Secondary => 1,
                 });
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Pane focused callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_pane_focused(move |pane| {
-            let mut state = state.write();
-            state.focused_pane = if pane == 0 { PaneId::Primary } else { PaneId::Secondary };
+            {
+                let mut state = state_handle.write();
+                state.focused_pane = if pane == 0 { PaneId::Primary } else { PaneId::Secondary };
+                state.request_render();
+            }
             
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_focused_pane(pane);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Split position changed callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_split_position_changed(move |pos| {
-            let mut state = state.write();
-            state.split_position = pos;
+            {
+                let mut state = state_handle.write();
+                state.split_position = pos;
+                state.request_render();
+            }
             
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_split_position(pos);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Viewport pan
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_viewport_pan(move |dx, dy| {
-            let mut state = state.write();
-            if let Some(viewport) = state.active_viewport_mut() {
-                viewport.viewport.pan(dx as f64, dy as f64);
+            {
+                let mut state = state_handle.write();
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.viewport.pan(dx as f64, dy as f64);
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Viewport start pan
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_viewport_start_pan(move |x, y| {
-            let mut state = state.write();
-            if let Some(viewport) = state.active_viewport_mut() {
-                viewport.start_drag(x as f64, y as f64);
+            {
+                let mut state = state_handle.write();
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.start_drag(x as f64, y as f64);
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Viewport end pan
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_viewport_end_pan(move || {
-            let mut state = state.write();
-            if let Some(viewport) = state.active_viewport_mut() {
-                viewport.end_drag();
+            {
+                let mut state = state_handle.write();
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.end_drag();
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Viewport zoom
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_viewport_zoom(move |factor, x, y| {
-            let mut state = state.write();
-            if let Some(viewport) = state.active_viewport_mut() {
-                viewport.zoom_at(factor as f64, x as f64, y as f64);
+            {
+                let mut state = state_handle.write();
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.zoom_at(factor as f64, x as f64, y as f64);
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Fit to view callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_viewport_fit_to_view(move || {
-            let mut state = state.write();
-            if let Some(viewport) = state.active_viewport_mut() {
-                viewport.fit_to_view();
+            {
+                let mut state = state_handle.write();
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.fit_to_view();
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 
     // Minimap navigation callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
         
         ui.on_minimap_navigate(move |nx, ny| {
             info!("Minimap navigate called: nx={}, ny={}", nx, ny);
-            let mut state = state.write();
-            let active_id = state.active_file_id;
-            let focused_pane = state.focused_pane;
-            let split_enabled = state.split_enabled;
-            
-            if let Some(file) = state.open_files.iter_mut().find(|f| Some(f.id) == active_id) {
-                // Clamp normalized coordinates to 0-1 range
-                let nx = (nx as f64).clamp(0.0, 1.0);
-                let ny = (ny as f64).clamp(0.0, 1.0);
+            {
+                let mut state = state_handle.write();
+                let active_id = state.active_file_id;
+                let focused_pane = state.focused_pane;
+                let split_enabled = state.split_enabled;
+                let mut changed = false;
                 
-                // Get the viewport to update based on focused pane
-                let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
-                    file.secondary_viewport.as_mut()
-                } else {
-                    Some(&mut file.viewport)
-                };
-                
-                if let Some(vs) = viewport_state {
-                    // Stop any existing movement (important!)
-                    vs.stop();
-                    
-                    // Convert normalized (0-1) coordinates to image coordinates
-                    // nx, ny represent where the viewport CENTER should be
-                    let vp = &mut vs.viewport;
-                    let new_x = nx * vp.image_width;
-                    let new_y = ny * vp.image_height;
-                    info!("Setting viewport center: ({}, {}) -> ({}, {})", vp.center.x, vp.center.y, new_x, new_y);
-                    vp.center.x = new_x;
-                    vp.center.y = new_y;
+                if let Some(file) = state.open_files.iter_mut().find(|f| Some(f.id) == active_id) {
+                    let nx = (nx as f64).clamp(0.0, 1.0);
+                    let ny = (ny as f64).clamp(0.0, 1.0);
+                    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
+                        file.secondary_viewport.as_mut()
+                    } else {
+                        Some(&mut file.viewport)
+                    };
+                    if let Some(vs) = viewport_state {
+                        vs.stop();
+                        let vp = &mut vs.viewport;
+                        let new_x = nx * vp.image_width;
+                        let new_y = ny * vp.image_height;
+                        info!("Setting viewport center: ({}, {}) -> ({}, {})", vp.center.x, vp.center.y, new_x, new_y);
+                        vp.center.x = new_x;
+                        vp.center.y = new_y;
+                        changed = true;
+                    }
                 }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
@@ -496,6 +724,7 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
     {
         let state = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui.as_weak();
         
         ui.on_file_dropped(move |path_str| {
@@ -516,7 +745,7 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
                 
                 if path.exists() {
                     if let Some(ui) = ui_weak.upgrade() {
-                        open_file(&ui, &state, &tile_cache, path);
+                        open_file(&ui, &state, &tile_cache, &render_timer, path);
                     }
                 }
             }
@@ -525,85 +754,126 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
     
     // Tool selected callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_tool_selected(move |tool_type| {
-            let mut state = state.write();
-            let tool = match tool_type {
-                ToolType::Navigate => state::Tool::Navigate,
-                ToolType::RegionOfInterest => state::Tool::RegionOfInterest,
-                ToolType::MeasureDistance => state::Tool::MeasureDistance,
-            };
-            state.set_tool(tool);
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    let tool = match tool_type {
+                        ToolType::Navigate => state::Tool::Navigate,
+                        ToolType::RegionOfInterest => state::Tool::RegionOfInterest,
+                        ToolType::MeasureDistance => state::Tool::MeasureDistance,
+                    };
+                    state.set_tool(tool);
+                }
+                let state = state_handle.read();
                 update_tool_state(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
     
     // Tool mouse events
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_viewport_tool_mouse_down(move |x, y| {
-            let mut state = state.write();
-            handle_tool_mouse_down(&mut state, x as f64, y as f64);
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    handle_tool_mouse_down(&mut state, x as f64, y as f64);
+                }
+                let state = state_handle.read();
                 update_tool_overlays(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
     
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_viewport_tool_mouse_move(move |x, y| {
-            let mut state = state.write();
-            handle_tool_mouse_move(&mut state, x as f64, y as f64);
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    handle_tool_mouse_move(&mut state, x as f64, y as f64);
+                }
+                let state = state_handle.read();
                 update_tool_overlays(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
     
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_viewport_tool_mouse_up(move |x, y| {
-            let mut state = state.write();
-            handle_tool_mouse_up(&mut state, x as f64, y as f64);
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    handle_tool_mouse_up(&mut state, x as f64, y as f64);
+                }
+                let state = state_handle.read();
                 update_tool_overlays(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
     
     // Cancel tool callback
     {
-        let state = Arc::clone(&state);
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
         ui.on_cancel_tool(move || {
-            let mut state = state.write();
-            state.cancel_tool();
-            
             if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.cancel_tool();
+                }
+                let state = state_handle.read();
                 update_tool_state(&ui, &state);
                 update_tool_overlays(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
 }
 
-fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>, path: PathBuf) {
+fn open_file(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+) {
     dbg_print!("[OPEN] Opening file: {}", path.display());
     ui.set_is_loading(true);
     ui.set_status_text(SharedString::from(format!("Opening {}...", path.display())));
@@ -635,8 +905,18 @@ fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<Til
                     props.height as f64,
                 );
                 
-                // Create tile manager and wrap in Arc for shared use
-                let tile_manager = Arc::new(TileManager::new(wsi.clone()));
+                // Give the tile manager its own OpenSlide handle so tile loading
+                // never contends with the UI's metadata handle.
+                let tile_manager_wsi = match wsi.reopen() {
+                    Ok(tile_manager_wsi) => tile_manager_wsi,
+                    Err(err) => {
+                        error!("Failed to open dedicated tile-manager handle: {}", err);
+                        ui.set_is_loading(false);
+                        ui.set_status_text(SharedString::from(format!("Error: {}", err)));
+                        return;
+                    }
+                };
+                let tile_manager = Arc::new(TileManager::new(tile_manager_wsi));
                 
                 // Create background tile loader (tiles are loaded on-demand)
                 let tile_loader = TileLoader::new(Arc::clone(&tile_manager), Arc::clone(tile_cache));
@@ -652,6 +932,7 @@ fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<Til
                     bounds.top,
                     bounds.right,
                     bounds.bottom,
+                    1,
                 );
                 tile_loader.set_wanted_tiles(initial_tiles);
                 
@@ -661,19 +942,23 @@ fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<Til
                 state_guard.add_file(path.clone(), wsi, tile_manager, tile_loader, viewport, thumbnail)
             };
             
-            let state_guard = state.read();
-            update_tabs(ui, &state_guard);
-            update_recent_files(ui, &state_guard);
-            
+            let level_count = {
+                let state_guard = state.read();
+                update_tabs(ui, &state_guard);
+                update_recent_files(ui, &state_guard);
+                state_guard.get_file(id).map(|f| f.wsi.level_count()).unwrap_or(0)
+            };
+
             ui.set_is_loading(false);
             ui.set_status_text(SharedString::from(format!(
                 "Opened {} ({} levels)",
                 path.file_name().unwrap_or_default().to_string_lossy(),
-                state_guard.get_file(id).map(|f| f.wsi.level_count()).unwrap_or(0)
+                level_count
             )));
             
-            info!("Successfully opened file with {} levels", 
-                state_guard.get_file(id).map(|f| f.wsi.level_count()).unwrap_or(0));
+            info!("Successfully opened file with {} levels", level_count);
+
+            request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
         }
         Err(e) => {
             error!("Failed to open file: {}", e);
@@ -802,21 +1087,15 @@ fn update_recent_files(ui: &AppWindow, state: &AppState) {
     ui.set_recent_files(model.into());
 }
 
-fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) {
-    // Debug: track where we are
-    dbg_print!("[UPDATE] start");
-    
-    // Check 1: Can we acquire state lock?
+fn update_render_backend(ui: &AppWindow, state: &AppState) {
+    ui.set_render_mode(ui_render_mode(state.render_backend));
+    ui.set_gpu_rendering_available(state.gpu_backend_available);
+}
+
+fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) -> bool {
     let mut state = state.write();
-    dbg_print!("[UPDATE] got lock");
-    
-    // Update FPS counter
-    state.update_fps();
-    let fps = state.current_fps;
-    ui.set_fps(fps);
-    
     let Some(file_id) = state.active_file_id else {
-        return;
+        return false;
     };
     
     let split_enabled = state.split_enabled;
@@ -826,6 +1105,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     let tool_state = state.tool_state;
     let candidate_point = state.candidate_point;
     let current_tool = state.current_tool;
+    let render_requested = std::mem::take(&mut state.needs_render);
     
     // Update ant offset for marching ants animation (0.5 pixels per frame at 60fps = 30 pixels/sec)
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
@@ -833,10 +1113,12 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     
     // Check if we switched to a different file - need to force re-render
     let file_switched = state.last_rendered_file_id != Some(file_id);
+    let mut keep_running = render_requested || file_switched;
+    let mut rendered_frame = render_requested;
     
     {
         let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
-            return;
+            return false;
         };
     
         // If file switched, reset frame_count to force first-frame render (skips cache checks)
@@ -857,8 +1139,15 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     let primary_height = window_height.max(100.0);
     
     // Update primary viewport physics
-    let _needs_redraw = file.viewport.update();
+    let primary_animating = file.viewport.update();
     file.viewport.set_size(primary_width, primary_height);
+    let tile_epoch = file.tile_loader.loaded_epoch();
+    let new_primary_tiles = tile_epoch != file.last_seen_tile_epoch;
+    if new_primary_tiles {
+        file.last_seen_tile_epoch = tile_epoch;
+    }
+    let tiles_pending = file.tile_loader.pending_count() > 0;
+    keep_running |= primary_animating || new_primary_tiles || tiles_pending;
     
     // Update primary viewport info
     let vp = &file.viewport.viewport;
@@ -905,6 +1194,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     // Render primary viewport
     dbg_print!("[UPDATE] calling render");
     render_viewport_to_buffer(ui, file, tile_cache, true);
+    rendered_frame = true;
     dbg_print!("[UPDATE] render done");
     
     // Update ROI overlay (must be done every frame for proper tracking)
@@ -952,6 +1242,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
             ant_offset,
         });
     }
+    keep_running |= roi_to_display.is_some();
     
     // Handle secondary viewport if split is enabled
     if split_enabled {
@@ -960,8 +1251,9 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
             let secondary_width = (window_width * (1.0 - split_position as f64) - 3.0).max(100.0);
             let secondary_height = window_height.max(100.0);
             
-            secondary.update();
+            let secondary_animating = secondary.update();
             secondary.set_size(secondary_width, secondary_height);
+            keep_running |= secondary_animating;
             
             // Update secondary viewport info
             let vp2 = &secondary.viewport;
@@ -985,6 +1277,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
             
             // Render secondary viewport
             render_secondary_viewport(ui, file, tile_cache);
+            rendered_frame = true;
         }
     }
     } // End of file borrow scope
@@ -993,6 +1286,13 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     if file_switched {
         state.last_rendered_file_id = Some(file_id);
     }
+
+    if rendered_frame {
+        state.update_fps();
+        ui.set_fps(state.current_fps);
+    }
+
+    keep_running
 }
 
 fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>, _is_primary: bool) {
@@ -1024,6 +1324,7 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     let trilinear = render::calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
     let level = trilinear.level_fine; // Primary level for rendering
     let tile_size = file.tile_manager.tile_size();
+    let margin_tiles = if file.viewport.is_moving() { 1 } else { 0 };
     
     // Check if level changed - must reset tile tracking and force re-render
     let level_changed = level != file.last_render_level;
@@ -1039,12 +1340,13 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     let bounds = vp.bounds();
     trace!("render: bounds left={} top={} right={} bottom={}", bounds.left, bounds.top, bounds.right, bounds.bottom);
     
-    let visible_tiles = file.tile_manager.visible_tiles(
+    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
         level,
         bounds.left,
         bounds.top,
         bounds.right,
         bounds.bottom,
+        margin_tiles,
     );
     
     trace!("render: visible_tiles count={}", visible_tiles.len());
@@ -1062,12 +1364,13 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     
     // For trilinear, also fetch coarse level tiles
     let coarse_visible_tiles = if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
-        file.tile_manager.visible_tiles(
+        file.tile_manager.visible_tiles_with_margin(
             trilinear.level_coarse,
             bounds.left,
             bounds.top,
             bounds.right,
             bounds.bottom,
+            margin_tiles,
         )
     } else {
         Vec::new()
@@ -1092,6 +1395,7 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
         bounds.top,
         bounds.right,
         bounds.bottom,
+        margin_tiles,
     );
     
     // Add coarse level tiles to wanted list for trilinear blending
@@ -1103,6 +1407,7 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
             bounds.top,
             bounds.right,
             bounds.bottom,
+            margin_tiles,
         );
         wanted.extend(coarse_wanted);
     }
@@ -1382,6 +1687,7 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     };
     
     let vp = &secondary.viewport;
+    let margin_tiles = if secondary.is_moving() { 1 } else { 0 };
     
     // Determine best level for current zoom
     let level = file.wsi.best_level_for_downsample(vp.effective_downsample());
@@ -1389,12 +1695,13 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     
     // Get visible tiles using viewport bounds
     let bounds = vp.bounds();
-    let visible_tiles = file.tile_manager.visible_tiles(
+    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
         level,
         bounds.left,
         bounds.top,
         bounds.right,
         bounds.bottom,
+        margin_tiles,
     );
     
     // Limit visible tiles to a reasonable maximum
@@ -1408,6 +1715,7 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
         bounds.top,
         bounds.right,
         bounds.bottom,
+        margin_tiles,
     );
     file.tile_loader.set_wanted_tiles(wanted);
     

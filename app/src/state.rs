@@ -1,10 +1,17 @@
 //! Application state management
 
-use common::{TileCache, TileManager, ViewportState, WsiFile};
+use common::{TileManager, ViewportState, WsiFile};
 use crate::tile_loader::TileLoader;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::fs;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RenderBackend {
+    #[default]
+    Cpu,
+    Gpu,
+}
 
 /// Maximum number of recently opened files to track
 const MAX_RECENT_FILES: usize = 10;
@@ -148,12 +155,16 @@ pub struct OpenFile {
     pub frame_count: u32,
     /// Last render timestamp (for throttling tile update renders)
     pub last_render_time: std::time::Instant,
+    /// Tile loader epoch observed by the primary viewport render path
+    pub last_seen_tile_epoch: u64,
     /// Last rendered secondary viewport state (for dirty checking)
     pub last_secondary_zoom: f64,
     pub last_secondary_center_x: f64,
     pub last_secondary_center_y: f64,
     pub last_secondary_width: f64,
     pub last_secondary_height: f64,
+    /// Tile loader epoch observed by the secondary viewport render path
+    pub last_seen_secondary_tile_epoch: u64,
     /// Reusable render buffer for secondary viewport
     pub secondary_render_buffer: Vec<u8>,
 }
@@ -199,6 +210,14 @@ pub struct AppState {
     pub home_tabs: Vec<i32>,
     /// Last file ID that was rendered (to detect tab switches)
     pub last_rendered_file_id: Option<i32>,
+    /// The selected rendering backend
+    pub render_backend: RenderBackend,
+    /// Whether GPU rendering is available on this system
+    pub gpu_backend_available: bool,
+    /// Whether a new frame should be rendered as soon as possible
+    pub needs_render: bool,
+    /// Whether the render loop timer is currently running
+    pub render_loop_running: bool,
 }
 
 impl AppState {
@@ -222,6 +241,10 @@ impl AppState {
             recent_files,
             home_tabs: Vec::new(),
             last_rendered_file_id: None,
+            render_backend: RenderBackend::Cpu,
+            gpu_backend_available: false,
+            needs_render: true,
+            render_loop_running: false,
         }
     }
     
@@ -305,6 +328,7 @@ impl AppState {
         self.next_id += 1;
         self.home_tabs.push(id);
         self.active_file_id = Some(id);
+        self.needs_render = true;
         id
     }
     
@@ -317,6 +341,7 @@ impl AppState {
             // Find next tab to activate
             self.active_file_id = self.open_files.first().map(|f| f.id)
                 .or_else(|| self.home_tabs.first().copied());
+            self.needs_render = true;
         }
     }
     
@@ -382,15 +407,18 @@ impl AppState {
             tiles_loaded_since_render: 0,
             frame_count: 0,
             last_render_time: std::time::Instant::now(),
+            last_seen_tile_epoch: 0,
             last_secondary_zoom: 0.0,
             last_secondary_center_x: 0.0,
             last_secondary_center_y: 0.0,
             last_secondary_width: 0.0,
             last_secondary_height: 0.0,
+            last_seen_secondary_tile_epoch: 0,
             secondary_render_buffer: Vec::new(),
         });
 
         self.active_file_id = Some(id);
+        self.needs_render = true;
         id
     }
     
@@ -399,6 +427,7 @@ impl AppState {
         self.current_tool = tool;
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
+        self.needs_render = true;
         // Clear ROI when switching tools
         if let Some(file) = self.open_files.iter_mut().find(|f| Some(f.id) == self.active_file_id) {
             file.roi = None;
@@ -410,6 +439,7 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.current_tool = Tool::Navigate;
+        self.needs_render = true;
         // Clear ROI when cancelling
         if let Some(file) = self.open_files.iter_mut().find(|f| Some(f.id) == self.active_file_id) {
             file.roi = None;
@@ -426,6 +456,7 @@ impl AppState {
             }
             self.split_enabled = true;
             self.focused_pane = PaneId::Secondary;
+            self.needs_render = true;
         }
     }
 
@@ -433,6 +464,7 @@ impl AppState {
     pub fn disable_split(&mut self) {
         self.split_enabled = false;
         self.focused_pane = PaneId::Primary;
+        self.needs_render = true;
     }
 
     /// Get the viewport for the current focused pane
@@ -450,6 +482,7 @@ impl AppState {
     pub fn activate_file(&mut self, id: i32) {
         if self.open_files.iter().any(|f| f.id == id) {
             self.active_file_id = Some(id);
+            self.needs_render = true;
         }
     }
 
@@ -469,7 +502,21 @@ impl AppState {
                     // Fall back to a home tab if no files remain
                     .or_else(|| self.home_tabs.first().copied());
             }
+
+            self.needs_render = true;
         }
+    }
+
+    pub fn request_render(&mut self) {
+        self.needs_render = true;
+    }
+
+    pub fn select_render_backend(&mut self, backend: RenderBackend) {
+        self.render_backend = match backend {
+            RenderBackend::Gpu if !self.gpu_backend_available => RenderBackend::Cpu,
+            other => other,
+        };
+        self.needs_render = true;
     }
 
     /// Get a file by ID

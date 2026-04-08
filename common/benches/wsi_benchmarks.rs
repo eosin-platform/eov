@@ -55,7 +55,7 @@ fn bench_read_tiles(c: &mut Criterion) {
     }
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
-    let manager = TileManager::new(wsi.clone());
+    let manager = TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"));
     
     let mut group = c.benchmark_group("tile_read");
     group.throughput(Throughput::Elements(1));
@@ -113,7 +113,7 @@ fn bench_batch_tiles(c: &mut Criterion) {
     }
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
-    let manager = TileManager::new(wsi.clone());
+    let manager = TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"));
     
     let mut group = c.benchmark_group("batch_tiles");
     

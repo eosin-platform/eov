@@ -7,7 +7,7 @@ use common::{TileCache, TileCoord, TileData, TileManager, WsiFile};
 use crossbeam_channel::{bounded, Sender, Receiver, TrySendError};
 use parking_lot::Mutex;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use tracing::trace;
@@ -26,6 +26,12 @@ pub struct TileLoader {
     failed: Arc<Mutex<HashSet<TileCoord>>>,
     /// Current generation - tiles from old generations are skipped
     generation: Arc<AtomicU64>,
+    /// Tiles currently queued or loading, used to deduplicate work
+    pending: Arc<Mutex<HashSet<TileCoord>>>,
+    /// Number of tiles currently queued or loading
+    pending_count: Arc<AtomicUsize>,
+    /// Monotonically increasing epoch when a new tile becomes available
+    loaded_epoch: Arc<AtomicU64>,
     /// Worker handles
     workers: Vec<thread::JoinHandle<()>>,
     /// Shutdown flag
@@ -41,6 +47,9 @@ impl TileLoader {
         let (request_tx, request_rx) = bounded::<TileCoord>(64);
         let failed = Arc::new(Mutex::new(HashSet::new()));
         let generation = Arc::new(AtomicU64::new(0));
+        let pending = Arc::new(Mutex::new(HashSet::new()));
+        let pending_count = Arc::new(AtomicUsize::new(0));
+        let loaded_epoch = Arc::new(AtomicU64::new(0));
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
         
         let mut workers = Vec::with_capacity(WORKER_COUNT);
@@ -48,12 +57,31 @@ impl TileLoader {
         for i in 0..WORKER_COUNT {
             let request_rx = request_rx.clone();
             let tile_manager = Arc::clone(&tile_manager);
+            let worker_path = tile_manager.wsi().properties().path.clone();
             let cache = Arc::clone(&cache);
             let failed = Arc::clone(&failed);
+            let pending = Arc::clone(&pending);
+            let pending_count = Arc::clone(&pending_count);
+            let loaded_epoch = Arc::clone(&loaded_epoch);
             let shutdown = Arc::clone(&shutdown);
             
             let handle = thread::spawn(move || {
-                worker_loop(i, request_rx, tile_manager, cache, failed, shutdown);
+                let tile_manager = match WsiFile::open(&worker_path) {
+                    Ok(worker_wsi) => Arc::new(TileManager::new(worker_wsi)),
+                    Err(_) => tile_manager,
+                };
+
+                worker_loop(
+                    i,
+                    request_rx,
+                    tile_manager,
+                    cache,
+                    failed,
+                    pending,
+                    pending_count,
+                    loaded_epoch,
+                    shutdown,
+                );
             });
             
             workers.push(handle);
@@ -63,6 +91,9 @@ impl TileLoader {
             request_tx,
             failed,
             generation,
+            pending,
+            pending_count,
+            loaded_epoch,
             workers,
             shutdown,
             cache,
@@ -87,24 +118,49 @@ impl TileLoader {
             if self.cache.contains(&coord) {
                 continue;
             }
-            
+
             // Skip if previously failed (brief lock)
             if self.failed.lock().contains(&coord) {
                 continue;
+            }
+
+            // Skip if already queued or loading
+            {
+                let mut pending = self.pending.lock();
+                if pending.contains(&coord) {
+                    continue;
+                }
+                pending.insert(coord);
             }
             
             // Try to send to workers (non-blocking)
             match self.request_tx.try_send(coord) {
                 Ok(_) => sent += 1,
-                Err(TrySendError::Full(_)) => break, // Channel full, stop for this frame
-                Err(TrySendError::Disconnected(_)) => break,
+                Err(TrySendError::Full(coord)) => {
+                    self.pending.lock().remove(&coord);
+                    break;
+                }
+                Err(TrySendError::Disconnected(coord)) => {
+                    self.pending.lock().remove(&coord);
+                    break;
+                }
             }
+
+            self.pending_count.fetch_add(1, Ordering::Relaxed);
         }
     }
     
     /// Clear failed tiles set (call when view changes significantly)
     pub fn clear_failed(&self) {
         self.failed.lock().clear();
+    }
+
+    pub fn pending_count(&self) -> usize {
+        self.pending_count.load(Ordering::Relaxed)
+    }
+
+    pub fn loaded_epoch(&self) -> u64 {
+        self.loaded_epoch.load(Ordering::Relaxed)
     }
 }
 
@@ -126,6 +182,9 @@ fn worker_loop(
     tile_manager: Arc<TileManager>,
     cache: Arc<TileCache>,
     failed: Arc<Mutex<HashSet<TileCoord>>>,
+    pending: Arc<Mutex<HashSet<TileCoord>>>,
+    pending_count: Arc<AtomicUsize>,
+    loaded_epoch: Arc<AtomicU64>,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
 ) {
     trace!("Tile loader worker {} starting", id);
@@ -140,6 +199,8 @@ fn worker_loop(
         
         // Skip if already in cache
         if cache.contains(&coord) {
+            pending.lock().remove(&coord);
+            pending_count.fetch_sub(1, Ordering::Relaxed);
             continue;
         }
         
@@ -147,6 +208,7 @@ fn worker_loop(
         match tile_manager.load_tile_sync(coord) {
             Ok(tile) => {
                 cache.insert(tile);
+                loaded_epoch.fetch_add(1, Ordering::Relaxed);
                 trace!("Worker {} loaded tile {:?}", id, coord);
             }
             Err(e) => {
@@ -154,6 +216,9 @@ fn worker_loop(
                 failed.lock().insert(coord);
             }
         }
+
+        pending.lock().remove(&coord);
+        pending_count.fetch_sub(1, Ordering::Relaxed);
     }
     
     trace!("Tile loader worker {} shutting down", id);
@@ -255,31 +320,55 @@ pub fn calculate_wanted_tiles(
     bounds_top: f64,
     bounds_right: f64,
     bounds_bottom: f64,
+    margin_tiles: i32,
 ) -> Vec<TileCoord> {
     let mut wanted = Vec::new();
     let level_count = tile_manager.wsi().level_count();
+    let center_x = (bounds_left + bounds_right) * 0.5;
+    let center_y = (bounds_top + bounds_bottom) * 0.5;
+    let tile_size = tile_manager.tile_size() as f64;
+
+    let sort_by_center = |tiles: &mut Vec<TileCoord>, downsample: f64| {
+        tiles.sort_by(|a, b| {
+            let ax = ((a.x as f64 + 0.5) * tile_size * downsample - center_x).abs();
+            let ay = ((a.y as f64 + 0.5) * tile_size * downsample - center_y).abs();
+            let bx = ((b.x as f64 + 0.5) * tile_size * downsample - center_x).abs();
+            let by = ((b.y as f64 + 0.5) * tile_size * downsample - center_y).abs();
+            let da = ax + ay;
+            let db = bx + by;
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    };
     
     // FIRST: Add current level tiles - these are the primary display tiles
     // Prioritize these over fallbacks so user sees sharp content ASAP
-    let visible = tile_manager.visible_tiles(
+    let mut visible = tile_manager.visible_tiles_with_margin(
         level,
         bounds_left,
         bounds_top,
         bounds_right,
         bounds_bottom,
+        margin_tiles,
     );
+    if let Some(level_info) = tile_manager.wsi().level(level) {
+        sort_by_center(&mut visible, level_info.downsample);
+    }
     wanted.extend(visible.iter().take(500).copied());
     
     // THEN: Add lower-resolution tiles for fallback display (while high-res loads)
     // These provide quick visual feedback but are lower priority
     for fallback_level in (level + 1)..level_count {
-        let fallback_tiles = tile_manager.visible_tiles(
+        let mut fallback_tiles = tile_manager.visible_tiles_with_margin(
             fallback_level,
             bounds_left,
             bounds_top,
             bounds_right,
             bounds_bottom,
+            margin_tiles.max(0),
         );
+        if let Some(level_info) = tile_manager.wsi().level(fallback_level) {
+            sort_by_center(&mut fallback_tiles, level_info.downsample);
+        }
         
         // Closer levels (smaller fallback_level - level) get more tiles loaded
         // as they provide better fallback quality

@@ -6,8 +6,6 @@
 use crate::{Error, Result};
 use openslide_rs::{OpenSlide, Address, Region, Size};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use parking_lot::RwLock;
 use tracing::{debug, info};
 
 /// Default tile size for rendering
@@ -66,10 +64,13 @@ pub struct WsiProperties {
     pub height: u64,
 }
 
-/// Thread-safe WSI file wrapper
+/// WSI file wrapper.
+///
+/// OpenSlide itself is thread-safe for read operations, so each worker should
+/// own its own handle rather than sharing one behind a mutex.
 pub struct WsiFile {
     /// OpenSlide handle
-    slide: Arc<RwLock<OpenSlide>>,
+    slide: OpenSlide,
     /// Cached properties
     properties: WsiProperties,
     /// Tile size to use
@@ -157,10 +158,15 @@ impl WsiFile {
         );
 
         Ok(Self {
-            slide: Arc::new(RwLock::new(slide)),
+            slide,
             properties,
             tile_size: DEFAULT_TILE_SIZE,
         })
+    }
+
+    /// Open a fresh handle to the same underlying file.
+    pub fn reopen(&self) -> Result<Self> {
+        Self::open(&self.properties.path)
     }
 
     /// Get file properties
@@ -185,8 +191,7 @@ impl WsiFile {
 
     /// Get the best level for the given downsample factor
     pub fn best_level_for_downsample(&self, downsample: f64) -> u32 {
-        let slide = self.slide.read();
-        slide.get_best_level_for_downsample(downsample)
+        self.slide.get_best_level_for_downsample(downsample)
             .unwrap_or(0)
     }
 
@@ -215,8 +220,6 @@ impl WsiFile {
             return Err(Error::InvalidLevel(level, self.level_count() - 1));
         }
 
-        let slide = self.slide.read();
-        
         // Clamp coordinates to valid range for u32
         let x_u32 = x.max(0) as u32;
         let y_u32 = y.max(0) as u32;
@@ -228,7 +231,7 @@ impl WsiFile {
         };
 
         // read_region returns BGRA data, we need to convert to RGBA
-        let mut data = slide.read_region(&region)
+        let mut data = self.slide.read_region(&region)
             .map_err(|e| Error::ReadTile {
                 level,
                 x: x as u64,
@@ -284,16 +287,6 @@ impl WsiFile {
         
         // Read the entire level and resize
         self.read_region(0, 0, level, level_info.width as u32, level_info.height as u32)
-    }
-}
-
-impl Clone for WsiFile {
-    fn clone(&self) -> Self {
-        Self {
-            slide: Arc::clone(&self.slide),
-            properties: self.properties.clone(),
-            tile_size: self.tile_size,
-        }
     }
 }
 

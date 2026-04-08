@@ -218,13 +218,10 @@ impl TileCache {
                 && projected_count > 0
             {
                 if let Some((coord, _)) = lru.pop_lru() {
-                    // Estimate the size we'll free (use average tile size as approximation)
-                    let estimated_size = if projected_count > 0 {
-                        projected_bytes / projected_count
-                    } else {
-                        256 * 256 * 4 // Default tile size
-                    };
-                    projected_bytes = projected_bytes.saturating_sub(estimated_size);
+                    let exact_size = self.cache.get(&coord)
+                        .map(|entry| entry.size_bytes)
+                        .unwrap_or(0);
+                    projected_bytes = projected_bytes.saturating_sub(exact_size);
                     projected_count = projected_count.saturating_sub(1);
                     coords.push(coord);
                 } else {

@@ -168,6 +168,18 @@ impl TileManager {
         bounds_right: f64,
         bounds_bottom: f64,
     ) -> Vec<TileCoord> {
+        self.visible_tiles_with_margin(level, bounds_left, bounds_top, bounds_right, bounds_bottom, 1)
+    }
+
+    pub fn visible_tiles_with_margin(
+        &self,
+        level: u32,
+        bounds_left: f64,
+        bounds_top: f64,
+        bounds_right: f64,
+        bounds_bottom: f64,
+        margin_tiles: i32,
+    ) -> Vec<TileCoord> {
         let level_info = match self.wsi.level(level) {
             Some(info) => info,
             None => return Vec::new(),
@@ -182,28 +194,30 @@ impl TileManager {
         let level_bottom = bounds_bottom / level_info.downsample;
 
         // Calculate tile range (with 1 tile margin for smooth scrolling)
-        let start_tile_x = ((level_left / tile_size).floor() as i64 - 1).max(0) as u64;
-        let start_tile_y = ((level_top / tile_size).floor() as i64 - 1).max(0) as u64;
-        let end_tile_x = ((level_right / tile_size).ceil() as u64 + 1)
+        let margin_tiles = margin_tiles.max(0) as i64;
+        let start_tile_x = ((level_left / tile_size).floor() as i64 - margin_tiles).max(0) as u64;
+        let start_tile_y = ((level_top / tile_size).floor() as i64 - margin_tiles).max(0) as u64;
+        let end_tile_x = ((level_right / tile_size).ceil() as u64 + margin_tiles as u64)
             .min(level_info.tiles_x(self.tile_size));
-        let end_tile_y = ((level_bottom / tile_size).ceil() as u64 + 1)
+        let end_tile_y = ((level_bottom / tile_size).ceil() as u64 + margin_tiles as u64)
             .min(level_info.tiles_y(self.tile_size));
 
-        // Safety: limit tile count to prevent memory issues
+        // Adaptive cap: allow larger visible sets on larger windows / zoomed-out views.
         let tile_count = (end_tile_x.saturating_sub(start_tile_x)) * (end_tile_y.saturating_sub(start_tile_y));
-        if tile_count > 1000 {
+        let max_tiles = tile_count.min(4096) as usize;
+        if tile_count > 4096 {
             tracing::warn!(
                 "visible_tiles would return {} tiles (capped), level={}, bounds=({:.0},{:.0})-({:.0},{:.0})",
                 tile_count, level, bounds_left, bounds_top, bounds_right, bounds_bottom
             );
         }
 
-        let mut tiles = Vec::with_capacity(tile_count.min(1000) as usize);
+        let mut tiles = Vec::with_capacity(max_tiles);
 
         for y in start_tile_y..end_tile_y {
             for x in start_tile_x..end_tile_x {
                 tiles.push(TileCoord::new(level, x, y));
-                if tiles.len() >= 1000 {
+                if tiles.len() >= max_tiles {
                     return tiles;
                 }
             }

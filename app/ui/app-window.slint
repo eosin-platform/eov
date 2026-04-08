@@ -103,6 +103,11 @@ export enum ToolType {
     measure-distance,
 }
 
+export enum RenderMode {
+    cpu,
+    gpu,
+}
+
 // ============ Custom Components ============
 
 // Tool button with active state
@@ -1222,6 +1227,10 @@ export component AppWindow inherits Window {
     // Debug mode
     in-out property <bool> debug-mode: false;
     in-out property <float> fps: 0;
+
+    // Render backend
+    in-out property <RenderMode> render-mode: RenderMode.cpu;
+    in-out property <bool> gpu-rendering-available: false;
     
     // Callbacks
     callback open-file-requested();
@@ -1253,6 +1262,7 @@ export component AppWindow inherits Window {
     callback viewport-tool-mouse-move(float, float);
     callback viewport-tool-mouse-up(float, float);
     callback cancel-tool();
+    callback render-backend-selected(RenderMode);
     
     // Main layout
     VerticalLayout {
@@ -1303,6 +1313,34 @@ export component AppWindow inherits Window {
                     width: 1px;
                     height: 24px;
                     background: Theme.border;
+                }
+
+                Text {
+                    text: "CPU";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                ToolButton {
+                    width: 40px;
+                    icon: "CPU";
+                    tooltip-text: "Use CPU renderer";
+                    is-active: root.render-mode == RenderMode.cpu;
+                    clicked => { root.render-backend-selected(RenderMode.cpu); }
+                }
+
+                ToolButton {
+                    width: 40px;
+                    icon: "GPU";
+                    tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
+                    enabled: root.gpu-rendering-available;
+                    is-active: root.render-mode == RenderMode.gpu;
+                    clicked => {
+                        if root.gpu-rendering-available {
+                            root.render-backend-selected(RenderMode.gpu);
+                        }
+                    }
                 }
                 
                 // Spacer
