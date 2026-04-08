@@ -40,5 +40,8 @@ arboard = "3"
 # Process management (for Open Containing Folder)
 open = "5"
 
+# Config directory access
+dirs = "6"
+
 [build-dependencies]
 slint-build = "1.15.1"

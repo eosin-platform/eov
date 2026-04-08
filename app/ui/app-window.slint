@@ -31,6 +31,13 @@ export struct TabData {
     path: string,
     is-modified: bool,
     is-active: bool,
+    is-home: bool,  // True if this is a home tab (no file)
+}
+
+// Recently opened file entry
+export struct RecentFileData {
+    path: string,
+    name: string,
 }
 
 // Context menu item
@@ -205,6 +212,13 @@ component Tab inherits Rectangle {
         spacing: 6px;
         alignment: center;
         
+        // Home icon for home tabs
+        if data.is-home: Text {
+            text: "🏠";
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        
         Text {
             text: data.title + (data.is-modified ? " •" : "");
             color: data.is-active ? Theme.text-primary : Theme.text-secondary;
@@ -235,15 +249,19 @@ component Tab inherits Rectangle {
     }
 }
 
-// Tab bar component
+// Tab bar component with scrollable tabs and new tab button
 component TabBar inherits Rectangle {
     in property <[TabData]> tabs;
     callback tab-activated(int);
     callback tab-close-requested(int);
     callback tab-context-menu(int, length, length);
+    callback new-tab-requested();
     
     height: 35px;
     background: Theme.surface;
+    
+    // Calculate if tabs overflow
+    property <bool> tabs-overflow: tabs-layout.preferred-width + 36px > self.width - 8px;
     
     // Bottom border line
     Rectangle {
@@ -254,19 +272,72 @@ component TabBar inherits Rectangle {
     }
     
     HorizontalLayout {
-        alignment: start;
-        spacing: 1px;
         padding-left: 4px;
+        padding-right: 0px;
+        spacing: 0px;
         
-        for tab in tabs: Tab {
-            data: tab;
-            close-requested(id) => { root.tab-close-requested(id); }
-            activated(id) => { root.tab-activated(id); }
-            context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
+        // Scrollable tabs area (only actually scrolls when tabs overflow)
+        Flickable {
+            horizontal-stretch: 1;
+            viewport-width: tabs-plus-layout.preferred-width;
+            interactive: root.tabs-overflow;
+            
+            tabs-plus-layout := HorizontalLayout {
+                alignment: start;
+                spacing: 1px;
+                
+                tabs-layout := HorizontalLayout {
+                    alignment: start;
+                    spacing: 1px;
+                    
+                    for tab in tabs: Tab {
+                        data: tab;
+                        close-requested(id) => { root.tab-close-requested(id); }
+                        activated(id) => { root.tab-activated(id); }
+                        context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
+                    }
+                }
+                
+                // New tab button - inline when no overflow
+                if !root.tabs-overflow: Rectangle {
+                    width: 35px;
+                    height: 35px;
+                    background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+                    
+                    inline-new-tab-touch := TouchArea {
+                        clicked => { root.new-tab-requested(); }
+                    }
+                    
+                    Text {
+                        text: "+";
+                        color: inline-new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                        font-size: 20px;
+                        font-weight: 400;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
         }
         
-        Rectangle {
-            horizontal-stretch: 1;
+        // New tab button - fixed at right edge when tabs overflow
+        if root.tabs-overflow: Rectangle {
+            width: 35px;
+            height: 35px;
+            background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+            
+            new-tab-touch := TouchArea {
+                clicked => { root.new-tab-requested(); }
+            }
+            
+            Text {
+                text: "+";
+                color: new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                font-size: 20px;
+                font-weight: 400;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
     }
 }
@@ -771,6 +842,163 @@ component Viewport inherits Rectangle {
     }
 }
 
+// Home screen component - shown when no file is open or for home tabs
+component HomeScreen inherits Rectangle {
+    in property <[RecentFileData]> recent-files: [];
+    callback open-file-requested();
+    callback open-recent-file(string);
+    
+    background: Theme.background;
+    
+    // Center the content card absolutely
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 500px;
+        height: recent-files.length > 0 ? 480px : 300px;
+        
+        VerticalLayout {
+            alignment: center;
+            spacing: 0px;
+            
+            // Logo/Icon area
+            Text {
+                text: "🔬";
+                font-size: 48px;
+                horizontal-alignment: center;
+            }
+            
+            Rectangle { height: 16px; }
+            
+            // App title
+            Text {
+                text: "EosMol";
+                color: Theme.text-primary;
+                font-size: 28px;
+                font-weight: 600;
+                horizontal-alignment: center;
+            }
+            
+            // Subtitle
+            Text {
+                text: "Whole Slide Image Viewer";
+                color: Theme.text-secondary;
+                font-size: 14px;
+                horizontal-alignment: center;
+            }
+            
+            Rectangle { height: 32px; }
+            
+            // Open file button - centered using HorizontalLayout
+            HorizontalLayout {
+                alignment: center;
+                
+                Rectangle {
+                    width: 160px;
+                    height: 40px;
+                    background: open-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                    border-radius: 6px;
+                    
+                    open-touch := TouchArea {
+                        clicked => { root.open-file-requested(); }
+                    }
+                    
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        
+                        Text {
+                            text: "📂";
+                            font-size: 16px;
+                            vertical-alignment: center;
+                        }
+                        
+                        Text {
+                            text: "Open File";
+                            color: white;
+                            font-size: 14px;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            
+            // "Or drag and drop files" hint
+            Rectangle { height: 16px; }
+            Text {
+                text: "or drag and drop WSI files";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                horizontal-alignment: center;
+            }
+            
+            // Recent files section
+            if recent-files.length > 0: Rectangle {
+                height: 180px;
+                
+                VerticalLayout {
+                    padding-top: 32px;
+                    spacing: 8px;
+                    
+                    // Section header
+                    Text {
+                        text: "Recently Opened";
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    
+                    Rectangle { height: 8px; }
+                    
+                    // Recent file list
+                    for file[i] in recent-files: Rectangle {
+                        height: 28px;
+                        background: file-touch.has-hover ? Theme.surface-hover : transparent;
+                        border-radius: 4px;
+                        
+                        file-touch := TouchArea {
+                            clicked => { root.open-recent-file(file.path); }
+                        }
+                        
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: start;
+                            spacing: 8px;
+                            
+                            Text {
+                                text: "📄";
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                            
+                            Text {
+                                text: file.name;
+                                color: file-touch.has-hover ? Theme.accent : Theme.text-primary;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Tip at bottom
+            Rectangle { height: 24px; }
+            Text {
+                text: "Tip: Use scroll wheel to zoom, drag to pan";
+                color: Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
+
 // Split pane container supporting horizontal and vertical splits
 component SplitPaneContainer inherits Rectangle {
     in property <[TabData]> tabs;
@@ -788,6 +1016,8 @@ component SplitPaneContainer inherits Rectangle {
     in property <int> focused-pane: 0; // 0 = primary, 1 = secondary
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
+    in property <bool> is-home-tab: false;  // True if current tab is a home tab
+    in property <[RecentFileData]> recent-files: [];
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -805,6 +1035,9 @@ component SplitPaneContainer inherits Rectangle {
     callback tab-activated(int);
     callback tab-close-requested(int);
     callback tab-context-menu(int, length, length);
+    callback new-tab-requested();
+    callback open-file-requested();
+    callback open-recent-file(string);
     callback viewport-pan(float, float);
     callback viewport-zoom(float, float, float);
     callback viewport-fit-to-view();
@@ -830,19 +1063,28 @@ component SplitPaneContainer inherits Rectangle {
             tab-activated(id) => { root.tab-activated(id); }
             tab-close-requested(id) => { root.tab-close-requested(id); }
             tab-context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
+            new-tab-requested => { root.new-tab-requested(); }
         }
         
         // Content area with optional split
         HorizontalLayout {
             vertical-stretch: 1;
             
-            // Primary viewport
+            // Primary viewport or home screen
             primary-container := Rectangle {
                 width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
                 border-width: root.focused-pane == 0 && root.split-enabled ? 2px : 0px;
                 border-color: Theme.accent;
                 
-                primary-viewport := Viewport {
+                // Show home screen if this is a home tab
+                if root.is-home-tab: HomeScreen {
+                    recent-files: root.recent-files;
+                    open-file-requested => { root.open-file-requested(); }
+                    open-recent-file(path) => { root.open-recent-file(path); }
+                }
+                
+                // Show viewport if not a home tab
+                if !root.is-home-tab: Viewport {
                     content: viewport-content;
                     viewport-info: root.viewport-info;
                     minimap-thumbnail: minimap-thumbnail;
@@ -954,6 +1196,8 @@ export component AppWindow inherits Window {
     in-out property <bool> split-enabled: false;
     in-out property <float> split-position: 0.5;
     in-out property <int> focused-pane: 0;
+    in-out property <bool> is-home-tab: false;  // True if current tab is a home tab
+    in-out property <[RecentFileData]> recent-files: [];
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -981,6 +1225,8 @@ export component AppWindow inherits Window {
     
     // Callbacks
     callback open-file-requested();
+    callback new-tab-requested();
+    callback open-recent-file(string);
     callback tab-activated(int);
     callback tab-close-requested(int);
     callback close-other-tabs(int);
@@ -1097,9 +1343,14 @@ export component AppWindow inherits Window {
                 candidate-measurement: root.candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
+                is-home-tab: root.is-home-tab;
+                recent-files: root.recent-files;
                 
                 tab-activated(id) => { root.tab-activated(id); }
                 tab-close-requested(id) => { root.tab-close-requested(id); }
+                new-tab-requested => { root.new-tab-requested(); }
+                open-file-requested => { root.open-file-requested(); }
+                open-recent-file(path) => { root.open-recent-file(path); }
                 tab-context-menu(id, x, y) => {
                     root.context-menu-tab-id = id;
                     root.context-menu-x = x + 0px; // Offset for tab bar position
@@ -1130,53 +1381,11 @@ export component AppWindow inherits Window {
                 cancel-tool => { root.cancel-tool(); }
             }
             
-            // Empty state
-            if tabs.length == 0: Rectangle {
-                VerticalLayout {
-                    alignment: center;
-                    spacing: 16px;
-                    
-                    Text {
-                        text: "🔬";
-                        font-size: 64px;
-                        horizontal-alignment: center;
-                    }
-                    
-                    Text {
-                        text: "No files open";
-                        color: Theme.text-secondary;
-                        font-size: 18px;
-                        horizontal-alignment: center;
-                    }
-                    
-                    Text {
-                        text: "Click Open to browse for WSI files";
-                        color: Theme.text-secondary;
-                        font-size: 13px;
-                        horizontal-alignment: center;
-                    }
-                    
-                    Rectangle { height: 16px; }
-                    
-                    Rectangle {
-                        width: 120px;
-                        height: 36px;
-                        background: Theme.accent;
-                        border-radius: 4px;
-                        
-                        TouchArea {
-                            clicked => { root.open-file-requested(); }
-                        }
-                        
-                        Text {
-                            text: "Open File";
-                            color: white;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
+            // Empty state - show home screen when no tabs
+            if tabs.length == 0: HomeScreen {
+                recent-files: root.recent-files;
+                open-file-requested => { root.open-file-requested(); }
+                open-recent-file(path) => { root.open-recent-file(path); }
             }
         }
     }

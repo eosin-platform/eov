@@ -75,6 +75,12 @@ fn main() -> Result<()> {
     
     // Set debug mode on UI
     ui.set_debug_mode(debug_mode);
+    
+    // Initialize recent files list
+    {
+        let state = state.read();
+        update_recent_files(&ui, &state);
+    }
 
     // Open files from command line
     for path in files_to_open {
@@ -133,6 +139,37 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         });
     }
 
+    // New tab callback - creates a home tab
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_new_tab_requested(move || {
+            let mut state = state.write();
+            state.create_home_tab();
+            
+            if let Some(ui) = ui_weak.upgrade() {
+                update_tabs(&ui, &state);
+            }
+        });
+    }
+    
+    // Open recent file callback
+    {
+        let state = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let ui_weak = ui_weak.clone();
+        
+        ui.on_open_recent_file(move |path_str| {
+            let path = PathBuf::from(path_str.as_str());
+            if path.exists() {
+                if let Some(ui) = ui_weak.upgrade() {
+                    open_file(&ui, &state, &tile_cache, path);
+                }
+            }
+        });
+    }
+
     // Tab activated callback
     {
         let state = Arc::clone(&state);
@@ -140,7 +177,12 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         
         ui.on_tab_activated(move |id| {
             let mut state = state.write();
-            state.activate_file(id);
+            // Activate whether it's a file tab or home tab
+            if state.is_home_tab(id) {
+                state.active_file_id = Some(id);
+            } else {
+                state.activate_file(id);
+            }
             
             if let Some(ui) = ui_weak.upgrade() {
                 update_tabs(&ui, &state);
@@ -155,7 +197,12 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         
         ui.on_tab_close_requested(move |id| {
             let mut state = state.write();
-            state.close_file(id);
+            // Close whether it's a file tab or home tab
+            if state.is_home_tab(id) {
+                state.close_home_tab(id);
+            } else {
+                state.close_file(id);
+            }
             
             if let Some(ui) = ui_weak.upgrade() {
                 update_tabs(&ui, &state);
@@ -170,14 +217,26 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         
         ui.on_close_other_tabs(move |keep_id| {
             let mut state = state.write();
-            let ids_to_close: Vec<i32> = state.open_files
+            
+            // Collect file tab IDs to close
+            let file_ids_to_close: Vec<i32> = state.open_files
                 .iter()
                 .map(|f| f.id)
                 .filter(|&id| id != keep_id)
                 .collect();
             
-            for id in ids_to_close {
+            // Collect home tab IDs to close
+            let home_ids_to_close: Vec<i32> = state.home_tabs
+                .iter()
+                .copied()
+                .filter(|&id| id != keep_id)
+                .collect();
+            
+            for id in file_ids_to_close {
                 state.close_file(id);
+            }
+            for id in home_ids_to_close {
+                state.close_home_tab(id);
             }
             
             if let Some(ui) = ui_weak.upgrade() {
@@ -193,15 +252,22 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         
         ui.on_close_tabs_to_right(move |from_id| {
             let mut state = state.write();
+            
+            // Build a combined list of all tab IDs in order
+            let mut all_tabs: Vec<i32> = state.open_files.iter().map(|f| f.id).collect();
+            all_tabs.extend(&state.home_tabs);
+            all_tabs.sort();
+            
+            // Find the position of from_id and close everything after
             let mut found = false;
-            let ids_to_close: Vec<i32> = state.open_files
+            let ids_to_close: Vec<i32> = all_tabs
                 .iter()
-                .filter_map(|f| {
-                    if f.id == from_id {
+                .filter_map(|&id| {
+                    if id == from_id {
                         found = true;
                         None
                     } else if found {
-                        Some(f.id)
+                        Some(id)
                     } else {
                         None
                     }
@@ -209,7 +275,11 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
                 .collect();
             
             for id in ids_to_close {
-                state.close_file(id);
+                if state.is_home_tab(id) {
+                    state.close_home_tab(id);
+                } else {
+                    state.close_file(id);
+                }
             }
             
             if let Some(ui) = ui_weak.upgrade() {
@@ -226,6 +296,7 @@ fn setup_callbacks(ui: &AppWindow, state: Arc<RwLock<AppState>>, tile_cache: Arc
         ui.on_close_all_tabs(move || {
             let mut state = state.write();
             state.open_files.clear();
+            state.home_tabs.clear();
             state.active_file_id = None;
             
             if let Some(ui) = ui_weak.upgrade() {
@@ -543,6 +614,13 @@ fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<Til
             let id = {
                 let mut state_guard = state.write();
                 
+                // If current active tab is a home tab, close it
+                if let Some(active_id) = state_guard.active_file_id {
+                    if state_guard.is_home_tab(active_id) {
+                        state_guard.close_home_tab(active_id);
+                    }
+                }
+                
                 // Get viewport size from UI (use reasonable defaults if not yet laid out)
                 let ui_width = ui.get_viewport_width() as f64;
                 let ui_height = ui.get_viewport_height() as f64;
@@ -585,6 +663,7 @@ fn open_file(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<Til
             
             let state_guard = state.read();
             update_tabs(ui, &state_guard);
+            update_recent_files(ui, &state_guard);
             
             ui.set_is_loading(false);
             ui.set_status_text(SharedString::from(format!(
@@ -669,7 +748,8 @@ fn generate_thumbnail(wsi: &WsiFile, max_size: u32) -> Option<Vec<u8>> {
 }
 
 fn update_tabs(ui: &AppWindow, state: &AppState) {
-    let tabs: Vec<TabData> = state.open_files
+    // Build tabs from open files and home tabs
+    let mut tabs: Vec<TabData> = state.open_files
         .iter()
         .map(|f| TabData {
             id: f.id,
@@ -677,12 +757,49 @@ fn update_tabs(ui: &AppWindow, state: &AppState) {
             path: SharedString::from(f.path.display().to_string()),
             is_modified: false,
             is_active: Some(f.id) == state.active_file_id,
+            is_home: false,
         })
         .collect();
+    
+    // Add home tabs
+    for &home_id in &state.home_tabs {
+        tabs.push(TabData {
+            id: home_id,
+            title: SharedString::from("Home"),
+            path: SharedString::new(),
+            is_modified: false,
+            is_active: Some(home_id) == state.active_file_id,
+            is_home: true,
+        });
+    }
+    
+    // Sort by ID to maintain consistent order
+    tabs.sort_by_key(|t| t.id);
     
     let model = Rc::new(VecModel::from(tabs));
     ui.set_tabs(model.into());
     ui.set_active_tab_id(state.active_file_id.unwrap_or(-1));
+    
+    // Update is_home_tab based on active tab
+    let is_home = state.active_file_id
+        .map(|id| state.is_home_tab(id))
+        .unwrap_or(false);
+    ui.set_is_home_tab(is_home);
+}
+
+/// Update the recent files list in the UI
+fn update_recent_files(ui: &AppWindow, state: &AppState) {
+    let recent: Vec<RecentFileData> = state.recent_files
+        .iter()
+        .take(5)  // Show at most 5 in the UI
+        .map(|f| RecentFileData {
+            path: SharedString::from(f.path.display().to_string()),
+            name: SharedString::from(f.name.clone()),
+        })
+        .collect();
+    
+    let model = Rc::new(VecModel::from(recent));
+    ui.set_recent_files(model.into());
 }
 
 fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) {
@@ -714,9 +831,17 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
     let ant_offset = state.ant_offset;
     
+    // Check if we switched to a different file - need to force re-render
+    let file_switched = state.last_rendered_file_id != Some(file_id);
+    
     let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
         return;
     };
+    
+    // If file switched, reset frame_count to force first-frame render (skips cache checks)
+    if file_switched {
+        file.frame_count = 0;
+    }
 
     // Get viewport dimensions from window
     let window_width = ui.get_viewport_width() as f64;

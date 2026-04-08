@@ -4,6 +4,35 @@ use common::{TileCache, TileManager, ViewportState, WsiFile};
 use crate::tile_loader::TileLoader;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::fs;
+
+/// Maximum number of recently opened files to track
+const MAX_RECENT_FILES: usize = 10;
+
+/// Recently opened file entry
+#[derive(Debug, Clone)]
+pub struct RecentFile {
+    /// Full path to the file
+    pub path: PathBuf,
+    /// Display name (filename)
+    pub name: String,
+    /// Last opened timestamp
+    pub last_opened: std::time::SystemTime,
+}
+
+impl RecentFile {
+    pub fn new(path: PathBuf) -> Self {
+        let name = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        Self {
+            path,
+            name,
+            last_opened: std::time::SystemTime::now(),
+        }
+    }
+}
 
 /// Available tools
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -162,11 +191,18 @@ pub struct AppState {
     pub frame_times: Vec<std::time::Instant>,
     /// Current FPS value
     pub current_fps: f32,
+    /// Recently opened files (most recent first)
+    pub recent_files: Vec<RecentFile>,
+    /// IDs of tabs that are "home" tabs (no file open)
+    pub home_tabs: Vec<i32>,
+    /// Last file ID that was rendered (to detect tab switches)
+    pub last_rendered_file_id: Option<i32>,
 }
 
 impl AppState {
     /// Create a new application state
     pub fn new(debug_mode: bool) -> Self {
+        let recent_files = Self::load_recent_files();
         Self {
             open_files: Vec::new(),
             active_file_id: None,
@@ -181,7 +217,110 @@ impl AppState {
             debug_mode,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
+            recent_files,
+            home_tabs: Vec::new(),
+            last_rendered_file_id: None,
         }
+    }
+    
+    /// Get the config directory for storing recent files
+    fn config_dir() -> Option<PathBuf> {
+        dirs::config_dir().map(|p| p.join("eosmol"))
+    }
+    
+    /// Get the path to the recent files store
+    fn recent_files_path() -> Option<PathBuf> {
+        Self::config_dir().map(|p| p.join("recent_files.txt"))
+    }
+    
+    /// Load recently opened files from disk
+    fn load_recent_files() -> Vec<RecentFile> {
+        let Some(path) = Self::recent_files_path() else {
+            return Vec::new();
+        };
+        
+        let Ok(content) = fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        
+        content
+            .lines()
+            .filter_map(|line| {
+                let path = PathBuf::from(line.trim());
+                if path.exists() {
+                    Some(RecentFile::new(path))
+                } else {
+                    None
+                }
+            })
+            .take(MAX_RECENT_FILES)
+            .collect()
+    }
+    
+    /// Save recently opened files to disk
+    fn save_recent_files(&self) {
+        let Some(dir) = Self::config_dir() else {
+            return;
+        };
+        
+        if !dir.exists() {
+            if fs::create_dir_all(&dir).is_err() {
+                return;
+            }
+        }
+        
+        let Some(path) = Self::recent_files_path() else {
+            return;
+        };
+        
+        let content: String = self.recent_files
+            .iter()
+            .map(|f| f.path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let _ = fs::write(path, content);
+    }
+    
+    /// Add a file to the recently opened list
+    pub fn add_to_recent(&mut self, path: &PathBuf) {
+        // Remove if already exists (we'll re-add at top)
+        self.recent_files.retain(|f| f.path != *path);
+        
+        // Add to front
+        self.recent_files.insert(0, RecentFile::new(path.clone()));
+        
+        // Trim to max size
+        self.recent_files.truncate(MAX_RECENT_FILES);
+        
+        // Save to disk
+        self.save_recent_files();
+    }
+    
+    /// Create a new home tab and return its ID
+    pub fn create_home_tab(&mut self) -> i32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.home_tabs.push(id);
+        self.active_file_id = Some(id);
+        id
+    }
+    
+    /// Close a home tab
+    pub fn close_home_tab(&mut self, id: i32) {
+        self.home_tabs.retain(|&tab_id| tab_id != id);
+        
+        // Update active file if this was active
+        if self.active_file_id == Some(id) {
+            // Find next tab to activate
+            self.active_file_id = self.open_files.first().map(|f| f.id)
+                .or_else(|| self.home_tabs.first().copied());
+        }
+    }
+    
+    /// Check if an ID is a home tab
+    pub fn is_home_tab(&self, id: i32) -> bool {
+        self.home_tabs.contains(&id)
     }
     
     /// Update FPS counter (call once per frame)
@@ -207,6 +346,9 @@ impl AppState {
         viewport: ViewportState,
         thumbnail: Option<Vec<u8>>,
     ) -> i32 {
+        // Add to recent files
+        self.add_to_recent(&path);
+        
         let id = self.next_id;
         self.next_id += 1;
 
@@ -317,9 +459,12 @@ impl AppState {
             
             // Update active file
             if self.active_file_id == Some(id) {
+                // Try to select another file tab first
                 self.active_file_id = self.open_files.get(idx.saturating_sub(1))
                     .or_else(|| self.open_files.first())
-                    .map(|f| f.id);
+                    .map(|f| f.id)
+                    // Fall back to a home tab if no files remain
+                    .or_else(|| self.home_tabs.first().copied());
             }
         }
     }
