@@ -1081,11 +1081,12 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
             let fb_image_x_end = fb_image_x + fallback_tile.width as f64 * fallback_level_info.downsample;
             let fb_image_y_end = fb_image_y + fallback_tile.height as f64 * fallback_level_info.downsample;
             
-            // Convert to screen coordinates using floor/ceil for proper pixel coverage
-            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).floor() as i32;
-            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).ceil() as i32;
-            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).ceil() as i32;
+            // Convert to screen coordinates using round() for consistent boundaries
+            // Using round() ensures adjacent tiles share exact boundaries (no gaps/overlaps)
+            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).round() as i32;
             let screen_w = screen_x_end - screen_x;
             let screen_h = screen_y_end - screen_y;
             
@@ -1135,11 +1136,12 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
         let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
         let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
         
-        // Convert to screen coordinates using floor/ceil for proper pixel coverage
-        let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
-        let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
-        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).ceil() as i32;
-        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).ceil() as i32;
+        // Convert to screen coordinates using round() for consistent boundaries
+        // Using round() ensures adjacent tiles share exact boundaries (no gaps/overlaps)
+        let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+        let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
         
         let screen_w = screen_x_end - screen_x;
         let screen_h = screen_y_end - screen_y;
@@ -1334,11 +1336,11 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
             let fb_image_x_end = fb_image_x + fallback_tile.width as f64 * fallback_level_info.downsample;
             let fb_image_y_end = fb_image_y + fallback_tile.height as f64 * fallback_level_info.downsample;
             
-            // Convert to screen coordinates
-            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).floor() as i32;
-            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).ceil() as i32;
-            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).ceil() as i32;
+            // Convert to screen coordinates using round() for consistent boundaries
+            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).round() as i32;
             let screen_w = screen_x_end - screen_x;
             let screen_h = screen_y_end - screen_y;
             
@@ -1373,11 +1375,11 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
         let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
         let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
         
-        // Convert to screen coordinates
-        let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
-        let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
-        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).ceil() as i32;
-        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).ceil() as i32;
+        // Convert to screen coordinates using round() for consistent boundaries
+        let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+        let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
         let screen_w = screen_x_end - screen_x;
         let screen_h = screen_y_end - screen_y;
         
