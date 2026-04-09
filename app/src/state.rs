@@ -561,6 +561,45 @@ impl AppState {
         self.needs_render = true;
     }
 
+    pub fn split_off_tab_to_pane(&mut self, id: i32, target_pane: PaneId) {
+        if self.split_enabled || !self.is_known_tab(id) {
+            return;
+        }
+
+        let remaining_tabs: Vec<i32> = self
+            .primary_tabs
+            .iter()
+            .copied()
+            .filter(|&tab_id| tab_id != id)
+            .collect();
+        let remaining_active = self
+            .primary_active_tab_id
+            .filter(|&active_id| active_id != id)
+            .or_else(|| remaining_tabs.first().copied());
+
+        match target_pane {
+            PaneId::Primary => {
+                self.primary_tabs = vec![id];
+                self.primary_active_tab_id = Some(id);
+                self.secondary_tabs = remaining_tabs;
+                self.secondary_active_tab_id = remaining_active;
+            }
+            PaneId::Secondary => {
+                self.primary_tabs = remaining_tabs;
+                self.primary_active_tab_id = remaining_active;
+                self.secondary_tabs = vec![id];
+                self.secondary_active_tab_id = Some(id);
+            }
+        }
+
+        self.split_enabled = true;
+        self.set_focused_pane(target_pane);
+        for tab_id in self.secondary_tabs.clone() {
+            self.ensure_secondary_viewport_for_file(tab_id);
+        }
+        self.needs_render = true;
+    }
+
     /// Reorder a tab within the same pane by moving it to a new index position.
     pub fn reorder_tab(&mut self, pane: PaneId, id: i32, new_index: i32) {
         let tabs = self.tab_ids_for_pane_mut(pane);

@@ -1210,6 +1210,29 @@ fn setup_callbacks(
         });
     }
 
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_split_tab_by_drop(move |id, to| {
+            if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.split_off_tab_to_pane(id, pane_from_index(to));
+                }
+                let state = state_handle.read();
+                ui.set_split_enabled(state.split_enabled);
+                ui.set_focused_pane(state.focused_pane.as_index());
+                update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
     // Reorder tab within the same pane
     {
         let state_handle = Arc::clone(&state);
