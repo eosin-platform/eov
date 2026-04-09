@@ -6,6 +6,7 @@
 use common::{TileCoord, Viewport, WsiFile};
 
 /// Texture filtering mode for rendering
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterMode {
     /// Nearest-neighbor sampling (fastest, pixelated)
@@ -18,6 +19,7 @@ pub enum FilterMode {
 }
 
 /// Render quality settings
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct RenderQuality {
     /// Texture filtering mode
@@ -117,6 +119,7 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
 }
 
 /// Render statistics for performance monitoring
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct RenderStats {
     /// Number of tiles rendered this frame
@@ -130,6 +133,7 @@ pub struct RenderStats {
 }
 
 /// Calculate the optimal level for a given zoom
+#[allow(dead_code)]
 pub fn optimal_level(wsi: &WsiFile, zoom: f64) -> u32 {
     // Target: find level where pixel density is close to 1:1
     let target_downsample = 1.0 / zoom;
@@ -137,6 +141,7 @@ pub fn optimal_level(wsi: &WsiFile, zoom: f64) -> u32 {
 }
 
 /// Calculate visible tile range for the viewport
+#[allow(dead_code)]
 pub fn visible_tile_range(
     viewport: &Viewport,
     level: u32,
@@ -169,6 +174,7 @@ pub fn visible_tile_range(
 }
 
 /// Range of tiles to render
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TileRange {
     pub level: u32,
@@ -178,6 +184,7 @@ pub struct TileRange {
     pub end_y: u64,
 }
 
+#[allow(dead_code)]
 impl TileRange {
     /// Iterate over all tile coordinates in this range
     pub fn iter(&self) -> impl Iterator<Item = TileCoord> + '_ {
@@ -194,6 +201,7 @@ impl TileRange {
 }
 
 /// Bilinear interpolation for pixel sampling
+#[allow(dead_code)]
 pub fn bilinear_sample(
     data: &[u8],
     width: u32,

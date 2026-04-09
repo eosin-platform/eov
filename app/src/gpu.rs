@@ -84,6 +84,7 @@ struct QueuedFrame {
 
 #[derive(Clone)]
 struct ImportedSurface {
+    #[allow(dead_code)]
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     image: Image,
@@ -93,6 +94,7 @@ struct ImportedSurface {
 
 #[derive(Clone)]
 struct TileTexture {
+    #[allow(dead_code)]
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     last_used_frame: u64,
@@ -387,17 +389,15 @@ impl GpuRenderer {
         self.frame_counter = self.frame_counter.wrapping_add(1);
         let frame_id = self.frame_counter;
 
-        if let Some(frame) = self.pending_primary.take() {
-            if runtime.primary_surface.is_some() {
+        if let Some(frame) = self.pending_primary.take()
+            && runtime.primary_surface.is_some() {
                 Self::render_frame(runtime, &mut self.tile_textures, SurfaceSlot::Primary, frame, frame_id);
             }
-        }
 
-        if let Some(frame) = self.pending_secondary.take() {
-            if runtime.secondary_surface.is_some() {
+        if let Some(frame) = self.pending_secondary.take()
+            && runtime.secondary_surface.is_some() {
                 Self::render_frame(runtime, &mut self.tile_textures, SurfaceSlot::Secondary, frame, frame_id);
             }
-        }
 
         if self.tile_textures.len() > MAX_GPU_TILE_TEXTURES {
             let mut entries: Vec<_> = self

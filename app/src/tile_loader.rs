@@ -110,7 +110,7 @@ impl TileLoader {
     pub fn set_wanted_tiles(&self, tiles: Vec<TileCoord>) {
         // Bump generation to invalidate any stale in-flight requests
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        if generation % 32 == 0 {
+        if generation.is_multiple_of(32) {
             self.failed.lock().retain(|_, retry_generation| *retry_generation >= generation);
         }
         
@@ -165,6 +165,7 @@ impl TileLoader {
     }
     
     /// Clear failed tiles set (call when view changes significantly)
+    #[allow(dead_code)]
     pub fn clear_failed(&self) {
         self.failed.lock().clear();
     }
@@ -190,6 +191,7 @@ impl Drop for TileLoader {
 }
 
 /// Worker thread loop
+#[allow(clippy::too_many_arguments)]
 fn worker_loop(
     id: usize,
     request_rx: Receiver<TileCoord>,

@@ -33,12 +33,12 @@ pub struct WsiLevel {
 impl WsiLevel {
     /// Calculate number of tiles in X direction at this level
     pub fn tiles_x(&self, tile_size: u32) -> u64 {
-        (self.width + tile_size as u64 - 1) / tile_size as u64
+        self.width.div_ceil(tile_size as u64)
     }
 
     /// Calculate number of tiles in Y direction at this level
     pub fn tiles_y(&self, tile_size: u32) -> u64 {
-        (self.height + tile_size as u64 - 1) / tile_size as u64
+        self.height.div_ceil(tile_size as u64)
     }
 }
 

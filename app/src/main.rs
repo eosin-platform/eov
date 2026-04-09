@@ -22,6 +22,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, trace, warn};
 
+/// Coarse tile blend data: (tile_data, coarse_offset, coarse_size, blend_factor)
+type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
+
 thread_local! {
     static GPU_RENDERER_HANDLE: RefCell<Option<Rc<RefCell<GpuRenderer>>>> = const { RefCell::new(None) };
 }
@@ -122,7 +125,7 @@ fn pane_from_index(index: i32) -> PaneId {
 fn zoom_to_slider_value(zoom: f64) -> f32 {
     let log_min = MIN_ZOOM.ln();
     let log_max = MAX_ZOOM.ln();
-    let normalized = ((zoom.max(MIN_ZOOM).min(MAX_ZOOM).ln() - log_min) / (log_max - log_min))
+    let normalized = ((zoom.clamp(MIN_ZOOM, MAX_ZOOM).ln() - log_min) / (log_max - log_min))
         .clamp(0.0, 1.0);
     normalized as f32
 }
@@ -331,11 +334,10 @@ fn setup_callbacks(
         
         ui.on_open_recent_file(move |path_str| {
             let path = PathBuf::from(path_str.as_str());
-            if path.exists() {
-                if let Some(ui) = ui_weak.upgrade() {
+            if path.exists()
+                && let Some(ui) = ui_weak.upgrade() {
                     open_file(&ui, &state, &tile_cache, &render_timer, path);
                 }
-            }
         });
     }
 
@@ -541,13 +543,11 @@ fn setup_callbacks(
         
         ui.on_open_containing_folder(move |id| {
             let state = state.read();
-            if let Some(file) = state.get_file(id) {
-                if let Some(parent) = file.path.parent() {
-                    if let Err(e) = open::that(parent) {
-                        error!("Failed to open folder: {}", e);
-                    }
+            if let Some(file) = state.get_file(id)
+                && let Some(parent) = file.path.parent()
+                && let Err(e) = open::that(parent) {
+                    error!("Failed to open folder: {}", e);
                 }
-            }
         });
     }
 
@@ -557,11 +557,10 @@ fn setup_callbacks(
         
         ui.on_copy_path(move |id| {
             let state = state.read();
-            if let Some(file) = state.get_file(id) {
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            if let Some(file) = state.get_file(id)
+                && let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(file.path.display().to_string());
                 }
-            }
         });
     }
 
@@ -845,11 +844,10 @@ fn setup_callbacks(
                     PathBuf::from(path_str)
                 };
                 
-                if path.exists() {
-                    if let Some(ui) = ui_weak.upgrade() {
+                if path.exists()
+                    && let Some(ui) = ui_weak.upgrade() {
                         open_file(&ui, &state, &tile_cache, &render_timer, path);
                     }
-                }
             }
         });
     }
@@ -1206,11 +1204,10 @@ fn open_file(
                 let mut state_guard = state.write();
                 
                 // If current active tab is a home tab, close it
-                if let Some(active_id) = state_guard.active_file_id {
-                    if state_guard.is_home_tab(active_id) {
+                if let Some(active_id) = state_guard.active_file_id
+                    && state_guard.is_home_tab(active_id) {
                         state_guard.close_home_tab(active_id);
                     }
-                }
                 
                 // Get viewport size from the focused pane (use reasonable defaults if not yet laid out)
                 let target_pane = if state_guard.split_enabled {
@@ -1611,8 +1608,8 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         }
     }
 
-    if split_enabled {
-        if let Some(file_id) = secondary_file_id {
+    if split_enabled
+        && let Some(file_id) = secondary_file_id {
             let secondary_width = (ui.get_secondary_viewport_width() as f64).max(100.0);
             let secondary_height = (ui.get_secondary_viewport_height() as f64).max(100.0);
 
@@ -1662,8 +1659,8 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
                     render_secondary_viewport(ui, file, tile_cache)
                 };
 
-                if focused_pane == PaneId::Secondary {
-                    if let Some((bounds, secondary_zoom)) = secondary_overlay {
+                if focused_pane == PaneId::Secondary
+                    && let Some((bounds, secondary_zoom)) = secondary_overlay {
                         let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
                             if let state::ToolInteractionState::Dragging(start) = tool_state {
                                 if let Some(end) = candidate_point {
@@ -1704,10 +1701,8 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
                         }
                         keep_running |= roi_to_display.is_some();
                     }
-                }
             }
         }
-    }
 
     state.last_primary_rendered_file_id = primary_file_id;
     state.last_secondary_rendered_file_id = secondary_file_id;
@@ -1811,8 +1806,8 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     
     trace!("render: cached fine={} coarse={} new_tiles={}", cached_count, cached_coarse_tiles.len(), new_tiles_loaded);
     
-    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
-        if file.last_primary_request != Some(signature) {
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles)
+        && file.last_primary_request != Some(signature) {
             let wanted = calculate_wanted_tiles(
                 &file.tile_manager,
                 level,
@@ -1828,7 +1823,6 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
             file.last_primary_request = Some(signature);
             trace!("render: set_wanted_tiles done");
         }
-    }
     
     // Skip rendering if nothing changed
     // - Always render first frame
@@ -1972,8 +1966,8 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     // Second pass: render high-res tiles with optional trilinear blending
     // Use pre-fetched tiles to avoid race conditions with cache eviction
     let mut _tiles_blitted = 0;
-    for (_i, (coord, tile_data)) in cached_tiles.iter().enumerate() {
-        dbg_print!("[RENDER] tile {} of {}: {:?}", _i, cached_tiles.len(), coord);
+    for (coord, tile_data) in cached_tiles.iter() {
+        dbg_print!("[RENDER] tile {:?}", coord);
         
         // Calculate screen position based on image coordinates
         // Each tile at (coord.x, coord.y) covers [coord.x * tile_size * ds, (coord.x+1) * tile_size * ds) in image space
@@ -2152,8 +2146,8 @@ fn render_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<Til
     let cached_count = cached_tiles.len() as u32 + coarse_cached_count;
     let new_tiles_loaded = cached_count > file.tiles_loaded_since_render;
 
-    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
-        if file.last_primary_request != Some(signature) {
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles)
+        && file.last_primary_request != Some(signature) {
             let wanted = calculate_wanted_tiles(
                 &file.tile_manager,
                 level,
@@ -2166,7 +2160,6 @@ fn render_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<Til
             file.tile_loader.set_wanted_tiles(wanted);
             file.last_primary_request = Some(signature);
         }
-    }
 
     if !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
         return false;
@@ -2208,8 +2201,8 @@ fn render_secondary_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache
     let margin_tiles = if secondary.is_moving() { 1 } else { 0 };
     let bounds = vp.bounds();
 
-    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
-        if file.last_secondary_request != Some(signature) {
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles)
+        && file.last_secondary_request != Some(signature) {
             let wanted = calculate_wanted_tiles(
                 &file.tile_manager,
                 level,
@@ -2222,7 +2215,6 @@ fn render_secondary_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache
             file.tile_loader.set_wanted_tiles(wanted);
             file.last_secondary_request = Some(signature);
         }
-    }
 
     let render_width = vp.width as u32;
     let render_height = vp.height.max(1.0) as u32;
@@ -2332,7 +2324,7 @@ fn coarse_blend_for_tile(
     fine_downsample: f64,
     fine_coord: common::TileCoord,
     fine_tile: &Arc<common::TileData>,
-) -> Option<(Arc<common::TileData>, [f32; 2], [f32; 2], f32)> {
+) -> Option<CoarseBlendData> {
     const COARSE_BOUNDARY_EPSILON: f64 = 1e-3;
 
     if trilinear.level_fine == trilinear.level_coarse || trilinear.blend <= 0.01 {
@@ -2412,7 +2404,7 @@ fn tile_draw_from_tile(
     downsample: f64,
     coord: common::TileCoord,
     tile_data: Arc<common::TileData>,
-    coarse_blend: Option<(Arc<common::TileData>, [f32; 2], [f32; 2], f32)>,
+    coarse_blend: Option<CoarseBlendData>,
 ) -> Option<TileDraw> {
     let image_x = coord.x as f64 * coord.tile_size as f64 * downsample;
     let image_y = coord.y as f64 * coord.tile_size as f64 * downsample;
@@ -2473,8 +2465,8 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     // Limit visible tiles to a reasonable maximum
     let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
     
-    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
-        if file.last_secondary_request != Some(signature) {
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles)
+        && file.last_secondary_request != Some(signature) {
             let wanted = calculate_wanted_tiles(
                 &file.tile_manager,
                 level,
@@ -2487,7 +2479,6 @@ fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
             file.tile_loader.set_wanted_tiles(wanted);
             file.last_secondary_request = Some(signature);
         }
-    }
     
     // Reuse persistent buffer for rendering (avoid per-frame allocation)
     let render_width = vp.width as u32;
@@ -2627,7 +2618,7 @@ fn fast_fill_rgba(buffer: &mut [u8], r: u8, g: u8, b: u8, a: u8) {
     
     // Cast buffer to u32 slice for faster writes
     // SAFETY: Buffer length is always multiple of 4 (RGBA pixels)
-    if buffer.len() >= 4 && buffer.len() % 4 == 0 {
+    if buffer.len() >= 4 && buffer.len().is_multiple_of(4) {
         let (prefix, pixels, suffix) = unsafe { buffer.align_to_mut::<u32>() };
         
         // Handle unaligned prefix bytes
@@ -2661,6 +2652,7 @@ fn fast_fill_rgba(buffer: &mut [u8], r: u8, g: u8, b: u8, a: u8) {
 
 /// Optimized bilinear tile blitter with cache-friendly access patterns
 /// Uses fixed-point arithmetic and minimizes bounds checking
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn blit_tile(
     dest: &mut [u8],
@@ -2727,7 +2719,7 @@ fn blit_tile(
         let src_y_fp = (local_y * scale_y_fp) as u32;
         let y0 = (src_y_fp >> 16).min(src_height_minus_1);
         let y1 = (y0 + 1).min(src_height_minus_1);
-        let fy = ((src_y_fp & 0xFFFF) >> 8) as u32; // 8-bit fraction
+        let fy = (src_y_fp & 0xFFFF) >> 8; // 8-bit fraction
         let inv_fy = 256 - fy;
         
         let dest_row = y as usize * dest_stride;
@@ -2739,7 +2731,7 @@ fn blit_tile(
             let src_x_fp = (local_x * scale_x_fp) as u32;
             let x0 = (src_x_fp >> 16).min(src_width_minus_1);
             let x1 = (x0 + 1).min(src_width_minus_1);
-            let fx = ((src_x_fp & 0xFFFF) >> 8) as u32; // 8-bit fraction
+            let fx = (src_x_fp & 0xFFFF) >> 8; // 8-bit fraction
             let inv_fx = 256 - fx;
             
             let x0_4 = x0 as usize * 4;
@@ -2789,6 +2781,7 @@ fn blit_tile(
 /// * `fine_scaled_width`, `fine_scaled_height` - Scaled size for fine tile
 /// * `coarse_offset_x`, `coarse_offset_y` - Offset within coarse tile for this region
 /// * `blend` - Blend factor: 0.0 = use fine, 1.0 = use coarse
+#[allow(clippy::too_many_arguments)]
 fn blit_tile_trilinear(
     dest: &mut [u8],
     dest_width: u32,
@@ -2838,10 +2831,10 @@ fn blit_tile_trilinear(
     let scale_x_coarse = coarse_src_w / (fine_scaled_width as f64).max(1.0);
     let scale_y_coarse = coarse_src_h / (fine_scaled_height as f64).max(1.0);
     
-    let src_fine_width_minus_1 = (src_fine_width - 1) as u32;
-    let src_fine_height_minus_1 = (src_fine_height - 1) as u32;
-    let src_coarse_width_minus_1 = (src_coarse_width - 1) as u32;
-    let src_coarse_height_minus_1 = (src_coarse_height - 1) as u32;
+    let src_fine_width_minus_1 = src_fine_width - 1;
+    let src_fine_height_minus_1 = src_fine_height - 1;
+    let src_coarse_width_minus_1 = src_coarse_width - 1;
+    let src_coarse_height_minus_1 = src_coarse_height - 1;
     
     let dest_stride = dest_width * 4;
     let src_fine_stride = src_fine_width * 4;
@@ -2855,10 +2848,10 @@ fn blit_tile_trilinear(
         let local_y = (y as i32 - dest_y) as f64;
         
         // Fine level sampling coords
-        let src_y_fine_fp = (local_y as u64 * scale_y_fine_fp as u64) as u32;
+        let src_y_fine_fp = (local_y as u64 * scale_y_fine_fp) as u32;
         let y0_fine = (src_y_fine_fp >> 16).min(src_fine_height_minus_1);
         let y1_fine = (y0_fine + 1).min(src_fine_height_minus_1);
-        let fy_fine = ((src_y_fine_fp & 0xFFFF) >> 8) as u32;
+        let fy_fine = (src_y_fine_fp & 0xFFFF) >> 8;
         let inv_fy_fine = 256 - fy_fine;
         
         // Coarse level sampling coords (clamp to valid range)
@@ -2878,10 +2871,10 @@ fn blit_tile_trilinear(
             let local_x = (x as i32 - dest_x) as f64;
             
             // Fine level X coords
-            let src_x_fine_fp = (local_x as u64 * scale_x_fine_fp as u64) as u32;
+            let src_x_fine_fp = (local_x as u64 * scale_x_fine_fp) as u32;
             let x0_fine = (src_x_fine_fp >> 16).min(src_fine_width_minus_1);
             let x1_fine = (x0_fine + 1).min(src_fine_width_minus_1);
-            let fx_fine = ((src_x_fine_fp & 0xFFFF) >> 8) as u32;
+            let fx_fine = (src_x_fine_fp & 0xFFFF) >> 8;
             let inv_fx_fine = 256 - fx_fine;
             
             // Coarse level X coords (clamp to valid range)

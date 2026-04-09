@@ -98,8 +98,10 @@ pub struct TileManager {
     /// Tile size
     tile_size: u32,
     /// Request sender channel
+    #[allow(dead_code)]
     request_tx: Option<mpsc::Sender<TileRequest>>,
     /// Response receiver channel
+    #[allow(dead_code)]
     response_rx: Option<Arc<RwLock<mpsc::Receiver<TileData>>>>,
 }
 

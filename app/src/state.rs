@@ -24,6 +24,7 @@ pub struct RecentFile {
     /// Display name (filename)
     pub name: String,
     /// Last opened timestamp
+    #[allow(dead_code)]
     pub last_opened: std::time::SystemTime,
 }
 
@@ -87,6 +88,7 @@ impl RegionOfInterest {
 }
 
 /// Measurement between two points
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Measurement {
     pub start: ImagePoint,
@@ -104,6 +106,7 @@ pub struct TileRequestSignature {
     pub tile_size: u32,
 }
 
+#[allow(dead_code)]
 impl Measurement {
     /// Calculate distance in image pixels
     pub fn distance(&self) -> f64 {
@@ -119,6 +122,7 @@ pub enum ToolInteractionState {
     #[default]
     Idle,
     /// First point placed for ROI or measurement
+    #[allow(dead_code)]
     FirstPointPlaced(ImagePoint),
     /// Currently dragging (for ROI or drag-style measurement)
     Dragging(ImagePoint),
@@ -145,6 +149,7 @@ pub struct OpenFile {
     /// Thumbnail for minimap (RGBA data)
     pub thumbnail: Option<Vec<u8>>,
     /// Whether thumbnail has been uploaded to UI
+    #[allow(dead_code)]
     pub thumbnail_set: bool,
     /// Region of interest (if set)
     pub roi: Option<RegionOfInterest>,
@@ -254,6 +259,7 @@ pub struct AppState {
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
     /// Debug mode enabled (--debug flag)
+    #[allow(dead_code)]
     pub debug_mode: bool,
     /// Frame timestamps for FPS calculation
     pub frame_times: Vec<std::time::Instant>,
@@ -350,11 +356,10 @@ impl AppState {
             return;
         };
         
-        if !dir.exists() {
-            if fs::create_dir_all(&dir).is_err() {
+        if !dir.exists()
+            && fs::create_dir_all(&dir).is_err() {
                 return;
             }
-        }
         
         let Some(path) = Self::recent_files_path() else {
             return;
@@ -447,11 +452,10 @@ impl AppState {
     }
 
     fn ensure_secondary_viewport_for_file(&mut self, id: i32) {
-        if let Some(file) = self.get_file_mut(id) {
-            if file.secondary_viewport.is_none() {
+        if let Some(file) = self.get_file_mut(id)
+            && file.secondary_viewport.is_none() {
                 file.secondary_viewport = Some(file.viewport.clone());
             }
-        }
     }
 
     fn add_tab_to_pane_if_missing(&mut self, pane: PaneId, id: i32) {
@@ -467,9 +471,8 @@ impl AppState {
     fn remove_tab_from_pane(&mut self, pane: PaneId, id: i32) {
         let removed_index = {
             let tabs = self.tab_ids_for_pane_mut(pane);
-            tabs.iter().position(|&tab_id| tab_id == id).map(|index| {
+            tabs.iter().position(|&tab_id| tab_id == id).inspect(|&index| {
                 tabs.remove(index);
-                index
             })
         };
 
@@ -724,27 +727,26 @@ impl AppState {
     /// Enable split view for the current file
     pub fn enable_split(&mut self) {
         self.split_enabled = true;
-        if self.secondary_tabs.is_empty() {
-            if let Some(primary_id) = self.primary_active_tab_id {
+        if self.secondary_tabs.is_empty()
+            && let Some(primary_id) = self.primary_active_tab_id {
                 self.duplicate_tab_to_pane(primary_id, PaneId::Secondary);
             }
-        }
         self.set_focused_pane(PaneId::Secondary);
         self.needs_render = true;
     }
 
     /// Disable split view
+    #[allow(dead_code)]
     pub fn disable_split(&mut self) {
         for id in self.secondary_tabs.clone() {
             if !self.primary_tabs.contains(&id) {
                 self.primary_tabs.push(id);
             }
         }
-        if self.focused_pane == PaneId::Secondary {
-            if let Some(id) = self.secondary_active_tab_id {
+        if self.focused_pane == PaneId::Secondary
+            && let Some(id) = self.secondary_active_tab_id {
                 self.primary_active_tab_id = Some(id);
             }
-        }
         self.split_enabled = false;
         self.secondary_tabs.clear();
         self.secondary_active_tab_id = None;
@@ -753,6 +755,7 @@ impl AppState {
     }
 
     /// Get the viewport for the current focused pane
+    #[allow(dead_code)]
     pub fn focused_viewport_mut(&mut self) -> Option<&mut ViewportState> {
         let active_id = self.active_file_id_for_pane(self.focused_pane)?;
         self.open_files.iter_mut()
@@ -764,6 +767,7 @@ impl AppState {
     }
 
     /// Activate a file by ID
+    #[allow(dead_code)]
     pub fn activate_file(&mut self, id: i32) {
         self.activate_tab_in_pane(self.focused_pane, id);
     }
@@ -829,6 +833,7 @@ impl AppState {
     }
 
     /// Get the active file
+    #[allow(dead_code)]
     pub fn active_file(&self) -> Option<&OpenFile> {
         self.active_file_id
             .filter(|id| !self.is_home_tab(*id))
@@ -836,6 +841,7 @@ impl AppState {
     }
 
     /// Get the active file mutably
+    #[allow(dead_code)]
     pub fn active_file_mut(&mut self) -> Option<&mut OpenFile> {
         self.active_file_id
             .filter(|id| !self.is_home_tab(*id))
@@ -843,6 +849,7 @@ impl AppState {
     }
 
     /// Get the active viewport
+    #[allow(dead_code)]
     pub fn active_viewport(&self) -> Option<&ViewportState> {
         let pane = if self.split_enabled {
             self.focused_pane

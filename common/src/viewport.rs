@@ -74,7 +74,7 @@ impl Viewport {
     pub fn fit_to_view(&mut self) {
         let zoom_x = self.width / self.image_width;
         let zoom_y = self.height / self.image_height;
-        self.zoom = zoom_x.min(zoom_y).max(MIN_ZOOM).min(MAX_ZOOM);
+        self.zoom = zoom_x.min(zoom_y).clamp(MIN_ZOOM, MAX_ZOOM);
         self.center = DVec2::new(self.image_width / 2.0, self.image_height / 2.0);
     }
 
@@ -107,7 +107,7 @@ impl Viewport {
         let image_pos = self.screen_to_image(screen_x, screen_y);
 
         // Apply zoom
-        let new_zoom = (self.zoom * factor).max(MIN_ZOOM).min(MAX_ZOOM);
+        let new_zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
         self.zoom = new_zoom;
 
         // Adjust center so the image point stays under the cursor
@@ -149,10 +149,10 @@ impl Viewport {
     pub fn minimap_rect(&self) -> MinimapRect {
         let bounds = self.bounds();
         MinimapRect {
-            x: (bounds.left / self.image_width).max(0.0).min(1.0) as f32,
-            y: (bounds.top / self.image_height).max(0.0).min(1.0) as f32,
-            width: ((bounds.right - bounds.left) / self.image_width).max(0.0).min(1.0) as f32,
-            height: ((bounds.bottom - bounds.top) / self.image_height).max(0.0).min(1.0) as f32,
+            x: (bounds.left / self.image_width).clamp(0.0, 1.0) as f32,
+            y: (bounds.top / self.image_height).clamp(0.0, 1.0) as f32,
+            width: ((bounds.right - bounds.left) / self.image_width).clamp(0.0, 1.0) as f32,
+            height: ((bounds.bottom - bounds.top) / self.image_height).clamp(0.0, 1.0) as f32,
         }
     }
 }
@@ -366,7 +366,7 @@ impl ViewportState {
                 let log_start = self.zoom_start.ln();
                 let log_target = self.target_zoom.ln();
                 let log_current = log_start + (log_target - log_start) * ease_out;
-                let new_zoom = log_current.exp().max(MIN_ZOOM).min(MAX_ZOOM);
+                let new_zoom = log_current.exp().clamp(MIN_ZOOM, MAX_ZOOM);
                 
                 // Apply zoom while keeping anchor point fixed
                 self.viewport.zoom = new_zoom;
@@ -416,7 +416,7 @@ impl ViewportState {
     /// Zoom at screen position with smooth animation
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
         // Calculate new target zoom
-        let new_target = (self.target_zoom * factor).max(MIN_ZOOM).min(MAX_ZOOM);
+        let new_target = (self.target_zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
         
         // If already animating, update the target but keep the same anchor
         // If not animating, start a new animation
@@ -442,7 +442,7 @@ impl ViewportState {
 
     /// Smoothly zoom to an absolute zoom level around the viewport center.
     pub fn zoom_to(&mut self, zoom: f64) {
-        let clamped_zoom = zoom.max(MIN_ZOOM).min(MAX_ZOOM);
+        let clamped_zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         let anchor_x = self.viewport.width / 2.0;
         let anchor_y = self.viewport.height / 2.0;
 
