@@ -4,19 +4,26 @@
 mod state;
 mod render;
 mod tile_loader;
+mod gpu;
 
 use anyhow::Result;
 use common::{TileCache, TileManager, Viewport, ViewportState, WsiFile};
+use gpu::{GpuRenderer, SurfaceSlot, TileDraw};
 use parking_lot::RwLock;
 use rfd::FileDialog;
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
+use slint::{BackendSelector, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
 use state::{AppState, OpenFile, PaneId, RenderBackend, TileRequestSignature};
 use tile_loader::{TileLoader, calculate_wanted_tiles};
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, trace, warn};
+
+thread_local! {
+    static GPU_RENDERER_HANDLE: RefCell<Option<Rc<RefCell<GpuRenderer>>>> = const { RefCell::new(None) };
+}
 
 // Debug macro - set to no-op for release, enable for debugging
 #[allow(unused_macros)]
@@ -34,8 +41,24 @@ slint::include_modules!();
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 
-fn gpu_backend_available() -> bool {
-    false
+fn select_backend() -> Result<bool> {
+    let gpu_result = BackendSelector::new()
+        .backend_name("winit".to_string())
+        .renderer_name("femtovg-wgpu".to_string())
+        .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::default())
+        .select();
+
+    match gpu_result {
+        Ok(()) => Ok(true),
+        Err(err) => {
+            warn!("GPU backend unavailable, falling back to CPU renderer: {}", err);
+            BackendSelector::new()
+                .backend_name("winit".to_string())
+                .renderer_name("femtovg".to_string())
+                .select()?;
+            Ok(false)
+        }
+    }
 }
 
 fn ui_render_mode(backend: RenderBackend) -> RenderMode {
@@ -43,6 +66,16 @@ fn ui_render_mode(backend: RenderBackend) -> RenderMode {
         RenderBackend::Cpu => RenderMode::Cpu,
         RenderBackend::Gpu => RenderMode::Gpu,
     }
+}
+
+fn set_gpu_renderer_handle(renderer: Rc<RefCell<GpuRenderer>>) {
+    GPU_RENDERER_HANDLE.with(|handle| {
+        *handle.borrow_mut() = Some(renderer);
+    });
+}
+
+fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> R) -> Option<R> {
+    GPU_RENDERER_HANDLE.with(|handle| handle.borrow().as_ref().map(f))
 }
 
 fn request_render_loop(
@@ -117,6 +150,8 @@ fn main() -> Result<()> {
         info!("Opening {} file(s) from command line", files_to_open.len());
     }
 
+    let gpu_backend_available = select_backend()?;
+
     // Create application state
     let state = Arc::new(RwLock::new(AppState::new(debug_mode)));
     let tile_cache = Arc::new(TileCache::new());
@@ -124,6 +159,9 @@ fn main() -> Result<()> {
     // Create UI
     let ui = AppWindow::new()?;
     let ui_weak = ui.as_weak();
+    let gpu_renderer = Rc::new(RefCell::new(GpuRenderer::new()));
+    GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))?;
+    set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
 
     let render_timer = Rc::new(Timer::default());
 
@@ -139,7 +177,7 @@ fn main() -> Result<()> {
     ui.set_debug_mode(debug_mode);
     {
         let mut state = state.write();
-        state.gpu_backend_available = gpu_backend_available();
+        state.gpu_backend_available = gpu_backend_available;
         update_render_backend(&ui, &state);
     }
     
@@ -1129,6 +1167,7 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     
     let split_enabled = state.split_enabled;
     let split_position = state.split_position;
+    let render_backend = state.render_backend;
     
     // Capture tool state for ROI calculation (before borrowing file mutably)
     let tool_state = state.tool_state;
@@ -1222,7 +1261,13 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     
     // Render primary viewport
     dbg_print!("[UPDATE] calling render");
-    rendered_frame |= render_viewport_to_buffer(ui, file, tile_cache, true);
+    rendered_frame |= if render_backend == RenderBackend::Gpu
+        && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
+    {
+        render_viewport_gpu(ui, file, tile_cache, SurfaceSlot::Primary)
+    } else {
+        render_viewport_to_buffer(ui, file, tile_cache, true)
+    };
     dbg_print!("[UPDATE] render done");
     
     // Update ROI overlay (must be done every frame for proper tracking)
@@ -1304,7 +1349,13 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
             });
             
             // Render secondary viewport
-            rendered_frame |= render_secondary_viewport(ui, file, tile_cache);
+            rendered_frame |= if render_backend == RenderBackend::Gpu
+                && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
+            {
+                render_secondary_viewport_gpu(ui, file, tile_cache)
+            } else {
+                render_secondary_viewport(ui, file, tile_cache)
+            };
         }
     }
     } // End of file borrow scope
@@ -1696,6 +1747,338 @@ fn render_viewport_to_buffer(ui: &AppWindow, file: &mut OpenFile, tile_cache: &A
     
     dbg_print!("[RENDER] done");
     false
+}
+
+fn render_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>, slot: SurfaceSlot) -> bool {
+    let vp = &file.viewport.viewport;
+    let vp_zoom = vp.zoom;
+    let vp_center_x = vp.center.x;
+    let vp_center_y = vp.center.y;
+    let vp_width = vp.width;
+    let vp_height = vp.height;
+    let is_first_frame = file.frame_count == 0;
+    let viewport_changed =
+        (file.last_render_zoom - vp_zoom).abs() > 0.001 ||
+        (file.last_render_center_x - vp_center_x).abs() > 1.0 ||
+        (file.last_render_center_y - vp_center_y).abs() > 1.0 ||
+        (file.last_render_width - vp_width).abs() > 1.0 ||
+        (file.last_render_height - vp_height).abs() > 1.0;
+
+    let trilinear = render::calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
+    let level = trilinear.level_fine;
+    let margin_tiles = if file.viewport.is_moving() { 1 } else { 0 };
+    let level_changed = level != file.last_render_level;
+    if level_changed {
+        file.tiles_loaded_since_render = 0;
+    }
+
+    let bounds = vp.bounds();
+    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
+        level,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        margin_tiles,
+    );
+    let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
+    let cached_tiles: Vec<_> = visible_tiles
+        .iter()
+        .filter_map(|coord| tile_cache.get(coord).map(|data| (*coord, data)))
+        .collect();
+    let coarse_cached_count = if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
+        file.tile_manager
+            .visible_tiles_with_margin(
+                trilinear.level_coarse,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            )
+            .into_iter()
+            .filter(|coord| tile_cache.contains(coord))
+            .count() as u32
+    } else {
+        0
+    };
+    let cached_count = cached_tiles.len() as u32 + coarse_cached_count;
+    let new_tiles_loaded = cached_count > file.tiles_loaded_since_render;
+
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
+        if file.last_primary_request != Some(signature) {
+            let wanted = calculate_wanted_tiles(
+                &file.tile_manager,
+                level,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            );
+            file.tile_loader.set_wanted_tiles(wanted);
+            file.last_primary_request = Some(signature);
+        }
+    }
+
+    if !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
+        return false;
+    }
+
+    file.frame_count += 1;
+    file.last_render_time = std::time::Instant::now();
+    file.last_render_zoom = vp_zoom;
+    file.last_render_center_x = vp_center_x;
+    file.last_render_center_y = vp_center_y;
+    file.last_render_width = vp_width;
+    file.last_render_height = vp_height;
+    file.last_render_level = level;
+    file.tiles_loaded_since_render = cached_count;
+
+    let render_width = vp_width as u32;
+    let render_height = (vp_height - 24.0).max(1.0) as u32;
+    if render_width == 0 || render_height == 0 {
+        return false;
+    }
+
+    let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
+    with_gpu_renderer(|renderer| {
+        renderer
+            .borrow_mut()
+            .queue_frame(ui, slot, render_width, render_height, draws)
+    })
+    .unwrap_or(false)
+}
+
+fn render_secondary_viewport_gpu(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>) -> bool {
+    let Some(ref secondary) = file.secondary_viewport else {
+        return false;
+    };
+
+    let vp = &secondary.viewport;
+    let trilinear = render::calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
+    let level = trilinear.level_fine;
+    let margin_tiles = if secondary.is_moving() { 1 } else { 0 };
+    let bounds = vp.bounds();
+
+    if let Some(signature) = tile_request_signature(&file.tile_manager, vp, level, margin_tiles) {
+        if file.last_secondary_request != Some(signature) {
+            let wanted = calculate_wanted_tiles(
+                &file.tile_manager,
+                level,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            );
+            file.tile_loader.set_wanted_tiles(wanted);
+            file.last_secondary_request = Some(signature);
+        }
+    }
+
+    let render_width = vp.width as u32;
+    let render_height = vp.height.max(1.0) as u32;
+    if render_width == 0 || render_height == 0 {
+        return false;
+    }
+
+    let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
+    with_gpu_renderer(|renderer| {
+        renderer
+            .borrow_mut()
+            .queue_frame(ui, SurfaceSlot::Secondary, render_width, render_height, draws)
+    })
+    .unwrap_or(false)
+}
+
+fn collect_tile_draws(
+    file: &OpenFile,
+    tile_cache: &Arc<TileCache>,
+    vp: &Viewport,
+    trilinear: render::TrilinearLevels,
+) -> Vec<TileDraw> {
+    let mut draws = Vec::new();
+    let bounds = vp.bounds();
+    let level_count = file.wsi.level_count();
+
+    for fallback_level in (0..level_count).rev() {
+        if fallback_level <= trilinear.level_fine {
+            continue;
+        }
+
+        let Some(fallback_level_info) = file.wsi.level(fallback_level) else {
+            continue;
+        };
+
+        let fallback_tiles = file.tile_manager.visible_tiles(
+            fallback_level,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+        );
+
+        for coord in fallback_tiles.iter().take(100) {
+            let Some(tile_data) = tile_cache.get(coord) else {
+                continue;
+            };
+            if let Some(draw) = tile_draw_from_tile(
+                vp,
+                bounds.left,
+                bounds.top,
+                fallback_level_info.downsample,
+                *coord,
+                tile_data,
+                None,
+            ) {
+                draws.push(draw);
+            }
+        }
+    }
+
+    let Some(level_info) = file.wsi.level(trilinear.level_fine) else {
+        return draws;
+    };
+
+    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
+        trilinear.level_fine,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        0,
+    );
+
+    for coord in visible_tiles.iter().take(500) {
+        let Some(tile_data) = tile_cache.get(coord) else {
+            continue;
+        };
+        let coarse_blend = coarse_blend_for_tile(
+            file,
+            tile_cache,
+            trilinear,
+            level_info.downsample,
+            *coord,
+            &tile_data,
+        );
+        if let Some(draw) = tile_draw_from_tile(
+            vp,
+            bounds.left,
+            bounds.top,
+            level_info.downsample,
+            *coord,
+            tile_data,
+            coarse_blend,
+        ) {
+            draws.push(draw);
+        }
+    }
+
+    draws
+}
+
+fn coarse_blend_for_tile(
+    file: &OpenFile,
+    tile_cache: &Arc<TileCache>,
+    trilinear: render::TrilinearLevels,
+    fine_downsample: f64,
+    fine_coord: common::TileCoord,
+    fine_tile: &Arc<common::TileData>,
+) -> Option<(Arc<common::TileData>, [f32; 2], [f32; 2], f32)> {
+    if trilinear.level_fine == trilinear.level_coarse || trilinear.blend <= 0.01 {
+        return None;
+    }
+
+    let coarse_info = file.wsi.level(trilinear.level_coarse)?;
+    let image_x = fine_coord.x as f64 * fine_coord.tile_size as f64 * fine_downsample;
+    let image_y = fine_coord.y as f64 * fine_coord.tile_size as f64 * fine_downsample;
+    let fine_image_w = fine_tile.width as f64 * fine_downsample;
+    let fine_image_h = fine_tile.height as f64 * fine_downsample;
+    let coarse_tile_size = file.tile_manager.tile_size_for_level(trilinear.level_coarse) as f64;
+
+    let coarse_tile_x = image_x / coarse_info.downsample;
+    let coarse_tile_y = image_y / coarse_info.downsample;
+    let coarse_coord = common::TileCoord::new(
+        trilinear.level_coarse,
+        (coarse_tile_x / coarse_tile_size).floor().max(0.0) as u64,
+        (coarse_tile_y / coarse_tile_size).floor().max(0.0) as u64,
+        coarse_tile_size as u32,
+    );
+
+    let coarse_tile = tile_cache.get(&coarse_coord)?;
+    let coarse_origin_x = coarse_coord.x as f64 * coarse_coord.tile_size as f64;
+    let coarse_origin_y = coarse_coord.y as f64 * coarse_coord.tile_size as f64;
+    let coarse_src_x = (coarse_tile_x - coarse_origin_x).max(0.0);
+    let coarse_src_y = (coarse_tile_y - coarse_origin_y).max(0.0);
+    let coarse_src_w = (fine_image_w / coarse_info.downsample).max(0.0);
+    let coarse_src_h = (fine_image_h / coarse_info.downsample).max(0.0);
+    let coarse_src_x_end = (coarse_src_x + coarse_src_w).min(coarse_tile.width as f64);
+    let coarse_src_y_end = (coarse_src_y + coarse_src_h).min(coarse_tile.height as f64);
+
+    if coarse_src_x_end <= coarse_src_x || coarse_src_y_end <= coarse_src_y {
+        return None;
+    }
+
+    let coarse_width = coarse_tile.width as f64;
+    let coarse_height = coarse_tile.height as f64;
+
+    Some((
+        coarse_tile,
+        [
+            (coarse_src_x / coarse_width) as f32,
+            (coarse_src_y / coarse_height) as f32,
+        ],
+        [
+            (coarse_src_x_end / coarse_width) as f32,
+            (coarse_src_y_end / coarse_height) as f32,
+        ],
+        trilinear.blend as f32,
+    ))
+}
+
+fn tile_draw_from_tile(
+    vp: &Viewport,
+    bounds_left: f64,
+    bounds_top: f64,
+    downsample: f64,
+    coord: common::TileCoord,
+    tile_data: Arc<common::TileData>,
+    coarse_blend: Option<(Arc<common::TileData>, [f32; 2], [f32; 2], f32)>,
+) -> Option<TileDraw> {
+    let image_x = coord.x as f64 * coord.tile_size as f64 * downsample;
+    let image_y = coord.y as f64 * coord.tile_size as f64 * downsample;
+    let image_x_end = image_x + tile_data.width as f64 * downsample;
+    let image_y_end = image_y + tile_data.height as f64 * downsample;
+
+    let screen_x = ((image_x - bounds_left) * vp.zoom).round() as i32;
+    let screen_y = ((image_y - bounds_top) * vp.zoom).round() as i32;
+    let screen_x_end = ((image_x_end - bounds_left) * vp.zoom).round() as i32;
+    let screen_y_end = ((image_y_end - bounds_top) * vp.zoom).round() as i32;
+    let screen_w = screen_x_end - screen_x;
+    let screen_h = screen_y_end - screen_y;
+
+    if screen_w <= 0 || screen_h <= 0 {
+        return None;
+    }
+
+    let (coarse_tile, coarse_uv_min, coarse_uv_max, mip_blend) = coarse_blend
+        .map(|(coarse_tile, coarse_uv_min, coarse_uv_max, mip_blend)| {
+            (Some(coarse_tile), coarse_uv_min, coarse_uv_max, mip_blend)
+        })
+        .unwrap_or((None, [0.0, 0.0], [1.0, 1.0], 0.0));
+
+    Some(TileDraw {
+        tile: tile_data,
+        coarse_tile,
+        screen_x,
+        screen_y,
+        screen_w,
+        screen_h,
+        coarse_uv_min,
+        coarse_uv_max,
+        mip_blend,
+    })
 }
 
 fn render_secondary_viewport(ui: &AppWindow, file: &mut OpenFile, tile_cache: &Arc<TileCache>) -> bool {

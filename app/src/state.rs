@@ -184,6 +184,28 @@ pub struct OpenFile {
     pub secondary_render_buffer: Vec<u8>,
 }
 
+impl OpenFile {
+    pub fn invalidate_render_state(&mut self) {
+        self.frame_count = 0;
+        self.last_render_zoom = 0.0;
+        self.last_render_center_x = 0.0;
+        self.last_render_center_y = 0.0;
+        self.last_render_width = 0.0;
+        self.last_render_height = 0.0;
+        self.last_render_level = u32::MAX;
+        self.tiles_loaded_since_render = 0;
+        self.last_seen_tile_epoch = 0;
+        self.last_primary_request = None;
+        self.last_secondary_zoom = 0.0;
+        self.last_secondary_center_x = 0.0;
+        self.last_secondary_center_y = 0.0;
+        self.last_secondary_width = 0.0;
+        self.last_secondary_height = 0.0;
+        self.last_seen_secondary_tile_epoch = 0;
+        self.last_secondary_request = None;
+    }
+}
+
 /// Pane identifier (left/primary or right/secondary)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneId {
@@ -529,10 +551,16 @@ impl AppState {
     }
 
     pub fn select_render_backend(&mut self, backend: RenderBackend) {
-        self.render_backend = match backend {
+        let next_backend = match backend {
             RenderBackend::Gpu if !self.gpu_backend_available => RenderBackend::Cpu,
             other => other,
         };
+        if self.render_backend != next_backend {
+            self.render_backend = next_backend;
+            for file in &mut self.open_files {
+                file.invalidate_render_state();
+            }
+        }
         self.needs_render = true;
     }
 

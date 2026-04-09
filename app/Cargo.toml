@@ -8,7 +8,7 @@ edition = "2024"
 common = { path = "../common" }
 
 # Slint UI
-slint = { version = "1.15.1", features = ["backend-winit"] }
+slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-28"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
@@ -42,6 +42,9 @@ open = "5"
 
 # Config directory access
 dirs = "6"
+
+# GPU vertex buffer casting
+bytemuck = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 slint-build = "1.15.1"
