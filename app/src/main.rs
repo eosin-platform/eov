@@ -419,12 +419,9 @@ fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    state.set_focused_pane(pane_from_index(pane));
-                    if state.is_home_tab(id) {
-                        state.close_home_tab(id);
-                    } else {
-                        state.close_file(id);
-                    }
+                    let pane_id = pane_from_index(pane);
+                    state.set_focused_pane(pane_id);
+                    state.close_tab_in_pane(pane_id, id);
                 }
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
@@ -454,11 +451,7 @@ fn setup_callbacks(
                         .collect();
                     for id in ids_to_close {
                         state.set_focused_pane(pane_id);
-                        if state.is_home_tab(id) {
-                            state.close_home_tab(id);
-                        } else {
-                            state.close_file(id);
-                        }
+                        state.close_tab_in_pane(pane_id, id);
                     }
                 }
                 let state = state_handle.read();
@@ -499,11 +492,7 @@ fn setup_callbacks(
                         .collect();
                     for id in ids_to_close {
                         state.set_focused_pane(pane_id);
-                        if state.is_home_tab(id) {
-                            state.close_home_tab(id);
-                        } else {
-                            state.close_file(id);
-                        }
+                        state.close_tab_in_pane(pane_id, id);
                     }
                 }
                 let state = state_handle.read();
@@ -532,6 +521,8 @@ fn setup_callbacks(
                     state.secondary_tabs.clear();
                     state.primary_active_tab_id = None;
                     state.secondary_active_tab_id = None;
+                    state.split_enabled = false;
+                    state.set_focused_pane(PaneId::Primary);
                     state.active_file_id = None;
                     state.request_render();
                 }

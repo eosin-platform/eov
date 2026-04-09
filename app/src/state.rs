@@ -478,7 +478,40 @@ impl AppState {
                 let replacement = Self::next_tab_after_removal(self.tab_ids_for_pane(pane), index);
                 *self.active_tab_id_for_pane_mut(pane) = replacement;
             }
+            self.normalize_split_after_tab_change();
             self.sync_active_file_id();
+        }
+    }
+
+    fn normalize_split_after_tab_change(&mut self) {
+        if !self.split_enabled {
+            return;
+        }
+
+        if self.primary_tabs.is_empty() && self.secondary_tabs.is_empty() {
+            self.split_enabled = false;
+            self.primary_active_tab_id = None;
+            self.secondary_active_tab_id = None;
+            self.set_focused_pane(PaneId::Primary);
+            return;
+        }
+
+        if self.primary_tabs.is_empty() {
+            self.primary_tabs = self.secondary_tabs.clone();
+            self.primary_active_tab_id = self.secondary_active_tab_id;
+            self.secondary_tabs.clear();
+            self.secondary_active_tab_id = None;
+            self.split_enabled = false;
+            self.set_focused_pane(PaneId::Primary);
+            self.needs_render = true;
+            return;
+        }
+
+        if self.secondary_tabs.is_empty() {
+            self.split_enabled = false;
+            self.secondary_active_tab_id = None;
+            self.set_focused_pane(PaneId::Primary);
+            self.needs_render = true;
         }
     }
 
@@ -508,6 +541,7 @@ impl AppState {
         } else {
             self.sync_active_file_id();
         }
+        self.normalize_split_after_tab_change();
         self.needs_render = true;
     }
 
@@ -545,6 +579,30 @@ impl AppState {
         self.remove_tab_from_pane(PaneId::Primary, id);
         self.remove_tab_from_pane(PaneId::Secondary, id);
         self.needs_render = true;
+    }
+
+    pub fn close_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if !self.is_known_tab(id) {
+            return;
+        }
+
+        self.remove_tab_from_pane(pane, id);
+
+        let still_open_elsewhere = self.primary_tabs.contains(&id) || self.secondary_tabs.contains(&id);
+        if still_open_elsewhere {
+            self.needs_render = true;
+            self.sync_active_file_id();
+            return;
+        }
+
+        if self.is_home_tab(id) {
+            self.home_tabs.retain(|&tab_id| tab_id != id);
+            self.needs_render = true;
+            self.sync_active_file_id();
+            return;
+        }
+
+        self.close_file(id);
     }
     
     /// Check if an ID is a home tab

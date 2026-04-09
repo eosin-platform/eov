@@ -175,16 +175,17 @@ component Tab inherits Rectangle {
     callback close-requested(int);
     callback activated(int);
     callback context-menu(int, length, length);
-    callback drag-started(int, int);
+    callback drag-started(int, int, string);
     
     min-width: 100px;
     max-width: 200px;
     height: 35px;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
-    background: data.is-active ? Theme.tab-active : Theme.tab-inactive;
+    background: is-dragging ? Theme.accent : (data.is-active ? Theme.tab-active : Theme.tab-inactive);
     border-width: 0px;
     border-color: transparent;
+    opacity: is-dragging ? 0.35 : 1.0;
     
     // Active tab indicator (top border accent)
     if data.is-active: Rectangle {
@@ -224,7 +225,7 @@ component Tab inherits Rectangle {
                 let dy = self.mouse-y - self.press-y;
                 if !self.drag-armed && (abs(dx) > 6px || abs(dy) > 6px) {
                     self.drag-armed = true;
-                    root.drag-started(data.id, root.pane-id);
+                    root.drag-started(data.id, root.pane-id, data.title);
                 }
             }
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
@@ -282,11 +283,13 @@ component TabBar inherits Rectangle {
     in property <int> pane-id: 0;
     in property <[TabData]> tabs;
     in property <int> dragging-tab-id: -1;
+    property <length> estimated-tabs-width: tabs.length * 101px;
+    property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback tab-context-menu(int, int, length, length);
     callback new-tab-requested(int);
-    callback tab-drag-started(int, int);
+    callback tab-drag-started(int, int, string);
     
     height: 35px;
     background: Theme.surface;
@@ -299,50 +302,67 @@ component TabBar inherits Rectangle {
         background: Theme.border;
     }
     
-    HorizontalLayout {
-        padding-left: 4px;
-        padding-right: 0px;
-        spacing: 0px;
-        
-        // Scrollable tabs area (only actually scrolls when tabs overflow)
-        Flickable {
-            horizontal-stretch: 1;
-            viewport-width: tabs-layout.preferred-width;
-            interactive: true;
-            
-            tabs-layout := HorizontalLayout {
-                alignment: start;
-                spacing: 1px;
+    Flickable {
+        x: 4px;
+        y: 0px;
+        width: root.tabs-overflow ? root.width - 39px : root.width - 4px;
+        height: 35px;
+        viewport-width: tabs-inline-layout.preferred-width;
+        interactive: root.tabs-overflow;
 
-                for tab in tabs: Tab {
-                    pane-id: root.pane-id;
-                    data: tab;
-                    is-dragging: root.dragging-tab-id == tab.id;
-                    close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
-                    activated(id) => { root.tab-activated(root.pane-id, id); }
-                    context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
-                    drag-started(id, pane) => { root.tab-drag-started(id, pane); }
+        tabs-inline-layout := HorizontalLayout {
+            alignment: start;
+            spacing: 1px;
+
+            for tab in tabs: Tab {
+                pane-id: root.pane-id;
+                data: tab;
+                is-dragging: root.dragging-tab-id == tab.id;
+                close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
+                activated(id) => { root.tab-activated(root.pane-id, id); }
+                context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
+                drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
+            }
+
+            if !root.tabs-overflow: Rectangle {
+                width: 35px;
+                height: 35px;
+                background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+
+                inline-new-tab-touch := TouchArea {
+                    clicked => { root.new-tab-requested(root.pane-id); }
+                }
+
+                Text {
+                    text: "+";
+                    color: inline-new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                    font-size: 20px;
+                    font-weight: 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
                 }
             }
         }
-        
-        Rectangle {
-            width: 35px;
-            height: 35px;
-            background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
-            
-            new-tab-touch := TouchArea {
-                clicked => { root.new-tab-requested(root.pane-id); }
-            }
-            
-            Text {
-                text: "+";
-                color: new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
-                font-size: 20px;
-                font-weight: 400;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+    }
+
+    if root.tabs-overflow: Rectangle {
+        x: root.width - self.width;
+        y: 0px;
+        width: 35px;
+        height: 35px;
+        background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+
+        new-tab-touch := TouchArea {
+            clicked => { root.new-tab-requested(root.pane-id); }
+        }
+
+        Text {
+            text: "+";
+            color: new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+            font-size: 20px;
+            font-weight: 400;
+            horizontal-alignment: center;
+            vertical-alignment: center;
         }
     }
 }
@@ -501,7 +521,7 @@ component ZoomSlider inherits Rectangle {
     in property <float> value: 0.5;
     callback value-changed(float);
 
-    width: 28px;
+    width: 20px;
     height: 150px;
     background: Theme.minimap-bg;
     border-radius: 4px;
@@ -509,11 +529,15 @@ component ZoomSlider inherits Rectangle {
     border-color: Theme.border;
 
     property <float> clamped-value: max(0, min(1, value));
+    property <length> track-top: 22px;
+    property <length> track-bottom: 22px;
+    property <length> track-height: self.height - root.track-top - root.track-bottom;
+    property <length> handle-size: 10px;
 
     Rectangle {
         y: 0px;
         width: 100%;
-        height: 24px;
+        height: root.track-top;
         background: plus-touch.has-hover ? Theme.surface-hover : transparent;
 
         plus-touch := TouchArea {
@@ -523,49 +547,49 @@ component ZoomSlider inherits Rectangle {
         Text {
             text: "+";
             color: Theme.text-primary;
-            font-size: 16px;
+            font-size: 13px;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
     }
 
     Rectangle {
-        x: self.width / 2 - 2px;
-        y: 26px;
-        width: 4px;
-        height: root.height - 52px;
+        x: root.width / 2 - 1px;
+        y: root.track-top;
+        width: 2px;
+        height: root.track-height;
         border-radius: 2px;
         background: Theme.border;
     }
 
     Rectangle {
-        x: self.width / 2 - 8px;
-        y: 26px + (1 - root.clamped-value) * (self.height - 52px) - 8px;
-        width: 16px;
-        height: 16px;
-        border-radius: 8px;
+        x: root.width / 2 - root.handle-size / 2;
+        y: root.track-top + (1 - root.clamped-value) * root.track-height - root.handle-size / 2;
+        width: root.handle-size;
+        height: root.handle-size;
+        border-radius: root.handle-size / 2;
         background: Theme.accent;
-        border-width: 2px;
+        border-width: 1px;
         border-color: white;
     }
 
     slider-touch := TouchArea {
-        y: 24px;
+        y: root.track-top;
         width: 100%;
-        height: root.height - 48px;
+        height: root.track-height;
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
-                let normalized = 1 - max(0, min(1, self.mouse-y / max(self.height, 1px)));
+                let normalized = 1 - max(0, min(1, self.mouse-y / max(root.track-height, 1px)));
                 root.value-changed(normalized);
             }
         }
     }
 
     Rectangle {
-        y: self.height - 24px;
+        y: root.height - root.track-bottom;
         width: 100%;
-        height: 24px;
+        height: root.track-bottom;
         background: minus-touch.has-hover ? Theme.surface-hover : transparent;
 
         minus-touch := TouchArea {
@@ -575,7 +599,7 @@ component ZoomSlider inherits Rectangle {
         Text {
             text: "-";
             color: Theme.text-primary;
-            font-size: 18px;
+            font-size: 14px;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -1124,6 +1148,10 @@ component SplitPaneContainer inherits Rectangle {
     in property <float> secondary-zoom-slider-position: 0.5;
     in property <int> dragging-tab-id: -1;
     in property <int> drag-source-pane: -1;
+    in property <string> dragging-tab-title: "";
+    in-out property <int> drop-target-pane: -1;
+    in-out property <length> drag-pointer-x: 0px;
+    in-out property <length> drag-pointer-y: 0px;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -1153,7 +1181,7 @@ component SplitPaneContainer inherits Rectangle {
     callback file-dropped(string);
     callback pane-focused(int);
     callback split-position-changed(float);
-    callback tab-drag-started(int, int);
+    callback tab-drag-started(int, int, string);
     callback move-tab-to-pane(int, int, int);
     callback clear-tab-drag();
     callback zoom-slider-changed(int, float);
@@ -1171,8 +1199,9 @@ component SplitPaneContainer inherits Rectangle {
 
         primary-pane := Rectangle {
             width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
-            border-width: root.focused-pane == 0 && root.split-enabled ? 2px : 0px;
-            border-color: Theme.accent;
+            border-width: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? 2px : (root.focused-pane == 0 && root.split-enabled ? 2px : 0px);
+            border-color: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? white : Theme.accent;
+            background: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? #ffffff08 : transparent;
 
             VerticalLayout {
                 TabBar {
@@ -1183,7 +1212,7 @@ component SplitPaneContainer inherits Rectangle {
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
                     new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane) => { root.tab-drag-started(id, pane); }
+                    tab-drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
                 }
 
                 Rectangle {
@@ -1250,8 +1279,9 @@ component SplitPaneContainer inherits Rectangle {
 
         if root.split-enabled: Rectangle {
             horizontal-stretch: 1;
-            border-width: root.focused-pane == 1 ? 2px : 0px;
-            border-color: Theme.accent;
+            border-width: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? 2px : (root.focused-pane == 1 ? 2px : 0px);
+            border-color: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? white : Theme.accent;
+            background: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? #ffffff08 : transparent;
 
             VerticalLayout {
                 TabBar {
@@ -1262,7 +1292,7 @@ component SplitPaneContainer inherits Rectangle {
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
                     new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane) => { root.tab-drag-started(id, pane); }
+                    tab-drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
                 }
 
                 Rectangle {
@@ -1317,13 +1347,37 @@ component SplitPaneContainer inherits Rectangle {
             height: 100%;
 
             pointer-event(e) => {
+                root.drag-pointer-x = self.mouse-x;
+                root.drag-pointer-y = self.mouse-y;
+                root.drop-target-pane = root.split-enabled && self.mouse-x > primary-pane.width + 6px ? 1 : 0;
                 if e.kind == PointerEventKind.up {
-                    let target-pane = root.split-enabled && self.mouse-x > primary-pane.width + 6px ? 1 : 0;
+                    let target-pane = root.drop-target-pane;
                     if target-pane != root.drag-source-pane {
                         root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, target-pane);
                     }
                     root.clear-tab-drag();
                 }
+            }
+        }
+
+        Rectangle {
+            x: root.drag-pointer-x - 70px;
+            y: root.drag-pointer-y - 18px;
+            width: 140px;
+            height: 28px;
+            border-radius: 4px;
+            background: #252526ee;
+            border-width: 1px;
+            border-color: Theme.accent;
+
+            Text {
+                x: 10px;
+                y: 6px;
+                width: parent.width - 20px;
+                text: root.dragging-tab-title;
+                color: Theme.text-primary;
+                font-size: 12px;
+                overflow: elide;
             }
         }
     }
@@ -1362,6 +1416,7 @@ export component AppWindow inherits Window {
     in-out property <float> secondary-zoom-slider-position: 0.5;
     in-out property <int> dragging-tab-id: -1;
     in-out property <int> drag-source-pane: -1;
+    in-out property <string> dragging-tab-title: "";
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -1544,6 +1599,7 @@ export component AppWindow inherits Window {
                 secondary-zoom-slider-position: root.secondary-zoom-slider-position;
                 dragging-tab-id: root.dragging-tab-id;
                 drag-source-pane: root.drag-source-pane;
+                dragging-tab-title: root.dragging-tab-title;
 
                 tab-activated(pane, id) => { root.tab-activated(pane, id); }
                 tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
@@ -1575,14 +1631,20 @@ export component AppWindow inherits Window {
                 file-dropped(path) => { root.file-dropped(path); }
                 pane-focused(pane) => { root.pane-focused(pane); }
                 split-position-changed(pos) => { root.split-position-changed(pos); }
-                tab-drag-started(id, pane) => {
+                tab-drag-started(id, pane, title) => {
                     root.dragging-tab-id = id;
                     root.drag-source-pane = pane;
+                    root.dragging-tab-title = title;
+                    root.focused-pane = pane;
                 }
-                move-tab-to-pane(id, from, to) => { root.move-tab-to-pane(id, from, to); }
+                move-tab-to-pane(id, from, to) => {
+                    root.focused-pane = to;
+                    root.move-tab-to-pane(id, from, to);
+                }
                 clear-tab-drag => {
                     root.dragging-tab-id = -1;
                     root.drag-source-pane = -1;
+                    root.dragging-tab-title = "";
                 }
                 zoom-slider-changed(pane, value) => { root.zoom-slider-changed(pane, value); }
                 tool-mouse-down(x, y) => { root.viewport-tool-mouse-down(x, y); }
