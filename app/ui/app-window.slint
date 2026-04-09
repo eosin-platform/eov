@@ -8,6 +8,7 @@ global Theme {
     out property <color> surface: #252526;
     out property <color> surface-hover: #2a2d2e;
     out property <color> border: #3e3e42;
+    out property <color> border-subtle: #00000066;
     out property <color> text-primary: #cccccc;
     out property <color> text-secondary: #969696;
     out property <color> accent: #0e639c;
@@ -18,7 +19,7 @@ global Theme {
     out property <color> minimap-rect: #3794ffaa;
     out property <color> context-menu-bg: #252526;
     out property <color> context-menu-hover: #094771;
-    out property <color> toolbar-bg: #2d2d30;
+    out property <color> toolbar-bg: #181818;
     out property <color> viewport-bg: #1e1e1e;
     out property <color> error: #f44336;
     out property <color> success: #4caf50;
@@ -293,6 +294,13 @@ component TabBar inherits Rectangle {
     
     height: 35px;
     background: Theme.surface;
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border-subtle;
+    }
     
     // Bottom border line
     Rectangle {
@@ -1464,6 +1472,13 @@ export component AppWindow inherits Window {
             height: 40px;
             background: Theme.toolbar-bg;
             border-width: 0px;
+
+            Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: Theme.border-subtle;
+            }
 
             HorizontalLayout {
                 padding: 4px;
