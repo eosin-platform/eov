@@ -1074,75 +1074,113 @@ fn setup_callbacks(
         });
     }
 
-    // Window drag (custom title bar) — intercept winit events directly so Slint
-    // never sees the pointer-down that initiates a drag. This prevents Slint's
-    // input grab state from getting stuck when the compositor takes over the move.
+    // Window drag (custom title bar) — use a drag-gesture approach:
+    // 1. Let all pointer-down events through to Slint (so toolbar buttons work).
+    // 2. Track whether the press was in the draggable titlebar zone.
+    // 3. On cursor move, if the mouse has moved beyond a threshold, dispatch a
+    //    synthetic pointer-release to Slint (clearing its grab state) and then
+    //    call drag_window() to hand off to the compositor.
+    // 4. Double-click in the drag zone toggles maximize/restore.
     {
         use slint::winit_030::{WinitWindowAccessor, winit, EventResult};
         use std::cell::Cell;
 
-        let last_cursor_pos = Rc::new(Cell::new((0.0f64, 0.0f64)));
+        // Physical pixel position of the last cursor move
+        let last_cursor = Rc::new(Cell::new((0.0f64, 0.0f64)));
+        // Physical pixel position where the left button was pressed (None = not in drag zone)
+        let drag_press: Rc<Cell<Option<(f64, f64)>>> = Rc::new(Cell::new(None));
+        // Double-click tracking
         let last_press_time = Rc::new(Cell::new(std::time::Instant::now()));
-        let click_count = Rc::new(Cell::new(0u32));
-        let ui_weak_drag = ui_weak.clone();
+        let dbl_count = Rc::new(Cell::new(0u32));
 
         ui.window().on_winit_window_event({
-            let last_cursor_pos = Rc::clone(&last_cursor_pos);
+            let last_cursor = Rc::clone(&last_cursor);
+            let drag_press = Rc::clone(&drag_press);
             let last_press_time = Rc::clone(&last_press_time);
-            let click_count = Rc::clone(&click_count);
+            let dbl_count = Rc::clone(&dbl_count);
 
-            move |_window, event| {
+            move |slint_window, event| {
                 match event {
                     winit::event::WindowEvent::CursorMoved { position, .. } => {
-                        last_cursor_pos.set((position.x, position.y));
+                        last_cursor.set((position.x, position.y));
+
+                        // Check drag threshold (5 physical pixels)
+                        if let Some((px, py)) = drag_press.get() {
+                            let dx = position.x - px;
+                            let dy = position.y - py;
+                            if dx * dx + dy * dy > 25.0 {
+                                drag_press.set(None);
+
+                                // Dispatch synthetic pointer-release so Slint clears
+                                // any pressed/grabbed state from the original click.
+                                let scale = slint_window.scale_factor();
+                                let lx = (px / scale as f64) as f32;
+                                let ly = (py / scale as f64) as f32;
+                                let _ = slint_window.try_dispatch_event(
+                                    slint::platform::WindowEvent::PointerReleased {
+                                        position: slint::LogicalPosition::new(lx, ly),
+                                        button: slint::platform::PointerEventButton::Left,
+                                    },
+                                );
+
+                                // Now hand off to compositor for native window move
+                                slint_window.with_winit_window(|w| {
+                                    let _ = w.drag_window();
+                                });
+                                return EventResult::PreventDefault;
+                            }
+                        }
                         EventResult::Propagate
                     }
+
                     winit::event::WindowEvent::MouseInput {
                         state: winit::event::ElementState::Pressed,
                         button: winit::event::MouseButton::Left,
                         ..
                     } => {
-                        let (cx, cy) = last_cursor_pos.get();
-                        let scale = _window.scale_factor() as f64;
-                        let logical_y = cy / scale;
-                        let logical_x = cx / scale;
+                        let (cx, cy) = last_cursor.get();
+                        let scale = slint_window.scale_factor() as f64;
+                        let ly = cy / scale;
+                        let lx = cx / scale;
 
-                        // Toolbar is 40 logical px tall.
-                        // Exclude the right 138px (3 × 46px window action buttons).
                         let toolbar_height = 40.0;
-                        let Some(ui) = ui_weak_drag.upgrade() else {
-                            return EventResult::Propagate;
-                        };
-                        let window_width = ui.window().size().width as f64 / scale;
-                        let buttons_zone_start = window_width - 138.0;
+                        let win_w = slint_window.size().width as f64 / scale;
+                        let buttons_right_start = win_w - 138.0;
 
-                        if logical_y < toolbar_height && logical_x < buttons_zone_start {
-                            // Track double-click for maximize/restore
+                        if ly < toolbar_height && lx < buttons_right_start {
+                            // Press is in the draggable toolbar zone — record it,
+                            // but let Slint see the event so buttons still work.
+                            drag_press.set(Some((cx, cy)));
+
+                            // Double-click detection
                             let now = std::time::Instant::now();
                             if now.duration_since(last_press_time.get()).as_millis() < 400 {
-                                click_count.set(click_count.get() + 1);
+                                dbl_count.set(dbl_count.get() + 1);
                             } else {
-                                click_count.set(1);
+                                dbl_count.set(1);
                             }
                             last_press_time.set(now);
 
-                            if click_count.get() >= 2 {
-                                // Double-click → toggle maximize
-                                click_count.set(0);
-                                let maximized = ui.window().is_maximized();
-                                ui.window().set_maximized(!maximized);
-                                EventResult::PreventDefault
-                            } else {
-                                // Single click → start drag
-                                ui.window().with_winit_window(|w| {
-                                    let _ = w.drag_window();
-                                });
-                                EventResult::PreventDefault
+                            if dbl_count.get() >= 2 {
+                                dbl_count.set(0);
+                                drag_press.set(None);
+                                let maximized = slint_window.is_maximized();
+                                slint_window.set_maximized(!maximized);
+                                return EventResult::PreventDefault;
                             }
-                        } else {
-                            EventResult::Propagate
                         }
+                        EventResult::Propagate
                     }
+
+                    winit::event::WindowEvent::MouseInput {
+                        state: winit::event::ElementState::Released,
+                        button: winit::event::MouseButton::Left,
+                        ..
+                    } => {
+                        drag_press.set(None);
+                        EventResult::Propagate
+                    }
+
                     _ => EventResult::Propagate,
                 }
             }
