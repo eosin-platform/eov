@@ -159,6 +159,31 @@ fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> R) -> Optio
     GPU_RENDERER_HANDLE.with(|handle| handle.borrow().as_ref().map(f))
 }
 
+fn copy_text_to_clipboard(
+    clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>,
+    text: String,
+) {
+    let mut clipboard_handle = clipboard.borrow_mut();
+    if clipboard_handle.is_none() {
+        match arboard::Clipboard::new() {
+            Ok(new_clipboard) => {
+                *clipboard_handle = Some(new_clipboard);
+            }
+            Err(err) => {
+                warn!("Failed to initialize clipboard: {}", err);
+                return;
+            }
+        }
+    }
+
+    if let Some(clipboard) = clipboard_handle.as_mut()
+        && let Err(err) = clipboard.set_text(text)
+    {
+        warn!("Failed to copy text to clipboard: {}", err);
+        *clipboard_handle = None;
+    }
+}
+
 fn request_render_loop(
     render_timer: &Rc<Timer>,
     ui_weak: &slint::Weak<AppWindow>,
@@ -295,6 +320,7 @@ fn setup_callbacks(
     render_timer: Rc<Timer>,
 ) {
     let ui_weak = ui.as_weak();
+    let clipboard = Rc::new(RefCell::new(None));
 
     // Open file callback
     {
@@ -389,6 +415,7 @@ fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+        let clipboard = Rc::clone(&clipboard);
 
         ui.on_context_menu_command(move |id| {
             let Some(ui) = ui_weak.upgrade() else {
@@ -494,10 +521,8 @@ fn setup_callbacks(
                 }
                 "copy-path" => {
                     let state = state_handle.read();
-                    if let Some(file) = state.get_file(tab_id)
-                        && let Ok(mut clipboard) = arboard::Clipboard::new()
-                    {
-                        let _ = clipboard.set_text(file.path.display().to_string());
+                    if let Some(file) = state.get_file(tab_id) {
+                        copy_text_to_clipboard(&clipboard, file.path.display().to_string());
                     }
                 }
                 "split-right" => {
@@ -744,13 +769,12 @@ fn setup_callbacks(
     // Copy path
     {
         let state = Arc::clone(&state);
+        let clipboard = Rc::clone(&clipboard);
 
         ui.on_copy_path(move |id| {
             let state = state.read();
-            if let Some(file) = state.get_file(id)
-                && let Ok(mut clipboard) = arboard::Clipboard::new()
-            {
-                let _ = clipboard.set_text(file.path.display().to_string());
+            if let Some(file) = state.get_file(id) {
+                copy_text_to_clipboard(&clipboard, file.path.display().to_string());
             }
         });
     }
