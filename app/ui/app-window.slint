@@ -297,8 +297,19 @@ component TabBar inherits Rectangle {
     in property <int> pane-id: 0;
     in property <[TabData]> tabs;
     in property <int> dragging-tab-id: -1;
-    in property <int> drop-index: -1;  // Index where tab would be dropped (-1 = no drop indicator)
-    property <length> estimated-tabs-width: tabs.length * 101px;
+    in property <length> drag-abs-x: -1px;
+    in property <bool> is-drop-target: false;
+    property <length> estimated-tabs-width: tabs.length * 101px;  // conservative min-width + spacing
+    // Compute drop indicator position from actual tab layout width
+    property <length> tabs-content-width: tabs-overflow
+        ? tabs-inline-layout.preferred-width
+        : max(1px, tabs-inline-layout.preferred-width - 36px);  // subtract + button (35px) and spacing (1px)
+    property <length> avg-slot: tabs.length > 0
+        ? (tabs-content-width + 1px) / tabs.length
+        : 101px;
+    out property <int> computed-drop-index: !is-drop-target || drag-abs-x < 0px
+        ? -1
+        : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
     property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
@@ -333,6 +344,9 @@ component TabBar inherits Rectangle {
         height: 35px;
         viewport-width: tabs-inline-layout.preferred-width;
         interactive: root.tabs-overflow;
+
+        // Absolute position tracker for drop index computation
+        abs-tracker := Rectangle { width: 0px; height: 0px; }
 
         tabs-inline-layout := HorizontalLayout {
             alignment: start;
@@ -371,8 +385,8 @@ component TabBar inherits Rectangle {
         }
         
         // Drop position indicator (vertical line between tabs)
-        if root.drop-index >= 0: Rectangle {
-            x: root.drop-index * 101px - 1px;
+        if root.computed-drop-index >= 0: Rectangle {
+            x: root.computed-drop-index * root.avg-slot - 1px;
             y: 4px;
             width: 2px;
             height: 27px;
@@ -1153,7 +1167,10 @@ component SplitPaneContainer inherits Rectangle {
     in property <int> drag-source-pane: -1;
     in property <string> dragging-tab-title: "";
     in property <int> drop-target-pane: -1;
-    in property <int> drop-index: -1;
+    in property <length> drag-abs-x: -1px;
+    out property <int> active-drop-index: drop-target-pane == 0 || !split-enabled
+        ? primary-tab-bar.computed-drop-index
+        : secondary-tab-bar.computed-drop-index;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -1210,11 +1227,12 @@ component SplitPaneContainer inherits Rectangle {
             background: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? #ffffff08 : transparent;
 
             VerticalLayout {
-                TabBar {
+                primary-tab-bar := TabBar {
                     pane-id: 0;
                     tabs: root.primary-tabs;
                     dragging-tab-id: root.dragging-tab-id;
-                    drop-index: root.drop-target-pane == 0 ? root.drop-index : -1;
+                    drag-abs-x: root.drag-abs-x;
+                    is-drop-target: root.drop-target-pane == 0;
                     tab-activated(pane, id) => { root.tab-activated(pane, id); }
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
@@ -1266,12 +1284,14 @@ component SplitPaneContainer inherits Rectangle {
             }
         }
 
-        if root.split-enabled: Rectangle {
-            width: 6px;
-            background: splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border;
+        // Splitter (collapses to 0 when split is disabled)
+        Rectangle {
+            width: root.split-enabled ? 6px : 0px;
+            background: root.split-enabled ? (splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border) : transparent;
 
             splitter-touch := TouchArea {
                 property <length> drag-start-x;
+                enabled: root.split-enabled;
 
                 pointer-event(e) => {
                     if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
@@ -1283,22 +1303,26 @@ component SplitPaneContainer inherits Rectangle {
                         self.drag-start-x = self.mouse-x;
                     }
                 }
-                mouse-cursor: ew-resize;
+                mouse-cursor: root.split-enabled ? ew-resize : default;
             }
         }
 
-        if root.split-enabled: Rectangle {
-            horizontal-stretch: 1;
-            border-width: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? 2px : (root.focused-pane == 1 ? 2px : 0px);
+        // Secondary pane (collapses to 0 when split is disabled)
+        secondary-pane := Rectangle {
+            horizontal-stretch: root.split-enabled ? 1 : 0;
+            max-width: root.split-enabled ? 100000px : 0px;
+            clip: true;
+            border-width: root.split-enabled && root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? 2px : (root.split-enabled && root.focused-pane == 1 ? 2px : 0px);
             border-color: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? white : Theme.accent;
             background: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? #ffffff08 : transparent;
 
             VerticalLayout {
-                TabBar {
+                secondary-tab-bar := TabBar {
                     pane-id: 1;
                     tabs: root.secondary-tabs;
                     dragging-tab-id: root.dragging-tab-id;
-                    drop-index: root.drop-target-pane == 1 ? root.drop-index : -1;
+                    drag-abs-x: root.drag-abs-x;
+                    is-drop-target: root.drop-target-pane == 1;
                     tab-activated(pane, id) => { root.tab-activated(pane, id); }
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
@@ -1392,7 +1416,6 @@ export component AppWindow inherits Window {
     in-out property <length> drag-abs-x: 0px;
     in-out property <length> drag-abs-y: 0px;
     in-out property <int> drop-target-pane: -1;
-    in-out property <int> drop-index: -1;
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -1468,16 +1491,11 @@ export component AppWindow inherits Window {
         ? content-area.width * split-position - 3px
         : content-area.width;
 
-    // Compute drop target pane and index from absolute x.
+    // Compute drop target pane from absolute x.
     function update-drop-target(abs-x: length) {
         // Content area starts at x=0 of the window.
         // Primary pane starts at 0, secondary starts after primary + 6px splitter.
         self.drop-target-pane = self.split-enabled && abs-x > self.primary-pane-abs-width + 6px ? 1 : 0;
-        // Tab bar starts at 4px inset within each pane
-        let pane-start-x = self.drop-target-pane == 0 ? 0px : self.primary-pane-abs-width + 6px;
-        let relative-x = abs-x - pane-start-x - 4px;
-        let num-tabs = self.drop-target-pane == 0 ? self.primary-tabs.length : self.secondary-tabs.length;
-        self.drop-index = Math.max(0, Math.min(num-tabs, Math.round(relative-x / 101px)));
     }
     
     // Main layout
@@ -1638,7 +1656,8 @@ export component AppWindow inherits Window {
         content-area := Rectangle {
             vertical-stretch: 1;
             
-            if primary-tabs.length > 0 || (split-enabled && secondary-tabs.length > 0): SplitPaneContainer {
+            split-pane := SplitPaneContainer {
+                visible: primary-tabs.length > 0 || (split-enabled && secondary-tabs.length > 0);
                 primary-tabs: root.primary-tabs;
                 secondary-tabs: root.secondary-tabs;
                 viewport-content: root.viewport-content;
@@ -1669,7 +1688,7 @@ export component AppWindow inherits Window {
                 drag-source-pane: root.drag-source-pane;
                 dragging-tab-title: root.dragging-tab-title;
                 drop-target-pane: root.drop-target-pane;
-                drop-index: root.drop-index;
+                drag-abs-x: root.drag-abs-x;
 
                 tab-activated(pane, id) => { root.tab-activated(pane, id); }
                 tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
@@ -1722,13 +1741,12 @@ export component AppWindow inherits Window {
                     if root.drop-target-pane != root.drag-source-pane {
                         root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
                     } else {
-                        root.reorder-tab(root.drop-target-pane, root.dragging-tab-id, root.drop-index);
+                        root.reorder-tab(root.drop-target-pane, root.dragging-tab-id, split-pane.active-drop-index);
                     }
                     root.dragging-tab-id = -1;
                     root.drag-source-pane = -1;
                     root.dragging-tab-title = "";
                     root.drop-target-pane = -1;
-                    root.drop-index = -1;
                 }
                 move-tab-to-pane(id, from, to) => {
                     root.focused-pane = to;
@@ -1742,7 +1760,6 @@ export component AppWindow inherits Window {
                     root.drag-source-pane = -1;
                     root.dragging-tab-title = "";
                     root.drop-target-pane = -1;
-                    root.drop-index = -1;
                 }
                 zoom-slider-changed(pane, value) => { root.zoom-slider-changed(pane, value); }
                 tool-mouse-down(x, y) => { root.viewport-tool-mouse-down(x, y); }
