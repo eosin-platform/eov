@@ -362,6 +362,171 @@ fn setup_callbacks(
         });
     }
 
+    // Open-button context menu for recent files
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_open_recent_menu_requested(move |x, y| {
+            if let Some(ui) = ui_weak.upgrade() {
+                let items = {
+                    let state = state_handle.read();
+                    build_recent_menu_items(&state)
+                };
+                ui.set_context_menu_items(Rc::new(VecModel::from(items)).into());
+                ui.set_context_menu_tab_id(-1);
+                ui.set_drag_source_pane(-1);
+                ui.set_context_menu_x(x);
+                ui.set_context_menu_y(y);
+                ui.set_context_menu_visible(true);
+            }
+        });
+    }
+
+    // Context menu command handler
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_context_menu_command(move |id| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+
+            ui.set_context_menu_visible(false);
+
+            let command = id.to_string();
+            if let Some(path_str) = command.strip_prefix("recent-file:") {
+                let path = PathBuf::from(path_str);
+                if path.exists() {
+                    open_file(&ui, &state_handle, &tile_cache, &render_timer, path);
+                }
+                return;
+            }
+
+            let pane = pane_from_index(ui.get_drag_source_pane());
+            let tab_id = ui.get_context_menu_tab_id();
+
+            match command.as_str() {
+                "close" => {
+                    {
+                        let mut state = state_handle.write();
+                        state.set_focused_pane(pane);
+                        state.close_tab_in_pane(pane, tab_id);
+                    }
+                    let state = state_handle.read();
+                    update_tabs(&ui, &state);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                "close-others" => {
+                    {
+                        let mut state = state_handle.write();
+                        let ids_to_close: Vec<i32> = state
+                            .tabs_for_pane(pane)
+                            .iter()
+                            .copied()
+                            .filter(|&id| id != tab_id)
+                            .collect();
+                        for id in ids_to_close {
+                            state.set_focused_pane(pane);
+                            state.close_tab_in_pane(pane, id);
+                        }
+                    }
+                    let state = state_handle.read();
+                    update_tabs(&ui, &state);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                "close-right" => {
+                    {
+                        let mut state = state_handle.write();
+                        let all_tabs: Vec<i32> = state.tabs_for_pane(pane).to_vec();
+                        let mut found = false;
+                        let ids_to_close: Vec<i32> = all_tabs
+                            .iter()
+                            .filter_map(|&id| {
+                                if id == tab_id {
+                                    found = true;
+                                    None
+                                } else if found {
+                                    Some(id)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        for id in ids_to_close {
+                            state.set_focused_pane(pane);
+                            state.close_tab_in_pane(pane, id);
+                        }
+                    }
+                    let state = state_handle.read();
+                    update_tabs(&ui, &state);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                "close-all" => {
+                    {
+                        let mut state = state_handle.write();
+                        state.open_files.clear();
+                        state.home_tabs.clear();
+                        state.primary_tabs.clear();
+                        state.secondary_tabs.clear();
+                        state.primary_active_tab_id = None;
+                        state.secondary_active_tab_id = None;
+                        state.split_enabled = false;
+                        state.set_focused_pane(PaneId::Primary);
+                        state.active_file_id = None;
+                        state.request_render();
+                    }
+                    let state = state_handle.read();
+                    update_tabs(&ui, &state);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                "open-folder" => {
+                    let state = state_handle.read();
+                    if let Some(file) = state.get_file(tab_id)
+                        && let Some(parent) = file.path.parent()
+                        && let Err(err) = open::that(parent)
+                    {
+                        error!("Failed to open folder: {}", err);
+                    }
+                }
+                "copy-path" => {
+                    let state = state_handle.read();
+                    if let Some(file) = state.get_file(tab_id)
+                        && let Ok(mut clipboard) = arboard::Clipboard::new()
+                    {
+                        let _ = clipboard.set_text(file.path.display().to_string());
+                    }
+                }
+                "split-right" => {
+                    let split_enabled = {
+                        let mut state = state_handle.write();
+                        let source_pane = pane;
+                        if !state.split_enabled {
+                            state.activate_tab_in_pane(PaneId::Primary, tab_id);
+                            state.enable_split();
+                            state.duplicate_tab_to_pane(tab_id, PaneId::Secondary);
+                            info!("Split view enabled");
+                        } else if source_pane == PaneId::Primary {
+                            state.move_tab_between_panes(tab_id, PaneId::Primary, PaneId::Secondary);
+                        } else {
+                            state.move_tab_between_panes(tab_id, PaneId::Secondary, PaneId::Primary);
+                        }
+                        state.split_enabled
+                    };
+                    ui.set_split_enabled(split_enabled);
+                    let state = state_handle.read();
+                    ui.set_focused_pane(state.focused_pane.as_index());
+                    update_tabs(&ui, &state);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                _ => {}
+            }
+        });
+    }
+
     // Render backend callback
     {
         let state_handle = Arc::clone(&state);
@@ -1119,6 +1284,7 @@ fn setup_callbacks(
         ui.on_window_close(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 let _ = ui.hide();
+                let _ = slint::quit_event_loop();
             }
         });
     }
@@ -1494,6 +1660,31 @@ fn update_recent_files(ui: &AppWindow, state: &AppState) {
     ui.set_recent_files(model.into());
 }
 
+fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
+    if state.recent_files.is_empty() {
+        return vec![ContextMenuItem {
+            id: SharedString::from("recent-empty"),
+            label: SharedString::from("No recent files"),
+            shortcut: SharedString::new(),
+            enabled: false,
+            separator_after: false,
+        }];
+    }
+
+    state
+        .recent_files
+        .iter()
+        .take(10)
+        .map(|file| ContextMenuItem {
+            id: SharedString::from(format!("recent-file:{}", file.path.display())),
+            label: SharedString::from(file.name.clone()),
+            shortcut: SharedString::new(),
+            enabled: true,
+            separator_after: false,
+        })
+        .collect()
+}
+
 fn update_render_backend(ui: &AppWindow, state: &AppState) {
     ui.set_render_mode(ui_render_mode(state.render_backend));
     ui.set_gpu_rendering_available(state.gpu_backend_available);
@@ -1567,30 +1758,16 @@ fn update_and_render(
         None
     };
     if primary_file_id.is_none() && secondary_file_id.is_none() {
-        ui.set_roi_rect(ROIRect {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-            visible: false,
-            ant_offset: 0.0,
-        });
+        clear_tool_overlays(ui, 0.0);
         return false;
     }
 
     let split_enabled = state.split_enabled;
     let render_backend = state.render_backend;
-    let focused_pane = state.focused_pane;
-
-    // Capture tool state for ROI calculation (before borrowing file mutably)
-    let tool_state = state.tool_state;
-    let candidate_point = state.candidate_point;
-    let current_tool = state.current_tool;
     let render_requested = std::mem::take(&mut state.needs_render);
 
     // Update ant offset for marching ants animation (0.5 pixels per frame at 60fps = 30 pixels/sec)
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
-    let ant_offset = state.ant_offset;
 
     let primary_file_switched = state.last_primary_rendered_file_id != primary_file_id;
     let secondary_file_switched = state.last_secondary_rendered_file_id != secondary_file_id;
@@ -1651,49 +1828,6 @@ fn update_and_render(
                 render_viewport_to_buffer(ui, file, tile_cache, true)
             };
 
-            if focused_pane == PaneId::Primary || !split_enabled {
-                let vp = &file.viewport.viewport;
-                let bounds = vp.bounds();
-                let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
-                    if let state::ToolInteractionState::Dragging(start) = tool_state {
-                        if let Some(end) = candidate_point {
-                            Some(state::RegionOfInterest::from_points(start, end))
-                        } else {
-                            file.roi
-                        }
-                    } else {
-                        file.roi
-                    }
-                } else {
-                    file.roi
-                };
-
-                if let Some(roi) = roi_to_display {
-                    let screen_x = (roi.x - bounds.left) * vp.zoom;
-                    let screen_y = (roi.y - bounds.top) * vp.zoom;
-                    let screen_w = roi.width * vp.zoom;
-                    let screen_h = roi.height * vp.zoom;
-
-                    ui.set_roi_rect(ROIRect {
-                        x: screen_x as f32,
-                        y: screen_y as f32,
-                        width: screen_w as f32,
-                        height: screen_h as f32,
-                        visible: true,
-                        ant_offset,
-                    });
-                } else {
-                    ui.set_roi_rect(ROIRect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 0.0,
-                        height: 0.0,
-                        visible: false,
-                        ant_offset,
-                    });
-                }
-                keep_running |= roi_to_display.is_some();
-            }
         }
     }
 
@@ -1750,54 +1884,13 @@ fn update_and_render(
                 render_secondary_viewport(ui, file, tile_cache)
             };
 
-            if focused_pane == PaneId::Secondary
-                && let Some((bounds, secondary_zoom)) = secondary_overlay
-            {
-                let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
-                    if let state::ToolInteractionState::Dragging(start) = tool_state {
-                        if let Some(end) = candidate_point {
-                            Some(state::RegionOfInterest::from_points(start, end))
-                        } else {
-                            file.roi
-                        }
-                    } else {
-                        file.roi
-                    }
-                } else {
-                    file.roi
-                };
-
-                if let Some(roi) = roi_to_display {
-                    let screen_x = (roi.x - bounds.left) * secondary_zoom;
-                    let screen_y = (roi.y - bounds.top) * secondary_zoom;
-                    let screen_w = roi.width * secondary_zoom;
-                    let screen_h = roi.height * secondary_zoom;
-
-                    ui.set_roi_rect(ROIRect {
-                        x: screen_x as f32,
-                        y: screen_y as f32,
-                        width: screen_w as f32,
-                        height: screen_h as f32,
-                        visible: true,
-                        ant_offset,
-                    });
-                } else {
-                    ui.set_roi_rect(ROIRect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 0.0,
-                        height: 0.0,
-                        visible: false,
-                        ant_offset,
-                    });
-                }
-                keep_running |= roi_to_display.is_some();
-            }
+            let _ = secondary_overlay;
         }
     }
 
     // Update measurement overlays to track viewport changes during pan/zoom
     update_tool_overlays(ui, &state);
+    keep_running |= has_active_roi_overlay(&state);
 
     state.last_primary_rendered_file_id = primary_file_id;
     state.last_secondary_rendered_file_id = secondary_file_id;
@@ -3166,131 +3259,201 @@ fn update_tool_state(ui: &AppWindow, state: &AppState) {
     ui.set_current_tool(tool_type);
 }
 
-fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
-    let Some(file_id) = state.active_file_id else {
-        return;
-    };
+fn hidden_roi_rect(ant_offset: f32) -> ROIRect {
+    ROIRect {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+        visible: false,
+        ant_offset,
+    }
+}
 
-    let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
-        return;
-    };
+fn hidden_measurement_line() -> MeasurementLine {
+    MeasurementLine {
+        x1: 0.0,
+        y1: 0.0,
+        x2: 0.0,
+        y2: 0.0,
+        distance_um: 0.0,
+        visible: false,
+    }
+}
 
-    // Get the active viewport for coordinate conversion
-    let viewport_state = if state.split_enabled && state.focused_pane == PaneId::Secondary {
-        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
-    } else {
-        &file.viewport
-    };
-    let vp = &viewport_state.viewport;
-    let bounds = vp.bounds();
+fn set_pane_roi_rect(ui: &AppWindow, pane: PaneId, rect: ROIRect) {
+    match pane {
+        PaneId::Primary => ui.set_primary_roi_rect(rect),
+        PaneId::Secondary => ui.set_secondary_roi_rect(rect),
+    }
+}
 
-    // Microns per pixel (average of x and y, fallback to 0 if unknown)
-    let mpp = file
-        .wsi
-        .properties()
-        .mpp_x
-        .zip(file.wsi.properties().mpp_y)
-        .map(|(mx, my)| (mx + my) / 2.0)
-        .unwrap_or(0.0);
+fn set_pane_measurements(ui: &AppWindow, pane: PaneId, lines: Vec<MeasurementLine>) {
+    let model = Rc::new(VecModel::from(lines));
+    match pane {
+        PaneId::Primary => ui.set_primary_measurements(model.into()),
+        PaneId::Secondary => ui.set_secondary_measurements(model.into()),
+    }
+}
 
-    // Update ROI overlay
-    let ant_offset = state.ant_offset;
-    if let Some(roi) = &file.roi {
-        let screen_x = (roi.x - bounds.left) * vp.zoom;
-        let screen_y = (roi.y - bounds.top) * vp.zoom;
-        let screen_w = roi.width * vp.zoom;
-        let screen_h = roi.height * vp.zoom;
+fn set_pane_candidate_measurement(ui: &AppWindow, pane: PaneId, line: MeasurementLine) {
+    match pane {
+        PaneId::Primary => ui.set_primary_candidate_measurement(line),
+        PaneId::Secondary => ui.set_secondary_candidate_measurement(line),
+    }
+}
 
-        ui.set_roi_rect(ROIRect {
-            x: screen_x as f32,
-            y: screen_y as f32,
-            width: screen_w as f32,
-            height: screen_h as f32,
-            visible: true,
-            ant_offset,
-        });
-    } else {
-        ui.set_roi_rect(ROIRect {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-            visible: false,
-            ant_offset,
-        });
+fn clear_tool_overlays(ui: &AppWindow, ant_offset: f32) {
+    set_pane_roi_rect(ui, PaneId::Primary, hidden_roi_rect(ant_offset));
+    set_pane_roi_rect(ui, PaneId::Secondary, hidden_roi_rect(ant_offset));
+    set_pane_measurements(ui, PaneId::Primary, Vec::new());
+    set_pane_measurements(ui, PaneId::Secondary, Vec::new());
+    set_pane_candidate_measurement(ui, PaneId::Primary, hidden_measurement_line());
+    set_pane_candidate_measurement(ui, PaneId::Secondary, hidden_measurement_line());
+}
+
+fn has_active_roi_overlay(state: &AppState) -> bool {
+    if state.current_tool == state::Tool::RegionOfInterest
+        && matches!(state.tool_state, state::ToolInteractionState::Dragging(_))
+        && state.candidate_point.is_some()
+    {
+        return true;
     }
 
-    // Update committed measurements (image-space → screen-space)
-    let measurement_lines: Vec<MeasurementLine> = file
-        .measurements
-        .iter()
-        .map(|m| {
-            let p1 = vp.image_to_screen(m.start.x, m.start.y);
-            let p2 = vp.image_to_screen(m.end.x, m.end.y);
-            let dist_px = m.distance();
-            let distance_um = (dist_px * mpp) as f32;
-            MeasurementLine {
-                x1: p1.x as f32,
-                y1: p1.y as f32,
-                x2: p2.x as f32,
-                y2: p2.y as f32,
-                distance_um,
-                visible: true,
+    let primary_has_roi = state
+        .active_file_id_for_pane(PaneId::Primary)
+        .and_then(|id| state.get_file(id))
+        .and_then(|file| file.roi)
+        .map(|roi| roi.pane == PaneId::Primary)
+        .unwrap_or(false);
+    if primary_has_roi {
+        return true;
+    }
+
+    state.split_enabled
+        && state
+            .active_file_id_for_pane(PaneId::Secondary)
+            .and_then(|id| state.get_file(id))
+            .and_then(|file| file.roi)
+            .map(|roi| roi.pane == PaneId::Secondary)
+            .unwrap_or(false)
+}
+
+fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
+    let ant_offset = state.ant_offset;
+    clear_tool_overlays(ui, ant_offset);
+
+    for pane in [PaneId::Primary, PaneId::Secondary] {
+        if pane == PaneId::Secondary && !state.split_enabled {
+            continue;
+        }
+
+        let Some(file_id) = state.active_file_id_for_pane(pane) else {
+            continue;
+        };
+        let Some(file) = state.get_file(file_id) else {
+            continue;
+        };
+
+        let viewport_state = match pane {
+            PaneId::Primary => &file.viewport,
+            PaneId::Secondary => file.secondary_viewport.as_ref().unwrap_or(&file.viewport),
+        };
+        let vp = &viewport_state.viewport;
+        let bounds = vp.bounds();
+        let mpp = file
+            .wsi
+            .properties()
+            .mpp_x
+            .zip(file.wsi.properties().mpp_y)
+            .map(|(mx, my)| (mx + my) / 2.0)
+            .unwrap_or(0.0);
+
+        let committed_roi = file.roi.filter(|roi| roi.pane == pane);
+        let roi_to_display = if state.focused_pane == pane
+            && state.current_tool == state::Tool::RegionOfInterest
+        {
+            if let state::ToolInteractionState::Dragging(start) = state.tool_state {
+                state
+                    .candidate_point
+                    .map(|end| state::RegionOfInterest::from_points(start, end, pane))
+                    .or(committed_roi)
+            } else {
+                committed_roi
             }
-        })
-        .collect();
-    let measurements_model = std::rc::Rc::new(slint::VecModel::from(measurement_lines));
-    ui.set_measurements(measurements_model.into());
+        } else {
+            committed_roi
+        };
 
-    // Update candidate measurement
-    if let (
-        state::ToolInteractionState::Dragging(start)
-        | state::ToolInteractionState::FirstPointPlaced(start),
-        Some(end),
-    ) = (&state.tool_state, &state.candidate_point)
-    {
-        if state.current_tool == state::Tool::MeasureDistance {
-            let p1 = vp.image_to_screen(start.x, start.y);
-            let p2 = vp.image_to_screen(end.x, end.y);
-            let candidate_m = state::Measurement {
-                start: *start,
-                end: *end,
-            };
-            let distance_um = (candidate_m.distance() * mpp) as f32;
-
-            ui.set_candidate_measurement(MeasurementLine {
-                x1: p1.x as f32,
-                y1: p1.y as f32,
-                x2: p2.x as f32,
-                y2: p2.y as f32,
-                distance_um,
-                visible: true,
-            });
-        } else if state.current_tool == state::Tool::RegionOfInterest {
-            let roi = state::RegionOfInterest::from_points(*start, *end);
+        if let Some(roi) = roi_to_display {
             let screen_x = (roi.x - bounds.left) * vp.zoom;
             let screen_y = (roi.y - bounds.top) * vp.zoom;
             let screen_w = roi.width * vp.zoom;
             let screen_h = roi.height * vp.zoom;
-
-            ui.set_roi_rect(ROIRect {
-                x: screen_x as f32,
-                y: screen_y as f32,
-                width: screen_w as f32,
-                height: screen_h as f32,
-                visible: true,
-                ant_offset,
-            });
+            set_pane_roi_rect(
+                ui,
+                pane,
+                ROIRect {
+                    x: screen_x as f32,
+                    y: screen_y as f32,
+                    width: screen_w as f32,
+                    height: screen_h as f32,
+                    visible: true,
+                    ant_offset,
+                },
+            );
         }
-    } else {
-        ui.set_candidate_measurement(MeasurementLine {
-            x1: 0.0,
-            y1: 0.0,
-            x2: 0.0,
-            y2: 0.0,
-            distance_um: 0.0,
-            visible: false,
-        });
+
+        let measurement_lines: Vec<MeasurementLine> = file
+            .measurements
+            .iter()
+            .filter(|measurement| measurement.pane == pane)
+            .map(|measurement| {
+                let p1 = vp.image_to_screen(measurement.start.x, measurement.start.y);
+                let p2 = vp.image_to_screen(measurement.end.x, measurement.end.y);
+                MeasurementLine {
+                    x1: p1.x as f32,
+                    y1: p1.y as f32,
+                    x2: p2.x as f32,
+                    y2: p2.y as f32,
+                    distance_um: (measurement.distance() * mpp) as f32,
+                    visible: true,
+                }
+            })
+            .collect();
+        set_pane_measurements(ui, pane, measurement_lines);
+
+        let candidate_measurement = if state.focused_pane == pane
+            && state.current_tool == state::Tool::MeasureDistance
+        {
+            if let (
+                state::ToolInteractionState::Dragging(start)
+                | state::ToolInteractionState::FirstPointPlaced(start),
+                Some(end),
+            ) = (state.tool_state, state.candidate_point)
+            {
+                let p1 = vp.image_to_screen(start.x, start.y);
+                let p2 = vp.image_to_screen(end.x, end.y);
+                let candidate = state::Measurement {
+                    pane,
+                    start,
+                    end,
+                };
+                MeasurementLine {
+                    x1: p1.x as f32,
+                    y1: p1.y as f32,
+                    x2: p2.x as f32,
+                    y2: p2.y as f32,
+                    distance_um: (candidate.distance() * mpp) as f32,
+                    visible: true,
+                }
+            } else {
+                hidden_measurement_line()
+            }
+        } else {
+            hidden_measurement_line()
+        };
+        set_pane_candidate_measurement(ui, pane, candidate_measurement);
     }
 }
 
@@ -3333,6 +3496,7 @@ fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
             // this second click commits the measurement.
             if let state::ToolInteractionState::FirstPointPlaced(start) = state.tool_state {
                 let measurement = state::Measurement {
+                    pane: focused_pane,
                     start,
                     end: point,
                 };
@@ -3418,7 +3582,7 @@ fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
             state::Tool::Navigate => {}
             state::Tool::RegionOfInterest => {
                 // Create ROI from the two points
-                let roi = state::RegionOfInterest::from_points(start, end_point);
+                let roi = state::RegionOfInterest::from_points(start, end_point, focused_pane);
                 if roi.is_valid() {
                     file.roi = Some(roi);
                 }
@@ -3434,6 +3598,7 @@ fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
                 if dist_sq > 25.0 {
                     // Drag completed — commit measurement
                     let measurement = state::Measurement {
+                        pane: focused_pane,
                         start,
                         end: end_point,
                     };

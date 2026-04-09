@@ -146,6 +146,7 @@ component IconButton inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
     callback clicked();
+    callback secondary-clicked(length, length);
     
     width: 32px;
     height: 28px;
@@ -155,6 +156,12 @@ component IconButton inherits Rectangle {
     touch := TouchArea {
         enabled: root.enabled;
         clicked => { root.clicked(); }
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.secondary-clicked(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
     }
     
     HorizontalLayout {
@@ -1284,9 +1291,12 @@ component SplitPaneContainer inherits Rectangle {
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
-    in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in property <[MeasurementLine]> measurements: [];
-    in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    in property <ROIRect> primary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in property <ROIRect> secondary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in property <[MeasurementLine]> primary-measurements: [];
+    in property <[MeasurementLine]> secondary-measurements: [];
+    in property <MeasurementLine> primary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    in property <MeasurementLine> secondary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     
     // Output viewport dimensions
     out property <length> viewport-width: split-enabled ? 
@@ -1369,9 +1379,9 @@ component SplitPaneContainer inherits Rectangle {
                         status-text: root.status-text;
                         is-loading: root.is-loading;
                         current-tool: root.current-tool;
-                        roi-rect: root.roi-rect;
-                        measurements: root.measurements;
-                        candidate-measurement: root.candidate-measurement;
+                        roi-rect: root.primary-roi-rect;
+                        measurements: root.primary-measurements;
+                        candidate-measurement: root.primary-candidate-measurement;
                         debug-mode: root.debug-mode;
                         fps: root.fps;
                         zoom-slider-position: root.zoom-slider-position;
@@ -1459,9 +1469,9 @@ component SplitPaneContainer inherits Rectangle {
                         status-text: root.status-text;
                         is-loading: false;
                         current-tool: root.current-tool;
-                        roi-rect: root.roi-rect;
-                        measurements: root.measurements;
-                        candidate-measurement: root.candidate-measurement;
+                        roi-rect: root.secondary-roi-rect;
+                        measurements: root.secondary-measurements;
+                        candidate-measurement: root.secondary-candidate-measurement;
                         debug-mode: root.debug-mode;
                         fps: root.fps;
                         zoom-slider-position: root.secondary-zoom-slider-position;
@@ -1543,9 +1553,12 @@ export component AppWindow inherits Window {
     
     // Tool system state
     in-out property <ToolType> current-tool: ToolType.navigate;
-    in-out property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in-out property <[MeasurementLine]> measurements: [];
-    in-out property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    in-out property <ROIRect> primary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in-out property <ROIRect> secondary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in-out property <[MeasurementLine]> primary-measurements: [];
+    in-out property <[MeasurementLine]> secondary-measurements: [];
+    in-out property <MeasurementLine> primary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    in-out property <MeasurementLine> secondary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     
     // Debug mode
     in-out property <bool> debug-mode: false;
@@ -1593,6 +1606,8 @@ export component AppWindow inherits Window {
     callback window-minimize();
     callback window-maximize();
     callback window-close();
+    callback open-recent-menu-requested(length, length);
+    callback context-menu-command(string);
 
     // Compute the primary pane width in window-absolute coordinates.
     // content-area starts below the 40px toolbar.
@@ -1630,6 +1645,7 @@ export component AppWindow inherits Window {
                 IconButton {
                     text: "📂";
                     clicked => { root.open-file-requested(); }
+                    secondary-clicked(x, y) => { root.open-recent-menu-requested(x, y); }
                 }
                 
                 Rectangle {
@@ -1784,9 +1800,12 @@ export component AppWindow inherits Window {
                 split-position: root.split-position;
                 focused-pane: root.focused-pane;
                 current-tool: root.current-tool;
-                roi-rect: root.roi-rect;
-                measurements: root.measurements;
-                candidate-measurement: root.candidate-measurement;
+                primary-roi-rect: root.primary-roi-rect;
+                secondary-roi-rect: root.secondary-roi-rect;
+                primary-measurements: root.primary-measurements;
+                secondary-measurements: root.secondary-measurements;
+                primary-candidate-measurement: root.primary-candidate-measurement;
+                secondary-candidate-measurement: root.secondary-candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
                 primary-is-home-tab: root.primary-is-home-tab;
@@ -1897,21 +1916,28 @@ export component AppWindow inherits Window {
         
         item-clicked(id) => {
             root.context-menu-visible = false;
-            
-            if id == "close" {
-                root.tab-close-requested(root.drag-source-pane, root.context-menu-tab-id);
-            } else if id == "close-others" {
-                root.close-other-tabs(root.drag-source-pane, root.context-menu-tab-id);
-            } else if id == "close-right" {
-                root.close-tabs-to-right(root.drag-source-pane, root.context-menu-tab-id);
-            } else if id == "close-all" {
-                root.close-all-tabs();
-            } else if id == "open-folder" {
-                root.open-containing-folder(root.context-menu-tab-id);
-            } else if id == "copy-path" {
-                root.copy-path(root.context-menu-tab-id);
-            } else if id == "split-right" {
-                root.split-right(root.drag-source-pane, root.context-menu-tab-id);
+            if id == "dismiss" {
+                return;
+            }
+
+            if root.context-menu-tab-id != -1 {
+                if id == "close" {
+                    root.tab-close-requested(root.drag-source-pane, root.context-menu-tab-id);
+                } else if id == "close-others" {
+                    root.close-other-tabs(root.drag-source-pane, root.context-menu-tab-id);
+                } else if id == "close-right" {
+                    root.close-tabs-to-right(root.drag-source-pane, root.context-menu-tab-id);
+                } else if id == "close-all" {
+                    root.close-all-tabs();
+                } else if id == "open-folder" {
+                    root.open-containing-folder(root.context-menu-tab-id);
+                } else if id == "copy-path" {
+                    root.copy-path(root.context-menu-tab-id);
+                } else if id == "split-right" {
+                    root.split-right(root.drag-source-pane, root.context-menu-tab-id);
+                }
+            } else {
+                root.context-menu-command(id);
             }
         }
     }
@@ -1945,7 +1971,7 @@ export component AppWindow inherits Window {
         height: 0px;
 
         key-pressed(e) => {
-            if e.text == "W" && e.modifiers.control && e.modifiers.shift {
+            if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
                 root.window-close();
                 return accept;
             }

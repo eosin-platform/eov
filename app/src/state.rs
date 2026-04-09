@@ -64,6 +64,8 @@ pub struct ImagePoint {
 /// Region of Interest
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RegionOfInterest {
+    /// Pane where the ROI was created
+    pub pane: PaneId,
     /// Top-left corner in image coordinates
     pub x: f64,
     pub y: f64,
@@ -78,12 +80,13 @@ impl RegionOfInterest {
         self.width > 0.0 && self.height > 0.0
     }
 
-    pub fn from_points(p1: ImagePoint, p2: ImagePoint) -> Self {
+    pub fn from_points(p1: ImagePoint, p2: ImagePoint, pane: PaneId) -> Self {
         let x = p1.x.min(p2.x);
         let y = p1.y.min(p2.y);
         let width = (p1.x - p2.x).abs();
         let height = (p1.y - p2.y).abs();
         Self {
+            pane,
             x,
             y,
             width,
@@ -96,6 +99,7 @@ impl RegionOfInterest {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Measurement {
+    pub pane: PaneId,
     pub start: ImagePoint,
     pub end: ImagePoint,
 }
@@ -217,8 +221,9 @@ impl OpenFile {
 }
 
 /// Pane identifier (left/primary or right/secondary)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaneId {
+    #[default]
     Primary,
     Secondary,
 }
