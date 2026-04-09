@@ -1021,6 +1021,23 @@ fn setup_callbacks(
         });
     }
 
+    // Reorder tab within the same pane
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_reorder_tab(move |pane, id, new_index| {
+            if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.reorder_tab(pane_from_index(pane), id, new_index);
+                }
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
+            }
+        });
+    }
+
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);

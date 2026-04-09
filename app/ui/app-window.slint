@@ -176,7 +176,9 @@ component Tab inherits Rectangle {
     callback close-requested(int);
     callback activated(int);
     callback context-menu(int, length, length);
-    callback drag-started(int, int, string);
+    callback drag-started(int, int, string, length, length); // id, pane, title, abs-x, abs-y
+    callback drag-moved(length, length);  // abs-x, abs-y
+    callback drag-ended(length, length);  // abs-x, abs-y
     
     min-width: 100px;
     max-width: 200px;
@@ -209,25 +211,36 @@ component Tab inherits Rectangle {
         property <length> press-x;
         property <length> press-y;
         property <bool> drag-armed: false;
+        property <bool> lmb-down: false;
 
-        clicked => {
-            if !self.drag-armed {
-                root.activated(data.id);
-            }
-            self.drag-armed = false;
-        }
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 self.press-x = self.mouse-x;
                 self.press-y = self.mouse-y;
                 self.drag-armed = false;
-            } else if e.kind == PointerEventKind.move && self.pressed {
-                let dx = self.mouse-x - self.press-x;
-                let dy = self.mouse-y - self.press-y;
-                if !self.drag-armed && (abs(dx) > 6px || abs(dy) > 6px) {
-                    self.drag-armed = true;
-                    root.drag-started(data.id, root.pane-id, data.title);
+                self.lmb-down = true;
+            }
+            if e.kind == PointerEventKind.move && self.lmb-down {
+                if !self.drag-armed {
+                    let dx = self.mouse-x - self.press-x;
+                    let dy = self.mouse-y - self.press-y;
+                    if abs(dx) > 6px || abs(dy) > 6px {
+                        self.drag-armed = true;
+                        root.drag-started(data.id, root.pane-id, data.title, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    }
                 }
+                if self.drag-armed {
+                    root.drag-moved(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if self.drag-armed {
+                    root.drag-ended(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                } else if self.lmb-down {
+                    root.activated(data.id);
+                }
+                self.drag-armed = false;
+                self.lmb-down = false;
             }
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                 root.context-menu(data.id, self.mouse-x, self.mouse-y);
@@ -284,13 +297,16 @@ component TabBar inherits Rectangle {
     in property <int> pane-id: 0;
     in property <[TabData]> tabs;
     in property <int> dragging-tab-id: -1;
+    in property <int> drop-index: -1;  // Index where tab would be dropped (-1 = no drop indicator)
     property <length> estimated-tabs-width: tabs.length * 101px;
     property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback tab-context-menu(int, int, length, length);
     callback new-tab-requested(int);
-    callback tab-drag-started(int, int, string);
+    callback tab-drag-started(int, int, string, length, length); // id, pane, title, abs-x, abs-y
+    callback tab-drag-moved(length, length);  // abs-x, abs-y
+    callback tab-drag-ended(length, length);  // abs-x, abs-y
     
     height: 35px;
     background: Theme.surface;
@@ -329,7 +345,9 @@ component TabBar inherits Rectangle {
                 close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
                 activated(id) => { root.tab-activated(root.pane-id, id); }
                 context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
-                drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
+                drag-started(id, pane, title, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, abs-x, abs-y); }
+                drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+                drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
             }
 
             if !root.tabs-overflow: Rectangle {
@@ -350,6 +368,16 @@ component TabBar inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+        }
+        
+        // Drop position indicator (vertical line between tabs)
+        if root.drop-index >= 0: Rectangle {
+            x: root.drop-index * 101px - 1px;
+            y: 4px;
+            width: 2px;
+            height: 27px;
+            border-radius: 1px;
+            background: Theme.accent;
         }
     }
 
@@ -1124,9 +1152,8 @@ component SplitPaneContainer inherits Rectangle {
     in property <int> dragging-tab-id: -1;
     in property <int> drag-source-pane: -1;
     in property <string> dragging-tab-title: "";
-    in-out property <int> drop-target-pane: -1;
-    in-out property <length> drag-pointer-x: 0px;
-    in-out property <length> drag-pointer-y: 0px;
+    in property <int> drop-target-pane: -1;
+    in property <int> drop-index: -1;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -1156,8 +1183,11 @@ component SplitPaneContainer inherits Rectangle {
     callback file-dropped(string);
     callback pane-focused(int);
     callback split-position-changed(float);
-    callback tab-drag-started(int, int, string);
+    callback tab-drag-started(int, int, string, length, length); // id, pane, title, abs-x, abs-y
+    callback tab-drag-moved(length, length);  // abs-x, abs-y
+    callback tab-drag-ended(length, length);  // abs-x, abs-y
     callback move-tab-to-pane(int, int, int);
+    callback reorder-tab(int, int, int);  // pane, tab-id, new-index
     callback clear-tab-drag();
     callback zoom-slider-changed(int, float);
     
@@ -1184,11 +1214,14 @@ component SplitPaneContainer inherits Rectangle {
                     pane-id: 0;
                     tabs: root.primary-tabs;
                     dragging-tab-id: root.dragging-tab-id;
+                    drop-index: root.drop-target-pane == 0 ? root.drop-index : -1;
                     tab-activated(pane, id) => { root.tab-activated(pane, id); }
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
                     new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
+                    tab-drag-started(id, pane, title, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, abs-x, abs-y); }
+                    tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+                    tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
                 }
 
                 Rectangle {
@@ -1265,11 +1298,14 @@ component SplitPaneContainer inherits Rectangle {
                     pane-id: 1;
                     tabs: root.secondary-tabs;
                     dragging-tab-id: root.dragging-tab-id;
+                    drop-index: root.drop-target-pane == 1 ? root.drop-index : -1;
                     tab-activated(pane, id) => { root.tab-activated(pane, id); }
                     tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
                     tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
                     new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane, title) => { root.tab-drag-started(id, pane, title); }
+                    tab-drag-started(id, pane, title, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, abs-x, abs-y); }
+                    tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+                    tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
                 }
 
                 Rectangle {
@@ -1314,51 +1350,6 @@ component SplitPaneContainer inherits Rectangle {
             }
         }
     }
-
-    if root.dragging-tab-id != -1: Rectangle {
-        width: 100%;
-        height: 100%;
-        background: transparent;
-
-        TouchArea {
-            width: 100%;
-            height: 100%;
-
-            pointer-event(e) => {
-                root.drag-pointer-x = self.mouse-x;
-                root.drag-pointer-y = self.mouse-y;
-                root.drop-target-pane = root.split-enabled && self.mouse-x > primary-pane.width + 6px ? 1 : 0;
-                if e.kind == PointerEventKind.up {
-                    let target-pane = root.drop-target-pane;
-                    if target-pane != root.drag-source-pane {
-                        root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, target-pane);
-                    }
-                    root.clear-tab-drag();
-                }
-            }
-        }
-
-        Rectangle {
-            x: root.drag-pointer-x - 70px;
-            y: root.drag-pointer-y - 18px;
-            width: 140px;
-            height: 28px;
-            border-radius: 4px;
-            background: #252526ee;
-            border-width: 1px;
-            border-color: Theme.accent;
-
-            Text {
-                x: 10px;
-                y: 6px;
-                width: parent.width - 20px;
-                text: root.dragging-tab-title;
-                color: Theme.text-primary;
-                font-size: 12px;
-                overflow: elide;
-            }
-        }
-    }
 }
 
 // ============ Main Application Window ============
@@ -1398,6 +1389,10 @@ export component AppWindow inherits Window {
     in-out property <int> dragging-tab-id: -1;
     in-out property <int> drag-source-pane: -1;
     in-out property <string> dragging-tab-title: "";
+    in-out property <length> drag-abs-x: 0px;
+    in-out property <length> drag-abs-y: 0px;
+    in-out property <int> drop-target-pane: -1;
+    in-out property <int> drop-index: -1;
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -1459,11 +1454,31 @@ export component AppWindow inherits Window {
     callback cancel-tool();
     callback render-backend-selected(RenderMode);
     callback move-tab-to-pane(int, int, int);
+    callback reorder-tab(int, int, int);  // pane, tab-id, new-index
     callback zoom-slider-changed(int, float);
     callback close-active-tab();
     callback window-minimize();
     callback window-maximize();
     callback window-close();
+
+    // Compute the primary pane width in window-absolute coordinates.
+    // content-area starts below the 40px toolbar.
+    // Primary pane occupies split-position fraction of content-area width (or all if no split).
+    property <length> primary-pane-abs-width: split-enabled
+        ? content-area.width * split-position - 3px
+        : content-area.width;
+
+    // Compute drop target pane and index from absolute x.
+    function update-drop-target(abs-x: length) {
+        // Content area starts at x=0 of the window.
+        // Primary pane starts at 0, secondary starts after primary + 6px splitter.
+        self.drop-target-pane = self.split-enabled && abs-x > self.primary-pane-abs-width + 6px ? 1 : 0;
+        // Tab bar starts at 4px inset within each pane
+        let pane-start-x = self.drop-target-pane == 0 ? 0px : self.primary-pane-abs-width + 6px;
+        let relative-x = abs-x - pane-start-x - 4px;
+        let num-tabs = self.drop-target-pane == 0 ? self.primary-tabs.length : self.secondary-tabs.length;
+        self.drop-index = Math.max(0, Math.min(num-tabs, Math.round(relative-x / 101px)));
+    }
     
     // Main layout
     VerticalLayout {
@@ -1653,6 +1668,8 @@ export component AppWindow inherits Window {
                 dragging-tab-id: root.dragging-tab-id;
                 drag-source-pane: root.drag-source-pane;
                 dragging-tab-title: root.dragging-tab-title;
+                drop-target-pane: root.drop-target-pane;
+                drop-index: root.drop-index;
 
                 tab-activated(pane, id) => { root.tab-activated(pane, id); }
                 tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
@@ -1684,20 +1701,48 @@ export component AppWindow inherits Window {
                 file-dropped(path) => { root.file-dropped(path); }
                 pane-focused(pane) => { root.pane-focused(pane); }
                 split-position-changed(pos) => { root.split-position-changed(pos); }
-                tab-drag-started(id, pane, title) => {
+                tab-drag-started(id, pane, title, abs-x, abs-y) => {
                     root.dragging-tab-id = id;
                     root.drag-source-pane = pane;
                     root.dragging-tab-title = title;
                     root.focused-pane = pane;
+                    root.drag-abs-x = abs-x;
+                    root.drag-abs-y = abs-y;
+                    root.update-drop-target(abs-x);
+                }
+                tab-drag-moved(abs-x, abs-y) => {
+                    root.drag-abs-x = abs-x;
+                    root.drag-abs-y = abs-y;
+                    root.update-drop-target(abs-x);
+                }
+                tab-drag-ended(abs-x, abs-y) => {
+                    root.drag-abs-x = abs-x;
+                    root.drag-abs-y = abs-y;
+                    root.update-drop-target(abs-x);
+                    if root.drop-target-pane != root.drag-source-pane {
+                        root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
+                    } else {
+                        root.reorder-tab(root.drop-target-pane, root.dragging-tab-id, root.drop-index);
+                    }
+                    root.dragging-tab-id = -1;
+                    root.drag-source-pane = -1;
+                    root.dragging-tab-title = "";
+                    root.drop-target-pane = -1;
+                    root.drop-index = -1;
                 }
                 move-tab-to-pane(id, from, to) => {
                     root.focused-pane = to;
                     root.move-tab-to-pane(id, from, to);
                 }
+                reorder-tab(pane, id, new-index) => {
+                    root.reorder-tab(pane, id, new-index);
+                }
                 clear-tab-drag => {
                     root.dragging-tab-id = -1;
                     root.drag-source-pane = -1;
                     root.dragging-tab-title = "";
+                    root.drop-target-pane = -1;
+                    root.drop-index = -1;
                 }
                 zoom-slider-changed(pane, value) => { root.zoom-slider-changed(pane, value); }
                 tool-mouse-down(x, y) => { root.viewport-tool-mouse-down(x, y); }
@@ -1744,12 +1789,39 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Floating drag indicator at window level.
+    // Uses window-absolute coordinates directly (AppWindow origin IS window origin).
+    if root.dragging-tab-id != -1: Rectangle {
+        x: root.drag-abs-x - 70px;
+        y: root.drag-abs-y - 18px;
+        width: 140px;
+        height: 28px;
+        border-radius: 4px;
+        background: #252526ee;
+        border-width: 1px;
+        border-color: Theme.accent;
+
+        Text {
+            x: 10px;
+            y: 6px;
+            width: parent.width - 20px;
+            text: root.dragging-tab-title;
+            color: Theme.text-primary;
+            font-size: 12px;
+            overflow: elide;
+        }
+    }
+
     // Global keyboard handler for window-level shortcuts
     global-keys := FocusScope {
         width: 0px;
         height: 0px;
 
         key-pressed(e) => {
+            if e.text == "W" && e.modifiers.control && e.modifiers.shift {
+                root.window-close();
+                return accept;
+            }
             if e.text == "w" && e.modifiers.control {
                 root.close-active-tab();
                 return accept;

@@ -556,6 +556,24 @@ impl AppState {
         self.needs_render = true;
     }
 
+    /// Reorder a tab within the same pane by moving it to a new index position.
+    pub fn reorder_tab(&mut self, pane: PaneId, id: i32, new_index: i32) {
+        let tabs = self.tab_ids_for_pane_mut(pane);
+        if let Some(current_pos) = tabs.iter().position(|&tab_id| tab_id == id) {
+            let new_pos = (new_index as usize).min(tabs.len().saturating_sub(1));
+            if current_pos != new_pos {
+                let tab_id = tabs.remove(current_pos);
+                // Adjust insertion index if removing affected position
+                let insert_pos = if current_pos < new_pos {
+                    new_pos.min(tabs.len())
+                } else {
+                    new_pos.min(tabs.len())
+                };
+                tabs.insert(insert_pos, tab_id);
+            }
+        }
+    }
+
     pub fn activate_tab_in_pane(&mut self, pane: PaneId, id: i32) {
         if !self.is_known_tab(id) {
             return;
