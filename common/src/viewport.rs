@@ -101,6 +101,15 @@ impl Viewport {
         self.clamp_position();
     }
 
+    /// Position the viewport so that `image_pos` appears at `screen_pos`.
+    /// Computes center directly from the anchor constraint to avoid
+    /// floating-point error accumulation.
+    pub fn anchor_at(&mut self, image_pos: DVec2, screen_pos: DVec2) {
+        self.center.x = image_pos.x - (screen_pos.x - self.width / 2.0) / self.zoom;
+        self.center.y = image_pos.y - (screen_pos.y - self.height / 2.0) / self.zoom;
+        self.clamp_position();
+    }
+
     /// Zoom by the given factor around the specified screen point
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
         // Get image position under cursor before zoom
@@ -111,12 +120,7 @@ impl Viewport {
         self.zoom = new_zoom;
 
         // Adjust center so the image point stays under the cursor
-        // screen_dx = where we want it - where it actually is
-        // positive dx means image drifted left, need to pan right (positive)
-        let new_screen_pos = self.image_to_screen(image_pos.x, image_pos.y);
-        let screen_dx = screen_x - new_screen_pos.x;
-        let screen_dy = screen_y - new_screen_pos.y;
-        self.pan(screen_dx, screen_dy);
+        self.anchor_at(image_pos, DVec2::new(screen_x, screen_y));
     }
 
     /// Zoom by the given factor around the center
@@ -383,30 +387,14 @@ impl ViewportState {
 
                 // Apply zoom while keeping anchor point fixed
                 self.viewport.zoom = new_zoom;
-
-                // Adjust center to keep the image anchor under the screen anchor
-                // screen_dx = where we want it - where it actually is
-                // positive dx means image drifted left, need to pan right (positive)
-                let new_screen_pos = self
-                    .viewport
-                    .image_to_screen(self.zoom_anchor_image.x, self.zoom_anchor_image.y);
-                let screen_dx = self.zoom_anchor_screen.x - new_screen_pos.x;
-                let screen_dy = self.zoom_anchor_screen.y - new_screen_pos.y;
-                self.viewport.pan(screen_dx, screen_dy);
+                self.viewport.anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
 
                 is_animating = true;
                 trace!("Zoom animation: t={:.2}, zoom={:.4}", t, new_zoom);
             } else {
                 // Animation complete - snap to target
                 self.viewport.zoom = self.target_zoom;
-
-                // Final adjustment to keep anchor point
-                let new_screen_pos = self
-                    .viewport
-                    .image_to_screen(self.zoom_anchor_image.x, self.zoom_anchor_image.y);
-                let screen_dx = self.zoom_anchor_screen.x - new_screen_pos.x;
-                let screen_dy = self.zoom_anchor_screen.y - new_screen_pos.y;
-                self.viewport.pan(screen_dx, screen_dy);
+                self.viewport.anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
 
                 self.zoom_start_time = None;
             }

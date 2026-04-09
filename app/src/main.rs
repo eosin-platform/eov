@@ -1796,6 +1796,9 @@ fn update_and_render(
         }
     }
 
+    // Update measurement overlays to track viewport changes during pan/zoom
+    update_tool_overlays(ui, &state);
+
     state.last_primary_rendered_file_id = primary_file_id;
     state.last_secondary_rendered_file_id = secondary_file_id;
 
@@ -1962,7 +1965,7 @@ fn render_viewport_to_buffer(
 
     // Use persistent buffer for rendering
     let render_width = vp_width as u32;
-    let render_height = (vp_height - 24.0).max(1.0) as u32; // Account for status bar, ensure > 0
+    let render_height = vp_height.max(1.0) as u32;
 
     dbg_print!("[RENDER] buffer {}x{}", render_width, render_height);
 
@@ -2320,7 +2323,7 @@ fn render_viewport_gpu(
     file.tiles_loaded_since_render = cached_count;
 
     let render_width = vp_width as u32;
-    let render_height = (vp_height - 24.0).max(1.0) as u32;
+    let render_height = vp_height.max(1.0) as u32;
     if render_width == 0 || render_height == 0 {
         return false;
     }
@@ -3179,11 +3182,20 @@ fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
         &file.viewport
     };
     let vp = &viewport_state.viewport;
+    let bounds = vp.bounds();
+
+    // Microns per pixel (average of x and y, fallback to 0 if unknown)
+    let mpp = file
+        .wsi
+        .properties()
+        .mpp_x
+        .zip(file.wsi.properties().mpp_y)
+        .map(|(mx, my)| (mx + my) / 2.0)
+        .unwrap_or(0.0);
 
     // Update ROI overlay
     let ant_offset = state.ant_offset;
     if let Some(roi) = &file.roi {
-        let bounds = vp.bounds();
         let screen_x = (roi.x - bounds.left) * vp.zoom;
         let screen_y = (roi.y - bounds.top) * vp.zoom;
         let screen_w = roi.width * vp.zoom;
@@ -3208,6 +3220,28 @@ fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
         });
     }
 
+    // Update committed measurements (image-space → screen-space)
+    let measurement_lines: Vec<MeasurementLine> = file
+        .measurements
+        .iter()
+        .map(|m| {
+            let p1 = vp.image_to_screen(m.start.x, m.start.y);
+            let p2 = vp.image_to_screen(m.end.x, m.end.y);
+            let dist_px = m.distance();
+            let distance_um = (dist_px * mpp) as f32;
+            MeasurementLine {
+                x1: p1.x as f32,
+                y1: p1.y as f32,
+                x2: p2.x as f32,
+                y2: p2.y as f32,
+                distance_um,
+                visible: true,
+            }
+        })
+        .collect();
+    let measurements_model = std::rc::Rc::new(slint::VecModel::from(measurement_lines));
+    ui.set_measurements(measurements_model.into());
+
     // Update candidate measurement
     if let (
         state::ToolInteractionState::Dragging(start)
@@ -3215,42 +3249,38 @@ fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
         Some(end),
     ) = (&state.tool_state, &state.candidate_point)
     {
-        if state.current_tool == state::Tool::MeasureDistance
-            || state.current_tool == state::Tool::RegionOfInterest
-        {
-            let bounds = vp.bounds();
-            let x1 = (start.x - bounds.left) * vp.zoom;
-            let y1 = (start.y - bounds.top) * vp.zoom;
-            let x2 = (end.x - bounds.left) * vp.zoom;
-            let y2 = (end.y - bounds.top) * vp.zoom;
+        if state.current_tool == state::Tool::MeasureDistance {
+            let p1 = vp.image_to_screen(start.x, start.y);
+            let p2 = vp.image_to_screen(end.x, end.y);
+            let candidate_m = state::Measurement {
+                start: *start,
+                end: *end,
+            };
+            let distance_um = (candidate_m.distance() * mpp) as f32;
 
-            // For ROI, update the roi_rect
-            if state.current_tool == state::Tool::RegionOfInterest {
-                let roi = state::RegionOfInterest::from_points(*start, *end);
-                let screen_x = (roi.x - bounds.left) * vp.zoom;
-                let screen_y = (roi.y - bounds.top) * vp.zoom;
-                let screen_w = roi.width * vp.zoom;
-                let screen_h = roi.height * vp.zoom;
+            ui.set_candidate_measurement(MeasurementLine {
+                x1: p1.x as f32,
+                y1: p1.y as f32,
+                x2: p2.x as f32,
+                y2: p2.y as f32,
+                distance_um,
+                visible: true,
+            });
+        } else if state.current_tool == state::Tool::RegionOfInterest {
+            let roi = state::RegionOfInterest::from_points(*start, *end);
+            let screen_x = (roi.x - bounds.left) * vp.zoom;
+            let screen_y = (roi.y - bounds.top) * vp.zoom;
+            let screen_w = roi.width * vp.zoom;
+            let screen_h = roi.height * vp.zoom;
 
-                ui.set_roi_rect(ROIRect {
-                    x: screen_x as f32,
-                    y: screen_y as f32,
-                    width: screen_w as f32,
-                    height: screen_h as f32,
-                    visible: true,
-                    ant_offset,
-                });
-            } else {
-                // For measurement, update candidate line
-                ui.set_candidate_measurement(MeasurementLine {
-                    x1: x1 as f32,
-                    y1: y1 as f32,
-                    x2: x2 as f32,
-                    y2: y2 as f32,
-                    distance_um: 0.0, // TODO: Calculate actual distance in microns
-                    visible: true,
-                });
-            }
+            ui.set_roi_rect(ROIRect {
+                x: screen_x as f32,
+                y: screen_y as f32,
+                width: screen_w as f32,
+                height: screen_h as f32,
+                visible: true,
+                ant_offset,
+            });
         }
     } else {
         ui.set_candidate_measurement(MeasurementLine {
@@ -3272,7 +3302,7 @@ fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
     let focused_pane = state.focused_pane;
     let split_enabled = state.split_enabled;
 
-    let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
+    let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
         return;
     };
 
@@ -3294,9 +3324,28 @@ fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
         state::Tool::Navigate => {
             // Should not happen - Navigate uses LMB for panning
         }
-        state::Tool::RegionOfInterest | state::Tool::MeasureDistance => {
+        state::Tool::RegionOfInterest => {
             state.tool_state = state::ToolInteractionState::Dragging(point);
             state.candidate_point = Some(point);
+        }
+        state::Tool::MeasureDistance => {
+            // If we already have a first point placed (click-click mode),
+            // this second click commits the measurement.
+            if let state::ToolInteractionState::FirstPointPlaced(start) = state.tool_state {
+                let measurement = state::Measurement {
+                    start,
+                    end: point,
+                };
+                file.measurements.clear();
+                file.measurements.push(measurement);
+                state.tool_state = state::ToolInteractionState::Idle;
+                state.candidate_point = None;
+            } else {
+                // Start a new measurement — clear any previous one
+                file.measurements.clear();
+                state.tool_state = state::ToolInteractionState::Dragging(point);
+                state.candidate_point = Some(point);
+            }
         }
     }
 }
@@ -3327,9 +3376,13 @@ fn handle_tool_mouse_move(state: &mut AppState, screen_x: f64, screen_y: f64) {
         y: image_point.1,
     };
 
-    // Update candidate point during drag
-    if matches!(state.tool_state, state::ToolInteractionState::Dragging(_)) {
-        state.candidate_point = Some(point);
+    // Update candidate point during drag or first-point-placed
+    match state.tool_state {
+        state::ToolInteractionState::Dragging(_)
+        | state::ToolInteractionState::FirstPointPlaced(_) => {
+            state.candidate_point = Some(point);
+        }
+        _ => {}
     }
 }
 
@@ -3369,19 +3422,41 @@ fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
                 if roi.is_valid() {
                     file.roi = Some(roi);
                 }
+                state.tool_state = state::ToolInteractionState::Idle;
+                state.candidate_point = None;
             }
             state::Tool::MeasureDistance => {
-                // Create measurement from the two points
-                let measurement = state::Measurement {
-                    start,
-                    end: end_point,
-                };
-                file.measurements.push(measurement);
+                // Check if the mouse moved enough to be a drag
+                let dx = end_point.x - start.x;
+                let dy = end_point.y - start.y;
+                let dist_sq = dx * dx + dy * dy;
+                // Threshold: 5 pixels in image space
+                if dist_sq > 25.0 {
+                    // Drag completed — commit measurement
+                    let measurement = state::Measurement {
+                        start,
+                        end: end_point,
+                    };
+                    file.measurements.clear();
+                    file.measurements.push(measurement);
+                    state.tool_state = state::ToolInteractionState::Idle;
+                    state.candidate_point = None;
+                } else {
+                    // Click (mouse didn't move much) — enter click-click mode
+                    state.tool_state = state::ToolInteractionState::FirstPointPlaced(start);
+                    // Keep candidate_point so the preview line follows the mouse
+                }
             }
         }
+    } else {
+        // For FirstPointPlaced, mouse-up is ignored (commit happens on next mouse-down)
+        // Reset for other states
+        if !matches!(
+            state.tool_state,
+            state::ToolInteractionState::FirstPointPlaced(_)
+        ) {
+            state.tool_state = state::ToolInteractionState::Idle;
+            state.candidate_point = None;
+        }
     }
-
-    // Reset tool state
-    state.tool_state = state::ToolInteractionState::Idle;
-    state.candidate_point = None;
 }

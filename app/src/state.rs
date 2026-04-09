@@ -733,13 +733,14 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.needs_render = true;
-        // Clear ROI when switching tools
+        // Clear ROI and measurements when switching tools
         if let Some(file) = self
             .open_files
             .iter_mut()
             .find(|f| Some(f.id) == self.active_file_id)
         {
             file.roi = None;
+            file.measurements.clear();
         }
     }
 
@@ -749,13 +750,14 @@ impl AppState {
         self.candidate_point = None;
         self.current_tool = Tool::Navigate;
         self.needs_render = true;
-        // Clear ROI when cancelling
+        // Clear ROI and measurements when cancelling
         if let Some(file) = self
             .open_files
             .iter_mut()
             .find(|f| Some(f.id) == self.active_file_id)
         {
             file.roi = None;
+            file.measurements.clear();
         }
     }
 

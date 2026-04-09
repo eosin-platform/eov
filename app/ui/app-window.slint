@@ -823,19 +823,129 @@ component Viewport inherits Rectangle {
         }
         
         // Measurement lines overlay
-        for measurement in root.measurements: Path {
-            stroke: #00ff00;
-            stroke-width: 2px;
-            MoveTo { x: measurement.x1; y: measurement.y1; }
-            LineTo { x: measurement.x2; y: measurement.y2; }
+        for measurement in root.measurements: Rectangle {
+            width: 100%;
+            height: 100%;
+
+            // Line between endpoints
+            Path {
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                stroke: #2ECC71;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                MoveTo { x: measurement.x1; y: measurement.y1; }
+                LineTo { x: measurement.x2; y: measurement.y2; }
+            }
+            // Start point circle
+            Rectangle {
+                x: measurement.x1 * 1px - 4px;
+                y: measurement.y1 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #2ECC71;
+                border-width: 1.5px;
+                border-color: white;
+            }
+            // End point circle
+            Rectangle {
+                x: measurement.x2 * 1px - 4px;
+                y: measurement.y2 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #2ECC71;
+                border-width: 1.5px;
+                border-color: white;
+            }
+            // Distance label at midpoint
+            Rectangle {
+                x: (measurement.x1 + measurement.x2) / 2 * 1px - self.width / 2;
+                y: (measurement.y1 + measurement.y2) / 2 * 1px - self.height - 6px;
+                width: measurement-text.preferred-width + 14px;
+                height: measurement-text.preferred-height + 6px;
+                border-radius: self.height / 2;
+                background: #1a1a1aee;
+                border-width: 1px;
+                border-color: #2ECC7180;
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000066;
+
+                measurement-text := Text {
+                    x: 7px;
+                    y: 3px;
+                    text: measurement.distance-um >= 1000 ? Math.round(measurement.distance-um / 10) / 100 + " mm"
+                        : measurement.distance-um > 0 ? Math.round(measurement.distance-um * 100) / 100 + " µm"
+                        : Math.round(Math.sqrt((measurement.x2 - measurement.x1) * (measurement.x2 - measurement.x1) + (measurement.y2 - measurement.y1) * (measurement.y2 - measurement.y1)) * 10) / 10 + " px";
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            }
         }
         
         // Candidate measurement line (while drawing)
-        if root.candidate-measurement.visible: Path {
-            stroke: #ffcc00;
-            stroke-width: 2px;
-            MoveTo { x: root.candidate-measurement.x1; y: root.candidate-measurement.y1; }
-            LineTo { x: root.candidate-measurement.x2; y: root.candidate-measurement.y2; }
+        if root.candidate-measurement.visible: Rectangle {
+            width: 100%;
+            height: 100%;
+
+            // Line between endpoints
+            Path {
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                stroke: #F1C40F;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                MoveTo { x: root.candidate-measurement.x1; y: root.candidate-measurement.y1; }
+                LineTo { x: root.candidate-measurement.x2; y: root.candidate-measurement.y2; }
+            }
+            // Start point circle
+            Rectangle {
+                x: root.candidate-measurement.x1 * 1px - 4px;
+                y: root.candidate-measurement.y1 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #F1C40F;
+                border-width: 1.5px;
+                border-color: white;
+            }
+            // End point circle
+            Rectangle {
+                x: root.candidate-measurement.x2 * 1px - 4px;
+                y: root.candidate-measurement.y2 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #F1C40F;
+                border-width: 1.5px;
+                border-color: white;
+            }
+            // Distance label at midpoint
+            Rectangle {
+                x: (root.candidate-measurement.x1 + root.candidate-measurement.x2) / 2 * 1px - self.width / 2;
+                y: (root.candidate-measurement.y1 + root.candidate-measurement.y2) / 2 * 1px - self.height - 6px;
+                width: candidate-text.preferred-width + 14px;
+                height: candidate-text.preferred-height + 6px;
+                border-radius: self.height / 2;
+                background: #1a1a1aee;
+                border-width: 1px;
+                border-color: #F1C40F80;
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000066;
+
+                candidate-text := Text {
+                    x: 7px;
+                    y: 3px;
+                    text: root.candidate-measurement.distance-um >= 1000 ? Math.round(root.candidate-measurement.distance-um / 10) / 100 + " mm"
+                        : root.candidate-measurement.distance-um > 0 ? Math.round(root.candidate-measurement.distance-um * 100) / 100 + " µm"
+                        : Math.round(Math.sqrt((root.candidate-measurement.x2 - root.candidate-measurement.x1) * (root.candidate-measurement.x2 - root.candidate-measurement.x1) + (root.candidate-measurement.y2 - root.candidate-measurement.y1) * (root.candidate-measurement.y2 - root.candidate-measurement.y1)) * 10) / 10 + " px";
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            }
         }
         
         // Loading indicator
