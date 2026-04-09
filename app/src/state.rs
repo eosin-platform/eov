@@ -213,12 +213,30 @@ pub enum PaneId {
     Secondary,
 }
 
+impl PaneId {
+    pub fn as_index(self) -> i32 {
+        match self {
+            Self::Primary => 0,
+            Self::Secondary => 1,
+        }
+    }
+}
+
 /// Application state
 pub struct AppState {
     /// Currently open files
     pub open_files: Vec<OpenFile>,
-    /// Active file ID
+    /// Active tab ID for the currently focused pane
     pub active_file_id: Option<i32>,
+    /// Active tab ID in the primary pane
+    pub primary_active_tab_id: Option<i32>,
+    /// Active tab ID in the secondary pane
+    pub secondary_active_tab_id: Option<i32>,
+    /// Active file ID
+    /// Ordered tab IDs owned by the primary pane
+    pub primary_tabs: Vec<i32>,
+    /// Ordered tab IDs owned by the secondary pane
+    pub secondary_tabs: Vec<i32>,
     /// Next file ID
     next_id: i32,
     /// Whether split view is enabled
@@ -245,8 +263,10 @@ pub struct AppState {
     pub recent_files: Vec<RecentFile>,
     /// IDs of tabs that are "home" tabs (no file open)
     pub home_tabs: Vec<i32>,
-    /// Last file ID that was rendered (to detect tab switches)
-    pub last_rendered_file_id: Option<i32>,
+    /// Last file ID rendered into the primary surface
+    pub last_primary_rendered_file_id: Option<i32>,
+    /// Last file ID rendered into the secondary surface
+    pub last_secondary_rendered_file_id: Option<i32>,
     /// The selected rendering backend
     pub render_backend: RenderBackend,
     /// Whether GPU rendering is available on this system
@@ -264,6 +284,10 @@ impl AppState {
         Self {
             open_files: Vec::new(),
             active_file_id: None,
+            primary_active_tab_id: None,
+            secondary_active_tab_id: None,
+            primary_tabs: Vec::new(),
+            secondary_tabs: Vec::new(),
             next_id: 1,
             split_enabled: false,
             split_position: 0.5,
@@ -277,7 +301,8 @@ impl AppState {
             current_fps: 0.0,
             recent_files,
             home_tabs: Vec::new(),
-            last_rendered_file_id: None,
+            last_primary_rendered_file_id: None,
+            last_secondary_rendered_file_id: None,
             render_backend: RenderBackend::Cpu,
             gpu_backend_available: false,
             needs_render: true,
@@ -358,28 +383,168 @@ impl AppState {
         // Save to disk
         self.save_recent_files();
     }
+
+    fn tab_ids_for_pane(&self, pane: PaneId) -> &[i32] {
+        match pane {
+            PaneId::Primary => &self.primary_tabs,
+            PaneId::Secondary => &self.secondary_tabs,
+        }
+    }
+
+    fn tab_ids_for_pane_mut(&mut self, pane: PaneId) -> &mut Vec<i32> {
+        match pane {
+            PaneId::Primary => &mut self.primary_tabs,
+            PaneId::Secondary => &mut self.secondary_tabs,
+        }
+    }
+
+    fn active_tab_id_for_pane_mut(&mut self, pane: PaneId) -> &mut Option<i32> {
+        match pane {
+            PaneId::Primary => &mut self.primary_active_tab_id,
+            PaneId::Secondary => &mut self.secondary_active_tab_id,
+        }
+    }
+
+    fn next_tab_after_removal(tabs: &[i32], removed_index: usize) -> Option<i32> {
+        if tabs.is_empty() {
+            None
+        } else if removed_index < tabs.len() {
+            Some(tabs[removed_index])
+        } else {
+            tabs.last().copied()
+        }
+    }
+
+    fn sync_active_file_id(&mut self) {
+        self.active_file_id = self.active_tab_id_for_pane(self.focused_pane);
+    }
+
+    pub fn active_tab_id_for_pane(&self, pane: PaneId) -> Option<i32> {
+        match pane {
+            PaneId::Primary => self.primary_active_tab_id,
+            PaneId::Secondary => self.secondary_active_tab_id,
+        }
+    }
+
+    pub fn active_file_id_for_pane(&self, pane: PaneId) -> Option<i32> {
+        self.active_tab_id_for_pane(pane)
+            .filter(|id| !self.is_home_tab(*id))
+    }
+
+    pub fn tabs_for_pane(&self, pane: PaneId) -> &[i32] {
+        self.tab_ids_for_pane(pane)
+    }
+
+    pub fn is_home_tab_active_in_pane(&self, pane: PaneId) -> bool {
+        self.active_tab_id_for_pane(pane)
+            .map(|id| self.is_home_tab(id))
+            .unwrap_or(false)
+    }
+
+    pub fn set_focused_pane(&mut self, pane: PaneId) {
+        self.focused_pane = pane;
+        self.sync_active_file_id();
+    }
+
+    fn ensure_secondary_viewport_for_file(&mut self, id: i32) {
+        if let Some(file) = self.get_file_mut(id) {
+            if file.secondary_viewport.is_none() {
+                file.secondary_viewport = Some(file.viewport.clone());
+            }
+        }
+    }
+
+    fn add_tab_to_pane_if_missing(&mut self, pane: PaneId, id: i32) {
+        let tabs = self.tab_ids_for_pane_mut(pane);
+        if !tabs.contains(&id) {
+            tabs.push(id);
+        }
+        if pane == PaneId::Secondary {
+            self.ensure_secondary_viewport_for_file(id);
+        }
+    }
+
+    fn remove_tab_from_pane(&mut self, pane: PaneId, id: i32) {
+        let removed_index = {
+            let tabs = self.tab_ids_for_pane_mut(pane);
+            tabs.iter().position(|&tab_id| tab_id == id).map(|index| {
+                tabs.remove(index);
+                index
+            })
+        };
+
+        if let Some(index) = removed_index {
+            if self.active_tab_id_for_pane(pane) == Some(id) {
+                let replacement = Self::next_tab_after_removal(self.tab_ids_for_pane(pane), index);
+                *self.active_tab_id_for_pane_mut(pane) = replacement;
+            }
+            self.sync_active_file_id();
+        }
+    }
+
+    fn is_known_tab(&self, id: i32) -> bool {
+        self.is_home_tab(id) || self.open_files.iter().any(|file| file.id == id)
+    }
+
+    pub fn duplicate_tab_to_pane(&mut self, id: i32, pane: PaneId) {
+        if !self.is_known_tab(id) {
+            return;
+        }
+        self.add_tab_to_pane_if_missing(pane, id);
+        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+        self.needs_render = true;
+        self.sync_active_file_id();
+    }
+
+    pub fn move_tab_between_panes(&mut self, id: i32, from: PaneId, to: PaneId) {
+        if from == to || !self.is_known_tab(id) {
+            return;
+        }
+        self.remove_tab_from_pane(from, id);
+        self.add_tab_to_pane_if_missing(to, id);
+        *self.active_tab_id_for_pane_mut(to) = Some(id);
+        if self.focused_pane == from {
+            self.set_focused_pane(to);
+        } else {
+            self.sync_active_file_id();
+        }
+        self.needs_render = true;
+    }
+
+    pub fn activate_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if !self.is_known_tab(id) {
+            return;
+        }
+        self.add_tab_to_pane_if_missing(pane, id);
+        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+        if pane == PaneId::Secondary {
+            self.ensure_secondary_viewport_for_file(id);
+        }
+        self.set_focused_pane(pane);
+        self.needs_render = true;
+    }
     
     /// Create a new home tab and return its ID
     pub fn create_home_tab(&mut self) -> i32 {
+        let pane = if self.split_enabled {
+            self.focused_pane
+        } else {
+            PaneId::Primary
+        };
         let id = self.next_id;
         self.next_id += 1;
         self.home_tabs.push(id);
-        self.active_file_id = Some(id);
-        self.needs_render = true;
+        self.activate_tab_in_pane(pane, id);
         id
     }
     
     /// Close a home tab
     pub fn close_home_tab(&mut self, id: i32) {
         self.home_tabs.retain(|&tab_id| tab_id != id);
-        
-        // Update active file if this was active
-        if self.active_file_id == Some(id) {
-            // Find next tab to activate
-            self.active_file_id = self.open_files.first().map(|f| f.id)
-                .or_else(|| self.home_tabs.first().copied());
-            self.needs_render = true;
-        }
+
+        self.remove_tab_from_pane(PaneId::Primary, id);
+        self.remove_tab_from_pane(PaneId::Secondary, id);
+        self.needs_render = true;
     }
     
     /// Check if an ID is a home tab
@@ -456,8 +621,12 @@ impl AppState {
             secondary_render_buffer: Vec::new(),
         });
 
-        self.active_file_id = Some(id);
-        self.needs_render = true;
+        let target_pane = if self.split_enabled {
+            self.focused_pane
+        } else {
+            PaneId::Primary
+        };
+        self.activate_tab_in_pane(target_pane, id);
         id
     }
     
@@ -487,31 +656,41 @@ impl AppState {
 
     /// Enable split view for the current file
     pub fn enable_split(&mut self) {
-        if let Some(file) = self.open_files.iter_mut().find(|f| Some(f.id) == self.active_file_id) {
-            if file.secondary_viewport.is_none() {
-                // Clone the primary viewport for the secondary view
-                let secondary = file.viewport.clone();
-                file.secondary_viewport = Some(secondary);
+        self.split_enabled = true;
+        if self.secondary_tabs.is_empty() {
+            if let Some(primary_id) = self.primary_active_tab_id {
+                self.duplicate_tab_to_pane(primary_id, PaneId::Secondary);
             }
-            self.split_enabled = true;
-            self.focused_pane = PaneId::Secondary;
-            self.needs_render = true;
         }
+        self.set_focused_pane(PaneId::Secondary);
+        self.needs_render = true;
     }
 
     /// Disable split view
     pub fn disable_split(&mut self) {
+        for id in self.secondary_tabs.clone() {
+            if !self.primary_tabs.contains(&id) {
+                self.primary_tabs.push(id);
+            }
+        }
+        if self.focused_pane == PaneId::Secondary {
+            if let Some(id) = self.secondary_active_tab_id {
+                self.primary_active_tab_id = Some(id);
+            }
+        }
         self.split_enabled = false;
-        self.focused_pane = PaneId::Primary;
+        self.secondary_tabs.clear();
+        self.secondary_active_tab_id = None;
+        self.set_focused_pane(PaneId::Primary);
         self.needs_render = true;
     }
 
     /// Get the viewport for the current focused pane
     pub fn focused_viewport_mut(&mut self) -> Option<&mut ViewportState> {
-        let pane = self.focused_pane;
+        let active_id = self.active_file_id_for_pane(self.focused_pane)?;
         self.open_files.iter_mut()
-            .find(|f| Some(f.id) == self.active_file_id)
-            .and_then(|f| match pane {
+            .find(|f| f.id == active_id)
+            .and_then(|f| match self.focused_pane {
                 PaneId::Primary => Some(&mut f.viewport),
                 PaneId::Secondary => f.secondary_viewport.as_mut(),
             })
@@ -519,10 +698,7 @@ impl AppState {
 
     /// Activate a file by ID
     pub fn activate_file(&mut self, id: i32) {
-        if self.open_files.iter().any(|f| f.id == id) {
-            self.active_file_id = Some(id);
-            self.needs_render = true;
-        }
+        self.activate_tab_in_pane(self.focused_pane, id);
     }
 
     /// Close a file by ID
@@ -531,18 +707,29 @@ impl AppState {
         
         if let Some(idx) = index {
             self.open_files.remove(idx);
-            
-            // Update active file
-            if self.active_file_id == Some(id) {
-                // Try to select another file tab first
-                self.active_file_id = self.open_files.get(idx.saturating_sub(1))
-                    .or_else(|| self.open_files.first())
-                    .map(|f| f.id)
-                    // Fall back to a home tab if no files remain
-                    .or_else(|| self.home_tabs.first().copied());
+
+            self.remove_tab_from_pane(PaneId::Primary, id);
+            self.remove_tab_from_pane(PaneId::Secondary, id);
+
+            if self.primary_tabs.is_empty() {
+                self.primary_active_tab_id = None;
+            }
+            if self.secondary_tabs.is_empty() {
+                self.secondary_active_tab_id = None;
             }
 
+            if self.primary_active_tab_id.is_none() {
+                self.primary_active_tab_id = self.primary_tabs.first().copied();
+            }
+            if self.secondary_active_tab_id.is_none() {
+                self.secondary_active_tab_id = self.secondary_tabs.first().copied();
+            }
+
+            self.last_primary_rendered_file_id = self.last_primary_rendered_file_id.filter(|&file_id| file_id != id);
+            self.last_secondary_rendered_file_id = self.last_secondary_rendered_file_id.filter(|&file_id| file_id != id);
+
             self.needs_render = true;
+            self.sync_active_file_id();
         }
     }
 
@@ -576,34 +763,43 @@ impl AppState {
 
     /// Get the active file
     pub fn active_file(&self) -> Option<&OpenFile> {
-        self.active_file_id.and_then(|id| self.get_file(id))
+        self.active_file_id
+            .filter(|id| !self.is_home_tab(*id))
+            .and_then(|id| self.get_file(id))
     }
 
     /// Get the active file mutably
     pub fn active_file_mut(&mut self) -> Option<&mut OpenFile> {
-        self.active_file_id.and_then(|id| self.get_file_mut(id))
+        self.active_file_id
+            .filter(|id| !self.is_home_tab(*id))
+            .and_then(|id| self.get_file_mut(id))
     }
 
     /// Get the active viewport
     pub fn active_viewport(&self) -> Option<&ViewportState> {
-        self.active_file().map(|f| &f.viewport)
+        let pane = if self.split_enabled {
+            self.focused_pane
+        } else {
+            PaneId::Primary
+        };
+        let active_id = self.active_file_id_for_pane(pane)?;
+        self.get_file(active_id).and_then(|file| match pane {
+            PaneId::Primary => Some(&file.viewport),
+            PaneId::Secondary => file.secondary_viewport.as_ref(),
+        })
     }
 
     /// Get the active viewport mutably (respects focused pane in split view)
     pub fn active_viewport_mut(&mut self) -> Option<&mut ViewportState> {
         let pane = self.focused_pane;
-        let active_id = self.active_file_id;
-        let split_enabled = self.split_enabled;
+        let effective_pane = if self.split_enabled { pane } else { PaneId::Primary };
+        let active_id = self.active_file_id_for_pane(effective_pane)?;
         self.open_files.iter_mut()
-            .find(|f| Some(f.id) == active_id)
+            .find(|f| f.id == active_id)
             .and_then(|f| {
-                if split_enabled {
-                    match pane {
-                        PaneId::Primary => Some(&mut f.viewport),
-                        PaneId::Secondary => f.secondary_viewport.as_mut(),
-                    }
-                } else {
-                    Some(&mut f.viewport)
+                match effective_pane {
+                    PaneId::Primary => Some(&mut f.viewport),
+                    PaneId::Secondary => f.secondary_viewport.as_mut(),
                 }
             })
     }

@@ -5,9 +5,10 @@ mod state;
 mod render;
 mod tile_loader;
 mod gpu;
+mod config;
 
-use anyhow::Result;
-use common::{TileCache, TileManager, Viewport, ViewportState, WsiFile};
+use anyhow::{bail, Result};
+use common::{viewport::{MAX_ZOOM, MIN_ZOOM}, TileCache, TileManager, Viewport, ViewportState, WsiFile};
 use gpu::{GpuRenderer, SurfaceSlot, TileDraw};
 use parking_lot::RwLock;
 use rfd::FileDialog;
@@ -41,6 +42,48 @@ slint::include_modules!();
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 
+struct LaunchOptions {
+    debug_mode: bool,
+    files_to_open: Vec<PathBuf>,
+    render_backend_override: Option<RenderBackend>,
+}
+
+fn parse_launch_options() -> Result<LaunchOptions> {
+    let mut debug_mode = false;
+    let mut files_to_open = Vec::new();
+    let mut render_backend_override = None;
+
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--debug" | "-d" => debug_mode = true,
+            "--cpu" => {
+                if render_backend_override == Some(RenderBackend::Gpu) {
+                    bail!("--cpu and --gpu are mutually exclusive; choose only one rendering override");
+                }
+                render_backend_override = Some(RenderBackend::Cpu);
+            }
+            "--gpu" => {
+                if render_backend_override == Some(RenderBackend::Cpu) {
+                    bail!("--cpu and --gpu are mutually exclusive; choose only one rendering override");
+                }
+                render_backend_override = Some(RenderBackend::Gpu);
+            }
+            _ => {
+                let path = PathBuf::from(&arg);
+                if path.exists() {
+                    files_to_open.push(path);
+                }
+            }
+        }
+    }
+
+    Ok(LaunchOptions {
+        debug_mode,
+        files_to_open,
+        render_backend_override,
+    })
+}
+
 fn select_backend() -> Result<bool> {
     let gpu_result = BackendSelector::new()
         .backend_name("winit".to_string())
@@ -66,6 +109,29 @@ fn ui_render_mode(backend: RenderBackend) -> RenderMode {
         RenderBackend::Cpu => RenderMode::Cpu,
         RenderBackend::Gpu => RenderMode::Gpu,
     }
+}
+
+fn pane_from_index(index: i32) -> PaneId {
+    if index == 1 {
+        PaneId::Secondary
+    } else {
+        PaneId::Primary
+    }
+}
+
+fn zoom_to_slider_value(zoom: f64) -> f32 {
+    let log_min = MIN_ZOOM.ln();
+    let log_max = MAX_ZOOM.ln();
+    let normalized = ((zoom.max(MIN_ZOOM).min(MAX_ZOOM).ln() - log_min) / (log_max - log_min))
+        .clamp(0.0, 1.0);
+    normalized as f32
+}
+
+fn slider_value_to_zoom(value: f32) -> f64 {
+    let clamped = value.clamp(0.0, 1.0) as f64;
+    let log_min = MIN_ZOOM.ln();
+    let log_max = MAX_ZOOM.ln();
+    (log_min + (log_max - log_min) * clamped).exp()
 }
 
 fn set_gpu_renderer_handle(renderer: Rc<RefCell<GpuRenderer>>) {
@@ -132,28 +198,25 @@ fn main() -> Result<()> {
 
     info!("Starting EosMol WSI Viewer");
 
-    // Parse command-line arguments
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let debug_mode = args.iter().any(|a| a == "--debug" || a == "-d");
-    let files_to_open: Vec<PathBuf> = args
-        .into_iter()
-        .filter(|a| a != "--debug" && a != "-d")
-        .map(PathBuf::from)
-        .filter(|p| p.exists())
-        .collect();
+    let launch_options = parse_launch_options()?;
+    let persisted_backend = config::load_render_backend()?;
+    let initial_backend = launch_options
+        .render_backend_override
+        .or(persisted_backend)
+        .unwrap_or(RenderBackend::Cpu);
     
-    if debug_mode {
+    if launch_options.debug_mode {
         info!("Debug mode enabled - FPS overlay will be shown");
     }
     
-    if !files_to_open.is_empty() {
-        info!("Opening {} file(s) from command line", files_to_open.len());
+    if !launch_options.files_to_open.is_empty() {
+        info!("Opening {} file(s) from command line", launch_options.files_to_open.len());
     }
 
     let gpu_backend_available = select_backend()?;
 
     // Create application state
-    let state = Arc::new(RwLock::new(AppState::new(debug_mode)));
+    let state = Arc::new(RwLock::new(AppState::new(launch_options.debug_mode)));
     let tile_cache = Arc::new(TileCache::new());
 
     // Create UI
@@ -174,11 +237,15 @@ fn main() -> Result<()> {
     );
     
     // Set debug mode on UI
-    ui.set_debug_mode(debug_mode);
+    ui.set_debug_mode(launch_options.debug_mode);
     {
         let mut state = state.write();
         state.gpu_backend_available = gpu_backend_available;
+        state.select_render_backend(initial_backend);
         update_render_backend(&ui, &state);
+        if initial_backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu {
+            ui.set_status_text(SharedString::from("GPU renderer unavailable, using CPU renderer"));
+        }
     }
     
     // Initialize recent files list
@@ -188,7 +255,7 @@ fn main() -> Result<()> {
     }
 
     // Open files from command line
-    for path in files_to_open {
+    for path in launch_options.files_to_open {
         open_file(&ui, &state, &tile_cache, &render_timer, path);
     }
 
@@ -239,10 +306,11 @@ fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_new_tab_requested(move || {
+        ui.on_new_tab_requested(move |pane| {
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
+                    state.set_focused_pane(pane_from_index(pane));
                     state.create_home_tab();
                 }
                 let state = state_handle.read();
@@ -286,6 +354,9 @@ fn setup_callbacks(
             let gpu_fallback = {
                 let mut state = state_handle.write();
                 state.select_render_backend(backend);
+                if let Err(err) = config::save_render_backend(state.render_backend) {
+                    warn!("Failed to save render backend config: {}", err);
+                }
                 backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu
             };
 
@@ -322,15 +393,11 @@ fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_tab_activated(move |id| {
+        ui.on_tab_activated(move |pane, id| {
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    if state.is_home_tab(id) {
-                        state.active_file_id = Some(id);
-                    } else {
-                        state.activate_file(id);
-                    }
+                    state.activate_tab_in_pane(pane_from_index(pane), id);
                 }
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
@@ -348,10 +415,11 @@ fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_tab_close_requested(move |id| {
+        ui.on_tab_close_requested(move |pane, id| {
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
+                    state.set_focused_pane(pane_from_index(pane));
                     if state.is_home_tab(id) {
                         state.close_home_tab(id);
                     } else {
@@ -374,25 +442,23 @@ fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_close_other_tabs(move |keep_id| {
+        ui.on_close_other_tabs(move |pane, keep_id| {
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    let file_ids_to_close: Vec<i32> = state.open_files
-                        .iter()
-                        .map(|f| f.id)
-                        .filter(|&id| id != keep_id)
-                        .collect();
-                    let home_ids_to_close: Vec<i32> = state.home_tabs
+                    let pane_id = pane_from_index(pane);
+                    let ids_to_close: Vec<i32> = state.tabs_for_pane(pane_id)
                         .iter()
                         .copied()
                         .filter(|&id| id != keep_id)
                         .collect();
-                    for id in file_ids_to_close {
-                        state.close_file(id);
-                    }
-                    for id in home_ids_to_close {
-                        state.close_home_tab(id);
+                    for id in ids_to_close {
+                        state.set_focused_pane(pane_id);
+                        if state.is_home_tab(id) {
+                            state.close_home_tab(id);
+                        } else {
+                            state.close_file(id);
+                        }
                     }
                 }
                 let state = state_handle.read();
@@ -411,13 +477,12 @@ fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_close_tabs_to_right(move |from_id| {
+        ui.on_close_tabs_to_right(move |pane, from_id| {
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    let mut all_tabs: Vec<i32> = state.open_files.iter().map(|f| f.id).collect();
-                    all_tabs.extend(&state.home_tabs);
-                    all_tabs.sort();
+                    let pane_id = pane_from_index(pane);
+                    let all_tabs: Vec<i32> = state.tabs_for_pane(pane_id).to_vec();
                     let mut found = false;
                     let ids_to_close: Vec<i32> = all_tabs
                         .iter()
@@ -433,6 +498,7 @@ fn setup_callbacks(
                         })
                         .collect();
                     for id in ids_to_close {
+                        state.set_focused_pane(pane_id);
                         if state.is_home_tab(id) {
                             state.close_home_tab(id);
                         } else {
@@ -462,6 +528,10 @@ fn setup_callbacks(
                     let mut state = state_handle.write();
                     state.open_files.clear();
                     state.home_tabs.clear();
+                    state.primary_tabs.clear();
+                    state.secondary_tabs.clear();
+                    state.primary_active_tab_id = None;
+                    state.secondary_active_tab_id = None;
                     state.active_file_id = None;
                     state.request_render();
                 }
@@ -504,31 +574,34 @@ fn setup_callbacks(
         });
     }
 
-    // Split right - toggle split view
+    // Split right / move between panes
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         
-        ui.on_split_right(move |_id| {
+        ui.on_split_right(move |pane, id| {
             if let Some(ui) = ui_weak.upgrade() {
                 let (split_enabled, focused_pane) = {
                     let mut state = state_handle.write();
-                    if state.split_enabled {
-                        state.disable_split();
-                        info!("Split view disabled");
-                    } else {
+                    let source_pane = pane_from_index(pane);
+                    if !state.split_enabled {
+                        state.activate_tab_in_pane(PaneId::Primary, id);
                         state.enable_split();
+                        state.duplicate_tab_to_pane(id, PaneId::Secondary);
                         info!("Split view enabled");
+                    } else if source_pane == PaneId::Primary {
+                        state.move_tab_between_panes(id, PaneId::Primary, PaneId::Secondary);
+                    } else {
+                        state.move_tab_between_panes(id, PaneId::Secondary, PaneId::Primary);
                     }
                     (state.split_enabled, state.focused_pane)
                 };
                 ui.set_split_enabled(split_enabled);
-                ui.set_focused_pane(match focused_pane {
-                    PaneId::Primary => 0,
-                    PaneId::Secondary => 1,
-                });
+                ui.set_focused_pane(focused_pane.as_index());
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -546,7 +619,7 @@ fn setup_callbacks(
         ui.on_pane_focused(move |pane| {
             {
                 let mut state = state_handle.write();
-                state.focused_pane = if pane == 0 { PaneId::Primary } else { PaneId::Secondary };
+                state.set_focused_pane(pane_from_index(pane));
                 state.request_render();
             }
             
@@ -903,6 +976,53 @@ fn setup_callbacks(
             }
         });
     }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_move_tab_to_pane(move |id, from, to| {
+            if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    state.move_tab_between_panes(id, pane_from_index(from), pane_from_index(to));
+                }
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_zoom_slider_changed(move |pane, value| {
+            {
+                let mut state = state_handle.write();
+                state.set_focused_pane(pane_from_index(pane));
+                let mut changed = false;
+                if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.zoom_to(slider_value_to_zoom(value));
+                    changed = true;
+                }
+                if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
 }
 
 fn open_file(
@@ -929,9 +1049,19 @@ fn open_file(
                     }
                 }
                 
-                // Get viewport size from UI (use reasonable defaults if not yet laid out)
-                let ui_width = ui.get_viewport_width() as f64;
-                let ui_height = ui.get_viewport_height() as f64;
+                // Get viewport size from the focused pane (use reasonable defaults if not yet laid out)
+                let target_pane = if state_guard.split_enabled {
+                    state_guard.focused_pane
+                } else {
+                    PaneId::Primary
+                };
+                let (ui_width, ui_height) = match target_pane {
+                    PaneId::Primary => (ui.get_viewport_width() as f64, ui.get_viewport_height() as f64),
+                    PaneId::Secondary => (
+                        ui.get_secondary_viewport_width() as f64,
+                        ui.get_secondary_viewport_height() as f64,
+                    ),
+                };
                 let viewport_width = if ui_width > 0.0 { ui_width } else { 1024.0 };
                 let viewport_height = if ui_height > 0.0 { ui_height } else { 768.0 };
                 
@@ -1071,43 +1201,40 @@ fn generate_thumbnail(wsi: &WsiFile, max_size: u32) -> Option<Vec<u8>> {
 }
 
 fn update_tabs(ui: &AppWindow, state: &AppState) {
-    // Build tabs from open files and home tabs
-    let mut tabs: Vec<TabData> = state.open_files
-        .iter()
-        .map(|f| TabData {
-            id: f.id,
-            title: SharedString::from(f.filename.clone()),
-            path: SharedString::from(f.path.display().to_string()),
-            is_modified: false,
-            is_active: Some(f.id) == state.active_file_id,
-            is_home: false,
-        })
-        .collect();
-    
-    // Add home tabs
-    for &home_id in &state.home_tabs {
-        tabs.push(TabData {
-            id: home_id,
-            title: SharedString::from("Home"),
-            path: SharedString::new(),
-            is_modified: false,
-            is_active: Some(home_id) == state.active_file_id,
-            is_home: true,
-        });
-    }
-    
-    // Sort by ID to maintain consistent order
-    tabs.sort_by_key(|t| t.id);
-    
-    let model = Rc::new(VecModel::from(tabs));
-    ui.set_tabs(model.into());
-    ui.set_active_tab_id(state.active_file_id.unwrap_or(-1));
-    
-    // Update is_home_tab based on active tab
-    let is_home = state.active_file_id
-        .map(|id| state.is_home_tab(id))
-        .unwrap_or(false);
-    ui.set_is_home_tab(is_home);
+    let build_pane_tabs = |pane: PaneId| {
+        state
+            .tabs_for_pane(pane)
+            .iter()
+            .filter_map(|&id| {
+                if state.is_home_tab(id) {
+                    Some(TabData {
+                        id,
+                        title: SharedString::from("Home"),
+                        path: SharedString::new(),
+                        is_modified: false,
+                        is_active: Some(id) == state.active_tab_id_for_pane(pane),
+                        is_home: true,
+                    })
+                } else {
+                    state.get_file(id).map(|file| TabData {
+                        id: file.id,
+                        title: SharedString::from(file.filename.clone()),
+                        path: SharedString::from(file.path.display().to_string()),
+                        is_modified: false,
+                        is_active: Some(file.id) == state.active_tab_id_for_pane(pane),
+                        is_home: false,
+                    })
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+
+    ui.set_primary_tabs(Rc::new(VecModel::from(build_pane_tabs(PaneId::Primary))).into());
+    ui.set_secondary_tabs(Rc::new(VecModel::from(build_pane_tabs(PaneId::Secondary))).into());
+    ui.set_primary_is_home_tab(state.is_home_tab_active_in_pane(PaneId::Primary));
+    ui.set_secondary_is_home_tab(state.is_home_tab_active_in_pane(PaneId::Secondary));
+    ui.set_split_enabled(state.split_enabled);
+    ui.set_focused_pane(state.focused_pane.as_index());
 }
 
 /// Update the recent files list in the UI
@@ -1159,15 +1286,55 @@ fn tile_request_signature(
     })
 }
 
+fn set_minimap_thumbnail_for_file(ui: &AppWindow, file: &OpenFile, secondary: bool) {
+    let Some(ref thumb_data) = file.thumbnail else {
+        return;
+    };
+
+    let level = file.wsi.level_count().saturating_sub(1);
+    let Some(level_info) = file.wsi.level(level) else {
+        return;
+    };
+    let aspect = level_info.width as f64 / level_info.height as f64;
+    let (width, height) = if aspect > 1.0 {
+        (150u32, (150.0 / aspect) as u32)
+    } else {
+        ((150.0 * aspect) as u32, 150u32)
+    };
+
+    if let Some(buffer) = create_image_buffer(thumb_data, width.max(1), height.max(1)) {
+        let image = Image::from_rgba8(buffer);
+        if secondary {
+            ui.set_secondary_minimap_thumbnail(image);
+        } else {
+            ui.set_minimap_thumbnail(image);
+        }
+    }
+}
+
 fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) -> bool {
     let mut state = state.write();
-    let Some(file_id) = state.active_file_id else {
-        return false;
+    let primary_file_id = state.active_file_id_for_pane(PaneId::Primary);
+    let secondary_file_id = if state.split_enabled {
+        state.active_file_id_for_pane(PaneId::Secondary)
+    } else {
+        None
     };
+    if primary_file_id.is_none() && secondary_file_id.is_none() {
+        ui.set_roi_rect(ROIRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            visible: false,
+            ant_offset: 0.0,
+        });
+        return false;
+    }
     
     let split_enabled = state.split_enabled;
-    let split_position = state.split_position;
     let render_backend = state.render_backend;
+    let focused_pane = state.focused_pane;
     
     // Capture tool state for ROI calculation (before borrowing file mutably)
     let tool_state = state.tool_state;
@@ -1179,191 +1346,208 @@ fn update_and_render(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
     let ant_offset = state.ant_offset;
     
-    // Check if we switched to a different file - need to force re-render
-    let file_switched = state.last_rendered_file_id != Some(file_id);
-    let mut keep_running = render_requested || file_switched;
+    let primary_file_switched = state.last_primary_rendered_file_id != primary_file_id;
+    let secondary_file_switched = state.last_secondary_rendered_file_id != secondary_file_id;
+    let mut keep_running = render_requested || primary_file_switched || secondary_file_switched;
     let mut rendered_frame = false;
-    
-    {
-        let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
-            return false;
-        };
-    
-        // If file switched, reset frame_count to force first-frame render (skips cache checks)
-        if file_switched {
-            file.frame_count = 0;
-        }
 
-    // Get viewport dimensions from window
-    let window_width = ui.get_viewport_width() as f64;
-    let window_height = ui.get_viewport_height() as f64;
-    
-    // Calculate primary viewport size
-    let primary_width = if split_enabled {
-        (window_width * split_position as f64 - 3.0).max(100.0)
-    } else {
-        window_width.max(100.0)
-    };
-    let primary_height = window_height.max(100.0);
-    
-    // Update primary viewport physics
-    let primary_animating = file.viewport.update();
-    file.viewport.set_size(primary_width, primary_height);
-    let tile_epoch = file.tile_loader.loaded_epoch();
-    let new_primary_tiles = tile_epoch != file.last_seen_tile_epoch;
-    if new_primary_tiles {
-        file.last_seen_tile_epoch = tile_epoch;
-    }
-    let tiles_pending = file.tile_loader.pending_count() > 0;
-    keep_running |= primary_animating || new_primary_tiles || tiles_pending;
-    
-    // Update primary viewport info
-    let vp = &file.viewport.viewport;
-    ui.set_viewport_info(ViewportInfo {
-        center_x: vp.center.x as f32,
-        center_y: vp.center.y as f32,
-        zoom: vp.zoom as f32,
-        image_width: vp.image_width as f32,
-        image_height: vp.image_height as f32,
-        level: file.wsi.best_level_for_downsample(vp.effective_downsample()) as i32,
-    });
-    
-    // Update primary minimap
-    let rect = vp.minimap_rect();
-    ui.set_minimap_rect(MinimapRect {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-    });
-    
-    // Set thumbnail for minimap (ONCE only - avoid per-frame buffer allocation)
-    if !file.thumbnail_set {
-        trace!("Setting thumbnail");
-        if let Some(ref thumb_data) = file.thumbnail {
-            let level = file.wsi.level_count().saturating_sub(1);
-            if let Some(level_info) = file.wsi.level(level) {
-                let aspect = level_info.width as f64 / level_info.height as f64;
-                let (w, h) = if aspect > 1.0 {
-                    (150u32, (150.0 / aspect) as u32)
-                } else {
-                    ((150.0 * aspect) as u32, 150u32)
-                };
-                
-                if let Some(buffer) = create_image_buffer(thumb_data, w, h) {
-                    ui.set_minimap_thumbnail(Image::from_rgba8(buffer));
-                    file.thumbnail_set = true;
-                }
+    if let Some(file_id) = primary_file_id {
+        let primary_width = (ui.get_viewport_width() as f64).max(100.0);
+        let primary_height = (ui.get_viewport_height() as f64).max(100.0);
+
+        {
+            let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
+                return false;
+            };
+
+            if primary_file_switched {
+                file.frame_count = 0;
+                set_minimap_thumbnail_for_file(ui, file, false);
             }
-        }
-        trace!("Thumbnail set");
-    }
-    
-    // Render primary viewport
-    dbg_print!("[UPDATE] calling render");
-    rendered_frame |= if render_backend == RenderBackend::Gpu
-        && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
-    {
-        render_viewport_gpu(ui, file, tile_cache, SurfaceSlot::Primary)
-    } else {
-        render_viewport_to_buffer(ui, file, tile_cache, true)
-    };
-    dbg_print!("[UPDATE] render done");
-    
-    // Update ROI overlay (must be done every frame for proper tracking)
-    // Re-borrow viewport since render_viewport_to_buffer takes &mut
-    let vp = &file.viewport.viewport;
-    let bounds = vp.bounds();
-    
-    // Check for in-progress ROI (during drag) first, then committed ROI
-    let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
-        if let state::ToolInteractionState::Dragging(start) = tool_state {
-            if let Some(end) = candidate_point {
-                // Calculate in-progress ROI from drag points
-                Some(state::RegionOfInterest::from_points(start, end))
-            } else {
-                file.roi
+
+            let primary_animating = file.viewport.update();
+            file.viewport.set_size(primary_width, primary_height);
+            let tile_epoch = file.tile_loader.loaded_epoch();
+            let new_primary_tiles = tile_epoch != file.last_seen_tile_epoch;
+            if new_primary_tiles {
+                file.last_seen_tile_epoch = tile_epoch;
             }
-        } else {
-            file.roi
-        }
-    } else {
-        file.roi
-    };
-    
-    if let Some(roi) = roi_to_display {
-        let screen_x = (roi.x - bounds.left) * vp.zoom;
-        let screen_y = (roi.y - bounds.top) * vp.zoom;
-        let screen_w = roi.width * vp.zoom;
-        let screen_h = roi.height * vp.zoom;
-        
-        ui.set_roi_rect(ROIRect {
-            x: screen_x as f32,
-            y: screen_y as f32,
-            width: screen_w as f32,
-            height: screen_h as f32,
-            visible: true,
-            ant_offset,
-        });
-    } else {
-        ui.set_roi_rect(ROIRect {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-            visible: false,
-            ant_offset,
-        });
-    }
-    keep_running |= roi_to_display.is_some();
-    
-    // Handle secondary viewport if split is enabled
-    if split_enabled {
-        if let Some(ref mut secondary) = file.secondary_viewport {
-            // Update secondary viewport physics
-            let secondary_width = (window_width * (1.0 - split_position as f64) - 3.0).max(100.0);
-            let secondary_height = window_height.max(100.0);
-            
-            let secondary_animating = secondary.update();
-            secondary.set_size(secondary_width, secondary_height);
-            keep_running |= secondary_animating;
-            
-            // Update secondary viewport info
-            let vp2 = &secondary.viewport;
-            ui.set_secondary_viewport_info(ViewportInfo {
-                center_x: vp2.center.x as f32,
-                center_y: vp2.center.y as f32,
-                zoom: vp2.zoom as f32,
-                image_width: vp2.image_width as f32,
-                image_height: vp2.image_height as f32,
-                level: file.wsi.best_level_for_downsample(vp2.effective_downsample()) as i32,
+            let tiles_pending = file.tile_loader.pending_count() > 0;
+            keep_running |= primary_animating || new_primary_tiles || tiles_pending;
+
+            let vp = &file.viewport.viewport;
+            ui.set_viewport_info(ViewportInfo {
+                center_x: vp.center.x as f32,
+                center_y: vp.center.y as f32,
+                zoom: vp.zoom as f32,
+                image_width: vp.image_width as f32,
+                image_height: vp.image_height as f32,
+                level: file.wsi.best_level_for_downsample(vp.effective_downsample()) as i32,
             });
-            
-            // Update secondary minimap
-            let rect2 = vp2.minimap_rect();
-            ui.set_secondary_minimap_rect(MinimapRect {
-                x: rect2.x,
-                y: rect2.y,
-                width: rect2.width,
-                height: rect2.height,
+            ui.set_zoom_slider_position(zoom_to_slider_value(vp.zoom));
+
+            let rect = vp.minimap_rect();
+            ui.set_minimap_rect(MinimapRect {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
             });
-            
-            // Render secondary viewport
+
             rendered_frame |= if render_backend == RenderBackend::Gpu
                 && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
             {
-                render_secondary_viewport_gpu(ui, file, tile_cache)
+                render_viewport_gpu(ui, file, tile_cache, SurfaceSlot::Primary)
             } else {
-                render_secondary_viewport(ui, file, tile_cache)
+                render_viewport_to_buffer(ui, file, tile_cache, true)
             };
+
+            if focused_pane == PaneId::Primary || !split_enabled {
+                let vp = &file.viewport.viewport;
+                let bounds = vp.bounds();
+                let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
+                    if let state::ToolInteractionState::Dragging(start) = tool_state {
+                        if let Some(end) = candidate_point {
+                            Some(state::RegionOfInterest::from_points(start, end))
+                        } else {
+                            file.roi
+                        }
+                    } else {
+                        file.roi
+                    }
+                } else {
+                    file.roi
+                };
+
+                if let Some(roi) = roi_to_display {
+                    let screen_x = (roi.x - bounds.left) * vp.zoom;
+                    let screen_y = (roi.y - bounds.top) * vp.zoom;
+                    let screen_w = roi.width * vp.zoom;
+                    let screen_h = roi.height * vp.zoom;
+
+                    ui.set_roi_rect(ROIRect {
+                        x: screen_x as f32,
+                        y: screen_y as f32,
+                        width: screen_w as f32,
+                        height: screen_h as f32,
+                        visible: true,
+                        ant_offset,
+                    });
+                } else {
+                    ui.set_roi_rect(ROIRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                        visible: false,
+                        ant_offset,
+                    });
+                }
+                keep_running |= roi_to_display.is_some();
+            }
         }
     }
-    } // End of file borrow scope
-    
-    // Track which file we last rendered (must be after file borrow ends)
-    if file_switched {
-        state.last_rendered_file_id = Some(file_id);
+
+    if split_enabled {
+        if let Some(file_id) = secondary_file_id {
+            let secondary_width = (ui.get_secondary_viewport_width() as f64).max(100.0);
+            let secondary_height = (ui.get_secondary_viewport_height() as f64).max(100.0);
+
+            {
+                let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
+                    return false;
+                };
+
+                if secondary_file_switched {
+                    set_minimap_thumbnail_for_file(ui, file, true);
+                }
+
+                let secondary_overlay = if let Some(ref mut secondary) = file.secondary_viewport {
+                    let secondary_animating = secondary.update();
+                    secondary.set_size(secondary_width, secondary_height);
+                    keep_running |= secondary_animating;
+
+                    let vp2 = &secondary.viewport;
+                    ui.set_secondary_viewport_info(ViewportInfo {
+                        center_x: vp2.center.x as f32,
+                        center_y: vp2.center.y as f32,
+                        zoom: vp2.zoom as f32,
+                        image_width: vp2.image_width as f32,
+                        image_height: vp2.image_height as f32,
+                        level: file.wsi.best_level_for_downsample(vp2.effective_downsample()) as i32,
+                    });
+                    ui.set_secondary_zoom_slider_position(zoom_to_slider_value(vp2.zoom));
+
+                    let rect2 = vp2.minimap_rect();
+                    ui.set_secondary_minimap_rect(MinimapRect {
+                        x: rect2.x,
+                        y: rect2.y,
+                        width: rect2.width,
+                        height: rect2.height,
+                    });
+
+                    Some((vp2.bounds(), vp2.zoom))
+                } else {
+                    None
+                };
+
+                rendered_frame |= if render_backend == RenderBackend::Gpu
+                    && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
+                {
+                    render_secondary_viewport_gpu(ui, file, tile_cache)
+                } else {
+                    render_secondary_viewport(ui, file, tile_cache)
+                };
+
+                if focused_pane == PaneId::Secondary {
+                    if let Some((bounds, secondary_zoom)) = secondary_overlay {
+                        let roi_to_display = if current_tool == state::Tool::RegionOfInterest {
+                            if let state::ToolInteractionState::Dragging(start) = tool_state {
+                                if let Some(end) = candidate_point {
+                                    Some(state::RegionOfInterest::from_points(start, end))
+                                } else {
+                                    file.roi
+                                }
+                            } else {
+                                file.roi
+                            }
+                        } else {
+                            file.roi
+                        };
+
+                        if let Some(roi) = roi_to_display {
+                            let screen_x = (roi.x - bounds.left) * secondary_zoom;
+                            let screen_y = (roi.y - bounds.top) * secondary_zoom;
+                            let screen_w = roi.width * secondary_zoom;
+                            let screen_h = roi.height * secondary_zoom;
+
+                            ui.set_roi_rect(ROIRect {
+                                x: screen_x as f32,
+                                y: screen_y as f32,
+                                width: screen_w as f32,
+                                height: screen_h as f32,
+                                visible: true,
+                                ant_offset,
+                            });
+                        } else {
+                            ui.set_roi_rect(ROIRect {
+                                x: 0.0,
+                                y: 0.0,
+                                width: 0.0,
+                                height: 0.0,
+                                visible: false,
+                                ant_offset,
+                            });
+                        }
+                        keep_running |= roi_to_display.is_some();
+                    }
+                }
+            }
+        }
     }
+
+    state.last_primary_rendered_file_id = primary_file_id;
+    state.last_secondary_rendered_file_id = secondary_file_id;
 
     if rendered_frame {
         state.update_fps();

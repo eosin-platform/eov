@@ -440,6 +440,21 @@ impl ViewportState {
         trace!("Zoom requested: factor={}, target={}", factor, new_target);
     }
 
+    /// Smoothly zoom to an absolute zoom level around the viewport center.
+    pub fn zoom_to(&mut self, zoom: f64) {
+        let clamped_zoom = zoom.max(MIN_ZOOM).min(MAX_ZOOM);
+        let anchor_x = self.viewport.width / 2.0;
+        let anchor_y = self.viewport.height / 2.0;
+
+        self.zoom_start = self.viewport.zoom;
+        self.zoom_anchor_screen = DVec2::new(anchor_x, anchor_y);
+        self.zoom_anchor_image = self.viewport.screen_to_image(anchor_x, anchor_y);
+        self.zoom_start_time = Some(Instant::now());
+        self.target_zoom = clamped_zoom;
+        self.inertia_start_time = None;
+        self.is_dragging = false;
+    }
+
     /// Fit entire image in view (immediate, no animation)
     pub fn fit_to_view(&mut self) {
         self.stop();

@@ -42,6 +42,8 @@ open = "5"
 
 # Config directory access
 dirs = "6"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 # GPU vertex buffer casting
 bytemuck = { version = "1", features = ["derive"] }

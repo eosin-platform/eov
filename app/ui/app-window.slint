@@ -170,10 +170,12 @@ component IconButton inherits Rectangle {
 // Tab component
 component Tab inherits Rectangle {
     in property <TabData> data;
+    in property <int> pane-id: 0;
     in property <bool> is-dragging: false;
     callback close-requested(int);
     callback activated(int);
     callback context-menu(int, length, length);
+    callback drag-started(int, int);
     
     min-width: 100px;
     max-width: 200px;
@@ -202,8 +204,29 @@ component Tab inherits Rectangle {
     ]
     
     touch := TouchArea {
-        clicked => { root.activated(data.id); }
+        property <length> press-x;
+        property <length> press-y;
+        property <bool> drag-armed: false;
+
+        clicked => {
+            if !self.drag-armed {
+                root.activated(data.id);
+            }
+            self.drag-armed = false;
+        }
         pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                self.press-x = self.mouse-x;
+                self.press-y = self.mouse-y;
+                self.drag-armed = false;
+            } else if e.kind == PointerEventKind.move && self.pressed {
+                let dx = self.mouse-x - self.press-x;
+                let dy = self.mouse-y - self.press-y;
+                if !self.drag-armed && (abs(dx) > 6px || abs(dy) > 6px) {
+                    self.drag-armed = true;
+                    root.drag-started(data.id, root.pane-id);
+                }
+            }
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                 root.context-menu(data.id, self.mouse-x, self.mouse-y);
             }
@@ -256,17 +279,17 @@ component Tab inherits Rectangle {
 
 // Tab bar component with scrollable tabs and new tab button
 component TabBar inherits Rectangle {
+    in property <int> pane-id: 0;
     in property <[TabData]> tabs;
-    callback tab-activated(int);
-    callback tab-close-requested(int);
-    callback tab-context-menu(int, length, length);
-    callback new-tab-requested();
+    in property <int> dragging-tab-id: -1;
+    callback tab-activated(int, int);
+    callback tab-close-requested(int, int);
+    callback tab-context-menu(int, int, length, length);
+    callback new-tab-requested(int);
+    callback tab-drag-started(int, int);
     
     height: 35px;
     background: Theme.surface;
-    
-    // Calculate if tabs overflow
-    property <bool> tabs-overflow: tabs-layout.preferred-width + 36px > self.width - 8px;
     
     // Bottom border line
     Rectangle {
@@ -284,55 +307,32 @@ component TabBar inherits Rectangle {
         // Scrollable tabs area (only actually scrolls when tabs overflow)
         Flickable {
             horizontal-stretch: 1;
-            viewport-width: tabs-plus-layout.preferred-width;
-            interactive: root.tabs-overflow;
+            viewport-width: tabs-layout.preferred-width;
+            interactive: true;
             
-            tabs-plus-layout := HorizontalLayout {
+            tabs-layout := HorizontalLayout {
                 alignment: start;
                 spacing: 1px;
-                
-                tabs-layout := HorizontalLayout {
-                    alignment: start;
-                    spacing: 1px;
-                    
-                    for tab in tabs: Tab {
-                        data: tab;
-                        close-requested(id) => { root.tab-close-requested(id); }
-                        activated(id) => { root.tab-activated(id); }
-                        context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
-                    }
-                }
-                
-                // New tab button - inline when no overflow
-                if !root.tabs-overflow: Rectangle {
-                    width: 35px;
-                    height: 35px;
-                    background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
-                    
-                    inline-new-tab-touch := TouchArea {
-                        clicked => { root.new-tab-requested(); }
-                    }
-                    
-                    Text {
-                        text: "+";
-                        color: inline-new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
-                        font-size: 20px;
-                        font-weight: 400;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
+
+                for tab in tabs: Tab {
+                    pane-id: root.pane-id;
+                    data: tab;
+                    is-dragging: root.dragging-tab-id == tab.id;
+                    close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
+                    activated(id) => { root.tab-activated(root.pane-id, id); }
+                    context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
+                    drag-started(id, pane) => { root.tab-drag-started(id, pane); }
                 }
             }
         }
         
-        // New tab button - fixed at right edge when tabs overflow
-        if root.tabs-overflow: Rectangle {
+        Rectangle {
             width: 35px;
             height: 35px;
             background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
             
             new-tab-touch := TouchArea {
-                clicked => { root.new-tab-requested(); }
+                clicked => { root.new-tab-requested(root.pane-id); }
             }
             
             Text {
@@ -497,6 +497,91 @@ component Minimap inherits Rectangle {
     }
 }
 
+component ZoomSlider inherits Rectangle {
+    in property <float> value: 0.5;
+    callback value-changed(float);
+
+    width: 28px;
+    height: 150px;
+    background: Theme.minimap-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    property <float> clamped-value: max(0, min(1, value));
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 24px;
+        background: plus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        plus-touch := TouchArea {
+            clicked => { root.value-changed(Math.min(1, root.clamped-value + 0.08)); }
+        }
+
+        Text {
+            text: "+";
+            color: Theme.text-primary;
+            font-size: 16px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    Rectangle {
+        x: self.width / 2 - 2px;
+        y: 26px;
+        width: 4px;
+        height: root.height - 52px;
+        border-radius: 2px;
+        background: Theme.border;
+    }
+
+    Rectangle {
+        x: self.width / 2 - 8px;
+        y: 26px + (1 - root.clamped-value) * (self.height - 52px) - 8px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: Theme.accent;
+        border-width: 2px;
+        border-color: white;
+    }
+
+    slider-touch := TouchArea {
+        y: 24px;
+        width: 100%;
+        height: root.height - 48px;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                let normalized = 1 - max(0, min(1, self.mouse-y / max(self.height, 1px)));
+                root.value-changed(normalized);
+            }
+        }
+    }
+
+    Rectangle {
+        y: self.height - 24px;
+        width: 100%;
+        height: 24px;
+        background: minus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        minus-touch := TouchArea {
+            clicked => { root.value-changed(Math.max(0, root.clamped-value - 0.08)); }
+        }
+
+        Text {
+            text: "-";
+            color: Theme.text-primary;
+            font-size: 18px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
 // Viewport component for WSI rendering
 component Viewport inherits Rectangle {
     in property <image> content;
@@ -508,6 +593,7 @@ component Viewport inherits Rectangle {
     in property <bool> is-loading: false;
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
+    in property <float> zoom-slider-position: 0.5;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -521,6 +607,7 @@ component Viewport inherits Rectangle {
     callback start-pan(float, float);
     callback end-pan();
     callback minimap-navigate(float, float);
+    callback zoom-slider-changed(float);
     callback file-dropped(string);
     
     // Tool callbacks
@@ -779,6 +866,13 @@ component Viewport inherits Rectangle {
         image-height: viewport-info.image-height;
         navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
     }
+
+    if show-minimap: ZoomSlider {
+        x: parent.width - 16px - 150px - self.width - 8px;
+        y: parent.height - self.height - 16px - 24px;
+        value: root.zoom-slider-position;
+        value-changed(value) => { root.zoom-slider-changed(value); }
+    }
     
     // FPS overlay in top right corner (debug mode only)
     if debug-mode: Rectangle {
@@ -1006,12 +1100,14 @@ component HomeScreen inherits Rectangle {
 
 // Split pane container supporting horizontal and vertical splits
 component SplitPaneContainer inherits Rectangle {
-    in property <[TabData]> tabs;
+    in property <[TabData]> primary-tabs;
+    in property <[TabData]> secondary-tabs;
     in property <image> viewport-content;
     in property <image> secondary-viewport-content;
     in property <ViewportInfo> viewport-info;
     in property <ViewportInfo> secondary-viewport-info;
     in property <image> minimap-thumbnail;
+    in property <image> secondary-minimap-thumbnail;
     in property <MinimapRect> minimap-rect;
     in property <MinimapRect> secondary-minimap-rect;
     in property <string> status-text;
@@ -1021,8 +1117,13 @@ component SplitPaneContainer inherits Rectangle {
     in property <int> focused-pane: 0; // 0 = primary, 1 = secondary
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
-    in property <bool> is-home-tab: false;  // True if current tab is a home tab
+    in property <bool> primary-is-home-tab: false;
+    in property <bool> secondary-is-home-tab: false;
     in property <[RecentFileData]> recent-files: [];
+    in property <float> zoom-slider-position: 0.5;
+    in property <float> secondary-zoom-slider-position: 0.5;
+    in property <int> dragging-tab-id: -1;
+    in property <int> drag-source-pane: -1;
     
     // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
@@ -1037,10 +1138,10 @@ component SplitPaneContainer inherits Rectangle {
     out property <length> secondary-viewport-width: self.width * (1 - split-position) - 3px;
     out property <length> secondary-viewport-height: self.height - 35px - 24px;
     
-    callback tab-activated(int);
-    callback tab-close-requested(int);
-    callback tab-context-menu(int, length, length);
-    callback new-tab-requested();
+    callback tab-activated(int, int);
+    callback tab-close-requested(int, int);
+    callback tab-context-menu(int, int, length, length);
+    callback new-tab-requested(int);
     callback open-file-requested();
     callback open-recent-file(string);
     callback viewport-pan(float, float);
@@ -1052,6 +1153,10 @@ component SplitPaneContainer inherits Rectangle {
     callback file-dropped(string);
     callback pane-focused(int);
     callback split-position-changed(float);
+    callback tab-drag-started(int, int);
+    callback move-tab-to-pane(int, int, int);
+    callback clear-tab-drag();
+    callback zoom-slider-changed(int, float);
     
     // Tool callbacks
     callback tool-mouse-down(float, float);
@@ -1061,115 +1166,163 @@ component SplitPaneContainer inherits Rectangle {
     
     background: Theme.background;
     
-    VerticalLayout {
-        // Tab bar
-        TabBar {
-            tabs: root.tabs;
-            tab-activated(id) => { root.tab-activated(id); }
-            tab-close-requested(id) => { root.tab-close-requested(id); }
-            tab-context-menu(id, x, y) => { root.tab-context-menu(id, x, y); }
-            new-tab-requested => { root.new-tab-requested(); }
-        }
-        
-        // Content area with optional split
-        HorizontalLayout {
-            vertical-stretch: 1;
-            
-            // Primary viewport or home screen
-            primary-container := Rectangle {
-                width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
-                border-width: root.focused-pane == 0 && root.split-enabled ? 2px : 0px;
-                border-color: Theme.accent;
-                
-                // Show home screen if this is a home tab
-                if root.is-home-tab: HomeScreen {
-                    recent-files: root.recent-files;
-                    open-file-requested => { root.open-file-requested(); }
-                    open-recent-file(path) => { root.open-recent-file(path); }
+    HorizontalLayout {
+        vertical-stretch: 1;
+
+        primary-pane := Rectangle {
+            width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
+            border-width: root.focused-pane == 0 && root.split-enabled ? 2px : 0px;
+            border-color: Theme.accent;
+
+            VerticalLayout {
+                TabBar {
+                    pane-id: 0;
+                    tabs: root.primary-tabs;
+                    dragging-tab-id: root.dragging-tab-id;
+                    tab-activated(pane, id) => { root.tab-activated(pane, id); }
+                    tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
+                    tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
+                    new-tab-requested(pane) => { root.new-tab-requested(pane); }
+                    tab-drag-started(id, pane) => { root.tab-drag-started(id, pane); }
                 }
-                
-                // Show viewport if not a home tab
-                if !root.is-home-tab: Viewport {
-                    content: viewport-content;
-                    viewport-info: root.viewport-info;
-                    minimap-thumbnail: minimap-thumbnail;
-                    minimap-rect: minimap-rect;
-                    status-text: root.status-text;
-                    is-loading: root.is-loading;
-                    current-tool: root.current-tool;
-                    roi-rect: root.roi-rect;
-                    measurements: root.measurements;
-                    candidate-measurement: root.candidate-measurement;
-                    debug-mode: root.debug-mode;
-                    fps: root.fps;
-                    
-                    pan(dx, dy) => { root.pane-focused(0); root.viewport-pan(dx, dy); }
-                    zoom(f, x, y) => { root.pane-focused(0); root.viewport-zoom(f, x, y); }
-                    fit-to-view => { root.pane-focused(0); root.viewport-fit-to-view(); }
-                    start-pan(x, y) => { root.pane-focused(0); root.viewport-start-pan(x, y); }
-                    end-pan => { root.viewport-end-pan(); }
-                    minimap-navigate(nx, ny) => { root.pane-focused(0); root.minimap-navigate(nx, ny); }
-                    file-dropped(path) => { root.file-dropped(path); }
-                    tool-mouse-down(x, y) => { root.pane-focused(0); root.tool-mouse-down(x, y); }
-                    tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-                    tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-                    cancel-tool => { root.cancel-tool(); }
-                }
-            }
-            
-            // Splitter (only visible when split is enabled)
-            if root.split-enabled: Rectangle {
-                width: 6px;
-                background: splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border;
-                
-                splitter-touch := TouchArea {
-                    property <length> drag-start-x;
-                    
-                    pointer-event(e) => {
-                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                            self.drag-start-x = self.mouse-x;
-                        } else if e.kind == PointerEventKind.move && self.pressed {
-                            let delta = (self.mouse-x - self.drag-start-x) / root.width;
-                            let new-pos = (root.split-position + delta).clamp(0.2, 0.8);
-                            root.split-position-changed(new-pos);
-                            self.drag-start-x = self.mouse-x;
-                        }
+
+                Rectangle {
+                    vertical-stretch: 1;
+
+                    if root.primary-is-home-tab || root.primary-tabs.length == 0: HomeScreen {
+                        recent-files: root.recent-files;
+                        open-file-requested => { root.open-file-requested(); }
+                        open-recent-file(path) => { root.open-recent-file(path); }
                     }
-                    mouse-cursor: ew-resize;
+
+                    if !root.primary-is-home-tab && root.primary-tabs.length > 0: Viewport {
+                        content: viewport-content;
+                        viewport-info: root.viewport-info;
+                        minimap-thumbnail: minimap-thumbnail;
+                        minimap-rect: minimap-rect;
+                        status-text: root.status-text;
+                        is-loading: root.is-loading;
+                        current-tool: root.current-tool;
+                        roi-rect: root.roi-rect;
+                        measurements: root.measurements;
+                        candidate-measurement: root.candidate-measurement;
+                        debug-mode: root.debug-mode;
+                        fps: root.fps;
+                        zoom-slider-position: root.zoom-slider-position;
+
+                        pan(dx, dy) => { root.pane-focused(0); root.viewport-pan(dx, dy); }
+                        zoom(f, x, y) => { root.pane-focused(0); root.viewport-zoom(f, x, y); }
+                        fit-to-view => { root.pane-focused(0); root.viewport-fit-to-view(); }
+                        start-pan(x, y) => { root.pane-focused(0); root.viewport-start-pan(x, y); }
+                        end-pan => { root.viewport-end-pan(); }
+                        minimap-navigate(nx, ny) => { root.pane-focused(0); root.minimap-navigate(nx, ny); }
+                        zoom-slider-changed(value) => { root.pane-focused(0); root.zoom-slider-changed(0, value); }
+                        file-dropped(path) => { root.file-dropped(path); }
+                        tool-mouse-down(x, y) => { root.pane-focused(0); root.tool-mouse-down(x, y); }
+                        tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+                        tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+                        cancel-tool => { root.cancel-tool(); }
+                    }
                 }
             }
-            
-            // Secondary viewport (only visible when split is enabled)  
-            if root.split-enabled: Rectangle {
-                horizontal-stretch: 1;
-                border-width: root.focused-pane == 1 ? 2px : 0px;
-                border-color: Theme.accent;
-                
-                secondary-viewport := Viewport {
-                    content: secondary-viewport-content;
-                    viewport-info: root.secondary-viewport-info;
-                    minimap-thumbnail: minimap-thumbnail;
-                    minimap-rect: secondary-minimap-rect;
-                    status-text: root.status-text;
-                    is-loading: false;
-                    current-tool: root.current-tool;
-                    roi-rect: root.roi-rect;
-                    measurements: root.measurements;
-                    candidate-measurement: root.candidate-measurement;
-                    debug-mode: root.debug-mode;
-                    fps: root.fps;
-                    
-                    pan(dx, dy) => { root.pane-focused(1); root.viewport-pan(dx, dy); }
-                    zoom(f, x, y) => { root.pane-focused(1); root.viewport-zoom(f, x, y); }
-                    fit-to-view => { root.pane-focused(1); root.viewport-fit-to-view(); }
-                    start-pan(x, y) => { root.pane-focused(1); root.viewport-start-pan(x, y); }
-                    end-pan => { root.viewport-end-pan(); }
-                    minimap-navigate(nx, ny) => { root.pane-focused(1); root.minimap-navigate(nx, ny); }
-                    file-dropped(path) => { root.file-dropped(path); }
-                    tool-mouse-down(x, y) => { root.pane-focused(1); root.tool-mouse-down(x, y); }
-                    tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-                    tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-                    cancel-tool => { root.cancel-tool(); }
+        }
+
+        if root.split-enabled: Rectangle {
+            width: 6px;
+            background: splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border;
+
+            splitter-touch := TouchArea {
+                property <length> drag-start-x;
+
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                        self.drag-start-x = self.mouse-x;
+                    } else if e.kind == PointerEventKind.move && self.pressed {
+                        let delta = (self.mouse-x - self.drag-start-x) / root.width;
+                        let new-pos = (root.split-position + delta).clamp(0.2, 0.8);
+                        root.split-position-changed(new-pos);
+                        self.drag-start-x = self.mouse-x;
+                    }
+                }
+                mouse-cursor: ew-resize;
+            }
+        }
+
+        if root.split-enabled: Rectangle {
+            horizontal-stretch: 1;
+            border-width: root.focused-pane == 1 ? 2px : 0px;
+            border-color: Theme.accent;
+
+            VerticalLayout {
+                TabBar {
+                    pane-id: 1;
+                    tabs: root.secondary-tabs;
+                    dragging-tab-id: root.dragging-tab-id;
+                    tab-activated(pane, id) => { root.tab-activated(pane, id); }
+                    tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
+                    tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
+                    new-tab-requested(pane) => { root.new-tab-requested(pane); }
+                    tab-drag-started(id, pane) => { root.tab-drag-started(id, pane); }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+
+                    if root.secondary-is-home-tab || root.secondary-tabs.length == 0: HomeScreen {
+                        recent-files: root.recent-files;
+                        open-file-requested => { root.open-file-requested(); }
+                        open-recent-file(path) => { root.open-recent-file(path); }
+                    }
+
+                    if !root.secondary-is-home-tab && root.secondary-tabs.length > 0: Viewport {
+                        content: secondary-viewport-content;
+                        viewport-info: root.secondary-viewport-info;
+                        minimap-thumbnail: secondary-minimap-thumbnail;
+                        minimap-rect: secondary-minimap-rect;
+                        status-text: root.status-text;
+                        is-loading: false;
+                        current-tool: root.current-tool;
+                        roi-rect: root.roi-rect;
+                        measurements: root.measurements;
+                        candidate-measurement: root.candidate-measurement;
+                        debug-mode: root.debug-mode;
+                        fps: root.fps;
+                        zoom-slider-position: root.secondary-zoom-slider-position;
+
+                        pan(dx, dy) => { root.pane-focused(1); root.viewport-pan(dx, dy); }
+                        zoom(f, x, y) => { root.pane-focused(1); root.viewport-zoom(f, x, y); }
+                        fit-to-view => { root.pane-focused(1); root.viewport-fit-to-view(); }
+                        start-pan(x, y) => { root.pane-focused(1); root.viewport-start-pan(x, y); }
+                        end-pan => { root.viewport-end-pan(); }
+                        minimap-navigate(nx, ny) => { root.pane-focused(1); root.minimap-navigate(nx, ny); }
+                        zoom-slider-changed(value) => { root.pane-focused(1); root.zoom-slider-changed(1, value); }
+                        file-dropped(path) => { root.file-dropped(path); }
+                        tool-mouse-down(x, y) => { root.pane-focused(1); root.tool-mouse-down(x, y); }
+                        tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+                        tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+                        cancel-tool => { root.cancel-tool(); }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.dragging-tab-id != -1: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.up {
+                    let target-pane = root.split-enabled && self.mouse-x > primary-pane.width + 6px ? 1 : 0;
+                    if target-pane != root.drag-source-pane {
+                        root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, target-pane);
+                    }
+                    root.clear-tab-drag();
                 }
             }
         }
@@ -1187,13 +1340,14 @@ export component AppWindow inherits Window {
     background: Theme.background;
     
     // Properties
-    in-out property <[TabData]> tabs: [];
-    in-out property <int> active-tab-id: -1;
+    in-out property <[TabData]> primary-tabs: [];
+    in-out property <[TabData]> secondary-tabs: [];
     in-out property <image> viewport-content;
     in-out property <image> secondary-viewport-content;
     in-out property <ViewportInfo> viewport-info;
     in-out property <ViewportInfo> secondary-viewport-info;
     in-out property <image> minimap-thumbnail;
+    in-out property <image> secondary-minimap-thumbnail;
     in-out property <MinimapRect> minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
     in-out property <MinimapRect> secondary-minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
     in-out property <string> status-text: "Ready";
@@ -1201,8 +1355,13 @@ export component AppWindow inherits Window {
     in-out property <bool> split-enabled: false;
     in-out property <float> split-position: 0.5;
     in-out property <int> focused-pane: 0;
-    in-out property <bool> is-home-tab: false;  // True if current tab is a home tab
+    in-out property <bool> primary-is-home-tab: false;
+    in-out property <bool> secondary-is-home-tab: false;
     in-out property <[RecentFileData]> recent-files: [];
+    in-out property <float> zoom-slider-position: 0.5;
+    in-out property <float> secondary-zoom-slider-position: 0.5;
+    in-out property <int> dragging-tab-id: -1;
+    in-out property <int> drag-source-pane: -1;
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -1234,16 +1393,16 @@ export component AppWindow inherits Window {
     
     // Callbacks
     callback open-file-requested();
-    callback new-tab-requested();
+    callback new-tab-requested(int);
     callback open-recent-file(string);
-    callback tab-activated(int);
-    callback tab-close-requested(int);
-    callback close-other-tabs(int);
-    callback close-tabs-to-right(int);
+    callback tab-activated(int, int);
+    callback tab-close-requested(int, int);
+    callback close-other-tabs(int, int);
+    callback close-tabs-to-right(int, int);
     callback close-all-tabs();
     callback open-containing-folder(int);
     callback copy-path(int);
-    callback split-right(int);
+    callback split-right(int, int);
     callback close-split();
     callback viewport-pan(float, float);
     callback viewport-zoom(float, float, float);
@@ -1263,6 +1422,8 @@ export component AppWindow inherits Window {
     callback viewport-tool-mouse-up(float, float);
     callback cancel-tool();
     callback render-backend-selected(RenderMode);
+    callback move-tab-to-pane(int, int, int);
+    callback zoom-slider-changed(int, float);
     
     // Main layout
     VerticalLayout {
@@ -1315,13 +1476,6 @@ export component AppWindow inherits Window {
                     background: Theme.border;
                 }
 
-                Text {
-                    text: "CPU";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
                 ToolButton {
                     width: 40px;
                     icon: "CPU";
@@ -1361,13 +1515,15 @@ export component AppWindow inherits Window {
         content-area := Rectangle {
             vertical-stretch: 1;
             
-            if tabs.length > 0: SplitPaneContainer {
-                tabs: root.tabs;
+            if primary-tabs.length > 0 || (split-enabled && secondary-tabs.length > 0): SplitPaneContainer {
+                primary-tabs: root.primary-tabs;
+                secondary-tabs: root.secondary-tabs;
                 viewport-content: root.viewport-content;
                 secondary-viewport-content: root.secondary-viewport-content;
                 viewport-info: root.viewport-info;
                 secondary-viewport-info: root.secondary-viewport-info;
                 minimap-thumbnail: root.minimap-thumbnail;
+                secondary-minimap-thumbnail: root.secondary-minimap-thumbnail;
                 minimap-rect: root.minimap-rect;
                 secondary-minimap-rect: root.secondary-minimap-rect;
                 status-text: root.status-text;
@@ -1381,27 +1537,33 @@ export component AppWindow inherits Window {
                 candidate-measurement: root.candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
-                is-home-tab: root.is-home-tab;
+                primary-is-home-tab: root.primary-is-home-tab;
+                secondary-is-home-tab: root.secondary-is-home-tab;
                 recent-files: root.recent-files;
-                
-                tab-activated(id) => { root.tab-activated(id); }
-                tab-close-requested(id) => { root.tab-close-requested(id); }
-                new-tab-requested => { root.new-tab-requested(); }
+                zoom-slider-position: root.zoom-slider-position;
+                secondary-zoom-slider-position: root.secondary-zoom-slider-position;
+                dragging-tab-id: root.dragging-tab-id;
+                drag-source-pane: root.drag-source-pane;
+
+                tab-activated(pane, id) => { root.tab-activated(pane, id); }
+                tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
+                new-tab-requested(pane) => { root.new-tab-requested(pane); }
                 open-file-requested => { root.open-file-requested(); }
                 open-recent-file(path) => { root.open-recent-file(path); }
-                tab-context-menu(id, x, y) => {
+                tab-context-menu(pane, id, x, y) => {
                     root.context-menu-tab-id = id;
                     root.context-menu-x = x + 0px; // Offset for tab bar position
                     root.context-menu-y = y + 75px; // Account for toolbar + tab bar
                     root.context-menu-items = [
                         { id: "close", label: "Close", shortcut: "Ctrl+W", enabled: true, separator-after: false },
-                        { id: "close-others", label: "Close Others", shortcut: "", enabled: tabs.length > 1, separator-after: false },
+                        { id: "close-others", label: "Close Others", shortcut: "", enabled: pane == 0 ? root.primary-tabs.length > 1 : root.secondary-tabs.length > 1, separator-after: false },
                         { id: "close-right", label: "Close to the Right", shortcut: "", enabled: true, separator-after: false },
                         { id: "close-all", label: "Close All", shortcut: "", enabled: true, separator-after: true },
                         { id: "open-folder", label: "Open Containing Folder", shortcut: "", enabled: true, separator-after: false },
                         { id: "copy-path", label: "Copy Path", shortcut: "", enabled: true, separator-after: true },
-                        { id: "split-right", label: root.split-enabled ? "Close Split" : "Split Right", shortcut: "", enabled: true, separator-after: false },
+                        { id: "split-right", label: !root.split-enabled ? "Split Right" : pane == 0 ? "Move to Right Pane" : "Move to Left Pane", shortcut: "", enabled: true, separator-after: false },
                     ];
+                    root.drag-source-pane = pane;
                     root.context-menu-visible = true;
                 }
                 viewport-pan(dx, dy) => { root.viewport-pan(dx, dy); }
@@ -1413,6 +1575,16 @@ export component AppWindow inherits Window {
                 file-dropped(path) => { root.file-dropped(path); }
                 pane-focused(pane) => { root.pane-focused(pane); }
                 split-position-changed(pos) => { root.split-position-changed(pos); }
+                tab-drag-started(id, pane) => {
+                    root.dragging-tab-id = id;
+                    root.drag-source-pane = pane;
+                }
+                move-tab-to-pane(id, from, to) => { root.move-tab-to-pane(id, from, to); }
+                clear-tab-drag => {
+                    root.dragging-tab-id = -1;
+                    root.drag-source-pane = -1;
+                }
+                zoom-slider-changed(pane, value) => { root.zoom-slider-changed(pane, value); }
                 tool-mouse-down(x, y) => { root.viewport-tool-mouse-down(x, y); }
                 tool-mouse-move(x, y) => { root.viewport-tool-mouse-move(x, y); }
                 tool-mouse-up(x, y) => { root.viewport-tool-mouse-up(x, y); }
@@ -1420,7 +1592,7 @@ export component AppWindow inherits Window {
             }
             
             // Empty state - show home screen when no tabs
-            if tabs.length == 0: HomeScreen {
+            if primary-tabs.length == 0 && (!split-enabled || secondary-tabs.length == 0): HomeScreen {
                 recent-files: root.recent-files;
                 open-file-requested => { root.open-file-requested(); }
                 open-recent-file(path) => { root.open-recent-file(path); }
@@ -1439,11 +1611,11 @@ export component AppWindow inherits Window {
             root.context-menu-visible = false;
             
             if id == "close" {
-                root.tab-close-requested(root.context-menu-tab-id);
+                root.tab-close-requested(root.drag-source-pane, root.context-menu-tab-id);
             } else if id == "close-others" {
-                root.close-other-tabs(root.context-menu-tab-id);
+                root.close-other-tabs(root.drag-source-pane, root.context-menu-tab-id);
             } else if id == "close-right" {
-                root.close-tabs-to-right(root.context-menu-tab-id);
+                root.close-tabs-to-right(root.drag-source-pane, root.context-menu-tab-id);
             } else if id == "close-all" {
                 root.close-all-tabs();
             } else if id == "open-folder" {
@@ -1451,7 +1623,7 @@ export component AppWindow inherits Window {
             } else if id == "copy-path" {
                 root.copy-path(root.context-menu-tab-id);
             } else if id == "split-right" {
-                root.split-right(root.context-menu-tab-id);
+                root.split-right(root.drag-source-pane, root.context-menu-tab-id);
             }
         }
     }
