@@ -7,19 +7,19 @@ global Theme {
     out property <color> background: #1e1e1e;
     out property <color> surface: #252526;
     out property <color> surface-hover: #2a2d2e;
-    out property <color> border: #3c3c3c;
+    out property <color> border: #3e3e42;
     out property <color> text-primary: #cccccc;
-    out property <color> text-secondary: #858585;
-    out property <color> accent: #0078d4;
-    out property <color> accent-hover: #1884d8;
+    out property <color> text-secondary: #969696;
+    out property <color> accent: #0e639c;
+    out property <color> accent-hover: #1177bb;
     out property <color> tab-active: #1e1e1e;
-    out property <color> tab-inactive: #2d2d2d;
+    out property <color> tab-inactive: #2d2d30;
     out property <color> minimap-bg: #1e1e1ecc;
-    out property <color> minimap-rect: #0078d4aa;
-    out property <color> context-menu-bg: #3c3c3c;
+    out property <color> minimap-rect: #3794ffaa;
+    out property <color> context-menu-bg: #252526;
     out property <color> context-menu-hover: #094771;
-    out property <color> toolbar-bg: #323233;
-    out property <color> viewport-bg: #1a1a1a;
+    out property <color> toolbar-bg: #2d2d30;
+    out property <color> viewport-bg: #1e1e1e;
     out property <color> error: #f44336;
     out property <color> success: #4caf50;
 }
@@ -643,14 +643,15 @@ component Viewport inherits Rectangle {
     
     // Export viewport dimensions for rendering
     out property <length> viewport-width: self.width;
-    out property <length> viewport-height: self.height - 24px;
+    out property <length> viewport-height: self.height;
     
     background: Theme.viewport-bg;
     
     // Main content area (visual only - declared first so it's at the back)
     Rectangle {
         clip: true;
-        height: parent.height - 24px;
+        width: parent.width;
+        height: parent.height;
         
         // Rendered image - use fill to match buffer size exactly
         Image {
@@ -810,7 +811,7 @@ component Viewport inherits Rectangle {
     // Declared BEFORE minimap so minimap is on top and can receive its own events
     touch := TouchArea {
         width: 100%;
-        height: parent.height - 24px; // Only cover the viewport area, not status bar
+        height: parent.height;
         
         property <length> drag-start-x;
         property <length> drag-start-y;
@@ -884,7 +885,7 @@ component Viewport inherits Rectangle {
     // Minimap in bottom right - declared AFTER touch area so it receives events on top
     if show-minimap: Minimap {
         x: parent.width - self.width - 16px;
-        y: parent.height - self.height - 16px - 24px;
+        y: parent.height - self.height - 16px;
         thumbnail: minimap-thumbnail;
         viewport-rect: minimap-rect;
         image-width: viewport-info.image-width;
@@ -894,7 +895,7 @@ component Viewport inherits Rectangle {
 
     if show-minimap: ZoomSlider {
         x: parent.width - 16px - 150px - self.width - 8px;
-        y: parent.height - self.height - 16px - 24px;
+        y: parent.height - self.height - 16px;
         value: root.zoom-slider-position;
         value-changed(value) => { root.zoom-slider-changed(value); }
     }
@@ -915,36 +916,6 @@ component Viewport inherits Rectangle {
             color: fps >= 25 ? #00ff00 : fps >= 15 ? #ffff00 : #ff0000;
             font-size: 12px;
             font-weight: 600;
-        }
-    }
-    
-    // Status bar
-    Rectangle {
-        x: 0;
-        y: parent.height - 24px;
-        width: 100%;
-        height: 24px;
-        background: Theme.toolbar-bg;
-        
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
-            
-            Text {
-                text: status-text;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                vertical-alignment: center;
-            }
-            
-            Rectangle { horizontal-stretch: 1; }
-            
-            Text {
-                text: "Zoom: " + Math.round(viewport-info.zoom * 100) + "%";
-                color: Theme.text-secondary;
-                font-size: 11px;
-                vertical-alignment: center;
-            }
         }
     }
     
@@ -1158,9 +1129,9 @@ component SplitPaneContainer inherits Rectangle {
     // Output viewport dimensions
     out property <length> viewport-width: split-enabled ? 
         (self.width * split-position - 3px) : self.width;
-    out property <length> viewport-height: self.height - 35px - 24px;
+    out property <length> viewport-height: self.height - 35px;
     out property <length> secondary-viewport-width: self.width * (1 - split-position) - 3px;
-    out property <length> secondary-viewport-height: self.height - 35px - 24px;
+    out property <length> secondary-viewport-height: self.height - 35px;
     
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
@@ -1423,9 +1394,9 @@ export component AppWindow inherits Window {
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
         (content-area.width * split-position - 3px) / 1px : content-area.width / 1px;
-    out property <float> viewport-height: (content-area.height - 35px - 24px) / 1px;
+    out property <float> viewport-height: (content-area.height - 35px) / 1px;
     out property <float> secondary-viewport-width: (content-area.width * (1 - split-position) - 3px) / 1px;
-    out property <float> secondary-viewport-height: (content-area.height - 35px - 24px) / 1px;
+    out property <float> secondary-viewport-height: (content-area.height - 35px) / 1px;
     
     // Context menu state
     in-out property <bool> context-menu-visible: false;
