@@ -245,6 +245,11 @@ fn clear_cached_pane(pane: PaneId) {
     });
 }
 
+fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
+    reset_pane_ui_state();
+    update_tabs(ui, state);
+}
+
 fn zoom_to_slider_value(zoom: f64) -> f32 {
     let log_min = MIN_ZOOM.ln();
     let log_max = MAX_ZOOM.ln();
@@ -555,7 +560,7 @@ fn setup_callbacks(
                         state.close_tab_in_pane(pane, tab_id);
                     }
                     let state = state_handle.read();
-                    update_tabs(&ui, &state);
+                    refresh_tab_ui(&ui, &state);
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "close-others" => {
@@ -573,7 +578,7 @@ fn setup_callbacks(
                         }
                     }
                     let state = state_handle.read();
-                    update_tabs(&ui, &state);
+                    refresh_tab_ui(&ui, &state);
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "close-right" => {
@@ -600,7 +605,7 @@ fn setup_callbacks(
                         }
                     }
                     let state = state_handle.read();
-                    update_tabs(&ui, &state);
+                    refresh_tab_ui(&ui, &state);
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "close-all" => {
@@ -609,7 +614,7 @@ fn setup_callbacks(
                         state.close_all_tabs();
                     }
                     let state = state_handle.read();
-                    update_tabs(&ui, &state);
+                    refresh_tab_ui(&ui, &state);
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "open-folder" => {
@@ -736,7 +741,7 @@ fn setup_callbacks(
                     state.close_tab_in_pane(pane_id, id);
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -768,7 +773,7 @@ fn setup_callbacks(
                     }
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -809,7 +814,7 @@ fn setup_callbacks(
                     }
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -831,7 +836,7 @@ fn setup_callbacks(
                     state.close_all_tabs();
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1273,7 +1278,7 @@ fn setup_callbacks(
                     state.set_focused_pane(target_pane);
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1372,7 +1377,7 @@ fn setup_callbacks(
                     }
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1428,6 +1433,7 @@ fn setup_callbacks(
 
         // Physical pixel position of the last cursor move
         let last_cursor = Rc::new(Cell::new((0.0f64, 0.0f64)));
+        let modifiers = Rc::new(Cell::new(winit::keyboard::ModifiersState::default()));
         // Physical pixel position where the left button was pressed (None = not in drag zone)
         let drag_press: Rc<Cell<Option<(f64, f64)>>> = Rc::new(Cell::new(None));
         // Double-click tracking
@@ -1436,12 +1442,41 @@ fn setup_callbacks(
 
         ui.window().on_winit_window_event({
             let last_cursor = Rc::clone(&last_cursor);
+            let modifiers = Rc::clone(&modifiers);
             let drag_press = Rc::clone(&drag_press);
             let last_press_time = Rc::clone(&last_press_time);
             let dbl_count = Rc::clone(&dbl_count);
+            let ui_weak = ui_weak.clone();
 
             move |slint_window, event| {
                 match event {
+                    winit::event::WindowEvent::ModifiersChanged(next_modifiers) => {
+                        modifiers.set(next_modifiers.state());
+                        EventResult::Propagate
+                    }
+
+                    winit::event::WindowEvent::KeyboardInput { event, .. } => {
+                        let modifier_state = modifiers.get();
+                        let close_app_shortcut = event.state == winit::event::ElementState::Pressed
+                            && !event.repeat
+                            && modifier_state.control_key()
+                            && modifier_state.shift_key()
+                            && matches!(
+                                event.physical_key,
+                                winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
+                            );
+
+                        if close_app_shortcut {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                let _ = ui.hide();
+                                let _ = slint::quit_event_loop();
+                            }
+                            return EventResult::PreventDefault;
+                        }
+
+                        EventResult::Propagate
+                    }
+
                     winit::event::WindowEvent::CursorMoved { position, .. } => {
                         last_cursor.set((position.x, position.y));
 

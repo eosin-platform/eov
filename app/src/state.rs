@@ -246,6 +246,15 @@ impl OpenFile {
         }
     }
 
+    pub fn remove_pane_slot(&mut self, index: usize) {
+        if index < self.pane_states.len() {
+            self.pane_states.remove(index);
+        }
+        if self.pane_states.is_empty() {
+            self.pane_states.push(None);
+        }
+    }
+
     pub fn pane_state(&self, pane: PaneId) -> Option<&FilePaneState> {
         self.pane_states.get(pane.0).and_then(|state| state.as_ref())
     }
@@ -572,6 +581,26 @@ impl AppState {
         PaneId(insert_index)
     }
 
+    fn remove_pane(&mut self, index: usize) {
+        if self.panes.len() <= 1 || index >= self.panes.len() {
+            return;
+        }
+
+        self.panes.remove(index);
+        if index < self.last_rendered_file_ids.len() {
+            self.last_rendered_file_ids.remove(index);
+        }
+        for file in &mut self.open_files {
+            file.remove_pane_slot(index);
+        }
+
+        if self.focused_pane.0 > index {
+            self.focused_pane = PaneId(self.focused_pane.0 - 1);
+        } else if self.focused_pane.0 >= self.panes.len() {
+            self.focused_pane = PaneId(self.panes.len().saturating_sub(1));
+        }
+    }
+
     pub fn reset_to_single_pane(&mut self) {
         self.panes = vec![PaneState::default()];
         self.last_rendered_file_ids = vec![None];
@@ -621,6 +650,19 @@ impl AppState {
         self.split_enabled = self.panes.len() > 1;
     }
 
+    fn collapse_empty_panes(&mut self) {
+        let mut pane_index = 0;
+        while self.panes.len() > 1 && pane_index < self.panes.len() {
+            if self.panes[pane_index].tabs.is_empty() {
+                self.remove_pane(pane_index);
+            } else {
+                pane_index += 1;
+            }
+        }
+        self.normalize_split_after_tab_change();
+        self.sync_active_file_id();
+    }
+
     fn is_known_tab(&self, id: i32) -> bool {
         self.is_home_tab(id) || self.open_files.iter().any(|file| file.id == id)
     }
@@ -656,6 +698,7 @@ impl AppState {
         } else {
             self.sync_active_file_id();
         }
+        self.collapse_empty_panes();
         self.normalize_split_after_tab_change();
         self.needs_render = true;
     }
@@ -744,6 +787,7 @@ impl AppState {
         for pane_index in 0..self.panes.len() {
             self.remove_tab_from_pane(PaneId(pane_index), id);
         }
+        self.collapse_empty_panes();
         self.needs_render = true;
     }
 
@@ -753,6 +797,7 @@ impl AppState {
         }
 
         self.remove_tab_from_pane(pane, id);
+        self.collapse_empty_panes();
 
         let still_open_elsewhere = self.panes.iter().any(|pane_state| pane_state.tabs.contains(&id));
         if still_open_elsewhere {
@@ -971,6 +1016,8 @@ impl AppState {
                     *self.active_tab_id_for_pane_mut(PaneId(pane_index)) = replacement;
                 }
             }
+
+            self.collapse_empty_panes();
 
             for rendered_id in &mut self.last_rendered_file_ids {
                 *rendered_id = rendered_id.filter(|&file_id| file_id != id);
