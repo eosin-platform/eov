@@ -2100,6 +2100,11 @@ fn update_and_render(
                 .and_then(|entry| entry.minimap_thumbnail.as_ref())
                 .is_none()
         });
+        let content_missing = with_pane_render_cache(pane_count, |cache| {
+            cache.get(pane.0)
+                .and_then(|entry| entry.content.as_ref())
+                .is_none()
+        });
 
         if file_switched {
             if let Some(pane_state) = file.pane_state_mut(pane) {
@@ -2124,8 +2129,13 @@ fn update_and_render(
         rendered_frame |= outcome.rendered;
         if let Some(image) = outcome.image {
             set_cached_pane_content(pane, image);
+            state.set_last_rendered_file_id(pane, Some(file_id));
+        } else if content_missing {
+            state.set_last_rendered_file_id(pane, None);
+            keep_running = true;
+        } else {
+            state.set_last_rendered_file_id(pane, Some(file_id));
         }
-        state.set_last_rendered_file_id(pane, Some(file_id));
     }
 
     update_tabs(ui, &state);
@@ -2160,6 +2170,7 @@ fn render_pane_to_image(
         last_render_height,
         last_render_level,
         previous_tiles_loaded,
+        last_seen_tile_epoch,
     ) = {
         let Some(pane_state) = file.pane_state_mut(pane) else {
             return PaneRenderOutcome::default();
@@ -2178,6 +2189,7 @@ fn render_pane_to_image(
             pane_state.last_render_height,
             pane_state.last_render_level,
             pane_state.tiles_loaded_since_render,
+            pane_state.last_seen_tile_epoch,
         )
     };
 
@@ -2232,13 +2244,20 @@ fn render_pane_to_image(
         Vec::new()
     };
 
+    let loaded_tile_epoch = file.tile_loader.loaded_epoch();
+    let tile_epoch_advanced = loaded_tile_epoch > last_seen_tile_epoch;
     let new_tiles_loaded = cached_count > if level_changed { 0 } else { previous_tiles_loaded }
-        || !cached_coarse_tiles.is_empty();
+        || !cached_coarse_tiles.is_empty()
+        || tile_epoch_advanced;
     let tiles_pending = file.tile_loader.pending_count() > 0;
 
     let keep_running = animating || new_tiles_loaded || tiles_pending;
     if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
-        return PaneRenderOutcome::default();
+        return PaneRenderOutcome {
+            image: None,
+            keep_running,
+            rendered: false,
+        };
     }
 
     if let Some(pane_state) = file.pane_state_mut(pane) {
@@ -2251,6 +2270,7 @@ fn render_pane_to_image(
         pane_state.last_render_height = vp_height;
         pane_state.last_render_level = level;
         pane_state.tiles_loaded_since_render = cached_count;
+        pane_state.last_seen_tile_epoch = loaded_tile_epoch;
     }
 
     let render_width = vp_width as u32;
@@ -2274,6 +2294,12 @@ fn render_pane_to_image(
 
         if image.is_some() {
             ui.window().request_redraw();
+        } else if let Some(pane_state) = file.pane_state_mut(pane) {
+            // The first render attempt can happen before Slint has finished WGPU setup.
+            // Keep this pane in a first-frame state so the idle-frame optimization retries.
+            pane_state.frame_count = 0;
+            pane_state.last_render_level = u32::MAX;
+            pane_state.tiles_loaded_since_render = 0;
         }
         let rendered = image.is_some();
 
