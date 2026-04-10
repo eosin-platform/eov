@@ -7,6 +7,7 @@ use crate::{
     update_render_backend, update_tabs, update_tool_overlays, update_tool_state,
 };
 use common::TileCache;
+use common::viewport::ZOOM_FACTOR;
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -15,6 +16,45 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
+
+const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR * ZOOM_FACTOR;
+
+fn frame_active_viewport(state: &mut AppState) -> bool {
+    let pane = state.focused_pane;
+    let roi = state
+        .active_file_id_for_pane(pane)
+        .and_then(|file_id| state.get_file(file_id))
+        .and_then(|file| file.roi.filter(|roi| roi.pane == pane));
+
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+
+    if let Some(roi) = roi {
+        viewport.smooth_frame_rect(roi.x, roi.y, roi.width, roi.height);
+    } else {
+        viewport.smooth_fit_to_view();
+    }
+
+    true
+}
+
+fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+
+    let center_x = viewport.viewport.width / 2.0;
+    let center_y = viewport.viewport.height / 2.0;
+    viewport.zoom_at(factor, center_x, center_y);
+    true
+}
+
+fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let mut state = state.write();
+    state.toggle_minimap();
+    ui.set_show_minimap(state.show_minimap);
+}
 
 pub fn setup_callbacks(
     ui: &AppWindow,
@@ -265,6 +305,82 @@ pub fn setup_callbacks(
                 }
             }
             if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_frame_requested(move || {
+            {
+                let mut state = state_handle.write();
+                if frame_active_viewport(&mut state) {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_zoom_in_requested(move || {
+            {
+                let mut state = state_handle.write();
+                if zoom_active_viewport(&mut state, ACTION_ZOOM_FACTOR) {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_zoom_out_requested(move || {
+            {
+                let mut state = state_handle.write();
+                if zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR) {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_minimap_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_minimap_visibility(&ui, &state_handle);
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
@@ -529,6 +645,7 @@ pub fn setup_callbacks(
                 let mut state = state_handle.write();
                 let mut changed = false;
                 if let Some(viewport) = state.active_viewport_mut() {
+                    viewport.stop();
                     viewport.viewport.pan(dx as f64, dy as f64);
                     changed = true;
                 }
@@ -627,12 +744,7 @@ pub fn setup_callbacks(
         ui.on_viewport_fit_to_view(move || {
             {
                 let mut state = state_handle.write();
-                let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.fit_to_view();
-                    changed = true;
-                }
-                if changed {
+                if frame_active_viewport(&mut state) {
                     state.request_render();
                 }
             }
@@ -978,6 +1090,7 @@ pub fn setup_callbacks(
     {
         use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
 
+        let state_handle = Arc::clone(&state);
         let last_cursor = Rc::new(Cell::new((0.0f64, 0.0f64)));
         let modifiers = Rc::new(Cell::new(winit::keyboard::ModifiersState::default()));
         let drag_press: Rc<Cell<Option<(f64, f64)>>> = Rc::new(Cell::new(None));
@@ -991,6 +1104,9 @@ pub fn setup_callbacks(
             let last_press_time = Rc::clone(&last_press_time);
             let dbl_count = Rc::clone(&dbl_count);
             let ui_weak = ui_weak.clone();
+            let state_handle = Arc::clone(&state_handle);
+            let tile_cache = Arc::clone(&tile_cache);
+            let render_timer = Rc::clone(&render_timer);
 
             move |slint_window, event| match event {
                 winit::event::WindowEvent::ModifiersChanged(next_modifiers) => {
@@ -999,6 +1115,11 @@ pub fn setup_callbacks(
                 }
                 winit::event::WindowEvent::KeyboardInput { event, .. } => {
                     let modifier_state = modifiers.get();
+                    let plain_shortcut = event.state == winit::event::ElementState::Pressed
+                        && !event.repeat
+                        && !modifier_state.control_key()
+                        && !modifier_state.alt_key()
+                        && !modifier_state.super_key();
                     let close_app_shortcut = event.state == winit::event::ElementState::Pressed
                         && !event.repeat
                         && modifier_state.control_key()
@@ -1013,6 +1134,70 @@ pub fn setup_callbacks(
                             let _ = ui.hide();
                             let _ = slint::quit_event_loop();
                         }
+                        return EventResult::PreventDefault;
+                    }
+
+                    let handled = if plain_shortcut {
+                        use winit::keyboard::{Key, KeyCode, PhysicalKey};
+
+                        let shortcut = match (&event.logical_key, &event.physical_key) {
+                            (Key::Character(text), _) if text.eq_ignore_ascii_case("f") => {
+                                Some("frame")
+                            }
+                            (Key::Character(text), _) if text.eq_ignore_ascii_case("m") => {
+                                Some("toggle-minimap")
+                            }
+                            (Key::Character(text), _) if text == "+" => Some("zoom-in"),
+                            (Key::Character(text), _) if text == "-" => Some("zoom-out"),
+                            (_, PhysicalKey::Code(KeyCode::NumpadAdd)) => Some("zoom-in"),
+                            (_, PhysicalKey::Code(KeyCode::NumpadSubtract)) => Some("zoom-out"),
+                            _ => None,
+                        };
+
+                        if let Some(shortcut) = shortcut {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                match shortcut {
+                                    "frame" => {
+                                        let mut state = state_handle.write();
+                                        if frame_active_viewport(&mut state) {
+                                            state.request_render();
+                                        }
+                                    }
+                                    "zoom-in" => {
+                                        let mut state = state_handle.write();
+                                        if zoom_active_viewport(&mut state, ACTION_ZOOM_FACTOR) {
+                                            state.request_render();
+                                        }
+                                    }
+                                    "zoom-out" => {
+                                        let mut state = state_handle.write();
+                                        if zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR) {
+                                            state.request_render();
+                                        }
+                                    }
+                                    "toggle-minimap" => {
+                                        toggle_minimap_visibility(&ui, &state_handle);
+                                        let state = state_handle.read();
+                                        update_tabs(&ui, &state);
+                                    }
+                                    _ => {}
+                                }
+                                request_render_loop(
+                                    &render_timer,
+                                    &ui.as_weak(),
+                                    &state_handle,
+                                    &tile_cache,
+                                );
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    if handled {
                         return EventResult::PreventDefault;
                     }
 
@@ -1057,9 +1242,17 @@ pub fn setup_callbacks(
 
                     let toolbar_height = 40.0;
                     let win_w = slint_window.size().width as f64 / scale;
+                    let toolbar_action_width = if let Some(ui) = ui_weak.upgrade() {
+                        ui.get_toolbar_action_width() as f64
+                    } else {
+                        0.0
+                    };
                     let buttons_right_start = win_w - 138.0;
 
-                    if ly < toolbar_height && lx < buttons_right_start {
+                    if ly < toolbar_height
+                        && lx >= toolbar_action_width
+                        && lx < buttons_right_start
+                    {
                         drag_press.set(Some((cx, cy)));
 
                         let now = std::time::Instant::now();

@@ -28,10 +28,30 @@ export component ToolButton inherits Rectangle {
             vertical-alignment: center;
         }
     }
+
+    if touch.has-hover && root.tooltip-text != "": Rectangle {
+        x: parent.width / 2 - self.width / 2;
+        y: parent.height + 6px;
+        width: tooltip.preferred-width + 12px;
+        height: tooltip.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        tooltip := Text {
+            x: 6px;
+            y: 3px;
+            text: root.tooltip-text;
+            color: white;
+            font-size: 11px;
+        }
+    }
 }
 
 export component IconButton inherits Rectangle {
     in property <string> text;
+    in property <string> tooltip-text: "";
     in property <bool> enabled: true;
     callback clicked();
     callback secondary-clicked(length, length);
@@ -59,6 +79,25 @@ export component IconButton inherits Rectangle {
             color: root.enabled ? Theme.text-primary : Theme.text-secondary;
             font-size: 12px;
             vertical-alignment: center;
+        }
+    }
+
+    if touch.has-hover && root.tooltip-text != "": Rectangle {
+        x: parent.width / 2 - self.width / 2;
+        y: parent.height + 6px;
+        width: tooltip.preferred-width + 12px;
+        height: tooltip.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        tooltip := Text {
+            x: 6px;
+            y: 3px;
+            text: root.tooltip-text;
+            color: white;
+            font-size: 11px;
         }
     }
 }

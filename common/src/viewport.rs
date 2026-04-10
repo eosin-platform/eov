@@ -19,6 +19,9 @@ pub const ZOOM_FACTOR: f64 = 1.15;
 /// Animation duration for smooth zoom transitions (300ms)
 pub const ANIMATION_DURATION_MS: u64 = 300;
 
+/// Animation duration for smooth framing transitions (300ms)
+pub const NAVIGATION_DURATION_MS: u64 = 300;
+
 /// Pan inertia duration (500ms for more perceptible glide)
 pub const INERTIA_DURATION_MS: u64 = 500;
 
@@ -231,6 +234,18 @@ pub struct ViewportState {
     /// Zoom animation start time
     zoom_start_time: Option<Instant>,
 
+    // --- Framing/navigation animation ---
+    /// Navigation start center (for smooth frame-to-view / frame-to-ROI)
+    navigation_start_center: DVec2,
+    /// Navigation target center
+    navigation_target_center: DVec2,
+    /// Navigation start zoom
+    navigation_start_zoom: f64,
+    /// Navigation target zoom
+    navigation_target_zoom: f64,
+    /// Navigation animation start time
+    navigation_start_time: Option<Instant>,
+
     /// Last update time for physics
     last_update: Instant,
 }
@@ -240,6 +255,7 @@ impl ViewportState {
     pub fn new(width: f64, height: f64, image_width: f64, image_height: f64) -> Self {
         let viewport = Viewport::new(width, height, image_width, image_height);
         let initial_zoom = viewport.zoom;
+        let initial_center = viewport.center;
         Self {
             viewport,
             is_dragging: false,
@@ -252,6 +268,11 @@ impl ViewportState {
             zoom_anchor_screen: DVec2::ZERO,
             zoom_anchor_image: DVec2::ZERO,
             zoom_start_time: None,
+            navigation_start_center: initial_center,
+            navigation_target_center: initial_center,
+            navigation_start_zoom: initial_zoom,
+            navigation_target_zoom: initial_zoom,
+            navigation_start_time: None,
             last_update: Instant::now(),
         }
     }
@@ -263,6 +284,7 @@ impl ViewportState {
         self.velocity_samples.clear();
         self.inertia_start_time = None; // Cancel any ongoing inertia
         self.zoom_start_time = None; // Cancel any ongoing zoom animation to prevent snap-back
+        self.navigation_start_time = None; // Cancel any framing animation
         self.last_update = Instant::now();
     }
 
@@ -342,8 +364,36 @@ impl ViewportState {
 
         let now = Instant::now();
         let zoom_duration = Duration::from_millis(ANIMATION_DURATION_MS);
+        let navigation_duration = Duration::from_millis(NAVIGATION_DURATION_MS);
         let inertia_duration = Duration::from_millis(INERTIA_DURATION_MS);
         let mut is_animating = false;
+
+        // --- Framing/navigation animation ---
+        if let Some(start_time) = self.navigation_start_time {
+            let elapsed = now.duration_since(start_time);
+
+            if elapsed < navigation_duration {
+                let t = elapsed.as_secs_f64() / navigation_duration.as_secs_f64();
+                let ease_out = 1.0 - (1.0 - t).powi(3);
+                let next_center = self.navigation_start_center
+                    + (self.navigation_target_center - self.navigation_start_center) * ease_out;
+                let log_start = self.navigation_start_zoom.ln();
+                let log_target = self.navigation_target_zoom.ln();
+                let next_zoom = (log_start + (log_target - log_start) * ease_out)
+                    .exp()
+                    .clamp(MIN_ZOOM, MAX_ZOOM);
+
+                self.viewport.center = next_center;
+                self.viewport.zoom = next_zoom;
+                self.viewport.clamp_position();
+                is_animating = true;
+            } else {
+                self.viewport.center = self.navigation_target_center;
+                self.viewport.zoom = self.navigation_target_zoom;
+                self.viewport.clamp_position();
+                self.navigation_start_time = None;
+            }
+        }
 
         // --- Pan inertia animation ---
         if let Some(start_time) = self.inertia_start_time {
@@ -410,12 +460,19 @@ impl ViewportState {
     pub fn stop(&mut self) {
         self.inertia_start_time = None;
         self.zoom_start_time = None;
+        self.navigation_start_time = None;
         self.is_dragging = false;
         self.target_zoom = self.viewport.zoom;
+        self.navigation_target_zoom = self.viewport.zoom;
+        self.navigation_start_zoom = self.viewport.zoom;
+        self.navigation_start_center = self.viewport.center;
+        self.navigation_target_center = self.viewport.center;
     }
 
     /// Zoom at screen position with smooth animation
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
+        self.navigation_start_time = None;
+
         // Calculate new target zoom
         let new_target = (self.target_zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
 
@@ -446,6 +503,7 @@ impl ViewportState {
         let anchor_x = self.viewport.width / 2.0;
         let anchor_y = self.viewport.height / 2.0;
 
+        self.navigation_start_time = None;
         self.zoom_start = self.viewport.zoom;
         self.zoom_anchor_screen = DVec2::new(anchor_x, anchor_y);
         self.zoom_anchor_image = self.viewport.screen_to_image(anchor_x, anchor_y);
@@ -462,6 +520,48 @@ impl ViewportState {
         self.target_zoom = self.viewport.zoom;
     }
 
+    /// Smoothly frame the entire image in view.
+    pub fn smooth_fit_to_view(&mut self) {
+        let zoom_x = self.viewport.width / self.viewport.image_width;
+        let zoom_y = self.viewport.height / self.viewport.image_height;
+        let target_zoom = zoom_x.min(zoom_y).clamp(MIN_ZOOM, MAX_ZOOM);
+        let target_center = DVec2::new(
+            self.viewport.image_width / 2.0,
+            self.viewport.image_height / 2.0,
+        );
+        self.animate_to(target_center, target_zoom);
+    }
+
+    /// Smoothly frame a rectangle in image coordinates with a small margin.
+    pub fn smooth_frame_rect(&mut self, x: f64, y: f64, width: f64, height: f64) {
+        if width <= 0.0 || height <= 0.0 {
+            self.smooth_fit_to_view();
+            return;
+        }
+
+        let padding_factor = 1.1;
+        let framed_width = (width * padding_factor).max(1.0);
+        let framed_height = (height * padding_factor).max(1.0);
+        let target_zoom = (self.viewport.width / framed_width)
+            .min(self.viewport.height / framed_height)
+            .clamp(MIN_ZOOM, MAX_ZOOM);
+        let target_center = DVec2::new(x + width / 2.0, y + height / 2.0);
+        self.animate_to(target_center, target_zoom);
+    }
+
+    fn animate_to(&mut self, center: DVec2, zoom: f64) {
+        self.is_dragging = false;
+        self.inertia_start_time = None;
+        self.zoom_start_time = None;
+        self.navigation_start_center = self.viewport.center;
+        self.navigation_target_center = center;
+        self.navigation_start_zoom = self.viewport.zoom;
+        self.navigation_target_zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+        self.navigation_start_time = Some(Instant::now());
+        self.target_zoom = self.navigation_target_zoom;
+        self.last_update = Instant::now();
+    }
+
     /// Set viewport size
     pub fn set_size(&mut self, width: f64, height: f64) {
         self.viewport.set_size(width, height);
@@ -475,7 +575,10 @@ impl ViewportState {
 
     /// Check if the viewport is currently animating
     pub fn is_moving(&self) -> bool {
-        self.is_dragging || self.inertia_start_time.is_some() || self.zoom_start_time.is_some()
+        self.is_dragging
+            || self.inertia_start_time.is_some()
+            || self.zoom_start_time.is_some()
+            || self.navigation_start_time.is_some()
     }
 }
 

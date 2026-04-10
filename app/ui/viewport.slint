@@ -547,10 +547,6 @@ export component Viewport inherits Rectangle {
                 root.close-tab();
                 return accept;
             }
-            if e.text == "f" || e.text == "F" {
-                root.fit-to-view();
-                return accept;
-            }
             if e.text == Key.Escape {
                 root.cancel-tool();
                 return accept;

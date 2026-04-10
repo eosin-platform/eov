@@ -6,14 +6,21 @@ export component WindowToolbar inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
     in property <RenderMode> render-mode: RenderMode.cpu;
     in property <bool> gpu-rendering-available: false;
+    in property <bool> show-minimap: true;
 
     callback open-file-requested();
     callback open-recent-menu-requested(length, length);
+    callback frame-requested();
+    callback zoom-in-requested();
+    callback zoom-out-requested();
+    callback toggle-minimap-requested();
     callback tool-selected(ToolType);
     callback render-backend-selected(RenderMode);
     callback window-minimize();
     callback window-maximize();
     callback window-close();
+
+    out property <float> action-cluster-width: (action-cluster.x + action-cluster.width) / 1px;
 
     height: 40px;
     background: Theme.toolbar-bg;
@@ -30,62 +37,92 @@ export component WindowToolbar inherits Rectangle {
         padding: 4px;
         spacing: 4px;
 
-        IconButton {
-            text: "📂";
-            clicked => { root.open-file-requested(); }
-            secondary-clicked(x, y) => { root.open-recent-menu-requested(x, y); }
-        }
+        action-cluster := HorizontalLayout {
+            spacing: 4px;
 
-        Rectangle {
-            width: 1px;
-            height: 24px;
-            background: Theme.border;
-        }
+            IconButton {
+                text: "📂";
+                tooltip-text: "Open file (right-click for recent)";
+                clicked => { root.open-file-requested(); }
+                secondary-clicked(x, y) => { root.open-recent-menu-requested(x, y); }
+            }
 
-        ToolButton {
-            icon: "✥";
-            tooltip-text: "Navigate (Pan)";
-            is-active: root.current-tool == ToolType.navigate;
-            clicked => { root.tool-selected(ToolType.navigate); }
-        }
+            IconButton {
+                text: "⌗";
+                tooltip-text: "Frame ROI or full slide";
+                clicked => { root.frame-requested(); }
+            }
 
-        ToolButton {
-            icon: "▢";
-            tooltip-text: "Region of Interest";
-            is-active: root.current-tool == ToolType.region-of-interest;
-            clicked => { root.tool-selected(ToolType.region-of-interest); }
-        }
+            IconButton {
+                text: "+";
+                tooltip-text: "Zoom in";
+                clicked => { root.zoom-in-requested(); }
+            }
 
-        ToolButton {
-            icon: "📏";
-            tooltip-text: "Measure Distance";
-            is-active: root.current-tool == ToolType.measure-distance;
-            clicked => { root.tool-selected(ToolType.measure-distance); }
-        }
+            IconButton {
+                text: "−";
+                tooltip-text: "Zoom out";
+                clicked => { root.zoom-out-requested(); }
+            }
 
-        Rectangle {
-            width: 1px;
-            height: 24px;
-            background: Theme.border;
-        }
+            ToolButton {
+                icon: "▣";
+                tooltip-text: "Toggle minimap";
+                is-active: root.show-minimap;
+                clicked => { root.toggle-minimap-requested(); }
+            }
 
-        ToolButton {
-            width: 40px;
-            icon: "CPU";
-            tooltip-text: "Use CPU renderer";
-            is-active: root.render-mode == RenderMode.cpu;
-            clicked => { root.render-backend-selected(RenderMode.cpu); }
-        }
+            Rectangle {
+                width: 1px;
+                height: 24px;
+                background: Theme.border;
+            }
 
-        ToolButton {
-            width: 40px;
-            icon: "GPU";
-            tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
-            enabled: root.gpu-rendering-available;
-            is-active: root.render-mode == RenderMode.gpu;
-            clicked => {
-                if root.gpu-rendering-available {
-                    root.render-backend-selected(RenderMode.gpu);
+            ToolButton {
+                icon: "✥";
+                tooltip-text: "Navigate (Pan)";
+                is-active: root.current-tool == ToolType.navigate;
+                clicked => { root.tool-selected(ToolType.navigate); }
+            }
+
+            ToolButton {
+                icon: "▢";
+                tooltip-text: "Region of interest";
+                is-active: root.current-tool == ToolType.region-of-interest;
+                clicked => { root.tool-selected(ToolType.region-of-interest); }
+            }
+
+            ToolButton {
+                icon: "📏";
+                tooltip-text: "Measure distance";
+                is-active: root.current-tool == ToolType.measure-distance;
+                clicked => { root.tool-selected(ToolType.measure-distance); }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 24px;
+                background: Theme.border;
+            }
+
+            ToolButton {
+                width: 40px;
+                icon: "CPU";
+                tooltip-text: "Use CPU renderer";
+                is-active: root.render-mode == RenderMode.cpu;
+                clicked => { root.render-backend-selected(RenderMode.cpu); }
+            }
+
+            ToolButton {
+                width: 40px;
+                icon: "GPU";
+                tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
+                enabled: root.gpu-rendering-available;
+                is-active: root.render-mode == RenderMode.gpu;
+                clicked => {
+                    if root.gpu-rendering-available {
+                        root.render-backend-selected(RenderMode.gpu);
+                    }
                 }
             }
         }
@@ -119,6 +156,25 @@ export component WindowToolbar inherits Rectangle {
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
+
+            if minimize-touch.has-hover: Rectangle {
+                x: parent.width / 2 - self.width / 2;
+                y: parent.height + 6px;
+                width: minimize-tooltip.preferred-width + 12px;
+                height: minimize-tooltip.preferred-height + 6px;
+                background: #111111ee;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                minimize-tooltip := Text {
+                    x: 6px;
+                    y: 3px;
+                    text: "Minimize window";
+                    color: white;
+                    font-size: 11px;
+                }
+            }
         }
 
         Rectangle {
@@ -138,6 +194,25 @@ export component WindowToolbar inherits Rectangle {
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
+
+            if maximize-touch.has-hover: Rectangle {
+                x: parent.width / 2 - self.width / 2;
+                y: parent.height + 6px;
+                width: maximize-tooltip.preferred-width + 12px;
+                height: maximize-tooltip.preferred-height + 6px;
+                background: #111111ee;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                maximize-tooltip := Text {
+                    x: 6px;
+                    y: 3px;
+                    text: "Maximize window";
+                    color: white;
+                    font-size: 11px;
+                }
+            }
         }
 
         Rectangle {
@@ -156,6 +231,25 @@ export component WindowToolbar inherits Rectangle {
                 font-size: 13px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+            }
+
+            if close-win-touch.has-hover: Rectangle {
+                x: parent.width / 2 - self.width / 2;
+                y: parent.height + 6px;
+                width: close-tooltip.preferred-width + 12px;
+                height: close-tooltip.preferred-height + 6px;
+                background: #111111ee;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                close-tooltip := Text {
+                    x: 6px;
+                    y: 3px;
+                    text: "Close window";
+                    color: white;
+                    font-size: 11px;
+                }
             }
         }
     }

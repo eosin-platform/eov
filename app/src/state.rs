@@ -346,6 +346,8 @@ pub struct AppState {
     pub render_backend: RenderBackend,
     /// Whether GPU rendering is available on this system
     pub gpu_backend_available: bool,
+    /// Whether the minimap/zoom controls are shown in viewports
+    pub show_minimap: bool,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -378,6 +380,7 @@ impl AppState {
             last_rendered_file_ids: vec![None],
             render_backend: RenderBackend::Cpu,
             gpu_backend_available: false,
+            show_minimap: true,
             needs_render: true,
             render_loop_running: false,
         }
@@ -1068,6 +1071,11 @@ impl AppState {
     }
 
     pub fn request_render(&mut self) {
+        self.needs_render = true;
+    }
+
+    pub fn toggle_minimap(&mut self) {
+        self.show_minimap = !self.show_minimap;
         self.needs_render = true;
     }
 

@@ -66,6 +66,7 @@ export component AppWindow inherits Window {
     out property <float> viewport-height: (content-area.height - 35px) / 1px;
     out property <float> secondary-viewport-width: (content-area.width * (1 - split-position) - 3px) / 1px;
     out property <float> secondary-viewport-height: (content-area.height - 35px) / 1px;
+    out property <float> toolbar-action-width: toolbar.action-cluster-width;
 
     in-out property <bool> context-menu-visible: false;
     in-out property <length> context-menu-x: 0px;
@@ -85,10 +86,15 @@ export component AppWindow inherits Window {
     in-out property <float> fps: 0;
     in-out property <RenderMode> render-mode: RenderMode.cpu;
     in-out property <bool> gpu-rendering-available: false;
+    in-out property <bool> show-minimap: true;
 
     callback open-file-requested();
     callback new-tab-requested(int);
     callback open-recent-file(string);
+    callback frame-requested();
+    callback zoom-in-requested();
+    callback zoom-out-requested();
+    callback toggle-minimap-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -155,12 +161,17 @@ export component AppWindow inherits Window {
     }
 
     VerticalLayout {
-        WindowToolbar {
+        toolbar := WindowToolbar {
             current-tool: root.current-tool;
             render-mode: root.render-mode;
             gpu-rendering-available: root.gpu-rendering-available;
+            show-minimap: root.show-minimap;
             open-file-requested => { root.open-file-requested(); }
             open-recent-menu-requested(x, y) => { root.open-recent-menu-requested(x, y); }
+            frame-requested => { root.frame-requested(); }
+            zoom-in-requested => { root.zoom-in-requested(); }
+            zoom-out-requested => { root.zoom-out-requested(); }
+            toggle-minimap-requested => { root.toggle-minimap-requested(); }
             tool-selected(tool) => { root.tool-selected(tool); }
             render-backend-selected(mode) => { root.render-backend-selected(mode); }
             window-minimize => { root.window-minimize(); }
