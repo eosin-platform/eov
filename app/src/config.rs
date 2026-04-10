@@ -3,6 +3,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+static CONFIG_PATH_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -34,14 +37,36 @@ struct AppConfig {
     render_backend: Option<ConfigRenderBackend>,
 }
 
+pub fn set_config_path_override(path: PathBuf) -> Result<()> {
+    if let Some(existing) = CONFIG_PATH_OVERRIDE.get() {
+        if existing == &path {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "config path override already set to {}; cannot replace with {}",
+            existing.display(),
+            path.display()
+        );
+    }
+
+    CONFIG_PATH_OVERRIDE
+        .set(path)
+        .map_err(|_| anyhow::anyhow!("failed to initialize config path override"))
+}
+
 pub fn resolve_config_path() -> Result<PathBuf> {
+    if let Some(path) = CONFIG_PATH_OVERRIDE.get() {
+        return Ok(path.clone());
+    }
+
     if let Some(path) = std::env::var_os("EOV_CONFIG") {
         return Ok(PathBuf::from(path));
     }
 
     let home =
         dirs::home_dir().context("failed to determine the home directory for EOV config")?;
-    Ok(home.join(".eosin").join("eov.toml"))
+    Ok(home.join(".eov").join("config.toml"))
 }
 
 pub fn load_render_backend() -> Result<Option<RenderBackend>> {

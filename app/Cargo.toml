@@ -11,6 +11,9 @@ path = "src/main.rs"
 # Common crate
 common = { path = "../common" }
 
+# CLI parsing
+clap = { version = "4.5", features = ["derive"] }
+
 # Slint UI
 slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-28", "unstable-winit-030"] }
 

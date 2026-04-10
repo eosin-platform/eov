@@ -13,13 +13,14 @@ mod tools;
 mod ui_update;
 
 use anyhow::{Result, bail};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use common::{TileCache, ViewportState};
 use gpu::GpuRenderer;
 use parking_lot::RwLock;
 use slint::{BackendSelector, Image, SharedString, Timer, TimerMode, VecModel};
 use state::{AppState, PaneId, RenderBackend};
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,50 +70,309 @@ slint::include_modules!();
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum CliBackend {
+    #[default]
+    Auto,
+    Cpu,
+    Gpu,
+}
+
+impl CliBackend {
+    fn render_backend_override(self) -> Option<RenderBackend> {
+        match self {
+            Self::Auto => None,
+            Self::Cpu => Some(RenderBackend::Cpu),
+            Self::Gpu => Some(RenderBackend::Gpu),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cpu => "cpu",
+            Self::Gpu => "gpu",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliLogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl CliLogLevel {
+    fn as_filter(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum RecentCommand {
+    /// Print recently opened files
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+enum CliCommand {
+    /// Print image metadata without launching the UI
+    Probe {
+        /// Path to the WSI file to inspect
+        file: PathBuf,
+    },
+    /// Inspect recently opened files
+    Recent {
+        #[command(subcommand)]
+        command: RecentCommand,
+    },
+    /// Print the active configuration file path
+    ConfigPath,
+}
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "eov",
+    version,
+    about = "A lightweight, cross-platform WSI viewer.",
+    propagate_version = true
+)]
+struct Cli {
+    /// One or more WSI/image files to open in the viewer
+    #[arg(value_name = "FILES")]
+    files: Vec<PathBuf>,
+
+    #[command(subcommand)]
+    command: Option<CliCommand>,
+
+    /// Show debug overlays in the UI
+    #[arg(short, long, global = true)]
+    debug: bool,
+
+    /// Rendering backend to use
+    #[arg(long, value_enum, default_value_t = CliBackend::Auto, global = true)]
+    backend: CliBackend,
+
+    /// Shorthand for --backend cpu
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    cpu: bool,
+
+    /// Shorthand for --backend gpu
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    gpu: bool,
+
+    /// Override the tracing log level
+    #[arg(long, value_enum, global = true)]
+    log_level: Option<CliLogLevel>,
+
+    /// Override the config file path for this process
+    #[arg(long, value_name = "PATH", global = true)]
+    config: Option<PathBuf>,
+}
+
+enum CommandAction {
+    LaunchUi,
+    Probe(PathBuf),
+    RecentList,
+    ConfigPath,
+}
+
 struct LaunchOptions {
     debug_mode: bool,
     files_to_open: Vec<PathBuf>,
     render_backend_override: Option<RenderBackend>,
+    log_level: Option<CliLogLevel>,
+    config_path: Option<PathBuf>,
+    command: CommandAction,
 }
 
 fn parse_launch_options() -> Result<LaunchOptions> {
-    let mut debug_mode = false;
-    let mut files_to_open = Vec::new();
-    let mut render_backend_override = None;
+    let cli = Cli::parse();
 
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
-            "--debug" | "-d" => debug_mode = true,
-            "--cpu" => {
-                if render_backend_override == Some(RenderBackend::Gpu) {
-                    bail!(
-                        "--cpu and --gpu are mutually exclusive; choose only one rendering override"
-                    );
-                }
-                render_backend_override = Some(RenderBackend::Cpu);
-            }
-            "--gpu" => {
-                if render_backend_override == Some(RenderBackend::Cpu) {
-                    bail!(
-                        "--cpu and --gpu are mutually exclusive; choose only one rendering override"
-                    );
-                }
-                render_backend_override = Some(RenderBackend::Gpu);
-            }
-            _ => {
-                let path = PathBuf::from(&arg);
-                if path.exists() {
-                    files_to_open.push(path);
-                }
-            }
-        }
+    if cli.command.is_some() && !cli.files.is_empty() {
+        bail!("file arguments cannot be combined with a subcommand");
     }
 
+    let shorthand_backend = match (cli.cpu, cli.gpu) {
+        (true, true) => {
+            bail!("--cpu and --gpu are mutually exclusive; choose only one rendering override")
+        }
+        (true, false) => Some(RenderBackend::Cpu),
+        (false, true) => Some(RenderBackend::Gpu),
+        (false, false) => None,
+    };
+
+    let backend_flag = cli.backend.render_backend_override();
+    let render_backend_override = match (backend_flag, shorthand_backend) {
+        (Some(explicit), Some(shorthand)) if explicit != shorthand => {
+            bail!(
+                "--backend {} conflicts with shorthand override; use only one backend selector",
+                cli.backend.as_str()
+            )
+        }
+        (Some(explicit), _) => Some(explicit),
+        (None, Some(shorthand)) => Some(shorthand),
+        (None, None) => None,
+    };
+
+    let files_to_open = cli
+        .files
+        .into_iter()
+        .map(|path| {
+            validate_input_file(&path)?;
+            Ok(path)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let command = match cli.command {
+        Some(CliCommand::Probe { file }) => {
+            validate_input_file(&file)?;
+            CommandAction::Probe(file)
+        }
+        Some(CliCommand::Recent {
+            command: RecentCommand::List,
+        }) => CommandAction::RecentList,
+        Some(CliCommand::ConfigPath) => CommandAction::ConfigPath,
+        None => CommandAction::LaunchUi,
+    };
+
     Ok(LaunchOptions {
-        debug_mode,
+        debug_mode: cli.debug,
         files_to_open,
         render_backend_override,
+        log_level: cli.log_level,
+        config_path: cli.config,
+        command,
     })
+}
+
+fn validate_input_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        bail!("input file does not exist: {}", path.display());
+    }
+
+    if !path.is_file() {
+        bail!("input path is not a file: {}", path.display());
+    }
+
+    Ok(())
+}
+
+fn init_tracing(log_level: Option<CliLogLevel>) {
+    let env_filter = match log_level {
+        Some(level) => tracing_subscriber::EnvFilter::new(level.as_filter()),
+        None => tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+    };
+
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+}
+
+fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()> {
+    if let Some(path) = config_path {
+        config::set_config_path_override(path.clone())?;
+    }
+
+    Ok(())
+}
+
+fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
+    match &launch_options.command {
+        CommandAction::LaunchUi => Ok(false),
+        CommandAction::Probe(path) => {
+            probe_file(path)?;
+            Ok(true)
+        }
+        CommandAction::RecentList => {
+            print_recent_files();
+            Ok(true)
+        }
+        CommandAction::ConfigPath => {
+            println!("{}", config::resolve_config_path()?.display());
+            Ok(true)
+        }
+    }
+}
+
+fn print_recent_files() {
+    let state = AppState::new(false);
+    if state.recent_files.is_empty() {
+        println!("No recent files.");
+        return;
+    }
+
+    for recent_file in state.recent_files {
+        println!("{}", recent_file.path.display());
+    }
+}
+
+fn probe_file(path: &Path) -> Result<()> {
+    let wsi = common::WsiFile::open(path)?;
+    let properties = wsi.properties();
+
+    println!("File: {}", properties.path.display());
+    println!("Filename: {}", properties.filename);
+    println!("Dimensions: {}x{}", properties.width, properties.height);
+    println!("Levels: {}", properties.levels.len());
+    println!(
+        "Vendor: {}",
+        properties.vendor.as_deref().unwrap_or("unknown")
+    );
+    println!(
+        "MPP: {} x {}",
+        format_optional_decimal(properties.mpp_x),
+        format_optional_decimal(properties.mpp_y)
+    );
+    println!(
+        "Objective: {}",
+        format_optional_decimal(properties.objective_power)
+    );
+    println!(
+        "Scan date: {}",
+        properties.scan_date.as_deref().unwrap_or("unknown")
+    );
+    println!("Base tile size: {}", wsi.tile_size());
+    println!();
+    println!("Levels:");
+
+    for level in &properties.levels {
+        let tile_width = level
+            .tile_width
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let tile_height = level
+            .tile_height
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!(
+            "  L{}: {}x{} downsample {:.2} tile {}x{} preferred-tile {}",
+            level.level,
+            level.width,
+            level.height,
+            level.downsample,
+            tile_width,
+            tile_height,
+            wsi.tile_size_for_level(level.level)
+        );
+    }
+
+    Ok(())
+}
+
+fn format_optional_decimal(value: Option<f64>) -> String {
+    value
+        .map(|number| format!("{number:.3}"))
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn select_backend() -> Result<bool> {
@@ -316,13 +576,16 @@ fn request_render_loop(
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let launch_options = parse_launch_options()?;
+    apply_config_override(launch_options.config_path.as_ref())?;
+    init_tracing(launch_options.log_level);
+
+    if maybe_run_cli_command(&launch_options)? {
+        return Ok(());
+    }
 
     info!("Starting EOV WSI Viewer");
 
-    let launch_options = parse_launch_options()?;
     let persisted_backend = config::load_render_backend()?;
     let initial_backend = launch_options
         .render_backend_override
