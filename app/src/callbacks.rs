@@ -46,7 +46,7 @@ fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
 
     let center_x = viewport.viewport.width / 2.0;
     let center_y = viewport.viewport.height / 2.0;
-    viewport.zoom_at(factor, center_x, center_y);
+    viewport.zoom_at_discrete(factor, center_x, center_y);
     true
 }
 

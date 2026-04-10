@@ -581,7 +581,8 @@ fn render_pane_to_image(
     let vp_width = vp.width;
     let vp_height = vp.height;
     let is_first_frame = frame_count == 0;
-    let viewport_changed = (last_render_zoom - vp_zoom).abs() > 0.001
+    let viewport_changed = animating
+        || (last_render_zoom - vp_zoom).abs() > 0.001
         || (last_render_center_x - vp_center_x).abs() > 1.0
         || (last_render_center_y - vp_center_y).abs() > 1.0
         || (last_render_width - vp_width).abs() > 1.0

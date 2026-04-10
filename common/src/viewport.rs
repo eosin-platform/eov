@@ -233,6 +233,10 @@ pub struct ViewportState {
     zoom_anchor_image: DVec2,
     /// Zoom animation start time
     zoom_start_time: Option<Instant>,
+    /// Duration of the current zoom animation in milliseconds
+    zoom_duration_ms: u64,
+    /// Use a smoother ease-in-out profile for larger discrete zoom jumps
+    zoom_use_ease_in_out: bool,
 
     // --- Framing/navigation animation ---
     /// Navigation start center (for smooth frame-to-view / frame-to-ROI)
@@ -268,6 +272,8 @@ impl ViewportState {
             zoom_anchor_screen: DVec2::ZERO,
             zoom_anchor_image: DVec2::ZERO,
             zoom_start_time: None,
+            zoom_duration_ms: ANIMATION_DURATION_MS,
+            zoom_use_ease_in_out: false,
             navigation_start_center: initial_center,
             navigation_target_center: initial_center,
             navigation_start_zoom: initial_zoom,
@@ -363,7 +369,7 @@ impl ViewportState {
         }
 
         let now = Instant::now();
-        let zoom_duration = Duration::from_millis(ANIMATION_DURATION_MS);
+        let zoom_duration = Duration::from_millis(self.zoom_duration_ms.max(1));
         let navigation_duration = Duration::from_millis(NAVIGATION_DURATION_MS);
         let inertia_duration = Duration::from_millis(INERTIA_DURATION_MS);
         let mut is_animating = false;
@@ -425,14 +431,19 @@ impl ViewportState {
             let elapsed = now.duration_since(start_time);
 
             if elapsed < zoom_duration {
-                // Ease-out cubic: fast start, slow end
+                // Wheel zoom feels good with cubic ease-out; larger discrete button jumps
+                // animate more naturally with an ease-in-out profile.
                 let t = elapsed.as_secs_f64() / zoom_duration.as_secs_f64();
-                let ease_out = 1.0 - (1.0 - t).powi(3);
+                let ease = if self.zoom_use_ease_in_out {
+                    t * t * (3.0 - 2.0 * t)
+                } else {
+                    1.0 - (1.0 - t).powi(3)
+                };
 
                 // Interpolate zoom in log space for perceptually linear zoom
                 let log_start = self.zoom_start.ln();
                 let log_target = self.target_zoom.ln();
-                let log_current = log_start + (log_target - log_start) * ease_out;
+                let log_current = log_start + (log_target - log_start) * ease;
                 let new_zoom = log_current.exp().clamp(MIN_ZOOM, MAX_ZOOM);
 
                 // Apply zoom while keeping anchor point fixed
@@ -463,6 +474,7 @@ impl ViewportState {
         self.navigation_start_time = None;
         self.is_dragging = false;
         self.target_zoom = self.viewport.zoom;
+        self.zoom_use_ease_in_out = false;
         self.navigation_target_zoom = self.viewport.zoom;
         self.navigation_start_zoom = self.viewport.zoom;
         self.navigation_start_center = self.viewport.center;
@@ -471,39 +483,39 @@ impl ViewportState {
 
     /// Zoom at screen position with smooth animation
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
-        self.navigation_start_time = None;
+        self.zoom_at_with_duration(factor, screen_x, screen_y, ANIMATION_DURATION_MS);
+    }
 
-        // Calculate new target zoom
-        let new_target = (self.target_zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+    /// Zoom at screen position with smooth animation and an explicit duration.
+    pub fn zoom_at_with_duration(
+        &mut self,
+        factor: f64,
+        screen_x: f64,
+        screen_y: f64,
+        duration_ms: u64,
+    ) {
+        self.start_zoom_animation(factor, screen_x, screen_y, duration_ms, false);
+    }
 
-        // If already animating, update the target but keep the same anchor
-        // If not animating, start a new animation
-        if self.zoom_start_time.is_none() {
-            self.zoom_start = self.viewport.zoom;
-            self.zoom_anchor_screen = DVec2::new(screen_x, screen_y);
-            self.zoom_anchor_image = self.viewport.screen_to_image(screen_x, screen_y);
-            self.zoom_start_time = Some(Instant::now());
-        } else {
-            // Update start to current animated position for smooth chaining
-            self.zoom_start = self.viewport.zoom;
-            // Keep the same screen anchor but update image anchor for current zoom
-            self.zoom_anchor_image = self
-                .viewport
-                .screen_to_image(self.zoom_anchor_screen.x, self.zoom_anchor_screen.y);
-            self.zoom_start_time = Some(Instant::now());
-        }
-
-        self.target_zoom = new_target;
-        trace!("Zoom requested: factor={}, target={}", factor, new_target);
+    /// Zoom at screen position with a smoother discrete-action easing profile.
+    pub fn zoom_at_discrete(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
+        self.start_zoom_animation(factor, screen_x, screen_y, ANIMATION_DURATION_MS, true);
     }
 
     /// Smoothly zoom to an absolute zoom level around the viewport center.
     pub fn zoom_to(&mut self, zoom: f64) {
+        self.zoom_to_with_duration(zoom, ANIMATION_DURATION_MS);
+    }
+
+    /// Smoothly zoom to an absolute zoom level around the viewport center with an explicit duration.
+    pub fn zoom_to_with_duration(&mut self, zoom: f64, duration_ms: u64) {
         let clamped_zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         let anchor_x = self.viewport.width / 2.0;
         let anchor_y = self.viewport.height / 2.0;
 
         self.navigation_start_time = None;
+        self.zoom_use_ease_in_out = false;
+        self.zoom_duration_ms = duration_ms.max(1);
         self.zoom_start = self.viewport.zoom;
         self.zoom_anchor_screen = DVec2::new(anchor_x, anchor_y);
         self.zoom_anchor_image = self.viewport.screen_to_image(anchor_x, anchor_y);
@@ -553,6 +565,7 @@ impl ViewportState {
         self.is_dragging = false;
         self.inertia_start_time = None;
         self.zoom_start_time = None;
+        self.zoom_use_ease_in_out = false;
         self.navigation_start_center = self.viewport.center;
         self.navigation_target_center = center;
         self.navigation_start_zoom = self.viewport.zoom;
@@ -560,6 +573,29 @@ impl ViewportState {
         self.navigation_start_time = Some(Instant::now());
         self.target_zoom = self.navigation_target_zoom;
         self.last_update = Instant::now();
+    }
+
+    fn start_zoom_animation(
+        &mut self,
+        factor: f64,
+        screen_x: f64,
+        screen_y: f64,
+        duration_ms: u64,
+        ease_in_out: bool,
+    ) {
+        self.navigation_start_time = None;
+        self.zoom_duration_ms = duration_ms.max(1);
+        self.zoom_use_ease_in_out = ease_in_out;
+
+        let anchor_screen = DVec2::new(screen_x, screen_y);
+        let anchor_image = self.viewport.screen_to_image(screen_x, screen_y);
+        self.zoom_start = self.viewport.zoom;
+        self.zoom_anchor_screen = anchor_screen;
+        self.zoom_anchor_image = anchor_image;
+        self.zoom_start_time = Some(Instant::now());
+        self.target_zoom = (self.viewport.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+
+        trace!("Zoom requested: factor={}, target={}", factor, self.target_zoom);
     }
 
     /// Set viewport size
