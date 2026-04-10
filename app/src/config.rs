@@ -64,8 +64,7 @@ pub fn resolve_config_path() -> Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
 
-    let home =
-        dirs::home_dir().context("failed to determine the home directory for EOV config")?;
+    let home = dirs::home_dir().context("failed to determine the home directory for EOV config")?;
     Ok(home.join(".eov").join("config.toml"))
 }
 
