@@ -14,7 +14,7 @@ pub const MIN_ZOOM: f64 = 0.001;
 pub const MAX_ZOOM: f64 = 100.0;
 
 /// Default zoom factor per mouse wheel tick
-pub const ZOOM_FACTOR: f64 = 1.15;
+pub const ZOOM_FACTOR: f64 = 1.3225;
 
 /// Animation duration for smooth zoom transitions (300ms)
 pub const ANIMATION_DURATION_MS: u64 = 300;
