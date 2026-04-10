@@ -257,7 +257,9 @@ impl OpenFile {
     }
 
     pub fn pane_state(&self, pane: PaneId) -> Option<&FilePaneState> {
-        self.pane_states.get(pane.0).and_then(|state| state.as_ref())
+        self.pane_states
+            .get(pane.0)
+            .and_then(|state| state.as_ref())
     }
 
     pub fn pane_state_mut(&mut self, pane: PaneId) -> Option<&mut FilePaneState> {
@@ -602,7 +604,9 @@ impl AppState {
     }
 
     pub fn active_tab_id_for_pane(&self, pane: PaneId) -> Option<i32> {
-        self.panes.get(pane.0).and_then(|pane_state| pane_state.active_tab_id)
+        self.panes
+            .get(pane.0)
+            .and_then(|pane_state| pane_state.active_tab_id)
     }
 
     pub fn active_file_id_for_pane(&self, pane: PaneId) -> Option<i32> {
@@ -1095,7 +1099,10 @@ impl AppState {
         self.open_files
             .iter_mut()
             .find(|f| f.id == active_id)
-            .and_then(|f| f.pane_state_mut(self.focused_pane).map(|pane_state| &mut pane_state.viewport))
+            .and_then(|f| {
+                f.pane_state_mut(self.focused_pane)
+                    .map(|pane_state| &mut pane_state.viewport)
+            })
     }
 
     /// Activate a file by ID
@@ -1242,7 +1249,10 @@ impl AppState {
         self.open_files
             .iter_mut()
             .find(|f| f.id == active_id)
-            .and_then(|f| f.pane_state_mut(effective_pane).map(|pane_state| &mut pane_state.viewport))
+            .and_then(|f| {
+                f.pane_state_mut(effective_pane)
+                    .map(|pane_state| &mut pane_state.viewport)
+            })
     }
 }
 

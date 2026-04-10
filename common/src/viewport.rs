@@ -387,14 +387,16 @@ impl ViewportState {
 
                 // Apply zoom while keeping anchor point fixed
                 self.viewport.zoom = new_zoom;
-                self.viewport.anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
+                self.viewport
+                    .anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
 
                 is_animating = true;
                 trace!("Zoom animation: t={:.2}, zoom={:.4}", t, new_zoom);
             } else {
                 // Animation complete - snap to target
                 self.viewport.zoom = self.target_zoom;
-                self.viewport.anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
+                self.viewport
+                    .anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
 
                 self.zoom_start_time = None;
             }

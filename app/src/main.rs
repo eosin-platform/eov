@@ -163,7 +163,10 @@ fn pane_from_index(index: i32) -> PaneId {
     PaneId(index.max(0) as usize)
 }
 
-fn with_pane_render_cache<T>(pane_count: usize, f: impl FnOnce(&mut Vec<PaneRenderCacheEntry>) -> T) -> T {
+fn with_pane_render_cache<T>(
+    pane_count: usize,
+    f: impl FnOnce(&mut Vec<PaneRenderCacheEntry>) -> T,
+) -> T {
     PANE_RENDER_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.len() < pane_count {
@@ -249,10 +252,7 @@ where
             .all(|(index, value)| model.row_data(index).as_ref() == Some(value))
 }
 
-fn pane_view_data_changed(
-    existing: &PaneViewData,
-    next: &PaneViewData,
-) -> bool {
+fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> bool {
     existing.id != next.id
         || existing.content != next.content
         || existing.viewport_info != next.viewport_info
@@ -305,10 +305,7 @@ fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> R) -> Optio
     GPU_RENDERER_HANDLE.with(|handle| handle.borrow().as_ref().map(f))
 }
 
-fn copy_text_to_clipboard(
-    clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>,
-    text: String,
-) {
+fn copy_text_to_clipboard(clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>, text: String) {
     let mut clipboard_handle = clipboard.borrow_mut();
     if clipboard_handle.is_none() {
         match arboard::Clipboard::new() {
@@ -1903,7 +1900,9 @@ fn update_tabs(ui: &AppWindow, state: &AppState) {
                     .row_data(index)
                     .map(|existing| {
                         let mut merged = pane_data.clone();
-                        if merged.content == Image::default() && existing.content != Image::default() {
+                        if merged.content == Image::default()
+                            && existing.content != Image::default()
+                        {
                             merged.content = existing.content.clone();
                         }
                         if merged.minimap_thumbnail == Image::default()
@@ -2118,7 +2117,8 @@ fn update_and_render(
 
     for (file_id, wanted_tiles) in wanted_tiles_by_file {
         if let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) {
-            file.tile_loader.set_wanted_tiles(wanted_tiles.into_iter().collect());
+            file.tile_loader
+                .set_wanted_tiles(wanted_tiles.into_iter().collect());
         }
     }
 
@@ -2143,12 +2143,14 @@ fn update_and_render(
         };
 
         let minimap_missing = with_pane_render_cache(pane_count, |cache| {
-            cache.get(pane.0)
+            cache
+                .get(pane.0)
                 .and_then(|entry| entry.minimap_thumbnail.as_ref())
                 .is_none()
         });
         let content_missing = with_pane_render_cache(pane_count, |cache| {
-            cache.get(pane.0)
+            cache
+                .get(pane.0)
                 .and_then(|entry| entry.content.as_ref())
                 .is_none()
         });
@@ -2297,26 +2299,32 @@ fn render_pane_to_image(
         .collect();
     let cached_count = cached_tiles.len() as u32;
 
-    let cached_coarse_tiles: Vec<_> = if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
-        file.tile_manager
-            .visible_tiles_with_margin(
-                trilinear.level_coarse,
-                bounds.left,
-                bounds.top,
-                bounds.right,
-                bounds.bottom,
-                margin_tiles,
-            )
-            .into_iter()
-            .filter_map(|coord| tile_cache.get(&coord).map(|data| (coord, data)))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let cached_coarse_tiles: Vec<_> =
+        if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
+            file.tile_manager
+                .visible_tiles_with_margin(
+                    trilinear.level_coarse,
+                    bounds.left,
+                    bounds.top,
+                    bounds.right,
+                    bounds.bottom,
+                    margin_tiles,
+                )
+                .into_iter()
+                .filter_map(|coord| tile_cache.get(&coord).map(|data| (coord, data)))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
     let loaded_tile_epoch = file.tile_loader.loaded_epoch();
     let tile_epoch_advanced = loaded_tile_epoch > last_seen_tile_epoch;
-    let new_tiles_loaded = cached_count > if level_changed { 0 } else { previous_tiles_loaded }
+    let new_tiles_loaded = cached_count
+        > if level_changed {
+            0
+        } else {
+            previous_tiles_loaded
+        }
         || !cached_coarse_tiles.is_empty()
         || tile_epoch_advanced;
     let tiles_pending = file.tile_loader.pending_count() > 0;
@@ -2343,7 +2351,8 @@ fn render_pane_to_image(
         );
     }
 
-    if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
+    if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded
+    {
         return PaneRenderOutcome {
             image: None,
             keep_running,
@@ -2377,9 +2386,12 @@ fn render_pane_to_image(
     if render_backend == RenderBackend::Gpu {
         let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
         let image = with_gpu_renderer(|renderer| {
-            renderer
-                .borrow_mut()
-                .queue_frame(SurfaceSlot(pane.0), render_width, render_height, draws)
+            renderer.borrow_mut().queue_frame(
+                SurfaceSlot(pane.0),
+                render_width,
+                render_height,
+                draws,
+            )
         })
         .flatten();
 
@@ -2456,13 +2468,7 @@ fn render_pane_to_image(
                 continue;
             }
 
-            fallback_blits.push((
-                fallback_tile,
-                screen_x,
-                screen_y,
-                screen_w,
-                screen_h,
-            ));
+            fallback_blits.push((fallback_tile, screen_x, screen_y, screen_w, screen_h));
         }
     }
 
@@ -4005,18 +4011,19 @@ fn pane_overlay_data(
         .unwrap_or(0.0);
 
     let committed_roi = file.roi.filter(|roi| roi.pane == pane);
-    let roi_to_display = if state.focused_pane == pane && state.current_tool == state::Tool::RegionOfInterest {
-        if let state::ToolInteractionState::Dragging(start) = state.tool_state {
-            state
-                .candidate_point
-                .map(|end| state::RegionOfInterest::from_points(start, end, pane))
-                .or(committed_roi)
+    let roi_to_display =
+        if state.focused_pane == pane && state.current_tool == state::Tool::RegionOfInterest {
+            if let state::ToolInteractionState::Dragging(start) = state.tool_state {
+                state
+                    .candidate_point
+                    .map(|end| state::RegionOfInterest::from_points(start, end, pane))
+                    .or(committed_roi)
+            } else {
+                committed_roi
+            }
         } else {
             committed_roi
-        }
-    } else {
-        committed_roi
-    };
+        };
 
     if let Some(roi) = roi_to_display {
         roi_rect = ROIRect {
@@ -4090,8 +4097,7 @@ fn has_active_roi_overlay(state: &AppState) -> bool {
     })
 }
 
-fn update_tool_overlays(_ui: &AppWindow, _state: &AppState) {
-}
+fn update_tool_overlays(_ui: &AppWindow, _state: &AppState) {}
 
 fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
     let Some(file_id) = state.active_file_id else {

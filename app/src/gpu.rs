@@ -313,12 +313,7 @@ impl GpuRenderer {
         self.tile_textures.clear();
     }
 
-    fn ensure_surface(
-        &mut self,
-        slot: SurfaceSlot,
-        width: u32,
-        height: u32,
-    ) -> Option<bool> {
+    fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
         let Some(runtime) = self.runtime.as_mut() else {
             return None;
         };
@@ -354,13 +349,16 @@ impl GpuRenderer {
             Err(_) => return None,
         };
 
-        runtime.surfaces.insert(slot_index, ImportedSurface {
-            texture,
-            view,
-            image,
-            width,
-            height,
-        });
+        runtime.surfaces.insert(
+            slot_index,
+            ImportedSurface {
+                texture,
+                view,
+                image,
+                width,
+                height,
+            },
+        );
 
         Some(true)
     }
