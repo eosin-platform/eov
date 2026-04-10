@@ -440,6 +440,15 @@ fn main() -> Result<()> {
         update_recent_files(&ui, &state);
     }
 
+    if launch_options.files_to_open.is_empty() {
+        {
+            let mut state = state.write();
+            state.create_home_tab();
+        }
+        let state = state.read();
+        update_tabs(&ui, &state);
+    }
+
     // Open files from command line
     for path in launch_options.files_to_open {
         open_file(&ui, &state, &tile_cache, &render_timer, path);
@@ -1612,8 +1621,14 @@ fn open_file(
             let id = {
                 let mut state_guard = state.write();
 
-                // If current active tab is a home tab, close it
-                if let Some(active_id) = state_guard.active_file_id
+                let target_pane = if state_guard.split_enabled {
+                    state_guard.focused_pane
+                } else {
+                    PaneId::PRIMARY
+                };
+
+                // Replace the focused pane's active home tab with the opened file.
+                if let Some(active_id) = state_guard.active_tab_id_for_pane(target_pane)
                     && state_guard.is_home_tab(active_id)
                 {
                     state_guard.close_home_tab(active_id);
