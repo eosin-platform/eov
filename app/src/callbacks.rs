@@ -51,9 +51,12 @@ fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
 }
 
 fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
-    let mut state = state.write();
-    state.toggle_minimap();
-    ui.set_show_minimap(state.show_minimap);
+    let show_minimap = {
+        let mut state = state.write();
+        state.toggle_minimap();
+        state.show_minimap
+    };
+    ui.set_show_minimap(show_minimap);
 }
 
 pub fn setup_callbacks(
@@ -379,8 +382,6 @@ pub fn setup_callbacks(
         ui.on_toggle_minimap_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_minimap_visibility(&ui, &state_handle);
-                let state = state_handle.read();
-                update_tabs(&ui, &state);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
@@ -1177,8 +1178,6 @@ pub fn setup_callbacks(
                                     }
                                     "toggle-minimap" => {
                                         toggle_minimap_visibility(&ui, &state_handle);
-                                        let state = state_handle.read();
-                                        update_tabs(&ui, &state);
                                     }
                                     _ => {}
                                 }

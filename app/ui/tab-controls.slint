@@ -32,6 +32,110 @@ export component ToolButton inherits Rectangle {
 
 }
 
+export component MinimapToolButton inherits Rectangle {
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+
+    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
+    property <color> viewport-color: root.is-active ? white : Theme.accent;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        x: parent.width / 2 - 8px;
+        y: parent.height / 2 - 6px;
+        width: 16px;
+        height: 12px;
+        background: transparent;
+        border-width: 1px;
+        border-color: root.icon-color;
+        border-radius: 2px;
+
+        Rectangle {
+            x: 5px;
+            y: 1px;
+            width: 1px;
+            height: parent.height - 2px;
+            background: root.icon-color;
+            opacity: 0.6;
+        }
+
+        Rectangle {
+            x: 10px;
+            y: 1px;
+            width: 1px;
+            height: parent.height - 2px;
+            background: root.icon-color;
+            opacity: 0.6;
+        }
+
+        Rectangle {
+            x: 6px;
+            y: 4px;
+            width: 5px;
+            height: 4px;
+            background: transparent;
+            border-width: 1px;
+            border-color: root.viewport-color;
+        }
+    }
+}
+
+export component RoiToolButton inherits Rectangle {
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+
+    property <color> icon-color: root.enabled ? #F1C40F : Theme.text-secondary;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        x: parent.width / 2 - 8px;
+        y: parent.height / 2 - 6px;
+        width: 16px;
+        height: 12px;
+        background: transparent;
+
+        Rectangle { x: 0px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle { x: 6px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle { x: 12px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
+
+        Rectangle { x: 0px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle { x: 6px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle { x: 12px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
+
+        Rectangle { x: 0px; y: 0px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle { x: 0px; y: 5px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle { x: 0px; y: 9px; width: 1px; height: 3px; background: root.icon-color; }
+
+        Rectangle { x: 15px; y: 0px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle { x: 15px; y: 5px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle { x: 15px; y: 9px; width: 1px; height: 3px; background: root.icon-color; }
+    }
+}
+
 export component IconButton inherits Rectangle {
     in property <string> text;
     in property <string> tooltip-text: "";

@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { RenderMode, ToolType } from "types.slint";
-import { IconButton, ToolButton } from "tab-controls.slint";
+import { IconButton, MinimapToolButton, RoiToolButton, ToolButton } from "tab-controls.slint";
 
 export component WindowToolbar inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
@@ -111,8 +111,7 @@ export component WindowToolbar inherits Rectangle {
                 clicked => { root.zoom-out-requested(); }
             }
 
-            minimap-button := ToolButton {
-                icon: "▣";
+            minimap-button := MinimapToolButton {
                 tooltip-text: "Toggle minimap";
                 is-active: root.show-minimap;
                 clicked => { root.toggle-minimap-requested(); }
@@ -131,8 +130,7 @@ export component WindowToolbar inherits Rectangle {
                 clicked => { root.tool-selected(ToolType.navigate); }
             }
 
-            roi-button := ToolButton {
-                icon: "▢";
+            roi-button := RoiToolButton {
                 tooltip-text: "Region of interest";
                 is-active: root.current-tool == ToolType.region-of-interest;
                 clicked => { root.tool-selected(ToolType.region-of-interest); }

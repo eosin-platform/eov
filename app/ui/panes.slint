@@ -8,6 +8,7 @@ component PaneView inherits Rectangle {
     in property <PaneViewData> pane-data;
     in property <string> status-text;
     in property <[RecentFileData]> recent-files: [];
+    in property <bool> show-minimap: true;
     in property <ToolType> current-tool: ToolType.navigate;
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
@@ -80,7 +81,7 @@ component PaneView inherits Rectangle {
                 viewport-info: root.pane-data.viewport-info;
                 minimap-thumbnail: root.pane-data.minimap-thumbnail;
                 minimap-rect: root.pane-data.minimap-rect;
-                show-minimap: root.pane-data.show-minimap;
+                show-minimap: root.show-minimap;
                 status-text: root.status-text;
                 is-loading: root.pane-data.is-loading;
                 current-tool: root.current-tool;
@@ -158,6 +159,7 @@ component PaneView inherits Rectangle {
 export component SplitPaneContainer inherits Rectangle {
     in property <[PaneViewData]> panes: [];
     in property <string> status-text;
+    in property <bool> show-minimap: true;
     in property <bool> split-enabled: false;
     in property <int> focused-pane: 0;
     in property <bool> debug-mode: false;
@@ -232,6 +234,7 @@ export component SplitPaneContainer inherits Rectangle {
             pane-data: pane;
             status-text: root.status-text;
             recent-files: root.recent-files;
+            show-minimap: root.show-minimap;
             current-tool: root.current-tool;
             debug-mode: root.debug-mode;
             fps: root.fps;

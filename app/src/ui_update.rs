@@ -57,7 +57,6 @@ pub fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> b
         || existing.viewport_info != next.viewport_info
         || existing.minimap_thumbnail != next.minimap_thumbnail
         || existing.minimap_rect != next.minimap_rect
-        || existing.show_minimap != next.show_minimap
         || existing.is_home_tab != next.is_home_tab
         || existing.zoom_slider_position != next.zoom_slider_position
         || existing.roi_rect != next.roi_rect
@@ -193,7 +192,6 @@ pub fn update_tabs(
                 viewport_info,
                 minimap_thumbnail: cached.minimap_thumbnail.unwrap_or_default(),
                 minimap_rect,
-                show_minimap: state.show_minimap,
                 is_home_tab: state.is_home_tab_active_in_pane(pane),
                 zoom_slider_position,
                 roi_rect,
