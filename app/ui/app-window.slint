@@ -97,6 +97,21 @@ export struct MeasurementLine {
     visible: bool,
 }
 
+export struct PaneViewData {
+    id: int,
+    tabs: [TabData],
+    content: image,
+    viewport-info: ViewportInfo,
+    minimap-thumbnail: image,
+    minimap-rect: MinimapRect,
+    is-home-tab: bool,
+    zoom-slider-position: float,
+    roi-rect: ROIRect,
+    measurements: [MeasurementLine],
+    candidate-measurement: MeasurementLine,
+    is-loading: bool,
+}
+
 // Tool types
 export enum ToolType {
     navigate,
@@ -1267,30 +1282,155 @@ component HomeScreen inherits Rectangle {
     }
 }
 
-// Split pane container supporting horizontal and vertical splits
-component SplitPaneContainer inherits Rectangle {
-    in property <[TabData]> primary-tabs;
-    in property <[TabData]> secondary-tabs;
-    in property <image> viewport-content;
-    in property <image> secondary-viewport-content;
-    in property <ViewportInfo> viewport-info;
-    in property <ViewportInfo> secondary-viewport-info;
-    in property <image> minimap-thumbnail;
-    in property <image> secondary-minimap-thumbnail;
-    in property <MinimapRect> minimap-rect;
-    in property <MinimapRect> secondary-minimap-rect;
+component PaneView inherits Rectangle {
+    in property <PaneViewData> pane-data;
     in property <string> status-text;
-    in property <bool> is-loading: false;
-    in property <bool> split-enabled: false;
-    in property <float> split-position: 0.5;
-    in property <int> focused-pane: 0; // 0 = primary, 1 = secondary
+    in property <[RecentFileData]> recent-files: [];
+    in property <ToolType> current-tool: ToolType.navigate;
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
-    in property <bool> primary-is-home-tab: false;
-    in property <bool> secondary-is-home-tab: false;
+    in property <int> focused-pane: 0;
+    in property <int> dragging-tab-id: -1;
+    in property <int> drag-source-pane: -1;
+    in property <int> drag-source-index: -1;
+    in property <length> drag-abs-x: -1px;
+    in property <int> drop-target-pane: -1;
+    in property <int> split-drop-side: -1;
+
+    callback tab-activated(int, int);
+    callback tab-close-requested(int, int);
+    callback tab-context-menu(int, int, length, length);
+    callback new-tab-requested(int);
+    callback open-file-requested();
+    callback open-recent-file(string);
+    callback viewport-pan(float, float);
+    callback viewport-zoom(float, float, float);
+    callback viewport-fit-to-view();
+    callback viewport-start-pan(float, float);
+    callback viewport-end-pan();
+    callback minimap-navigate(float, float);
+    callback file-dropped(string);
+    callback pane-focused(int);
+    callback tab-drag-started(int, int, string, int, length, length);
+    callback tab-drag-moved(length, length);
+    callback tab-drag-ended(length, length);
+    callback zoom-slider-changed(int, float);
+    callback tool-mouse-down(float, float);
+    callback tool-mouse-move(float, float);
+    callback tool-mouse-up(float, float);
+    callback cancel-tool();
+    callback close-active-tab();
+
+    border-width: dragging-tab-id != -1 && drop-target-pane == pane-data.id ? 2px : (focused-pane == pane-data.id ? 2px : 0px);
+    border-color: dragging-tab-id != -1 && drop-target-pane == pane-data.id ? white : Theme.accent;
+    background: dragging-tab-id != -1 && drop-target-pane == pane-data.id ? #ffffff08 : transparent;
+
+    VerticalLayout {
+        pane-tab-bar := TabBar {
+            pane-id: root.pane-data.id;
+            tabs: root.pane-data.tabs;
+            dragging-tab-id: root.dragging-tab-id;
+            drag-source-pane: root.drag-source-pane;
+            drag-source-index: root.drag-source-index;
+            drag-abs-x: root.drag-abs-x;
+            is-drop-target: root.drop-target-pane == root.pane-data.id;
+            show-drop-indicator: root.split-drop-side == -1;
+            tab-activated(pane, id) => { root.tab-activated(pane, id); }
+            tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
+            tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
+            new-tab-requested(pane) => { root.new-tab-requested(pane); }
+            tab-drag-started(id, pane, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, index, abs-x, abs-y); }
+            tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+            tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            if root.pane-data.is-home-tab || root.pane-data.tabs.length == 0: HomeScreen {
+                recent-files: root.recent-files;
+                open-file-requested => { root.pane-focused(root.pane-data.id); root.open-file-requested(); }
+                open-recent-file(path) => { root.pane-focused(root.pane-data.id); root.open-recent-file(path); }
+            }
+
+            if !root.pane-data.is-home-tab && root.pane-data.tabs.length > 0: Viewport {
+                content: root.pane-data.content;
+                viewport-info: root.pane-data.viewport-info;
+                minimap-thumbnail: root.pane-data.minimap-thumbnail;
+                minimap-rect: root.pane-data.minimap-rect;
+                status-text: root.status-text;
+                is-loading: root.pane-data.is-loading;
+                current-tool: root.current-tool;
+                roi-rect: root.pane-data.roi-rect;
+                measurements: root.pane-data.measurements;
+                candidate-measurement: root.pane-data.candidate-measurement;
+                debug-mode: root.debug-mode;
+                fps: root.fps;
+                zoom-slider-position: root.pane-data.zoom-slider-position;
+
+                pan(dx, dy) => { root.pane-focused(root.pane-data.id); root.viewport-pan(dx, dy); }
+                zoom(f, x, y) => { root.pane-focused(root.pane-data.id); root.viewport-zoom(f, x, y); }
+                fit-to-view => { root.pane-focused(root.pane-data.id); root.viewport-fit-to-view(); }
+                start-pan(x, y) => { root.pane-focused(root.pane-data.id); root.viewport-start-pan(x, y); }
+                end-pan => { root.viewport-end-pan(); }
+                minimap-navigate(nx, ny) => { root.pane-focused(root.pane-data.id); root.minimap-navigate(nx, ny); }
+                zoom-slider-changed(value) => { root.pane-focused(root.pane-data.id); root.zoom-slider-changed(root.pane-data.id, value); }
+                file-dropped(path) => { root.pane-focused(root.pane-data.id); root.file-dropped(path); }
+                tool-mouse-down(x, y) => { root.pane-focused(root.pane-data.id); root.tool-mouse-down(x, y); }
+                tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+                tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+                cancel-tool => { root.cancel-tool(); }
+                close-tab => { root.close-active-tab(); }
+            }
+        }
+    }
+
+    if root.dragging-tab-id != -1 && root.drop-target-pane == root.pane-data.id && root.split-drop-side != -1: Rectangle {
+        x: 0px;
+        y: 35px;
+        width: parent.width;
+        height: parent.height - 35px;
+        background: #0b122080;
+
+        Rectangle {
+            x: root.split-drop-side == 0 ? 10px : parent.width / 2 + 5px;
+            y: 10px;
+            width: parent.width / 2 - 15px;
+            height: parent.height - 20px;
+            border-radius: 8px;
+            background: #3794ff33;
+            border-width: 2px;
+            border-color: #79b8ffff;
+
+            Text {
+                text: root.split-drop-side == 0 ? "Create Left Pane" : "Create Right Pane";
+                color: white;
+                font-size: 18px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            x: parent.width / 2 - 1px;
+            y: 10px;
+            width: 2px;
+            height: parent.height - 20px;
+            background: #ffffff66;
+        }
+    }
+}
+
+// Split pane container supporting an arbitrary number of horizontal panes
+component SplitPaneContainer inherits Rectangle {
+    in property <[PaneViewData]> panes: [];
+    in property <string> status-text;
+    in property <bool> split-enabled: false;
+    in property <int> focused-pane: 0;
+    in property <bool> debug-mode: false;
+    in property <float> fps: 0;
     in property <[RecentFileData]> recent-files: [];
-    in property <float> zoom-slider-position: 0.5;
-    in property <float> secondary-zoom-slider-position: 0.5;
     in property <int> dragging-tab-id: -1;
     in property <int> drag-source-pane: -1;
     in property <int> drag-source-index: -1;
@@ -1298,26 +1438,28 @@ component SplitPaneContainer inherits Rectangle {
     in property <int> drop-target-pane: -1;
     in property <int> split-drop-side: -1;
     in property <length> drag-abs-x: -1px;
-    out property <int> active-drop-index: drop-target-pane == 0 || !split-enabled
-        ? primary-tab-bar.computed-drop-index
-        : secondary-tab-bar.computed-drop-index;
-    
-    // Tool system properties
     in property <ToolType> current-tool: ToolType.navigate;
-    in property <ROIRect> primary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in property <ROIRect> secondary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in property <[MeasurementLine]> primary-measurements: [];
-    in property <[MeasurementLine]> secondary-measurements: [];
-    in property <MeasurementLine> primary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
-    in property <MeasurementLine> secondary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
-    
-    // Output viewport dimensions
-    out property <length> viewport-width: split-enabled ? 
-        (self.width * split-position - 3px) : self.width;
-    out property <length> viewport-height: self.height - 35px;
-    out property <length> secondary-viewport-width: self.width * (1 - split-position) - 3px;
-    out property <length> secondary-viewport-height: self.height - 35px;
-    
+    property <length> pane-gap: 6px;
+    property <int> pane-count: max(1, panes.length);
+    property <length> pane-width: (self.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
+    property <length> pane-stride: pane-width + pane-gap;
+    property <int> target-tab-count: drop-target-pane >= 0 && drop-target-pane < panes.length
+        ? panes[drop-target-pane].tabs.length
+        : 0;
+    property <length> target-local-x: drop-target-pane >= 0
+        ? drag-abs-x - drop-target-pane * pane-stride
+        : -1px;
+    property <length> target-slot-width: target-tab-count > 0
+        ? max(101px, (pane-width - 40px) / target-tab-count)
+        : 101px;
+    property <int> raw-drop-index: dragging-tab-id == -1 || split-drop-side != -1 || drop-target-pane < 0
+        ? -1
+        : Math.max(0, Math.min(target-tab-count, Math.round((target-local-x - 4px) / target-slot-width)));
+    out property <int> active-drop-index: drag-source-pane == drop-target-pane && drag-source-index >= 0
+        && (raw-drop-index == drag-source_index || raw-drop-index == drag-source_index + 1)
+        ? -1
+        : raw-drop-index;
+
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback tab-context-menu(int, int, length, length);
@@ -1333,221 +1475,65 @@ component SplitPaneContainer inherits Rectangle {
     callback file-dropped(string);
     callback pane-focused(int);
     callback split-position-changed(float);
-    callback tab-drag-started(int, int, string, int, length, length); // id, pane, title, index, abs-x, abs-y
-    callback tab-drag-moved(length, length);  // abs-x, abs-y
-    callback tab-drag-ended(length, length);  // abs-x, abs-y
+    callback tab-drag-started(int, int, string, int, length, length);
+    callback tab-drag-moved(length, length);
+    callback tab-drag-ended(length, length);
     callback move-tab-to-pane(int, int, int);
     callback split-tab-by-drop(int, int);
-    callback reorder-tab(int, int, int);  // pane, tab-id, new-index
+    callback reorder-tab(int, int, int);
     callback clear-tab-drag();
     callback zoom-slider-changed(int, float);
-    
-    // Tool callbacks
     callback tool-mouse-down(float, float);
     callback tool-mouse-move(float, float);
     callback tool-mouse-up(float, float);
     callback cancel-tool();
     callback close-active-tab();
-    
+
     background: Theme.background;
-    
+
     HorizontalLayout {
         vertical-stretch: 1;
+        spacing: root.pane-gap;
 
-        primary-pane := Rectangle {
-            width: root.split-enabled ? parent.width * root.split-position - 3px : parent.width;
-            border-width: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? 2px : (root.focused-pane == 0 && root.split-enabled ? 2px : 0px);
-            border-color: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? white : Theme.accent;
-            background: root.dragging-tab-id != -1 && root.drop-target-pane == 0 ? #ffffff08 : transparent;
+        for pane[i] in panes: PaneView {
+            width: root.pane-width;
+            pane-data: pane;
+            status-text: root.status-text;
+            recent-files: root.recent-files;
+            current-tool: root.current-tool;
+            debug-mode: root.debug-mode;
+            fps: root.fps;
+            focused-pane: root.focused-pane;
+            dragging-tab-id: root.dragging-tab-id;
+            drag-source-pane: root.drag-source-pane;
+            drag-source-index: root.drag-source_index;
+            drag-abs-x: root.drag-abs-x;
+            drop-target-pane: root.drop-target-pane;
+            split-drop-side: root.split-drop-side;
 
-            VerticalLayout {
-                primary-tab-bar := TabBar {
-                    pane-id: 0;
-                    tabs: root.primary-tabs;
-                    dragging-tab-id: root.dragging-tab-id;
-                    drag-source-pane: root.drag-source-pane;
-                    drag-source-index: root.drag-source-index;
-                    drag-abs-x: root.drag-abs-x;
-                    is-drop-target: root.drop-target-pane == 0;
-                    show-drop-indicator: root.split-drop-side == -1;
-                    tab-activated(pane, id) => { root.tab-activated(pane, id); }
-                    tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
-                    tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
-                    new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, index, abs-x, abs-y); }
-                    tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
-                    tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-
-                    if root.primary-is-home-tab || root.primary-tabs.length == 0: HomeScreen {
-                        recent-files: root.recent-files;
-                        open-file-requested => { root.open-file-requested(); }
-                        open-recent-file(path) => { root.open-recent-file(path); }
-                    }
-
-                    if !root.primary-is-home-tab && root.primary-tabs.length > 0: Viewport {
-                        content: viewport-content;
-                        viewport-info: root.viewport-info;
-                        minimap-thumbnail: minimap-thumbnail;
-                        minimap-rect: minimap-rect;
-                        status-text: root.status-text;
-                        is-loading: root.is-loading;
-                        current-tool: root.current-tool;
-                        roi-rect: root.primary-roi-rect;
-                        measurements: root.primary-measurements;
-                        candidate-measurement: root.primary-candidate-measurement;
-                        debug-mode: root.debug-mode;
-                        fps: root.fps;
-                        zoom-slider-position: root.zoom-slider-position;
-
-                        pan(dx, dy) => { root.pane-focused(0); root.viewport-pan(dx, dy); }
-                        zoom(f, x, y) => { root.pane-focused(0); root.viewport-zoom(f, x, y); }
-                        fit-to-view => { root.pane-focused(0); root.viewport-fit-to-view(); }
-                        start-pan(x, y) => { root.pane-focused(0); root.viewport-start-pan(x, y); }
-                        end-pan => { root.viewport-end-pan(); }
-                        minimap-navigate(nx, ny) => { root.pane-focused(0); root.minimap-navigate(nx, ny); }
-                        zoom-slider-changed(value) => { root.pane-focused(0); root.zoom-slider-changed(0, value); }
-                        file-dropped(path) => { root.file-dropped(path); }
-                        tool-mouse-down(x, y) => { root.pane-focused(0); root.tool-mouse-down(x, y); }
-                        tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-                        tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-                        cancel-tool => { root.cancel-tool(); }
-                        close-tab => { root.close-active-tab(); }
-                    }
-                }
-            }
-
-            if root.dragging-tab-id != -1 && !root.split-enabled && root.split-drop-side != -1: Rectangle {
-                x: 0px;
-                y: 35px;
-                width: parent.width;
-                height: parent.height - 35px;
-                background: #0b122080;
-
-                Rectangle {
-                    x: root.split-drop-side == 0 ? 10px : parent.width / 2 + 5px;
-                    y: 10px;
-                    width: parent.width / 2 - 15px;
-                    height: parent.height - 20px;
-                    border-radius: 8px;
-                    background: #3794ff33;
-                    border-width: 2px;
-                    border-color: #79b8ffff;
-
-                    Text {
-                        text: root.split-drop-side == 0 ? "Create Left Pane" : "Create Right Pane";
-                        color: white;
-                        font-size: 18px;
-                        font-weight: 700;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Rectangle {
-                    x: parent.width / 2 - 1px;
-                    y: 10px;
-                    width: 2px;
-                    height: parent.height - 20px;
-                    background: #ffffff66;
-                }
-            }
-        }
-
-        // Splitter (collapses to 0 when split is disabled)
-        Rectangle {
-            width: root.split-enabled ? 6px : 0px;
-            background: root.split-enabled ? (splitter-touch.has-hover || splitter-touch.pressed ? Theme.accent : Theme.border) : transparent;
-
-            splitter-touch := TouchArea {
-                property <length> drag-start-x;
-                enabled: root.split-enabled;
-
-                pointer-event(e) => {
-                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                        self.drag-start-x = self.mouse-x;
-                    } else if e.kind == PointerEventKind.move && self.pressed {
-                        let delta = (self.mouse-x - self.drag-start-x) / root.width;
-                        let new-pos = (root.split-position + delta).clamp(0.2, 0.8);
-                        root.split-position-changed(new-pos);
-                        self.drag-start-x = self.mouse-x;
-                    }
-                }
-                mouse-cursor: root.split-enabled ? ew-resize : default;
-            }
-        }
-
-        // Secondary pane (collapses to 0 when split is disabled)
-        secondary-pane := Rectangle {
-            horizontal-stretch: root.split-enabled ? 1 : 0;
-            max-width: root.split-enabled ? 100000px : 0px;
-            clip: true;
-            border-width: root.split-enabled && root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? 2px : (root.split-enabled && root.focused-pane == 1 ? 2px : 0px);
-            border-color: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? white : Theme.accent;
-            background: root.dragging-tab-id != -1 && root.drop-target-pane == 1 ? #ffffff08 : transparent;
-
-            VerticalLayout {
-                secondary-tab-bar := TabBar {
-                    pane-id: 1;
-                    tabs: root.secondary-tabs;
-                    dragging-tab-id: root.dragging-tab-id;
-                    drag-source-pane: root.drag-source-pane;
-                    drag-source-index: root.drag-source-index;
-                    drag-abs-x: root.drag-abs-x;
-                    is-drop-target: root.drop-target-pane == 1;
-                    show-drop-indicator: root.split-drop-side == -1;
-                    tab-activated(pane, id) => { root.tab-activated(pane, id); }
-                    tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
-                    tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
-                    new-tab-requested(pane) => { root.new-tab-requested(pane); }
-                    tab-drag-started(id, pane, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, index, abs-x, abs-y); }
-                    tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
-                    tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-
-                    if root.secondary-is-home-tab || root.secondary-tabs.length == 0: HomeScreen {
-                        recent-files: root.recent-files;
-                        open-file-requested => { root.open-file-requested(); }
-                        open-recent-file(path) => { root.open-recent-file(path); }
-                    }
-
-                    if !root.secondary-is-home-tab && root.secondary-tabs.length > 0: Viewport {
-                        content: secondary-viewport-content;
-                        viewport-info: root.secondary-viewport-info;
-                        minimap-thumbnail: secondary-minimap-thumbnail;
-                        minimap-rect: secondary-minimap-rect;
-                        status-text: root.status-text;
-                        is-loading: false;
-                        current-tool: root.current-tool;
-                        roi-rect: root.secondary-roi-rect;
-                        measurements: root.secondary-measurements;
-                        candidate-measurement: root.secondary-candidate-measurement;
-                        debug-mode: root.debug-mode;
-                        fps: root.fps;
-                        zoom-slider-position: root.secondary-zoom-slider-position;
-
-                        pan(dx, dy) => { root.pane-focused(1); root.viewport-pan(dx, dy); }
-                        zoom(f, x, y) => { root.pane-focused(1); root.viewport-zoom(f, x, y); }
-                        fit-to-view => { root.pane-focused(1); root.viewport-fit-to-view(); }
-                        start-pan(x, y) => { root.pane-focused(1); root.viewport-start-pan(x, y); }
-                        end-pan => { root.viewport-end-pan(); }
-                        minimap-navigate(nx, ny) => { root.pane-focused(1); root.minimap-navigate(nx, ny); }
-                        zoom-slider-changed(value) => { root.pane-focused(1); root.zoom-slider-changed(1, value); }
-                        file-dropped(path) => { root.file-dropped(path); }
-                        tool-mouse-down(x, y) => { root.pane-focused(1); root.tool-mouse-down(x, y); }
-                        tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-                        tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-                        cancel-tool => { root.cancel-tool(); }
-                        close-tab => { root.close-active-tab(); }
-                    }
-                }
-            }
+            tab-activated(pane-id, id) => { root.tab-activated(pane-id, id); }
+            tab-close-requested(pane-id, id) => { root.tab-close-requested(pane-id, id); }
+            tab-context-menu(pane-id, id, x, y) => { root.tab-context-menu(pane-id, id, x, y); }
+            new-tab-requested(pane-id) => { root.new-tab-requested(pane-id); }
+            open-file-requested => { root.open-file-requested(); }
+            open-recent-file(path) => { root.open-recent-file(path); }
+            viewport-pan(dx, dy) => { root.viewport-pan(dx, dy); }
+            viewport-zoom(f, x, y) => { root.viewport-zoom(f, x, y); }
+            viewport-fit-to-view => { root.viewport-fit-to-view(); }
+            viewport-start-pan(x, y) => { root.viewport-start-pan(x, y); }
+            viewport-end-pan => { root.viewport-end-pan(); }
+            minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
+            file-dropped(path) => { root.file-dropped(path); }
+            pane-focused(pane-id) => { root.pane-focused(pane-id); }
+            tab-drag-started(id, pane-id, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane-id, title, index, abs-x, abs-y); }
+            tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+            tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
+            zoom-slider-changed(pane-id, value) => { root.zoom-slider-changed(pane-id, value); }
+            tool-mouse-down(x, y) => { root.tool-mouse-down(x, y); }
+            tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
+            tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
+            cancel-tool => { root.cancel-tool(); }
+            close-active-tab => { root.close-active-tab(); }
         }
     }
 }
@@ -1566,6 +1552,7 @@ export component AppWindow inherits Window {
     forward-focus: global-keys;
     
     // Properties
+    in-out property <[PaneViewData]> panes: [];
     in-out property <[TabData]> primary-tabs: [];
     in-out property <[TabData]> secondary-tabs: [];
     in-out property <image> viewport-content;
@@ -1594,6 +1581,8 @@ export component AppWindow inherits Window {
     in-out property <length> drag-abs-y: 0px;
     in-out property <int> drop-target-pane: -1;
     in-out property <int> split-drop-side: -1;
+    out property <float> content-area-width: content-area.width / 1px;
+    out property <float> content-area-height: content-area.height / 1px;
     
     // Viewport dimensions for rendering - calculated from content area
     out property <float> viewport-width: split-enabled ? 
@@ -1669,33 +1658,33 @@ export component AppWindow inherits Window {
     callback context-menu-command(string);
 
     // Compute the primary pane width in window-absolute coordinates.
-    // content-area starts below the 40px toolbar.
-    // Primary pane occupies split-position fraction of content-area width (or all if no split).
-    property <length> primary-pane-abs-width: split-enabled
-        ? content-area.width * split-position - 3px
-        : content-area.width;
+    property <length> pane-gap: 6px;
+    property <int> pane-count: max(1, panes.length);
+    property <length> pane-width: (content-area.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
+    property <length> pane-stride: pane-width + pane-gap;
 
     // Compute drop target pane from absolute cursor coordinates.
     function update-drop-target(abs-x: length, abs-y: length) {
-        self.split-drop-side = -1;
-        if !self.split-enabled {
-            let drop-top = toolbar-rect.height + 35px;
-            let drop-bottom = self.height;
-            if abs-y >= drop-top && abs-y <= drop-bottom {
-                let edge-width = content-area.width * 0.28;
-                if abs-x <= edge-width {
-                    self.split-drop-side = 0;
-                } else if abs-x >= content-area.width - edge-width {
-                    self.split-drop-side = 1;
-                }
-            }
-            self.drop-target-pane = 0;
+        if panes.length == 0 {
+            self.drop-target-pane = -1;
+            self.split-drop-side = -1;
             return;
         }
 
-        // Content area starts at x=0 of the window.
-        // Primary pane starts at 0, secondary starts after primary + 6px splitter.
-        self.drop-target-pane = abs-x > self.primary-pane-abs-width + 6px ? 1 : 0;
+        let raw-pane = Math.floor(abs-x / self.pane-stride);
+        self.drop-target-pane = Math.max(0, Math.min(self.panes.length - 1, raw-pane));
+        self.split-drop-side = -1;
+        let drop-top = toolbar-rect.height + 35px;
+        let drop-bottom = self.height;
+        if abs-y >= drop-top && abs-y <= drop-bottom {
+            let local-x = abs-x - self.drop-target-pane * self.pane-stride;
+            let edge-width = self.pane-width * 0.28;
+            if local-x <= edge-width {
+                self.split-drop-side = 0;
+            } else if local-x >= self.pane-width - edge-width {
+                self.split-drop-side = 1;
+            }
+        }
     }
     
     // Main layout
@@ -1858,36 +1847,15 @@ export component AppWindow inherits Window {
             vertical-stretch: 1;
             
             split-pane := SplitPaneContainer {
-                visible: primary-tabs.length > 0 || (split-enabled && secondary-tabs.length > 0);
-                primary-tabs: root.primary-tabs;
-                secondary-tabs: root.secondary-tabs;
-                viewport-content: root.viewport-content;
-                secondary-viewport-content: root.secondary-viewport-content;
-                viewport-info: root.viewport-info;
-                secondary-viewport-info: root.secondary-viewport-info;
-                minimap-thumbnail: root.minimap-thumbnail;
-                secondary-minimap-thumbnail: root.secondary-minimap-thumbnail;
-                minimap-rect: root.minimap-rect;
-                secondary-minimap-rect: root.secondary-minimap-rect;
+                visible: root.panes.length > 0;
+                panes: root.panes;
                 status-text: root.status-text;
-                is-loading: root.is-loading;
                 split-enabled: root.split-enabled;
-                split-position: root.split-position;
                 focused-pane: root.focused-pane;
                 current-tool: root.current-tool;
-                primary-roi-rect: root.primary-roi-rect;
-                secondary-roi-rect: root.secondary-roi-rect;
-                primary-measurements: root.primary-measurements;
-                secondary-measurements: root.secondary-measurements;
-                primary-candidate-measurement: root.primary-candidate-measurement;
-                secondary-candidate-measurement: root.secondary-candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
-                primary-is-home-tab: root.primary-is-home-tab;
-                secondary-is-home-tab: root.secondary-is-home-tab;
                 recent-files: root.recent-files;
-                zoom-slider-position: root.zoom-slider-position;
-                secondary-zoom-slider-position: root.secondary-zoom-slider-position;
                 dragging-tab-id: root.dragging-tab-id;
                 drag-source-pane: root.drag-source-pane;
                 drag-source-index: root.drag-source-index;
@@ -1907,12 +1875,12 @@ export component AppWindow inherits Window {
                     root.context-menu-y = y;
                     root.context-menu-items = [
                         { id: "close", label: "Close", shortcut: "Ctrl+W", enabled: true, separator-after: false },
-                        { id: "close-others", label: "Close Others", shortcut: "", enabled: pane == 0 ? root.primary-tabs.length > 1 : root.secondary-tabs.length > 1, separator-after: false },
+                        { id: "close-others", label: "Close Others", shortcut: "", enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false, separator-after: false },
                         { id: "close-right", label: "Close to the Right", shortcut: "", enabled: true, separator-after: false },
                         { id: "close-all", label: "Close All", shortcut: "", enabled: true, separator-after: true },
                         { id: "open-folder", label: "Open Containing Folder", shortcut: "", enabled: true, separator-after: false },
                         { id: "copy-path", label: "Copy Path", shortcut: "", enabled: true, separator-after: true },
-                        { id: "split-right", label: !root.split-enabled ? "Split Right" : pane == 0 ? "Move to Right Pane" : "Move to Left Pane", shortcut: "", enabled: true, separator-after: false },
+                        { id: "split-right", label: "Split Right", shortcut: "", enabled: true, separator-after: false },
                     ];
                     root.drag-source-pane = pane;
                     root.context-menu-visible = true;
@@ -1945,9 +1913,10 @@ export component AppWindow inherits Window {
                     root.drag-abs-x = abs-x;
                     root.drag-abs-y = abs-y;
                     root.update-drop-target(abs-x, abs-y);
-                    if !root.split-enabled && root.split-drop-side != -1 {
-                        root.focused-pane = root.split-drop-side;
-                        root.split-tab-by-drop(root.dragging-tab-id, root.split-drop-side);
+                    if root.drop-target-pane != -1 && root.split-drop-side != -1 {
+                        let insert-at = root.split-drop-side == 0 ? root.drop-target-pane : root.drop-target-pane + 1;
+                        root.focused-pane = insert-at;
+                        root.split-tab-by-drop(root.dragging-tab-id, insert-at);
                     } else if root.drop-target-pane != root.drag-source-pane {
                         root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
                     } else if split-pane.active-drop-index >= 0 {
@@ -1988,7 +1957,7 @@ export component AppWindow inherits Window {
             }
             
             // Empty state - show home screen when no tabs
-            if primary-tabs.length == 0 && (!split-enabled || secondary-tabs.length == 0): HomeScreen {
+            if panes.length == 0: HomeScreen {
                 recent-files: root.recent-files;
                 open-file-requested => { root.open-file-requested(); }
                 open-recent-file(path) => { root.open-recent-file(path); }

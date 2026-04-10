@@ -16,7 +16,8 @@ use gpu::{GpuRenderer, SurfaceSlot, TileDraw};
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{
-    BackendSelector, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel,
+    BackendSelector, Image, Model, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode,
+    VecModel,
 };
 use state::{AppState, OpenFile, PaneId, RenderBackend, TileRequestSignature};
 use std::cell::RefCell;
@@ -30,8 +31,39 @@ use tracing::{error, info, trace, warn};
 /// Coarse tile blend data: (tile_data, coarse_offset, coarse_size, blend_factor)
 type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
 
+#[derive(Clone, Default)]
+struct PaneRenderCacheEntry {
+    content: Option<Image>,
+    minimap_thumbnail: Option<Image>,
+}
+
+#[derive(Clone)]
+struct PaneUiModels {
+    tabs: Rc<VecModel<TabData>>,
+    measurements: Rc<VecModel<MeasurementLine>>,
+}
+
+impl Default for PaneUiModels {
+    fn default() -> Self {
+        Self {
+            tabs: Rc::new(VecModel::default()),
+            measurements: Rc::new(VecModel::default()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct PaneRenderOutcome {
+    image: Option<Image>,
+    keep_running: bool,
+    rendered: bool,
+}
+
 thread_local! {
     static GPU_RENDERER_HANDLE: RefCell<Option<Rc<RefCell<GpuRenderer>>>> = const { RefCell::new(None) };
+    static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = const { RefCell::new(Vec::new()) };
+    static PANE_VIEW_MODEL: RefCell<Rc<VecModel<PaneViewData>>> = RefCell::new(Rc::new(VecModel::default()));
+    static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
 }
 
 // Debug macro - set to no-op for release, enable for debugging
@@ -127,11 +159,64 @@ fn ui_render_mode(backend: RenderBackend) -> RenderMode {
 }
 
 fn pane_from_index(index: i32) -> PaneId {
-    if index == 1 {
-        PaneId::Secondary
-    } else {
-        PaneId::Primary
-    }
+    PaneId(index.max(0) as usize)
+}
+
+fn with_pane_render_cache<T>(pane_count: usize, f: impl FnOnce(&mut Vec<PaneRenderCacheEntry>) -> T) -> T {
+    PANE_RENDER_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() < pane_count {
+            cache.resize_with(pane_count, PaneRenderCacheEntry::default);
+        } else if cache.len() > pane_count {
+            cache.truncate(pane_count);
+        }
+        f(&mut cache)
+    })
+}
+
+fn set_cached_pane_content(pane: PaneId, image: Image) {
+    with_pane_render_cache(pane.0 + 1, |cache| {
+        cache[pane.0].content = Some(image);
+    });
+}
+
+fn set_cached_pane_minimap(pane: PaneId, image: Option<Image>) {
+    with_pane_render_cache(pane.0 + 1, |cache| {
+        cache[pane.0].minimap_thumbnail = image;
+    });
+}
+
+fn with_pane_view_model<T>(f: impl FnOnce(&Rc<VecModel<PaneViewData>>) -> T) -> T {
+    PANE_VIEW_MODEL.with(|model| f(&model.borrow()))
+}
+
+fn with_pane_ui_models<T>(pane_count: usize, f: impl FnOnce(&mut Vec<PaneUiModels>) -> T) -> T {
+    PANE_UI_MODELS.with(|models| {
+        let mut models = models.borrow_mut();
+        if models.len() < pane_count {
+            models.resize_with(pane_count, PaneUiModels::default);
+        } else if models.len() > pane_count {
+            models.truncate(pane_count);
+        }
+        f(&mut models)
+    })
+}
+
+fn model_matches<T>(model: &VecModel<T>, data: &[T]) -> bool
+where
+    T: Clone + PartialEq + 'static,
+{
+    model.row_count() == data.len()
+        && data
+            .iter()
+            .enumerate()
+            .all(|(index, value)| model.row_data(index).as_ref() == Some(value))
+}
+
+fn clear_cached_pane(pane: PaneId) {
+    with_pane_render_cache(pane.0 + 1, |cache| {
+        cache[pane.0] = PaneRenderCacheEntry::default();
+    });
 }
 
 fn zoom_to_slider_value(zoom: f64) -> f32 {
@@ -282,11 +367,11 @@ fn main() -> Result<()> {
     {
         let mut state = state.write();
         state.gpu_backend_available = gpu_backend_available;
-        state.select_render_backend(initial_backend);
+        state.select_render_backend(RenderBackend::Cpu);
         update_render_backend(&ui, &state);
-        if initial_backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu {
+        if initial_backend == RenderBackend::Gpu {
             ui.set_status_text(SharedString::from(
-                "GPU renderer unavailable, using CPU renderer",
+                "GPU renderer is temporarily disabled for the multi-pane renderer; using CPU renderer",
             ));
         }
     }
@@ -495,16 +580,7 @@ fn setup_callbacks(
                 "close-all" => {
                     {
                         let mut state = state_handle.write();
-                        state.open_files.clear();
-                        state.home_tabs.clear();
-                        state.primary_tabs.clear();
-                        state.secondary_tabs.clear();
-                        state.primary_active_tab_id = None;
-                        state.secondary_active_tab_id = None;
-                        state.split_enabled = false;
-                        state.set_focused_pane(PaneId::Primary);
-                        state.active_file_id = None;
-                        state.request_render();
+                        state.close_all_tabs();
                     }
                     let state = state_handle.read();
                     update_tabs(&ui, &state);
@@ -529,16 +605,10 @@ fn setup_callbacks(
                     let split_enabled = {
                         let mut state = state_handle.write();
                         let source_pane = pane;
-                        if !state.split_enabled {
-                            state.activate_tab_in_pane(PaneId::Primary, tab_id);
-                            state.enable_split();
-                            state.duplicate_tab_to_pane(tab_id, PaneId::Secondary);
-                            info!("Split view enabled");
-                        } else if source_pane == PaneId::Primary {
-                            state.move_tab_between_panes(tab_id, PaneId::Primary, PaneId::Secondary);
-                        } else {
-                            state.move_tab_between_panes(tab_id, PaneId::Secondary, PaneId::Primary);
-                        }
+                        let new_pane = state.insert_pane(source_pane.0 + 1);
+                        state.duplicate_tab_to_pane(tab_id, new_pane);
+                        state.set_focused_pane(new_pane);
+                        state.request_render();
                         state.split_enabled
                     };
                     ui.set_split_enabled(split_enabled);
@@ -566,11 +636,11 @@ fn setup_callbacks(
             };
             let gpu_fallback = {
                 let mut state = state_handle.write();
-                state.select_render_backend(backend);
-                if let Err(err) = config::save_render_backend(state.render_backend) {
+                state.select_render_backend(RenderBackend::Cpu);
+                if let Err(err) = config::save_render_backend(RenderBackend::Cpu) {
                     warn!("Failed to save render backend config: {}", err);
                 }
-                backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu
+                backend == RenderBackend::Gpu
             };
 
             if let Some(ui) = ui_weak.upgrade() {
@@ -578,7 +648,7 @@ fn setup_callbacks(
                 update_render_backend(&ui, &state);
                 if gpu_fallback {
                     ui.set_status_text(SharedString::from(
-                        "GPU renderer unavailable, using CPU renderer",
+                        "GPU renderer is temporarily disabled for the multi-pane renderer; using CPU renderer",
                     ));
                 }
             }
@@ -731,16 +801,7 @@ fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    state.open_files.clear();
-                    state.home_tabs.clear();
-                    state.primary_tabs.clear();
-                    state.secondary_tabs.clear();
-                    state.primary_active_tab_id = None;
-                    state.secondary_active_tab_id = None;
-                    state.split_enabled = false;
-                    state.set_focused_pane(PaneId::Primary);
-                    state.active_file_id = None;
-                    state.request_render();
+                    state.close_all_tabs();
                 }
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
@@ -791,16 +852,10 @@ fn setup_callbacks(
                 let (split_enabled, focused_pane) = {
                     let mut state = state_handle.write();
                     let source_pane = pane_from_index(pane);
-                    if !state.split_enabled {
-                        state.activate_tab_in_pane(PaneId::Primary, id);
-                        state.enable_split();
-                        state.duplicate_tab_to_pane(id, PaneId::Secondary);
-                        info!("Split view enabled");
-                    } else if source_pane == PaneId::Primary {
-                        state.move_tab_between_panes(id, PaneId::Primary, PaneId::Secondary);
-                    } else {
-                        state.move_tab_between_panes(id, PaneId::Secondary, PaneId::Primary);
-                    }
+                    let new_pane = state.insert_pane(source_pane.0 + 1);
+                    state.duplicate_tab_to_pane(id, new_pane);
+                    state.set_focused_pane(new_pane);
+                    state.request_render();
                     (state.split_enabled, state.focused_pane)
                 };
                 ui.set_split_enabled(split_enabled);
@@ -1001,36 +1056,22 @@ fn setup_callbacks(
             info!("Minimap navigate called: nx={}, ny={}", nx, ny);
             {
                 let mut state = state_handle.write();
-                let active_id = state.active_file_id;
-                let focused_pane = state.focused_pane;
-                let split_enabled = state.split_enabled;
                 let mut changed = false;
 
-                if let Some(file) = state
-                    .open_files
-                    .iter_mut()
-                    .find(|f| Some(f.id) == active_id)
-                {
+                if let Some(vs) = state.active_viewport_mut() {
                     let nx = (nx as f64).clamp(0.0, 1.0);
                     let ny = (ny as f64).clamp(0.0, 1.0);
-                    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
-                        file.secondary_viewport.as_mut()
-                    } else {
-                        Some(&mut file.viewport)
-                    };
-                    if let Some(vs) = viewport_state {
-                        vs.stop();
-                        let vp = &mut vs.viewport;
-                        let new_x = nx * vp.image_width;
-                        let new_y = ny * vp.image_height;
-                        info!(
-                            "Setting viewport center: ({}, {}) -> ({}, {})",
-                            vp.center.x, vp.center.y, new_x, new_y
-                        );
-                        vp.center.x = new_x;
-                        vp.center.y = new_y;
-                        changed = true;
-                    }
+                    vs.stop();
+                    let vp = &mut vs.viewport;
+                    let new_x = nx * vp.image_width;
+                    let new_y = ny * vp.image_height;
+                    info!(
+                        "Setting viewport center: ({}, {}) -> ({}, {})",
+                        vp.center.x, vp.center.y, new_x, new_y
+                    );
+                    vp.center.x = new_x;
+                    vp.center.y = new_y;
+                    changed = true;
                 }
                 if changed {
                     state.request_render();
@@ -1199,7 +1240,9 @@ fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    state.move_tab_between_panes(id, pane_from_index(from), pane_from_index(to));
+                    let target_pane = pane_from_index(to);
+                    state.move_tab_between_panes(id, pane_from_index(from), target_pane);
+                    state.set_focused_pane(target_pane);
                 }
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
@@ -1220,7 +1263,14 @@ fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    state.split_off_tab_to_pane(id, pane_from_index(to));
+                    let source_pane = state
+                        .panes
+                        .iter()
+                        .enumerate()
+                        .find(|(_, pane_state)| pane_state.tabs.contains(&id))
+                        .map(|(index, _)| PaneId(index))
+                        .unwrap_or(PaneId::PRIMARY);
+                    state.split_tab_to_new_pane(id, source_pane, to.max(0) as usize);
                 }
                 let state = state_handle.read();
                 ui.set_split_enabled(state.split_enabled);
@@ -1475,21 +1525,12 @@ fn open_file(
                 }
 
                 // Get viewport size from the focused pane (use reasonable defaults if not yet laid out)
-                let target_pane = if state_guard.split_enabled {
-                    state_guard.focused_pane
-                } else {
-                    PaneId::Primary
-                };
-                let (ui_width, ui_height) = match target_pane {
-                    PaneId::Primary => (
-                        ui.get_viewport_width() as f64,
-                        ui.get_viewport_height() as f64,
-                    ),
-                    PaneId::Secondary => (
-                        ui.get_secondary_viewport_width() as f64,
-                        ui.get_secondary_viewport_height() as f64,
-                    ),
-                };
+                let pane_count = state_guard.panes.len().max(1) as f64;
+                let pane_gap = 6.0;
+                let ui_width = ((ui.get_content_area_width() as f64)
+                    - pane_gap * (pane_count - 1.0))
+                    / pane_count;
+                let ui_height = ui.get_content_area_height() as f64 - 35.0;
                 let viewport_width = if ui_width > 0.0 { ui_width } else { 1024.0 };
                 let viewport_height = if ui_height > 0.0 { ui_height } else { 768.0 };
 
@@ -1683,11 +1724,91 @@ fn update_tabs(ui: &AppWindow, state: &AppState) {
             .collect::<Vec<_>>()
     };
 
-    ui.set_primary_tabs(Rc::new(VecModel::from(build_pane_tabs(PaneId::Primary))).into());
-    ui.set_secondary_tabs(Rc::new(VecModel::from(build_pane_tabs(PaneId::Secondary))).into());
-    ui.set_primary_is_home_tab(state.is_home_tab_active_in_pane(PaneId::Primary));
-    ui.set_secondary_is_home_tab(state.is_home_tab_active_in_pane(PaneId::Secondary));
-    ui.set_split_enabled(state.split_enabled);
+    let pane_models = with_pane_render_cache(state.panes.len(), |cache| {
+        with_pane_ui_models(state.panes.len(), |pane_ui_models| {
+            state
+                .panes
+                .iter()
+                .enumerate()
+                .map(|(pane_index, _)| {
+                    let pane = PaneId(pane_index);
+                    let tabs = build_pane_tabs(pane);
+                    let (roi_rect, measurements, candidate_measurement) =
+                        pane_overlay_data(state, pane);
+                    let mut viewport_info = hidden_viewport_info();
+                    let mut minimap_rect = full_minimap_rect();
+                    let mut zoom_slider_position = 0.5;
+
+                    if let Some(file_id) = state.active_file_id_for_pane(pane)
+                        && let Some(file) = state.get_file(file_id)
+                        && let Some(viewport_state) = pane_viewport_state(file, pane)
+                    {
+                        let vp = &viewport_state.viewport;
+                        viewport_info = ViewportInfo {
+                            center_x: vp.center.x as f32,
+                            center_y: vp.center.y as f32,
+                            zoom: vp.zoom as f32,
+                            image_width: vp.image_width as f32,
+                            image_height: vp.image_height as f32,
+                            level: file
+                                .wsi
+                                .best_level_for_downsample(vp.effective_downsample())
+                                as i32,
+                        };
+                        let rect = vp.minimap_rect();
+                        minimap_rect = MinimapRect {
+                            x: rect.x,
+                            y: rect.y,
+                            width: rect.width,
+                            height: rect.height,
+                        };
+                        zoom_slider_position = zoom_to_slider_value(vp.zoom);
+                    }
+
+                    let pane_models = &pane_ui_models[pane_index];
+                    if !model_matches(&pane_models.tabs, &tabs) {
+                        pane_models.tabs.set_vec(tabs.clone());
+                    }
+                    if !model_matches(&pane_models.measurements, &measurements) {
+                        pane_models.measurements.set_vec(measurements.clone());
+                    }
+
+                    let cached = cache.get(pane_index).cloned().unwrap_or_default();
+                    PaneViewData {
+                        id: pane.as_index(),
+                        tabs: pane_models.tabs.clone().into(),
+                        content: cached.content.unwrap_or_default(),
+                        viewport_info,
+                        minimap_thumbnail: cached.minimap_thumbnail.unwrap_or_default(),
+                        minimap_rect,
+                        is_home_tab: state.is_home_tab_active_in_pane(pane),
+                        zoom_slider_position,
+                        roi_rect,
+                        measurements: pane_models.measurements.clone().into(),
+                        candidate_measurement,
+                        is_loading: ui.get_is_loading() && pane == state.focused_pane,
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+    });
+
+    with_pane_view_model(|pane_model| {
+        let mut row_count = pane_model.row_count();
+        while row_count > pane_models.len() {
+            row_count -= 1;
+            pane_model.remove(row_count);
+        }
+        for (index, pane_data) in pane_models.into_iter().enumerate() {
+            if index < row_count {
+                pane_model.set_row_data(index, pane_data);
+            } else {
+                pane_model.push(pane_data);
+            }
+        }
+        ui.set_panes(pane_model.clone().into());
+    });
+    ui.set_split_enabled(state.panes.len() > 1);
     ui.set_focused_pane(state.focused_pane.as_index());
 }
 
@@ -1733,8 +1854,9 @@ fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
 }
 
 fn update_render_backend(ui: &AppWindow, state: &AppState) {
-    ui.set_render_mode(ui_render_mode(state.render_backend));
-    ui.set_gpu_rendering_available(state.gpu_backend_available);
+    let _ = state;
+    ui.set_render_mode(RenderMode::Cpu);
+    ui.set_gpu_rendering_available(false);
 }
 
 fn tile_request_signature(
@@ -1766,14 +1888,14 @@ fn tile_request_signature(
     })
 }
 
-fn set_minimap_thumbnail_for_file(ui: &AppWindow, file: &OpenFile, secondary: bool) {
+fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
     let Some(ref thumb_data) = file.thumbnail else {
-        return;
+        return None;
     };
 
     let level = file.wsi.level_count().saturating_sub(1);
     let Some(level_info) = file.wsi.level(level) else {
-        return;
+        return None;
     };
     let aspect = level_info.width as f64 / level_info.height as f64;
     let (width, height) = if aspect > 1.0 {
@@ -1782,14 +1904,7 @@ fn set_minimap_thumbnail_for_file(ui: &AppWindow, file: &OpenFile, secondary: bo
         ((150.0 * aspect) as u32, 150u32)
     };
 
-    if let Some(buffer) = create_image_buffer(thumb_data, width.max(1), height.max(1)) {
-        let image = Image::from_rgba8(buffer);
-        if secondary {
-            ui.set_secondary_minimap_thumbnail(image);
-        } else {
-            ui.set_minimap_thumbnail(image);
-        }
-    }
+    create_image_buffer(thumb_data, width.max(1), height.max(1)).map(Image::from_rgba8)
 }
 
 fn update_and_render(
@@ -1798,149 +1913,87 @@ fn update_and_render(
     tile_cache: &Arc<TileCache>,
 ) -> bool {
     let mut state = state.write();
-    let primary_file_id = state.active_file_id_for_pane(PaneId::Primary);
-    let secondary_file_id = if state.split_enabled {
-        state.active_file_id_for_pane(PaneId::Secondary)
-    } else {
-        None
-    };
-    if primary_file_id.is_none() && secondary_file_id.is_none() {
-        clear_tool_overlays(ui, 0.0);
+    let pane_count = state.panes.len();
+    let active_file_ids: Vec<Option<i32>> = state
+        .panes
+        .iter()
+        .enumerate()
+        .map(|(pane_index, _)| state.active_file_id_for_pane(PaneId(pane_index)))
+        .collect();
+    if active_file_ids.iter().all(Option::is_none) {
+        for pane_index in 0..pane_count {
+            clear_cached_pane(PaneId(pane_index));
+            state.set_last_rendered_file_id(PaneId(pane_index), None);
+        }
+        update_tabs(ui, &state);
         return false;
     }
 
-    let split_enabled = state.split_enabled;
-    let render_backend = state.render_backend;
     let render_requested = std::mem::take(&mut state.needs_render);
 
     // Update ant offset for marching ants animation (0.5 pixels per frame at 60fps = 30 pixels/sec)
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
 
-    let primary_file_switched = state.last_primary_rendered_file_id != primary_file_id;
-    let secondary_file_switched = state.last_secondary_rendered_file_id != secondary_file_id;
-    let mut keep_running = render_requested || primary_file_switched || secondary_file_switched;
+    let content_width = (ui.get_content_area_width() as f64).max(100.0);
+    let content_height = (ui.get_content_area_height() as f64 - 35.0).max(100.0);
+    let pane_gap = 6.0;
+    let pane_width = ((content_width - pane_gap * (pane_count.saturating_sub(1) as f64))
+        / pane_count.max(1) as f64)
+        .max(100.0);
+
+    let mut keep_running = render_requested;
     let mut rendered_frame = false;
 
-    if let Some(file_id) = primary_file_id {
-        let primary_width = (ui.get_viewport_width() as f64).max(100.0);
-        let primary_height = (ui.get_viewport_height() as f64).max(100.0);
+    for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
+        let pane = PaneId(pane_index);
+        let file_switched = state.last_rendered_file_id(pane) != file_id;
+        keep_running |= file_switched;
 
-        {
-            let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
-                return false;
-            };
+        let Some(file_id) = file_id else {
+            clear_cached_pane(pane);
+            state.set_last_rendered_file_id(pane, None);
+            continue;
+        };
 
-            if primary_file_switched {
-                file.frame_count = 0;
-                set_minimap_thumbnail_for_file(ui, file, false);
+        let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
+            clear_cached_pane(pane);
+            state.set_last_rendered_file_id(pane, None);
+            continue;
+        };
+
+        let minimap_missing = with_pane_render_cache(pane.0 + 1, |cache| {
+            cache.get(pane.0)
+                .and_then(|entry| entry.minimap_thumbnail.as_ref())
+                .is_none()
+        });
+
+        if file_switched || render_requested {
+            if let Some(pane_state) = file.pane_state_mut(pane) {
+                pane_state.frame_count = 0;
             }
-
-            let primary_animating = file.viewport.update();
-            file.viewport.set_size(primary_width, primary_height);
-            let tile_epoch = file.tile_loader.loaded_epoch();
-            let new_primary_tiles = tile_epoch != file.last_seen_tile_epoch;
-            if new_primary_tiles {
-                file.last_seen_tile_epoch = tile_epoch;
-            }
-            let tiles_pending = file.tile_loader.pending_count() > 0;
-            keep_running |= primary_animating || new_primary_tiles || tiles_pending;
-
-            let vp = &file.viewport.viewport;
-            ui.set_viewport_info(ViewportInfo {
-                center_x: vp.center.x as f32,
-                center_y: vp.center.y as f32,
-                zoom: vp.zoom as f32,
-                image_width: vp.image_width as f32,
-                image_height: vp.image_height as f32,
-                level: file
-                    .wsi
-                    .best_level_for_downsample(vp.effective_downsample())
-                    as i32,
-            });
-            ui.set_zoom_slider_position(zoom_to_slider_value(vp.zoom));
-
-            let rect = vp.minimap_rect();
-            ui.set_minimap_rect(MinimapRect {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-            });
-
-            rendered_frame |= if render_backend == RenderBackend::Gpu
-                && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
-            {
-                render_viewport_gpu(ui, file, tile_cache, SurfaceSlot::Primary)
-            } else {
-                render_viewport_to_buffer(ui, file, tile_cache, true)
-            };
-
         }
+        if file_switched || minimap_missing {
+            set_cached_pane_minimap(pane, thumbnail_image_for_file(file));
+        }
+
+        let outcome = render_pane_to_image(
+            file,
+            pane,
+            tile_cache,
+            pane_width,
+            content_height,
+            render_requested || file_switched,
+        );
+        keep_running |= outcome.keep_running;
+        rendered_frame |= outcome.rendered;
+        if let Some(image) = outcome.image {
+            set_cached_pane_content(pane, image);
+        }
+        state.set_last_rendered_file_id(pane, Some(file_id));
     }
 
-    if split_enabled && let Some(file_id) = secondary_file_id {
-        let secondary_width = (ui.get_secondary_viewport_width() as f64).max(100.0);
-        let secondary_height = (ui.get_secondary_viewport_height() as f64).max(100.0);
-
-        {
-            let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
-                return false;
-            };
-
-            if secondary_file_switched {
-                set_minimap_thumbnail_for_file(ui, file, true);
-            }
-
-            let secondary_overlay = if let Some(ref mut secondary) = file.secondary_viewport {
-                let secondary_animating = secondary.update();
-                secondary.set_size(secondary_width, secondary_height);
-                keep_running |= secondary_animating;
-
-                let vp2 = &secondary.viewport;
-                ui.set_secondary_viewport_info(ViewportInfo {
-                    center_x: vp2.center.x as f32,
-                    center_y: vp2.center.y as f32,
-                    zoom: vp2.zoom as f32,
-                    image_width: vp2.image_width as f32,
-                    image_height: vp2.image_height as f32,
-                    level: file
-                        .wsi
-                        .best_level_for_downsample(vp2.effective_downsample())
-                        as i32,
-                });
-                ui.set_secondary_zoom_slider_position(zoom_to_slider_value(vp2.zoom));
-
-                let rect2 = vp2.minimap_rect();
-                ui.set_secondary_minimap_rect(MinimapRect {
-                    x: rect2.x,
-                    y: rect2.y,
-                    width: rect2.width,
-                    height: rect2.height,
-                });
-
-                Some((vp2.bounds(), vp2.zoom))
-            } else {
-                None
-            };
-
-            rendered_frame |= if render_backend == RenderBackend::Gpu
-                && with_gpu_renderer(|renderer| renderer.borrow().is_ready()).unwrap_or(false)
-            {
-                render_secondary_viewport_gpu(ui, file, tile_cache)
-            } else {
-                render_secondary_viewport(ui, file, tile_cache)
-            };
-
-            let _ = secondary_overlay;
-        }
-    }
-
-    // Update measurement overlays to track viewport changes during pan/zoom
-    update_tool_overlays(ui, &state);
+    update_tabs(ui, &state);
     keep_running |= has_active_roi_overlay(&state);
-
-    state.last_primary_rendered_file_id = primary_file_id;
-    state.last_secondary_rendered_file_id = secondary_file_id;
 
     if rendered_frame {
         state.update_fps();
@@ -1948,6 +2001,240 @@ fn update_and_render(
     }
 
     keep_running
+}
+
+fn render_pane_to_image(
+    file: &mut OpenFile,
+    pane: PaneId,
+    tile_cache: &Arc<TileCache>,
+    target_width: f64,
+    target_height: f64,
+    force_render: bool,
+) -> PaneRenderOutcome {
+    let OpenFile {
+        wsi,
+        tile_manager,
+        tile_loader,
+        pane_states,
+        ..
+    } = file;
+    let Some(pane_state) = pane_states.get_mut(pane.0).and_then(|state| state.as_mut()) else {
+        return PaneRenderOutcome::default();
+    };
+
+    let animating = pane_state.viewport.update();
+    pane_state.viewport.set_size(target_width, target_height);
+
+    let vp = &pane_state.viewport.viewport;
+    let vp_zoom = vp.zoom;
+    let vp_center_x = vp.center.x;
+    let vp_center_y = vp.center.y;
+    let vp_width = vp.width;
+    let vp_height = vp.height;
+    let is_first_frame = pane_state.frame_count == 0;
+    let viewport_changed = (pane_state.last_render_zoom - vp_zoom).abs() > 0.001
+        || (pane_state.last_render_center_x - vp_center_x).abs() > 1.0
+        || (pane_state.last_render_center_y - vp_center_y).abs() > 1.0
+        || (pane_state.last_render_width - vp_width).abs() > 1.0
+        || (pane_state.last_render_height - vp_height).abs() > 1.0;
+
+    let trilinear = render::calculate_trilinear_levels(wsi, vp.effective_downsample());
+    let level = trilinear.level_fine;
+    let margin_tiles = if pane_state.viewport.is_moving() { 1 } else { 0 };
+    let level_changed = level != pane_state.last_render_level;
+    if level_changed {
+        pane_state.tiles_loaded_since_render = 0;
+    }
+
+    let bounds = vp.bounds();
+    let visible_tiles = tile_manager.visible_tiles_with_margin(
+        level,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        margin_tiles,
+    );
+    let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
+    let cached_tiles: Vec<_> = visible_tiles
+        .iter()
+        .filter_map(|coord| tile_cache.get(coord).map(|data| (*coord, data)))
+        .collect();
+    let cached_count = cached_tiles.len() as u32;
+
+    let cached_coarse_tiles: Vec<_> = if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
+        tile_manager
+            .visible_tiles_with_margin(
+                trilinear.level_coarse,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            )
+            .into_iter()
+            .filter_map(|coord| tile_cache.get(&coord).map(|data| (coord, data)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let new_tiles_loaded =
+        cached_count > pane_state.tiles_loaded_since_render || !cached_coarse_tiles.is_empty();
+    let tiles_pending = tile_loader.pending_count() > 0;
+
+    if let Some(signature) = tile_request_signature(tile_manager, vp, level, margin_tiles)
+        && pane_state.last_request != Some(signature)
+    {
+        let wanted = calculate_wanted_tiles(
+            tile_manager,
+            level,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+            margin_tiles,
+        );
+        tile_loader.set_wanted_tiles(wanted);
+        pane_state.last_request = Some(signature);
+    }
+
+    let keep_running = animating || new_tiles_loaded || tiles_pending;
+    if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
+        return PaneRenderOutcome {
+            image: None,
+            keep_running,
+            rendered: false,
+        };
+    }
+
+    pane_state.frame_count += 1;
+    pane_state.last_render_time = std::time::Instant::now();
+    pane_state.last_render_zoom = vp_zoom;
+    pane_state.last_render_center_x = vp_center_x;
+    pane_state.last_render_center_y = vp_center_y;
+    pane_state.last_render_width = vp_width;
+    pane_state.last_render_height = vp_height;
+    pane_state.last_render_level = level;
+    pane_state.tiles_loaded_since_render = cached_count;
+
+    let render_width = vp_width as u32;
+    let render_height = vp_height.max(1.0) as u32;
+    if render_width == 0 || render_height == 0 {
+        return PaneRenderOutcome {
+            image: None,
+            keep_running,
+            rendered: false,
+        };
+    }
+
+    let buffer_size = (render_width * render_height * 4) as usize;
+    if pane_state.render_buffer.len() != buffer_size {
+        pane_state.render_buffer.resize(buffer_size, 0);
+    }
+    fast_fill_rgba(&mut pane_state.render_buffer, 30, 30, 30, 255);
+    let buffer = &mut pane_state.render_buffer[..];
+
+    let level_info = match wsi.level(level) {
+        Some(info) => info,
+        None => {
+            return PaneRenderOutcome {
+                image: None,
+                keep_running,
+                rendered: false,
+            };
+        }
+    };
+
+    let level_count = wsi.level_count();
+    for fallback_level in (0..level_count).rev() {
+        if fallback_level <= level {
+            continue;
+        }
+
+        let Some(fallback_level_info) = wsi.level(fallback_level) else {
+            continue;
+        };
+
+        let fallback_tiles = tile_manager.visible_tiles(
+            fallback_level,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+        );
+
+        for fb_coord in fallback_tiles.iter().take(100) {
+            let Some(fallback_tile) = tile_cache.get(fb_coord) else {
+                continue;
+            };
+
+            let fb_image_x =
+                fb_coord.x as f64 * fb_coord.tile_size as f64 * fallback_level_info.downsample;
+            let fb_image_y =
+                fb_coord.y as f64 * fb_coord.tile_size as f64 * fallback_level_info.downsample;
+            let fb_image_x_end =
+                fb_image_x + fallback_tile.width as f64 * fallback_level_info.downsample;
+            let fb_image_y_end =
+                fb_image_y + fallback_tile.height as f64 * fallback_level_info.downsample;
+
+            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).round() as i32;
+            let screen_w = screen_x_end - screen_x;
+            let screen_h = screen_y_end - screen_y;
+
+            if screen_w <= 0 || screen_h <= 0 {
+                continue;
+            }
+
+            blit_tile(
+                buffer,
+                render_width,
+                render_height,
+                &fallback_tile.data,
+                fallback_tile.width,
+                fallback_tile.height,
+                screen_x,
+                screen_y,
+                screen_w,
+                screen_h,
+            );
+        }
+    }
+
+    for (coord, tile_data) in cached_tiles.iter() {
+        let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
+        let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
+        let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
+        let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
+        let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+        let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+        let screen_w = screen_x_end - screen_x;
+        let screen_h = screen_y_end - screen_y;
+
+        blit_tile(
+            buffer,
+            render_width,
+            render_height,
+            &tile_data.data,
+            tile_data.width,
+            tile_data.height,
+            screen_x,
+            screen_y,
+            screen_w,
+            screen_h,
+        );
+    }
+
+    PaneRenderOutcome {
+        image: create_image_buffer(buffer, render_width, render_height).map(Image::from_rgba8),
+        keep_running,
+        rendered: true,
+    }
 }
 
 fn render_viewport_to_buffer(
@@ -3332,6 +3619,7 @@ fn set_pane_roi_rect(ui: &AppWindow, pane: PaneId, rect: ROIRect) {
     match pane {
         PaneId::Primary => ui.set_primary_roi_rect(rect),
         PaneId::Secondary => ui.set_secondary_roi_rect(rect),
+        _ => {}
     }
 }
 
@@ -3340,6 +3628,7 @@ fn set_pane_measurements(ui: &AppWindow, pane: PaneId, lines: Vec<MeasurementLin
     match pane {
         PaneId::Primary => ui.set_primary_measurements(model.into()),
         PaneId::Secondary => ui.set_secondary_measurements(model.into()),
+        _ => {}
     }
 }
 
@@ -3347,6 +3636,7 @@ fn set_pane_candidate_measurement(ui: &AppWindow, pane: PaneId, line: Measuremen
     match pane {
         PaneId::Primary => ui.set_primary_candidate_measurement(line),
         PaneId::Secondary => ui.set_secondary_candidate_measurement(line),
+        _ => {}
     }
 }
 
@@ -3359,6 +3649,132 @@ fn clear_tool_overlays(ui: &AppWindow, ant_offset: f32) {
     set_pane_candidate_measurement(ui, PaneId::Secondary, hidden_measurement_line());
 }
 
+fn hidden_viewport_info() -> ViewportInfo {
+    ViewportInfo {
+        center_x: 0.0,
+        center_y: 0.0,
+        zoom: 1.0,
+        image_width: 1.0,
+        image_height: 1.0,
+        level: 0,
+    }
+}
+
+fn full_minimap_rect() -> MinimapRect {
+    MinimapRect {
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+    }
+}
+
+fn pane_viewport_state(file: &OpenFile, pane: PaneId) -> Option<&ViewportState> {
+    file.pane_state(pane)
+        .map(|pane_state| &pane_state.viewport)
+        .or(match pane {
+            PaneId::Primary => Some(&file.viewport),
+            PaneId::Secondary => file.secondary_viewport.as_ref(),
+            _ => None,
+        })
+}
+
+fn pane_overlay_data(
+    state: &AppState,
+    pane: PaneId,
+) -> (ROIRect, Vec<MeasurementLine>, MeasurementLine) {
+    let ant_offset = state.ant_offset;
+    let mut roi_rect = hidden_roi_rect(ant_offset);
+    let mut measurement_lines = Vec::new();
+    let mut candidate_measurement = hidden_measurement_line();
+
+    let Some(file_id) = state.active_file_id_for_pane(pane) else {
+        return (roi_rect, measurement_lines, candidate_measurement);
+    };
+    let Some(file) = state.get_file(file_id) else {
+        return (roi_rect, measurement_lines, candidate_measurement);
+    };
+    let Some(viewport_state) = pane_viewport_state(file, pane) else {
+        return (roi_rect, measurement_lines, candidate_measurement);
+    };
+
+    let vp = &viewport_state.viewport;
+    let bounds = vp.bounds();
+    let mpp = file
+        .wsi
+        .properties()
+        .mpp_x
+        .zip(file.wsi.properties().mpp_y)
+        .map(|(mx, my)| (mx + my) / 2.0)
+        .unwrap_or(0.0);
+
+    let committed_roi = file.roi.filter(|roi| roi.pane == pane);
+    let roi_to_display = if state.focused_pane == pane && state.current_tool == state::Tool::RegionOfInterest {
+        if let state::ToolInteractionState::Dragging(start) = state.tool_state {
+            state
+                .candidate_point
+                .map(|end| state::RegionOfInterest::from_points(start, end, pane))
+                .or(committed_roi)
+        } else {
+            committed_roi
+        }
+    } else {
+        committed_roi
+    };
+
+    if let Some(roi) = roi_to_display {
+        roi_rect = ROIRect {
+            x: ((roi.x - bounds.left) * vp.zoom) as f32,
+            y: ((roi.y - bounds.top) * vp.zoom) as f32,
+            width: (roi.width * vp.zoom) as f32,
+            height: (roi.height * vp.zoom) as f32,
+            visible: true,
+            ant_offset,
+        };
+    }
+
+    measurement_lines = file
+        .measurements
+        .iter()
+        .filter(|measurement| measurement.pane == pane)
+        .map(|measurement| {
+            let p1 = vp.image_to_screen(measurement.start.x, measurement.start.y);
+            let p2 = vp.image_to_screen(measurement.end.x, measurement.end.y);
+            MeasurementLine {
+                x1: p1.x as f32,
+                y1: p1.y as f32,
+                x2: p2.x as f32,
+                y2: p2.y as f32,
+                distance_um: (measurement.distance() * mpp) as f32,
+                visible: true,
+            }
+        })
+        .collect();
+
+    if state.focused_pane == pane && state.current_tool == state::Tool::MeasureDistance {
+        if let (
+            state::ToolInteractionState::Dragging(start)
+            | state::ToolInteractionState::FirstPointPlaced(start),
+            Some(end),
+        ) = (state.tool_state, state.candidate_point)
+        {
+            let p1 = vp.image_to_screen(start.x, start.y);
+            let p2 = vp.image_to_screen(end.x, end.y);
+            let candidate = state::Measurement { pane, start, end };
+            candidate_measurement = MeasurementLine {
+                x1: p1.x as f32,
+                y1: p1.y as f32,
+                x2: p2.x as f32,
+                y2: p2.y as f32,
+                distance_um: (candidate.distance() * mpp) as f32,
+                visible: true,
+            };
+        }
+    }
+
+    (roi_rect, measurement_lines, candidate_measurement)
+}
+
 fn has_active_roi_overlay(state: &AppState) -> bool {
     if state.current_tool == state::Tool::RegionOfInterest
         && matches!(state.tool_state, state::ToolInteractionState::Dragging(_))
@@ -3367,141 +3783,18 @@ fn has_active_roi_overlay(state: &AppState) -> bool {
         return true;
     }
 
-    let primary_has_roi = state
-        .active_file_id_for_pane(PaneId::Primary)
-        .and_then(|id| state.get_file(id))
-        .and_then(|file| file.roi)
-        .map(|roi| roi.pane == PaneId::Primary)
-        .unwrap_or(false);
-    if primary_has_roi {
-        return true;
-    }
-
-    state.split_enabled
-        && state
-            .active_file_id_for_pane(PaneId::Secondary)
+    state.panes.iter().enumerate().any(|(pane_index, _)| {
+        let pane = PaneId(pane_index);
+        state
+            .active_file_id_for_pane(pane)
             .and_then(|id| state.get_file(id))
             .and_then(|file| file.roi)
-            .map(|roi| roi.pane == PaneId::Secondary)
+            .map(|roi| roi.pane == pane)
             .unwrap_or(false)
+    })
 }
 
-fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
-    let ant_offset = state.ant_offset;
-    clear_tool_overlays(ui, ant_offset);
-
-    for pane in [PaneId::Primary, PaneId::Secondary] {
-        if pane == PaneId::Secondary && !state.split_enabled {
-            continue;
-        }
-
-        let Some(file_id) = state.active_file_id_for_pane(pane) else {
-            continue;
-        };
-        let Some(file) = state.get_file(file_id) else {
-            continue;
-        };
-
-        let viewport_state = match pane {
-            PaneId::Primary => &file.viewport,
-            PaneId::Secondary => file.secondary_viewport.as_ref().unwrap_or(&file.viewport),
-        };
-        let vp = &viewport_state.viewport;
-        let bounds = vp.bounds();
-        let mpp = file
-            .wsi
-            .properties()
-            .mpp_x
-            .zip(file.wsi.properties().mpp_y)
-            .map(|(mx, my)| (mx + my) / 2.0)
-            .unwrap_or(0.0);
-
-        let committed_roi = file.roi.filter(|roi| roi.pane == pane);
-        let roi_to_display = if state.focused_pane == pane
-            && state.current_tool == state::Tool::RegionOfInterest
-        {
-            if let state::ToolInteractionState::Dragging(start) = state.tool_state {
-                state
-                    .candidate_point
-                    .map(|end| state::RegionOfInterest::from_points(start, end, pane))
-                    .or(committed_roi)
-            } else {
-                committed_roi
-            }
-        } else {
-            committed_roi
-        };
-
-        if let Some(roi) = roi_to_display {
-            let screen_x = (roi.x - bounds.left) * vp.zoom;
-            let screen_y = (roi.y - bounds.top) * vp.zoom;
-            let screen_w = roi.width * vp.zoom;
-            let screen_h = roi.height * vp.zoom;
-            set_pane_roi_rect(
-                ui,
-                pane,
-                ROIRect {
-                    x: screen_x as f32,
-                    y: screen_y as f32,
-                    width: screen_w as f32,
-                    height: screen_h as f32,
-                    visible: true,
-                    ant_offset,
-                },
-            );
-        }
-
-        let measurement_lines: Vec<MeasurementLine> = file
-            .measurements
-            .iter()
-            .filter(|measurement| measurement.pane == pane)
-            .map(|measurement| {
-                let p1 = vp.image_to_screen(measurement.start.x, measurement.start.y);
-                let p2 = vp.image_to_screen(measurement.end.x, measurement.end.y);
-                MeasurementLine {
-                    x1: p1.x as f32,
-                    y1: p1.y as f32,
-                    x2: p2.x as f32,
-                    y2: p2.y as f32,
-                    distance_um: (measurement.distance() * mpp) as f32,
-                    visible: true,
-                }
-            })
-            .collect();
-        set_pane_measurements(ui, pane, measurement_lines);
-
-        let candidate_measurement = if state.focused_pane == pane
-            && state.current_tool == state::Tool::MeasureDistance
-        {
-            if let (
-                state::ToolInteractionState::Dragging(start)
-                | state::ToolInteractionState::FirstPointPlaced(start),
-                Some(end),
-            ) = (state.tool_state, state.candidate_point)
-            {
-                let p1 = vp.image_to_screen(start.x, start.y);
-                let p2 = vp.image_to_screen(end.x, end.y);
-                let candidate = state::Measurement {
-                    pane,
-                    start,
-                    end,
-                };
-                MeasurementLine {
-                    x1: p1.x as f32,
-                    y1: p1.y as f32,
-                    x2: p2.x as f32,
-                    y2: p2.y as f32,
-                    distance_um: (candidate.distance() * mpp) as f32,
-                    visible: true,
-                }
-            } else {
-                hidden_measurement_line()
-            }
-        } else {
-            hidden_measurement_line()
-        };
-        set_pane_candidate_measurement(ui, pane, candidate_measurement);
-    }
+fn update_tool_overlays(_ui: &AppWindow, _state: &AppState) {
 }
 
 fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
@@ -3510,17 +3803,14 @@ fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
     };
 
     let focused_pane = state.focused_pane;
-    let split_enabled = state.split_enabled;
 
     let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
         return;
     };
 
     // Get the active viewport for coordinate conversion
-    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
-        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
-    } else {
-        &file.viewport
+    let Some(viewport_state) = pane_viewport_state(file, focused_pane) else {
+        return;
     };
 
     // Convert screen coordinates to image coordinates
@@ -3567,17 +3857,14 @@ fn handle_tool_mouse_move(state: &mut AppState, screen_x: f64, screen_y: f64) {
     };
 
     let focused_pane = state.focused_pane;
-    let split_enabled = state.split_enabled;
 
     let Some(file) = state.open_files.iter().find(|f| f.id == file_id) else {
         return;
     };
 
     // Get the active viewport for coordinate conversion
-    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
-        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
-    } else {
-        &file.viewport
+    let Some(viewport_state) = pane_viewport_state(file, focused_pane) else {
+        return;
     };
 
     // Convert screen coordinates to image coordinates
@@ -3603,7 +3890,6 @@ fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
     };
 
     let focused_pane = state.focused_pane;
-    let split_enabled = state.split_enabled;
     let current_tool = state.current_tool;
 
     let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
@@ -3611,10 +3897,8 @@ fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
     };
 
     // Get the active viewport for coordinate conversion
-    let viewport_state = if split_enabled && focused_pane == PaneId::Secondary {
-        file.secondary_viewport.as_ref().unwrap_or(&file.viewport)
-    } else {
-        &file.viewport
+    let Some(viewport_state) = pane_viewport_state(file, focused_pane) else {
+        return;
     };
 
     // Convert screen coordinates to image coordinates
