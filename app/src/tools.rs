@@ -121,24 +121,24 @@ pub fn pane_overlay_data(
         })
         .collect();
 
-    if state.focused_pane == pane && state.current_tool == Tool::MeasureDistance {
-        if let (
+    if state.focused_pane == pane
+        && state.current_tool == Tool::MeasureDistance
+        && let (
             ToolInteractionState::Dragging(start) | ToolInteractionState::FirstPointPlaced(start),
             Some(end),
         ) = (state.tool_state, state.candidate_point)
-        {
-            let p1 = vp.image_to_screen(start.x, start.y);
-            let p2 = vp.image_to_screen(end.x, end.y);
-            let candidate = Measurement { pane, start, end };
-            candidate_measurement = MeasurementLine {
-                x1: p1.x as f32,
-                y1: p1.y as f32,
-                x2: p2.x as f32,
-                y2: p2.y as f32,
-                distance_um: (candidate.distance() * mpp) as f32,
-                visible: true,
-            };
-        }
+    {
+        let p1 = vp.image_to_screen(start.x, start.y);
+        let p2 = vp.image_to_screen(end.x, end.y);
+        let candidate = Measurement { pane, start, end };
+        candidate_measurement = MeasurementLine {
+            x1: p1.x as f32,
+            y1: p1.y as f32,
+            x2: p2.x as f32,
+            y2: p2.y as f32,
+            distance_um: (candidate.distance() * mpp) as f32,
+            visible: true,
+        };
     }
 
     (roi_rect, measurement_lines, candidate_measurement)

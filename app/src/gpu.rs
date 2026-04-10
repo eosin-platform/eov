@@ -169,13 +169,9 @@ impl GpuRenderer {
             return None;
         }
 
-        if self.runtime.is_none() {
-            return None;
-        }
+        self.runtime.as_ref()?;
 
-        let Some(surface_recreated) = self.ensure_surface(slot, width, height) else {
-            return None;
-        };
+        let surface_recreated = self.ensure_surface(slot, width, height)?;
 
         let frame = QueuedFrame {
             width,
@@ -310,9 +306,7 @@ impl GpuRenderer {
     }
 
     fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
-        let Some(runtime) = self.runtime.as_mut() else {
-            return None;
-        };
+        let runtime = self.runtime.as_mut()?;
 
         let slot_index = slot.index();
         let needs_recreate = runtime

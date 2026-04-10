@@ -15,6 +15,7 @@ use std::sync::Arc;
 use tracing::{error, info, warn};
 
 /// Open a file and add it to the application state
+#[allow(clippy::too_many_arguments)]
 pub fn open_file(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,

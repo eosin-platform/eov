@@ -322,14 +322,10 @@ fn tile_request_signature(
 }
 
 pub(crate) fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
-    let Some(ref thumb_data) = file.thumbnail else {
-        return None;
-    };
+    let thumb_data = file.thumbnail.as_ref()?;
 
     let level = file.wsi.level_count().saturating_sub(1);
-    let Some(level_info) = file.wsi.level(level) else {
-        return None;
-    };
+    let level_info = file.wsi.level(level)?;
     let aspect = level_info.width as f64 / level_info.height as f64;
     let (width, height) = if aspect > 1.0 {
         (150u32, (150.0 / aspect) as u32)
@@ -482,10 +478,10 @@ pub(crate) fn update_and_render(
             );
         }
 
-        if file_switched {
-            if let Some(pane_state) = file.pane_state_mut(pane) {
-                pane_state.frame_count = 0;
-            }
+        if file_switched
+            && let Some(pane_state) = file.pane_state_mut(pane)
+        {
+            pane_state.frame_count = 0;
         }
         if file_switched || minimap_missing {
             crate::set_cached_pane_minimap(pane, thumbnail_image_for_file(file));
@@ -535,6 +531,7 @@ pub(crate) fn update_and_render(
     keep_running
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_pane_to_image(
     ui: &AppWindow,
     file: &mut OpenFile,
