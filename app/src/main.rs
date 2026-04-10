@@ -1798,23 +1798,23 @@ fn update_tabs(ui: &AppWindow, state: &AppState) {
         state
             .tabs_for_pane(pane)
             .iter()
-            .filter_map(|&id| {
-                if state.is_home_tab(id) {
+            .filter_map(|&tab_id| {
+                if state.is_home_tab(tab_id) {
                     Some(TabData {
-                        id,
+                        id: tab_id,
                         title: SharedString::from("Home"),
                         path: SharedString::new(),
                         is_modified: false,
-                        is_active: Some(id) == state.active_tab_id_for_pane(pane),
+                        is_active: Some(tab_id) == state.active_tab_id_for_pane(pane),
                         is_home: true,
                     })
                 } else {
-                    state.get_file(id).map(|file| TabData {
-                        id: file.id,
+                    state.get_file(tab_id).map(|file| TabData {
+                        id: tab_id,
                         title: SharedString::from(file.filename.clone()),
                         path: SharedString::from(file.path.display().to_string()),
                         is_modified: false,
-                        is_active: Some(file.id) == state.active_tab_id_for_pane(pane),
+                        is_active: Some(tab_id) == state.active_tab_id_for_pane(pane),
                         is_home: false,
                     })
                 }

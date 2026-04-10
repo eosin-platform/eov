@@ -2,6 +2,7 @@
 
 use crate::tile_loader::TileLoader;
 use common::{TileManager, ViewportState, WsiFile};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -386,6 +387,10 @@ pub struct AppState {
     pub recent_files: Vec<RecentFile>,
     /// IDs of tabs that are "home" tabs (no file open)
     pub home_tabs: Vec<i32>,
+    /// Duplicate tab instances mapped to their backing file ID
+    tab_aliases: HashMap<i32, i32>,
+    /// Per-tab viewport/render snapshots for duplicated file tabs
+    tab_instance_states: HashMap<i32, FilePaneState>,
     /// Last file ID rendered into each pane
     pub last_rendered_file_ids: Vec<Option<i32>>,
     /// The selected rendering backend
@@ -419,6 +424,8 @@ impl AppState {
             current_fps: 0.0,
             recent_files,
             home_tabs: Vec::new(),
+            tab_aliases: HashMap::new(),
+            tab_instance_states: HashMap::new(),
             last_rendered_file_ids: vec![None],
             render_backend: RenderBackend::Cpu,
             gpu_backend_available: false,
@@ -525,8 +532,73 @@ impl AppState {
         }
     }
 
+    fn resolve_tab_file_id(&self, id: i32) -> i32 {
+        self.tab_aliases.get(&id).copied().unwrap_or(id)
+    }
+
+    fn create_duplicate_tab_id(&mut self, id: i32) -> i32 {
+        if self.is_home_tab(id) {
+            return id;
+        }
+
+        let file_id = self.resolve_tab_file_id(id);
+        let tab_id = self.next_id;
+        self.next_id += 1;
+        self.tab_aliases.insert(tab_id, file_id);
+        tab_id
+    }
+
+    fn has_tab_reference_to_file(&self, file_id: i32, excluding_tab_id: Option<i32>) -> bool {
+        self.panes.iter().any(|pane_state| {
+            pane_state.tabs.iter().copied().any(|tab_id| {
+                Some(tab_id) != excluding_tab_id && self.resolve_tab_file_id(tab_id) == file_id
+            })
+        })
+    }
+
+    fn save_tab_instance_state(&mut self, tab_id: i32, pane: PaneId) {
+        if self.is_home_tab(tab_id) {
+            return;
+        }
+
+        let Some(snapshot) = self
+            .get_file(self.resolve_tab_file_id(tab_id))
+            .and_then(|file| file.pane_state(pane).cloned())
+        else {
+            return;
+        };
+
+        self.tab_instance_states.insert(tab_id, snapshot);
+    }
+
+    fn restore_tab_instance_state(&mut self, tab_id: i32, pane: PaneId) {
+        let Some(snapshot) = self.tab_instance_states.get(&tab_id).cloned() else {
+            return;
+        };
+
+        let file_id = self.resolve_tab_file_id(tab_id);
+        if let Some(file) = self.get_file_mut(file_id) {
+            file.ensure_pane_capacity(pane.0 + 1);
+            file.pane_states[pane.0] = Some(snapshot);
+        }
+    }
+
+    fn select_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if let Some(current_tab_id) = self.active_tab_id_for_pane(pane)
+            && current_tab_id != id
+        {
+            self.save_tab_instance_state(current_tab_id, pane);
+        }
+
+        self.restore_tab_instance_state(id, pane);
+        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+    }
+
     fn sync_active_file_id(&mut self) {
-        self.active_file_id = self.active_tab_id_for_pane(self.focused_pane);
+        self.active_file_id = self
+            .active_tab_id_for_pane(self.focused_pane)
+            .filter(|id| !self.is_home_tab(*id))
+            .map(|id| self.resolve_tab_file_id(id));
     }
 
     pub fn active_tab_id_for_pane(&self, pane: PaneId) -> Option<i32> {
@@ -536,6 +608,7 @@ impl AppState {
     pub fn active_file_id_for_pane(&self, pane: PaneId) -> Option<i32> {
         self.active_tab_id_for_pane(pane)
             .filter(|id| !self.is_home_tab(*id))
+            .map(|id| self.resolve_tab_file_id(id))
     }
 
     pub fn tabs_for_pane(&self, pane: PaneId) -> &[i32] {
@@ -561,7 +634,8 @@ impl AppState {
     }
 
     fn ensure_file_pane_state(&mut self, id: i32, pane: PaneId, source_pane: PaneId) {
-        if let Some(file) = self.get_file_mut(id) {
+        let file_id = self.resolve_tab_file_id(id);
+        if let Some(file) = self.get_file_mut(file_id) {
             file.ensure_pane_state_from(pane, source_pane);
         }
     }
@@ -664,12 +738,17 @@ impl AppState {
     }
 
     fn is_known_tab(&self, id: i32) -> bool {
-        self.is_home_tab(id) || self.open_files.iter().any(|file| file.id == id)
+        self.is_home_tab(id)
+            || self.tab_aliases.contains_key(&id)
+            || self
+                .open_files
+                .iter()
+                .any(|file| file.id == self.resolve_tab_file_id(id))
     }
 
-    pub fn duplicate_tab_to_pane(&mut self, id: i32, pane: PaneId) {
+    pub fn duplicate_tab_to_pane(&mut self, id: i32, pane: PaneId) -> i32 {
         if !self.is_known_tab(id) {
-            return;
+            return id;
         }
         let source_pane = self
             .panes
@@ -678,21 +757,39 @@ impl AppState {
             .find(|(_, pane_state)| pane_state.tabs.contains(&id))
             .map(|(index, _)| PaneId(index))
             .unwrap_or(PaneId::PRIMARY);
-        self.add_tab_to_pane_if_missing(pane, id);
-        self.ensure_file_pane_state(id, pane, source_pane);
-        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+        let duplicated_id = self.create_duplicate_tab_id(id);
+        self.save_tab_instance_state(id, source_pane);
+        if let Some(snapshot) = self.tab_instance_states.get(&id).cloned() {
+            self.tab_instance_states.insert(duplicated_id, snapshot);
+        }
+        self.add_tab_to_pane_if_missing(pane, duplicated_id);
+        self.ensure_file_pane_state(duplicated_id, pane, source_pane);
+        self.select_tab_in_pane(pane, duplicated_id);
         self.needs_render = true;
         self.sync_active_file_id();
+        duplicated_id
     }
 
     pub fn move_tab_between_panes(&mut self, id: i32, from: PaneId, to: PaneId) {
         if from == to || !self.is_known_tab(id) {
             return;
         }
+
+        let file_id = self.resolve_tab_file_id(id);
+        if let Some(existing_target_tab_id) = self
+            .tabs_for_pane(to)
+            .iter()
+            .copied()
+            .find(|tab_id| *tab_id != id && self.resolve_tab_file_id(*tab_id) == file_id)
+        {
+            self.save_tab_instance_state(existing_target_tab_id, to);
+        }
+        self.save_tab_instance_state(id, from);
+
         self.remove_tab_from_pane(from, id);
         self.add_tab_to_pane_if_missing(to, id);
         self.ensure_file_pane_state(id, to, from);
-        *self.active_tab_id_for_pane_mut(to) = Some(id);
+        self.select_tab_in_pane(to, id);
         if self.focused_pane == from {
             self.set_focused_pane(to);
         } else {
@@ -753,7 +850,7 @@ impl AppState {
             return;
         }
         self.add_tab_to_pane_if_missing(pane, id);
-        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+        self.select_tab_in_pane(pane, id);
         self.set_focused_pane(pane);
         self.needs_render = true;
     }
@@ -796,10 +893,15 @@ impl AppState {
             return;
         }
 
+        let file_id = self.resolve_tab_file_id(id);
+
         self.remove_tab_from_pane(pane, id);
         self.collapse_empty_panes();
 
-        let still_open_elsewhere = self.panes.iter().any(|pane_state| pane_state.tabs.contains(&id));
+        self.tab_aliases.remove(&id);
+        self.tab_instance_states.remove(&id);
+
+        let still_open_elsewhere = self.has_tab_reference_to_file(file_id, None);
         if still_open_elsewhere {
             self.needs_render = true;
             self.sync_active_file_id();
@@ -813,7 +915,7 @@ impl AppState {
             return;
         }
 
-        self.close_file(id);
+        self.close_file(file_id);
     }
 
     /// Check if an ID is a home tab
@@ -1010,11 +1112,31 @@ impl AppState {
             self.open_files.remove(idx);
 
             for pane_index in 0..self.panes.len() {
-                self.remove_tab_from_pane(PaneId(pane_index), id);
+                let pane = PaneId(pane_index);
+                let tab_ids_to_remove: Vec<i32> = self
+                    .tabs_for_pane(pane)
+                    .iter()
+                    .copied()
+                    .filter(|tab_id| self.resolve_tab_file_id(*tab_id) == id)
+                    .collect();
+                for tab_id in tab_ids_to_remove {
+                    self.remove_tab_from_pane(pane, tab_id);
+                }
                 if self.active_tab_id_for_pane(PaneId(pane_index)).is_none() {
                     let replacement = self.tabs_for_pane(PaneId(pane_index)).first().copied();
                     *self.active_tab_id_for_pane_mut(PaneId(pane_index)) = replacement;
                 }
+            }
+
+            self.tab_aliases.retain(|_, file_id| *file_id != id);
+            let tab_instance_ids_to_remove: Vec<i32> = self
+                .tab_instance_states
+                .keys()
+                .copied()
+                .filter(|tab_id| self.resolve_tab_file_id(*tab_id) == id)
+                .collect();
+            for tab_id in tab_instance_ids_to_remove {
+                self.tab_instance_states.remove(&tab_id);
             }
 
             self.collapse_empty_panes();
@@ -1031,6 +1153,8 @@ impl AppState {
     pub fn close_all_tabs(&mut self) {
         self.open_files.clear();
         self.home_tabs.clear();
+        self.tab_aliases.clear();
+        self.tab_instance_states.clear();
         self.reset_to_single_pane();
         self.active_file_id = None;
         self.request_render();
@@ -1067,12 +1191,14 @@ impl AppState {
 
     /// Get a file by ID
     pub fn get_file(&self, id: i32) -> Option<&OpenFile> {
-        self.open_files.iter().find(|f| f.id == id)
+        let file_id = self.resolve_tab_file_id(id);
+        self.open_files.iter().find(|f| f.id == file_id)
     }
 
     /// Get a mutable file by ID
     pub fn get_file_mut(&mut self, id: i32) -> Option<&mut OpenFile> {
-        self.open_files.iter_mut().find(|f| f.id == id)
+        let file_id = self.resolve_tab_file_id(id);
+        self.open_files.iter_mut().find(|f| f.id == file_id)
     }
 
     /// Get the active file
