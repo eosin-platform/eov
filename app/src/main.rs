@@ -398,11 +398,11 @@ fn main() -> Result<()> {
     {
         let mut state = state.write();
         state.gpu_backend_available = gpu_backend_available;
-        state.select_render_backend(RenderBackend::Cpu);
+        state.select_render_backend(initial_backend);
         update_render_backend(&ui, &state);
-        if initial_backend == RenderBackend::Gpu {
+        if initial_backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu {
             ui.set_status_text(SharedString::from(
-                "GPU renderer is temporarily disabled for the multi-pane renderer; using CPU renderer",
+                "GPU renderer unavailable; using CPU renderer",
             ));
         }
     }
@@ -668,11 +668,11 @@ fn setup_callbacks(
             };
             let gpu_fallback = {
                 let mut state = state_handle.write();
-                state.select_render_backend(RenderBackend::Cpu);
-                if let Err(err) = config::save_render_backend(RenderBackend::Cpu) {
+                state.select_render_backend(backend);
+                if let Err(err) = config::save_render_backend(state.render_backend) {
                     warn!("Failed to save render backend config: {}", err);
                 }
-                backend == RenderBackend::Gpu
+                backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu
             };
 
             if let Some(ui) = ui_weak.upgrade() {
@@ -680,7 +680,7 @@ fn setup_callbacks(
                 update_render_backend(&ui, &state);
                 if gpu_fallback {
                     ui.set_status_text(SharedString::from(
-                        "GPU renderer is temporarily disabled for the multi-pane renderer; using CPU renderer",
+                        "GPU renderer unavailable; using CPU renderer",
                     ));
                 }
             }
@@ -1924,9 +1924,8 @@ fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
 }
 
 fn update_render_backend(ui: &AppWindow, state: &AppState) {
-    let _ = state;
-    ui.set_render_mode(RenderMode::Cpu);
-    ui.set_gpu_rendering_available(false);
+    ui.set_render_mode(ui_render_mode(state.render_backend));
+    ui.set_gpu_rendering_available(state.gpu_backend_available);
 }
 
 fn tile_request_signature(
@@ -1983,6 +1982,7 @@ fn update_and_render(
     tile_cache: &Arc<TileCache>,
 ) -> bool {
     let mut state = state.write();
+    let render_backend = state.render_backend;
     let pane_count = state.panes.len();
     let active_file_ids: Vec<Option<i32>> = state
         .panes
@@ -2111,12 +2111,14 @@ fn update_and_render(
         }
 
         let outcome = render_pane_to_image(
+            ui,
             file,
             pane,
             tile_cache,
             pane_width,
             content_height,
             file_switched,
+            render_backend,
         );
         keep_running |= outcome.keep_running;
         rendered_frame |= outcome.rendered;
@@ -2138,50 +2140,67 @@ fn update_and_render(
 }
 
 fn render_pane_to_image(
+    ui: &AppWindow,
     file: &mut OpenFile,
     pane: PaneId,
     tile_cache: &Arc<TileCache>,
     target_width: f64,
     target_height: f64,
     force_render: bool,
+    render_backend: RenderBackend,
 ) -> PaneRenderOutcome {
-    let OpenFile {
-        wsi,
-        tile_manager,
-        tile_loader,
-        pane_states,
-        ..
-    } = file;
-    let Some(pane_state) = pane_states.get_mut(pane.0).and_then(|state| state.as_mut()) else {
-        return PaneRenderOutcome::default();
+    let (
+        animating,
+        viewport_state,
+        frame_count,
+        last_render_zoom,
+        last_render_center_x,
+        last_render_center_y,
+        last_render_width,
+        last_render_height,
+        last_render_level,
+        previous_tiles_loaded,
+    ) = {
+        let Some(pane_state) = file.pane_state_mut(pane) else {
+            return PaneRenderOutcome::default();
+        };
+
+        let animating = pane_state.viewport.update();
+        pane_state.viewport.set_size(target_width, target_height);
+        (
+            animating,
+            pane_state.viewport.clone(),
+            pane_state.frame_count,
+            pane_state.last_render_zoom,
+            pane_state.last_render_center_x,
+            pane_state.last_render_center_y,
+            pane_state.last_render_width,
+            pane_state.last_render_height,
+            pane_state.last_render_level,
+            pane_state.tiles_loaded_since_render,
+        )
     };
 
-    let animating = pane_state.viewport.update();
-    pane_state.viewport.set_size(target_width, target_height);
-
-    let vp = &pane_state.viewport.viewport;
+    let vp = &viewport_state.viewport;
     let vp_zoom = vp.zoom;
     let vp_center_x = vp.center.x;
     let vp_center_y = vp.center.y;
     let vp_width = vp.width;
     let vp_height = vp.height;
-    let is_first_frame = pane_state.frame_count == 0;
-    let viewport_changed = (pane_state.last_render_zoom - vp_zoom).abs() > 0.001
-        || (pane_state.last_render_center_x - vp_center_x).abs() > 1.0
-        || (pane_state.last_render_center_y - vp_center_y).abs() > 1.0
-        || (pane_state.last_render_width - vp_width).abs() > 1.0
-        || (pane_state.last_render_height - vp_height).abs() > 1.0;
+    let is_first_frame = frame_count == 0;
+    let viewport_changed = (last_render_zoom - vp_zoom).abs() > 0.001
+        || (last_render_center_x - vp_center_x).abs() > 1.0
+        || (last_render_center_y - vp_center_y).abs() > 1.0
+        || (last_render_width - vp_width).abs() > 1.0
+        || (last_render_height - vp_height).abs() > 1.0;
 
-    let trilinear = render::calculate_trilinear_levels(wsi, vp.effective_downsample());
+    let trilinear = render::calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
     let level = trilinear.level_fine;
-    let margin_tiles = if pane_state.viewport.is_moving() { 1 } else { 0 };
-    let level_changed = level != pane_state.last_render_level;
-    if level_changed {
-        pane_state.tiles_loaded_since_render = 0;
-    }
+    let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
+    let level_changed = level != last_render_level;
 
     let bounds = vp.bounds();
-    let visible_tiles = tile_manager.visible_tiles_with_margin(
+    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
         level,
         bounds.left,
         bounds.top,
@@ -2197,7 +2216,7 @@ fn render_pane_to_image(
     let cached_count = cached_tiles.len() as u32;
 
     let cached_coarse_tiles: Vec<_> = if trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
-        tile_manager
+        file.tile_manager
             .visible_tiles_with_margin(
                 trilinear.level_coarse,
                 bounds.left,
@@ -2213,28 +2232,26 @@ fn render_pane_to_image(
         Vec::new()
     };
 
-    let new_tiles_loaded =
-        cached_count > pane_state.tiles_loaded_since_render || !cached_coarse_tiles.is_empty();
-    let tiles_pending = tile_loader.pending_count() > 0;
+    let new_tiles_loaded = cached_count > if level_changed { 0 } else { previous_tiles_loaded }
+        || !cached_coarse_tiles.is_empty();
+    let tiles_pending = file.tile_loader.pending_count() > 0;
 
     let keep_running = animating || new_tiles_loaded || tiles_pending;
     if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded {
-        return PaneRenderOutcome {
-            image: None,
-            keep_running,
-            rendered: false,
-        };
+        return PaneRenderOutcome::default();
     }
 
-    pane_state.frame_count += 1;
-    pane_state.last_render_time = std::time::Instant::now();
-    pane_state.last_render_zoom = vp_zoom;
-    pane_state.last_render_center_x = vp_center_x;
-    pane_state.last_render_center_y = vp_center_y;
-    pane_state.last_render_width = vp_width;
-    pane_state.last_render_height = vp_height;
-    pane_state.last_render_level = level;
-    pane_state.tiles_loaded_since_render = cached_count;
+    if let Some(pane_state) = file.pane_state_mut(pane) {
+        pane_state.frame_count += 1;
+        pane_state.last_render_time = std::time::Instant::now();
+        pane_state.last_render_zoom = vp_zoom;
+        pane_state.last_render_center_x = vp_center_x;
+        pane_state.last_render_center_y = vp_center_y;
+        pane_state.last_render_width = vp_width;
+        pane_state.last_render_height = vp_height;
+        pane_state.last_render_level = level;
+        pane_state.tiles_loaded_since_render = cached_count;
+    }
 
     let render_width = vp_width as u32;
     let render_height = vp_height.max(1.0) as u32;
@@ -2246,15 +2263,29 @@ fn render_pane_to_image(
         };
     }
 
-    let buffer_size = (render_width * render_height * 4) as usize;
-    if pane_state.render_buffer.len() != buffer_size {
-        pane_state.render_buffer.resize(buffer_size, 0);
-    }
-    fast_fill_rgba(&mut pane_state.render_buffer, 30, 30, 30, 255);
-    let buffer = &mut pane_state.render_buffer[..];
+    if render_backend == RenderBackend::Gpu {
+        let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
+        let image = with_gpu_renderer(|renderer| {
+            renderer
+                .borrow_mut()
+                .queue_frame(SurfaceSlot(pane.0), render_width, render_height, draws)
+        })
+        .flatten();
 
-    let level_info = match wsi.level(level) {
-        Some(info) => info,
+        if image.is_some() {
+            ui.window().request_redraw();
+        }
+        let rendered = image.is_some();
+
+        return PaneRenderOutcome {
+            image,
+            keep_running: keep_running || !rendered,
+            rendered,
+        };
+    }
+
+    let level_info = match file.wsi.level(level) {
+        Some(info) => info.clone(),
         None => {
             return PaneRenderOutcome {
                 image: None,
@@ -2264,17 +2295,18 @@ fn render_pane_to_image(
         }
     };
 
-    let level_count = wsi.level_count();
+    let level_count = file.wsi.level_count();
+    let mut fallback_blits = Vec::new();
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= level {
             continue;
         }
 
-        let Some(fallback_level_info) = wsi.level(fallback_level) else {
+        let Some(fallback_level_info) = file.wsi.level(fallback_level).cloned() else {
             continue;
         };
 
-        let fallback_tiles = tile_manager.visible_tiles(
+        let fallback_tiles = file.tile_manager.visible_tiles(
             fallback_level,
             bounds.left,
             bounds.top,
@@ -2307,19 +2339,39 @@ fn render_pane_to_image(
                 continue;
             }
 
-            blit_tile(
-                buffer,
-                render_width,
-                render_height,
-                &fallback_tile.data,
-                fallback_tile.width,
-                fallback_tile.height,
+            fallback_blits.push((
+                fallback_tile,
                 screen_x,
                 screen_y,
                 screen_w,
                 screen_h,
-            );
+            ));
         }
+    }
+
+    let Some(pane_state) = file.pane_state_mut(pane) else {
+        return PaneRenderOutcome::default();
+    };
+    let buffer_size = (render_width * render_height * 4) as usize;
+    if pane_state.render_buffer.len() != buffer_size {
+        pane_state.render_buffer.resize(buffer_size, 0);
+    }
+    fast_fill_rgba(&mut pane_state.render_buffer, 30, 30, 30, 255);
+    let buffer = &mut pane_state.render_buffer[..];
+
+    for (fallback_tile, screen_x, screen_y, screen_w, screen_h) in fallback_blits {
+        blit_tile(
+            buffer,
+            render_width,
+            render_height,
+            &fallback_tile.data,
+            fallback_tile.width,
+            fallback_tile.height,
+            screen_x,
+            screen_y,
+            screen_w,
+            screen_h,
+        );
     }
 
     for (coord, tile_data) in cached_tiles.iter() {
@@ -2874,12 +2926,20 @@ fn render_viewport_gpu(
     }
 
     let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
-    with_gpu_renderer(|renderer| {
+    let image = with_gpu_renderer(|renderer| {
         renderer
             .borrow_mut()
-            .queue_frame(ui, slot, render_width, render_height, draws)
+            .queue_frame(slot, render_width, render_height, draws)
     })
-    .unwrap_or(false)
+    .flatten();
+
+    if let Some(image) = image {
+        ui.set_viewport_content(image);
+        ui.window().request_redraw();
+        true
+    } else {
+        false
+    }
 }
 
 fn render_secondary_viewport_gpu(
@@ -2920,16 +2980,23 @@ fn render_secondary_viewport_gpu(
     }
 
     let draws = collect_tile_draws(file, tile_cache, vp, trilinear);
-    with_gpu_renderer(|renderer| {
+    let image = with_gpu_renderer(|renderer| {
         renderer.borrow_mut().queue_frame(
-            ui,
-            SurfaceSlot::Secondary,
+            SurfaceSlot::SECONDARY,
             render_width,
             render_height,
             draws,
         )
     })
-    .unwrap_or(false)
+    .flatten();
+
+    if let Some(image) = image {
+        ui.set_secondary_viewport_content(image);
+        ui.window().request_redraw();
+        true
+    } else {
+        false
+    }
 }
 
 fn collect_tile_draws(

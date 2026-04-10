@@ -70,9 +70,15 @@ pub struct TileDraw {
 }
 
 #[derive(Clone, Copy)]
-pub enum SurfaceSlot {
-    Primary,
-    Secondary,
+pub struct SurfaceSlot(pub usize);
+
+impl SurfaceSlot {
+    pub const PRIMARY: Self = Self(0);
+    pub const SECONDARY: Self = Self(1);
+
+    fn index(self) -> usize {
+        self.0
+    }
 }
 
 #[derive(Clone)]
@@ -108,14 +114,12 @@ struct GpuRuntime {
     sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
-    primary_surface: Option<ImportedSurface>,
-    secondary_surface: Option<ImportedSurface>,
+    surfaces: HashMap<usize, ImportedSurface>,
 }
 
 pub struct GpuRenderer {
     runtime: Option<GpuRuntime>,
-    pending_primary: Option<QueuedFrame>,
-    pending_secondary: Option<QueuedFrame>,
+    pending_frames: HashMap<usize, QueuedFrame>,
     tile_textures: HashMap<TileCoord, TileTexture>,
     frame_counter: u64,
 }
@@ -133,8 +137,7 @@ impl GpuRenderer {
     pub fn new() -> Self {
         Self {
             runtime: None,
-            pending_primary: None,
-            pending_secondary: None,
+            pending_frames: HashMap::new(),
             tile_textures: HashMap::new(),
             frame_counter: 0,
         }
@@ -161,38 +164,30 @@ impl GpuRenderer {
 
     pub fn queue_frame(
         &mut self,
-        ui: &AppWindow,
         slot: SurfaceSlot,
         width: u32,
         height: u32,
         draws: Vec<TileDraw>,
-    ) -> bool {
+    ) -> Option<Image> {
         if width == 0 || height == 0 {
-            return false;
+            return None;
         }
 
         if self.runtime.is_none() {
-            return false;
+            return None;
         }
 
-        if !self.ensure_surface(ui, slot, width, height) {
-            return false;
+        if !self.ensure_surface(slot, width, height) {
+            return None;
         }
-
-        self.bind_surface_image(ui, slot);
 
         let frame = QueuedFrame {
             width,
             height,
             draws,
         };
-        match slot {
-            SurfaceSlot::Primary => self.pending_primary = Some(frame),
-            SurfaceSlot::Secondary => self.pending_secondary = Some(frame),
-        }
-
-        ui.window().request_redraw();
-        true
+        self.pending_frames.insert(slot.index(), frame);
+        self.surface_image(slot)
     }
 
     fn initialize(&mut self, graphics_api: &GraphicsAPI) {
@@ -303,21 +298,18 @@ impl GpuRenderer {
             sampler,
             vertex_buffer,
             vertex_capacity: 6,
-            primary_surface: None,
-            secondary_surface: None,
+            surfaces: HashMap::new(),
         });
     }
 
     fn teardown(&mut self) {
         self.runtime = None;
-        self.pending_primary = None;
-        self.pending_secondary = None;
+        self.pending_frames.clear();
         self.tile_textures.clear();
     }
 
     fn ensure_surface(
         &mut self,
-        ui: &AppWindow,
         slot: SurfaceSlot,
         width: u32,
         height: u32,
@@ -326,12 +318,10 @@ impl GpuRenderer {
             return false;
         };
 
-        let surface_ref = match slot {
-            SurfaceSlot::Primary => &mut runtime.primary_surface,
-            SurfaceSlot::Secondary => &mut runtime.secondary_surface,
-        };
-
-        let needs_recreate = surface_ref
+        let slot_index = slot.index();
+        let needs_recreate = runtime
+            .surfaces
+            .get(&slot_index)
             .as_ref()
             .is_none_or(|surface| surface.width != width || surface.height != height);
 
@@ -340,10 +330,7 @@ impl GpuRenderer {
         }
 
         let texture = runtime.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(match slot {
-                SurfaceSlot::Primary => "primary-viewport-surface",
-                SurfaceSlot::Secondary => "secondary-viewport-surface",
-            }),
+            label: Some("pane-viewport-surface"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -362,7 +349,7 @@ impl GpuRenderer {
             Err(_) => return false,
         };
 
-        *surface_ref = Some(ImportedSurface {
+        runtime.surfaces.insert(slot_index, ImportedSurface {
             texture,
             view,
             image,
@@ -370,32 +357,14 @@ impl GpuRenderer {
             height,
         });
 
-        self.bind_surface_image(ui, slot);
         true
     }
 
-    fn bind_surface_image(&self, ui: &AppWindow, slot: SurfaceSlot) {
-        let Some(runtime) = self.runtime.as_ref() else {
-            return;
-        };
-
-        let image = match slot {
-            SurfaceSlot::Primary => runtime
-                .primary_surface
-                .as_ref()
-                .map(|surface| surface.image.clone()),
-            SurfaceSlot::Secondary => runtime
-                .secondary_surface
-                .as_ref()
-                .map(|surface| surface.image.clone()),
-        };
-
-        if let Some(image) = image {
-            match slot {
-                SurfaceSlot::Primary => ui.set_viewport_content(image),
-                SurfaceSlot::Secondary => ui.set_secondary_viewport_content(image),
-            }
-        }
+    pub fn surface_image(&self, slot: SurfaceSlot) -> Option<Image> {
+        self.runtime
+            .as_ref()
+            .and_then(|runtime| runtime.surfaces.get(&slot.index()))
+            .map(|surface| surface.image.clone())
     }
 
     fn flush_pending_frames(&mut self) {
@@ -406,28 +375,17 @@ impl GpuRenderer {
         self.frame_counter = self.frame_counter.wrapping_add(1);
         let frame_id = self.frame_counter;
 
-        if let Some(frame) = self.pending_primary.take()
-            && runtime.primary_surface.is_some()
-        {
-            Self::render_frame(
-                runtime,
-                &mut self.tile_textures,
-                SurfaceSlot::Primary,
-                frame,
-                frame_id,
-            );
-        }
-
-        if let Some(frame) = self.pending_secondary.take()
-            && runtime.secondary_surface.is_some()
-        {
-            Self::render_frame(
-                runtime,
-                &mut self.tile_textures,
-                SurfaceSlot::Secondary,
-                frame,
-                frame_id,
-            );
+        let pending_frames = std::mem::take(&mut self.pending_frames);
+        for (slot_index, frame) in pending_frames {
+            if runtime.surfaces.contains_key(&slot_index) {
+                Self::render_frame(
+                    runtime,
+                    &mut self.tile_textures,
+                    SurfaceSlot(slot_index),
+                    frame,
+                    frame_id,
+                );
+            }
         }
 
         if self.tile_textures.len() > MAX_GPU_TILE_TEXTURES {
@@ -451,16 +409,11 @@ impl GpuRenderer {
         frame: QueuedFrame,
         frame_id: u64,
     ) {
-        let Some(surface_view) = (match slot {
-            SurfaceSlot::Primary => runtime
-                .primary_surface
-                .as_ref()
-                .map(|surface| surface.view.clone()),
-            SurfaceSlot::Secondary => runtime
-                .secondary_surface
-                .as_ref()
-                .map(|surface| surface.view.clone()),
-        }) else {
+        let Some(surface_view) = runtime
+            .surfaces
+            .get(&slot.index())
+            .map(|surface| surface.view.clone())
+        else {
             return;
         };
 
