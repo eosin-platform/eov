@@ -158,10 +158,6 @@ impl GpuRenderer {
         Ok(())
     }
 
-    pub fn is_ready(&self) -> bool {
-        self.runtime.is_some()
-    }
-
     pub fn queue_frame(
         &mut self,
         slot: SurfaceSlot,

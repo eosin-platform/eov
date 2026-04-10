@@ -160,8 +160,6 @@ pub struct OpenFile {
     pub tile_loader: TileLoader,
     /// Primary viewport state
     pub viewport: ViewportState,
-    /// Secondary viewport state (for split view)
-    pub secondary_viewport: Option<ViewportState>,
     /// Per-pane viewport/render state indexed by pane position
     pub pane_states: Vec<Option<FilePaneState>>,
     /// Thumbnail for minimap (RGBA data)
@@ -173,59 +171,10 @@ pub struct OpenFile {
     pub roi: Option<RegionOfInterest>,
     /// Measurements
     pub measurements: Vec<Measurement>,
-    /// Reusable render buffer to avoid per-frame allocation
-    pub render_buffer: Vec<u8>,
-    /// Last rendered viewport state (for dirty checking)
-    pub last_render_zoom: f64,
-    pub last_render_center_x: f64,
-    pub last_render_center_y: f64,
-    pub last_render_width: f64,
-    pub last_render_height: f64,
-    /// Last rendered pyramid level (for detecting level changes)
-    pub last_render_level: u32,
-    /// Number of tiles loaded since last render (at current level)
-    pub tiles_loaded_since_render: u32,
-    /// Frame counter for dirty tracking (0 means never rendered)
-    pub frame_count: u32,
-    /// Last render timestamp (for throttling tile update renders)
-    pub last_render_time: std::time::Instant,
-    /// Tile loader epoch observed by the primary viewport render path
-    pub last_seen_tile_epoch: u64,
-    /// Last tile request signature submitted for the primary viewport
-    pub last_primary_request: Option<TileRequestSignature>,
-    /// Last rendered secondary viewport state (for dirty checking)
-    pub last_secondary_zoom: f64,
-    pub last_secondary_center_x: f64,
-    pub last_secondary_center_y: f64,
-    pub last_secondary_width: f64,
-    pub last_secondary_height: f64,
-    /// Tile loader epoch observed by the secondary viewport render path
-    pub last_seen_secondary_tile_epoch: u64,
-    /// Last tile request signature submitted for the secondary viewport
-    pub last_secondary_request: Option<TileRequestSignature>,
-    /// Reusable render buffer for secondary viewport
-    pub secondary_render_buffer: Vec<u8>,
 }
 
 impl OpenFile {
     pub fn invalidate_render_state(&mut self) {
-        self.frame_count = 0;
-        self.last_render_zoom = 0.0;
-        self.last_render_center_x = 0.0;
-        self.last_render_center_y = 0.0;
-        self.last_render_width = 0.0;
-        self.last_render_height = 0.0;
-        self.last_render_level = u32::MAX;
-        self.tiles_loaded_since_render = 0;
-        self.last_seen_tile_epoch = 0;
-        self.last_primary_request = None;
-        self.last_secondary_zoom = 0.0;
-        self.last_secondary_center_x = 0.0;
-        self.last_secondary_center_y = 0.0;
-        self.last_secondary_width = 0.0;
-        self.last_secondary_height = 0.0;
-        self.last_seen_secondary_tile_epoch = 0;
-        self.last_secondary_request = None;
         for pane_state in &mut self.pane_states {
             if let Some(pane_state) = pane_state.as_mut() {
                 pane_state.invalidate();
@@ -346,8 +295,6 @@ pub struct PaneId(pub usize);
 impl PaneId {
     pub const PRIMARY: Self = Self(0);
     pub const SECONDARY: Self = Self(1);
-    pub const Primary: Self = Self::PRIMARY;
-    pub const Secondary: Self = Self::SECONDARY;
 
     pub fn as_index(self) -> i32 {
         self.0 as i32
@@ -633,10 +580,6 @@ impl AppState {
         self.sync_active_file_id();
     }
 
-    pub fn pane_count(&self) -> usize {
-        self.panes.len()
-    }
-
     fn ensure_file_pane_state(&mut self, id: i32, pane: PaneId, source_pane: PaneId) {
         let file_id = self.resolve_tab_file_id(id);
         if let Some(file) = self.get_file_mut(file_id) {
@@ -815,25 +758,6 @@ impl AppState {
         self.needs_render = true;
     }
 
-    pub fn split_off_tab_to_pane(&mut self, id: i32, pane: PaneId) {
-        let source_pane = self
-            .panes
-            .iter()
-            .enumerate()
-            .find(|(_, pane_state)| pane_state.tabs.contains(&id))
-            .map(|(index, _)| PaneId(index));
-        let Some(source_pane) = source_pane else {
-            return;
-        };
-
-        let insert_at = if pane.0 <= source_pane.0 {
-            pane.0
-        } else {
-            pane.0 + 1
-        };
-        self.split_tab_to_new_pane(id, source_pane, insert_at);
-    }
-
     /// Reorder a tab within the same pane by moving it to a new index position.
     pub fn reorder_tab(&mut self, pane: PaneId, id: i32, new_index: i32) {
         let tabs = self.tab_ids_for_pane_mut(pane);
@@ -969,32 +893,11 @@ impl AppState {
             tile_manager,
             tile_loader,
             viewport: viewport.clone(),
-            secondary_viewport: None,
             pane_states: vec![Some(FilePaneState::new(viewport))],
             thumbnail,
             thumbnail_set: false,
             roi: None,
             measurements: Vec::new(),
-            render_buffer: Vec::new(),
-            last_render_zoom: 0.0,
-            last_render_center_x: 0.0,
-            last_render_center_y: 0.0,
-            last_render_width: 0.0,
-            last_render_height: 0.0,
-            last_render_level: u32::MAX,
-            tiles_loaded_since_render: 0,
-            frame_count: 0,
-            last_render_time: std::time::Instant::now(),
-            last_seen_tile_epoch: 0,
-            last_primary_request: None,
-            last_secondary_zoom: 0.0,
-            last_secondary_center_x: 0.0,
-            last_secondary_center_y: 0.0,
-            last_secondary_width: 0.0,
-            last_secondary_height: 0.0,
-            last_seen_secondary_tile_epoch: 0,
-            last_secondary_request: None,
-            secondary_render_buffer: Vec::new(),
         });
 
         let target_pane = if self.split_enabled {
@@ -1038,20 +941,6 @@ impl AppState {
             file.roi = None;
             file.measurements.clear();
         }
-    }
-
-    /// Enable split view for the current file
-    pub fn enable_split(&mut self) {
-        if self.panes.len() <= 1 {
-            let source_pane = self.focused_pane;
-            let new_pane = self.insert_pane(source_pane.0 + 1);
-            if let Some(active_id) = self.active_tab_id_for_pane(source_pane) {
-                self.ensure_file_pane_state(active_id, new_pane, source_pane);
-                self.duplicate_tab_to_pane(active_id, new_pane);
-            }
-            self.set_focused_pane(new_pane);
-        }
-        self.needs_render = true;
     }
 
     /// Disable split view
