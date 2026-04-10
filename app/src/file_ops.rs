@@ -3,9 +3,9 @@
 //! This module contains functions for opening files and generating thumbnails.
 
 use crate::state::{AppState, PaneId};
-use crate::tile_loader::{calculate_wanted_tiles, TileLoader};
+use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
-use crate::{request_render_loop, PaneRenderCacheEntry, PaneUiModels, PaneViewData};
+use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loop};
 use common::{TileCache, TileManager, ViewportState, WsiFile};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -49,7 +49,8 @@ pub fn open_file(
                 // Get viewport size from the focused pane (use reasonable defaults if not yet laid out)
                 let pane_count = state_guard.panes.len().max(1) as f64;
                 let pane_gap = 6.0;
-                let ui_width = ((ui.get_content_area_width() as f64) - pane_gap * (pane_count - 1.0))
+                let ui_width = ((ui.get_content_area_width() as f64)
+                    - pane_gap * (pane_count - 1.0))
                     / pane_count;
                 let ui_height = ui.get_content_area_height() as f64 - 35.0;
                 let viewport_width = if ui_width > 0.0 { ui_width } else { 1024.0 };
@@ -77,7 +78,8 @@ pub fn open_file(
                 let tile_manager = Arc::new(TileManager::new(tile_manager_wsi));
 
                 // Create background tile loader (tiles are loaded on-demand)
-                let tile_loader = TileLoader::new(Arc::clone(&tile_manager), Arc::clone(tile_cache));
+                let tile_loader =
+                    TileLoader::new(Arc::clone(&tile_manager), Arc::clone(tile_cache));
 
                 // Start loading tiles immediately using the initial viewport bounds
                 // This ensures tiles begin loading before the first render

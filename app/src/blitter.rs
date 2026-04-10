@@ -166,6 +166,8 @@ pub fn create_image_buffer(
     }
 
     let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
-    buffer.make_mut_bytes().copy_from_slice(&data[..expected_len]);
+    buffer
+        .make_mut_bytes()
+        .copy_from_slice(&data[..expected_len]);
     Some(buffer)
 }

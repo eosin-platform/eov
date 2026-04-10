@@ -3,12 +3,12 @@
 //! This module contains helper functions for rendering tiles and compositing
 //! the viewport image.
 
+use crate::AppWindow;
 use crate::blitter;
 use crate::gpu::{SurfaceSlot, TileDraw};
 use crate::state::{AppState, OpenFile, PaneId, RenderBackend, TileRequestSignature};
 use crate::tile_loader::calculate_wanted_tiles;
 use crate::tools;
-use crate::AppWindow;
 use common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, Image};
@@ -950,7 +950,9 @@ fn coarse_blend_for_tile(
     let image_y = fine_coord.y as f64 * fine_coord.tile_size as f64 * fine_downsample;
     let fine_image_w = fine_tile.width as f64 * fine_downsample;
     let fine_image_h = fine_tile.height as f64 * fine_downsample;
-    let coarse_tile_size = file.tile_manager.tile_size_for_level(trilinear.level_coarse) as f64;
+    let coarse_tile_size = file
+        .tile_manager
+        .tile_size_for_level(trilinear.level_coarse) as f64;
     let image_x_end = image_x + fine_image_w;
     let image_y_end = image_y + fine_image_h;
 

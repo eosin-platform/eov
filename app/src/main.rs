@@ -276,7 +276,7 @@ fn request_render_loop(
     ui_weak: &slint::Weak<AppWindow>,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
-){
+) {
     let should_start = {
         let mut state = state.write();
         state.request_render();
@@ -441,7 +441,13 @@ pub(crate) fn update_tabs(ui: &AppWindow, state: &AppState) {
     with_pane_render_cache(pane_count, |pane_render_cache| {
         with_pane_ui_models(pane_count, |pane_ui_models| {
             with_pane_view_model(|pane_view_model| {
-                ui_update::update_tabs(ui, state, pane_render_cache, pane_ui_models, pane_view_model);
+                ui_update::update_tabs(
+                    ui,
+                    state,
+                    pane_render_cache,
+                    pane_ui_models,
+                    pane_view_model,
+                );
             });
         });
     });

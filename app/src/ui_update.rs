@@ -160,7 +160,8 @@ pub fn update_tabs(
                     image_height: vp.image_height as f32,
                     level: file
                         .wsi
-                        .best_level_for_downsample(vp.effective_downsample()) as i32,
+                        .best_level_for_downsample(vp.effective_downsample())
+                        as i32,
                 };
                 let rect = vp.minimap_rect();
                 minimap_rect = MinimapRect {
@@ -180,7 +181,10 @@ pub fn update_tabs(
                 pane_ui.measurements.set_vec(measurements.clone());
             }
 
-            let cached = pane_render_cache.get(pane_index).cloned().unwrap_or_default();
+            let cached = pane_render_cache
+                .get(pane_index)
+                .cloned()
+                .unwrap_or_default();
             PaneViewData {
                 id: pane.as_index(),
                 tabs: pane_ui.tabs.clone().into(),
