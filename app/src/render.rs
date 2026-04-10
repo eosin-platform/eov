@@ -478,9 +478,7 @@ pub(crate) fn update_and_render(
             );
         }
 
-        if file_switched
-            && let Some(pane_state) = file.pane_state_mut(pane)
-        {
+        if file_switched && let Some(pane_state) = file.pane_state_mut(pane) {
             pane_state.frame_count = 0;
         }
         if file_switched || minimap_missing {
