@@ -1,0 +1,140 @@
+import { Theme } from "theme.slint";
+import { RecentFileData } from "types.slint";
+
+export component HomeScreen inherits Rectangle {
+    in property <[RecentFileData]> recent-files: [];
+    callback open-file-requested();
+    callback open-recent-file(string);
+
+    background: Theme.background;
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 500px;
+        height: recent-files.length > 0 ? 480px : 300px;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 0px;
+
+            Text {
+                text: "🔬";
+                font-size: 48px;
+                horizontal-alignment: center;
+            }
+
+            Rectangle { height: 16px; }
+
+            Text {
+                text: "Whole Slide Image Viewer";
+                color: Theme.text-secondary;
+                font-size: 14px;
+                horizontal-alignment: center;
+            }
+
+            Rectangle { height: 32px; }
+
+            HorizontalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 160px;
+                    height: 40px;
+                    background: open-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                    border-radius: 6px;
+
+                    open-touch := TouchArea {
+                        clicked => { root.open-file-requested(); }
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: "📂";
+                            font-size: 16px;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "Open File";
+                            color: white;
+                            font-size: 14px;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 16px; }
+            Text {
+                text: "or drag and drop WSI files";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                horizontal-alignment: center;
+            }
+
+            if recent-files.length > 0: Rectangle {
+                height: 180px;
+
+                VerticalLayout {
+                    padding-top: 32px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Recently Opened";
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+
+                    Rectangle { height: 8px; }
+
+                    for file[i] in recent-files: Rectangle {
+                        height: 28px;
+                        background: file-touch.has-hover ? Theme.surface-hover : transparent;
+                        border-radius: 4px;
+
+                        file-touch := TouchArea {
+                            clicked => { root.open-recent-file(file.path); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: start;
+                            spacing: 8px;
+
+                            Text {
+                                text: "📄";
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: file.name;
+                                color: file-touch.has-hover ? Theme.accent : Theme.text-primary;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 24px; }
+            Text {
+                text: "Tip: Use scroll wheel to zoom, drag to pan";
+                color: Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

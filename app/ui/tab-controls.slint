@@ -1,0 +1,378 @@
+import { Theme } from "theme.slint";
+import { ContextMenuItem, TabData } from "types.slint";
+
+export component ToolButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+    border-width: is-active ? 0px : 0px;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        Text {
+            text: root.icon;
+            color: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+            font-size: 14px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    callback secondary-clicked(length, length);
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.secondary-clicked(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        Text {
+            text: root.text;
+            color: root.enabled ? Theme.text-primary : Theme.text-secondary;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Tab inherits Rectangle {
+    in property <TabData> data;
+    in property <int> pane-id: 0;
+    in property <bool> is-dragging: false;
+    callback close-requested(int);
+    callback activated(int);
+    callback context-menu(int, length, length);
+    callback drag-started(int, int, string, length, length);
+    callback drag-moved(length, length);
+    callback drag-ended(length, length);
+
+    min-width: 100px;
+    max-width: 200px;
+    height: 35px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    background: is-dragging ? Theme.accent : (data.is-active ? Theme.tab-active : Theme.tab-inactive);
+    border-width: 0px;
+    border-color: transparent;
+    opacity: is-dragging ? 0.35 : 1.0;
+
+    if data.is-active: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 2px;
+        background: Theme.accent;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
+
+    states [
+        hovered when touch.has-hover && !data.is-active: {
+            background: Theme.surface-hover;
+        }
+    ]
+
+    touch := TouchArea {
+        property <length> press-x;
+        property <length> press-y;
+        property <bool> drag-armed: false;
+        property <bool> lmb-down: false;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                self.press-x = self.mouse-x;
+                self.press-y = self.mouse-y;
+                self.drag-armed = false;
+                self.lmb-down = true;
+            }
+            if e.kind == PointerEventKind.move && self.lmb-down {
+                if !self.drag-armed {
+                    let dx = self.mouse-x - self.press-x;
+                    let dy = self.mouse-y - self.press-y;
+                    if abs(dx) > 6px || abs(dy) > 6px {
+                        self.drag-armed = true;
+                        root.drag-started(data.id, root.pane-id, data.title, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    }
+                }
+                if self.drag-armed {
+                    root.drag-moved(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if self.drag-armed {
+                    root.drag-ended(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                } else if self.lmb-down {
+                    root.activated(data.id);
+                }
+                self.drag-armed = false;
+                self.lmb-down = false;
+            }
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.context-menu(
+                    data.id,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                );
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        padding-top: 2px;
+        spacing: 6px;
+        alignment: center;
+
+        if data.is-home: Text {
+            text: "🏠";
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: data.title + (data.is-modified ? " •" : "");
+            color: data.is-active ? Theme.text-primary : Theme.text-secondary;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+            close-touch := TouchArea {
+                clicked => { root.close-requested(data.id); }
+            }
+
+            Text {
+                text: "×";
+                color: close-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component TabBar inherits Rectangle {
+    in property <int> pane-id: 0;
+    in property <[TabData]> tabs;
+    in property <int> dragging-tab-id: -1;
+    in property <int> drag-source-pane: -1;
+    in property <int> drag-source-index: -1;
+    in property <length> drag-abs-x: -1px;
+    in property <bool> is-drop-target: false;
+    in property <bool> show-drop-indicator: true;
+    property <length> estimated-tabs-width: tabs.length * 101px;
+    property <length> tabs-content-width: tabs-overflow
+        ? tabs-inline-layout.preferred-width
+        : max(1px, tabs-inline-layout.preferred-width - 36px);
+    property <length> avg-slot: tabs.length > 0
+        ? (tabs-content-width + 1px) / tabs.length
+        : 101px;
+    property <int> raw-drop-index: !show-drop-indicator || !is-drop-target || drag-abs-x < 0px
+        ? -1
+        : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
+    out property <int> computed-drop-index: drag-source-pane == pane-id && drag-source-index >= 0
+        && (raw-drop-index == drag-source-index || raw-drop-index == drag-source-index + 1)
+        ? -1
+        : raw-drop-index;
+    property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
+    callback tab-activated(int, int);
+    callback tab-close-requested(int, int);
+    callback tab-context-menu(int, int, length, length);
+    callback new-tab-requested(int);
+    callback tab-drag-started(int, int, string, int, length, length);
+    callback tab-drag-moved(length, length);
+    callback tab-drag-ended(length, length);
+
+    height: 35px;
+    background: Theme.surface;
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border-subtle;
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border;
+    }
+
+    Flickable {
+        x: 4px;
+        y: 0px;
+        width: root.tabs-overflow ? root.width - 39px : root.width - 4px;
+        height: 35px;
+        viewport-width: tabs-inline-layout.preferred-width;
+        interactive: root.tabs-overflow;
+
+        abs-tracker := Rectangle { width: 0px; height: 0px; }
+
+        tabs-inline-layout := HorizontalLayout {
+            alignment: start;
+            spacing: 1px;
+
+            for tab[i] in tabs: Tab {
+                pane-id: root.pane-id;
+                data: tab;
+                is-dragging: root.dragging-tab-id == tab.id;
+                close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
+                activated(id) => { root.tab-activated(root.pane-id, id); }
+                context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
+                drag-started(id, pane, title, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, i, abs-x, abs-y); }
+                drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
+                drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
+            }
+
+            if !root.tabs-overflow: Rectangle {
+                width: 35px;
+                height: 35px;
+                background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+
+                inline-new-tab-touch := TouchArea {
+                    clicked => { root.new-tab-requested(root.pane-id); }
+                }
+
+                Text {
+                    text: "+";
+                    color: inline-new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                    font-size: 20px;
+                    font-weight: 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if root.computed-drop-index >= 0: Rectangle {
+            x: root.computed-drop-index * root.avg-slot - 1px;
+            y: 4px;
+            width: 2px;
+            height: 27px;
+            border-radius: 1px;
+            background: Theme.accent;
+        }
+    }
+
+    if root.tabs-overflow: Rectangle {
+        x: root.width - self.width;
+        y: 0px;
+        width: 35px;
+        height: 35px;
+        background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+
+        new-tab-touch := TouchArea {
+            clicked => { root.new-tab-requested(root.pane-id); }
+        }
+
+        Text {
+            text: "+";
+            color: new-tab-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+            font-size: 20px;
+            font-weight: 400;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ContextMenu inherits Rectangle {
+    in property <[ContextMenuItem]> items;
+    in property <bool> is-visible: false;
+    in property <length> menu-x: 0px;
+    in property <length> menu-y: 0px;
+    callback item-clicked(string);
+
+    x: menu-x;
+    y: menu-y;
+    width: root.is-visible ? 200px : 0px;
+    height: root.is-visible ? items.length * 28px : 0px;
+    background: Theme.context-menu-bg;
+    border-radius: 4px;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #00000066;
+    opacity: root.is-visible ? 1 : 0;
+
+    if root.is-visible: Rectangle {
+        x: -10000px;
+        y: -10000px;
+        width: 20000px;
+        height: 20000px;
+
+        TouchArea {
+            clicked => { root.item-clicked("dismiss"); }
+        }
+    }
+
+    VerticalLayout {
+        for item in items: Rectangle {
+            height: 28px;
+            background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
+
+            item-touch := TouchArea {
+                enabled: item.enabled;
+                clicked => { root.item-clicked(item.id); }
+            }
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+
+                Text {
+                    text: item.label;
+                    color: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Text {
+                    text: item.shortcut;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,162 @@
+import { Theme } from "theme.slint";
+import { RenderMode, ToolType } from "types.slint";
+import { IconButton, ToolButton } from "tab-controls.slint";
+
+export component WindowToolbar inherits Rectangle {
+    in property <ToolType> current-tool: ToolType.navigate;
+    in property <RenderMode> render-mode: RenderMode.cpu;
+    in property <bool> gpu-rendering-available: false;
+
+    callback open-file-requested();
+    callback open-recent-menu-requested(length, length);
+    callback tool-selected(ToolType);
+    callback render-backend-selected(RenderMode);
+    callback window-minimize();
+    callback window-maximize();
+    callback window-close();
+
+    height: 40px;
+    background: Theme.toolbar-bg;
+    border-width: 0px;
+
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border-subtle;
+    }
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        IconButton {
+            text: "📂";
+            clicked => { root.open-file-requested(); }
+            secondary-clicked(x, y) => { root.open-recent-menu-requested(x, y); }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 24px;
+            background: Theme.border;
+        }
+
+        ToolButton {
+            icon: "✥";
+            tooltip-text: "Navigate (Pan)";
+            is-active: root.current-tool == ToolType.navigate;
+            clicked => { root.tool-selected(ToolType.navigate); }
+        }
+
+        ToolButton {
+            icon: "▢";
+            tooltip-text: "Region of Interest";
+            is-active: root.current-tool == ToolType.region-of-interest;
+            clicked => { root.tool-selected(ToolType.region-of-interest); }
+        }
+
+        ToolButton {
+            icon: "📏";
+            tooltip-text: "Measure Distance";
+            is-active: root.current-tool == ToolType.measure-distance;
+            clicked => { root.tool-selected(ToolType.measure-distance); }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 24px;
+            background: Theme.border;
+        }
+
+        ToolButton {
+            width: 40px;
+            icon: "CPU";
+            tooltip-text: "Use CPU renderer";
+            is-active: root.render-mode == RenderMode.cpu;
+            clicked => { root.render-backend-selected(RenderMode.cpu); }
+        }
+
+        ToolButton {
+            width: 40px;
+            icon: "GPU";
+            tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
+            enabled: root.gpu-rendering-available;
+            is-active: root.render-mode == RenderMode.gpu;
+            clicked => {
+                if root.gpu-rendering-available {
+                    root.render-backend-selected(RenderMode.gpu);
+                }
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        Text {
+            text: "eosmol";
+            color: Theme.text-secondary;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        Rectangle {
+            width: 46px;
+            height: 32px;
+            background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
+            border-radius: 0px;
+
+            minimize-touch := TouchArea {
+                clicked => { root.window-minimize(); }
+            }
+
+            Text {
+                text: "─";
+                color: Theme.text-primary;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            width: 46px;
+            height: 32px;
+            background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
+            border-radius: 0px;
+
+            maximize-touch := TouchArea {
+                clicked => { root.window-maximize(); }
+            }
+
+            Text {
+                text: "☐";
+                color: Theme.text-primary;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            width: 46px;
+            height: 32px;
+            background: close-win-touch.has-hover ? #e81123 : transparent;
+            border-radius: 0px;
+
+            close-win-touch := TouchArea {
+                clicked => { root.window-close(); }
+            }
+
+            Text {
+                text: "✕";
+                color: close-win-touch.has-hover ? white : Theme.text-primary;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

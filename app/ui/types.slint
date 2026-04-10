@@ -1,0 +1,91 @@
+// EosMol WSI Viewer - shared Slint data types
+
+export struct TabData {
+    id: int,
+    title: string,
+    path: string,
+    is-modified: bool,
+    is-active: bool,
+    is-home: bool,
+}
+
+export struct RecentFileData {
+    path: string,
+    name: string,
+}
+
+export struct ContextMenuItem {
+    id: string,
+    label: string,
+    shortcut: string,
+    enabled: bool,
+    separator-after: bool,
+}
+
+export struct TileInfo {
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    level: int,
+}
+
+export struct MinimapRect {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+}
+
+export struct ViewportInfo {
+    center-x: float,
+    center-y: float,
+    zoom: float,
+    image-width: float,
+    image-height: float,
+    level: int,
+}
+
+export struct ROIRect {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    visible: bool,
+    ant-offset: float,
+}
+
+export struct MeasurementLine {
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    distance-um: float,
+    visible: bool,
+}
+
+export struct PaneViewData {
+    id: int,
+    tabs: [TabData],
+    content: image,
+    viewport-info: ViewportInfo,
+    minimap-thumbnail: image,
+    minimap-rect: MinimapRect,
+    is-home-tab: bool,
+    zoom-slider-position: float,
+    roi-rect: ROIRect,
+    measurements: [MeasurementLine],
+    candidate-measurement: MeasurementLine,
+    is-loading: bool,
+}
+
+export enum ToolType {
+    navigate,
+    region-of-interest,
+    measure-distance,
+}
+
+export enum RenderMode {
+    cpu,
+    gpu,
+}

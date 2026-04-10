@@ -1,0 +1,561 @@
+import { Theme } from "theme.slint";
+import { MeasurementLine, MinimapRect, ROIRect, ToolType, ViewportInfo } from "types.slint";
+
+export component Minimap inherits Rectangle {
+    in property <image> thumbnail;
+    in property <MinimapRect> viewport-rect;
+    in property <float> image-width: 1.0;
+    in property <float> image-height: 1.0;
+    callback navigate(float, float);
+
+    property <bool> is-dragging: false;
+    property <length> content-x: 5px;
+    property <length> content-y: 5px;
+    property <length> content-width: self.width - 10px;
+    property <length> content-height: self.height - 10px;
+    property <float> image-aspect: image-width / max(image-height, 0.001);
+    property <float> content-aspect: (content-width / 1px) / max(content-height / 1px, 0.001);
+    property <length> img-display-width: image-aspect > content-aspect ? content-width : content-height * image-aspect;
+    property <length> img-display-height: image-aspect > content-aspect ? content-width / image-aspect : content-height;
+    property <length> img-display-x: content-x + (content-width - img-display-width) / 2;
+    property <length> img-display-y: content-y + (content-height - img-display-height) / 2;
+
+    width: 150px;
+    height: 150px;
+    background: Theme.minimap-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    Image {
+        x: content-x;
+        y: content-y;
+        width: content-width;
+        height: content-height;
+        source: thumbnail;
+        image-fit: contain;
+    }
+
+    Rectangle {
+        x: img-display-x + viewport-rect.x * img-display-width;
+        y: img-display-y + viewport-rect.y * img-display-height;
+        width: viewport-rect.width * img-display-width;
+        height: viewport-rect.height * img-display-height;
+        background: transparent;
+        border-width: 2px;
+        border-color: Theme.minimap-rect;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.is-dragging = true;
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
+                root.navigate(rel-x, rel-y);
+            } else if e.kind == PointerEventKind.up {
+                root.is-dragging = false;
+            } else if e.kind == PointerEventKind.move && root.is-dragging {
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
+                root.navigate(rel-x, rel-y);
+            }
+        }
+    }
+}
+
+export component ZoomSlider inherits Rectangle {
+    in property <float> value: 0.5;
+    callback value-changed(float);
+
+    width: 20px;
+    height: 150px;
+    background: Theme.minimap-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    property <float> clamped-value: max(0, min(1, value));
+    property <length> track-top: 22px;
+    property <length> track-bottom: 22px;
+    property <length> track-height: self.height - root.track-top - root.track-bottom;
+    property <length> handle-size: 10px;
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: root.track-top;
+        background: plus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        plus-touch := TouchArea {
+            clicked => { root.value-changed(Math.min(1, root.clamped-value + 0.08)); }
+        }
+
+        Text {
+            text: "+";
+            color: Theme.text-primary;
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    Rectangle {
+        x: root.width / 2 - 1px;
+        y: root.track-top;
+        width: 2px;
+        height: root.track-height;
+        border-radius: 2px;
+        background: Theme.border;
+    }
+
+    Rectangle {
+        x: root.width / 2 - root.handle-size / 2;
+        y: root.track-top + (1 - root.clamped-value) * root.track-height - root.handle-size / 2;
+        width: root.handle-size;
+        height: root.handle-size;
+        border-radius: root.handle-size / 2;
+        background: Theme.accent;
+        border-width: 1px;
+        border-color: white;
+    }
+
+    slider-touch := TouchArea {
+        y: root.track-top;
+        width: 100%;
+        height: root.track-height;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                let normalized = 1 - max(0, min(1, self.mouse-y / max(root.track-height, 1px)));
+                root.value-changed(normalized);
+            }
+        }
+    }
+
+    Rectangle {
+        y: root.height - root.track-bottom;
+        width: 100%;
+        height: root.track-bottom;
+        background: minus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        minus-touch := TouchArea {
+            clicked => { root.value-changed(Math.max(0, root.clamped-value - 0.08)); }
+        }
+
+        Text {
+            text: "-";
+            color: Theme.text-primary;
+            font-size: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component Viewport inherits Rectangle {
+    in property <image> content;
+    in property <ViewportInfo> viewport-info;
+    in property <image> minimap-thumbnail;
+    in property <MinimapRect> minimap-rect;
+    in property <bool> show-minimap: true;
+    in property <string> status-text: "";
+    in property <bool> is-loading: false;
+    in property <bool> debug-mode: false;
+    in property <float> fps: 0;
+    in property <float> zoom-slider-position: 0.5;
+    in property <ToolType> current-tool: ToolType.navigate;
+    in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
+    in property <[MeasurementLine]> measurements: [];
+    in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+
+    callback pan(float, float);
+    callback zoom(float, float, float);
+    callback fit-to-view();
+    callback start-pan(float, float);
+    callback end-pan();
+    callback minimap-navigate(float, float);
+    callback zoom-slider-changed(float);
+    callback file-dropped(string);
+    callback tool-mouse-down(float, float);
+    callback tool-mouse-move(float, float);
+    callback tool-mouse-up(float, float);
+    callback cancel-tool();
+    callback close-tab();
+
+    out property <length> viewport-width: self.width;
+    out property <length> viewport-height: self.height;
+
+    background: Theme.viewport-bg;
+
+    Rectangle {
+        clip: true;
+        width: parent.width;
+        height: parent.height;
+
+        Image {
+            width: 100%;
+            height: 100%;
+            source: content;
+            image-fit: fill;
+        }
+
+        if root.roi-rect.visible: Rectangle {
+            Rectangle {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: root.roi-rect.y * 1px;
+                background: #00000080;
+            }
+            Rectangle {
+                x: 0;
+                y: (root.roi-rect.y + root.roi-rect.height) * 1px;
+                width: 100%;
+                height: parent.height - (root.roi-rect.y + root.roi-rect.height) * 1px;
+                background: #00000080;
+            }
+            Rectangle {
+                x: 0;
+                y: root.roi-rect.y * 1px;
+                width: root.roi-rect.x * 1px;
+                height: root.roi-rect.height * 1px;
+                background: #00000080;
+            }
+            Rectangle {
+                x: (root.roi-rect.x + root.roi-rect.width) * 1px;
+                y: root.roi-rect.y * 1px;
+                width: parent.width - (root.roi-rect.x + root.roi-rect.width) * 1px;
+                height: root.roi-rect.height * 1px;
+                background: #00000080;
+            }
+
+            Rectangle {
+                x: root.roi-rect.x * 1px - 1px;
+                y: root.roi-rect.y * 1px - 1px;
+                width: root.roi-rect.width * 1px + 2px;
+                height: root.roi-rect.height * 1px + 2px;
+                background: transparent;
+                border-width: 1px;
+                border-color: black;
+            }
+
+            Rectangle {
+                x: root.roi-rect.x * 1px + 1px;
+                y: root.roi-rect.y * 1px + 1px;
+                width: root.roi-rect.width * 1px - 2px;
+                height: root.roi-rect.height * 1px - 2px;
+                background: transparent;
+                border-width: 1px;
+                border-color: black;
+            }
+
+            Rectangle {
+                x: root.roi-rect.x * 1px;
+                y: root.roi-rect.y * 1px;
+                width: root.roi-rect.width * 1px;
+                height: root.roi-rect.height * 1px;
+                background: transparent;
+                border-width: 1px;
+                border-color: white;
+                clip: true;
+
+                property <length> stripe-period: 16px;
+                property <length> stripe-offset: root.roi-rect.ant-offset * 1px;
+
+                for i in 100: Rectangle {
+                    x: i * parent.stripe-period - parent.stripe-offset;
+                    y: -1px;
+                    width: parent.stripe-period / 2;
+                    height: 3px;
+                    background: black;
+                }
+
+                for i in 100: Rectangle {
+                    x: i * parent.stripe-period - parent.stripe-period + parent.stripe-offset;
+                    y: parent.height - 2px;
+                    width: parent.stripe-period / 2;
+                    height: 3px;
+                    background: black;
+                }
+
+                for i in 100: Rectangle {
+                    x: -1px;
+                    y: i * parent.stripe-period - parent.stripe-offset;
+                    width: 3px;
+                    height: parent.stripe-period / 2;
+                    background: black;
+                }
+
+                for i in 100: Rectangle {
+                    x: parent.width - 2px;
+                    y: i * parent.stripe-period - parent.stripe-period + parent.stripe-offset;
+                    width: 3px;
+                    height: parent.stripe-period / 2;
+                    background: black;
+                }
+            }
+        }
+
+        for measurement in root.measurements: Rectangle {
+            width: 100%;
+            height: 100%;
+
+            Path {
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                stroke: #2ECC71;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                MoveTo { x: measurement.x1; y: measurement.y1; }
+                LineTo { x: measurement.x2; y: measurement.y2; }
+            }
+
+            Rectangle {
+                x: measurement.x1 * 1px - 4px;
+                y: measurement.y1 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #2ECC71;
+                border-width: 1.5px;
+                border-color: white;
+            }
+
+            Rectangle {
+                x: measurement.x2 * 1px - 4px;
+                y: measurement.y2 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #2ECC71;
+                border-width: 1.5px;
+                border-color: white;
+            }
+
+            Rectangle {
+                x: (measurement.x1 + measurement.x2) / 2 * 1px - self.width / 2;
+                y: (measurement.y1 + measurement.y2) / 2 * 1px - self.height - 6px;
+                width: measurement-text.preferred-width + 14px;
+                height: measurement-text.preferred-height + 6px;
+                border-radius: self.height / 2;
+                background: #1a1a1aee;
+                border-width: 1px;
+                border-color: #2ECC7180;
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000066;
+
+                measurement-text := Text {
+                    x: 7px;
+                    y: 3px;
+                    text: measurement.distance-um >= 1000 ? Math.round(measurement.distance-um / 10) / 100 + " mm"
+                        : measurement.distance-um > 0 ? Math.round(measurement.distance-um * 100) / 100 + " µm"
+                        : Math.round(Math.sqrt((measurement.x2 - measurement.x1) * (measurement.x2 - measurement.x1) + (measurement.y2 - measurement.y1) * (measurement.y2 - measurement.y1)) * 10) / 10 + " px";
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            }
+        }
+
+        if root.candidate-measurement.visible: Rectangle {
+            width: 100%;
+            height: 100%;
+
+            Path {
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                stroke: #F1C40F;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                MoveTo { x: root.candidate-measurement.x1; y: root.candidate-measurement.y1; }
+                LineTo { x: root.candidate-measurement.x2; y: root.candidate-measurement.y2; }
+            }
+
+            Rectangle {
+                x: root.candidate-measurement.x1 * 1px - 4px;
+                y: root.candidate-measurement.y1 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #F1C40F;
+                border-width: 1.5px;
+                border-color: white;
+            }
+
+            Rectangle {
+                x: root.candidate-measurement.x2 * 1px - 4px;
+                y: root.candidate-measurement.y2 * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #F1C40F;
+                border-width: 1.5px;
+                border-color: white;
+            }
+
+            Rectangle {
+                x: (root.candidate-measurement.x1 + root.candidate-measurement.x2) / 2 * 1px - self.width / 2;
+                y: (root.candidate-measurement.y1 + root.candidate-measurement.y2) / 2 * 1px - self.height - 6px;
+                width: candidate-text.preferred-width + 14px;
+                height: candidate-text.preferred-height + 6px;
+                border-radius: self.height / 2;
+                background: #1a1a1aee;
+                border-width: 1px;
+                border-color: #F1C40F80;
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000066;
+
+                candidate-text := Text {
+                    x: 7px;
+                    y: 3px;
+                    text: root.candidate-measurement.distance-um >= 1000 ? Math.round(root.candidate-measurement.distance-um / 10) / 100 + " mm"
+                        : root.candidate-measurement.distance-um > 0 ? Math.round(root.candidate-measurement.distance-um * 100) / 100 + " µm"
+                        : Math.round(Math.sqrt((root.candidate-measurement.x2 - root.candidate-measurement.x1) * (root.candidate-measurement.x2 - root.candidate-measurement.x1) + (root.candidate-measurement.y2 - root.candidate-measurement.y1) * (root.candidate-measurement.y2 - root.candidate-measurement.y1)) * 10) / 10 + " px";
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            }
+        }
+
+        if is-loading: Rectangle {
+            x: parent.width / 2 - 40px;
+            y: parent.height / 2 - 40px;
+            width: 80px;
+            height: 80px;
+            background: Theme.surface;
+            border-radius: 8px;
+
+            Text {
+                text: "Loading...";
+                color: Theme.text-primary;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: parent.height;
+
+        property <length> drag-start-x;
+        property <length> drag-start-y;
+        property <bool> is-dragging: false;
+        property <bool> is-tool-dragging: false;
+
+        clicked => {
+            focus-scope.focus();
+        }
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                focus-scope.focus();
+            }
+
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                self.is-dragging = true;
+                self.drag-start-x = self.mouse-x;
+                self.drag-start-y = self.mouse-y;
+                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                self.is-dragging = false;
+                root.end-pan();
+            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                if root.current-tool == ToolType.navigate {
+                    self.is-dragging = true;
+                    self.drag-start-x = self.mouse-x;
+                    self.drag-start-y = self.mouse-y;
+                    root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else {
+                    self.is-tool-dragging = true;
+                    root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if root.current-tool == ToolType.navigate {
+                    self.is-dragging = false;
+                    root.end-pan();
+                } else {
+                    self.is-tool-dragging = false;
+                    root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            } else if e.kind == PointerEventKind.move {
+                if self.is-dragging {
+                    let dx = (self.mouse-x - self.drag-start-x) / 1px;
+                    let dy = (self.mouse-y - self.drag-start-y) / 1px;
+                    self.drag-start-x = self.mouse-x;
+                    self.drag-start-y = self.mouse-y;
+                    root.pan(dx, dy);
+                } else if self.is-tool-dragging || root.current-tool != ToolType.navigate {
+                    root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                }
+            }
+        }
+
+        scroll-event(e) => {
+            let factor = e.delta-y > 0 ? 1.15 : (1.0 / 1.15);
+            root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
+            return accept;
+        }
+    }
+
+    if show-minimap: Minimap {
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 16px;
+        thumbnail: minimap-thumbnail;
+        viewport-rect: minimap-rect;
+        image-width: viewport-info.image-width;
+        image-height: viewport-info.image-height;
+        navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
+    }
+
+    if show-minimap: ZoomSlider {
+        x: parent.width - 16px - 150px - self.width - 8px;
+        y: parent.height - self.height - 16px;
+        value: root.zoom-slider-position;
+        value-changed(value) => { root.zoom-slider-changed(value); }
+    }
+
+    if debug-mode: Rectangle {
+        x: parent.width - self.width - 8px;
+        y: 8px;
+        width: 70px;
+        height: 24px;
+        background: #000000aa;
+        border-radius: 4px;
+
+        Text {
+            x: 8px;
+            y: 4px;
+            text: Math.round(fps) + " FPS";
+            color: fps >= 25 ? #00ff00 : fps >= 15 ? #ffff00 : #ff0000;
+            font-size: 12px;
+            font-weight: 600;
+        }
+    }
+
+    focus-scope := FocusScope {
+        width: 0px;
+        height: 0px;
+        key-pressed(e) => {
+            if e.text == "w" && e.modifiers.control {
+                root.close-tab();
+                return accept;
+            }
+            if e.text == "f" || e.text == "F" {
+                root.fit-to-view();
+                return accept;
+            }
+            if e.text == Key.Escape {
+                root.cancel-tool();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
