@@ -11,12 +11,7 @@
   <launchable type="desktop-id">io.eosin.eov.desktop</launchable>
   <description>
     <p>
-      eov is a Rust desktop viewer for whole-slide images. It uses OpenSlide for
-      slide access and presents a focused UI for quick local inspection.
-    </p>
-    <p>
-      The application supports fast pan and zoom workflows, tiled rendering,
-      CPU and GPU rendering paths, and common pathology-oriented viewing tasks.
+      eov is a desktop viewer for whole-slide images built in Rust. It fills a niche in the WSI ecosystem: a small, higher-performance workbench for quickly viewing WSI files on your local machine.
     </p>
   </description>
   <categories>
