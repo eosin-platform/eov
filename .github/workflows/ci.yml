@@ -58,7 +58,7 @@ jobs:
       - run: actionlint
 
   check:
-    name: Cargo Check, Clippy, & Test
+    name: Cargo Clippy, & Test
     needs: skip-check
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
