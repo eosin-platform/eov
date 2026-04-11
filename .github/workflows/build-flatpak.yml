@@ -37,6 +37,14 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv
 
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install aiohttp PyYAML tomlkit
+
       - name: Install Flatpak runtimes
         shell: bash
         run: |
