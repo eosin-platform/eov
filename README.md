@@ -11,6 +11,20 @@ Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solv
 
 The name `eov` has no canonical expansion.
 
+## Installation
+### Linux
+#### AppImage
+The AppImage release is currently pending integration with CI. (TODO)
+
+#### flatpak
+(TODO)
+
+### MacOS
+Prebuilt binaries are available via brew and direct download (TODO)
+
+### Windows
+(TODO)
+
 ## Overview
 
 eov opens pyramid-based whole-slide image files through OpenSlide and presents them in a desktop viewer designed for fast inspection.
