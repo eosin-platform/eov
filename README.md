@@ -2,7 +2,8 @@
 
 [![Status: Actively Maintained](https://img.shields.io/badge/status-actively%20maintained-2ea44f)](https://github.com/eosin-platform/eov/pulse)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0366d6)](https://github.com/eosin-platform/eov#license)
-[![Linux AppImage](https://github.com/eosin-platform/eov/actions/workflows/release-appimage.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/release-appimage.yml)
+[![Linux AppImage Build Status](https://github.com/eosin-platform/eov/actions/workflows/release-appimage.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/release-appimage.yml)
+[![Linux Flatpak Build Status](https://github.com/eosin-platform/eov/actions/workflows/build-flatpak.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/build-flatpak.yml)
 
 <p align="center">
     <img src="images/eov.webp" width="256">
