@@ -5,7 +5,7 @@
 </p>
 
 
-eov is a desktop viewer for whole-slide images built in Rust. It fills a niche in the WSI ecosystem: a small, higher-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux utility for WSI".
+eov is a desktop viewer for whole-slide images built in Rust. It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux utility for WSI".
 
 Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solves the institution-scale WSI problem, eov aims to provide researchers (and anyone else interested in WSI!) with frictionless viewer capabilities without any extraneous dependencies (e.g. servers, cloud infrastructure).
 
@@ -198,7 +198,7 @@ If `--gpu` is requested but a compatible GPU backend is not available, eov falls
 eov currently persists two kinds of state:
 
 - Preferred render backend in `~/.eov/config.toml` by default.
-- Recently opened files in the XDG config directory under `eov/recent_files.txt`.
+- Recently opened files in the XDG config directory under `~/.eov/recent_files.txt`.
 
 You can override the render-backend config path with the `EOV_CONFIG` environment variable.
 
