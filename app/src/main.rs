@@ -201,6 +201,32 @@ struct Cli {
     /// Override the config file path for this process
     #[arg(long, value_name = "PATH", global = true)]
     config: Option<PathBuf>,
+
+    /// Initial window width in logical pixels
+    #[arg(
+        long,
+        value_name = "PX",
+        value_parser = clap::value_parser!(u32).range(1..),
+        global = true
+    )]
+    window_width: Option<u32>,
+
+    /// Initial window height in logical pixels
+    #[arg(
+        long,
+        value_name = "PX",
+        value_parser = clap::value_parser!(u32).range(1..),
+        global = true
+    )]
+    window_height: Option<u32>,
+
+    /// Initial window X position in logical pixels
+    #[arg(long, value_name = "PX", global = true)]
+    window_x: Option<i32>,
+
+    /// Initial window Y position in logical pixels
+    #[arg(long, value_name = "PX", global = true)]
+    window_y: Option<i32>,
 }
 
 enum CommandAction {
@@ -208,6 +234,14 @@ enum CommandAction {
     Probe(PathBuf),
     RecentList,
     ConfigPath,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct WindowGeometry {
+    width: Option<u32>,
+    height: Option<u32>,
+    x: Option<i32>,
+    y: Option<i32>,
 }
 
 struct LaunchOptions {
@@ -218,6 +252,7 @@ struct LaunchOptions {
     cache_size_bytes: usize,
     max_tiles: usize,
     config_path: Option<PathBuf>,
+    window_geometry: WindowGeometry,
     command: CommandAction,
 }
 
@@ -288,6 +323,12 @@ fn parse_launch_options() -> Result<LaunchOptions> {
         cache_size_bytes,
         max_tiles,
         config_path: cli.config,
+        window_geometry: WindowGeometry {
+            width: cli.window_width,
+            height: cli.window_height,
+            x: cli.window_x,
+            y: cli.window_y,
+        },
         command,
     })
 }
@@ -412,8 +453,8 @@ fn format_optional_decimal(value: Option<f64>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn select_backend() -> Result<bool> {
-    let gpu_result = winit_backend_selector()
+fn select_backend(window_geometry: WindowGeometry) -> Result<bool> {
+    let gpu_result = winit_backend_selector(window_geometry)
         .renderer_name("femtovg-wgpu".to_string())
         .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::default())
         .select();
@@ -425,7 +466,7 @@ fn select_backend() -> Result<bool> {
                 "GPU backend unavailable, falling back to CPU renderer: {}",
                 err
             );
-            winit_backend_selector()
+            winit_backend_selector(window_geometry)
                 .renderer_name("femtovg".to_string())
                 .select()?;
             Ok(false)
@@ -433,25 +474,35 @@ fn select_backend() -> Result<bool> {
     }
 }
 
-fn winit_backend_selector() -> BackendSelector {
-    let selector = BackendSelector::new().backend_name("winit".to_string());
+fn winit_backend_selector(window_geometry: WindowGeometry) -> BackendSelector {
+    use slint::winit_030::winit;
 
-    #[cfg(target_os = "macos")]
-    {
-        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+    BackendSelector::new()
+        .backend_name("winit".to_string())
+        .with_winit_window_attributes_hook(move |attributes| {
+            let mut attributes = attributes;
 
-        selector.with_winit_window_attributes_hook(|attributes| {
+            if let (Some(width), Some(height)) = (window_geometry.width, window_geometry.height) {
+                attributes =
+                    attributes.with_inner_size(winit::dpi::LogicalSize::new(width, height));
+            }
+
+            if let (Some(x), Some(y)) = (window_geometry.x, window_geometry.y) {
+                attributes = attributes.with_position(winit::dpi::LogicalPosition::new(x, y));
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+
+                attributes = attributes
+                    .with_titlebar_transparent(true)
+                    .with_title_hidden(true)
+                    .with_fullsize_content_view(true);
+            }
+
             attributes
-                .with_titlebar_transparent(true)
-                .with_title_hidden(true)
-                .with_fullsize_content_view(true)
         })
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        selector
-    }
 }
 
 fn pane_from_index(index: i32) -> PaneId {
@@ -659,7 +710,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let gpu_backend_available = select_backend()?;
+    let gpu_backend_available = select_backend(launch_options.window_geometry)?;
     slint::set_xdg_app_id(APP_XDG_ID)?;
 
     let state = Arc::new(RwLock::new(AppState::new(launch_options.debug_mode)));
