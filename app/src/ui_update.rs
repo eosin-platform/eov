@@ -11,7 +11,7 @@ use crate::{
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use slint::{Image, Model, SharedString, VecModel};
-use std::rc::Rc;
+use std::{fs, rc::Rc};
 
 fn format_decimal(value: f64) -> String {
     let mut formatted = format!("{value:.2}");
@@ -34,6 +34,21 @@ fn format_u64(value: u64) -> String {
         formatted.push(ch);
     }
     formatted.chars().rev().collect()
+}
+
+fn format_file_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let bytes = bytes as f64;
+    if bytes >= GB {
+        format!("{} GB", format_decimal(bytes / GB))
+    } else if bytes >= MB {
+        format!("{} MB", format_decimal(bytes / MB))
+    } else {
+        format!("{} KB", format_decimal(bytes / KB))
+    }
 }
 
 fn build_metadata_items(
@@ -65,6 +80,9 @@ fn build_metadata_items(
         properties.levels.len(),
         viewport_info.level.max(0)
     );
+    let file_size = fs::metadata(&file.path)
+        .map(|metadata| format_file_size(metadata.len()))
+        .unwrap_or_else(|_| "Unknown".to_string());
 
     vec![
         MetadataItem {
@@ -82,6 +100,10 @@ fn build_metadata_items(
         MetadataItem {
             label: SharedString::from("Pyramid"),
             value: SharedString::from(levels),
+        },
+        MetadataItem {
+            label: SharedString::from("File Size"),
+            value: SharedString::from(file_size),
         },
         MetadataItem {
             label: SharedString::from("Vendor"),
