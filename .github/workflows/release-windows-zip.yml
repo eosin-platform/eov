@@ -12,8 +12,49 @@ permissions:
 
 jobs:
   release-windows:
-    name: Build and release Windows zip
-    runs-on: windows-latest
+    name: Build and release Windows zip (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+
+    # ---------------------------------------------------------------
+    # Architecture matrix
+    #
+    # Each entry maps a target architecture to:
+    #   runner           – GitHub-hosted runner label
+    #   msvc_arch        – MSVC /arch parameter for ilammy/msvc-dev-cmd
+    #   msystem          – MSYS2 environment (CLANG64 or CLANGARM64)
+    #   msys2_prefix     – MSYS2 package name prefix
+    #   lib_machine      – MSVC lib.exe /machine target
+    #   rust_target      – Rust target triple
+    #   ntldd_filter     – grep pattern for ntldd output to find
+    #                      non-system DLLs from the MSYS2 environment
+    #
+    # To add a new architecture, append another include entry.
+    # ---------------------------------------------------------------
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: windows-latest
+            msvc_arch: x64
+            msystem: CLANG64
+            msys2_prefix: mingw-w64-clang-x86_64
+            lib_machine: x64
+            rust_target: x86_64-pc-windows-msvc
+            ntldd_filter: clang64
+
+          # NOTE: Requires GitHub Actions ARM64 Windows runner access.
+          # If unavailable, remove this entry and build on a self-hosted
+          # ARM64 Windows runner instead.
+          - arch: arm64
+            runner: windows-11-arm
+            msvc_arch: arm64
+            msystem: CLANGARM64
+            msys2_prefix: mingw-w64-clang-aarch64
+            lib_machine: arm64
+            rust_target: aarch64-pc-windows-msvc
+            ntldd_filter: clangarm64
+
     env:
       # OpenSlide source commit to build (from openslide/openslide.git).
       OPENSLIDE_COMMIT: "615670d924d6dddce3d407d1a6440a32cf5350c7"
@@ -24,36 +65,40 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Set up MSVC dev environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
 
-      - name: Set up MSYS2 (CLANG64)
+      - name: Set up MSYS2 (${{ matrix.msystem }})
         uses: msys2/setup-msys2@v2
         with:
-          msystem: CLANG64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-clang-x86_64-clang
-            mingw-w64-clang-x86_64-meson
-            mingw-w64-clang-x86_64-ninja
-            mingw-w64-clang-x86_64-pkg-config
-            mingw-w64-clang-x86_64-cairo
-            mingw-w64-clang-x86_64-gdk-pixbuf2
-            mingw-w64-clang-x86_64-glib2
-            mingw-w64-clang-x86_64-libjpeg-turbo
-            mingw-w64-clang-x86_64-libpng
-            mingw-w64-clang-x86_64-libtiff
-            mingw-w64-clang-x86_64-libxml2
-            mingw-w64-clang-x86_64-openjpeg2
-            mingw-w64-clang-x86_64-sqlite3
-            mingw-w64-clang-x86_64-zlib
-            mingw-w64-clang-x86_64-ntldd
+            ${{ matrix.msys2_prefix }}-clang
+            ${{ matrix.msys2_prefix }}-meson
+            ${{ matrix.msys2_prefix }}-ninja
+            ${{ matrix.msys2_prefix }}-pkg-config
+            ${{ matrix.msys2_prefix }}-cairo
+            ${{ matrix.msys2_prefix }}-gdk-pixbuf2
+            ${{ matrix.msys2_prefix }}-glib2
+            ${{ matrix.msys2_prefix }}-libjpeg-turbo
+            ${{ matrix.msys2_prefix }}-libpng
+            ${{ matrix.msys2_prefix }}-libtiff
+            ${{ matrix.msys2_prefix }}-libxml2
+            ${{ matrix.msys2_prefix }}-openjpeg2
+            ${{ matrix.msys2_prefix }}-sqlite3
+            ${{ matrix.msys2_prefix }}-zlib
+            ${{ matrix.msys2_prefix }}-ntldd
             git
 
       - name: Derive release metadata
@@ -85,7 +130,7 @@ jobs:
             is_release="true"
           fi
 
-          artifact_name="eov-${tag}-windows-x86_64.zip"
+          artifact_name="eov-${tag}-windows-${{ matrix.arch }}.zip"
           checksum_name="${artifact_name}.sha256"
 
           {
@@ -186,7 +231,7 @@ jobs:
           Write-Host "Generated $defPath with $($defLines.Count - 2) exports"
 
           # Create the import library that matches #[link(name = "openslide")]
-          lib /def:$defPath /out:openslide-msvc\openslide.lib /machine:x64
+          lib /def:$defPath /out:openslide-msvc\openslide.lib /machine:${{ matrix.lib_machine }}
           Write-Host "Created openslide-msvc\openslide.lib"
 
       - name: Build release binary
@@ -194,7 +239,7 @@ jobs:
         run: |
           $libDir = Join-Path (Get-Location) "openslide-msvc"
           $env:RUSTFLAGS = "-L native=$libDir"
-          cargo build --release --bin eov
+          cargo build --release --target ${{ matrix.rust_target }} --bin eov
 
       - name: Collect runtime DLLs
         shell: msys2 {0}
@@ -215,7 +260,7 @@ jobs:
 
           # Use ntldd to recursively find all non-system DLL dependencies
           ntldd -R "$openslide_dll" | \
-            grep -i "clang64" | \
+            grep -i "${{ matrix.ntldd_filter }}" | \
             awk '{print $3}' | \
             sort -u | \
             while IFS= read -r dep; do
@@ -231,7 +276,7 @@ jobs:
         shell: pwsh
         run: |
           # Copy the release binary into staging
-          Copy-Item "target\release\eov.exe" "staging\eov\"
+          Copy-Item "target\${{ matrix.rust_target }}\release\eov.exe" "staging\eov\"
 
           Write-Host "Zip contents:"
           Get-ChildItem -Path staging\eov | Format-Table Name, Length

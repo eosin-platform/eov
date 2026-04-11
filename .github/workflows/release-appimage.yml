@@ -1,0 +1,200 @@
+name: Release AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-appimage:
+    name: Build AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+
+    # ---------------------------------------------------------------
+    # Architecture matrix
+    #
+    # Each entry maps a target architecture to:
+    #   runner           – GitHub-hosted runner label
+    #   rust_target      – Rust target triple (for cargo / rustup)
+    #   appimage_arch    – arch slug used in linuxdeploy & appimagetool
+    #                      download URLs and the ARCH env var expected
+    #                      by appimagetool
+    #
+    # To add a new architecture, append another include entry.
+    # Native runners are used because AppImage dependency bundling
+    # (ldd, linuxdeploy) must resolve host-arch shared libraries.
+    # ---------------------------------------------------------------
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            appimage_arch: x86_64
+
+          # NOTE: Requires GitHub Actions ARM runner access.
+          # If unavailable, remove this entry and build aarch64 AppImages
+          # on a self-hosted ARM64 runner or via QEMU (significantly slower).
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            appimage_arch: aarch64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cargo \
+            curl \
+            file \
+            libegl1-mesa-dev \
+            libfontconfig-dev \
+            libopenslide-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            pkg-config \
+            squashfs-tools \
+            zsync
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
+
+      - name: Derive release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
+          is_release="false"
+          tag="${GITHUB_REF_NAME}"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual run — use Cargo.toml version, skip tag validation.
+            version="$cargo_version"
+            tag="v${version}"
+            echo "workflow_dispatch: using Cargo.toml version $version"
+          else
+            if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Tag '$tag' is not a supported version tag" >&2
+              exit 1
+            fi
+
+            version="${tag#v}"
+
+            if [[ "$cargo_version" != "$version" ]]; then
+              echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
+              exit 1
+            fi
+
+            metainfo_version="$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' assets/linux/io.eosin.eov.metainfo.xml | head -n 1)"
+            if [[ "$metainfo_version" != "$version" ]]; then
+              echo "Tag version '$version' does not match metainfo version '$metainfo_version'" >&2
+              exit 1
+            fi
+
+            is_release="true"
+          fi
+
+          # Architecture comes from the matrix, not uname.
+          arch="${{ matrix.arch }}"
+          artifact_name="eov-${tag}-linux-${arch}.AppImage"
+          checksum_name="${artifact_name}.sha256"
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "is_release=$is_release"
+            echo "arch=$arch"
+            echo "artifact_name=$artifact_name"
+            echo "checksum_name=$checksum_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download AppImage tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+
+          # Architecture-specific AppImage tooling downloads.
+          curl -fsSL -o "$HOME/.local/bin/linuxdeploy" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
+          curl -fsSL -o "$HOME/.local/bin/appimagetool" \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage"
+
+          chmod +x "$HOME/.local/bin/linuxdeploy" "$HOME/.local/bin/appimagetool"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          # Passed through to build.sh and appimagetool to select the
+          # correct architecture for the output AppImage.
+          ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./packaging/appimage/build.sh
+
+      - name: Rename artifact and generate checksum
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          artifacts=(dist/*.AppImage)
+          if [[ "${#artifacts[@]}" -ne 1 ]]; then
+            echo "Expected exactly one AppImage artifact in dist/, found ${#artifacts[@]}" >&2
+            ls -la dist >&2 || true
+            exit 1
+          fi
+
+          artifact_path="dist/${{ steps.meta.outputs.artifact_name }}"
+          mv "${artifacts[0]}" "$artifact_path"
+          sha256sum "$artifact_path" > "dist/${{ steps.meta.outputs.checksum_name }}"
+
+          {
+            echo "artifact_path=$artifact_path"
+            echo "checksum_path=dist/${{ steps.meta.outputs.checksum_name }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact (workflow_dispatch)
+        if: steps.meta.outputs.is_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: |
+            ${{ steps.bundle.outputs.artifact_path }}
+            ${{ steps.bundle.outputs.checksum_path }}
+
+      - name: Publish GitHub release
+        if: steps.meta.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: eov ${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.bundle.outputs.artifact_path }}
+            ${{ steps.bundle.outputs.checksum_path }}

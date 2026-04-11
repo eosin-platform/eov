@@ -1,0 +1,166 @@
+name: Release Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-flatpak:
+    name: Release Flatpak (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+
+    # ---------------------------------------------------------------
+    # Architecture matrix
+    #
+    # Each entry maps a target architecture to a GitHub-hosted runner.
+    # flatpak-builder builds for the host architecture by default, so
+    # native runners are the simplest path — no QEMU, no --arch flag.
+    #
+    # To add a new architecture, append another include entry with the
+    # corresponding runner label.
+    #
+    # Alternative for aarch64 without a native runner:
+    #   flatpak-builder --arch=aarch64 with QEMU binfmt_misc, but
+    #   Rust compilation under user-mode emulation is extremely slow.
+    # ---------------------------------------------------------------
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+
+          # NOTE: Requires GitHub Actions ARM runner access.
+          # If unavailable, remove this entry and build on a self-hosted
+          # ARM64 runner or investigate QEMU-based cross-build.
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+
+    env:
+      APP_ID: io.eosin.eov
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            flatpak \
+            flatpak-builder \
+            python3 \
+            python3-venv
+
+      - name: Create Python virtual environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install aiohttp PyYAML tomlkit
+
+      - name: Install Flatpak runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          # Installs the correct arch variant automatically on native runners.
+          flatpak install --user -y flathub \
+            org.freedesktop.Platform//25.08 \
+            org.freedesktop.Sdk//25.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//25.08
+
+      - name: Derive release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
+          is_release="false"
+          tag="${GITHUB_REF_NAME}"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual run — use Cargo.toml version, skip tag validation.
+            version="$cargo_version"
+            tag="v${version}"
+            echo "workflow_dispatch: using Cargo.toml version $version"
+          else
+            if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Tag '$tag' is not a supported version tag" >&2
+              exit 1
+            fi
+
+            version="${tag#v}"
+
+            if [[ "$cargo_version" != "$version" ]]; then
+              echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
+              exit 1
+            fi
+
+            is_release="true"
+          fi
+
+          # Architecture comes from the matrix; on native runners this
+          # matches what flatpak --default-arch would return.
+          arch="${{ matrix.arch }}"
+          bundle_name="eov-${tag}-linux-${arch}.flatpak"
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "is_release=$is_release"
+            echo "arch=$arch"
+            echo "bundle_name=$bundle_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Flatpak
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./packaging/flatpak/build.sh
+
+      - name: Create Flatpak bundle
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak build-export repo build stable
+          flatpak build-bundle \
+            repo \
+            "${{ steps.meta.outputs.bundle_name }}" \
+            "${{ env.APP_ID }}" \
+            stable
+
+          echo "bundle_path=${{ steps.meta.outputs.bundle_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.bundle_name }}
+          path: ${{ steps.bundle.outputs.bundle_path }}
+
+      - name: Upload to release
+        if: steps.meta.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: eov ${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: ${{ steps.bundle.outputs.bundle_path }}
