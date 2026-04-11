@@ -62,18 +62,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag="${GITHUB_REF_NAME}"
-          if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Tag '$tag' is not a supported version tag" >&2
-            exit 1
-          fi
-
-          version="${tag#v}"
           cargo_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
+          is_release="false"
+          tag="${GITHUB_REF_NAME}"
 
-          if [[ "$cargo_version" != "$version" ]]; then
-            echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
-            exit 1
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual run — use Cargo.toml version, skip tag validation
+            version="$cargo_version"
+            tag="v${version}"
+            echo "workflow_dispatch: using Cargo.toml version $version"
+          else
+            if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Tag '$tag' is not a supported version tag" >&2
+              exit 1
+            fi
+
+            version="${tag#v}"
+            if [[ "$cargo_version" != "$version" ]]; then
+              echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
+              exit 1
+            fi
+            is_release="true"
           fi
 
           artifact_name="eov-${tag}-windows-x86_64.zip"
@@ -82,6 +91,7 @@ jobs:
           {
             echo "tag=$tag"
             echo "version=$version"
+            echo "is_release=$is_release"
             echo "artifact_name=$artifact_name"
             echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
@@ -90,7 +100,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          curl -fsSL https://github.com/troydhanson/uthash/archive/v2.3.0.tar.gz | tar xz
+          curl -fsSL https://github.com/troydhanson/uthash/archive/v2.3.0.tar.gz | tar xz --exclude='uthash-2.3.0/include'
           install -Dm644 uthash-2.3.0/src/uthash.h "$MSYSTEM_PREFIX/include/uthash.h"
           install -Dm644 uthash-2.3.0/src/utarray.h "$MSYSTEM_PREFIX/include/utarray.h"
           install -Dm644 uthash-2.3.0/src/utlist.h "$MSYSTEM_PREFIX/include/utlist.h"
@@ -226,7 +236,17 @@ jobs:
           $hash = (Get-FileHash "${{ steps.meta.outputs.artifact_name }}" -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ steps.meta.outputs.artifact_name }}" | Set-Content "${{ steps.meta.outputs.checksum_name }}" -Encoding ASCII -NoNewline
 
+      - name: Upload artifact (workflow_dispatch)
+        if: steps.meta.outputs.is_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: |
+            ${{ steps.meta.outputs.artifact_name }}
+            ${{ steps.meta.outputs.checksum_name }}
+
       - name: Publish GitHub release
+        if: steps.meta.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: eov ${{ steps.meta.outputs.version }}
