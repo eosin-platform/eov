@@ -534,12 +534,12 @@ export component Viewport inherits Rectangle {
                 focus-scope.focus();
             }
 
-            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+            if e.kind == PointerEventKind.down && (e.button == PointerEventButton.right || e.button == PointerEventButton.middle) {
                 self.is-dragging = true;
                 self.drag-start-x = self.mouse-x;
                 self.drag-start-y = self.mouse-y;
                 root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+            } else if e.kind == PointerEventKind.up && (e.button == PointerEventButton.right || e.button == PointerEventButton.middle) {
                 self.is-dragging = false;
                 root.end-pan();
             } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
