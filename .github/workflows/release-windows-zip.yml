@@ -15,9 +15,8 @@ jobs:
     name: Build and release Windows zip
     runs-on: windows-latest
     env:
-      # Pin the openslide-bin release used for the build.
-      # Update this when a new upstream release is available.
-      OPENSLIDE_BIN_VERSION: "4.0.0.13"
+      # OpenSlide source commit to build (from openslide/openslide.git).
+      OPENSLIDE_COMMIT: "615670d924d6dddce3d407d1a6440a32cf5350c7"
 
     steps:
       - name: Check out repository
@@ -33,6 +32,29 @@ jobs:
 
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@v2
+
+      - name: Set up MSYS2 (CLANG64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-meson
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkg-config
+            mingw-w64-clang-x86_64-cairo
+            mingw-w64-clang-x86_64-gdk-pixbuf2
+            mingw-w64-clang-x86_64-glib2
+            mingw-w64-clang-x86_64-libjpeg-turbo
+            mingw-w64-clang-x86_64-libpng
+            mingw-w64-clang-x86_64-libtiff
+            mingw-w64-clang-x86_64-libxml2
+            mingw-w64-clang-x86_64-openjpeg2
+            mingw-w64-clang-x86_64-sqlite3
+            mingw-w64-clang-x86_64-zlib
+            mingw-w64-clang-x86_64-ntldd
+            git
 
       - name: Derive release metadata
         id: meta
@@ -64,30 +86,59 @@ jobs:
             echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download OpenSlide binaries
-        shell: pwsh
+      - name: Install uthash headers
+        shell: msys2 {0}
         run: |
-          $version = $env:OPENSLIDE_BIN_VERSION
-          $asset = "openslide-bin-${version}-windows-x64.zip"
-          $url = "https://github.com/openslide/openslide-bin/releases/download/v${version}/${asset}"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile openslide-bin.zip
-          Expand-Archive -Path openslide-bin.zip -DestinationPath openslide-extract
+          set -euo pipefail
+          curl -fsSL https://github.com/troydhanson/uthash/archive/v2.3.0.tar.gz | tar xz
+          install -Dm644 uthash-2.3.0/src/uthash.h "$MSYSTEM_PREFIX/include/uthash.h"
+          install -Dm644 uthash-2.3.0/src/utarray.h "$MSYSTEM_PREFIX/include/utarray.h"
+          install -Dm644 uthash-2.3.0/src/utlist.h "$MSYSTEM_PREFIX/include/utlist.h"
+          install -Dm644 uthash-2.3.0/src/utringbuffer.h "$MSYSTEM_PREFIX/include/utringbuffer.h"
+          install -Dm644 uthash-2.3.0/src/utstack.h "$MSYSTEM_PREFIX/include/utstack.h"
+          rm -rf uthash-2.3.0
 
-          # Move the extracted subdirectory to a predictable path
-          $extracted = Get-ChildItem -Path openslide-extract -Directory | Select-Object -First 1
-          Move-Item -Path $extracted.FullName -Destination openslide
+      - name: Build libdicom
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/ImagingDataCommons/libdicom/releases/download/v1.2.0/libdicom-1.2.0.tar.xz | tar xJ
+          cd libdicom-1.2.0
+          meson setup _build \
+            --prefix="$MSYSTEM_PREFIX" \
+            --libdir=lib \
+            -Dtests=false \
+            --wrap-mode=nofallback
+          meson compile -C _build
+          meson install -C _build
+
+      - name: Build OpenSlide from source
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/openslide/openslide.git openslide-src
+          cd openslide-src
+          git checkout "$OPENSLIDE_COMMIT"
+          meson setup _build \
+            --prefix="$MSYSTEM_PREFIX" \
+            --libdir=lib \
+            -Dtest=disabled \
+            --wrap-mode=nofallback
+          meson compile -C _build
+          meson install -C _build
 
       - name: Generate MSVC import library for OpenSlide
         shell: pwsh
         run: |
+          $msysPrefix = "C:\msys64\clang64"
+
           # Find the OpenSlide DLL
-          $dll = Get-ChildItem -Path openslide\bin -Filter "libopenslide*.dll" |
-              Where-Object { $_.Name -match '\.dll$' -and $_.Name -notmatch '\.dll\.' } |
+          $dll = Get-ChildItem -Path "$msysPrefix\bin" -Filter "libopenslide*.dll" |
+              Where-Object { $_.Name -match '^libopenslide-\d+\.dll$' } |
               Select-Object -First 1
 
           if (-not $dll) {
-            Write-Error "No OpenSlide DLL found in openslide\bin"
+            Write-Error "No OpenSlide DLL found in $msysPrefix\bin"
             exit 1
           }
 
@@ -113,31 +164,58 @@ jobs:
             }
           }
 
-          $defPath = "openslide\lib\openslide.def"
+          New-Item -ItemType Directory -Path openslide-msvc -Force | Out-Null
+          $defPath = "openslide-msvc\openslide.def"
           $defLines -join "`n" | Set-Content $defPath -Encoding ASCII
           Write-Host "Generated $defPath with $($defLines.Count - 2) exports"
 
           # Create the import library that matches #[link(name = "openslide")]
-          lib /def:$defPath /out:openslide\lib\openslide.lib /machine:x64
-          Write-Host "Created openslide\lib\openslide.lib"
+          lib /def:$defPath /out:openslide-msvc\openslide.lib /machine:x64
+          Write-Host "Created openslide-msvc\openslide.lib"
 
       - name: Build release binary
         shell: pwsh
         run: |
-          $libDir = Join-Path (Get-Location) "openslide" "lib"
+          $libDir = Join-Path (Get-Location) "openslide-msvc"
           $env:RUSTFLAGS = "-L native=$libDir"
           cargo build --release --bin eov
+
+      - name: Collect runtime DLLs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          mkdir -p staging/eov
+
+          # Find the built OpenSlide DLL
+          openslide_dll=$(find "$MSYSTEM_PREFIX/bin" -maxdepth 1 -name 'libopenslide-*.dll' -type f | head -1)
+          if [[ -z "$openslide_dll" ]]; then
+            echo "No OpenSlide DLL found in $MSYSTEM_PREFIX/bin" >&2
+            exit 1
+          fi
+          echo "Resolving dependencies for: $openslide_dll"
+
+          # Copy the OpenSlide DLL itself
+          cp "$openslide_dll" staging/eov/
+
+          # Use ntldd to recursively find all non-system DLL dependencies
+          ntldd -R "$openslide_dll" | \
+            grep -i "clang64" | \
+            awk '{print $3}' | \
+            sort -u | \
+            while IFS= read -r dep; do
+              echo "  copying: $(basename "$dep")"
+              cp "$dep" staging/eov/
+            done
+
+          echo ""
+          echo "DLLs collected:"
+          ls -1 staging/eov/*.dll
 
       - name: Create zip archive
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path staging\eov -Force | Out-Null
-
-          # Copy the release binary
+          # Copy the release binary into staging
           Copy-Item "target\release\eov.exe" "staging\eov\"
-
-          # Copy all OpenSlide DLLs (openslide + its dependencies)
-          Copy-Item "openslide\bin\*.dll" "staging\eov\"
 
           Write-Host "Zip contents:"
           Get-ChildItem -Path staging\eov | Format-Table Name, Length
