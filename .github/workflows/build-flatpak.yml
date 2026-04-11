@@ -13,6 +13,8 @@ jobs:
   build-flatpak:
     name: Build Flatpak
     runs-on: ubuntu-24.04
+    env:
+      APP_ID: io.eosin.eov
 
     steps:
       - name: Check out repository
@@ -55,6 +57,28 @@ jobs:
             org.freedesktop.Sdk//25.08 \
             org.freedesktop.Sdk.Extension.rust-stable//25.08
 
+      - name: Derive release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$tag' is not a supported version tag" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          arch="$(flatpak --default-arch)"
+          bundle_name="${APP_ID}-${version}-${arch}.flatpak"
+
+          {
+            echo "version=$version"
+            echo "arch=$arch"
+            echo "bundle_name=$bundle_name"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build Flatpak
         shell: bash
         run: |
@@ -62,23 +86,26 @@ jobs:
           ./packaging/flatpak/build.sh
 
       - name: Create Flatpak bundle
+        id: bundle
         shell: bash
         run: |
           set -euo pipefail
           flatpak build-export repo build stable
           flatpak build-bundle \
             repo \
-            eov.flatpak \
+            "${{ steps.meta.outputs.bundle_name }}" \
             io.eosin.eov \
             stable
+
+          echo "bundle_path=${{ steps.meta.outputs.bundle_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: eov-flatpak
-          path: eov.flatpak
+          name: ${{ steps.meta.outputs.bundle_name }}
+          path: ${{ steps.bundle.outputs.bundle_path }}
       
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: eov.flatpak
+          files: ${{ steps.bundle.outputs.bundle_path }}

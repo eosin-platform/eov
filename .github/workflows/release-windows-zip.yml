@@ -1,0 +1,167 @@
+name: Release Windows Zip
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  OPENSLIDE_BIN_VERSION: 4.0.0.13
+  OPENSLIDE_PACKAGE_VERSION: 4.0.0
+
+jobs:
+  release-windows-zip:
+    name: Build and release Windows zip
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install pkg-config
+        shell: pwsh
+        run: |
+          choco install pkgconfiglite -y
+
+      - name: Install LLVM for bindgen
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: '18.1.8'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Derive release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$tag' is not a supported version tag" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
+          metainfo_version="$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' assets/linux/io.eosin.eov.metainfo.xml | head -n 1)"
+
+          if [[ "$cargo_version" != "$version" ]]; then
+            echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
+            exit 1
+          fi
+
+          if [[ "$metainfo_version" != "$version" ]]; then
+            echo "Tag version '$version' does not match metainfo version '$metainfo_version'" >&2
+            exit 1
+          fi
+
+          artifact_name="eov-${tag}-windows-x86_64.zip"
+          checksum_name="${artifact_name}.sha256"
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "artifact_name=$artifact_name"
+            echo "checksum_name=$checksum_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download OpenSlide Windows bundle
+        id: openslide
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $packageName = "openslide-bin-$env:OPENSLIDE_BIN_VERSION-windows-x64.zip"
+          $url = "https://github.com/openslide/openslide-bin/releases/download/v$env:OPENSLIDE_BIN_VERSION/$packageName"
+          $downloadDir = Join-Path $PWD 'vendor'
+          $archivePath = Join-Path $downloadDir $packageName
+          $extractDir = Join-Path $downloadDir 'openslide'
+
+          New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $archivePath
+          Expand-Archive -Path $archivePath -DestinationPath $downloadDir -Force
+
+          $expandedRoot = Get-ChildItem -Path $downloadDir -Directory | Where-Object { $_.Name -like 'openslide-bin-*-windows-x64' } | Select-Object -First 1
+          if (-not $expandedRoot) {
+            throw 'Failed to locate extracted OpenSlide bundle'
+          }
+
+          $pcDir = Join-Path $expandedRoot.FullName 'lib\pkgconfig'
+          New-Item -ItemType Directory -Force -Path $pcDir | Out-Null
+
+          @"
+prefix=`${pcfiledir}/../..
+exec_prefix=`${prefix}
+libdir=`${prefix}/lib
+includedir=`${prefix}/include/openslide
+
+Name: OpenSlide
+Description: OpenSlide whole-slide image library
+Version: $env:OPENSLIDE_PACKAGE_VERSION
+Libs: -L`${libdir} -llibopenslide
+Cflags: -I`${includedir}
+"@ | Set-Content -Path (Join-Path $pcDir 'openslide.pc') -NoNewline
+
+          "OPENSLIDE_ROOT=$($expandedRoot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_CONFIG_PATH=$pcDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$($expandedRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build eov.exe
+        shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo build --release --locked --bin eov
+
+      - name: Assemble Windows zip payload
+        id: bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $distDir = Join-Path $PWD 'dist'
+          $packageRoot = Join-Path $distDir 'eov'
+          $licensesDir = Join-Path $packageRoot 'licenses'
+          $zipPath = Join-Path $distDir '${{ steps.meta.outputs.artifact_name }}'
+          $checksumPath = Join-Path $distDir '${{ steps.meta.outputs.checksum_name }}'
+
+          Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+
+          Copy-Item 'target\release\eov.exe' (Join-Path $packageRoot 'eov.exe')
+          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'bin\libopenslide-1.dll') $packageRoot
+          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'README.md') $packageRoot
+          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'VERSIONS.md') $packageRoot
+          Copy-Item -Recurse (Join-Path $env:OPENSLIDE_ROOT 'licenses') $licensesDir
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+
+          Compress-Archive -Path $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal
+          (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLowerInvariant() + "  " + [System.IO.Path]::GetFileName($zipPath) | Set-Content -Path $checksumPath -NoNewline
+
+          "artifact_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: eov ${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.bundle.outputs.artifact_path }}
+            ${{ steps.bundle.outputs.checksum_path }}

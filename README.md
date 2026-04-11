@@ -28,7 +28,8 @@ Tagged releases publish an AppImage to GitHub Releases automatically.
 Prebuilt binaries are available via brew and direct download (TODO)
 
 ### Windows
-(TODO)
+Tagged releases publish a Windows x86_64 zip to GitHub Releases automatically.
+The Windows bundle keeps OpenSlide as a separate DLL for LGPL-2.1 compliance.
 
 ## Overview
 
