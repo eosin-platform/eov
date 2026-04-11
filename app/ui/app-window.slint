@@ -22,7 +22,8 @@ import { WindowToolbar } from "window-toolbar.slint";
 export component AppWindow inherits Window {
     title: "eov";
     icon: @image-url("../../images/logo_full.png");
-    no-frame: true;
+    in property <bool> use-native-window-controls: false;
+    no-frame: !use-native-window-controls;
     resize-border-width: 5px;
     min-width: 800px;
     min-height: 600px;
@@ -202,6 +203,7 @@ export component AppWindow inherits Window {
             gpu-rendering-available: root.gpu-rendering-available;
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
+            use-native-window-controls: root.use-native-window-controls;
             open-file-requested => { root.open-file-requested(); }
             open-recent-menu-requested(x, y) => { root.open-recent-menu-requested(x, y); }
             frame-requested => { root.frame-requested(); }

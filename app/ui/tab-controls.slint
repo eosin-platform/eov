@@ -92,6 +92,54 @@ export component MinimapToolButton inherits Rectangle {
     }
 }
 
+export component FolderToolButton inherits Rectangle {
+    in property <string> tooltip-text: "";
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    callback secondary-clicked(length, length);
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+
+    property <color> icon-color: root.enabled ? Theme.text-primary : Theme.text-secondary;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.secondary-clicked(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+
+    Path {
+        width: 18px;
+        height: 14px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        stroke: root.icon-color;
+        stroke-width: 1.3px;
+        fill: transparent;
+        commands: "M 1 4 L 7 4 L 8.8 6 L 17 6 L 17 13 L 1 13 Z";
+    }
+
+    Path {
+        width: 18px;
+        height: 14px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        stroke: root.icon-color;
+        stroke-width: 1.3px;
+        fill: transparent;
+        commands: "M 2 4 L 5 1 L 10 1 L 12 4";
+    }
+}
+
 export component MetadataToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
@@ -151,6 +199,37 @@ export component MetadataToolButton inherits Rectangle {
     }
 }
 
+export component MeasureToolButton inherits Rectangle {
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+
+    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Path {
+        width: 17px;
+        height: 17px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        stroke: root.icon-color;
+        stroke-width: 1.4px;
+        fill: transparent;
+        commands: "M 2 14 L 14 2 M 5 11 L 7 13 M 8 8 L 10 10 M 11 5 L 13 7";
+    }
+}
+
 export component RoiToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
@@ -192,6 +271,43 @@ export component RoiToolButton inherits Rectangle {
         Rectangle { x: 15px; y: 0px; width: 1px; height: 3px; background: root.icon-color; }
         Rectangle { x: 15px; y: 5px; width: 1px; height: 3px; background: root.icon-color; }
         Rectangle { x: 15px; y: 9px; width: 1px; height: 3px; background: root.icon-color; }
+    }
+}
+
+export component ZoomInToolButton inherits Rectangle {
+    in property <string> tooltip-text: "";
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+
+    property <color> icon-color: root.enabled ? Theme.text-primary : Theme.text-secondary;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 13px;
+        height: 1.4px;
+        border-radius: 1px;
+        background: root.icon-color;
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 1.4px;
+        height: 13px;
+        border-radius: 1px;
+        background: root.icon-color;
     }
 }
 

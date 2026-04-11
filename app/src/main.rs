@@ -413,8 +413,7 @@ fn format_optional_decimal(value: Option<f64>) -> String {
 }
 
 fn select_backend() -> Result<bool> {
-    let gpu_result = BackendSelector::new()
-        .backend_name("winit".to_string())
+    let gpu_result = winit_backend_selector()
         .renderer_name("femtovg-wgpu".to_string())
         .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::default())
         .select();
@@ -426,12 +425,32 @@ fn select_backend() -> Result<bool> {
                 "GPU backend unavailable, falling back to CPU renderer: {}",
                 err
             );
-            BackendSelector::new()
-                .backend_name("winit".to_string())
+            winit_backend_selector()
                 .renderer_name("femtovg".to_string())
                 .select()?;
             Ok(false)
         }
+    }
+}
+
+fn winit_backend_selector() -> BackendSelector {
+    let selector = BackendSelector::new().backend_name("winit".to_string());
+
+    #[cfg(target_os = "macos")]
+    {
+        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+
+        selector.with_winit_window_attributes_hook(|attributes| {
+            attributes
+                .with_titlebar_transparent(true)
+                .with_title_hidden(true)
+                .with_fullsize_content_view(true)
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        selector
     }
 }
 
@@ -650,6 +669,7 @@ fn main() -> Result<()> {
     ));
 
     let ui = AppWindow::new()?;
+    ui.set_use_native_window_controls(cfg!(target_os = "macos"));
     let ui_weak = ui.as_weak();
     let gpu_renderer = Rc::new(RefCell::new(GpuRenderer::new()));
     GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))?;

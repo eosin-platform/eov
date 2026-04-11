@@ -288,6 +288,7 @@ dependencies = [
  "dashmap",
  "dirs",
  "image 0.25.10",
+ "objc",
  "open",
  "parking_lot",
  "raw-window-handle",
