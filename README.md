@@ -194,6 +194,7 @@ The project is functional and already supports the core interactive viewing work
 
 Contributions are welcome. This project is part of the [Eosin Platform](https://github.com/eosin-platform).
 
+
 ## License
 
 Apache 2.0 / MIT dual license.
