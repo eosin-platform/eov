@@ -29,6 +29,7 @@ jobs:
             curl \
             file \
             libegl1-mesa-dev \
+            libfontconfig-dev \
             libopenslide-dev \
             libwayland-dev \
             libx11-dev \

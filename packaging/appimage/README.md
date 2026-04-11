@@ -19,7 +19,7 @@ into the AppDir/AppImage instead of statically linking OpenSlide into eov.
 On Debian or Ubuntu hosts, a typical starting point is:
 
 ```bash
-sudo apt install build-essential cargo pkg-config libopenslide-dev libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev
+sudo apt install build-essential cargo pkg-config libopenslide-dev libfontconfig-dev libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev
 ```
 
 You still need either `linuxdeploy` or `appimagetool` available in `PATH`.
