@@ -61,5 +61,9 @@ toml = "0.8"
 # GPU vertex buffer casting
 bytemuck = { version = "1", features = ["derive"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+x11-dl = "2"
+raw-window-handle = "0.6"
+
 [build-dependencies]
 slint-build = "1.15.1"

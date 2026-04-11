@@ -15,9 +15,71 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR * ZOOM_FACTOR;
+
+/// Query the cursor position in window-local physical pixels via X11.
+/// Returns `None` on non-X11 platforms or if the query fails.
+#[cfg(target_os = "linux")]
+fn query_x11_cursor_physical(ui: &AppWindow) -> Option<(f64, f64)> {
+    use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+    use slint::winit_030::WinitWindowAccessor;
+
+    ui.window().with_winit_window(|w| {
+        let wh = w.window_handle().ok()?;
+        let dh = w.display_handle().ok()?;
+
+        match (wh.as_ref(), dh.as_ref()) {
+            (RawWindowHandle::Xlib(wh), RawDisplayHandle::Xlib(dh)) => {
+                let display = dh.display?.as_ptr();
+                let window = wh.window;
+                let xlib = x11_dl::xlib::Xlib::open().ok()?;
+                unsafe {
+                    let mut root = 0;
+                    let mut child = 0;
+                    let mut root_x = 0;
+                    let mut root_y = 0;
+                    let mut win_x = 0;
+                    let mut win_y = 0;
+                    let mut mask = 0;
+
+                    let result = (xlib.XQueryPointer)(
+                        display as *mut _,
+                        window,
+                        &mut root,
+                        &mut child,
+                        &mut root_x,
+                        &mut root_y,
+                        &mut win_x,
+                        &mut win_y,
+                        &mut mask,
+                    );
+
+                    if result != 0 {
+                        Some((win_x as f64, win_y as f64))
+                    } else {
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
+    })?
+}
+
+#[cfg(not(target_os = "linux"))]
+fn query_x11_cursor_physical(_ui: &AppWindow) -> Option<(f64, f64)> {
+    None
+}
+
+/// Query cursor position during DnD and return logical coordinates.
+fn query_dnd_cursor_logical(ui: &AppWindow) -> Option<(f32, f32)> {
+    let (px, py) = query_x11_cursor_physical(ui)?;
+    let scale = ui.window().scale_factor() as f64;
+    Some(((px / scale) as f32, (py / scale) as f32))
+}
 
 fn frame_active_viewport(state: &mut AppState) -> bool {
     let pane = state.focused_pane;
@@ -1174,6 +1236,7 @@ pub fn setup_callbacks(
         let last_press_time = Rc::new(Cell::new(std::time::Instant::now()));
         let dbl_count = Rc::new(Cell::new(0u32));
         let os_file_hovering = Rc::new(Cell::new(false));
+        let dnd_poll_timer = Rc::new(Timer::default());
 
         ui.window().on_winit_window_event({
             let last_cursor = Rc::clone(&last_cursor);
@@ -1182,6 +1245,7 @@ pub fn setup_callbacks(
             let last_press_time = Rc::clone(&last_press_time);
             let dbl_count = Rc::clone(&dbl_count);
             let os_file_hovering = Rc::clone(&os_file_hovering);
+            let dnd_poll_timer = Rc::clone(&dnd_poll_timer);
             let ui_weak = ui_weak.clone();
             let state_handle = Arc::clone(&state_handle);
             let tile_cache = Arc::clone(&tile_cache);
@@ -1286,15 +1350,6 @@ pub fn setup_callbacks(
                 winit::event::WindowEvent::CursorMoved { position, .. } => {
                     last_cursor.set((position.x, position.y));
 
-                    if os_file_hovering.get() {
-                        let scale = slint_window.scale_factor() as f64;
-                        let lx = position.x / scale;
-                        let ly = position.y / scale;
-                        if let Some(ui) = ui_weak.upgrade() {
-                            ui.invoke_update_os_file_hover(lx as f32, ly as f32);
-                        }
-                    }
-
                     if let Some((px, py)) = drag_press.get() {
                         let dx = position.x - px;
                         let dy = position.y - py;
@@ -1370,18 +1425,41 @@ pub fn setup_callbacks(
                 }
                 winit::event::WindowEvent::HoveredFile(_path) => {
                     os_file_hovering.set(true);
-                    let (cx, cy) = last_cursor.get();
-                    let scale = slint_window.scale_factor() as f64;
-                    let lx = cx / scale;
-                    let ly = cy / scale;
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.invoke_update_os_file_hover(lx as f32, ly as f32);
+                    // Start a polling timer to track cursor position during DnD.
+                    // On X11, winit doesn't emit CursorMoved during external DnD,
+                    // so we query the pointer position directly from X11.
+                    {
+                        let ui_weak = ui_weak.clone();
+                        let dnd_poll_timer_inner = Rc::clone(&dnd_poll_timer);
+                        let os_file_hovering = Rc::clone(&os_file_hovering);
+                        dnd_poll_timer.start(
+                            slint::TimerMode::Repeated,
+                            Duration::from_millis(16),
+                            move || {
+                                if !os_file_hovering.get() {
+                                    dnd_poll_timer_inner.stop();
+                                    return;
+                                }
+                                let Some(ui) = ui_weak.upgrade() else {
+                                    dnd_poll_timer_inner.stop();
+                                    return;
+                                };
+                                if let Some((lx, ly)) = query_dnd_cursor_logical(&ui) {
+                                    ui.invoke_update_os_file_hover(lx, ly);
+                                }
+                            },
+                        );
                     }
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::DroppedFile(path) => {
                     os_file_hovering.set(false);
+                    dnd_poll_timer.stop();
                     if let Some(ui) = ui_weak.upgrade() {
+                        // Query final cursor position for accurate drop zone
+                        if let Some((lx, ly)) = query_dnd_cursor_logical(&ui) {
+                            ui.invoke_update_os_file_hover(lx, ly);
+                        }
                         let pane = ui.get_os_file_hover_pane();
                         let side = ui.get_os_file_hover_side();
                         ui.invoke_clear_os_file_hover();
@@ -1392,6 +1470,7 @@ pub fn setup_callbacks(
                 }
                 winit::event::WindowEvent::HoveredFileCancelled => {
                     os_file_hovering.set(false);
+                    dnd_poll_timer.stop();
                     if let Some(ui) = ui_weak.upgrade() {
                         ui.invoke_clear_os_file_hover();
                     }

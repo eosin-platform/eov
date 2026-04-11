@@ -290,6 +290,7 @@ dependencies = [
  "image 0.25.10",
  "open",
  "parking_lot",
+ "raw-window-handle",
  "rfd",
  "serde",
  "slint",
@@ -299,6 +300,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "x11-dl",
 ]
 
 [[package]]

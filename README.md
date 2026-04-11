@@ -44,10 +44,12 @@ eov
 ```
 
 ### MacOS
-Prebuilt binaries are available via brew and direct download (TODO)
+Prebuilt binaries are available via brew and direct download (`.dmg` file) (TODO)
 
 ### Windows
 Tagged releases publish a Windows zip to GitHub Releases automatically. Run `eov.exe` within the zip to start the program. Only the portable version is available; no Windows installer is planned.
+
+If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure).
 
 ## Overview
 
@@ -141,7 +143,7 @@ At a high level, the flow is:
 
 ## Requirements
 
-To build and run eov you need:
+To **manually** build eov and run the binary, you need:
 
 - A recent Rust toolchain with Cargo.
 - OpenSlide installed on the system, including the development package needed for linking.
@@ -163,59 +165,18 @@ For a development build:
 cargo build --bin eov
 ```
 
-## Linux Packaging
+## Packaging
 
 Linux packaging assets live under `assets/linux/` and `packaging/`.
 
 - AppImage is the first-class direct-download Linux artifact.
 - Flatpak support is included for sandboxed distribution.
-- OpenSlide remains dynamically linked on Linux for LGPL-2.1 compliance.
-- AppImage packaging bundles the OpenSlide shared library and required runtime
-    shared libraries into the AppDir/AppImage instead of statically linking it.
+- All built packages use the OpenSlide shared library and required runtime shared libraries into the AppDir/AppImage instead of statically linking them (pursuant to LGPL compliance).
 
 Current packaging entry points:
 
 - `./packaging/appimage/build.sh`
 - `./packaging/flatpak/build.sh`
-
-## Running
-
-Launch the viewer without opening a file:
-
-```bash
-cargo run --bin eov --release
-```
-
-Open one or more files from the command line:
-
-```bash
-cargo run --bin eov --release -- /path/to/slide.svs
-```
-
-You can also pass multiple file paths after `--`, which opens all of the files as separate tabs.
-
-Available launch flags:
-
-- `--cpu`: force the CPU renderer.
-- `--gpu`: prefer the GPU renderer.
-- `--debug` or `-d`: enable debug mode, including the FPS overlay.
-- `--cache-size <MB>`: override the tile cache size in megabytes. Default and recommended value: `256 MB`.
-- `--max-tiles <COUNT>`: override the maximum number of cached tiles. Default and recommended value: `2048`.
-
-If `--gpu` is requested but a compatible GPU backend is not available, eov falls back to the CPU renderer.
-
-## Basic Usage
-
-- Open a file from the toolbar, by drag and drop, or from the recent-files menu.
-- Use the scroll wheel to zoom.
-- Drag in navigate mode to pan.
-- Use the toolbar to switch between navigate, ROI, and measurement tools.
-- Use the frame action to frame the ROI if one exists, or fit the full slide otherwise.
-- Right-click a tab for tab actions such as close, split right, open containing folder, or copy path.
-- Drag tabs between panes to reorganize the workspace.
-- Drop a dragged tab near a pane edge to create a new split.
-- Toggle the minimap from the toolbar.
-- Select CPU or GPU rendering from the toolbar.
 
 ## Configuration And Persistence
 
