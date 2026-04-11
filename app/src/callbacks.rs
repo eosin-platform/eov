@@ -1420,7 +1420,11 @@ pub fn setup_callbacks(
                     } else {
                         0.0
                     };
-                    let buttons_right_start = win_w - 138.0;
+                    let buttons_right_start = if cfg!(target_os = "macos") {
+                        win_w
+                    } else {
+                        win_w - 138.0
+                    };
 
                     if ly < toolbar_height && lx >= toolbar_action_width && lx < buttons_right_start
                     {

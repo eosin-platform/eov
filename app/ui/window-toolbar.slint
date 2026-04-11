@@ -8,6 +8,7 @@ export component WindowToolbar inherits Rectangle {
     in property <bool> gpu-rendering-available: false;
     in property <bool> show-minimap: true;
     in property <bool> show-metadata: false;
+    in property <bool> use-native-window-controls: false;
 
     callback open-file-requested();
     callback open-recent-menu-requested(length, length);
@@ -36,9 +37,9 @@ export component WindowToolbar inherits Rectangle {
         : cpu-button.hovered ? cpu-button.tooltip-text
         : gpu-button.hovered ? gpu-button.tooltip-text
         : metadata-button.hovered ? metadata-button.tooltip-text
-        : minimize-touch.has-hover ? "Minimize window"
-        : maximize-touch.has-hover ? "Maximize window"
-        : close-win-touch.has-hover ? "Close window"
+        : !root.use-native-window-controls && minimize-touch.has-hover ? "Minimize window"
+        : !root.use-native-window-controls && maximize-touch.has-hover ? "Maximize window"
+        : !root.use-native-window-controls && close-win-touch.has-hover ? "Close window"
         : "";
     out property <length> hovered-tooltip-center-x:
         open-button.hovered ? open-button.absolute-position.x + open-button.width / 2
@@ -52,9 +53,9 @@ export component WindowToolbar inherits Rectangle {
         : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2
         : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2
         : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2
-        : minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2
-        : maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize-control.width / 2
-        : close-win-touch.has-hover ? close-control.absolute-position.x + close-control.width / 2
+        : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2
+        : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize-control.width / 2
+        : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close-control.width / 2
         : 0px;
     out property <length> hovered-tooltip-top-y:
         open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px
@@ -68,9 +69,9 @@ export component WindowToolbar inherits Rectangle {
         : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px
         : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px
         : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px
-        : minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize-control.height + 6px
-        : maximize-touch.has-hover ? maximize-control.absolute-position.y + maximize-control.height + 6px
-        : close-win-touch.has-hover ? close-control.absolute-position.y + close-control.height + 6px
+        : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize-control.height + 6px
+        : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.y + maximize-control.height + 6px
+        : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close-control.height + 6px
         : 0px;
 
     height: 40px;
@@ -87,6 +88,11 @@ export component WindowToolbar inherits Rectangle {
     HorizontalLayout {
         padding: 4px;
         spacing: 4px;
+
+        Rectangle {
+            visible: root.use-native-window-controls;
+            width: root.use-native-window-controls ? 74px : 0px;
+        }
 
         action-cluster := HorizontalLayout {
             spacing: 4px;
@@ -198,6 +204,7 @@ export component WindowToolbar inherits Rectangle {
         minimize-control := Rectangle {
             width: 46px;
             height: 32px;
+            visible: !root.use-native-window-controls;
             background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
 
@@ -217,6 +224,7 @@ export component WindowToolbar inherits Rectangle {
         maximize-control := Rectangle {
             width: 46px;
             height: 32px;
+            visible: !root.use-native-window-controls;
             background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
 
@@ -236,6 +244,7 @@ export component WindowToolbar inherits Rectangle {
         close-control := Rectangle {
             width: 46px;
             height: 32px;
+            visible: !root.use-native-window-controls;
             background: close-win-touch.has-hover ? #e81123 : transparent;
             border-radius: 0px;
 
