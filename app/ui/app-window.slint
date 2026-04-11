@@ -196,6 +196,10 @@ export component AppWindow inherits Window {
         self.os-file-hover-side = -1;
     }
 
+    public function focus-keyboard() {
+        global-keys.focus();
+    }
+
     VerticalLayout {
         toolbar := WindowToolbar {
             current-tool: root.current-tool;

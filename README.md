@@ -26,6 +26,12 @@ Prebuilt binaries can be downloaded from the [Releases](https://github.com/eosin
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
 
+### Example WSI Files
+
+To make testing easier, here are a few (relatively) small WSI files that can be opened by `eov`. These are clear cell renal carcinoma slides from [CPTAC-CRCC](https://www.cancerimagingarchive.net/collection/cptac-ccrcc/):
+- [C3L-00004-21.svs](https://cptac.nyc3.digitaloceanspaces.com/images/CPTAC-CCRCC/C3L-00004-21.svs)
+- [C3L-00088-22.svs](https://cptac.nyc3.digitaloceanspaces.com/images/CPTAC-CCRCC/C3L-00088-22.svs)
+
 ### Linux
 There are two methods of installation: AppImage and Flatpak. The AppImage is directly executable:
 
