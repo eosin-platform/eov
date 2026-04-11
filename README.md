@@ -69,6 +69,7 @@ Examples:
 eov slide.svs
 eov slide1.svs slide2.svs slide3.svs
 eov --debug --backend gpu slide.svs
+eov --cache-size 512 --max-tiles 4096 slide.svs
 eov --gpu slide.svs
 eov --log-level debug probe fixtures/C3L-00088-22.svs
 eov --config /tmp/config.toml config-path
@@ -81,6 +82,8 @@ Notable options:
 - `--cpu` and `--gpu` as shorthands for `--backend cpu|gpu`
 - `--debug` to enable debug overlays in the UI
 - `--log-level error|warn|info|debug|trace`
+- `--cache-size <MB>` to set the tile-cache budget in megabytes. Default and recommended value: `256`.
+- `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
 
 ## Architecture
@@ -143,6 +146,8 @@ Available launch flags:
 - `--cpu`: force the CPU renderer.
 - `--gpu`: prefer the GPU renderer.
 - `--debug` or `-d`: enable debug mode, including the FPS overlay.
+- `--cache-size <MB>`: override the tile cache size in megabytes. Default and recommended value: `256 MB`.
+- `--max-tiles <COUNT>`: override the maximum number of cached tiles. Default and recommended value: `2048`.
 
 If `--gpu` is requested but a compatible GPU backend is not available, eov falls back to the CPU renderer.
 

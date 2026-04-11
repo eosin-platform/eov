@@ -14,7 +14,10 @@ mod ui_update;
 
 use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use common::{TileCache, ViewportState};
+use common::{
+    TileCache, ViewportState,
+    cache::{DEFAULT_CACHE_SIZE_BYTES, DEFAULT_MAX_TILES},
+};
 use gpu::GpuRenderer;
 use parking_lot::RwLock;
 use slint::{BackendSelector, Image, SharedString, Timer, TimerMode, VecModel};
@@ -175,6 +178,26 @@ struct Cli {
     #[arg(long, value_enum, global = true)]
     log_level: Option<CliLogLevel>,
 
+    /// Tile cache size in megabytes
+    #[arg(
+        long,
+        value_name = "MB",
+        default_value_t = (DEFAULT_CACHE_SIZE_BYTES / (1024 * 1024)) as u64,
+        value_parser = clap::value_parser!(u64).range(1..),
+        global = true
+    )]
+    cache_size: u64,
+
+    /// Maximum number of tiles retained in the cache
+    #[arg(
+        long,
+        value_name = "COUNT",
+        default_value_t = DEFAULT_MAX_TILES as u64,
+        value_parser = clap::value_parser!(u64).range(1..),
+        global = true
+    )]
+    max_tiles: u64,
+
     /// Override the config file path for this process
     #[arg(long, value_name = "PATH", global = true)]
     config: Option<PathBuf>,
@@ -192,12 +215,23 @@ struct LaunchOptions {
     files_to_open: Vec<PathBuf>,
     render_backend_override: Option<RenderBackend>,
     log_level: Option<CliLogLevel>,
+    cache_size_bytes: usize,
+    max_tiles: usize,
     config_path: Option<PathBuf>,
     command: CommandAction,
 }
 
 fn parse_launch_options() -> Result<LaunchOptions> {
     let cli = Cli::parse();
+
+    let cache_size_bytes = cli
+        .cache_size
+        .checked_mul(1024 * 1024)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| anyhow::anyhow!("--cache-size is too large for this platform"))?;
+
+    let max_tiles = usize::try_from(cli.max_tiles)
+        .map_err(|_| anyhow::anyhow!("--max-tiles is too large for this platform"))?;
 
     if cli.command.is_some() && !cli.files.is_empty() {
         bail!("file arguments cannot be combined with a subcommand");
@@ -251,6 +285,8 @@ fn parse_launch_options() -> Result<LaunchOptions> {
         files_to_open,
         render_backend_override,
         log_level: cli.log_level,
+        cache_size_bytes,
+        max_tiles,
         config_path: cli.config,
         command,
     })
@@ -608,7 +644,10 @@ fn main() -> Result<()> {
     slint::set_xdg_app_id(APP_XDG_ID)?;
 
     let state = Arc::new(RwLock::new(AppState::new(launch_options.debug_mode)));
-    let tile_cache = Arc::new(TileCache::new());
+    let tile_cache = Arc::new(TileCache::with_limits(
+        launch_options.max_tiles,
+        launch_options.cache_size_bytes,
+    ));
 
     let ui = AppWindow::new()?;
     let ui_weak = ui.as_weak();
