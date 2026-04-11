@@ -1,4 +1,4 @@
-name: Build Flatpak
+name: Release Flatpak
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build-flatpak:
-    name: Build Flatpak
+  release-flatpak:
+    name: Release Flatpak
     runs-on: ubuntu-24.04
     env:
       APP_ID: io.eosin.eov

@@ -1,6 +1,7 @@
 name: Release Windows Zip
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*.*.*'
@@ -9,34 +10,26 @@ on:
 permissions:
   contents: write
 
-env:
-  OPENSLIDE_BIN_VERSION: 4.0.0.13
-  OPENSLIDE_PACKAGE_VERSION: 4.0.0
-
 jobs:
-  release-windows-zip:
+  release-windows:
     name: Build and release Windows zip
-    runs-on: windows-2022
+    runs-on: windows-latest
+    env:
+      # Pin the openslide-bin release used for the build.
+      # Update this when a new upstream release is available.
+      OPENSLIDE_BIN_VERSION: "4.0.0.13"
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install pkg-config
-        shell: pwsh
-        run: |
-          choco install pkgconfiglite -y
-
-      - name: Install LLVM for bindgen
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: '18.1.8'
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@v2
@@ -55,15 +48,9 @@ jobs:
 
           version="${tag#v}"
           cargo_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' app/Cargo.toml | head -n 1)"
-          metainfo_version="$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' assets/linux/io.eosin.eov.metainfo.xml | head -n 1)"
 
           if [[ "$cargo_version" != "$version" ]]; then
             echo "Tag version '$version' does not match app/Cargo.toml version '$cargo_version'" >&2
-            exit 1
-          fi
-
-          if [[ "$metainfo_version" != "$version" ]]; then
-            echo "Tag version '$version' does not match metainfo version '$metainfo_version'" >&2
             exit 1
           fi
 
@@ -77,85 +64,89 @@ jobs:
             echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download OpenSlide Windows bundle
-        id: openslide
+      - name: Download OpenSlide binaries
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
+          $version = $env:OPENSLIDE_BIN_VERSION
+          $asset = "openslide-bin-${version}-windows-x64.zip"
+          $url = "https://github.com/openslide/openslide-bin/releases/download/v${version}/${asset}"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile openslide-bin.zip
+          Expand-Archive -Path openslide-bin.zip -DestinationPath openslide-extract
 
-          $packageName = "openslide-bin-$env:OPENSLIDE_BIN_VERSION-windows-x64.zip"
-          $url = "https://github.com/openslide/openslide-bin/releases/download/v$env:OPENSLIDE_BIN_VERSION/$packageName"
-          $downloadDir = Join-Path $PWD 'vendor'
-          $archivePath = Join-Path $downloadDir $packageName
-          $extractDir = Join-Path $downloadDir 'openslide'
+          # Move the extracted subdirectory to a predictable path
+          $extracted = Get-ChildItem -Path openslide-extract -Directory | Select-Object -First 1
+          Move-Item -Path $extracted.FullName -Destination openslide
 
-          New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-          Invoke-WebRequest -Uri $url -OutFile $archivePath
-          Expand-Archive -Path $archivePath -DestinationPath $downloadDir -Force
+      - name: Generate MSVC import library for OpenSlide
+        shell: pwsh
+        run: |
+          # Find the OpenSlide DLL
+          $dll = Get-ChildItem -Path openslide\bin -Filter "libopenslide*.dll" |
+              Where-Object { $_.Name -match '\.dll$' -and $_.Name -notmatch '\.dll\.' } |
+              Select-Object -First 1
 
-          $expandedRoot = Get-ChildItem -Path $downloadDir -Directory | Where-Object { $_.Name -like 'openslide-bin-*-windows-x64' } | Select-Object -First 1
-          if (-not $expandedRoot) {
-            throw 'Failed to locate extracted OpenSlide bundle'
+          if (-not $dll) {
+            Write-Error "No OpenSlide DLL found in openslide\bin"
+            exit 1
           }
 
-          $pcDir = Join-Path $expandedRoot.FullName 'lib\pkgconfig'
-          New-Item -ItemType Directory -Force -Path $pcDir | Out-Null
+          $dllName = $dll.Name
+          Write-Host "Found OpenSlide DLL: $dllName"
 
-          @"
-prefix=`${pcfiledir}/../..
-exec_prefix=`${prefix}
-libdir=`${prefix}/lib
-includedir=`${prefix}/include/openslide
+          # Extract exports with dumpbin
+          $output = & dumpbin /exports $dll.FullName
+          $defLines = @("LIBRARY `"$dllName`"", "EXPORTS")
+          $inExportTable = $false
 
-Name: OpenSlide
-Description: OpenSlide whole-slide image library
-Version: $env:OPENSLIDE_PACKAGE_VERSION
-Libs: -L`${libdir} -llibopenslide
-Cflags: -I`${includedir}
-"@ | Set-Content -Path (Join-Path $pcDir 'openslide.pc') -NoNewline
-
-          "OPENSLIDE_ROOT=$($expandedRoot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PKG_CONFIG_PATH=$pcDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "$($expandedRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Build eov.exe
-        shell: pwsh
-        env:
-          RUSTFLAGS: -C target-feature=+crt-static
-        run: |
-          $ErrorActionPreference = 'Stop'
-          cargo build --release --locked --bin eov
-
-      - name: Assemble Windows zip payload
-        id: bundle
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $distDir = Join-Path $PWD 'dist'
-          $packageRoot = Join-Path $distDir 'eov'
-          $licensesDir = Join-Path $packageRoot 'licenses'
-          $zipPath = Join-Path $distDir '${{ steps.meta.outputs.artifact_name }}'
-          $checksumPath = Join-Path $distDir '${{ steps.meta.outputs.checksum_name }}'
-
-          Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
-
-          Copy-Item 'target\release\eov.exe' (Join-Path $packageRoot 'eov.exe')
-          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'bin\libopenslide-1.dll') $packageRoot
-          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'README.md') $packageRoot
-          Copy-Item (Join-Path $env:OPENSLIDE_ROOT 'VERSIONS.md') $packageRoot
-          Copy-Item -Recurse (Join-Path $env:OPENSLIDE_ROOT 'licenses') $licensesDir
-
-          if (Test-Path $zipPath) {
-            Remove-Item $zipPath -Force
+          foreach ($line in $output) {
+            if ($line -match '^\s+ordinal\s+hint\s+RVA\s+name') {
+              $inExportTable = $true
+              continue
+            }
+            if ($inExportTable) {
+              if ($line -match '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)') {
+                $defLines += "  $($Matches[1])"
+              } elseif ($line.Trim() -eq '' -or $line -match '^\s+Summary') {
+                break
+              }
+            }
           }
 
-          Compress-Archive -Path $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal
-          (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLowerInvariant() + "  " + [System.IO.Path]::GetFileName($zipPath) | Set-Content -Path $checksumPath -NoNewline
+          $defPath = "openslide\lib\openslide.def"
+          $defLines -join "`n" | Set-Content $defPath -Encoding ASCII
+          Write-Host "Generated $defPath with $($defLines.Count - 2) exports"
 
-          "artifact_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          # Create the import library that matches #[link(name = "openslide")]
+          lib /def:$defPath /out:openslide\lib\openslide.lib /machine:x64
+          Write-Host "Created openslide\lib\openslide.lib"
+
+      - name: Build release binary
+        shell: pwsh
+        run: |
+          $libDir = Join-Path (Get-Location) "openslide" "lib"
+          $env:RUSTFLAGS = "-L native=$libDir"
+          cargo build --release --bin eov
+
+      - name: Create zip archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging\eov -Force | Out-Null
+
+          # Copy the release binary
+          Copy-Item "target\release\eov.exe" "staging\eov\"
+
+          # Copy all OpenSlide DLLs (openslide + its dependencies)
+          Copy-Item "openslide\bin\*.dll" "staging\eov\"
+
+          Write-Host "Zip contents:"
+          Get-ChildItem -Path staging\eov | Format-Table Name, Length
+
+          Compress-Archive -Path "staging\eov" -DestinationPath "${{ steps.meta.outputs.artifact_name }}"
+
+          # Generate checksum
+          $hash = (Get-FileHash "${{ steps.meta.outputs.artifact_name }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ steps.meta.outputs.artifact_name }}" | Set-Content "${{ steps.meta.outputs.checksum_name }}" -Encoding ASCII -NoNewline
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -163,5 +154,5 @@ Cflags: -I`${includedir}
           name: eov ${{ steps.meta.outputs.version }}
           generate_release_notes: true
           files: |
-            ${{ steps.bundle.outputs.artifact_path }}
-            ${{ steps.bundle.outputs.checksum_path }}
+            ${{ steps.meta.outputs.artifact_name }}
+            ${{ steps.meta.outputs.checksum_name }}
