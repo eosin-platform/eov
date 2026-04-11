@@ -8,3 +8,4 @@ notes.txt.*
 !.env.test.example
 lean/.lake
 fixtures/
+.venv

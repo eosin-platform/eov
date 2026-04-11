@@ -69,6 +69,7 @@ slint::include_modules!();
 /// Frame rate for viewport updates
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
+const APP_XDG_ID: &str = "eov";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 enum CliBackend {
@@ -604,6 +605,7 @@ fn main() -> Result<()> {
     }
 
     let gpu_backend_available = select_backend()?;
+    slint::set_xdg_app_id(APP_XDG_ID)?;
 
     let state = Arc::new(RwLock::new(AppState::new(launch_options.debug_mode)));
     let tile_cache = Arc::new(TileCache::new());
