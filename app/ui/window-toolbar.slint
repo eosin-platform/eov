@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { RenderMode, ToolType } from "types.slint";
-import { IconButton, MetadataToolButton, MinimapToolButton, RoiToolButton, ToolButton } from "tab-controls.slint";
+import { FolderToolButton, IconButton, MeasureToolButton, MetadataToolButton, MinimapToolButton, RoiToolButton, ToolButton, ZoomInToolButton } from "tab-controls.slint";
 
 export component WindowToolbar inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
@@ -97,8 +97,7 @@ export component WindowToolbar inherits Rectangle {
         action-cluster := HorizontalLayout {
             spacing: 4px;
 
-            open-button := IconButton {
-                text: "📂";
+            open-button := FolderToolButton {
                 tooltip-text: "Open file (right-click for recent)";
                 clicked => { root.open-file-requested(); }
                 secondary-clicked(x, y) => { root.open-recent-menu-requested(x, y); }
@@ -110,8 +109,7 @@ export component WindowToolbar inherits Rectangle {
                 clicked => { root.frame-requested(); }
             }
 
-            zoom-in-button := IconButton {
-                text: "+";
+            zoom-in-button := ZoomInToolButton {
                 tooltip-text: "Zoom in";
                 clicked => { root.zoom-in-requested(); }
             }
@@ -148,8 +146,7 @@ export component WindowToolbar inherits Rectangle {
                 clicked => { root.tool-selected(ToolType.region-of-interest); }
             }
 
-            measure-button := ToolButton {
-                icon: "📏";
+            measure-button := MeasureToolButton {
                 tooltip-text: "Measure distance";
                 is-active: root.current-tool == ToolType.measure-distance;
                 clicked => { root.tool-selected(ToolType.measure-distance); }

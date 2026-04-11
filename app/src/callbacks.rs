@@ -19,6 +19,8 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 
 const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR * ZOOM_FACTOR;
+#[cfg(target_os = "macos")]
+const MACOS_TOOLBAR_HEIGHT: f64 = 40.0;
 
 /// Query the cursor position in window-local physical pixels via X11.
 #[cfg(target_os = "linux")]
@@ -108,6 +110,94 @@ fn query_dnd_cursor_logical(ui: &AppWindow) -> Option<(f32, f32)> {
     let (px, py) = query_dnd_cursor_physical(ui)?;
     let scale = ui.window().scale_factor() as f64;
     Some(((px / scale) as f32, (py / scale) as f32))
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NSPoint {
+    x: f64,
+    y: f64,
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NSSize {
+    width: f64,
+    height: f64,
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NSRect {
+    origin: NSPoint,
+    size: NSSize,
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl objc::Encode for NSPoint {
+    fn encode() -> objc::Encoding {
+        unsafe { objc::Encoding::from_str("{CGPoint=dd}") }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl objc::Encode for NSSize {
+    fn encode() -> objc::Encoding {
+        unsafe { objc::Encoding::from_str("{CGSize=dd}") }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl objc::Encode for NSRect {
+    fn encode() -> objc::Encoding {
+        unsafe { objc::Encoding::from_str("{CGRect={CGPoint=dd}{CGSize=dd}}") }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+fn align_macos_window_controls(slint_window: &slint::Window) {
+    use objc::runtime::Object;
+    use objc::{sel, sel_impl};
+    use slint::winit_030::WinitWindowAccessor;
+    use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    slint_window.with_winit_window(|w| {
+        let Ok(window_handle) = w.window_handle() else {
+            return;
+        };
+
+        let RawWindowHandle::AppKit(handle) = window_handle.as_ref() else {
+            return;
+        };
+
+        let ns_view = handle.ns_view.as_ptr().cast::<Object>();
+
+        unsafe {
+            let ns_window: *mut Object = objc::msg_send![ns_view, window];
+            if ns_window.is_null() {
+                return;
+            }
+
+            for button_kind in [0usize, 1, 2] {
+                let button: *mut Object =
+                    objc::msg_send![ns_window, standardWindowButton: button_kind];
+                if button.is_null() {
+                    continue;
+                }
+
+                let frame: NSRect = objc::msg_send![button, frame];
+                let origin = NSPoint {
+                    x: frame.origin.x,
+                    y: (MACOS_TOOLBAR_HEIGHT - frame.size.height) / 2.0,
+                };
+                let _: () = objc::msg_send![button, setFrameOrigin: origin];
+            }
+        }
+    });
 }
 
 fn frame_active_viewport(state: &mut AppState) -> bool {
@@ -1251,6 +1341,16 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 let _ = ui.hide();
                 let _ = slint::quit_event_loop();
+            }
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let ui_weak = ui_weak.clone();
+        Timer::single_shot(Duration::from_millis(0), move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                align_macos_window_controls(ui.window());
             }
         });
     }
