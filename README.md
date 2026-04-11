@@ -1,12 +1,12 @@
 # eov — A lightweight WSI viewer
 
-[![Status: Actively Maintained](https://img.shields.io/badge/status-actively%20maintained-2ea44f)](https://github.com/eosin-platform/eov/pulse)
 [![CI Status](https://github.com/eosin-platform/eov/actions/workflows/ci.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/ci.yml)
 ![Multi-Arch](https://img.shields.io/badge/arch-x86__64%20%7C%20arm64-blue)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0366d6)](https://github.com/eosin-platform/eov#license)
 [![Linux AppImage Build Status](https://github.com/eosin-platform/eov/actions/workflows/build-appimage.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/build-appimage.yml)
 [![Linux Flatpak Build Status](https://github.com/eosin-platform/eov/actions/workflows/build-flatpak.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/build-release.yml)
 [![Windows Build Status](https://github.com/eosin-platform/eov/actions/workflows/build-windows-zip.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/build-windows-zip.yml)
+[![Status: Actively Maintained](https://img.shields.io/badge/status-actively%20maintained-2ea44f)](https://github.com/eosin-platform/eov/pulse)
 
 <p align="center">
     <img src="images/eov.webp" width="256">
