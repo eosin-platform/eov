@@ -517,10 +517,10 @@ impl GpuRenderer {
             if ensure_tile_texture(runtime, tile_textures, &draw.tile, frame_id) {
                 needs_mipgen.push(draw.tile.coord);
             }
-            if let Some(coarse) = &draw.coarse_tile {
-                if ensure_tile_texture(runtime, tile_textures, coarse, frame_id) {
-                    needs_mipgen.push(coarse.coord);
-                }
+            if let Some(coarse) = &draw.coarse_tile
+                && ensure_tile_texture(runtime, tile_textures, coarse, frame_id)
+            {
+                needs_mipgen.push(coarse.coord);
             }
         }
 
@@ -554,15 +554,15 @@ impl GpuRenderer {
 
         // Phase 2: Generate mipmaps for newly created tile textures (async on GPU)
         for coord in &needs_mipgen {
-            if let Some(tile_tex) = tile_textures.get(coord) {
-                if tile_tex.mip_levels > 1 {
-                    generate_mipmaps(
-                        &mut encoder,
-                        runtime,
-                        &tile_tex.texture,
-                        tile_tex.mip_levels,
-                    );
-                }
+            if let Some(tile_tex) = tile_textures.get(coord)
+                && tile_tex.mip_levels > 1
+            {
+                generate_mipmaps(
+                    &mut encoder,
+                    runtime,
+                    &tile_tex.texture,
+                    tile_tex.mip_levels,
+                );
             }
         }
 
