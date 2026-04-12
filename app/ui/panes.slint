@@ -1,5 +1,11 @@
 import { Theme } from "theme.slint";
-import { MeasurementUnit, PaneViewData, RecentFileData, StainNormalization, ToolType } from "types.slint";
+import {
+    MeasurementUnit,
+    PaneViewData,
+    RecentFileData,
+    StainNormalization,
+    ToolType,
+} from "types.slint";
 import { HomeScreen } from "home-screen.slint";
 import { TabBar } from "tab-controls.slint";
 import { Viewport } from "viewport.slint";
@@ -71,14 +77,30 @@ component PaneView inherits Rectangle {
             drag-abs-x: root.drag-abs-x;
             is-drop-target: root.drop-target-pane == root.pane-data.id;
             show-drop-indicator: root.split-drop-side == -1;
-            tab-activated(pane, id) => { root.tab-activated(pane, id); }
-            tab-close-requested(pane, id) => { root.tab-close-requested(pane, id); }
-            tab-context-menu(pane, id, x, y) => { root.tab-context-menu(pane, id, x, y); }
-            new-tab-requested(pane) => { root.new-tab-requested(pane); }
-            tab-drag-started(id, pane, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, index, abs-x, abs-y); }
-            tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
-            tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
-            tab-tooltip-changed(visible, text, cx, ty) => { root.tab-tooltip-changed(visible, text, cx, ty); }
+            tab-activated(pane, id) => {
+                root.tab-activated(pane, id);
+            }
+            tab-close-requested(pane, id) => {
+                root.tab-close-requested(pane, id);
+            }
+            tab-context-menu(pane, id, x, y) => {
+                root.tab-context-menu(pane, id, x, y);
+            }
+            new-tab-requested(pane) => {
+                root.new-tab-requested(pane);
+            }
+            tab-drag-started(id, pane, title, index, abs-x, abs-y) => {
+                root.tab-drag-started(id, pane, title, index, abs-x, abs-y);
+            }
+            tab-drag-moved(abs-x, abs-y) => {
+                root.tab-drag-moved(abs-x, abs-y);
+            }
+            tab-drag-ended(abs-x, abs-y) => {
+                root.tab-drag-ended(abs-x, abs-y);
+            }
+            tab-tooltip-changed(visible, text, cx, ty) => {
+                root.tab-tooltip-changed(visible, text, cx, ty);
+            }
         }
 
         Rectangle {
@@ -86,8 +108,14 @@ component PaneView inherits Rectangle {
 
             if root.pane-data.is-home-tab || root.pane-data.tabs.length == 0: HomeScreen {
                 recent-files: root.recent-files;
-                open-file-requested => { root.pane-focused(root.pane-data.id); root.open-file-requested(); }
-                open-recent-file(path) => { root.pane-focused(root.pane-data.id); root.open-recent-file(path); }
+                open-file-requested => {
+                    root.pane-focused(root.pane-data.id);
+                    root.open-file-requested();
+                }
+                open-recent-file(path) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.open-recent-file(path);
+                }
             }
 
             if !root.pane-data.is-home-tab && root.pane-data.tabs.length > 0: Viewport {
@@ -109,28 +137,89 @@ component PaneView inherits Rectangle {
                 zoom-slider-position: root.pane-data.zoom-slider-position;
                 hud: root.pane-data.hud;
 
-                pan(dx, dy) => { root.pane-focused(root.pane-data.id); root.viewport-pan(dx, dy); }
-                zoom(f, x, y) => { root.pane-focused(root.pane-data.id); root.viewport-zoom(f, x, y); }
-                fit-to-view => { root.pane-focused(root.pane-data.id); root.viewport-fit-to-view(); }
-                start-pan(x, y) => { root.pane-focused(root.pane-data.id); root.viewport-start-pan(x, y); }
-                end-pan => { root.viewport-end-pan(); }
-                minimap-navigate(nx, ny) => { root.pane-focused(root.pane-data.id); root.minimap-navigate(nx, ny); }
-                zoom-slider-changed(value) => { root.pane-focused(root.pane-data.id); root.zoom-slider-changed(root.pane-data.id, value); }
-                file-dropped(path) => { root.pane-focused(root.pane-data.id); root.file-dropped(path); }
-                tool-mouse-down(x, y) => { root.pane-focused(root.pane-data.id); root.tool-mouse-down(x, y); }
-                tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-                tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-                cancel-tool => { root.cancel-tool(); }
-                close-tab => { root.close-active-tab(); }
-                hud-toggle-scale-bar => { root.pane-focused(root.pane-data.id); root.hud-toggle-scale-bar(root.pane-data.id); }
-                hud-toggle-dropdown => { root.pane-focused(root.pane-data.id); root.hud-toggle-dropdown(root.pane-data.id); }
-                hud-gamma-changed(v) => { root.pane-focused(root.pane-data.id); root.hud-gamma-changed(root.pane-data.id, v); }
-                hud-brightness-changed(v) => { root.pane-focused(root.pane-data.id); root.hud-brightness-changed(root.pane-data.id, v); }
-                hud-contrast-changed(v) => { root.pane-focused(root.pane-data.id); root.hud-contrast-changed(root.pane-data.id, v); }
-                hud-measurement-unit-changed(u) => { root.pane-focused(root.pane-data.id); root.hud-measurement-unit-changed(root.pane-data.id, u); }
-                hud-stain-normalization-changed(s) => { root.pane-focused(root.pane-data.id); root.hud-stain-normalization-changed(root.pane-data.id, s); }
-                hud-reset-adjustments => { root.pane-focused(root.pane-data.id); root.hud-reset-adjustments(root.pane-data.id); }
-                hud-zoom-input(v) => { root.pane-focused(root.pane-data.id); root.hud-zoom-input(root.pane-data.id, v); }
+                pan(dx, dy) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.viewport-pan(dx, dy);
+                }
+                zoom(f, x, y) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.viewport-zoom(f, x, y);
+                }
+                fit-to-view => {
+                    root.pane-focused(root.pane-data.id);
+                    root.viewport-fit-to-view();
+                }
+                start-pan(x, y) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.viewport-start-pan(x, y);
+                }
+                end-pan => {
+                    root.viewport-end-pan();
+                }
+                minimap-navigate(nx, ny) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.minimap-navigate(nx, ny);
+                }
+                zoom-slider-changed(value) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.zoom-slider-changed(root.pane-data.id, value);
+                }
+                file-dropped(path) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.file-dropped(path);
+                }
+                tool-mouse-down(x, y) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.tool-mouse-down(x, y);
+                }
+                tool-mouse-move(x, y) => {
+                    root.tool-mouse-move(x, y);
+                }
+                tool-mouse-up(x, y) => {
+                    root.tool-mouse-up(x, y);
+                }
+                cancel-tool => {
+                    root.cancel-tool();
+                }
+                close-tab => {
+                    root.close-active-tab();
+                }
+                hud-toggle-scale-bar => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-toggle-scale-bar(root.pane-data.id);
+                }
+                hud-toggle-dropdown => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-toggle-dropdown(root.pane-data.id);
+                }
+                hud-gamma-changed(v) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-gamma-changed(root.pane-data.id, v);
+                }
+                hud-brightness-changed(v) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-brightness-changed(root.pane-data.id, v);
+                }
+                hud-contrast-changed(v) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-contrast-changed(root.pane-data.id, v);
+                }
+                hud-measurement-unit-changed(u) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-measurement-unit-changed(root.pane-data.id, u);
+                }
+                hud-stain-normalization-changed(s) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-stain-normalization-changed(root.pane-data.id, s);
+                }
+                hud-reset-adjustments => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-reset-adjustments(root.pane-data.id);
+                }
+                hud-zoom-input(v) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-zoom-input(root.pane-data.id, v);
+                }
             }
         }
     }
@@ -254,22 +343,11 @@ export component SplitPaneContainer inherits Rectangle {
     property <int> pane-count: max(1, panes.length);
     property <length> pane-width: (self.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
     property <length> pane-stride: pane-width + pane-gap;
-    property <int> target-tab-count: drop-target-pane >= 0 && drop-target-pane < panes.length
-        ? panes[drop-target-pane].tabs.length
-        : 0;
-    property <length> target-local-x: drop-target-pane >= 0
-        ? drag-abs-x - drop-target-pane * pane-stride
-        : -1px;
-    property <length> target-slot-width: target-tab-count > 0
-        ? max(101px, (pane-width - 40px) / target-tab-count)
-        : 101px;
-    property <int> raw-drop-index: dragging-tab-id == -1 || split-drop-side != -1 || drop-target-pane < 0
-        ? -1
-        : Math.max(0, Math.min(target-tab-count, Math.round((target-local-x - 4px) / target-slot-width)));
-    out property <int> active-drop-index: drag-source-pane == drop-target-pane && drag-source-index >= 0
-        && (raw-drop-index == drag_source_index || raw-drop-index == drag_source_index + 1)
-        ? -1
-        : raw-drop-index;
+    property <int> target-tab-count: drop-target-pane >= 0 && drop-target-pane < panes.length ? panes[drop-target-pane].tabs.length : 0;
+    property <length> target-local-x: drop-target-pane >= 0 ? drag-abs-x - drop-target-pane * pane-stride : -1px;
+    property <length> target-slot-width: target-tab-count > 0 ? max(101px, (pane-width - 40px) / target-tab-count) : 101px;
+    property <int> raw-drop-index: dragging-tab-id == -1 || split-drop-side != -1 || drop-target-pane < 0 ? -1 : Math.max(0, Math.min(target-tab-count, Math.round((target-local-x - 4px) / target-slot-width)));
+    out property <int> active-drop-index: drag-source-pane == drop-target-pane && drag-source-index >= 0 && (raw-drop-index == drag_source_index || raw-drop-index == drag_source_index + 1) ? -1 : raw-drop-index;
 
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
@@ -336,39 +414,105 @@ export component SplitPaneContainer inherits Rectangle {
             os-file-hover-pane: root.os-file-hover-pane;
             os-file-hover-side: root.os-file-hover-side;
 
-            tab-activated(pane-id, id) => { root.tab-activated(pane-id, id); }
-            tab-close-requested(pane-id, id) => { root.tab-close-requested(pane-id, id); }
-            tab-context-menu(pane-id, id, x, y) => { root.tab-context-menu(pane-id, id, x, y); }
-            new-tab-requested(pane-id) => { root.new-tab-requested(pane-id); }
-            open-file-requested => { root.open-file-requested(); }
-            open-recent-file(path) => { root.open-recent-file(path); }
-            viewport-pan(dx, dy) => { root.viewport-pan(dx, dy); }
-            viewport-zoom(f, x, y) => { root.viewport-zoom(f, x, y); }
-            viewport-fit-to-view => { root.viewport-fit-to-view(); }
-            viewport-start-pan(x, y) => { root.viewport-start-pan(x, y); }
-            viewport-end-pan => { root.viewport-end-pan(); }
-            minimap-navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
-            file-dropped(path) => { root.file-dropped(path); }
-            pane-focused(pane-id) => { root.pane-focused(pane-id); }
-            tab-drag-started(id, pane-id, title, index, abs-x, abs-y) => { root.tab-drag-started(id, pane-id, title, index, abs-x, abs-y); }
-            tab-drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
-            tab-drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
-            zoom-slider-changed(pane-id, value) => { root.zoom-slider-changed(pane-id, value); }
-            tool-mouse-down(x, y) => { root.tool-mouse-down(x, y); }
-            tool-mouse-move(x, y) => { root.tool-mouse-move(x, y); }
-            tool-mouse-up(x, y) => { root.tool-mouse-up(x, y); }
-            cancel-tool => { root.cancel-tool(); }
-            close-active-tab => { root.close-active-tab(); }
-            tab-tooltip-changed(visible, text, cx, ty) => { root.tab-tooltip-changed(visible, text, cx, ty); }
-            hud-toggle-scale-bar(pane-id) => { root.hud-toggle-scale-bar(pane-id); }
-            hud-toggle-dropdown(pane-id) => { root.hud-toggle-dropdown(pane-id); }
-            hud-gamma-changed(pane-id, v) => { root.hud-gamma-changed(pane-id, v); }
-            hud-brightness-changed(pane-id, v) => { root.hud-brightness-changed(pane-id, v); }
-            hud-contrast-changed(pane-id, v) => { root.hud-contrast-changed(pane-id, v); }
-            hud-measurement-unit-changed(pane-id, u) => { root.hud-measurement-unit-changed(pane-id, u); }
-            hud-stain-normalization-changed(pane-id, s) => { root.hud-stain-normalization-changed(pane-id, s); }
-            hud-reset-adjustments(pane-id) => { root.hud-reset-adjustments(pane-id); }
-            hud-zoom-input(pane-id, v) => { root.hud-zoom-input(pane-id, v); }
+            tab-activated(pane-id, id) => {
+                root.tab-activated(pane-id, id);
+            }
+            tab-close-requested(pane-id, id) => {
+                root.tab-close-requested(pane-id, id);
+            }
+            tab-context-menu(pane-id, id, x, y) => {
+                root.tab-context-menu(pane-id, id, x, y);
+            }
+            new-tab-requested(pane-id) => {
+                root.new-tab-requested(pane-id);
+            }
+            open-file-requested => {
+                root.open-file-requested();
+            }
+            open-recent-file(path) => {
+                root.open-recent-file(path);
+            }
+            viewport-pan(dx, dy) => {
+                root.viewport-pan(dx, dy);
+            }
+            viewport-zoom(f, x, y) => {
+                root.viewport-zoom(f, x, y);
+            }
+            viewport-fit-to-view => {
+                root.viewport-fit-to-view();
+            }
+            viewport-start-pan(x, y) => {
+                root.viewport-start-pan(x, y);
+            }
+            viewport-end-pan => {
+                root.viewport-end-pan();
+            }
+            minimap-navigate(nx, ny) => {
+                root.minimap-navigate(nx, ny);
+            }
+            file-dropped(path) => {
+                root.file-dropped(path);
+            }
+            pane-focused(pane-id) => {
+                root.pane-focused(pane-id);
+            }
+            tab-drag-started(id, pane-id, title, index, abs-x, abs-y) => {
+                root.tab-drag-started(id, pane-id, title, index, abs-x, abs-y);
+            }
+            tab-drag-moved(abs-x, abs-y) => {
+                root.tab-drag-moved(abs-x, abs-y);
+            }
+            tab-drag-ended(abs-x, abs-y) => {
+                root.tab-drag-ended(abs-x, abs-y);
+            }
+            zoom-slider-changed(pane-id, value) => {
+                root.zoom-slider-changed(pane-id, value);
+            }
+            tool-mouse-down(x, y) => {
+                root.tool-mouse-down(x, y);
+            }
+            tool-mouse-move(x, y) => {
+                root.tool-mouse-move(x, y);
+            }
+            tool-mouse-up(x, y) => {
+                root.tool-mouse-up(x, y);
+            }
+            cancel-tool => {
+                root.cancel-tool();
+            }
+            close-active-tab => {
+                root.close-active-tab();
+            }
+            tab-tooltip-changed(visible, text, cx, ty) => {
+                root.tab-tooltip-changed(visible, text, cx, ty);
+            }
+            hud-toggle-scale-bar(pane-id) => {
+                root.hud-toggle-scale-bar(pane-id);
+            }
+            hud-toggle-dropdown(pane-id) => {
+                root.hud-toggle-dropdown(pane-id);
+            }
+            hud-gamma-changed(pane-id, v) => {
+                root.hud-gamma-changed(pane-id, v);
+            }
+            hud-brightness-changed(pane-id, v) => {
+                root.hud-brightness-changed(pane-id, v);
+            }
+            hud-contrast-changed(pane-id, v) => {
+                root.hud-contrast-changed(pane-id, v);
+            }
+            hud-measurement-unit-changed(pane-id, u) => {
+                root.hud-measurement-unit-changed(pane-id, u);
+            }
+            hud-stain-normalization-changed(pane-id, s) => {
+                root.hud-stain-normalization-changed(pane-id, s);
+            }
+            hud-reset-adjustments(pane-id) => {
+                root.hud-reset-adjustments(pane-id);
+            }
+            hud-zoom-input(pane-id, v) => {
+                root.hud-zoom-input(pane-id, v);
+            }
         }
     }
 }

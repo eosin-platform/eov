@@ -11,7 +11,9 @@ component HudButton inherits Rectangle {
     background: touch.has-hover ? #ffffff22 : active ? #ffffff15 : transparent;
 
     touch := TouchArea {
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Text {
@@ -34,21 +36,13 @@ export component HudToolbar inherits Rectangle {
     callback toggle-dropdown();
     callback zoom-input(float);
 
-    property <string> zoom-text: zoom-level >= 1.0
-        ? Math.round(zoom-level * 100) + "%"
-        : Math.round(zoom-level * 1000) / 10 + "%";
+    property <string> zoom-text: zoom-level >= 1.0 ? Math.round(zoom-level * 100) + "%" : Math.round(zoom-level * 1000) / 10 + "%";
     property <bool> editing-zoom: false;
 
     property <string> active-tooltip:
-        fit-btn.hovered ? fit-btn.tooltip-text
-        : scale-btn.hovered ? scale-btn.tooltip-text
-        : adjust-btn.hovered ? adjust-btn.tooltip-text
-        : "";
+        fit-btn.hovered ? fit-btn.tooltip-text : scale-btn.hovered ? scale-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
     property <length> tooltip-center-x:
-        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2
-        : scale-btn.hovered ? scale-btn.x + scale-btn.width / 2
-        : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2
-        : 0px;
+        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2 : scale-btn.hovered ? scale-btn.x + scale-btn.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
 
     // Fixed width: 72px zoom area + 1px sep + 3 * 38px buttons = 187px
     width: 187px;
@@ -134,21 +128,27 @@ export component HudToolbar inherits Rectangle {
             fit-btn := HudButton {
                 label: "⊞";
                 tooltip-text: "Fit to view";
-                clicked => { root.fit-to-view(); }
+                clicked => {
+                    root.fit-to-view();
+                }
             }
 
             scale-btn := HudButton {
                 label: "⊡";
                 tooltip-text: "Toggle scale bar";
                 active: root.show-scale-bar;
-                clicked => { root.toggle-scale-bar(); }
+                clicked => {
+                    root.toggle-scale-bar();
+                }
             }
 
             adjust-btn := HudButton {
                 label: "⚙";
                 tooltip-text: "Adjustments";
                 active: root.dropdown-open || root.has-adjustments;
-                clicked => { root.toggle-dropdown(); }
+                clicked => {
+                    root.toggle-dropdown();
+                }
             }
         }
     }

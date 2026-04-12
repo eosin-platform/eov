@@ -40,6 +40,26 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+  
+  slint_lsp:
+      name: Slint LSP Check
+      needs: skip-check
+      if: needs.skip-check.outputs.skip != 'true'
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v5
+        - uses: dtolnay/rust-toolchain@stable
+          with:
+            components: rustfmt
+        - name: Install slint-lsp
+          run: |
+            cargo install cargo-binstall --locked
+            cargo binstall slint-lsp -y
+        - name: Check Slint formatting
+          run: |
+            set -euo pipefail
+            slint-lsp format -i $(git ls-files '*.slint')
+            git diff --exit-code
 
   actionlint:
     name: Actionlint

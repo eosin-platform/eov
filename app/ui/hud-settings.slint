@@ -132,7 +132,9 @@ export component HudSettingsPanel inherits Rectangle {
                 background: reset-touch.has-hover ? #ffffff22 : transparent;
 
                 reset-touch := TouchArea {
-                    clicked => { root.reset-adjustments(); }
+                    clicked => {
+                        root.reset-adjustments();
+                    }
                 }
 
                 reset-text := Text {
@@ -156,7 +158,9 @@ export component HudSettingsPanel inherits Rectangle {
             min-value: 0.2;
             max-value: 3.0;
             display-text: Math.round(root.gamma * 100) / 100 + "";
-            changed(v) => { root.gamma-changed(v); }
+            changed(v) => {
+                root.gamma-changed(v);
+            }
         }
 
         HudSlider {
@@ -165,7 +169,9 @@ export component HudSettingsPanel inherits Rectangle {
             min-value: -1.0;
             max-value: 1.0;
             display-text: (root.brightness >= 0 ? "+" : "") + Math.round(root.brightness * 100) + "%";
-            changed(v) => { root.brightness-changed(v); }
+            changed(v) => {
+                root.brightness-changed(v);
+            }
         }
 
         HudSlider {
@@ -174,7 +180,9 @@ export component HudSettingsPanel inherits Rectangle {
             min-value: 0.2;
             max-value: 3.0;
             display-text: Math.round(root.contrast * 100) / 100 + "x";
-            changed(v) => { root.contrast-changed(v); }
+            changed(v) => {
+                root.contrast-changed(v);
+            }
         }
 
         Rectangle {
@@ -210,7 +218,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     um-touch := TouchArea {
-                        clicked => { root.measurement-unit-changed(MeasurementUnit.um); }
+                        clicked => {
+                            root.measurement-unit-changed(MeasurementUnit.um);
+                        }
                     }
 
                     Text {
@@ -231,7 +241,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     mm-touch := TouchArea {
-                        clicked => { root.measurement-unit-changed(MeasurementUnit.mm); }
+                        clicked => {
+                            root.measurement-unit-changed(MeasurementUnit.mm);
+                        }
                     }
 
                     Text {
@@ -252,7 +264,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     in-touch := TouchArea {
-                        clicked => { root.measurement-unit-changed(MeasurementUnit.inches); }
+                        clicked => {
+                            root.measurement-unit-changed(MeasurementUnit.inches);
+                        }
                     }
 
                     Text {
@@ -299,7 +313,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     sn-none-touch := TouchArea {
-                        clicked => { root.stain-normalization-changed(StainNormalization.none); }
+                        clicked => {
+                            root.stain-normalization-changed(StainNormalization.none);
+                        }
                     }
 
                     Text {
@@ -320,7 +336,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     sn-macenko-touch := TouchArea {
-                        clicked => { root.stain-normalization-changed(StainNormalization.macenko); }
+                        clicked => {
+                            root.stain-normalization-changed(StainNormalization.macenko);
+                        }
                     }
 
                     Text {
@@ -341,7 +359,9 @@ export component HudSettingsPanel inherits Rectangle {
                     border-color: #4da3d9;
 
                     sn-vahadane-touch := TouchArea {
-                        clicked => { root.stain-normalization-changed(StainNormalization.vahadane); }
+                        clicked => {
+                            root.stain-normalization-changed(StainNormalization.vahadane);
+                        }
                     }
 
                     Text {
@@ -376,7 +396,9 @@ export component HudSettingsPanel inherits Rectangle {
         border-bottom-right-radius: root.border-radius;
 
         defaults-touch := TouchArea {
-            clicked => { root.reset-adjustments(); }
+            clicked => {
+                root.reset-adjustments();
+            }
         }
 
         Text {

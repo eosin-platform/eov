@@ -459,15 +459,33 @@ export component AppWindow inherits Window {
                     root.tab-tooltip-x = cx;
                     root.tab-tooltip-y = ty;
                 }
-                hud-toggle-scale-bar(pane) => { root.hud-toggle-scale-bar(pane); }
-                hud-toggle-dropdown(pane) => { root.hud-toggle-dropdown(pane); }
-                hud-gamma-changed(pane, v) => { root.hud-gamma-changed(pane, v); }
-                hud-brightness-changed(pane, v) => { root.hud-brightness-changed(pane, v); }
-                hud-contrast-changed(pane, v) => { root.hud-contrast-changed(pane, v); }
-                hud-measurement-unit-changed(pane, u) => { root.hud-measurement-unit-changed(pane, u); }
-                hud-stain-normalization-changed(pane, s) => { root.hud-stain-normalization-changed(pane, s); }
-                hud-reset-adjustments(pane) => { root.hud-reset-adjustments(pane); }
-                hud-zoom-input(pane, v) => { root.hud-zoom-input(pane, v); }
+                hud-toggle-scale-bar(pane) => {
+                    root.hud-toggle-scale-bar(pane);
+                }
+                hud-toggle-dropdown(pane) => {
+                    root.hud-toggle-dropdown(pane);
+                }
+                hud-gamma-changed(pane, v) => {
+                    root.hud-gamma-changed(pane, v);
+                }
+                hud-brightness-changed(pane, v) => {
+                    root.hud-brightness-changed(pane, v);
+                }
+                hud-contrast-changed(pane, v) => {
+                    root.hud-contrast-changed(pane, v);
+                }
+                hud-measurement-unit-changed(pane, u) => {
+                    root.hud-measurement-unit-changed(pane, u);
+                }
+                hud-stain-normalization-changed(pane, s) => {
+                    root.hud-stain-normalization-changed(pane, s);
+                }
+                hud-reset-adjustments(pane) => {
+                    root.hud-reset-adjustments(pane);
+                }
+                hud-zoom-input(pane, v) => {
+                    root.hud-zoom-input(pane, v);
+                }
             }
 
             if panes.length == 0: HomeScreen {
@@ -817,13 +835,13 @@ export component AppWindow inherits Window {
         key-pressed(e) => {
             if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
                 root.window-close();
-                return accept;
+                accept
             }
             if e.text == "w" && e.modifiers.control {
                 root.close-active-tab();
-                return accept;
+                accept
             }
-            return reject;
+            reject
         }
     }
 }

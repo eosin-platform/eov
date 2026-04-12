@@ -1,5 +1,15 @@
 import { Theme } from "theme.slint";
-import { HudSettings, MeasurementLine, MeasurementUnit, MetadataItem, MinimapRect, ROIRect, StainNormalization, ToolType, ViewportInfo } from "types.slint";
+import {
+    HudSettings,
+    MeasurementLine,
+    MeasurementUnit,
+    MetadataItem,
+    MinimapRect,
+    ROIRect,
+    StainNormalization,
+    ToolType,
+    ViewportInfo,
+} from "types.slint";
 import { Minimap, ZoomSlider } from "minimap.slint";
 import { MetadataHud } from "metadata-hud.slint";
 import { ScaleBar } from "scale-bar.slint";
@@ -76,6 +86,7 @@ export component Viewport inherits Rectangle {
                 height: root.roi-rect.y * 1px;
                 background: #00000080;
             }
+
             Rectangle {
                 x: 0;
                 y: (root.roi-rect.y + root.roi-rect.height) * 1px;
@@ -83,6 +94,7 @@ export component Viewport inherits Rectangle {
                 height: parent.height - (root.roi-rect.y + root.roi-rect.height) * 1px;
                 background: #00000080;
             }
+
             Rectangle {
                 x: 0;
                 y: root.roi-rect.y * 1px;
@@ -90,6 +102,7 @@ export component Viewport inherits Rectangle {
                 height: root.roi-rect.height * 1px;
                 background: #00000080;
             }
+
             Rectangle {
                 x: (root.roi-rect.x + root.roi-rect.width) * 1px;
                 y: root.roi-rect.y * 1px;
@@ -175,8 +188,15 @@ export component Viewport inherits Rectangle {
                 stroke: #2ECC71;
                 stroke-width: 2px;
                 stroke-line-cap: round;
-                MoveTo { x: measurement.x1; y: measurement.y1; }
-                LineTo { x: measurement.x2; y: measurement.y2; }
+                MoveTo {
+                    x: measurement.x1;
+                    y: measurement.y1;
+                }
+
+                LineTo {
+                    x: measurement.x2;
+                    y: measurement.y2;
+                }
             }
 
             Rectangle {
@@ -216,9 +236,7 @@ export component Viewport inherits Rectangle {
                 measurement-text := Text {
                     x: 7px;
                     y: 3px;
-                    text: measurement.distance-um >= 1000 ? Math.round(measurement.distance-um / 10) / 100 + " mm"
-                        : measurement.distance-um > 0 ? Math.round(measurement.distance-um * 100) / 100 + " µm"
-                        : Math.round(Math.sqrt((measurement.x2 - measurement.x1) * (measurement.x2 - measurement.x1) + (measurement.y2 - measurement.y1) * (measurement.y2 - measurement.y1)) * 10) / 10 + " px";
+                    text: measurement.distance-um >= 1000 ? Math.round(measurement.distance-um / 10) / 100 + " mm" : measurement.distance-um > 0 ? Math.round(measurement.distance-um * 100) / 100 + " µm" : Math.round(Math.sqrt((measurement.x2 - measurement.x1) * (measurement.x2 - measurement.x1) + (measurement.y2 - measurement.y1) * (measurement.y2 - measurement.y1)) * 10) / 10 + " px";
                     color: white;
                     font-size: 11px;
                     font-weight: 500;
@@ -236,8 +254,15 @@ export component Viewport inherits Rectangle {
                 stroke: #F1C40F;
                 stroke-width: 2px;
                 stroke-line-cap: round;
-                MoveTo { x: root.candidate-measurement.x1; y: root.candidate-measurement.y1; }
-                LineTo { x: root.candidate-measurement.x2; y: root.candidate-measurement.y2; }
+                MoveTo {
+                    x: root.candidate-measurement.x1;
+                    y: root.candidate-measurement.y1;
+                }
+
+                LineTo {
+                    x: root.candidate-measurement.x2;
+                    y: root.candidate-measurement.y2;
+                }
             }
 
             Rectangle {
@@ -277,9 +302,7 @@ export component Viewport inherits Rectangle {
                 candidate-text := Text {
                     x: 7px;
                     y: 3px;
-                    text: root.candidate-measurement.distance-um >= 1000 ? Math.round(root.candidate-measurement.distance-um / 10) / 100 + " mm"
-                        : root.candidate-measurement.distance-um > 0 ? Math.round(root.candidate-measurement.distance-um * 100) / 100 + " µm"
-                        : Math.round(Math.sqrt((root.candidate-measurement.x2 - root.candidate-measurement.x1) * (root.candidate-measurement.x2 - root.candidate-measurement.x1) + (root.candidate-measurement.y2 - root.candidate-measurement.y1) * (root.candidate-measurement.y2 - root.candidate-measurement.y1)) * 10) / 10 + " px";
+                    text: root.candidate-measurement.distance-um >= 1000 ? Math.round(root.candidate-measurement.distance-um / 10) / 100 + " mm" : root.candidate-measurement.distance-um > 0 ? Math.round(root.candidate-measurement.distance-um * 100) / 100 + " µm" : Math.round(Math.sqrt((root.candidate-measurement.x2 - root.candidate-measurement.x1) * (root.candidate-measurement.x2 - root.candidate-measurement.x1) + (root.candidate-measurement.y2 - root.candidate-measurement.y1) * (root.candidate-measurement.y2 - root.candidate-measurement.y1)) * 10) / 10 + " px";
                     color: white;
                     font-size: 11px;
                     font-weight: 500;
@@ -322,7 +345,6 @@ export component Viewport inherits Rectangle {
             if e.kind == PointerEventKind.down {
                 focus-scope.focus();
             }
-
             if e.kind == PointerEventKind.down && (e.button == PointerEventButton.right || e.button == PointerEventButton.middle) {
                 self.is-dragging = true;
                 self.drag-start-x = self.mouse-x;
@@ -365,7 +387,7 @@ export component Viewport inherits Rectangle {
         scroll-event(e) => {
             let factor = e.delta-y > 0 ? 1.05 : (1.0 / 1.05);
             root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
-            return accept;
+            accept
         }
     }
 
@@ -376,7 +398,9 @@ export component Viewport inherits Rectangle {
         viewport-rect: minimap-rect;
         image-width: viewport-info.image-width;
         image-height: viewport-info.image-height;
-        navigate(nx, ny) => { root.minimap-navigate(nx, ny); }
+        navigate(nx, ny) => {
+            root.minimap-navigate(nx, ny);
+        }
     }
 
     if show-minimap: ZoomSlider {
@@ -384,7 +408,9 @@ export component Viewport inherits Rectangle {
         y: parent.height - self.height - 16px;
         value: root.zoom-slider-position;
         zoom-level: root.viewport-info.zoom;
-        value-changed(value) => { root.zoom-slider-changed(value); }
+        value-changed(value) => {
+            root.zoom-slider-changed(value);
+        }
     }
 
     if show-metadata && metadata-items.length > 0: MetadataHud {
@@ -418,13 +444,19 @@ export component Viewport inherits Rectangle {
         zoom-level: root.viewport-info.zoom;
         show-scale-bar: root.hud.show-scale-bar;
         dropdown-open: root.hud.hud-dropdown-open;
-        has-adjustments: (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01
-            || root.hud.brightness > 0.01 || root.hud.brightness < -0.01
-            || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
-        fit-to-view => { root.fit-to-view(); }
-        toggle-scale-bar => { root.hud-toggle-scale-bar(); }
-        toggle-dropdown => { root.hud-toggle-dropdown(); }
-        zoom-input(v) => { root.hud-zoom-input(v); }
+        has-adjustments: (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
+        fit-to-view => {
+            root.fit-to-view();
+        }
+        toggle-scale-bar => {
+            root.hud-toggle-scale-bar();
+        }
+        toggle-dropdown => {
+            root.hud-toggle-dropdown();
+        }
+        zoom-input(v) => {
+            root.hud-zoom-input(v);
+        }
     }
 
     // HUD settings dropdown (below toolbar)
@@ -436,16 +468,25 @@ export component Viewport inherits Rectangle {
         contrast: root.hud.contrast;
         measurement-unit: root.hud.measurement-unit;
         stain-normalization: root.hud.stain-normalization;
-        has-adjustments: (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01
-            || root.hud.brightness > 0.01 || root.hud.brightness < -0.01
-            || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01
-            || root.hud.stain-normalization != StainNormalization.none;
-        gamma-changed(v) => { root.hud-gamma-changed(v); }
-        brightness-changed(v) => { root.hud-brightness-changed(v); }
-        contrast-changed(v) => { root.hud-contrast-changed(v); }
-        measurement-unit-changed(u) => { root.hud-measurement-unit-changed(u); }
-        stain-normalization-changed(s) => { root.hud-stain-normalization-changed(s); }
-        reset-adjustments => { root.hud-reset-adjustments(); }
+        has-adjustments: (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01 || root.hud.stain-normalization != StainNormalization.none;
+        gamma-changed(v) => {
+            root.hud-gamma-changed(v);
+        }
+        brightness-changed(v) => {
+            root.hud-brightness-changed(v);
+        }
+        contrast-changed(v) => {
+            root.hud-contrast-changed(v);
+        }
+        measurement-unit-changed(u) => {
+            root.hud-measurement-unit-changed(u);
+        }
+        stain-normalization-changed(s) => {
+            root.hud-stain-normalization-changed(s);
+        }
+        reset-adjustments => {
+            root.hud-reset-adjustments();
+        }
     }
 
     // Scale bar (bottom-left)
@@ -464,13 +505,13 @@ export component Viewport inherits Rectangle {
         key-pressed(e) => {
             if e.text == "w" && e.modifiers.control {
                 root.close-tab();
-                return accept;
+                accept
             }
             if e.text == Key.Escape {
                 root.cancel-tool();
-                return accept;
+                accept
             }
-            return reject;
+            reject
         }
     }
 }

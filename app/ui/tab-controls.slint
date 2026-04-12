@@ -17,7 +17,9 @@ export component ToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     HorizontalLayout {
@@ -29,7 +31,6 @@ export component ToolButton inherits Rectangle {
             vertical-alignment: center;
         }
     }
-
 }
 
 export component MinimapToolButton inherits Rectangle {
@@ -49,7 +50,9 @@ export component MinimapToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Rectangle {
@@ -106,7 +109,9 @@ export component OpenFileToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
@@ -143,7 +148,9 @@ export component MetadataToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Rectangle {
@@ -201,7 +208,9 @@ export component MeasureToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Path {
@@ -232,7 +241,9 @@ export component RoiToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Rectangle {
@@ -242,21 +253,101 @@ export component RoiToolButton inherits Rectangle {
         height: 12px;
         background: transparent;
 
-        Rectangle { x: 0px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
-        Rectangle { x: 6px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
-        Rectangle { x: 12px; y: 0px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
 
-        Rectangle { x: 0px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
-        Rectangle { x: 6px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
-        Rectangle { x: 12px; y: 11px; width: 4px; height: 1px; background: root.icon-color; }
+        Rectangle {
+            x: 6px;
+            y: 0px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
 
-        Rectangle { x: 0px; y: 0px; width: 1px; height: 3px; background: root.icon-color; }
-        Rectangle { x: 0px; y: 5px; width: 1px; height: 3px; background: root.icon-color; }
-        Rectangle { x: 0px; y: 9px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle {
+            x: 12px;
+            y: 0px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
 
-        Rectangle { x: 15px; y: 0px; width: 1px; height: 3px; background: root.icon-color; }
-        Rectangle { x: 15px; y: 5px; width: 1px; height: 3px; background: root.icon-color; }
-        Rectangle { x: 15px; y: 9px; width: 1px; height: 3px; background: root.icon-color; }
+        Rectangle {
+            x: 0px;
+            y: 11px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 6px;
+            y: 11px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 12px;
+            y: 11px;
+            width: 4px;
+            height: 1px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 5px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 9px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 15px;
+            y: 0px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 15px;
+            y: 5px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
+
+        Rectangle {
+            x: 15px;
+            y: 9px;
+            width: 1px;
+            height: 3px;
+            background: root.icon-color;
+        }
     }
 }
 
@@ -275,7 +366,9 @@ export component ZoomInToolButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 
     Rectangle {
@@ -313,7 +406,9 @@ export component IconButton inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
@@ -332,7 +427,6 @@ export component IconButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-
 }
 
 component Tab inherits Rectangle {
@@ -423,7 +517,10 @@ component Tab inherits Rectangle {
 
     property <bool> hover-active: touch.has-hover && !touch.drag-armed && data.path != "";
     property <float> tooltip-delay-progress: hover-active ? 1.0 : 0.0;
-    animate tooltip-delay-progress { duration: 1ms; delay: 700ms; }
+    animate tooltip-delay-progress {
+        duration: 1ms;
+        delay: 700ms;
+    }
     property <bool> show-path-tooltip: tooltip-delay-progress > 0.5 && hover-active;
     changed show-path-tooltip => {
         root.tab-tooltip-changed(
@@ -468,7 +565,9 @@ component Tab inherits Rectangle {
             }
 
             close-touch := TouchArea {
-                clicked => { root.close-requested(data.id); }
+                clicked => {
+                    root.close-requested(data.id);
+                }
             }
 
             Text {
@@ -492,19 +591,10 @@ export component TabBar inherits Rectangle {
     in property <bool> is-drop-target: false;
     in property <bool> show-drop-indicator: true;
     property <length> estimated-tabs-width: tabs.length * 101px;
-    property <length> tabs-content-width: tabs-overflow
-        ? tabs-inline-layout.preferred-width
-        : max(1px, tabs-inline-layout.preferred-width - 36px);
-    property <length> avg-slot: tabs.length > 0
-        ? (tabs-content-width + 1px) / tabs.length
-        : 101px;
-    property <int> raw-drop-index: !show-drop-indicator || !is-drop-target || drag-abs-x < 0px
-        ? -1
-        : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
-    out property <int> computed-drop-index: drag-source-pane == pane-id && drag-source-index >= 0
-        && (raw-drop-index == drag-source-index || raw-drop-index == drag-source-index + 1)
-        ? -1
-        : raw-drop-index;
+    property <length> tabs-content-width: tabs-overflow ? tabs-inline-layout.preferred-width : max(1px, tabs-inline-layout.preferred-width - 36px);
+    property <length> avg-slot: tabs.length > 0 ? (tabs-content-width + 1px) / tabs.length : 101px;
+    property <int> raw-drop-index: !show-drop-indicator || !is-drop-target || drag-abs-x < 0px ? -1 : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
+    out property <int> computed-drop-index: drag-source-pane == pane-id && drag-source-index >= 0 && (raw-drop-index == drag-source-index || raw-drop-index == drag-source-index + 1) ? -1 : raw-drop-index;
     property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
@@ -540,7 +630,10 @@ export component TabBar inherits Rectangle {
         viewport-width: tabs-inline-layout.preferred-width;
         interactive: root.tabs-overflow;
 
-        abs-tracker := Rectangle { width: 0px; height: 0px; }
+        abs-tracker := Rectangle {
+            width: 0px;
+            height: 0px;
+        }
 
         tabs-inline-layout := HorizontalLayout {
             alignment: start;
@@ -550,13 +643,27 @@ export component TabBar inherits Rectangle {
                 pane-id: root.pane-id;
                 data: tab;
                 is-dragging: root.dragging-tab-id == tab.id;
-                close-requested(id) => { root.tab-close-requested(root.pane-id, id); }
-                activated(id) => { root.tab-activated(root.pane-id, id); }
-                context-menu(id, x, y) => { root.tab-context-menu(root.pane-id, id, x, y); }
-                drag-started(id, pane, title, abs-x, abs-y) => { root.tab-drag-started(id, pane, title, i, abs-x, abs-y); }
-                drag-moved(abs-x, abs-y) => { root.tab-drag-moved(abs-x, abs-y); }
-                drag-ended(abs-x, abs-y) => { root.tab-drag-ended(abs-x, abs-y); }
-                tab-tooltip-changed(visible, text, cx, ty) => { root.tab-tooltip-changed(visible, text, cx, ty); }
+                close-requested(id) => {
+                    root.tab-close-requested(root.pane-id, id);
+                }
+                activated(id) => {
+                    root.tab-activated(root.pane-id, id);
+                }
+                context-menu(id, x, y) => {
+                    root.tab-context-menu(root.pane-id, id, x, y);
+                }
+                drag-started(id, pane, title, abs-x, abs-y) => {
+                    root.tab-drag-started(id, pane, title, i, abs-x, abs-y);
+                }
+                drag-moved(abs-x, abs-y) => {
+                    root.tab-drag-moved(abs-x, abs-y);
+                }
+                drag-ended(abs-x, abs-y) => {
+                    root.tab-drag-ended(abs-x, abs-y);
+                }
+                tab-tooltip-changed(visible, text, cx, ty) => {
+                    root.tab-tooltip-changed(visible, text, cx, ty);
+                }
             }
 
             if !root.tabs-overflow: Rectangle {
@@ -565,7 +672,9 @@ export component TabBar inherits Rectangle {
                 background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
 
                 inline-new-tab-touch := TouchArea {
-                    clicked => { root.new-tab-requested(root.pane-id); }
+                    clicked => {
+                        root.new-tab-requested(root.pane-id);
+                    }
                 }
 
                 Text {
@@ -597,7 +706,9 @@ export component TabBar inherits Rectangle {
         background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
 
         new-tab-touch := TouchArea {
-            clicked => { root.new-tab-requested(root.pane-id); }
+            clicked => {
+                root.new-tab-requested(root.pane-id);
+            }
         }
 
         Text {
@@ -635,7 +746,9 @@ export component ContextMenu inherits Rectangle {
         height: 20000px;
 
         TouchArea {
-            clicked => { root.item-clicked("dismiss"); }
+            clicked => {
+                root.item-clicked("dismiss");
+            }
         }
     }
 
@@ -646,7 +759,9 @@ export component ContextMenu inherits Rectangle {
 
             item-touch := TouchArea {
                 enabled: item.enabled;
-                clicked => { root.item-clicked(item.id); }
+                clicked => {
+                    root.item-clicked(item.id);
+                }
             }
 
             HorizontalLayout {
@@ -660,7 +775,9 @@ export component ContextMenu inherits Rectangle {
                     vertical-alignment: center;
                 }
 
-                Rectangle { horizontal-stretch: 1; }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
 
                 Text {
                     text: item.shortcut;
