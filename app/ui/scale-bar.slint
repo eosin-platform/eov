@@ -57,12 +57,30 @@ export component ScaleBar inherits Rectangle {
     visible: has-calibration && bar-width-px > 5.0;
 
     Rectangle {
+        x: (parent.width - bar-width-px * 1px) / 2 - 1px;
+        y: parent.height - 12px - 1px;
+        width: bar-width-px * 1px + 2px;
+        height: 3px + 2px;
+        background: black;
+        border-radius: 2px;
+    }
+
+    Rectangle {
         x: (parent.width - bar-width-px * 1px) / 2;
         y: parent.height - 12px;
         width: bar-width-px * 1px;
         height: 3px;
         background: white;
         border-radius: 1px;
+
+        // Left tick outline
+        Rectangle {
+            x: -1px;
+            y: -4px - 1px;
+            width: 2px + 2px;
+            height: 10px + 2px;
+            background: black;
+        }
 
         // Left tick
         Rectangle {
@@ -71,6 +89,15 @@ export component ScaleBar inherits Rectangle {
             width: 2px;
             height: 10px;
             background: white;
+        }
+
+        // Right tick outline
+        Rectangle {
+            x: parent.width - 2px - 1px;
+            y: -4px - 1px;
+            width: 2px + 2px;
+            height: 10px + 2px;
+            background: black;
         }
 
         // Right tick
@@ -82,6 +109,16 @@ export component ScaleBar inherits Rectangle {
             background: white;
         }
     }
+
+    // Text stroke (black outline via offset copies)
+    Text { x: -1px; y: -1px; width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: 0px;  y: -1px; width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: 1px;  y: -1px; width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: -1px; y: 0px;  width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: 1px;  y: 0px;  width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: -1px; y: 1px;  width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: 0px;  y: 1px;  width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
+    Text { x: 1px;  y: 1px;  width: 100%; text: root.label-text; color: black; font-size: 10px; font-weight: 600; horizontal-alignment: center; }
 
     Text {
         x: 0px;
