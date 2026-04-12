@@ -1,8 +1,8 @@
 use crate::config;
-use crate::state::{self, AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend};
+use crate::state::{self, AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend, StainNormalization};
 use crate::{
     AppWindow, FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit,
-    RenderMode, ToolType, build_recent_menu_items,
+    RenderMode, StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
     copy_text_to_clipboard, handle_tool_mouse_down, handle_tool_mouse_move, handle_tool_mouse_up,
     insert_pane_ui_state, open_file, pane_from_index, refresh_tab_ui, request_render_loop,
     slider_value_to_zoom, update_filtering_mode, update_render_backend, update_tabs,
@@ -37,6 +37,14 @@ fn measurement_unit_from_slint(unit: SlintMeasurementUnit) -> MeasurementUnit {
         SlintMeasurementUnit::Um => MeasurementUnit::Um,
         SlintMeasurementUnit::Mm => MeasurementUnit::Mm,
         SlintMeasurementUnit::Inches => MeasurementUnit::Inches,
+    }
+}
+
+fn stain_normalization_from_slint(sn: SlintStainNormalization) -> StainNormalization {
+    match sn {
+        SlintStainNormalization::None => StainNormalization::None,
+        SlintStainNormalization::Macenko => StainNormalization::Macenko,
+        SlintStainNormalization::Vahadane => StainNormalization::Vahadane,
     }
 }
 
@@ -1628,6 +1636,27 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_hud_stain_normalization_changed(move |pane, sn| {
+            {
+                let mut state = state_handle.write();
+                state.set_focused_pane(pane_from_index(pane));
+                if let Some(hud) = active_hud_mut(&mut state) {
+                    hud.stain_normalization = stain_normalization_from_slint(sn);
+                }
+                state.request_render();
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }

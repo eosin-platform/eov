@@ -44,6 +44,15 @@ pub enum MeasurementUnit {
     Inches,
 }
 
+/// Stain normalization method
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StainNormalization {
+    #[default]
+    None,
+    Macenko,
+    Vahadane,
+}
+
 /// Per-tab HUD settings
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HudSettings {
@@ -54,6 +63,7 @@ pub struct HudSettings {
     pub brightness: f32,
     pub contrast: f32,
     pub measurement_unit: MeasurementUnit,
+    pub stain_normalization: StainNormalization,
 }
 
 impl Default for HudSettings {
@@ -66,6 +76,7 @@ impl Default for HudSettings {
             brightness: 0.0,
             contrast: 1.0,
             measurement_unit: MeasurementUnit::Um,
+            stain_normalization: StainNormalization::None,
         }
     }
 }
@@ -75,6 +86,7 @@ impl HudSettings {
         self.gamma = 1.0;
         self.brightness = 0.0;
         self.contrast = 1.0;
+        self.stain_normalization = StainNormalization::None;
     }
 
     #[allow(dead_code)]
@@ -82,6 +94,7 @@ impl HudSettings {
         (self.gamma - 1.0).abs() > 0.001
             || self.brightness.abs() > 0.001
             || (self.contrast - 1.0).abs() > 0.001
+            || self.stain_normalization != StainNormalization::None
     }
 }
 
@@ -344,6 +357,7 @@ pub struct FilePaneState {
     pub last_render_gamma: f32,
     pub last_render_brightness: f32,
     pub last_render_contrast: f32,
+    pub last_render_stain_normalization: StainNormalization,
     pub hud: HudSettings,
 }
 
@@ -366,6 +380,7 @@ impl FilePaneState {
             last_render_gamma: 1.0,
             last_render_brightness: 0.0,
             last_render_contrast: 1.0,
+            last_render_stain_normalization: StainNormalization::None,
             hud: HudSettings::default(),
         }
     }

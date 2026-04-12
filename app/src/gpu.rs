@@ -33,7 +33,9 @@ struct Adjustments {
     gamma: f32,
     brightness: f32,
     contrast: f32,
-    _pad: f32,
+    stain_norm_enabled: f32,
+    inv_stain_row0: vec4<f32>,
+    inv_stain_row1: vec4<f32>,
 };
 
 @vertex
@@ -58,6 +60,27 @@ var tile_sampler: sampler;
 @group(0) @binding(3)
 var<uniform> adjustments: Adjustments;
 
+fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
+    if adjustments.stain_norm_enabled < 0.5 {
+        return color;
+    }
+    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
+    let od = -log(rgb);
+    let od_sum = od.r + od.g + od.b;
+    if od_sum <= 0.15 {
+        return color;
+    }
+    let c0 = max(dot(adjustments.inv_stain_row0.xyz, od), 0.0);
+    let c1 = max(dot(adjustments.inv_stain_row1.xyz, od), 0.0);
+    let nc0 = c0 * adjustments.inv_stain_row0.w;
+    let nc1 = c1 * adjustments.inv_stain_row1.w;
+    let ref_h = vec3<f32>(0.6442, 0.7170, 0.2668);
+    let ref_e = vec3<f32>(0.0927, 0.9545, 0.2832);
+    let new_od = ref_h * nc0 + ref_e * nc1;
+    let new_rgb = exp(-new_od);
+    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+
 fn apply_adj(color: vec4<f32>) -> vec4<f32> {
     let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
     let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
@@ -70,7 +93,7 @@ fn apply_adj(color: vec4<f32>) -> vec4<f32> {
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let fine = textureSample(fine_texture, tile_sampler, input.fine_uv);
     let coarse = textureSample(coarse_texture, tile_sampler, input.coarse_uv);
-    return apply_adj(mix(fine, coarse, input.mip_blend));
+    return apply_adj(apply_stain_norm(mix(fine, coarse, input.mip_blend)));
 }
 "#;
 
@@ -121,7 +144,9 @@ struct Adjustments {
     gamma: f32,
     brightness: f32,
     contrast: f32,
-    _pad: f32,
+    stain_norm_enabled: f32,
+    inv_stain_row0: vec4<f32>,
+    inv_stain_row1: vec4<f32>,
 };
 
 @vertex
@@ -164,6 +189,27 @@ fn lanczos_weight(x: f32) -> f32 {
     return sinc(x) * sinc(x / LANCZOS_A);
 }
 
+fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
+    if adjustments.stain_norm_enabled < 0.5 {
+        return color;
+    }
+    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
+    let od = -log(rgb);
+    let od_sum = od.r + od.g + od.b;
+    if od_sum <= 0.15 {
+        return color;
+    }
+    let c0 = max(dot(adjustments.inv_stain_row0.xyz, od), 0.0);
+    let c1 = max(dot(adjustments.inv_stain_row1.xyz, od), 0.0);
+    let nc0 = c0 * adjustments.inv_stain_row0.w;
+    let nc1 = c1 * adjustments.inv_stain_row1.w;
+    let ref_h = vec3<f32>(0.6442, 0.7170, 0.2668);
+    let ref_e = vec3<f32>(0.0927, 0.9545, 0.2832);
+    let new_od = ref_h * nc0 + ref_e * nc1;
+    let new_rgb = exp(-new_od);
+    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+
 fn apply_adj(color: vec4<f32>) -> vec4<f32> {
     let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
     let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
@@ -202,7 +248,7 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
         color = color / weight_sum;
     }
 
-    return apply_adj(clamp(color, vec4<f32>(0.0), vec4<f32>(1.0)));
+    return apply_adj(apply_stain_norm(clamp(color, vec4<f32>(0.0), vec4<f32>(1.0))));
 }
 "#;
 
@@ -238,7 +284,11 @@ struct AdjustmentsUniform {
     gamma: f32,
     brightness: f32,
     contrast: f32,
-    _pad: f32,
+    stain_norm_enabled: f32,
+    // Row 0 of inverse source stain matrix + scale_h
+    inv_stain_r0: [f32; 4], // [inv[0][0], inv[0][1], inv[0][2], scale_h]
+    // Row 1 of inverse source stain matrix + scale_e
+    inv_stain_r1: [f32; 4], // [inv[1][0], inv[1][1], inv[1][2], scale_e]
 }
 
 #[derive(Clone)]
@@ -249,6 +299,9 @@ struct QueuedFrame {
     gamma: f32,
     brightness: f32,
     contrast: f32,
+    stain_norm_enabled: bool,
+    inv_stain_r0: [f32; 4],
+    inv_stain_r1: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -337,6 +390,9 @@ impl GpuRenderer {
         gamma: f32,
         brightness: f32,
         contrast: f32,
+        stain_norm_enabled: bool,
+        inv_stain_r0: [f32; 4],
+        inv_stain_r1: [f32; 4],
     ) -> Option<Image> {
         if width == 0 || height == 0 {
             return None;
@@ -353,6 +409,9 @@ impl GpuRenderer {
             gamma,
             brightness,
             contrast,
+            stain_norm_enabled,
+            inv_stain_r0,
+            inv_stain_r1,
         };
         self.pending_frames.insert(slot.index(), frame);
 
@@ -767,7 +826,9 @@ impl GpuRenderer {
             gamma: frame.gamma,
             brightness: frame.brightness,
             contrast: frame.contrast,
-            _pad: 0.0,
+            stain_norm_enabled: if frame.stain_norm_enabled { 1.0 } else { 0.0 },
+            inv_stain_r0: frame.inv_stain_r0,
+            inv_stain_r1: frame.inv_stain_r1,
         };
         runtime
             .queue

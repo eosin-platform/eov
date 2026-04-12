@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { MeasurementUnit, PaneViewData, RecentFileData, ToolType } from "types.slint";
+import { MeasurementUnit, PaneViewData, RecentFileData, StainNormalization, ToolType } from "types.slint";
 import { HomeScreen } from "home-screen.slint";
 import { TabBar } from "tab-controls.slint";
 import { Viewport } from "viewport.slint";
@@ -53,6 +53,7 @@ component PaneView inherits Rectangle {
     callback hud-brightness-changed(int, float);
     callback hud-contrast-changed(int, float);
     callback hud-measurement-unit-changed(int, MeasurementUnit);
+    callback hud-stain-normalization-changed(int, StainNormalization);
     callback hud-reset-adjustments(int);
     callback hud-zoom-input(int, float);
 
@@ -127,6 +128,7 @@ component PaneView inherits Rectangle {
                 hud-brightness-changed(v) => { root.pane-focused(root.pane-data.id); root.hud-brightness-changed(root.pane-data.id, v); }
                 hud-contrast-changed(v) => { root.pane-focused(root.pane-data.id); root.hud-contrast-changed(root.pane-data.id, v); }
                 hud-measurement-unit-changed(u) => { root.pane-focused(root.pane-data.id); root.hud-measurement-unit-changed(root.pane-data.id, u); }
+                hud-stain-normalization-changed(s) => { root.pane-focused(root.pane-data.id); root.hud-stain-normalization-changed(root.pane-data.id, s); }
                 hud-reset-adjustments => { root.pane-focused(root.pane-data.id); root.hud-reset-adjustments(root.pane-data.id); }
                 hud-zoom-input(v) => { root.pane-focused(root.pane-data.id); root.hud-zoom-input(root.pane-data.id, v); }
             }
@@ -304,6 +306,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback hud-brightness-changed(int, float);
     callback hud-contrast-changed(int, float);
     callback hud-measurement-unit-changed(int, MeasurementUnit);
+    callback hud-stain-normalization-changed(int, StainNormalization);
     callback hud-reset-adjustments(int);
     callback hud-zoom-input(int, float);
 
@@ -363,6 +366,7 @@ export component SplitPaneContainer inherits Rectangle {
             hud-brightness-changed(pane-id, v) => { root.hud-brightness-changed(pane-id, v); }
             hud-contrast-changed(pane-id, v) => { root.hud-contrast-changed(pane-id, v); }
             hud-measurement-unit-changed(pane-id, u) => { root.hud-measurement-unit-changed(pane-id, u); }
+            hud-stain-normalization-changed(pane-id, s) => { root.hud-stain-normalization-changed(pane-id, s); }
             hud-reset-adjustments(pane-id) => { root.hud-reset-adjustments(pane-id); }
             hud-zoom-input(pane-id, v) => { root.hud-zoom-input(pane-id, v); }
         }

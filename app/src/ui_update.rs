@@ -3,13 +3,14 @@
 //! This module contains functions for updating UI elements like tabs,
 //! recent files, and render backend settings.
 
-use crate::state::{AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend};
+use crate::state::{AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend, StainNormalization};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
 use crate::{
     ContextMenuItem, FilteringMode as SlintFilteringMode,
     HudSettings as SlintHudSettings, MeasurementUnit as SlintMeasurementUnit,
     MetadataItem, MinimapRect,
-    PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData, RenderMode, TabData,
+    PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData, RenderMode,
+    StainNormalization as SlintStainNormalization, TabData,
     ViewportInfo,
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
@@ -441,6 +442,15 @@ fn ui_measurement_unit(unit: MeasurementUnit) -> SlintMeasurementUnit {
     }
 }
 
+/// Convert StainNormalization to Slint StainNormalization
+fn ui_stain_normalization(sn: StainNormalization) -> SlintStainNormalization {
+    match sn {
+        StainNormalization::None => SlintStainNormalization::None,
+        StainNormalization::Macenko => SlintStainNormalization::Macenko,
+        StainNormalization::Vahadane => SlintStainNormalization::Vahadane,
+    }
+}
+
 /// Convert HudSettings to Slint HudSettings
 fn ui_hud_settings(hud: &HudSettings, mpp_x: f32, mpp_y: f32) -> SlintHudSettings {
     SlintHudSettings {
@@ -451,6 +461,7 @@ fn ui_hud_settings(hud: &HudSettings, mpp_x: f32, mpp_y: f32) -> SlintHudSetting
         brightness: hud.brightness,
         contrast: hud.contrast,
         measurement_unit: ui_measurement_unit(hud.measurement_unit),
+        stain_normalization: ui_stain_normalization(hud.stain_normalization),
         mpp_x,
         mpp_y,
     }

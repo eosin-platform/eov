@@ -7,7 +7,8 @@ use crate::AppWindow;
 use crate::blitter;
 use crate::gpu::{SurfaceSlot, TileDraw};
 use crate::state::{
-    AppState, FilteringMode, OpenFile, PaneId, RenderBackend, TileRequestSignature,
+    AppState, FilteringMode, OpenFile, PaneId, RenderBackend, StainNormalization,
+    TileRequestSignature,
 };
 use crate::tile_loader::calculate_wanted_tiles;
 use crate::tools;
@@ -59,6 +60,741 @@ fn apply_adjustments(buffer: &mut [u8], gamma: f32, brightness: f32, contrast: f
         chunk[1] = lut[chunk[1] as usize];
         chunk[2] = lut[chunk[2] as usize];
     }
+}
+
+/// Standard H&E reference stain matrix (optical density space).
+/// Columns are [Hematoxylin, Eosin] stain vectors, rows are [R, G, B].
+/// From Macenko et al. and Ruifrok & Johnston (2001).
+const REF_STAIN_MATRIX: [[f32; 2]; 3] = [
+    [0.6442, 0.0927],  // R: Hematoxylin, Eosin
+    [0.7170, 0.9545],  // G
+    [0.2668, 0.2832],  // B
+];
+
+/// Maximum stain concentrations for the reference (99th percentile, H&E).
+const REF_MAX_CONC: [f32; 2] = [1.9705, 1.0308];
+
+/// Apply Macenko stain normalization to an RGBA buffer.
+/// Uses a simplified per-tile approach: estimate stain vectors via
+/// robust percentile thresholding in OD space, then normalize concentrations
+/// to the reference.
+#[allow(clippy::needless_range_loop)]
+fn apply_macenko_normalization(buffer: &mut [u8]) {
+    let pixel_count = buffer.len() / 4;
+    if pixel_count == 0 {
+        return;
+    }
+
+    // Step 1: Convert to optical density and collect non-background pixels
+    let mut od_pixels: Vec<[f32; 3]> = Vec::with_capacity(pixel_count);
+    for chunk in buffer.chunks_exact(4) {
+        let r = chunk[0].max(1) as f32 / 255.0;
+        let g = chunk[1].max(1) as f32 / 255.0;
+        let b = chunk[2].max(1) as f32 / 255.0;
+        let od_r = -r.ln();
+        let od_g = -g.ln();
+        let od_b = -b.ln();
+        let od_sum = od_r + od_g + od_b;
+        // Filter out background (low OD) pixels
+        if od_sum > 0.15 {
+            od_pixels.push([od_r, od_g, od_b]);
+        }
+    }
+
+    if od_pixels.len() < 100 {
+        return; // Not enough tissue pixels
+    }
+
+    // Step 2: Estimate stain vectors using angle-based approach
+    // Compute covariance matrix of OD values
+    let n = od_pixels.len() as f32;
+    let mut mean = [0.0f32; 3];
+    for p in &od_pixels {
+        mean[0] += p[0];
+        mean[1] += p[1];
+        mean[2] += p[2];
+    }
+    mean[0] /= n;
+    mean[1] /= n;
+    mean[2] /= n;
+
+    // Covariance (upper triangle of 3x3 symmetric matrix)
+    let mut cov = [[0.0f32; 3]; 3];
+    for p in &od_pixels {
+        let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
+        for i in 0..3 {
+            for j in i..3 {
+                cov[i][j] += d[i] * d[j];
+            }
+        }
+    }
+    for i in 0..3 {
+        for j in i..3 {
+            cov[i][j] /= n - 1.0;
+            if j > i {
+                cov[j][i] = cov[i][j];
+            }
+        }
+    }
+
+    // Power iteration for top 2 eigenvectors
+    let (v1, v2) = top_two_eigenvectors(&cov);
+
+    // Project OD pixels onto the plane spanned by v1, v2
+    let mut projections: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let proj1 = p[0] * v1[0] + p[1] * v1[1] + p[2] * v1[2];
+        let proj2 = p[0] * v2[0] + p[1] * v2[1] + p[2] * v2[2];
+        projections.push(proj2.atan2(proj1));
+    }
+
+    // Find robust angular extremes (1st and 99th percentile)
+    let mut sorted_angles = projections.clone();
+    sorted_angles.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p1_idx = (sorted_angles.len() as f32 * 0.01) as usize;
+    let p99_idx = ((sorted_angles.len() as f32 * 0.99) as usize).min(sorted_angles.len() - 1);
+    let angle_min = sorted_angles[p1_idx];
+    let angle_max = sorted_angles[p99_idx];
+
+    // Stain vectors from extreme angles
+    let mut stain1 = [
+        v1[0] * angle_min.cos() + v2[0] * angle_min.sin(),
+        v1[1] * angle_min.cos() + v2[1] * angle_min.sin(),
+        v1[2] * angle_min.cos() + v2[2] * angle_min.sin(),
+    ];
+    let mut stain2 = [
+        v1[0] * angle_max.cos() + v2[0] * angle_max.sin(),
+        v1[1] * angle_max.cos() + v2[1] * angle_max.sin(),
+        v1[2] * angle_max.cos() + v2[2] * angle_max.sin(),
+    ];
+
+    // Ensure positive OD
+    for v in &mut stain1 {
+        *v = v.abs();
+    }
+    for v in &mut stain2 {
+        *v = v.abs();
+    }
+
+    // Normalize
+    let norm1 = (stain1[0] * stain1[0] + stain1[1] * stain1[1] + stain1[2] * stain1[2]).sqrt();
+    let norm2 = (stain2[0] * stain2[0] + stain2[1] * stain2[1] + stain2[2] * stain2[2]).sqrt();
+    if norm1 < 1e-6 || norm2 < 1e-6 {
+        return;
+    }
+    for v in &mut stain1 {
+        *v /= norm1;
+    }
+    for v in &mut stain2 {
+        *v /= norm2;
+    }
+
+    // Ensure Hematoxylin is the one with higher blue component
+    if stain1[2] < stain2[2] {
+        std::mem::swap(&mut stain1, &mut stain2);
+    }
+
+    // Step 3: Deconvolve and normalize
+    // Build 2x3 inverse stain matrix (pseudo-inverse for 2 stains)
+    let src_mat = [[stain1[0], stain2[0]], [stain1[1], stain2[1]], [stain1[2], stain2[2]]];
+    let inv = pseudo_inverse_2x3(&src_mat);
+
+    // Find max concentrations (99th percentile)
+    let mut conc_h: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    let mut conc_e: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let c0 = inv[0][0] * p[0] + inv[0][1] * p[1] + inv[0][2] * p[2];
+        let c1 = inv[1][0] * p[0] + inv[1][1] * p[1] + inv[1][2] * p[2];
+        conc_h.push(c0);
+        conc_e.push(c1);
+    }
+    conc_h.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    conc_e.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let src_max_h = conc_h[((conc_h.len() as f32 * 0.99) as usize).min(conc_h.len() - 1)].max(0.001);
+    let src_max_e = conc_e[((conc_e.len() as f32 * 0.99) as usize).min(conc_e.len() - 1)].max(0.001);
+
+    // Apply normalization to all pixels
+    let scale_h = REF_MAX_CONC[0] / src_max_h;
+    let scale_e = REF_MAX_CONC[1] / src_max_e;
+
+    for chunk in buffer.chunks_exact_mut(4) {
+        let r = chunk[0].max(1) as f32 / 255.0;
+        let g = chunk[1].max(1) as f32 / 255.0;
+        let b = chunk[2].max(1) as f32 / 255.0;
+        let od = [-r.ln(), -g.ln(), -b.ln()];
+
+        // Deconvolve
+        let c0 = (inv[0][0] * od[0] + inv[0][1] * od[1] + inv[0][2] * od[2]).max(0.0);
+        let c1 = (inv[1][0] * od[0] + inv[1][1] * od[1] + inv[1][2] * od[2]).max(0.0);
+
+        // Scale to reference
+        let nc0 = c0 * scale_h;
+        let nc1 = c1 * scale_e;
+
+        // Reconstruct with reference stain matrix
+        let new_od_r = REF_STAIN_MATRIX[0][0] * nc0 + REF_STAIN_MATRIX[0][1] * nc1;
+        let new_od_g = REF_STAIN_MATRIX[1][0] * nc0 + REF_STAIN_MATRIX[1][1] * nc1;
+        let new_od_b = REF_STAIN_MATRIX[2][0] * nc0 + REF_STAIN_MATRIX[2][1] * nc1;
+
+        chunk[0] = ((-new_od_r).exp() * 255.0).clamp(0.0, 255.0) as u8;
+        chunk[1] = ((-new_od_g).exp() * 255.0).clamp(0.0, 255.0) as u8;
+        chunk[2] = ((-new_od_b).exp() * 255.0).clamp(0.0, 255.0) as u8;
+    }
+}
+
+/// Apply Vahadane stain normalization to an RGBA buffer.
+/// Uses dictionary learning with sparsity constraints (SNMF-like).
+/// Approximated with iterative alternating non-negative least squares.
+#[allow(clippy::needless_range_loop)]
+fn apply_vahadane_normalization(buffer: &mut [u8]) {
+    let pixel_count = buffer.len() / 4;
+    if pixel_count == 0 {
+        return;
+    }
+
+    // Step 1: Convert to optical density, filter background
+    let mut od_pixels: Vec<[f32; 3]> = Vec::with_capacity(pixel_count);
+    let mut od_indices: Vec<usize> = Vec::with_capacity(pixel_count);
+    for (i, chunk) in buffer.chunks_exact(4).enumerate() {
+        let r = chunk[0].max(1) as f32 / 255.0;
+        let g = chunk[1].max(1) as f32 / 255.0;
+        let b = chunk[2].max(1) as f32 / 255.0;
+        let od_r = -r.ln();
+        let od_g = -g.ln();
+        let od_b = -b.ln();
+        if od_r + od_g + od_b > 0.15 {
+            od_pixels.push([od_r, od_g, od_b]);
+            od_indices.push(i);
+        }
+    }
+
+    if od_pixels.len() < 100 {
+        return;
+    }
+
+    // Step 2: Dictionary learning - initialize with Macenko-style SVD
+    let n = od_pixels.len() as f32;
+    let mut mean = [0.0f32; 3];
+    for p in &od_pixels {
+        mean[0] += p[0];
+        mean[1] += p[1];
+        mean[2] += p[2];
+    }
+    mean[0] /= n;
+    mean[1] /= n;
+    mean[2] /= n;
+
+    let mut cov = [[0.0f32; 3]; 3];
+    for p in &od_pixels {
+        let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
+        for i in 0..3 {
+            for j in i..3 {
+                cov[i][j] += d[i] * d[j];
+            }
+        }
+    }
+    for i in 0..3 {
+        for j in i..3 {
+            cov[i][j] /= n - 1.0;
+            if j > i {
+                cov[j][i] = cov[i][j];
+            }
+        }
+    }
+
+    let (v1, v2) = top_two_eigenvectors(&cov);
+
+    // Initialize dictionary W (3x2) from extreme angles (same as Macenko init)
+    let mut projections: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let proj1 = p[0] * v1[0] + p[1] * v1[1] + p[2] * v1[2];
+        let proj2 = p[0] * v2[0] + p[1] * v2[1] + p[2] * v2[2];
+        projections.push(proj2.atan2(proj1));
+    }
+    let mut sorted_angles = projections;
+    sorted_angles.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p1_idx = (sorted_angles.len() as f32 * 0.01) as usize;
+    let p99_idx = ((sorted_angles.len() as f32 * 0.99) as usize).min(sorted_angles.len() - 1);
+    let angle_min = sorted_angles[p1_idx];
+    let angle_max = sorted_angles[p99_idx];
+
+    let mut w = [[0.0f32; 2]; 3]; // W[channel][stain]
+    for i in 0..3 {
+        w[i][0] = (v1[i] * angle_min.cos() + v2[i] * angle_min.sin()).abs();
+        w[i][1] = (v1[i] * angle_max.cos() + v2[i] * angle_max.sin()).abs();
+    }
+
+    // Normalize columns
+    for s in 0..2 {
+        let norm = (w[0][s] * w[0][s] + w[1][s] * w[1][s] + w[2][s] * w[2][s]).sqrt();
+        if norm > 1e-6 {
+            for i in 0..3 {
+                w[i][s] /= norm;
+            }
+        }
+    }
+
+    // Ensure stain 0 = Hematoxylin (higher blue)
+    if w[2][0] < w[2][1] {
+        for row in &mut w {
+            row.swap(0, 1);
+        }
+    }
+
+    // Step 3: Alternating NNLS iterations to refine W
+    // Use a subset for efficiency
+    let sample_step = (od_pixels.len() / 5000).max(1);
+    let sampled: Vec<&[f32; 3]> = od_pixels.iter().step_by(sample_step).collect();
+
+    for _iter in 0..5 {
+        // Solve for H given W: H = W^+ * OD (non-negative)
+        let w_mat = [[w[0][0], w[1][0], w[2][0]], [w[0][1], w[1][1], w[2][1]]];
+        // W^T * W
+        let mut wtw = [[0.0f32; 2]; 2];
+        for i in 0..2 {
+            for j in 0..2 {
+                wtw[i][j] = w_mat[i][0] * w_mat[j][0] + w_mat[i][1] * w_mat[j][1] + w_mat[i][2] * w_mat[j][2];
+            }
+        }
+        let det = wtw[0][0] * wtw[1][1] - wtw[0][1] * wtw[1][0];
+        if det.abs() < 1e-10 {
+            break;
+        }
+        let inv_wtw = [
+            [wtw[1][1] / det, -wtw[0][1] / det],
+            [-wtw[1][0] / det, wtw[0][0] / det],
+        ];
+
+        // Accumulate for dictionary update
+        let mut sum_h = [[0.0f32; 3]; 2]; // sum_h[stain][channel] = sum(h_s * od_c)
+        let mut sum_hh = [[0.0f32; 2]; 2]; // sum_hh[s1][s2] = sum(h_s1 * h_s2)
+        for p in &sampled {
+            let wt_od = [
+                w_mat[0][0] * p[0] + w_mat[0][1] * p[1] + w_mat[0][2] * p[2],
+                w_mat[1][0] * p[0] + w_mat[1][1] * p[1] + w_mat[1][2] * p[2],
+            ];
+            let h0 = (inv_wtw[0][0] * wt_od[0] + inv_wtw[0][1] * wt_od[1]).max(0.0);
+            let h1 = (inv_wtw[1][0] * wt_od[0] + inv_wtw[1][1] * wt_od[1]).max(0.0);
+
+            for c in 0..3 {
+                sum_h[0][c] += h0 * p[c];
+                sum_h[1][c] += h1 * p[c];
+            }
+            sum_hh[0][0] += h0 * h0;
+            sum_hh[0][1] += h0 * h1;
+            sum_hh[1][0] += h1 * h0;
+            sum_hh[1][1] += h1 * h1;
+        }
+
+        // Update W given H: W = OD * H^T * (H * H^T)^-1 (non-negative)
+        let det2 = sum_hh[0][0] * sum_hh[1][1] - sum_hh[0][1] * sum_hh[1][0];
+        if det2.abs() < 1e-10 {
+            break;
+        }
+        let inv_hht = [
+            [sum_hh[1][1] / det2, -sum_hh[0][1] / det2],
+            [-sum_hh[1][0] / det2, sum_hh[0][0] / det2],
+        ];
+
+        for c in 0..3 {
+            w[c][0] = (sum_h[0][c] * inv_hht[0][0] + sum_h[1][c] * inv_hht[1][0]).max(0.0);
+            w[c][1] = (sum_h[0][c] * inv_hht[0][1] + sum_h[1][c] * inv_hht[1][1]).max(0.0);
+        }
+
+        // Normalize columns
+        for s in 0..2 {
+            let norm = (w[0][s] * w[0][s] + w[1][s] * w[1][s] + w[2][s] * w[2][s]).sqrt();
+            if norm > 1e-6 {
+                for i in 0..3 {
+                    w[i][s] /= norm;
+                }
+            }
+        }
+
+        // Ensure stain 0 = Hematoxylin (higher blue)
+        if w[2][0] < w[2][1] {
+            for row in &mut w {
+                row.swap(0, 1);
+            }
+        }
+    }
+
+    // Step 4: Deconvolve all tissue pixels and normalize
+    let src_mat = [[w[0][0], w[0][1]], [w[1][0], w[1][1]], [w[2][0], w[2][1]]];
+    let inv = pseudo_inverse_2x3(&src_mat);
+
+    // Find max concentrations (99th percentile)
+    let mut conc_h: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    let mut conc_e: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let c0 = (inv[0][0] * p[0] + inv[0][1] * p[1] + inv[0][2] * p[2]).max(0.0);
+        let c1 = (inv[1][0] * p[0] + inv[1][1] * p[1] + inv[1][2] * p[2]).max(0.0);
+        conc_h.push(c0);
+        conc_e.push(c1);
+    }
+    conc_h.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    conc_e.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let src_max_h = conc_h[((conc_h.len() as f32 * 0.99) as usize).min(conc_h.len() - 1)].max(0.001);
+    let src_max_e = conc_e[((conc_e.len() as f32 * 0.99) as usize).min(conc_e.len() - 1)].max(0.001);
+
+    let scale_h = REF_MAX_CONC[0] / src_max_h;
+    let scale_e = REF_MAX_CONC[1] / src_max_e;
+
+    // Apply to all pixels (not just tissue)
+    for chunk in buffer.chunks_exact_mut(4) {
+        let r = chunk[0].max(1) as f32 / 255.0;
+        let g = chunk[1].max(1) as f32 / 255.0;
+        let b = chunk[2].max(1) as f32 / 255.0;
+        let od = [-r.ln(), -g.ln(), -b.ln()];
+        let od_sum = od[0] + od[1] + od[2];
+
+        if od_sum <= 0.15 {
+            continue; // Skip background
+        }
+
+        let c0 = (inv[0][0] * od[0] + inv[0][1] * od[1] + inv[0][2] * od[2]).max(0.0);
+        let c1 = (inv[1][0] * od[0] + inv[1][1] * od[1] + inv[1][2] * od[2]).max(0.0);
+
+        let nc0 = c0 * scale_h;
+        let nc1 = c1 * scale_e;
+
+        let new_od_r = REF_STAIN_MATRIX[0][0] * nc0 + REF_STAIN_MATRIX[0][1] * nc1;
+        let new_od_g = REF_STAIN_MATRIX[1][0] * nc0 + REF_STAIN_MATRIX[1][1] * nc1;
+        let new_od_b = REF_STAIN_MATRIX[2][0] * nc0 + REF_STAIN_MATRIX[2][1] * nc1;
+
+        chunk[0] = ((-new_od_r).exp() * 255.0).clamp(0.0, 255.0) as u8;
+        chunk[1] = ((-new_od_g).exp() * 255.0).clamp(0.0, 255.0) as u8;
+        chunk[2] = ((-new_od_b).exp() * 255.0).clamp(0.0, 255.0) as u8;
+    }
+}
+
+/// Stain normalization parameters computed from source image statistics.
+/// These are passed as GPU uniform data for per-pixel shader normalization.
+pub struct StainNormParams {
+    /// Whether stain normalization is enabled
+    pub enabled: bool,
+    /// Row 0 of inverse source stain matrix + scale_h: [inv[0][0], inv[0][1], inv[0][2], scale_h]
+    pub inv_stain_r0: [f32; 4],
+    /// Row 1 of inverse source stain matrix + scale_e: [inv[1][0], inv[1][1], inv[1][2], scale_e]
+    pub inv_stain_r1: [f32; 4],
+}
+
+impl Default for StainNormParams {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            inv_stain_r0: [0.0; 4],
+            inv_stain_r1: [0.0; 4],
+        }
+    }
+}
+
+/// Compute stain normalization parameters from tile pixel data.
+/// Samples pixels from the provided tiles to estimate source stain vectors
+/// via the Macenko (SVD) approach, then returns the inverse stain matrix
+/// and scale factors needed for the GPU shader.
+///
+/// For Vahadane mode, additionally refines stain vectors via alternating NNLS.
+#[allow(clippy::needless_range_loop)]
+fn compute_stain_params(
+    draws: &[TileDraw],
+    method: StainNormalization,
+) -> StainNormParams {
+    if method == StainNormalization::None || draws.is_empty() {
+        return StainNormParams::default();
+    }
+
+    // Sample pixels from tiles (skip every N pixels for performance)
+    let total_pixels: usize = draws.iter().map(|d| d.tile.data.len() / 4).sum();
+    let sample_step = (total_pixels / 10000).max(1);
+
+    let mut od_pixels: Vec<[f32; 3]> = Vec::with_capacity(10000);
+    let mut pixel_idx = 0usize;
+    for draw in draws {
+        for chunk in draw.tile.data.chunks_exact(4) {
+            if pixel_idx.is_multiple_of(sample_step) {
+                let r = chunk[0].max(1) as f32 / 255.0;
+                let g = chunk[1].max(1) as f32 / 255.0;
+                let b = chunk[2].max(1) as f32 / 255.0;
+                let od_r = -r.ln();
+                let od_g = -g.ln();
+                let od_b = -b.ln();
+                if od_r + od_g + od_b > 0.15 {
+                    od_pixels.push([od_r, od_g, od_b]);
+                }
+            }
+            pixel_idx += 1;
+        }
+    }
+
+    if od_pixels.len() < 100 {
+        return StainNormParams::default();
+    }
+
+    // Compute covariance matrix
+    let n = od_pixels.len() as f32;
+    let mut mean = [0.0f32; 3];
+    for p in &od_pixels {
+        mean[0] += p[0];
+        mean[1] += p[1];
+        mean[2] += p[2];
+    }
+    mean[0] /= n;
+    mean[1] /= n;
+    mean[2] /= n;
+
+    let mut cov = [[0.0f32; 3]; 3];
+    for p in &od_pixels {
+        let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
+        for i in 0..3 {
+            for j in i..3 {
+                cov[i][j] += d[i] * d[j];
+            }
+        }
+    }
+    for i in 0..3 {
+        for j in i..3 {
+            cov[i][j] /= n - 1.0;
+            if j > i {
+                cov[j][i] = cov[i][j];
+            }
+        }
+    }
+
+    let (v1, v2) = top_two_eigenvectors(&cov);
+
+    // Project and find angular extremes
+    let mut angles: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let proj1 = p[0] * v1[0] + p[1] * v1[1] + p[2] * v1[2];
+        let proj2 = p[0] * v2[0] + p[1] * v2[1] + p[2] * v2[2];
+        angles.push(proj2.atan2(proj1));
+    }
+    angles.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p1_idx = (angles.len() as f32 * 0.01) as usize;
+    let p99_idx = ((angles.len() as f32 * 0.99) as usize).min(angles.len() - 1);
+    let angle_min = angles[p1_idx];
+    let angle_max = angles[p99_idx];
+
+    let mut stain1 = [
+        (v1[0] * angle_min.cos() + v2[0] * angle_min.sin()).abs(),
+        (v1[1] * angle_min.cos() + v2[1] * angle_min.sin()).abs(),
+        (v1[2] * angle_min.cos() + v2[2] * angle_min.sin()).abs(),
+    ];
+    let mut stain2 = [
+        (v1[0] * angle_max.cos() + v2[0] * angle_max.sin()).abs(),
+        (v1[1] * angle_max.cos() + v2[1] * angle_max.sin()).abs(),
+        (v1[2] * angle_max.cos() + v2[2] * angle_max.sin()).abs(),
+    ];
+
+    // Normalize
+    let norm1 = (stain1[0] * stain1[0] + stain1[1] * stain1[1] + stain1[2] * stain1[2]).sqrt();
+    let norm2 = (stain2[0] * stain2[0] + stain2[1] * stain2[1] + stain2[2] * stain2[2]).sqrt();
+    if norm1 < 1e-6 || norm2 < 1e-6 {
+        return StainNormParams::default();
+    }
+    for v in &mut stain1 {
+        *v /= norm1;
+    }
+    for v in &mut stain2 {
+        *v /= norm2;
+    }
+
+    // Ensure stain1 = Hematoxylin (higher blue)
+    if stain1[2] < stain2[2] {
+        std::mem::swap(&mut stain1, &mut stain2);
+    }
+
+    // For Vahadane: refine via alternating NNLS
+    if method == StainNormalization::Vahadane {
+        let mut w = [
+            [stain1[0], stain2[0]],
+            [stain1[1], stain2[1]],
+            [stain1[2], stain2[2]],
+        ];
+        let sampled = &od_pixels;
+        for _iter in 0..5 {
+            let w_mat = [[w[0][0], w[1][0], w[2][0]], [w[0][1], w[1][1], w[2][1]]];
+            let mut wtw = [[0.0f32; 2]; 2];
+            for i in 0..2 {
+                for j in 0..2 {
+                    wtw[i][j] =
+                        w_mat[i][0] * w_mat[j][0] + w_mat[i][1] * w_mat[j][1] + w_mat[i][2] * w_mat[j][2];
+                }
+            }
+            let det = wtw[0][0] * wtw[1][1] - wtw[0][1] * wtw[1][0];
+            if det.abs() < 1e-10 {
+                break;
+            }
+            let inv_wtw = [
+                [wtw[1][1] / det, -wtw[0][1] / det],
+                [-wtw[1][0] / det, wtw[0][0] / det],
+            ];
+            let mut sum_h = [[0.0f32; 3]; 2];
+            let mut sum_hh = [[0.0f32; 2]; 2];
+            for p in sampled {
+                let wt_od = [
+                    w_mat[0][0] * p[0] + w_mat[0][1] * p[1] + w_mat[0][2] * p[2],
+                    w_mat[1][0] * p[0] + w_mat[1][1] * p[1] + w_mat[1][2] * p[2],
+                ];
+                let h0 = (inv_wtw[0][0] * wt_od[0] + inv_wtw[0][1] * wt_od[1]).max(0.0);
+                let h1 = (inv_wtw[1][0] * wt_od[0] + inv_wtw[1][1] * wt_od[1]).max(0.0);
+                for c in 0..3 {
+                    sum_h[0][c] += h0 * p[c];
+                    sum_h[1][c] += h1 * p[c];
+                }
+                sum_hh[0][0] += h0 * h0;
+                sum_hh[0][1] += h0 * h1;
+                sum_hh[1][0] += h1 * h0;
+                sum_hh[1][1] += h1 * h1;
+            }
+            let det2 = sum_hh[0][0] * sum_hh[1][1] - sum_hh[0][1] * sum_hh[1][0];
+            if det2.abs() < 1e-10 {
+                break;
+            }
+            let inv_hht = [
+                [sum_hh[1][1] / det2, -sum_hh[0][1] / det2],
+                [-sum_hh[1][0] / det2, sum_hh[0][0] / det2],
+            ];
+            for c in 0..3 {
+                w[c][0] = (sum_h[0][c] * inv_hht[0][0] + sum_h[1][c] * inv_hht[1][0]).max(0.0);
+                w[c][1] = (sum_h[0][c] * inv_hht[0][1] + sum_h[1][c] * inv_hht[1][1]).max(0.0);
+            }
+            for s in 0..2 {
+                let norm =
+                    (w[0][s] * w[0][s] + w[1][s] * w[1][s] + w[2][s] * w[2][s]).sqrt();
+                if norm > 1e-6 {
+                    for i in 0..3 {
+                        w[i][s] /= norm;
+                    }
+                }
+            }
+            if w[2][0] < w[2][1] {
+                for row in &mut w {
+                    row.swap(0, 1);
+                }
+            }
+        }
+        stain1 = [w[0][0], w[1][0], w[2][0]];
+        stain2 = [w[0][1], w[1][1], w[2][1]];
+    }
+
+    // Compute pseudo-inverse and scale factors
+    let src_mat = [
+        [stain1[0], stain2[0]],
+        [stain1[1], stain2[1]],
+        [stain1[2], stain2[2]],
+    ];
+    let inv = pseudo_inverse_2x3(&src_mat);
+
+    // Find 99th percentile concentrations
+    let mut conc_h: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    let mut conc_e: Vec<f32> = Vec::with_capacity(od_pixels.len());
+    for p in &od_pixels {
+        let c0 = (inv[0][0] * p[0] + inv[0][1] * p[1] + inv[0][2] * p[2]).max(0.0);
+        let c1 = (inv[1][0] * p[0] + inv[1][1] * p[1] + inv[1][2] * p[2]).max(0.0);
+        conc_h.push(c0);
+        conc_e.push(c1);
+    }
+    conc_h.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    conc_e.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let src_max_h =
+        conc_h[((conc_h.len() as f32 * 0.99) as usize).min(conc_h.len() - 1)].max(0.001);
+    let src_max_e =
+        conc_e[((conc_e.len() as f32 * 0.99) as usize).min(conc_e.len() - 1)].max(0.001);
+
+    let scale_h = REF_MAX_CONC[0] / src_max_h;
+    let scale_e = REF_MAX_CONC[1] / src_max_e;
+
+    StainNormParams {
+        enabled: true,
+        inv_stain_r0: [inv[0][0], inv[0][1], inv[0][2], scale_h],
+        inv_stain_r1: [inv[1][0], inv[1][1], inv[1][2], scale_e],
+    }
+}
+
+/// Compute top 2 eigenvectors of a 3x3 symmetric matrix via power iteration.
+fn top_two_eigenvectors(cov: &[[f32; 3]; 3]) -> ([f32; 3], [f32; 3]) {
+    // First eigenvector
+    let mut v1 = [1.0f32, 1.0, 1.0];
+    for _ in 0..50 {
+        let mut new_v = [0.0f32; 3];
+        for i in 0..3 {
+            new_v[i] = cov[i][0] * v1[0] + cov[i][1] * v1[1] + cov[i][2] * v1[2];
+        }
+        let norm = (new_v[0] * new_v[0] + new_v[1] * new_v[1] + new_v[2] * new_v[2]).sqrt();
+        if norm < 1e-10 {
+            break;
+        }
+        v1 = [new_v[0] / norm, new_v[1] / norm, new_v[2] / norm];
+    }
+
+    // Deflate: cov2 = cov - lambda1 * v1 * v1^T
+    let lambda1 = cov[0][0] * v1[0] * v1[0]
+        + cov[1][1] * v1[1] * v1[1]
+        + cov[2][2] * v1[2] * v1[2]
+        + 2.0 * (cov[0][1] * v1[0] * v1[1] + cov[0][2] * v1[0] * v1[2] + cov[1][2] * v1[1] * v1[2]);
+    let mut cov2 = *cov;
+    for i in 0..3 {
+        for j in 0..3 {
+            cov2[i][j] -= lambda1 * v1[i] * v1[j];
+        }
+    }
+
+    // Second eigenvector
+    let mut v2 = [1.0f32, 0.0, 0.0];
+    // Start orthogonal to v1
+    let dot = v2[0] * v1[0] + v2[1] * v1[1] + v2[2] * v1[2];
+    v2[0] -= dot * v1[0];
+    v2[1] -= dot * v1[1];
+    v2[2] -= dot * v1[2];
+    let norm = (v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2]).sqrt();
+    if norm > 1e-10 {
+        v2[0] /= norm;
+        v2[1] /= norm;
+        v2[2] /= norm;
+    }
+    for _ in 0..50 {
+        let mut new_v = [0.0f32; 3];
+        for i in 0..3 {
+            new_v[i] = cov2[i][0] * v2[0] + cov2[i][1] * v2[1] + cov2[i][2] * v2[2];
+        }
+        let norm = (new_v[0] * new_v[0] + new_v[1] * new_v[1] + new_v[2] * new_v[2]).sqrt();
+        if norm < 1e-10 {
+            break;
+        }
+        v2 = [new_v[0] / norm, new_v[1] / norm, new_v[2] / norm];
+    }
+
+    (v1, v2)
+}
+
+/// 2x3 pseudo-inverse of a 3x2 matrix M: (M^T M)^-1 M^T
+fn pseudo_inverse_2x3(m: &[[f32; 2]; 3]) -> [[f32; 3]; 2] {
+    // M^T M (2x2)
+    let mut mtm = [[0.0f32; 2]; 2];
+    for i in 0..2 {
+        for j in 0..2 {
+            mtm[i][j] = m[0][i] * m[0][j] + m[1][i] * m[1][j] + m[2][i] * m[2][j];
+        }
+    }
+    let det = mtm[0][0] * mtm[1][1] - mtm[0][1] * mtm[1][0];
+    if det.abs() < 1e-10 {
+        return [[0.0; 3]; 2];
+    }
+    let inv_mtm = [
+        [mtm[1][1] / det, -mtm[0][1] / det],
+        [-mtm[1][0] / det, mtm[0][0] / det],
+    ];
+
+    // (M^T M)^-1 M^T
+    let mut result = [[0.0f32; 3]; 2];
+    for i in 0..2 {
+        for j in 0..3 {
+            result[i][j] = inv_mtm[i][0] * m[j][0] + inv_mtm[i][1] * m[j][1];
+        }
+    }
+    result
 }
 
 /// Result of trilinear level calculation
@@ -565,9 +1301,11 @@ fn render_pane_to_image(
         hud_gamma,
         hud_brightness,
         hud_contrast,
+        hud_stain_normalization,
         last_render_gamma,
         last_render_brightness,
         last_render_contrast,
+        last_render_stain_normalization,
     ) = {
         let Some(pane_state) = file.pane_state_mut(pane) else {
             return PaneRenderOutcome::default();
@@ -590,9 +1328,11 @@ fn render_pane_to_image(
             pane_state.hud.gamma,
             pane_state.hud.brightness,
             pane_state.hud.contrast,
+            pane_state.hud.stain_normalization,
             pane_state.last_render_gamma,
             pane_state.last_render_brightness,
             pane_state.last_render_contrast,
+            pane_state.last_render_stain_normalization,
         )
     };
 
@@ -696,7 +1436,8 @@ fn render_pane_to_image(
 
     let adjustments_changed = (hud_gamma - last_render_gamma).abs() > 0.001
         || (hud_brightness - last_render_brightness).abs() > 0.001
-        || (hud_contrast - last_render_contrast).abs() > 0.001;
+        || (hud_contrast - last_render_contrast).abs() > 0.001
+        || hud_stain_normalization != last_render_stain_normalization;
 
     if !force_render
         && !is_first_frame
@@ -726,6 +1467,7 @@ fn render_pane_to_image(
         pane_state.last_render_gamma = hud_gamma;
         pane_state.last_render_brightness = hud_brightness;
         pane_state.last_render_contrast = hud_contrast;
+        pane_state.last_render_stain_normalization = hud_stain_normalization;
     }
 
     let render_width = vp_width as u32;
@@ -756,6 +1498,7 @@ fn render_pane_to_image(
             }
         };
         let draws = collect_tile_draws(file, tile_cache, vp, gpu_trilinear, gpu_filtering);
+        let stain_params = compute_stain_params(&draws, hud_stain_normalization);
         let slot = match pane {
             PaneId::PRIMARY => SurfaceSlot::PRIMARY,
             PaneId::SECONDARY => SurfaceSlot::SECONDARY,
@@ -770,6 +1513,9 @@ fn render_pane_to_image(
                 hud_gamma,
                 hud_brightness,
                 hud_contrast,
+                stain_params.enabled,
+                stain_params.inv_stain_r0,
+                stain_params.inv_stain_r1,
             )
         })
         .flatten();
@@ -961,6 +1707,13 @@ fn render_pane_to_image(
         // Non-Lanczos modes: Bilinear or explicit Trilinear
         blit_all_tiles(buffer, blitter::blit_tile);
         apply_trilinear_coarse(buffer);
+    }
+
+    // Post-processing: apply stain normalization if enabled
+    match hud_stain_normalization {
+        StainNormalization::None => {}
+        StainNormalization::Macenko => apply_macenko_normalization(buffer),
+        StainNormalization::Vahadane => apply_vahadane_normalization(buffer),
     }
 
     // Post-processing: apply gamma, brightness, contrast if they differ from defaults

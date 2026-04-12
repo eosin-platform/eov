@@ -8,6 +8,7 @@ import {
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
+    StainNormalization,
     PaneViewData,
     RecentFileData,
     RenderMode,
@@ -154,6 +155,7 @@ export component AppWindow inherits Window {
     callback hud-brightness-changed(int, float);
     callback hud-contrast-changed(int, float);
     callback hud-measurement-unit-changed(int, MeasurementUnit);
+    callback hud-stain-normalization-changed(int, StainNormalization);
     callback hud-reset-adjustments(int);
     callback hud-zoom-input(int, float);
 
@@ -463,6 +465,7 @@ export component AppWindow inherits Window {
                 hud-brightness-changed(pane, v) => { root.hud-brightness-changed(pane, v); }
                 hud-contrast-changed(pane, v) => { root.hud-contrast-changed(pane, v); }
                 hud-measurement-unit-changed(pane, u) => { root.hud-measurement-unit-changed(pane, u); }
+                hud-stain-normalization-changed(pane, s) => { root.hud-stain-normalization-changed(pane, s); }
                 hud-reset-adjustments(pane) => { root.hud-reset-adjustments(pane); }
                 hud-zoom-input(pane, v) => { root.hud-zoom-input(pane, v); }
             }

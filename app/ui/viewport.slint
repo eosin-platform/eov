@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { HudSettings, MeasurementLine, MeasurementUnit, MetadataItem, MinimapRect, ROIRect, ToolType, ViewportInfo } from "types.slint";
+import { HudSettings, MeasurementLine, MeasurementUnit, MetadataItem, MinimapRect, ROIRect, StainNormalization, ToolType, ViewportInfo } from "types.slint";
 
 export component Minimap inherits Rectangle {
     in property <image> thumbnail;
@@ -567,12 +567,14 @@ export component HudSettingsPanel inherits Rectangle {
     in property <float> brightness: 0.0;
     in property <float> contrast: 1.0;
     in property <MeasurementUnit> measurement-unit: MeasurementUnit.um;
+    in property <StainNormalization> stain-normalization: StainNormalization.none;
     in property <bool> has-adjustments: false;
 
     callback gamma-changed(float);
     callback brightness-changed(float);
     callback contrast-changed(float);
     callback measurement-unit-changed(MeasurementUnit);
+    callback stain-normalization-changed(StainNormalization);
     callback reset-adjustments();
 
     width: 260px;
@@ -743,6 +745,95 @@ export component HudSettingsPanel inherits Rectangle {
                 }
             }
         }
+
+        Rectangle {
+            height: 1px;
+            background: #ffffff12;
+        }
+
+        // Stain normalization row
+        Rectangle {
+            height: 28px;
+
+            Text {
+                x: 8px;
+                text: "Stain Norm";
+                color: #8ea0b2;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            HorizontalLayout {
+                x: 80px;
+                y: (parent.height - self.height) / 2;
+                width: parent.width - 88px;
+                height: 22px;
+                spacing: 2px;
+
+                Rectangle {
+                    width: (parent.width - 4px) / 3;
+                    height: 22px;
+                    border-radius: 3px;
+                    background: root.stain-normalization == StainNormalization.none ? #4da3d940 : sn-none-touch.has-hover ? #ffffff15 : transparent;
+                    border-width: root.stain-normalization == StainNormalization.none ? 1px : 0px;
+                    border-color: #4da3d9;
+
+                    sn-none-touch := TouchArea {
+                        clicked => { root.stain-normalization-changed(StainNormalization.none); }
+                    }
+
+                    Text {
+                        text: "None";
+                        color: root.stain-normalization == StainNormalization.none ? white : #cccccc;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    width: (parent.width - 4px) / 3;
+                    height: 22px;
+                    border-radius: 3px;
+                    background: root.stain-normalization == StainNormalization.macenko ? #4da3d940 : sn-macenko-touch.has-hover ? #ffffff15 : transparent;
+                    border-width: root.stain-normalization == StainNormalization.macenko ? 1px : 0px;
+                    border-color: #4da3d9;
+
+                    sn-macenko-touch := TouchArea {
+                        clicked => { root.stain-normalization-changed(StainNormalization.macenko); }
+                    }
+
+                    Text {
+                        text: "Macenko";
+                        color: root.stain-normalization == StainNormalization.macenko ? white : #cccccc;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    width: (parent.width - 4px) / 3;
+                    height: 22px;
+                    border-radius: 3px;
+                    background: root.stain-normalization == StainNormalization.vahadane ? #4da3d940 : sn-vahadane-touch.has-hover ? #ffffff15 : transparent;
+                    border-width: root.stain-normalization == StainNormalization.vahadane ? 1px : 0px;
+                    border-color: #4da3d9;
+
+                    sn-vahadane-touch := TouchArea {
+                        clicked => { root.stain-normalization-changed(StainNormalization.vahadane); }
+                    }
+
+                    Text {
+                        text: "Vahadane";
+                        color: root.stain-normalization == StainNormalization.vahadane ? white : #cccccc;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -784,6 +875,7 @@ export component Viewport inherits Rectangle {
     callback hud-brightness-changed(float);
     callback hud-contrast-changed(float);
     callback hud-measurement-unit-changed(MeasurementUnit);
+    callback hud-stain-normalization-changed(StainNormalization);
     callback hud-reset-adjustments();
     callback hud-zoom-input(float);
 
@@ -1172,13 +1264,16 @@ export component Viewport inherits Rectangle {
         brightness: root.hud.brightness;
         contrast: root.hud.contrast;
         measurement-unit: root.hud.measurement-unit;
+        stain-normalization: root.hud.stain-normalization;
         has-adjustments: (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01
             || root.hud.brightness > 0.01 || root.hud.brightness < -0.01
-            || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
+            || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01
+            || root.hud.stain-normalization != StainNormalization.none;
         gamma-changed(v) => { root.hud-gamma-changed(v); }
         brightness-changed(v) => { root.hud-brightness-changed(v); }
         contrast-changed(v) => { root.hud-contrast-changed(v); }
         measurement-unit-changed(u) => { root.hud-measurement-unit-changed(u); }
+        stain-normalization-changed(s) => { root.hud-stain-normalization-changed(s); }
         reset-adjustments => { root.hud-reset-adjustments(); }
     }
 
