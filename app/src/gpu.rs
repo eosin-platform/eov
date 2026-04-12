@@ -7,12 +7,13 @@ use slint::ComponentHandle;
 use slint::wgpu_28::wgpu;
 use slint::{GraphicsAPI, Image, RenderingState};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const MAX_GPU_TILE_TEXTURES: usize = 4096;
+/// Memory budget for the tile texture array (~128 MB).
+const MAX_TILE_ARRAY_BYTES: u64 = 128 * 1024 * 1024;
 
 const SHADER_SOURCE: &str = r#"
 struct VertexInput {
@@ -20,6 +21,9 @@ struct VertexInput {
     @location(1) fine_uv: vec2<f32>,
     @location(2) coarse_uv: vec2<f32>,
     @location(3) mip_blend: f32,
+    @location(4) fine_layer: i32,
+    @location(5) coarse_layer: i32,
+    @location(6) fine_tex_size: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -27,6 +31,8 @@ struct VertexOutput {
     @location(0) fine_uv: vec2<f32>,
     @location(1) coarse_uv: vec2<f32>,
     @location(2) mip_blend: f32,
+    @location(3) @interpolate(flat) fine_layer: i32,
+    @location(4) @interpolate(flat) coarse_layer: i32,
 };
 
 struct Adjustments {
@@ -45,19 +51,18 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.fine_uv = input.fine_uv;
     output.coarse_uv = input.coarse_uv;
     output.mip_blend = input.mip_blend;
+    output.fine_layer = input.fine_layer;
+    output.coarse_layer = input.coarse_layer;
     return output;
 }
 
 @group(0) @binding(0)
-var fine_texture: texture_2d<f32>;
+var tile_array: texture_2d_array<f32>;
 
 @group(0) @binding(1)
-var coarse_texture: texture_2d<f32>;
-
-@group(0) @binding(2)
 var tile_sampler: sampler;
 
-@group(0) @binding(3)
+@group(0) @binding(2)
 var<uniform> adjustments: Adjustments;
 
 fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
@@ -91,46 +96,22 @@ fn apply_adj(color: vec4<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let fine = textureSample(fine_texture, tile_sampler, input.fine_uv);
-    let coarse = textureSample(coarse_texture, tile_sampler, input.coarse_uv);
+    let fine = textureSample(tile_array, tile_sampler, input.fine_uv, input.fine_layer);
+    let coarse = textureSample(tile_array, tile_sampler, input.coarse_uv, input.coarse_layer);
     return apply_adj(apply_stain_norm(mix(fine, coarse, input.mip_blend)));
 }
 "#;
 
-const MIPGEN_SHADER_SOURCE: &str = r#"
-struct MipgenVertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_mipgen(@builtin(vertex_index) vi: u32) -> MipgenVertexOutput {
-    var out: MipgenVertexOutput;
-    let tc = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
-    out.position = vec4<f32>(tc.x * 2.0 - 1.0, 1.0 - tc.y * 2.0, 0.0, 1.0);
-    out.uv = tc;
-    return out;
-}
-
-@group(0) @binding(0)
-var src_texture: texture_2d<f32>;
-
-@group(0) @binding(1)
-var src_sampler: sampler;
-
-@fragment
-fn fs_mipgen(input: MipgenVertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(src_texture, src_sampler, input.uv);
-}
-"#;
-
-/// Lanczos-3 fragment shader: samples a 6x6 kernel from the fine texture
+/// Lanczos-3 fragment shader: samples a 6×6 kernel from the fine texture array layer
 const LANCZOS_SHADER_SOURCE: &str = r#"
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) fine_uv: vec2<f32>,
     @location(2) coarse_uv: vec2<f32>,
     @location(3) mip_blend: f32,
+    @location(4) fine_layer: i32,
+    @location(5) coarse_layer: i32,
+    @location(6) fine_tex_size: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -138,6 +119,9 @@ struct VertexOutput {
     @location(0) fine_uv: vec2<f32>,
     @location(1) coarse_uv: vec2<f32>,
     @location(2) mip_blend: f32,
+    @location(3) @interpolate(flat) fine_layer: i32,
+    @location(4) @interpolate(flat) coarse_layer: i32,
+    @location(5) fine_tex_size: vec2<f32>,
 };
 
 struct Adjustments {
@@ -156,19 +140,19 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.fine_uv = input.fine_uv;
     output.coarse_uv = input.coarse_uv;
     output.mip_blend = input.mip_blend;
+    output.fine_layer = input.fine_layer;
+    output.coarse_layer = input.coarse_layer;
+    output.fine_tex_size = input.fine_tex_size;
     return output;
 }
 
 @group(0) @binding(0)
-var fine_texture: texture_2d<f32>;
+var tile_array: texture_2d_array<f32>;
 
 @group(0) @binding(1)
-var coarse_texture: texture_2d<f32>;
-
-@group(0) @binding(2)
 var tile_sampler: sampler;
 
-@group(0) @binding(3)
+@group(0) @binding(2)
 var<uniform> adjustments: Adjustments;
 
 const PI: f32 = 3.14159265358979323846;
@@ -220,8 +204,9 @@ fn apply_adj(color: vec4<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_size = vec2<f32>(textureDimensions(fine_texture, 0));
-    let uv_pixel = input.fine_uv * tex_size - 0.5;
+    let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
+    let tile_size = input.fine_tex_size;
+    let uv_pixel = input.fine_uv * layer_size - 0.5;
     let center = floor(uv_pixel);
     let fract_part = uv_pixel - center;
 
@@ -231,14 +216,14 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
     for (var j: i32 = -2; j <= 3; j++) {
         for (var i: i32 = -2; i <= 3; i++) {
             let offset = vec2<f32>(f32(i), f32(j));
-            let sample_pos = center + offset;
-            let sample_uv = (sample_pos + 0.5) / tex_size;
+            let sample_pos = clamp(center + offset, vec2<f32>(0.0), tile_size - vec2<f32>(1.0));
+            let sample_uv = (sample_pos + 0.5) / layer_size;
 
             let wx = lanczos_weight(f32(i) - fract_part.x);
             let wy = lanczos_weight(f32(j) - fract_part.y);
             let w = wx * wy;
 
-            let sample = textureSampleLevel(fine_texture, tile_sampler, sample_uv, 0.0);
+            let sample = textureSampleLevel(tile_array, tile_sampler, sample_uv, input.fine_layer, 0.0);
             color += sample * w;
             weight_sum += w;
         }
@@ -251,6 +236,10 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
     return apply_adj(apply_stain_norm(clamp(color, vec4<f32>(0.0), vec4<f32>(1.0))));
 }
 "#;
+
+// ---------------------------------------------------------------------------
+// Rust-side data structures
+// ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 pub struct TileDraw {
@@ -312,13 +301,222 @@ struct ImportedSurface {
     height: u32,
 }
 
-#[derive(Clone)]
-struct TileTexture {
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    mip_levels: u32,
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Vertex {
+    position: [f32; 2],
+    fine_uv: [f32; 2],
+    coarse_uv: [f32; 2],
+    mip_blend: f32,
+    fine_layer: i32,
+    coarse_layer: i32,
+    fine_tex_size: [f32; 2],
+}
+
+// ---------------------------------------------------------------------------
+// Tile texture array — all tiles live in layers of a single 2D-array texture.
+// ---------------------------------------------------------------------------
+
+struct TileSlot {
+    layer: u32,
+    width: u32,
+    height: u32,
     last_used_frame: u64,
 }
+
+/// A 2D-array texture used as a tile atlas.  Every layer has the same
+/// dimensions (`layer_size × layer_size`); tiles smaller than that are
+/// uploaded to the top-left corner and UV coordinates are scaled to the
+/// valid sub-region.
+struct TileArray {
+    texture: wgpu::Texture,
+    #[allow(dead_code)] // Kept alive — referenced by the bind groups.
+    array_view: wgpu::TextureView,
+    layer_size: u32,
+    max_layers: u32,
+    slots: HashMap<TileCoord, TileSlot>,
+    free_list: Vec<u32>,
+    /// Pre-built bind groups — one per sampler variant.
+    bilinear_bind_group: wgpu::BindGroup,
+    trilinear_bind_group: wgpu::BindGroup,
+}
+
+impl TileArray {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        bilinear_sampler: &wgpu::Sampler,
+        trilinear_sampler: &wgpu::Sampler,
+        adjustments_buffer: &wgpu::Buffer,
+        layer_size: u32,
+        max_layers: u32,
+    ) -> Self {
+        // No per-layer mipmaps — inter-level filtering is handled
+        // explicitly via the fine/coarse trilinear blend.  Generating
+        // mipmaps over the full layer_size×layer_size region would
+        // contaminate higher mip levels with stale/uninitialized
+        // padding data because tiles are smaller than the layer.
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("tile-array"),
+            size: wgpu::Extent3d {
+                width: layer_size,
+                height: layer_size,
+                depth_or_array_layers: max_layers,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let array_view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let bilinear_bind_group = Self::create_bind_group(
+            device,
+            layout,
+            &array_view,
+            bilinear_sampler,
+            adjustments_buffer,
+        );
+        let trilinear_bind_group = Self::create_bind_group(
+            device,
+            layout,
+            &array_view,
+            trilinear_sampler,
+            adjustments_buffer,
+        );
+        let free_list = (0..max_layers).rev().collect();
+        Self {
+            texture,
+            array_view,
+            layer_size,
+            max_layers,
+            slots: HashMap::new(),
+            free_list,
+            bilinear_bind_group,
+            trilinear_bind_group,
+        }
+    }
+
+    fn create_bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        array_view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+        adjustments_buffer: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("tile-array-bind-group"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(array_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: adjustments_buffer.as_entire_binding(),
+                },
+            ],
+        })
+    }
+
+    /// Get the layer for a tile, uploading it if necessary.
+    /// Returns `(layer_index, is_new)` or `None` if the array is exhausted.
+    fn get_or_insert(
+        &mut self,
+        queue: &wgpu::Queue,
+        tile: &Arc<TileData>,
+        frame_id: u64,
+    ) -> Option<(u32, bool)> {
+        if let Some(slot) = self.slots.get_mut(&tile.coord) {
+            slot.last_used_frame = frame_id;
+            return Some((slot.layer, false));
+        }
+
+        // Need a free layer — evict LRU if none available.
+        // Protect tiles uploaded this frame so earlier draws' layer
+        // references remain valid.
+        if self.free_list.is_empty() {
+            self.evict_lru(self.max_layers as usize / 4, frame_id);
+        }
+        let layer = self.free_list.pop()?;
+
+        let width = tile.width.min(self.layer_size);
+        let height = tile.height.min(self.layer_size);
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: layer,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &tile.data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(tile.width * 4),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        self.slots.insert(
+            tile.coord,
+            TileSlot {
+                layer,
+                width,
+                height,
+                last_used_frame: frame_id,
+            },
+        );
+
+        Some((layer, true))
+    }
+
+    fn evict_lru(&mut self, count: usize, protect_frame: u64) {
+        let mut entries: Vec<_> = self
+            .slots
+            .iter()
+            .filter(|(_, slot)| slot.last_used_frame != protect_frame)
+            .map(|(coord, slot)| (*coord, slot.layer, slot.last_used_frame))
+            .collect();
+        entries.sort_by_key(|(_, _, frame)| *frame);
+        for (coord, layer, _) in entries.into_iter().take(count) {
+            self.slots.remove(&coord);
+            self.free_list.push(layer);
+        }
+    }
+
+    fn get_layer(&self, coord: &TileCoord) -> Option<u32> {
+        self.slots.get(coord).map(|s| s.layer)
+    }
+
+    fn tile_dimensions(&self, coord: &TileCoord) -> Option<(u32, u32)> {
+        self.slots.get(coord).map(|s| (s.width, s.height))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPU runtime — created once at RenderingSetup, holds long-lived GPU objects.
+// ---------------------------------------------------------------------------
 
 struct GpuRuntime {
     device: wgpu::Device,
@@ -328,38 +526,24 @@ struct GpuRuntime {
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     bilinear_sampler: wgpu::Sampler,
-    mipgen_pipeline: wgpu::RenderPipeline,
-    mipgen_bind_group_layout: wgpu::BindGroupLayout,
-    mipgen_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     adjustments_buffer: wgpu::Buffer,
     surfaces: HashMap<usize, ImportedSurface>,
 }
 
-/// Key for cached bind groups — identifies the (fine tile, coarse tile, sampler) combination.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct BindGroupKey {
-    fine_coord: TileCoord,
-    coarse_coord: TileCoord,
-    bilinear: bool,
-}
+// ---------------------------------------------------------------------------
+// Public renderer — owns the runtime, tile array, and pending frame queue.
+// ---------------------------------------------------------------------------
 
 pub struct GpuRenderer {
     runtime: Option<GpuRuntime>,
     pending_frames: HashMap<usize, QueuedFrame>,
-    tile_textures: HashMap<TileCoord, TileTexture>,
-    bind_group_cache: HashMap<BindGroupKey, wgpu::BindGroup>,
+    /// One `TileArray` per distinct power-of-two layer size (e.g. 256, 512, 1024).
+    /// This avoids forcing all tiles into the largest layer size which would
+    /// waste most of the memory budget and limit the number of available layers.
+    tile_arrays: HashMap<u32, TileArray>,
     frame_counter: u64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 2],
-    fine_uv: [f32; 2],
-    coarse_uv: [f32; 2],
-    mip_blend: f32,
 }
 
 impl GpuRenderer {
@@ -367,8 +551,7 @@ impl GpuRenderer {
         Self {
             runtime: None,
             pending_frames: HashMap::new(),
-            tile_textures: HashMap::new(),
-            bind_group_cache: HashMap::new(),
+            tile_arrays: HashMap::new(),
             frame_counter: 0,
         }
     }
@@ -405,6 +588,10 @@ impl GpuRenderer {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Initialization
+    // -----------------------------------------------------------------------
+
     fn initialize(&mut self, graphics_api: &GraphicsAPI) {
         if self.runtime.is_some() {
             return;
@@ -419,6 +606,10 @@ impl GpuRenderer {
             source: wgpu::ShaderSource::Wgsl(SHADER_SOURCE.into()),
         });
 
+        // Bind group layout — shared by bilinear/trilinear and Lanczos pipelines.
+        // binding 0: tile_array (texture_2d_array)
+        // binding 1: sampler
+        // binding 2: adjustments uniform
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("viewport-tile-bind-group-layout"),
             entries: &[
@@ -427,7 +618,7 @@ impl GpuRenderer {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                     count: None,
@@ -435,21 +626,11 @@ impl GpuRenderer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 3,
+                    binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -492,6 +673,20 @@ impl GpuRenderer {
             immediate_size: 0,
         });
 
+        let vertex_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x2,  // position
+                1 => Float32x2,  // fine_uv
+                2 => Float32x2,  // coarse_uv
+                3 => Float32,    // mip_blend
+                4 => Sint32,     // fine_layer
+                5 => Sint32,     // coarse_layer
+                6 => Float32x2,  // fine_tex_size
+            ],
+        };
+
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("viewport-tile-pipeline"),
             layout: Some(&pipeline_layout),
@@ -499,11 +694,7 @@ impl GpuRenderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32],
-                }],
+                buffers: &[vertex_layout.clone()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -536,7 +727,7 @@ impl GpuRenderer {
             mapped_at_creation: false,
         });
 
-        // Lanczos pipeline: same bind group layout, different fragment shader
+        // Lanczos pipeline — same bind group layout, different fragment shader
         let lanczos_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lanczos-shader"),
             source: wgpu::ShaderSource::Wgsl(LANCZOS_SHADER_SOURCE.into()),
@@ -549,83 +740,11 @@ impl GpuRenderer {
                 module: &lanczos_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x2, 3 => Float32],
-                }],
+                buffers: &[vertex_layout],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &lanczos_shader,
                 entry_point: Some("fs_lanczos"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let mipgen_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mipgen-shader"),
-            source: wgpu::ShaderSource::Wgsl(MIPGEN_SHADER_SOURCE.into()),
-        });
-
-        let mipgen_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("mipgen-bind-group-layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-        let mipgen_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("mipgen-sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let mipgen_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("mipgen-pipeline-layout"),
-                bind_group_layouts: &[&mipgen_bind_group_layout],
-                immediate_size: 0,
-            });
-
-        let mipgen_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mipgen-pipeline"),
-            layout: Some(&mipgen_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &mipgen_shader,
-                entry_point: Some("vs_mipgen"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &mipgen_shader,
-                entry_point: Some("fs_mipgen"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8Unorm,
@@ -648,9 +767,6 @@ impl GpuRenderer {
             bind_group_layout,
             sampler,
             bilinear_sampler,
-            mipgen_pipeline,
-            mipgen_bind_group_layout,
-            mipgen_sampler,
             vertex_buffer,
             vertex_capacity: 6,
             adjustments_buffer,
@@ -661,8 +777,7 @@ impl GpuRenderer {
     fn teardown(&mut self) {
         self.runtime = None;
         self.pending_frames.clear();
-        self.tile_textures.clear();
-        self.bind_group_cache.clear();
+        self.tile_arrays.clear();
     }
 
     fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
@@ -715,6 +830,10 @@ impl GpuRenderer {
             .and_then(|surface| Image::try_from(surface.texture.clone()).ok())
     }
 
+    // -----------------------------------------------------------------------
+    // Per-frame dispatch
+    // -----------------------------------------------------------------------
+
     fn flush_pending_frames(&mut self) {
         let Some(runtime) = self.runtime.as_mut() else {
             return;
@@ -724,46 +843,27 @@ impl GpuRenderer {
         let frame_id = self.frame_counter;
 
         let pending_frames = std::mem::take(&mut self.pending_frames);
+
         for (slot_index, frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
                 Self::render_frame(
                     runtime,
-                    &mut self.tile_textures,
-                    &mut self.bind_group_cache,
+                    &mut self.tile_arrays,
                     SurfaceSlot(slot_index),
                     frame,
                     frame_id,
                 );
             }
         }
-
-        if self.tile_textures.len() > MAX_GPU_TILE_TEXTURES {
-            let mut entries: Vec<_> = self
-                .tile_textures
-                .iter()
-                .map(|(coord, tex)| (*coord, tex.last_used_frame))
-                .collect();
-            entries.sort_by_key(|(_, last_used_frame)| *last_used_frame);
-            let remove_count = self.tile_textures.len() - MAX_GPU_TILE_TEXTURES;
-            let evicted: HashSet<TileCoord> = entries
-                .into_iter()
-                .take(remove_count)
-                .map(|(coord, _)| coord)
-                .collect();
-            for coord in &evicted {
-                self.tile_textures.remove(coord);
-            }
-            // Purge bind groups that reference evicted tile textures
-            self.bind_group_cache.retain(|key, _| {
-                !evicted.contains(&key.fine_coord) && !evicted.contains(&key.coarse_coord)
-            });
-        }
     }
+
+    // -----------------------------------------------------------------------
+    // Core render path — one draw call per tile-array batch per surface.
+    // -----------------------------------------------------------------------
 
     fn render_frame(
         runtime: &mut GpuRuntime,
-        tile_textures: &mut HashMap<TileCoord, TileTexture>,
-        bind_group_cache: &mut HashMap<BindGroupKey, wgpu::BindGroup>,
+        tile_arrays: &mut HashMap<u32, TileArray>,
         slot: SurfaceSlot,
         frame: QueuedFrame,
         frame_id: u64,
@@ -776,20 +876,84 @@ impl GpuRenderer {
             return;
         };
 
-        // Phase 1: Ensure all tile textures exist, collecting newly created ones
-        let mut needs_mipgen: Vec<TileCoord> = Vec::new();
+        // Phase 1 & 2: Upload tiles and build vertices, tracking which array
+        // each draw belongs to so we can switch bind groups during the pass.
+        struct DrawBatch {
+            array_ls: u32,
+            vertices: [Vertex; 6],
+        }
+        let mut batches: Vec<DrawBatch> = Vec::with_capacity(frame.draws.len());
+
         for draw in &frame.draws {
-            if ensure_tile_texture(runtime, tile_textures, &draw.tile, frame_id) {
-                needs_mipgen.push(draw.tile.coord);
-            }
-            if let Some(coarse) = &draw.coarse_tile
-                && ensure_tile_texture(runtime, tile_textures, coarse, frame_id)
-            {
-                needs_mipgen.push(coarse.coord);
-            }
+            // Both fine and coarse tiles for a single draw must live in the
+            // same texture array (the shader samples both from one binding).
+            // Use the larger of the two dimensions as the array key.
+            let fine_dim = draw.tile.width.max(draw.tile.height);
+            let coarse_dim = draw
+                .coarse_tile
+                .as_ref()
+                .map(|t| t.width.max(t.height))
+                .unwrap_or(0);
+            let array_ls = fine_dim.max(coarse_dim).next_power_of_two().max(64);
+
+            // Lazily create the array for this layer size.
+            let array = tile_arrays.entry(array_ls).or_insert_with(|| {
+                let bytes_per_layer = array_ls as u64 * array_ls as u64 * 4;
+                let max_layers =
+                    (MAX_TILE_ARRAY_BYTES / bytes_per_layer).clamp(16, 256) as u32;
+                TileArray::new(
+                    &runtime.device,
+                    &runtime.bind_group_layout,
+                    &runtime.bilinear_sampler,
+                    &runtime.sampler,
+                    &runtime.adjustments_buffer,
+                    array_ls,
+                    max_layers,
+                )
+            });
+
+            // Upload tiles.
+            let Some((fine_layer, _)) =
+                array.get_or_insert(&runtime.queue, &draw.tile, frame_id)
+            else {
+                continue;
+            };
+            let coarse_layer = draw
+                .coarse_tile
+                .as_ref()
+                .and_then(|t| array.get_or_insert(&runtime.queue, t, frame_id))
+                .map(|(l, _)| l)
+                .unwrap_or(fine_layer);
+
+            let (fine_w, fine_h) = array
+                .tile_dimensions(&draw.tile.coord)
+                .unwrap_or((array_ls, array_ls));
+            let (coarse_w, coarse_h) = draw
+                .coarse_tile
+                .as_ref()
+                .and_then(|t| array.tile_dimensions(&t.coord))
+                .unwrap_or((array_ls, array_ls));
+
+            batches.push(DrawBatch {
+                array_ls,
+                vertices: quad_vertices(
+                    draw,
+                    frame.width,
+                    frame.height,
+                    fine_layer as i32,
+                    coarse_layer as i32,
+                    fine_w,
+                    fine_h,
+                    coarse_w,
+                    coarse_h,
+                    array_ls,
+                ),
+            });
         }
 
-        let vertex_count = frame.draws.len().max(1) * 6;
+        // Phase 3: Write all vertices into one buffer.
+        let total_verts = batches.len() * 6;
+        let vertex_count = total_verts.max(6);
         if runtime.vertex_capacity < vertex_count {
             runtime.vertex_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("viewport-tile-vertex-buffer"),
@@ -800,18 +964,17 @@ impl GpuRenderer {
             runtime.vertex_capacity = vertex_count;
         }
 
-        let mut vertices = Vec::with_capacity(frame.draws.len() * 6);
-        for draw in &frame.draws {
-            vertices.extend_from_slice(&quad_vertices(draw, frame.width, frame.height));
-        }
-
-        if !vertices.is_empty() {
+        if total_verts > 0 {
+            let flat: Vec<Vertex> = batches
+                .iter()
+                .flat_map(|b| b.vertices.iter().copied())
+                .collect();
             runtime
                 .queue
-                .write_buffer(&runtime.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+                .write_buffer(&runtime.vertex_buffer, 0, bytemuck::cast_slice(&flat));
         }
 
-        // Upload adjustments uniform
+        // Upload adjustments uniform.
         let adj = AdjustmentsUniform {
             gamma: frame.gamma,
             brightness: frame.brightness,
@@ -824,28 +987,22 @@ impl GpuRenderer {
             .queue
             .write_buffer(&runtime.adjustments_buffer, 0, bytemuck::bytes_of(&adj));
 
-        let mut encoder = runtime
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("viewport-tile-encoder"),
-            });
-
-        // Phase 2: Generate mipmaps for newly created tile textures (async on GPU)
-        for coord in &needs_mipgen {
-            if let Some(tile_tex) = tile_textures.get(coord)
-                && tile_tex.mip_levels > 1
-            {
-                generate_mipmaps(
-                    &mut encoder,
-                    runtime,
-                    &tile_tex.texture,
-                    tile_tex.mip_levels,
-                );
+        // Build draw ranges — batch consecutive quads that share the same
+        // array so we can issue one `draw()` per contiguous run.
+        let mut draw_ranges: Vec<(u32, std::ops::Range<u32>)> = Vec::new();
+        for (i, b) in batches.iter().enumerate() {
+            let start = (i * 6) as u32;
+            let end = start + 6;
+            if let Some(last) = draw_ranges.last_mut() {
+                if last.0 == b.array_ls {
+                    last.1.end = end;
+                    continue;
+                }
             }
+            draw_ranges.push((b.array_ls, start..end));
         }
 
-        // Phase 3: Main render pass (executes after mipmap generation on GPU)
-        // Determine filtering mode from the first draw (all draws share the same mode)
+        // Phase 4: Render pass — switch bind group per array batch.
         let filtering_mode = frame
             .draws
             .first()
@@ -853,11 +1010,13 @@ impl GpuRenderer {
             .unwrap_or(FilteringMode::Bilinear);
         let use_lanczos = matches!(filtering_mode, FilteringMode::Lanczos3);
         let is_bilinear = filtering_mode == FilteringMode::Bilinear;
-        let active_sampler = if is_bilinear {
-            &runtime.bilinear_sampler
-        } else {
-            &runtime.sampler
-        };
+
+        let mut encoder = runtime
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("viewport-tile-encoder"),
+            });
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-tile-pass"),
@@ -888,58 +1047,16 @@ impl GpuRenderer {
             }
             render_pass.set_vertex_buffer(0, runtime.vertex_buffer.slice(..));
 
-            for (index, draw) in frame.draws.iter().enumerate() {
-                let fine_coord = draw.tile.coord;
-                let coarse_coord = draw
-                    .coarse_tile
-                    .as_ref()
-                    .map(|t| t.coord)
-                    .unwrap_or(fine_coord);
-
-                if !tile_textures.contains_key(&fine_coord) {
-                    continue;
+            for (ls, range) in &draw_ranges {
+                if let Some(array) = tile_arrays.get(ls) {
+                    let bg = if is_bilinear {
+                        &array.bilinear_bind_group
+                    } else {
+                        &array.trilinear_bind_group
+                    };
+                    render_pass.set_bind_group(0, bg, &[]);
+                    render_pass.draw(range.clone(), 0..1);
                 }
-
-                let cache_key = BindGroupKey {
-                    fine_coord,
-                    coarse_coord,
-                    bilinear: is_bilinear,
-                };
-
-                let bind_group = bind_group_cache.entry(cache_key).or_insert_with(|| {
-                    let fine_view = &tile_textures[&fine_coord].view;
-                    let coarse_view = tile_textures
-                        .get(&coarse_coord)
-                        .map(|t| &t.view)
-                        .unwrap_or(fine_view);
-                    runtime
-                        .device
-                        .create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("viewport-tile-bind-group"),
-                            layout: &runtime.bind_group_layout,
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(fine_view),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::TextureView(coarse_view),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 2,
-                                    resource: wgpu::BindingResource::Sampler(active_sampler),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 3,
-                                    resource: runtime.adjustments_buffer.as_entire_binding(),
-                                },
-                            ],
-                        })
-                });
-                render_pass.set_bind_group(0, &*bind_group, &[]);
-                let start = (index * 6) as u32;
-                render_pass.draw(start..start + 6, 0..1);
             }
         }
 
@@ -947,186 +1064,115 @@ impl GpuRenderer {
     }
 }
 
-fn mip_level_count(width: u32, height: u32) -> u32 {
-    (width.max(height).max(1) as f32).log2().floor() as u32 + 1
-}
+// ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
 
-/// Ensure a tile texture exists. Returns `true` if the texture was newly created
-/// and needs mipmap generation.
-fn ensure_tile_texture(
-    runtime: &GpuRuntime,
-    tile_textures: &mut HashMap<TileCoord, TileTexture>,
-    tile: &Arc<TileData>,
-    frame_id: u64,
-) -> bool {
-    let mut is_new = false;
-    let entry = tile_textures.entry(tile.coord).or_insert_with(|| {
-        is_new = true;
-        let width = tile.width.max(1);
-        let height = tile.height.max(1);
-        let mip_levels = mip_level_count(width, height);
-
-        let texture = runtime.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("viewport-tile-texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: mip_levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-
-        runtime.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &tile.data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: None,
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        TileTexture {
-            texture,
-            view,
-            mip_levels,
-            last_used_frame: frame_id,
-        }
-    });
-
-    entry.last_used_frame = frame_id;
-    is_new
-}
-
-fn generate_mipmaps(
-    encoder: &mut wgpu::CommandEncoder,
-    runtime: &GpuRuntime,
-    texture: &wgpu::Texture,
-    mip_levels: u32,
-) {
-    for level in 1..mip_levels {
-        let src_view = texture.create_view(&wgpu::TextureViewDescriptor {
-            base_mip_level: level - 1,
-            mip_level_count: Some(1),
-            ..Default::default()
-        });
-        let dst_view = texture.create_view(&wgpu::TextureViewDescriptor {
-            base_mip_level: level,
-            mip_level_count: Some(1),
-            ..Default::default()
-        });
-
-        let bind_group = runtime
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("mipgen-bind-group"),
-                layout: &runtime.mipgen_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&src_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&runtime.mipgen_sampler),
-                    },
-                ],
-            });
-
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("mipgen-pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &dst_view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-            multiview_mask: None,
-        });
-
-        pass.set_pipeline(&runtime.mipgen_pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.draw(0..3, 0..1);
-    }
-}
-
-fn quad_vertices(draw: &TileDraw, width: u32, height: u32) -> [Vertex; 6] {
-    let width = width.max(1) as f32;
-    let height = height.max(1) as f32;
+/// Build the 6 vertices (2 triangles) for a single tile quad.
+fn quad_vertices(
+    draw: &TileDraw,
+    viewport_width: u32,
+    viewport_height: u32,
+    fine_layer: i32,
+    coarse_layer: i32,
+    fine_w: u32,
+    fine_h: u32,
+    coarse_w: u32,
+    coarse_h: u32,
+    layer_size: u32,
+) -> [Vertex; 6] {
+    let vw = viewport_width.max(1) as f32;
+    let vh = viewport_height.max(1) as f32;
     let x0 = draw.screen_x as f32;
     let y0 = draw.screen_y as f32;
     let x1 = (draw.screen_x + draw.screen_w) as f32;
     let y1 = (draw.screen_y + draw.screen_h) as f32;
 
-    let left = x0 / width * 2.0 - 1.0;
-    let right = x1 / width * 2.0 - 1.0;
-    let top = 1.0 - y0 / height * 2.0;
-    let bottom = 1.0 - y1 / height * 2.0;
-    let coarse_min = draw.coarse_uv_min;
-    let coarse_max = draw.coarse_uv_max;
+    let left = x0 / vw * 2.0 - 1.0;
+    let right = x1 / vw * 2.0 - 1.0;
+    let top = 1.0 - y0 / vh * 2.0;
+    let bottom = 1.0 - y1 / vh * 2.0;
+
+    // Fine UV: map tile-space to array-space, inset by half a texel so the
+    // bilinear filter never samples beyond the tile's valid pixels into the
+    // stale padding region of the layer.
+    let ls = layer_size as f32;
+    let half = 0.5 / ls;
+    let fu_min = half;
+    let fv_min = half;
+    let fu_max = (fine_w as f32 - 0.5) / ls;
+    let fv_max = (fine_h as f32 - 0.5) / ls;
+
+    // Coarse UV: the draw's coarse_uv_min/max are in [0,1] of the coarse tile;
+    // scale them to array-space the same way.
+    let cu_scale = coarse_w as f32 / ls;
+    let cv_scale = coarse_h as f32 / ls;
+    let coarse_min = [
+        draw.coarse_uv_min[0] * cu_scale,
+        draw.coarse_uv_min[1] * cv_scale,
+    ];
+    let coarse_max = [
+        draw.coarse_uv_max[0] * cu_scale,
+        draw.coarse_uv_max[1] * cv_scale,
+    ];
+
     let mip_blend = draw.mip_blend;
+    let fine_tex_size = [fine_w as f32, fine_h as f32];
 
     [
         Vertex {
             position: [left, top],
-            fine_uv: [0.0, 0.0],
+            fine_uv: [fu_min, fv_min],
             coarse_uv: [coarse_min[0], coarse_min[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
         Vertex {
             position: [right, top],
-            fine_uv: [1.0, 0.0],
+            fine_uv: [fu_max, fv_min],
             coarse_uv: [coarse_max[0], coarse_min[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
         Vertex {
             position: [left, bottom],
-            fine_uv: [0.0, 1.0],
+            fine_uv: [fu_min, fv_max],
             coarse_uv: [coarse_min[0], coarse_max[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
         Vertex {
             position: [left, bottom],
-            fine_uv: [0.0, 1.0],
+            fine_uv: [fu_min, fv_max],
             coarse_uv: [coarse_min[0], coarse_max[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
         Vertex {
             position: [right, top],
-            fine_uv: [1.0, 0.0],
+            fine_uv: [fu_max, fv_min],
             coarse_uv: [coarse_max[0], coarse_min[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
         Vertex {
             position: [right, bottom],
-            fine_uv: [1.0, 1.0],
+            fine_uv: [fu_max, fv_max],
             coarse_uv: [coarse_max[0], coarse_max[1]],
             mip_blend,
+            fine_layer,
+            coarse_layer,
+            fine_tex_size,
         },
     ]
 }
