@@ -69,6 +69,7 @@ export component Minimap inherits Rectangle {
 
 export component ZoomSlider inherits Rectangle {
     in property <float> value: 0.5;
+    in property <float> zoom-level: 1.0;
     callback value-changed(float);
 
     width: 20px;
@@ -83,6 +84,7 @@ export component ZoomSlider inherits Rectangle {
     property <length> track-bottom: 22px;
     property <length> track-height: self.height - root.track-top - root.track-bottom;
     property <length> handle-size: 10px;
+    property <bool> hovered: plus-touch.has-hover || minus-touch.has-hover || slider-touch.has-hover;
 
     Rectangle {
         y: 0px;
@@ -152,6 +154,28 @@ export component ZoomSlider inherits Rectangle {
             font-size: 14px;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    // Tooltip showing magnification level
+    if root.hovered: Rectangle {
+        x: -self.width - 6px;
+        y: (root.height - self.height) / 2;
+        width: zoom-tooltip-text.preferred-width + 12px;
+        height: zoom-tooltip-text.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        zoom-tooltip-text := Text {
+            x: 6px;
+            y: 3px;
+            text: root.zoom-level >= 1.0
+                ? Math.round(root.zoom-level * 100) + "%"
+                : Math.round(root.zoom-level * 1000) / 10 + "%";
+            color: white;
+            font-size: 11px;
         }
     }
 }
@@ -594,6 +618,7 @@ export component Viewport inherits Rectangle {
         x: parent.width - 16px - 150px - self.width - 8px;
         y: parent.height - self.height - 16px;
         value: root.zoom-slider-position;
+        zoom-level: root.viewport-info.zoom;
         value-changed(value) => { root.zoom-slider-changed(value); }
     }
 
