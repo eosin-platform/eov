@@ -984,9 +984,17 @@ impl AppState {
         self.current_fps = self.frame_times.len() as f32;
     }
 
-    /// Add a new open file
+    /// Allocate the next file identifier without registering a file.
+    pub fn allocate_file_id(&mut self) -> i32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    /// Add a new open file with a pre-allocated identifier.
     pub fn add_file(
         &mut self,
+        id: i32,
         path: PathBuf,
         wsi: WsiFile,
         tile_manager: Arc<TileManager>,
@@ -996,9 +1004,6 @@ impl AppState {
     ) -> i32 {
         // Add to recent files
         self.add_to_recent(&path);
-
-        let id = self.next_id;
-        self.next_id += 1;
 
         let filename = path
             .file_name()

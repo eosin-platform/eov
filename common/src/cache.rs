@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn test_cache_basic_operations() {
         let cache = TileCache::new();
-        let coord = TileCoord::new(0, 0, 0, 256);
+        let coord = TileCoord::new(0, 0, 0, 0, 256);
         let tile = TileData::placeholder(coord, 256);
 
         // Insert and retrieve
@@ -438,9 +438,9 @@ mod tests {
         let tile_size = 256 * 256 * 4; // ~256KB per tile
         let cache = TileCache::with_limits(2, tile_size * 2 + 1);
 
-        let tile1 = TileData::placeholder(TileCoord::new(0, 0, 0, 256), 256);
-        let tile2 = TileData::placeholder(TileCoord::new(0, 1, 0, 256), 256);
-        let tile3 = TileData::placeholder(TileCoord::new(0, 2, 0, 256), 256);
+        let tile1 = TileData::placeholder(TileCoord::new(0, 0, 0, 0, 256), 256);
+        let tile2 = TileData::placeholder(TileCoord::new(0, 0, 1, 0, 256), 256);
+        let tile3 = TileData::placeholder(TileCoord::new(0, 0, 2, 0, 256), 256);
 
         cache.insert(tile1);
         cache.insert(tile2);
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn test_cache_stats() {
         let cache = TileCache::new();
-        let coord = TileCoord::new(0, 0, 0, 256);
+        let coord = TileCoord::new(0, 0, 0, 0, 256);
 
         // Miss
         cache.get(&coord);

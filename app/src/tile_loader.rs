@@ -61,6 +61,7 @@ impl TileLoader {
             let request_rx = request_rx.clone();
             let tile_manager = Arc::clone(&tile_manager);
             let worker_path = tile_manager.wsi().properties().path.clone();
+            let worker_file_id = tile_manager.file_id();
             let cache = Arc::clone(&cache);
             let failed = Arc::clone(&failed);
             let generation = Arc::clone(&generation);
@@ -71,7 +72,7 @@ impl TileLoader {
 
             let handle = thread::spawn(move || {
                 let tile_manager = match WsiFile::open(&worker_path) {
-                    Ok(worker_wsi) => Arc::new(TileManager::new(worker_wsi)),
+                    Ok(worker_wsi) => Arc::new(TileManager::new(worker_wsi, worker_file_id)),
                     Err(_) => tile_manager,
                 };
 
@@ -274,6 +275,7 @@ pub fn find_fallback_tile(
         let fallback_y = (target_image_y / fallback_tile_image_size).floor() as u64;
 
         let fallback_coord = TileCoord::new(
+            target.file_id,
             fallback_level,
             fallback_x,
             fallback_y,

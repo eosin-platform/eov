@@ -12,6 +12,8 @@ use tracing::trace;
 /// Tile coordinate identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TileCoord {
+    /// File identifier (distinguishes tiles from different open files)
+    pub file_id: i32,
     /// Level index
     pub level: u32,
     /// X tile index
@@ -23,8 +25,9 @@ pub struct TileCoord {
 }
 
 impl TileCoord {
-    pub fn new(level: u32, x: u64, y: u64, tile_size: u32) -> Self {
+    pub fn new(file_id: i32, level: u32, x: u64, y: u64, tile_size: u32) -> Self {
         Self {
+            file_id,
             level,
             x,
             y,
@@ -105,6 +108,8 @@ pub struct TileRequest {
 pub struct TileManager {
     /// WSI file reference
     wsi: WsiFile,
+    /// File identifier (propagated into every TileCoord this manager creates)
+    file_id: i32,
     /// Tile size
     tile_size: u32,
     /// Request sender channel
@@ -117,14 +122,20 @@ pub struct TileManager {
 
 impl TileManager {
     /// Create a new tile manager for the given WSI file
-    pub fn new(wsi: WsiFile) -> Self {
+    pub fn new(wsi: WsiFile, file_id: i32) -> Self {
         let tile_size = wsi.tile_size();
         Self {
             wsi,
+            file_id,
             tile_size,
             request_tx: None,
             response_rx: None,
         }
+    }
+
+    /// Get the file identifier
+    pub fn file_id(&self) -> i32 {
+        self.file_id
     }
 
     /// Get the tile size
@@ -251,7 +262,7 @@ impl TileManager {
 
         for y in start_tile_y..end_tile_y {
             for x in start_tile_x..end_tile_x {
-                tiles.push(TileCoord::new(level, x, y, tile_size as u32));
+                tiles.push(TileCoord::new(self.file_id, level, x, y, tile_size as u32));
                 if tiles.len() >= max_tiles {
                     return tiles;
                 }
@@ -284,7 +295,7 @@ impl TileManager {
                 let parent_span = parent_tile_size as f64 * parent_level_info.downsample;
                 let parent_x = (image_x / parent_span).floor() as u64;
                 let parent_y = (image_y / parent_span).floor() as u64;
-                let coord = TileCoord::new(level + 1, parent_x, parent_y, parent_tile_size);
+                let coord = TileCoord::new(self.file_id, level + 1, parent_x, parent_y, parent_tile_size);
                 if !prefetch.contains(&coord) {
                     prefetch.push(coord);
                 }
@@ -315,7 +326,7 @@ impl TileManager {
 
                 for child_y in start_y..end_y {
                     for child_x in start_x..end_x {
-                        let coord = TileCoord::new(child_level, child_x, child_y, child_tile_size);
+                        let coord = TileCoord::new(self.file_id, child_level, child_x, child_y, child_tile_size);
                         if !prefetch.contains(&coord) {
                             prefetch.push(coord);
                         }
@@ -342,9 +353,9 @@ mod tests {
 
     #[test]
     fn test_tile_coord_equality() {
-        let a = TileCoord::new(0, 1, 2, 256);
-        let b = TileCoord::new(0, 1, 2, 256);
-        let c = TileCoord::new(0, 1, 3, 256);
+        let a = TileCoord::new(0, 0, 1, 2, 256);
+        let b = TileCoord::new(0, 0, 1, 2, 256);
+        let c = TileCoord::new(0, 0, 1, 3, 256);
 
         assert_eq!(a, b);
         assert_ne!(a, c);
@@ -352,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_placeholder_tile() {
-        let coord = TileCoord::new(0, 0, 0, 256);
+        let coord = TileCoord::new(0, 0, 0, 0, 256);
         let tile = TileData::placeholder(coord, 256);
 
         assert_eq!(tile.width, 256);
@@ -368,9 +379,9 @@ mod tests {
         }
 
         let wsi = WsiFile::open(&path).expect("Failed to open WSI file");
-        let manager = TileManager::new(wsi);
+        let manager = TileManager::new(wsi, 0);
 
-        let coord = TileCoord::new(0, 0, 0, 256);
+        let coord = TileCoord::new(0, 0, 0, 0, 256);
         let tile = manager.load_tile_sync(coord).expect("Failed to load tile");
 
         assert!(tile.width > 0);
@@ -386,7 +397,7 @@ mod tests {
         }
 
         let wsi = WsiFile::open(&path).expect("Failed to open WSI file");
-        let manager = TileManager::new(wsi);
+        let manager = TileManager::new(wsi, 0);
 
         // Get tiles visible in a 1024x768 viewport at level 0, origin
         let tiles = manager.visible_tiles(0, 0.0, 0.0, 1024.0, 768.0);

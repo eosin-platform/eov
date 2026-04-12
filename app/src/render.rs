@@ -197,6 +197,7 @@ pub fn visible_tile_range(
     level: u32,
     wsi: &WsiFile,
     tile_size: u32,
+    file_id: i32,
 ) -> Option<TileRange> {
     let level_info = wsi.level(level)?;
     let bounds = viewport.bounds();
@@ -215,6 +216,7 @@ pub fn visible_tile_range(
     let end_y = ((level_bottom / ts).ceil() as u64 + 1).min(level_info.tiles_y(tile_size));
 
     Some(TileRange {
+        file_id,
         level,
         start_x,
         start_y,
@@ -227,6 +229,7 @@ pub fn visible_tile_range(
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TileRange {
+    pub file_id: i32,
     pub level: u32,
     pub start_x: u64,
     pub start_y: u64,
@@ -239,8 +242,10 @@ impl TileRange {
     /// Iterate over all tile coordinates in this range
     pub fn iter(&self) -> impl Iterator<Item = TileCoord> + '_ {
         let tile_size = 256;
+        let file_id = self.file_id;
         (self.start_y..self.end_y).flat_map(move |y| {
-            (self.start_x..self.end_x).map(move |x| TileCoord::new(self.level, x, y, tile_size))
+            (self.start_x..self.end_x)
+                .map(move |x| TileCoord::new(file_id, self.level, x, y, tile_size))
         })
     }
 
@@ -1128,6 +1133,7 @@ fn coarse_blend_for_tile(
     }
 
     let coarse_coord = common::TileCoord::new(
+        fine_coord.file_id,
         trilinear.level_coarse,
         coarse_start_tile_x,
         coarse_start_tile_y,

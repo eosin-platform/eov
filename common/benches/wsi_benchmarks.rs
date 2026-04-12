@@ -51,7 +51,7 @@ fn bench_read_tiles(c: &mut Criterion) {
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
     let manager =
-        TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"));
+        TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"), 0);
 
     let mut group = c.benchmark_group("tile_read");
     group.throughput(Throughput::Elements(1));
@@ -69,7 +69,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
                         .unwrap()
                 })
             },
@@ -84,7 +84,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
                         .unwrap()
                 })
             },
@@ -97,7 +97,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
                         .unwrap()
                 })
             },
@@ -116,7 +116,7 @@ fn bench_batch_tiles(c: &mut Criterion) {
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
     let manager =
-        TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"));
+        TileManager::new(WsiFile::open(&svs_path).expect("Failed to open second SVS handle"), 0);
 
     let mut group = c.benchmark_group("batch_tiles");
 
@@ -151,19 +151,19 @@ fn bench_cache(c: &mut Criterion) {
 
     // Pre-populate cache
     for i in 0..100u64 {
-        let tile = common::TileData::placeholder(TileCoord::new(0, i, 0, 256), 256);
+        let tile = common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
         cache.insert(tile);
     }
 
     // Benchmark cache hit
     group.bench_function("cache_hit", |b| {
-        let coord = TileCoord::new(0, 50, 0, 256);
+        let coord = TileCoord::new(0, 0, 50, 0, 256);
         b.iter(|| cache.get(black_box(&coord)))
     });
 
     // Benchmark cache miss
     group.bench_function("cache_miss", |b| {
-        let coord = TileCoord::new(0, 9999, 9999, 256);
+        let coord = TileCoord::new(0, 0, 9999, 9999, 256);
         b.iter(|| cache.get(black_box(&coord)))
     });
 
@@ -171,7 +171,7 @@ fn bench_cache(c: &mut Criterion) {
     group.bench_function("cache_insert", |b| {
         let mut i = 1000u64;
         b.iter(|| {
-            let tile = common::TileData::placeholder(TileCoord::new(0, i, 0, 256), 256);
+            let tile = common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
             cache.insert(tile);
             i += 1;
         })
@@ -221,7 +221,7 @@ fn bench_visible_tiles(c: &mut Criterion) {
     }
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
-    let manager = TileManager::new(wsi);
+    let manager = TileManager::new(wsi, 0);
 
     let mut group = c.benchmark_group("visible_tiles");
 

@@ -34,6 +34,10 @@ pub fn open_file(
             let id = {
                 let mut state_guard = state.write();
 
+                // Allocate the file ID up front so TileManager can tag its
+                // TileCoords, ensuring CPU and GPU tile caches are per-file.
+                let file_id = state_guard.allocate_file_id();
+
                 let target_pane = if state_guard.split_enabled {
                     state_guard.focused_pane
                 } else {
@@ -73,7 +77,7 @@ pub fn open_file(
                         return;
                     }
                 };
-                let tile_manager = Arc::new(TileManager::new(tile_manager_wsi));
+                let tile_manager = Arc::new(TileManager::new(tile_manager_wsi, file_id));
 
                 // Create background tile loader (tiles are loaded on-demand)
                 let tile_loader =
@@ -99,6 +103,7 @@ pub fn open_file(
                 let thumbnail = generate_thumbnail(&wsi, 150);
 
                 let opened_file_id = state_guard.add_file(
+                    file_id,
                     path.clone(),
                     wsi,
                     tile_manager,
