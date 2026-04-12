@@ -196,7 +196,6 @@ fn stain_mat_to_col_major(sm: &[[f32; 3]; 2]) -> [[f32; 2]; 3] {
 /// Estimate stain matrix using the Macenko method (SVD/PCA + angular extremes).
 /// Returns a 2×3 matrix [stain][channel] in OD space, unit-normalized rows.
 /// Row 0 = Hematoxylin, Row 1 = Eosin.
-#[allow(clippy::needless_range_loop)]
 fn macenko_extract(od_pixels: &[[f32; 3]]) -> Option<[[f32; 3]; 2]> {
     if od_pixels.len() < MIN_TISSUE_PIXELS {
         return None;
@@ -218,20 +217,23 @@ fn macenko_extract(od_pixels: &[[f32; 3]]) -> Option<[[f32; 3]; 2]> {
     let mut cov = [[0.0f32; 3]; 3];
     for p in od_pixels {
         let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
-        for i in 0..3 {
-            for j in i..3 {
-                cov[i][j] += d[i] * d[j];
-            }
-        }
+        cov[0][0] += d[0] * d[0];
+        cov[0][1] += d[0] * d[1];
+        cov[0][2] += d[0] * d[2];
+        cov[1][1] += d[1] * d[1];
+        cov[1][2] += d[1] * d[2];
+        cov[2][2] += d[2] * d[2];
     }
-    for i in 0..3 {
-        for j in i..3 {
-            cov[i][j] /= n - 1.0;
-            if j > i {
-                cov[j][i] = cov[i][j];
-            }
-        }
-    }
+    let scale = n - 1.0;
+    cov[0][0] /= scale;
+    cov[0][1] /= scale;
+    cov[0][2] /= scale;
+    cov[1][1] /= scale;
+    cov[1][2] /= scale;
+    cov[2][2] /= scale;
+    cov[1][0] = cov[0][1];
+    cov[2][0] = cov[0][2];
+    cov[2][1] = cov[1][2];
 
     // Top 2 eigenvectors via power iteration + deflation
     let (e1, e2) = top_two_eigenvectors(&cov);
@@ -315,7 +317,6 @@ fn macenko_extract(od_pixels: &[[f32; 3]]) -> Option<[[f32; 3]; 2]> {
 /// **Key difference from Macenko**: The stain basis is found via data-driven
 /// sparse decomposition rather than geometric PCA projection. This preserves
 /// local structure and gives a physically-motivated stain separation.
-#[allow(clippy::needless_range_loop)]
 fn vahadane_extract(od_pixels: &[[f32; 3]], regularizer: f32) -> Option<[[f32; 3]; 2]> {
     if od_pixels.len() < MIN_TISSUE_PIXELS {
         return None;
@@ -382,12 +383,16 @@ fn vahadane_extract(od_pixels: &[[f32; 3]], regularizer: f32) -> Option<[[f32; 3
         // This is a non-negative LASSO (L1-regularized NNLS).
 
         // Precompute W W^T (2×2) and W for projection
-        let mut ww = [[0.0f32; 2]; 2];
-        for i in 0..2 {
-            for j in 0..2 {
-                ww[i][j] = w[i][0] * w[j][0] + w[i][1] * w[j][1] + w[i][2] * w[j][2];
-            }
-        }
+        let ww = [
+            [
+                w[0][0] * w[0][0] + w[0][1] * w[0][1] + w[0][2] * w[0][2],
+                w[0][0] * w[1][0] + w[0][1] * w[1][1] + w[0][2] * w[1][2],
+            ],
+            [
+                w[1][0] * w[0][0] + w[1][1] * w[0][1] + w[1][2] * w[0][2],
+                w[1][0] * w[1][0] + w[1][1] * w[1][1] + w[1][2] * w[1][2],
+            ],
+        ];
 
         // Solve H via coordinate descent LASSO with non-negativity
         let mut h_all: Vec<[f32; 2]> = Vec::with_capacity(n);
@@ -400,14 +405,10 @@ fn vahadane_extract(od_pixels: &[[f32; 3]], regularizer: f32) -> Option<[[f32; 3
             let mut h = [0.0f32; 2];
             // Coordinate descent iterations
             for _ in 0..20 {
-                for k in 0..2 {
-                    // Residual correlation for coordinate k
-                    let other = 1 - k;
-                    let r_k = wv[k] - ww[k][other] * h[other];
-                    // Soft-thresholding with non-negativity
-                    let denom = ww[k][k].max(1e-10);
-                    h[k] = ((r_k - regularizer) / denom).max(0.0);
-                }
+                let r0 = wv[0] - ww[0][1] * h[1];
+                h[0] = ((r0 - regularizer) / ww[0][0].max(1e-10)).max(0.0);
+                let r1 = wv[1] - ww[1][0] * h[0];
+                h[1] = ((r1 - regularizer) / ww[1][1].max(1e-10)).max(0.0);
             }
             h_all.push(h);
         }
@@ -436,18 +437,22 @@ fn vahadane_extract(od_pixels: &[[f32; 3]], regularizer: f32) -> Option<[[f32; 3
 
         // H^T V (2×3)
         let mut htv = [[0.0f32; 3]; 2];
-        for (i, h) in h_all.iter().enumerate() {
-            for c in 0..3 {
-                htv[0][c] += h[0] * sampled[i][c];
-                htv[1][c] += h[1] * sampled[i][c];
-            }
+        for (sample, h) in sampled.iter().zip(&h_all) {
+            htv[0][0] += h[0] * sample[0];
+            htv[0][1] += h[0] * sample[1];
+            htv[0][2] += h[0] * sample[2];
+            htv[1][0] += h[1] * sample[0];
+            htv[1][1] += h[1] * sample[1];
+            htv[1][2] += h[1] * sample[2];
         }
 
         // W = (H^T H)^{-1} H^T V, clamped non-negative
-        for c in 0..3 {
-            w[0][c] = (inv_hth[0][0] * htv[0][c] + inv_hth[0][1] * htv[1][c]).max(0.0);
-            w[1][c] = (inv_hth[1][0] * htv[0][c] + inv_hth[1][1] * htv[1][c]).max(0.0);
-        }
+        w[0][0] = (inv_hth[0][0] * htv[0][0] + inv_hth[0][1] * htv[1][0]).max(0.0);
+        w[0][1] = (inv_hth[0][0] * htv[0][1] + inv_hth[0][1] * htv[1][1]).max(0.0);
+        w[0][2] = (inv_hth[0][0] * htv[0][2] + inv_hth[0][1] * htv[1][2]).max(0.0);
+        w[1][0] = (inv_hth[1][0] * htv[0][0] + inv_hth[1][1] * htv[1][0]).max(0.0);
+        w[1][1] = (inv_hth[1][0] * htv[0][1] + inv_hth[1][1] * htv[1][1]).max(0.0);
+        w[1][2] = (inv_hth[1][0] * htv[0][2] + inv_hth[1][1] * htv[1][2]).max(0.0);
 
         // Normalize dictionary rows to unit length
         for row in &mut w {

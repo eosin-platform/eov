@@ -5,13 +5,13 @@
 
 use crate::AppWindow;
 use crate::blitter;
-use crate::gpu::{SurfaceSlot, TileDraw};
+use crate::gpu::{QueuedFrame, SurfaceSlot, TileDraw};
 use crate::state::{
     AppState, FilteringMode, OpenFile, PaneId, RenderBackend, TileRequestSignature,
 };
 use crate::tile_loader::calculate_wanted_tiles;
 use crate::tools;
-use common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
+use common::{TileCache, TileManager, Viewport, WsiFile};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, Image};
 use std::collections::{HashMap, HashSet};
@@ -168,140 +168,32 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
     }
 }
 
-/// Render statistics for performance monitoring
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-pub struct RenderStats {
-    /// Number of tiles rendered this frame
-    pub tiles_rendered: usize,
-    /// Number of cache hits
-    pub cache_hits: usize,
-    /// Number of cache misses
-    pub cache_misses: usize,
-    /// Frame render time in microseconds
-    pub render_time_us: u64,
-}
-
-/// Calculate the optimal level for a given zoom
-#[allow(dead_code)]
-pub fn optimal_level(wsi: &WsiFile, zoom: f64) -> u32 {
-    // Target: find level where pixel density is close to 1:1
-    let target_downsample = 1.0 / zoom;
-    wsi.best_level_for_downsample(target_downsample)
-}
-
-/// Calculate visible tile range for the viewport
-#[allow(dead_code)]
-pub fn visible_tile_range(
-    viewport: &Viewport,
-    level: u32,
-    wsi: &WsiFile,
-    tile_size: u32,
-    file_id: i32,
-) -> Option<TileRange> {
-    let level_info = wsi.level(level)?;
-    let bounds = viewport.bounds();
-
-    // Convert viewport bounds to level coordinates
-    let level_left = bounds.left / level_info.downsample;
-    let level_top = bounds.top / level_info.downsample;
-    let level_right = bounds.right / level_info.downsample;
-    let level_bottom = bounds.bottom / level_info.downsample;
-
-    // Calculate tile indices
-    let ts = tile_size as f64;
-    let start_x = ((level_left / ts).floor() as i64 - 1).max(0) as u64;
-    let start_y = ((level_top / ts).floor() as i64 - 1).max(0) as u64;
-    let end_x = ((level_right / ts).ceil() as u64 + 1).min(level_info.tiles_x(tile_size));
-    let end_y = ((level_bottom / ts).ceil() as u64 + 1).min(level_info.tiles_y(tile_size));
-
-    Some(TileRange {
-        file_id,
-        level,
-        start_x,
-        start_y,
-        end_x,
-        end_y,
-    })
-}
-
-/// Range of tiles to render
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct TileRange {
-    pub file_id: i32,
-    pub level: u32,
-    pub start_x: u64,
-    pub start_y: u64,
-    pub end_x: u64,
-    pub end_y: u64,
-}
-
-#[allow(dead_code)]
-impl TileRange {
-    /// Iterate over all tile coordinates in this range
-    pub fn iter(&self) -> impl Iterator<Item = TileCoord> + '_ {
-        let tile_size = 256;
-        let file_id = self.file_id;
-        (self.start_y..self.end_y).flat_map(move |y| {
-            (self.start_x..self.end_x)
-                .map(move |x| TileCoord::new(file_id, self.level, x, y, tile_size))
-        })
-    }
-
-    /// Get the total number of tiles in this range
-    pub fn tile_count(&self) -> usize {
-        ((self.end_x - self.start_x) * (self.end_y - self.start_y)) as usize
-    }
-}
-
-/// Bilinear interpolation for pixel sampling
-#[allow(dead_code)]
-pub fn bilinear_sample(data: &[u8], width: u32, height: u32, x: f64, y: f64) -> [u8; 4] {
-    let x0 = x.floor() as u32;
-    let y0 = y.floor() as u32;
-    let x1 = (x0 + 1).min(width - 1);
-    let y1 = (y0 + 1).min(height - 1);
-
-    let fx = x - x0 as f64;
-    let fy = y - y0 as f64;
-
-    let get_pixel = |px: u32, py: u32| -> [f64; 4] {
-        let idx = ((py * width + px) * 4) as usize;
-        if idx + 3 < data.len() {
-            [
-                data[idx] as f64,
-                data[idx + 1] as f64,
-                data[idx + 2] as f64,
-                data[idx + 3] as f64,
-            ]
-        } else {
-            [0.0, 0.0, 0.0, 255.0]
-        }
-    };
-
-    let p00 = get_pixel(x0, y0);
-    let p10 = get_pixel(x1, y0);
-    let p01 = get_pixel(x0, y1);
-    let p11 = get_pixel(x1, y1);
-
-    let mut result = [0u8; 4];
-    for i in 0..4 {
-        let top = p00[i] * (1.0 - fx) + p10[i] * fx;
-        let bottom = p01[i] * (1.0 - fx) + p11[i] * fx;
-        result[i] = (top * (1.0 - fy) + bottom * fy).clamp(0.0, 255.0) as u8;
-    }
-
-    result
-}
-
 type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
+type CpuBlitFn = fn(&mut [u8], u32, u32, &[u8], u32, u32, blitter::BlitRect);
 
 #[derive(Default)]
 struct PaneRenderOutcome {
     image: Option<Image>,
     keep_running: bool,
     rendered: bool,
+}
+
+struct RenderPaneRequest<'a> {
+    ui: &'a AppWindow,
+    tile_cache: &'a Arc<TileCache>,
+    target_width: f64,
+    target_height: f64,
+    force_render: bool,
+    render_backend: RenderBackend,
+    filtering_mode: FilteringMode,
+}
+
+#[derive(Clone, Copy)]
+struct TileProjection<'a> {
+    viewport: &'a Viewport,
+    bounds_left: f64,
+    bounds_top: f64,
+    downsample: f64,
 }
 
 fn tile_request_signature(
@@ -499,15 +391,17 @@ pub(crate) fn update_and_render(
         }
 
         let outcome = render_pane_to_image(
-            ui,
             file,
             pane,
-            tile_cache,
-            pane_width,
-            content_height,
-            force_render,
-            render_backend,
-            filtering_mode,
+            RenderPaneRequest {
+                ui,
+                tile_cache,
+                target_width: pane_width,
+                target_height: content_height,
+                force_render,
+                render_backend,
+                filtering_mode,
+            },
         );
 
         if pane.0 == 1 {
@@ -543,18 +437,21 @@ pub(crate) fn update_and_render(
     keep_running
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_pane_to_image(
-    ui: &AppWindow,
     file: &mut OpenFile,
     pane: PaneId,
-    tile_cache: &Arc<TileCache>,
-    target_width: f64,
-    target_height: f64,
-    force_render: bool,
-    render_backend: RenderBackend,
-    filtering_mode: FilteringMode,
+    request: RenderPaneRequest<'_>,
 ) -> PaneRenderOutcome {
+    let RenderPaneRequest {
+        ui,
+        tile_cache,
+        target_width,
+        target_height,
+        force_render,
+        render_backend,
+        filtering_mode,
+    } = request;
+
     let (
         animating,
         viewport_state,
@@ -776,15 +673,17 @@ fn render_pane_to_image(
         let image = crate::with_gpu_renderer(|renderer| {
             renderer.borrow_mut().queue_frame(
                 slot,
-                render_width,
-                render_height,
-                draws,
-                hud_gamma,
-                hud_brightness,
-                hud_contrast,
-                stain_params.enabled,
-                stain_params.inv_stain_r0,
-                stain_params.inv_stain_r1,
+                QueuedFrame {
+                    width: render_width,
+                    height: render_height,
+                    draws,
+                    gamma: hud_gamma,
+                    brightness: hud_brightness,
+                    contrast: hud_contrast,
+                    stain_norm_enabled: stain_params.enabled,
+                    inv_stain_r0: stain_params.inv_stain_r0,
+                    inv_stain_r1: stain_params.inv_stain_r1,
+                },
             )
         })
         .flatten();
@@ -874,46 +773,48 @@ fn render_pane_to_image(
     blitter::fast_fill_rgba(buffer, 30, 30, 30, 255);
 
     // Helper: blit all fallback + fine tiles into a buffer with a given blit function
-    #[allow(clippy::type_complexity)]
-    let blit_all_tiles =
-        |buf: &mut [u8], blit_fn: fn(&mut [u8], u32, u32, &[u8], u32, u32, i32, i32, i32, i32)| {
-            for (fallback_tile, sx, sy, sw, sh) in &fallback_blits {
-                blit_fn(
-                    buf,
-                    render_width,
-                    render_height,
-                    &fallback_tile.data,
-                    fallback_tile.width,
-                    fallback_tile.height,
-                    *sx,
-                    *sy,
-                    *sw,
-                    *sh,
-                );
-            }
-            for (coord, tile_data) in cached_tiles.iter() {
-                let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
-                let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
-                let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
-                let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
-                let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
-                let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
-                let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
-                let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
-                blit_fn(
-                    buf,
-                    render_width,
-                    render_height,
-                    &tile_data.data,
-                    tile_data.width,
-                    tile_data.height,
-                    screen_x,
-                    screen_y,
-                    screen_x_end - screen_x,
-                    screen_y_end - screen_y,
-                );
-            }
-        };
+    let blit_all_tiles = |buf: &mut [u8], blit_fn: CpuBlitFn| {
+        for (fallback_tile, sx, sy, sw, sh) in &fallback_blits {
+            blit_fn(
+                buf,
+                render_width,
+                render_height,
+                &fallback_tile.data,
+                fallback_tile.width,
+                fallback_tile.height,
+                blitter::BlitRect {
+                    x: *sx,
+                    y: *sy,
+                    width: *sw,
+                    height: *sh,
+                },
+            );
+        }
+        for (coord, tile_data) in cached_tiles.iter() {
+            let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
+            let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
+            let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
+            let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
+            let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+            blit_fn(
+                buf,
+                render_width,
+                render_height,
+                &tile_data.data,
+                tile_data.width,
+                tile_data.height,
+                blitter::BlitRect {
+                    x: screen_x,
+                    y: screen_y,
+                    width: screen_x_end - screen_x,
+                    height: screen_y_end - screen_y,
+                },
+            );
+        }
+    };
 
     // Helper: apply trilinear coarse-level blend into a buffer
     let apply_trilinear_coarse = |buf: &mut [u8]| {
@@ -941,10 +842,12 @@ fn render_pane_to_image(
                 &tile_data.data,
                 tile_data.width,
                 tile_data.height,
-                screen_x,
-                screen_y,
-                screen_x_end - screen_x,
-                screen_y_end - screen_y,
+                blitter::BlitRect {
+                    x: screen_x,
+                    y: screen_y,
+                    width: screen_x_end - screen_x,
+                    height: screen_y_end - screen_y,
+                },
             );
         }
         blitter::blend_buffers(buf, &coarse_buffer, trilinear.blend);
@@ -1012,6 +915,12 @@ fn collect_tile_draws(
 ) -> Vec<TileDraw> {
     let mut draws = Vec::new();
     let bounds = vp.bounds();
+    let base_projection = TileProjection {
+        viewport: vp,
+        bounds_left: bounds.left,
+        bounds_top: bounds.top,
+        downsample: 1.0,
+    };
     let level_count = file.wsi.level_count();
 
     for fallback_level in (0..level_count).rev() {
@@ -1035,16 +944,13 @@ fn collect_tile_draws(
             let Some(tile_data) = tile_cache.peek(coord) else {
                 continue;
             };
-            if let Some(draw) = tile_draw_from_tile(
-                vp,
-                bounds.left,
-                bounds.top,
-                fallback_level_info.downsample,
-                *coord,
-                tile_data,
-                None,
-                filtering_mode,
-            ) {
+            let projection = TileProjection {
+                downsample: fallback_level_info.downsample,
+                ..base_projection
+            };
+            if let Some(draw) =
+                tile_draw_from_tile(projection, *coord, tile_data, None, filtering_mode)
+            {
                 draws.push(draw);
             }
         }
@@ -1067,6 +973,10 @@ fn collect_tile_draws(
         let Some(tile_data) = tile_cache.peek(coord) else {
             continue;
         };
+        let projection = TileProjection {
+            downsample: level_info.downsample,
+            ..base_projection
+        };
         let coarse_blend = coarse_blend_for_tile(
             file,
             tile_cache,
@@ -1075,16 +985,9 @@ fn collect_tile_draws(
             *coord,
             &tile_data,
         );
-        if let Some(draw) = tile_draw_from_tile(
-            vp,
-            bounds.left,
-            bounds.top,
-            level_info.downsample,
-            *coord,
-            tile_data,
-            coarse_blend,
-            filtering_mode,
-        ) {
+        if let Some(draw) =
+            tile_draw_from_tile(projection, *coord, tile_data, coarse_blend, filtering_mode)
+        {
             draws.push(draw);
         }
     }
@@ -1175,17 +1078,20 @@ fn coarse_blend_for_tile(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn tile_draw_from_tile(
-    vp: &Viewport,
-    bounds_left: f64,
-    bounds_top: f64,
-    downsample: f64,
+    projection: TileProjection<'_>,
     coord: common::TileCoord,
     tile_data: Arc<common::TileData>,
     coarse_blend: Option<CoarseBlendData>,
     filtering_mode: FilteringMode,
 ) -> Option<TileDraw> {
+    let TileProjection {
+        viewport: vp,
+        bounds_left,
+        bounds_top,
+        downsample,
+    } = projection;
+
     let image_x = coord.x as f64 * coord.tile_size as f64 * downsample;
     let image_y = coord.y as f64 * coord.tile_size as f64 * downsample;
     let image_x_end = image_x + tile_data.width as f64 * downsample;

@@ -4,9 +4,6 @@
 //! for efficient rendering of whole slide images.
 
 use crate::{Error, Result, WsiFile};
-use parking_lot::RwLock;
-use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::trace;
 
 /// Tile coordinate identifier
@@ -112,12 +109,6 @@ pub struct TileManager {
     file_id: i32,
     /// Tile size
     tile_size: u32,
-    /// Request sender channel
-    #[allow(dead_code)]
-    request_tx: Option<mpsc::Sender<TileRequest>>,
-    /// Response receiver channel
-    #[allow(dead_code)]
-    response_rx: Option<Arc<RwLock<mpsc::Receiver<TileData>>>>,
 }
 
 impl TileManager {
@@ -128,8 +119,6 @@ impl TileManager {
             wsi,
             file_id,
             tile_size,
-            request_tx: None,
-            response_rx: None,
         }
     }
 
@@ -295,7 +284,13 @@ impl TileManager {
                 let parent_span = parent_tile_size as f64 * parent_level_info.downsample;
                 let parent_x = (image_x / parent_span).floor() as u64;
                 let parent_y = (image_y / parent_span).floor() as u64;
-                let coord = TileCoord::new(self.file_id, level + 1, parent_x, parent_y, parent_tile_size);
+                let coord = TileCoord::new(
+                    self.file_id,
+                    level + 1,
+                    parent_x,
+                    parent_y,
+                    parent_tile_size,
+                );
                 if !prefetch.contains(&coord) {
                     prefetch.push(coord);
                 }
@@ -326,7 +321,13 @@ impl TileManager {
 
                 for child_y in start_y..end_y {
                     for child_x in start_x..end_x {
-                        let coord = TileCoord::new(self.file_id, child_level, child_x, child_y, child_tile_size);
+                        let coord = TileCoord::new(
+                            self.file_id,
+                            child_level,
+                            child_x,
+                            child_y,
+                            child_tile_size,
+                        );
                         if !prefetch.contains(&coord) {
                             prefetch.push(coord);
                         }

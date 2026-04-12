@@ -383,7 +383,7 @@ fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
 }
 
 fn print_recent_files() {
-    let state = AppState::new(false);
+    let state = AppState::new();
     if state.recent_files.is_empty() {
         println!("No recent files.");
         return;
@@ -715,7 +715,7 @@ fn main() -> Result<()> {
     let gpu_backend_available = select_backend(launch_options.window_geometry)?;
     slint::set_xdg_app_id(APP_XDG_ID)?;
 
-    let state = Arc::new(RwLock::new(AppState::new(launch_options.debug_mode)));
+    let state = Arc::new(RwLock::new(AppState::new()));
     let tile_cache = Arc::new(TileCache::with_limits(
         launch_options.max_tiles,
         launch_options.cache_size_bytes,
@@ -873,9 +873,11 @@ fn open_file(
                     tile_cache,
                     render_timer,
                     path,
-                    pane_render_cache,
-                    pane_ui_models,
-                    pane_view_model,
+                    file_ops::OpenFileUiContext {
+                        pane_render_cache,
+                        pane_ui_models,
+                        pane_view_model,
+                    },
                 );
             });
         });

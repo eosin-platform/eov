@@ -292,24 +292,22 @@ struct AdjustmentsUniform {
 }
 
 #[derive(Clone)]
-struct QueuedFrame {
-    width: u32,
-    height: u32,
-    draws: Vec<TileDraw>,
-    gamma: f32,
-    brightness: f32,
-    contrast: f32,
-    stain_norm_enabled: bool,
-    inv_stain_r0: [f32; 4],
-    inv_stain_r1: [f32; 4],
+pub(crate) struct QueuedFrame {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) draws: Vec<TileDraw>,
+    pub(crate) gamma: f32,
+    pub(crate) brightness: f32,
+    pub(crate) contrast: f32,
+    pub(crate) stain_norm_enabled: bool,
+    pub(crate) inv_stain_r0: [f32; 4],
+    pub(crate) inv_stain_r1: [f32; 4],
 }
 
 #[derive(Clone)]
 struct ImportedSurface {
-    #[allow(dead_code)]
     texture: wgpu::Texture,
     view: wgpu::TextureView,
-    image: Image,
     width: u32,
     height: u32,
 }
@@ -380,39 +378,14 @@ impl GpuRenderer {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn queue_frame(
-        &mut self,
-        slot: SurfaceSlot,
-        width: u32,
-        height: u32,
-        draws: Vec<TileDraw>,
-        gamma: f32,
-        brightness: f32,
-        contrast: f32,
-        stain_norm_enabled: bool,
-        inv_stain_r0: [f32; 4],
-        inv_stain_r1: [f32; 4],
-    ) -> Option<Image> {
-        if width == 0 || height == 0 {
+    pub fn queue_frame(&mut self, slot: SurfaceSlot, frame: QueuedFrame) -> Option<Image> {
+        if frame.width == 0 || frame.height == 0 {
             return None;
         }
 
         self.runtime.as_ref()?;
 
-        let surface_recreated = self.ensure_surface(slot, width, height)?;
-
-        let frame = QueuedFrame {
-            width,
-            height,
-            draws,
-            gamma,
-            brightness,
-            contrast,
-            stain_norm_enabled,
-            inv_stain_r0,
-            inv_stain_r1,
-        };
+        let surface_recreated = self.ensure_surface(slot, frame.width, frame.height)?;
         self.pending_frames.insert(slot.index(), frame);
 
         if surface_recreated {
@@ -710,17 +683,12 @@ impl GpuRenderer {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let image = match Image::try_from(texture.clone()) {
-            Ok(image) => image,
-            Err(_) => return None,
-        };
 
         runtime.surfaces.insert(
             slot_index,
             ImportedSurface {
                 texture,
                 view,
-                image,
                 width,
                 height,
             },
@@ -733,7 +701,7 @@ impl GpuRenderer {
         self.runtime
             .as_ref()
             .and_then(|runtime| runtime.surfaces.get(&slot.index()))
-            .map(|surface| surface.image.clone())
+            .and_then(|surface| Image::try_from(surface.texture.clone()).ok())
     }
 
     fn flush_pending_frames(&mut self) {

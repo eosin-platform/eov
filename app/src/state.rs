@@ -88,14 +88,6 @@ impl HudSettings {
         self.contrast = 1.0;
         self.stain_normalization = StainNormalization::None;
     }
-
-    #[allow(dead_code)]
-    pub fn has_adjustments(&self) -> bool {
-        (self.gamma - 1.0).abs() > 0.001
-            || self.brightness.abs() > 0.001
-            || (self.contrast - 1.0).abs() > 0.001
-            || self.stain_normalization != StainNormalization::None
-    }
 }
 
 /// Maximum number of recently opened files to track
@@ -108,9 +100,6 @@ pub struct RecentFile {
     pub path: PathBuf,
     /// Display name (filename)
     pub name: String,
-    /// Last opened timestamp
-    #[allow(dead_code)]
-    pub last_opened: std::time::SystemTime,
 }
 
 impl RecentFile {
@@ -119,11 +108,7 @@ impl RecentFile {
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-        Self {
-            path,
-            name,
-            last_opened: std::time::SystemTime::now(),
-        }
+        Self { path, name }
     }
 }
 
@@ -203,7 +188,6 @@ impl RegionOfInterest {
 }
 
 /// Measurement between two points
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Measurement {
     pub pane: PaneId,
@@ -222,7 +206,6 @@ pub struct TileRequestSignature {
     pub tile_size: u32,
 }
 
-#[allow(dead_code)]
 impl Measurement {
     /// Calculate distance in image pixels
     pub fn distance(&self) -> f64 {
@@ -238,7 +221,6 @@ pub enum ToolInteractionState {
     #[default]
     Idle,
     /// First point placed for ROI or measurement
-    #[allow(dead_code)]
     FirstPointPlaced(ImagePoint),
     /// Currently dragging (for ROI or drag-style measurement)
     Dragging(ImagePoint),
@@ -264,13 +246,20 @@ pub struct OpenFile {
     pub pane_states: Vec<Option<FilePaneState>>,
     /// Thumbnail for minimap (RGBA data)
     pub thumbnail: Option<Vec<u8>>,
-    /// Whether thumbnail has been uploaded to UI
-    #[allow(dead_code)]
-    pub thumbnail_set: bool,
     /// Region of interest (if set)
     pub roi: Option<RegionOfInterest>,
     /// Measurements
     pub measurements: Vec<Measurement>,
+}
+
+pub struct NewOpenFile {
+    pub id: i32,
+    pub path: PathBuf,
+    pub wsi: WsiFile,
+    pub tile_manager: Arc<TileManager>,
+    pub tile_loader: TileLoader,
+    pub viewport: ViewportState,
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 impl OpenFile {
@@ -341,8 +330,6 @@ impl OpenFile {
 #[derive(Clone)]
 pub struct FilePaneState {
     pub viewport: ViewportState,
-    #[allow(dead_code)]
-    pub render_buffer: Vec<u8>,
     pub last_render_zoom: f64,
     pub last_render_center_x: f64,
     pub last_render_center_y: f64,
@@ -365,7 +352,6 @@ impl FilePaneState {
     pub fn new(viewport: ViewportState) -> Self {
         Self {
             viewport,
-            render_buffer: Vec::new(),
             last_render_zoom: 0.0,
             last_render_center_x: 0.0,
             last_render_center_y: 0.0,
@@ -436,9 +422,6 @@ pub struct AppState {
     pub candidate_point: Option<ImagePoint>,
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
-    /// Debug mode enabled (--debug flag)
-    #[allow(dead_code)]
-    pub debug_mode: bool,
     /// Frame timestamps for FPS calculation
     pub frame_times: Vec<std::time::Instant>,
     /// Current FPS value
@@ -471,7 +454,7 @@ pub struct AppState {
 
 impl AppState {
     /// Create a new application state
-    pub fn new(debug_mode: bool) -> Self {
+    pub fn new() -> Self {
         let recent_files = Self::load_recent_files();
         Self {
             open_files: Vec::new(),
@@ -485,7 +468,6 @@ impl AppState {
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
             ant_offset: 0.0,
-            debug_mode,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
             recent_files,
@@ -562,17 +544,10 @@ impl AppState {
     pub fn add_to_recent(&mut self, path: &PathBuf) {
         let normalized_path = normalize_recent_path(path);
 
-        // Remove if already exists (we'll re-add at top)
         self.recent_files.retain(|f| f.path != normalized_path);
-
-        // Add to front
         self.recent_files
             .insert(0, RecentFile::new(normalized_path));
-
-        // Trim to max size
         self.recent_files.truncate(MAX_RECENT_FILES);
-
-        // Save to disk
         self.save_recent_files();
     }
 
@@ -992,16 +967,17 @@ impl AppState {
     }
 
     /// Add a new open file with a pre-allocated identifier.
-    pub fn add_file(
-        &mut self,
-        id: i32,
-        path: PathBuf,
-        wsi: WsiFile,
-        tile_manager: Arc<TileManager>,
-        tile_loader: TileLoader,
-        viewport: ViewportState,
-        thumbnail: Option<Vec<u8>>,
-    ) -> i32 {
+    pub fn add_file(&mut self, new_file: NewOpenFile) -> i32 {
+        let NewOpenFile {
+            id,
+            path,
+            wsi,
+            tile_manager,
+            tile_loader,
+            viewport,
+            thumbnail,
+        } = new_file;
+
         // Add to recent files
         self.add_to_recent(&path);
 
@@ -1020,7 +996,6 @@ impl AppState {
             viewport: viewport.clone(),
             pane_states: vec![Some(FilePaneState::new(viewport))],
             thumbnail,
-            thumbnail_set: false,
             roi: None,
             measurements: Vec::new(),
         });
@@ -1066,63 +1041,6 @@ impl AppState {
             file.roi = None;
             file.measurements.clear();
         }
-    }
-
-    /// Disable split view
-    #[allow(dead_code)]
-    pub fn disable_split(&mut self) {
-        if self.panes.len() <= 1 {
-            return;
-        }
-
-        let mut merged_tabs = Vec::new();
-        let mut merged_active = None;
-        for pane_index in 0..self.panes.len() {
-            let pane_state = &self.panes[pane_index];
-            for &tab_id in &pane_state.tabs {
-                if !merged_tabs.contains(&tab_id) {
-                    merged_tabs.push(tab_id);
-                }
-            }
-            if pane_index == self.focused_pane.0 {
-                merged_active = pane_state.active_tab_id.or(merged_active);
-            }
-        }
-
-        self.panes = vec![PaneState {
-            tabs: merged_tabs,
-            active_tab_id: merged_active,
-        }];
-        self.last_rendered_file_ids = vec![None];
-        self.focused_pane = PaneId::PRIMARY;
-        for file in &mut self.open_files {
-            if let Some(first_state) = file.pane_states.iter().flatten().next().cloned() {
-                file.pane_states = vec![Some(first_state)];
-            } else {
-                file.pane_states = vec![None];
-            }
-        }
-        self.split_enabled = false;
-        self.needs_render = true;
-    }
-
-    /// Get the viewport for the current focused pane
-    #[allow(dead_code)]
-    pub fn focused_viewport_mut(&mut self) -> Option<&mut ViewportState> {
-        let active_id = self.active_file_id_for_pane(self.focused_pane)?;
-        self.open_files
-            .iter_mut()
-            .find(|f| f.id == active_id)
-            .and_then(|f| {
-                f.pane_state_mut(self.focused_pane)
-                    .map(|pane_state| &mut pane_state.viewport)
-            })
-    }
-
-    /// Activate a file by ID
-    #[allow(dead_code)]
-    pub fn activate_file(&mut self, id: i32) {
-        self.activate_tab_in_pane(self.focused_pane, id);
     }
 
     /// Close a file by ID
@@ -1242,35 +1160,6 @@ impl AppState {
         self.open_files.iter_mut().find(|f| f.id == file_id)
     }
 
-    /// Get the active file
-    #[allow(dead_code)]
-    pub fn active_file(&self) -> Option<&OpenFile> {
-        self.active_file_id
-            .filter(|id| !self.is_home_tab(*id))
-            .and_then(|id| self.get_file(id))
-    }
-
-    /// Get the active file mutably
-    #[allow(dead_code)]
-    pub fn active_file_mut(&mut self) -> Option<&mut OpenFile> {
-        self.active_file_id
-            .filter(|id| !self.is_home_tab(*id))
-            .and_then(|id| self.get_file_mut(id))
-    }
-
-    /// Get the active viewport
-    #[allow(dead_code)]
-    pub fn active_viewport(&self) -> Option<&ViewportState> {
-        let pane = if self.split_enabled {
-            self.focused_pane
-        } else {
-            PaneId::PRIMARY
-        };
-        let active_id = self.active_file_id_for_pane(pane)?;
-        self.get_file(active_id)
-            .and_then(|file| file.pane_state(pane).map(|pane_state| &pane_state.viewport))
-    }
-
     /// Get the active viewport mutably (respects focused pane in split view)
     pub fn active_viewport_mut(&mut self) -> Option<&mut ViewportState> {
         let pane = self.focused_pane;
@@ -1292,7 +1181,7 @@ impl AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new(false)
+        Self::new()
     }
 }
 

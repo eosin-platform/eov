@@ -3,7 +3,7 @@
 //! This module provides asynchronous tile loading that automatically discards
 //! requests for tiles that are no longer visible.
 
-use common::{TileCache, TileCoord, TileData, TileManager, WsiFile};
+use common::{TileCache, TileCoord, TileManager, WsiFile};
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
@@ -78,15 +78,17 @@ impl TileLoader {
 
                 worker_loop(
                     i,
-                    request_rx,
-                    tile_manager,
-                    cache,
-                    failed,
-                    generation,
-                    pending,
-                    pending_count,
-                    loaded_epoch,
-                    shutdown,
+                    WorkerContext {
+                        request_rx,
+                        tile_manager,
+                        cache,
+                        failed,
+                        generation,
+                        pending,
+                        pending_count,
+                        loaded_epoch,
+                        shutdown,
+                    },
                 );
             });
 
@@ -167,12 +169,6 @@ impl TileLoader {
         }
     }
 
-    /// Clear failed tiles set (call when view changes significantly)
-    #[allow(dead_code)]
-    pub fn clear_failed(&self) {
-        self.failed.lock().clear();
-    }
-
     pub fn pending_count(&self) -> usize {
         self.pending_count.load(Ordering::Relaxed)
     }
@@ -193,10 +189,7 @@ impl Drop for TileLoader {
     }
 }
 
-/// Worker thread loop
-#[allow(clippy::too_many_arguments)]
-fn worker_loop(
-    id: usize,
+struct WorkerContext {
     request_rx: Receiver<TileCoord>,
     tile_manager: Arc<TileManager>,
     cache: Arc<TileCache>,
@@ -206,7 +199,22 @@ fn worker_loop(
     pending_count: Arc<AtomicUsize>,
     loaded_epoch: Arc<AtomicU64>,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
-) {
+}
+
+/// Worker thread loop
+fn worker_loop(id: usize, context: WorkerContext) {
+    let WorkerContext {
+        request_rx,
+        tile_manager,
+        cache,
+        failed,
+        generation,
+        pending,
+        pending_count,
+        loaded_epoch,
+        shutdown,
+    } = context;
+
     trace!("Tile loader worker {} starting", id);
 
     while !shutdown.load(Ordering::Relaxed) {
@@ -244,100 +252,6 @@ fn worker_loop(
     }
 
     trace!("Tile loader worker {} shutting down", id);
-}
-
-/// Find the best fallback tile for a given target tile coordinate
-///
-/// This searches lower-resolution (higher mip) levels for a tile that covers
-/// the same area as the target tile. Returns the covering tile if found in cache.
-#[allow(dead_code)]
-pub fn find_fallback_tile(
-    cache: &TileCache,
-    wsi: &WsiFile,
-    target: TileCoord,
-    tile_size: u32,
-) -> Option<(Arc<TileData>, u32)> {
-    let level_count = wsi.level_count();
-
-    // Get target tile's position in level-0 (image) coordinates
-    let target_level_info = wsi.level(target.level)?;
-    let target_image_x = target.x as f64 * tile_size as f64 * target_level_info.downsample;
-    let target_image_y = target.y as f64 * tile_size as f64 * target_level_info.downsample;
-
-    // Search lower-resolution levels (higher indices = lower resolution)
-    for fallback_level in (target.level + 1)..level_count {
-        let fallback_level_info = wsi.level(fallback_level)?;
-
-        // Calculate which tile at the fallback level contains this image position
-        // Each fallback tile covers (tile_size * downsample) pixels in image coordinates
-        let fallback_tile_image_size = tile_size as f64 * fallback_level_info.downsample;
-        let fallback_x = (target_image_x / fallback_tile_image_size).floor() as u64;
-        let fallback_y = (target_image_y / fallback_tile_image_size).floor() as u64;
-
-        let fallback_coord = TileCoord::new(
-            target.file_id,
-            fallback_level,
-            fallback_x,
-            fallback_y,
-            wsi.tile_size_for_level(fallback_level),
-        );
-
-        if let Some(tile) = cache.get(&fallback_coord) {
-            return Some((tile, fallback_level));
-        }
-    }
-
-    None
-}
-
-/// Calculate the sub-region of a fallback tile that corresponds to the target tile
-#[allow(dead_code)]
-pub struct FallbackRegion {
-    /// Source X offset within the fallback tile (0.0-1.0)
-    pub src_x: f64,
-    /// Source Y offset within the fallback tile (0.0-1.0)
-    pub src_y: f64,
-    /// Source width fraction (0.0-1.0)
-    pub src_w: f64,
-    /// Source height fraction (0.0-1.0)
-    pub src_h: f64,
-}
-
-#[allow(dead_code)]
-pub fn calculate_fallback_region(
-    wsi: &WsiFile,
-    target: TileCoord,
-    fallback_level: u32,
-    tile_size: u32,
-) -> Option<FallbackRegion> {
-    let target_level_info = wsi.level(target.level)?;
-    let fallback_level_info = wsi.level(fallback_level)?;
-
-    // Get target tile's position in level-0 (image) coordinates
-    let target_image_x = target.x as f64 * tile_size as f64 * target_level_info.downsample;
-    let target_image_y = target.y as f64 * tile_size as f64 * target_level_info.downsample;
-    let target_image_w = tile_size as f64 * target_level_info.downsample;
-    let target_image_h = tile_size as f64 * target_level_info.downsample;
-
-    // Calculate the fallback tile's position in image coordinates
-    let fallback_tile_image_size = tile_size as f64 * fallback_level_info.downsample;
-    let fallback_x = (target_image_x / fallback_tile_image_size).floor() as u64;
-    let fallback_y = (target_image_y / fallback_tile_image_size).floor() as u64;
-    let fallback_image_x = fallback_x as f64 * fallback_tile_image_size;
-    let fallback_image_y = fallback_y as f64 * fallback_tile_image_size;
-
-    // Calculate the fractional position within the fallback tile (0.0-1.0)
-    let frac_x = (target_image_x - fallback_image_x) / fallback_tile_image_size;
-    let frac_y = (target_image_y - fallback_image_y) / fallback_tile_image_size;
-    let frac_w = (target_image_w / fallback_tile_image_size).min(1.0 - frac_x);
-    let frac_h = (target_image_h / fallback_tile_image_size).min(1.0 - frac_y);
-
-    Some(FallbackRegion {
-        src_x: frac_x,
-        src_y: frac_y,
-        src_w: frac_w,
-        src_h: frac_h,
-    })
 }
 
 /// Calculate tiles needed for the current viewport

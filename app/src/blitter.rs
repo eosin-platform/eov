@@ -5,6 +5,14 @@
 
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
+#[derive(Clone, Copy)]
+pub struct BlitRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 /// Fast fill RGBA buffer with a single color using u32 writes
 /// This is ~4x faster than byte-by-byte writes on most architectures
 #[inline(always)]
@@ -41,7 +49,6 @@ pub fn fast_fill_rgba(buffer: &mut [u8], r: u8, g: u8, b: u8, a: u8) {
 
 /// Optimized bilinear tile blitter with cache-friendly access patterns
 /// Uses fixed-point arithmetic and minimizes bounds checking
-#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn blit_tile(
     dest: &mut [u8],
@@ -50,11 +57,14 @@ pub fn blit_tile(
     src: &[u8],
     src_width: u32,
     src_height: u32,
-    dest_x: i32,
-    dest_y: i32,
-    scaled_width: i32,
-    scaled_height: i32,
+    rect: BlitRect,
 ) {
+    let BlitRect {
+        x: dest_x,
+        y: dest_y,
+        width: scaled_width,
+        height: scaled_height,
+    } = rect;
     if scaled_width <= 0 || scaled_height <= 0 {
         return;
     }
@@ -189,7 +199,6 @@ fn lanczos_weight(x: f64, a: f64) -> f64 {
 }
 
 /// Lanczos-3 tile blitter (a=3, 6x6 kernel)
-#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn blit_tile_lanczos3(
     dest: &mut [u8],
@@ -198,11 +207,14 @@ pub fn blit_tile_lanczos3(
     src: &[u8],
     src_width: u32,
     src_height: u32,
-    dest_x: i32,
-    dest_y: i32,
-    scaled_width: i32,
-    scaled_height: i32,
+    rect: BlitRect,
 ) {
+    let BlitRect {
+        x: dest_x,
+        y: dest_y,
+        width: scaled_width,
+        height: scaled_height,
+    } = rect;
     if scaled_width <= 0 || scaled_height <= 0 {
         return;
     }

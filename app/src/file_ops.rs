@@ -2,7 +2,7 @@
 //!
 //! This module contains functions for opening files and generating thumbnails.
 
-use crate::state::{AppState, PaneId};
+use crate::state::{AppState, NewOpenFile, PaneId};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
 use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loop};
@@ -14,18 +14,27 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
+pub struct OpenFileUiContext<'a> {
+    pub pane_render_cache: &'a mut Vec<PaneRenderCacheEntry>,
+    pub pane_ui_models: &'a mut Vec<PaneUiModels>,
+    pub pane_view_model: &'a Rc<VecModel<PaneViewData>>,
+}
+
 /// Open a file and add it to the application state
-#[allow(clippy::too_many_arguments)]
 pub fn open_file(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     render_timer: &Rc<Timer>,
     path: PathBuf,
-    pane_render_cache: &mut Vec<PaneRenderCacheEntry>,
-    pane_ui_models: &mut Vec<PaneUiModels>,
-    pane_view_model: &Rc<VecModel<PaneViewData>>,
+    ui_context: OpenFileUiContext<'_>,
 ) {
+    let OpenFileUiContext {
+        pane_render_cache,
+        pane_ui_models,
+        pane_view_model,
+    } = ui_context;
+
     ui.set_is_loading(true);
     ui.set_status_text(SharedString::from(format!("Opening {}...", path.display())));
 
@@ -102,15 +111,15 @@ pub fn open_file(
                 // Generate small thumbnail for minimap (lazy - only reads what's needed)
                 let thumbnail = generate_thumbnail(&wsi, 150);
 
-                let opened_file_id = state_guard.add_file(
-                    file_id,
-                    path.clone(),
+                let opened_file_id = state_guard.add_file(NewOpenFile {
+                    id: file_id,
+                    path: path.clone(),
                     wsi,
                     tile_manager,
                     tile_loader,
                     viewport,
                     thumbnail,
-                );
+                });
 
                 if let Some(home_tab_id) = home_tab_to_close {
                     state_guard.close_home_tab(home_tab_id);

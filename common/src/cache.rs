@@ -300,9 +300,6 @@ impl Default for TileCache {
 
 /// Async tile loader that manages background loading and caching
 pub struct AsyncTileLoader {
-    /// Tile manager
-    #[allow(dead_code)]
-    manager: Arc<TileManager>,
     /// Tile cache
     cache: Arc<TileCache>,
     /// Request channel
@@ -371,7 +368,6 @@ impl AsyncTileLoader {
 
         (
             Self {
-                manager,
                 cache,
                 request_tx,
                 loading,
