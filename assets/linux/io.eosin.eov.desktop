@@ -10,4 +10,4 @@ Terminal=false
 StartupNotify=true
 StartupWMClass=eov
 Categories=Science;Graphics;Viewer;
-Keywords=whole-slide;wsi;pathology;microscopy;openslide;
+Keywords=whole-slide;wsi;pathology;microscopy;openslide;microbiology
