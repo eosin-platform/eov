@@ -2,7 +2,6 @@ import { Theme } from "theme.slint";
 import { FilteringMode, RenderMode, ToolType } from "types.slint";
 import {
     IconButton,
-    MeasureToolButton,
     MetadataToolButton,
     MinimapToolButton,
     OpenFileToolButton,
@@ -138,7 +137,8 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            measure-button := MeasureToolButton {
+            measure-button := SvgToolButton {
+                icon-source: @image-url("measure.svg");
                 tooltip-text: "Measure distance";
                 is-active: root.current-tool == ToolType.measure-distance;
                 clicked => {
