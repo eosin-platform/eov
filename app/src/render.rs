@@ -16,6 +16,25 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::debug;
 
+/// Adaptive Lanczos-to-Trilinear blending weight based on zoom level.
+///
+/// At very low zoom, trilinear filtering produces better results than Lanczos.
+/// This function returns a weight in \[0.0, 1.0\] controlling the mix:
+///   zoom >= 0.12 → 1.0 (100% Lanczos)
+///   0.07–0.12   → linear blend Lanczos → Trilinear
+///   zoom < 0.07 → 0.0 (100% Trilinear)
+fn lanczos_adaptive_weight(zoom: f64) -> f64 {
+    const LANCZOS_FULL: f64 = 0.12;
+    const TRILINEAR_FULL: f64 = 0.07;
+    if zoom >= LANCZOS_FULL {
+        1.0
+    } else if zoom <= TRILINEAR_FULL {
+        0.0
+    } else {
+        (zoom - TRILINEAR_FULL) / (LANCZOS_FULL - TRILINEAR_FULL)
+    }
+}
+
 /// Result of trilinear level calculation
 #[derive(Debug, Clone, Copy)]
 pub struct TrilinearLevels {
@@ -575,7 +594,14 @@ fn render_pane_to_image(
     let cached_count = cached_tiles.len() as u32;
 
     // Only fetch coarse tiles for trilinear blending
-    let use_trilinear_blend = filtering_mode == FilteringMode::Trilinear;
+    let lanczos_weight = if filtering_mode == FilteringMode::Lanczos3 {
+        lanczos_adaptive_weight(vp_zoom)
+    } else {
+        1.0
+    };
+    // Trilinear blend needed for explicit Trilinear mode or adaptive Lanczos at low zoom
+    let use_trilinear_blend = filtering_mode == FilteringMode::Trilinear
+        || (filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0);
     let cached_coarse_tiles: Vec<_> =
         if use_trilinear_blend && trilinear.level_fine != trilinear.level_coarse && trilinear.blend > 0.01 {
             file.tile_manager
@@ -661,8 +687,14 @@ fn render_pane_to_image(
     }
 
     if render_backend == RenderBackend::Gpu {
-        // For bilinear/lanczos on GPU, suppress trilinear mip blending
-        let gpu_trilinear = if use_trilinear_blend {
+        // Adaptive Lanczos: at low zoom, switch to trilinear on GPU
+        let gpu_filtering = if filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0 {
+            FilteringMode::Trilinear
+        } else {
+            filtering_mode
+        };
+        let gpu_use_trilinear = gpu_filtering == FilteringMode::Trilinear;
+        let gpu_trilinear = if gpu_use_trilinear {
             trilinear
         } else {
             TrilinearLevels {
@@ -671,7 +703,7 @@ fn render_pane_to_image(
                 blend: 0.0,
             }
         };
-        let draws = collect_tile_draws(file, tile_cache, vp, gpu_trilinear, filtering_mode);
+        let draws = collect_tile_draws(file, tile_cache, vp, gpu_trilinear, gpu_filtering);
         let slot = match pane {
             PaneId::PRIMARY => SurfaceSlot::PRIMARY,
             PaneId::SECONDARY => SurfaceSlot::SECONDARY,
@@ -768,87 +800,103 @@ fn render_pane_to_image(
     let buffer = pixel_buffer.make_mut_bytes();
     blitter::fast_fill_rgba(buffer, 30, 30, 30, 255);
 
-    // Choose the blit function based on the selected filtering mode
-    let blit_fn: fn(&mut [u8], u32, u32, &[u8], u32, u32, i32, i32, i32, i32) =
-        match filtering_mode {
-            FilteringMode::Lanczos3 => blitter::blit_tile_lanczos3,
-            _ => blitter::blit_tile, // Bilinear & Trilinear use the same per-tile blit
-        };
-
-    for (fallback_tile, screen_x, screen_y, screen_w, screen_h) in fallback_blits {
-        blit_fn(
-            buffer,
-            render_width,
-            render_height,
-            &fallback_tile.data,
-            fallback_tile.width,
-            fallback_tile.height,
-            screen_x,
-            screen_y,
-            screen_w,
-            screen_h,
-        );
-    }
-
-    for (coord, tile_data) in cached_tiles.iter() {
-        let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
-        let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
-        let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
-        let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
-        let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
-        let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
-        let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
-        let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
-        let screen_w = screen_x_end - screen_x;
-        let screen_h = screen_y_end - screen_y;
-
-        blit_fn(
-            buffer,
-            render_width,
-            render_height,
-            &tile_data.data,
-            tile_data.width,
-            tile_data.height,
-            screen_x,
-            screen_y,
-            screen_w,
-            screen_h,
-        );
-    }
-
-    // CPU trilinear: blend with coarse level if applicable
-    if use_trilinear_blend && trilinear.blend > 0.01 && !cached_coarse_tiles.is_empty() {
-        let coarse_level_info = file.wsi.level(trilinear.level_coarse);
-        if let Some(coarse_info) = coarse_level_info {
-            let mut coarse_buffer = vec![0u8; (render_width * render_height * 4) as usize];
-            blitter::fast_fill_rgba(&mut coarse_buffer, 30, 30, 30, 255);
-            for (coord, tile_data) in cached_coarse_tiles.iter() {
-                let image_x = coord.x as f64 * coord.tile_size as f64 * coarse_info.downsample;
-                let image_y = coord.y as f64 * coord.tile_size as f64 * coarse_info.downsample;
-                let image_x_end = image_x + tile_data.width as f64 * coarse_info.downsample;
-                let image_y_end = image_y + tile_data.height as f64 * coarse_info.downsample;
-                let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
-                let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
-                let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
-                let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
-                let screen_w = screen_x_end - screen_x;
-                let screen_h = screen_y_end - screen_y;
-
-                blit_fn(
-                    &mut coarse_buffer,
-                    render_width,
-                    render_height,
-                    &tile_data.data,
-                    tile_data.width,
-                    tile_data.height,
-                    screen_x,
-                    screen_y,
-                    screen_w,
-                    screen_h,
-                );
-            }
-            blitter::blend_buffers(buffer, &coarse_buffer, trilinear.blend);
+    // Helper: blit all fallback + fine tiles into a buffer with a given blit function
+    let blit_all_tiles = |buf: &mut [u8],
+                          blit_fn: fn(&mut [u8], u32, u32, &[u8], u32, u32, i32, i32, i32, i32)| {
+        for (fallback_tile, sx, sy, sw, sh) in &fallback_blits {
+            blit_fn(
+                buf,
+                render_width,
+                render_height,
+                &fallback_tile.data,
+                fallback_tile.width,
+                fallback_tile.height,
+                *sx, *sy, *sw, *sh,
+            );
         }
+        for (coord, tile_data) in cached_tiles.iter() {
+            let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
+            let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
+            let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
+            let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
+            let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+            blit_fn(
+                buf,
+                render_width,
+                render_height,
+                &tile_data.data,
+                tile_data.width,
+                tile_data.height,
+                screen_x, screen_y,
+                screen_x_end - screen_x,
+                screen_y_end - screen_y,
+            );
+        }
+    };
+
+    // Helper: apply trilinear coarse-level blend into a buffer
+    let apply_trilinear_coarse = |buf: &mut [u8]| {
+        if !use_trilinear_blend || trilinear.blend <= 0.01 || cached_coarse_tiles.is_empty() {
+            return;
+        }
+        let Some(coarse_info) = file.wsi.level(trilinear.level_coarse) else {
+            return;
+        };
+        let mut coarse_buffer = vec![0u8; (render_width * render_height * 4) as usize];
+        blitter::fast_fill_rgba(&mut coarse_buffer, 30, 30, 30, 255);
+        for (coord, tile_data) in cached_coarse_tiles.iter() {
+            let image_x = coord.x as f64 * coord.tile_size as f64 * coarse_info.downsample;
+            let image_y = coord.y as f64 * coord.tile_size as f64 * coarse_info.downsample;
+            let image_x_end = image_x + tile_data.width as f64 * coarse_info.downsample;
+            let image_y_end = image_y + tile_data.height as f64 * coarse_info.downsample;
+            let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
+            let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
+            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
+            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+            blitter::blit_tile(
+                &mut coarse_buffer,
+                render_width,
+                render_height,
+                &tile_data.data,
+                tile_data.width,
+                tile_data.height,
+                screen_x, screen_y,
+                screen_x_end - screen_x,
+                screen_y_end - screen_y,
+            );
+        }
+        blitter::blend_buffers(buf, &coarse_buffer, trilinear.blend);
+    };
+
+    let is_adaptive_lanczos = filtering_mode == FilteringMode::Lanczos3;
+
+    if is_adaptive_lanczos && lanczos_weight > 0.0 && lanczos_weight < 1.0 {
+        // ADAPTIVE BLEND ZONE: render Lanczos and Trilinear, then cross-fade
+        // 1. Render Lanczos into main buffer
+        blit_all_tiles(buffer, blitter::blit_tile_lanczos3);
+
+        // 2. Render Trilinear into temp buffer (bilinear blit + coarse mip blend)
+        let mut tri_buffer = vec![0u8; (render_width * render_height * 4) as usize];
+        blitter::fast_fill_rgba(&mut tri_buffer, 30, 30, 30, 255);
+        blit_all_tiles(&mut tri_buffer, blitter::blit_tile);
+        apply_trilinear_coarse(&mut tri_buffer);
+
+        // 3. Cross-fade: buffer = lanczos_weight * lanczos + (1 - lanczos_weight) * trilinear
+        blitter::blend_buffers(buffer, &tri_buffer, 1.0 - lanczos_weight);
+    } else if is_adaptive_lanczos && lanczos_weight >= 1.0 {
+        // Pure Lanczos (high zoom)
+        blit_all_tiles(buffer, blitter::blit_tile_lanczos3);
+    } else if is_adaptive_lanczos {
+        // Pure Trilinear (very low zoom, adaptive Lanczos fully faded out)
+        blit_all_tiles(buffer, blitter::blit_tile);
+        apply_trilinear_coarse(buffer);
+    } else {
+        // Non-Lanczos modes: Bilinear or explicit Trilinear
+        blit_all_tiles(buffer, blitter::blit_tile);
+        apply_trilinear_coarse(buffer);
     }
 
     PaneRenderOutcome {
