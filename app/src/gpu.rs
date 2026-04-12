@@ -4,7 +4,6 @@ use bytemuck::{Pod, Zeroable};
 use common::{TileCoord, TileData};
 use slint::ComponentHandle;
 use slint::wgpu_28::wgpu;
-use slint::wgpu_28::wgpu::util::DeviceExt;
 use slint::{GraphicsAPI, Image, RenderingState};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -56,6 +55,33 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+const MIPGEN_SHADER_SOURCE: &str = r#"
+struct MipgenVertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_mipgen(@builtin(vertex_index) vi: u32) -> MipgenVertexOutput {
+    var out: MipgenVertexOutput;
+    let tc = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
+    out.position = vec4<f32>(tc.x * 2.0 - 1.0, 1.0 - tc.y * 2.0, 0.0, 1.0);
+    out.uv = tc;
+    return out;
+}
+
+@group(0) @binding(0)
+var src_texture: texture_2d<f32>;
+
+@group(0) @binding(1)
+var src_sampler: sampler;
+
+@fragment
+fn fs_mipgen(input: MipgenVertexOutput) -> @location(0) vec4<f32> {
+    return textureSample(src_texture, src_sampler, input.uv);
+}
+"#;
+
 #[derive(Clone)]
 pub struct TileDraw {
     pub tile: Arc<TileData>,
@@ -100,9 +126,9 @@ struct ImportedSurface {
 
 #[derive(Clone)]
 struct TileTexture {
-    #[allow(dead_code)]
     texture: wgpu::Texture,
     view: wgpu::TextureView,
+    mip_levels: u32,
     last_used_frame: u64,
 }
 
@@ -112,6 +138,9 @@ struct GpuRuntime {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    mipgen_pipeline: wgpu::RenderPipeline,
+    mipgen_bind_group_layout: wgpu::BindGroupLayout,
+    mipgen_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     surfaces: HashMap<usize, ImportedSurface>,
@@ -237,10 +266,11 @@ impl GpuRenderer {
             label: Some("viewport-tile-sampler"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
+            anisotropy_clamp: 16,
             ..Default::default()
         });
 
@@ -287,12 +317,83 @@ impl GpuRenderer {
             mapped_at_creation: false,
         });
 
+        let mipgen_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("mipgen-shader"),
+            source: wgpu::ShaderSource::Wgsl(MIPGEN_SHADER_SOURCE.into()),
+        });
+
+        let mipgen_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("mipgen-bind-group-layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let mipgen_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("mipgen-sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let mipgen_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("mipgen-pipeline-layout"),
+                bind_group_layouts: &[&mipgen_bind_group_layout],
+                immediate_size: 0,
+            });
+
+        let mipgen_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("mipgen-pipeline"),
+            layout: Some(&mipgen_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &mipgen_shader,
+                entry_point: Some("vs_mipgen"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mipgen_shader,
+                entry_point: Some("fs_mipgen"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         self.runtime = Some(GpuRuntime {
             device: device.clone(),
             queue: queue.clone(),
             pipeline,
             bind_group_layout,
             sampler,
+            mipgen_pipeline,
+            mipgen_bind_group_layout,
+            mipgen_sampler,
             vertex_buffer,
             vertex_capacity: 6,
             surfaces: HashMap::new(),
@@ -410,6 +511,19 @@ impl GpuRenderer {
             return;
         };
 
+        // Phase 1: Ensure all tile textures exist, collecting newly created ones
+        let mut needs_mipgen: Vec<TileCoord> = Vec::new();
+        for draw in &frame.draws {
+            if ensure_tile_texture(runtime, tile_textures, &draw.tile, frame_id) {
+                needs_mipgen.push(draw.tile.coord);
+            }
+            if let Some(coarse) = &draw.coarse_tile {
+                if ensure_tile_texture(runtime, tile_textures, coarse, frame_id) {
+                    needs_mipgen.push(coarse.coord);
+                }
+            }
+        }
+
         let vertex_count = frame.draws.len().max(1) * 6;
         if runtime.vertex_capacity < vertex_count {
             runtime.vertex_buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
@@ -438,6 +552,21 @@ impl GpuRenderer {
                 label: Some("viewport-tile-encoder"),
             });
 
+        // Phase 2: Generate mipmaps for newly created tile textures (async on GPU)
+        for coord in &needs_mipgen {
+            if let Some(tile_tex) = tile_textures.get(coord) {
+                if tile_tex.mip_levels > 1 {
+                    generate_mipmaps(
+                        &mut encoder,
+                        runtime,
+                        &tile_tex.texture,
+                        tile_tex.mip_levels,
+                    );
+                }
+            }
+        }
+
+        // Phase 3: Main render pass (executes after mipmap generation on GPU)
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-tile-pass"),
@@ -465,13 +594,20 @@ impl GpuRenderer {
             render_pass.set_vertex_buffer(0, runtime.vertex_buffer.slice(..));
 
             for (index, draw) in frame.draws.iter().enumerate() {
-                let fine_texture =
-                    ensure_tile_texture(runtime, tile_textures, &draw.tile, frame_id);
-                let coarse_texture = draw
+                let fine_view = tile_textures
+                    .get(&draw.tile.coord)
+                    .map(|t| t.view.clone());
+                let coarse_view = draw
                     .coarse_tile
                     .as_ref()
-                    .map(|tile| ensure_tile_texture(runtime, tile_textures, tile, frame_id))
-                    .unwrap_or_else(|| fine_texture.clone());
+                    .and_then(|tile| tile_textures.get(&tile.coord))
+                    .map(|t| t.view.clone())
+                    .or_else(|| fine_view.clone());
+                let Some(fine_view) = fine_view else {
+                    continue;
+                };
+                let coarse_view = coarse_view.unwrap_or_else(|| fine_view.clone());
+
                 let bind_group = runtime
                     .device
                     .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -480,11 +616,11 @@ impl GpuRenderer {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&fine_texture.view),
+                                resource: wgpu::BindingResource::TextureView(&fine_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
-                                resource: wgpu::BindingResource::TextureView(&coarse_texture.view),
+                                resource: wgpu::BindingResource::TextureView(&coarse_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 2,
@@ -502,43 +638,132 @@ impl GpuRenderer {
     }
 }
 
+fn mip_level_count(width: u32, height: u32) -> u32 {
+    (width.max(height).max(1) as f32).log2().floor() as u32 + 1
+}
+
+/// Ensure a tile texture exists. Returns `true` if the texture was newly created
+/// and needs mipmap generation.
 fn ensure_tile_texture(
     runtime: &GpuRuntime,
     tile_textures: &mut HashMap<TileCoord, TileTexture>,
     tile: &Arc<TileData>,
     frame_id: u64,
-) -> TileTexture {
+) -> bool {
+    let mut is_new = false;
     let entry = tile_textures.entry(tile.coord).or_insert_with(|| {
-        let texture = runtime.device.create_texture_with_data(
-            &runtime.queue,
-            &wgpu::TextureDescriptor {
-                label: Some("viewport-tile-texture"),
-                size: wgpu::Extent3d {
-                    width: tile.width.max(1),
-                    height: tile.height.max(1),
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
+        is_new = true;
+        let width = tile.width.max(1);
+        let height = tile.height.max(1);
+        let mip_levels = mip_level_count(width, height);
+
+        let texture = runtime.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("viewport-tile-texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
             },
-            wgpu::util::TextureDataOrder::LayerMajor,
+            mip_level_count: mip_levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+
+        runtime.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
             &tile.data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
+
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         TileTexture {
             texture,
             view,
+            mip_levels,
             last_used_frame: frame_id,
         }
     });
 
     entry.last_used_frame = frame_id;
-    entry.clone()
+    is_new
+}
+
+fn generate_mipmaps(
+    encoder: &mut wgpu::CommandEncoder,
+    runtime: &GpuRuntime,
+    texture: &wgpu::Texture,
+    mip_levels: u32,
+) {
+    for level in 1..mip_levels {
+        let src_view = texture.create_view(&wgpu::TextureViewDescriptor {
+            base_mip_level: level - 1,
+            mip_level_count: Some(1),
+            ..Default::default()
+        });
+        let dst_view = texture.create_view(&wgpu::TextureViewDescriptor {
+            base_mip_level: level,
+            mip_level_count: Some(1),
+            ..Default::default()
+        });
+
+        let bind_group = runtime
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("mipgen-bind-group"),
+                layout: &runtime.mipgen_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&src_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&runtime.mipgen_sampler),
+                    },
+                ],
+            });
+
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("mipgen-pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &dst_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+            multiview_mask: None,
+        });
+
+        pass.set_pipeline(&runtime.mipgen_pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.draw(0..3, 0..1);
+    }
 }
 
 fn quad_vertices(draw: &TileDraw, width: u32, height: u32) -> [Vertex; 6] {
