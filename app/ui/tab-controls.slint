@@ -414,6 +414,9 @@ component Tab inherits Rectangle {
                     self.absolute-position.y + self.mouse-y,
                 );
             }
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.middle {
+                root.close-requested(data.id);
+            }
         }
     }
 
