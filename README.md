@@ -9,6 +9,9 @@
 <p align="center">
     <img src="images/eov.webp" width="256">
 </p>
+<p align="center">
+    <a href="https://cyto.sh">Website</a>
+</p>
 
 
 eov is a desktop viewer for whole-slide images built in Rust. It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux utility for WSI".
@@ -68,12 +71,13 @@ Current capabilities include:
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
 - Toggle between CPU and GPU rendering, with automatic fallback to CPU when GPU rendering is unavailable.
-- Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) image filtering
+- Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) texture filtering.
+- Real-time image adjustments: gamma, brightness, and contrast sliders applied via a per-channel LUT (CPU) or per-pixel shader (GPU).
+- Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
+- A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available.
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Various quality of life enhancements expected from modern software packages
-
-Note: bilinear filtering is used for the CPU fallback renderer to minimize start-up time and maximize performance with particularly large files. The filtering strategy will be configurable in future versions.
 
 ## Screenshots
 
@@ -82,6 +86,39 @@ Note: bilinear filtering is used for the CPU fallback renderer to minimize start
     &nbsp;
     <img src="images/screenshot-2.webp" width="512">
 </p>
+
+## Texture Filtering
+
+eov provides three texture filtering modes, selectable from the viewport context menu:
+
+| Mode | Description |
+|------|-------------|
+| **Bilinear** | Single mip-level sampling. Fastest, but can exhibit aliasing at low zoom. |
+| **Trilinear** | Bilinear sampling with mip-level blending for smooth transitions across zoom levels. The default mode. |
+| **Lanczos-3** | High-quality resampling using a windowed sinc kernel (a=3). Adaptively blends with trilinear at very low zoom to avoid ringing artifacts. |
+
+Both CPU and GPU backends support all three modes. On the GPU path, trilinear blending is performed by sampling fine and coarse mip textures and mixing in the fragment shader. Lanczos resampling is implemented as a separable kernel evaluated per-pixel in a dedicated shader.
+
+## Image Adjustments
+
+Real-time gamma, brightness, and contrast controls are available in the HUD settings panel:
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| Gamma | 0.2 – 3.0 | 1.0 | Power-law intensity curve. Values below 1.0 brighten shadows; above 1.0 darkens them. |
+| Brightness | -1.0 – 1.0 | 0.0 | Additive offset applied after gamma correction. |
+| Contrast | 0.2 – 3.0 | 1.0 | Multiplicative scaling around the midpoint (0.5) after brightness. |
+
+The CPU backend applies adjustments through a precomputed 256-entry lookup table for zero per-pixel branching. The GPU backend applies the same pipeline per-pixel in the fragment shader.
+
+## Stain Normalization
+
+eov includes two H&E stain normalization methods for histology images, selectable from the HUD settings panel:
+
+- **Macenko** ([Macenko et al., 2009](https://www.researchgate.net/publication/221624097_A_Method_for_Normalizing_Histology_Slides_for_Quantitative_Analysis)): Projects tissue optical density onto its principal stain plane via SVD, then identifies hematoxylin and eosin vectors from angular percentile extremes (1st and 99th percentile).
+- **Vahadane** ([Vahadane et al., 2016](https://pubmed.ncbi.nlm.nih.gov/27164577/)): Learns a two-component stain dictionary via sparse non-negative matrix factorization with L1 (LASSO) regularization, producing a physically-motivated decomposition that preserves local tissue structure.
+
+Both methods share a common normalization pipeline: RGB → optical density conversion, tissue masking, stain matrix estimation, least-squares concentration solve, 99th-percentile concentration scaling to a reference target, and reconstruction. The CPU and GPU backends produce matched output — stain matrix estimation runs on the CPU from raw tile data, while per-pixel normalization runs either as a CPU buffer pass or as a GPU fragment shader transform.
 
 ## Supported Formats
 
