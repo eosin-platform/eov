@@ -32,7 +32,7 @@ jobs:
             arch_label: arm64
 
           - arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
             rust_target: x86_64-apple-darwin
             arch_label: x86_64
 
@@ -237,6 +237,7 @@ jobs:
           cd staging
           zip -r -y "../${{ steps.meta.outputs.artifact_name }}" eov.app
           cd ..
+          # shellcheck disable=SC2094
           shasum -a 256 "${{ steps.meta.outputs.artifact_name }}" > "${{ steps.meta.outputs.checksum_name }}"
 
           echo "Archive contents:"

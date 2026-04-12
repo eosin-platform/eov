@@ -51,13 +51,18 @@ jobs:
         - uses: dtolnay/rust-toolchain@stable
           with:
             components: rustfmt
+        - name: Install cargo-binstall
+          run: |
+            curl -L https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-gnu.tgz \
+              | tar -xz
+            sudo mv cargo-binstall /usr/local/bin/
         - name: Install slint-lsp
           run: |
-            cargo install cargo-binstall --locked
             cargo binstall slint-lsp -y
         - name: Check Slint formatting
           run: |
             set -euo pipefail
+            # shellcheck disable=SC2046
             slint-lsp format -i $(git ls-files '*.slint')
             git diff --exit-code
 
