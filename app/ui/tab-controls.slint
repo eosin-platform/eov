@@ -423,7 +423,7 @@ component Tab inherits Rectangle {
 
     property <bool> hover-active: touch.has-hover && !touch.drag-armed && data.path != "";
     property <float> tooltip-delay-progress: hover-active ? 1.0 : 0.0;
-    animate tooltip-delay-progress { duration: 1ms; delay: 1000ms; }
+    animate tooltip-delay-progress { duration: 1ms; delay: 700ms; }
     property <bool> show-path-tooltip: tooltip-delay-progress > 0.5 && hover-active;
     changed show-path-tooltip => {
         root.tab-tooltip-changed(

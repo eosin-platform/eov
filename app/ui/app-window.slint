@@ -377,7 +377,9 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.tab-tooltip-visible && !root.context-menu-visible: Rectangle {
+    Rectangle {
+        opacity: root.tab-tooltip-visible && !root.context-menu-visible ? 1.0 : 0.0;
+        animate opacity { duration: 200ms; }
         x: max(4px, min(root.width - self.width - 4px, root.tab-tooltip-x - self.width / 2));
         y: root.tab-tooltip-y;
         width: tab-path-tooltip.preferred-width + 12px;
