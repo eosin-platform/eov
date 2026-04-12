@@ -270,7 +270,7 @@ impl GpuRenderer {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            anisotropy_clamp: 16,
+            anisotropy_clamp: 1,
             ..Default::default()
         });
 
