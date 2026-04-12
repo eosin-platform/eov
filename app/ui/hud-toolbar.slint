@@ -1,5 +1,5 @@
 component HudButton inherits Rectangle {
-    in property <string> label;
+    in property <image> icon-source;
     in property <string> tooltip-text;
     in property <bool> active: false;
     out property <bool> hovered: touch.has-hover;
@@ -16,12 +16,14 @@ component HudButton inherits Rectangle {
         }
     }
 
-    Text {
-        text: root.label;
-        color: root.active ? white : #cccccc;
-        font-size: 18px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: root.active ? white : #cccccc;
     }
 }
 
@@ -126,7 +128,7 @@ export component HudToolbar inherits Rectangle {
             }
 
             fit-btn := HudButton {
-                label: "⊞";
+                icon-source: @image-url("fit-view.svg");
                 tooltip-text: "Fit to view";
                 clicked => {
                     root.fit-to-view();
@@ -134,7 +136,7 @@ export component HudToolbar inherits Rectangle {
             }
 
             scale-btn := HudButton {
-                label: "⊡";
+                icon-source: @image-url("toggle-measure.svg");
                 tooltip-text: "Toggle scale bar";
                 active: root.show-scale-bar;
                 clicked => {
@@ -143,7 +145,7 @@ export component HudToolbar inherits Rectangle {
             }
 
             adjust-btn := HudButton {
-                label: "⚙";
+                icon-source: @image-url("settings.svg");
                 tooltip-text: "Adjustments";
                 active: root.dropdown-open || root.has-adjustments;
                 clicked => {

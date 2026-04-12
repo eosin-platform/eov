@@ -33,6 +33,67 @@ export component ToolButton inherits Rectangle {
     }
 }
 
+export component SvgToolButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <string> tooltip-text;
+    in property <bool> is-active: false;
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 17px;
+        height: 17px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+    }
+}
+
+export component SvgIconButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <string> tooltip-text: "";
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 3px;
+    background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 17px;
+        height: 17px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
+    }
+}
+
 export component MinimapToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;

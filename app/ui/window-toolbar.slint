@@ -7,6 +7,8 @@ import {
     MinimapToolButton,
     OpenFileToolButton,
     RoiToolButton,
+    SvgIconButton,
+    SvgToolButton,
     ToolButton,
     ZoomInToolButton,
 } from "tab-controls.slint";
@@ -81,8 +83,8 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            frame-button := IconButton {
-                text: "⛶";
+            frame-button := SvgIconButton {
+                icon-source: @image-url("fit-view.svg");
                 tooltip-text: "Frame ROI or full slide";
                 clicked => {
                     root.frame-requested();
@@ -119,8 +121,8 @@ export component WindowToolbar inherits Rectangle {
                 background: Theme.border;
             }
 
-            navigate-button := ToolButton {
-                icon: "✥";
+            navigate-button := SvgToolButton {
+                icon-source: @image-url("navigate.svg");
                 tooltip-text: "Navigate (Pan)";
                 is-active: root.current-tool == ToolType.navigate;
                 clicked => {
