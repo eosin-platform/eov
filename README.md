@@ -50,10 +50,14 @@ eov
 ```
 
 ### MacOS
-Prebuilt binaries are available via brew and direct download (`.dmg` file) (TODO)
+The `.app` file is available via the Releases page. Download and open the `.app` file to run it.
+
+For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle.
+
+Installation via `brew` is currently a work-in-progress. 
 
 ### Windows
-Tagged releases publish a Windows zip to GitHub Releases automatically. Run `eov.exe` within the zip to start the program. Only the portable version is available; no Windows installer is planned.
+A zip file containing a portable Windows build is available on the Releases page. Extract and run `eov.exe` within the zip to start the program. Only the portable version is available; no Windows installer is planned.
 
 If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure).
 
