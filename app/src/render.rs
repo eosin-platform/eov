@@ -605,7 +605,7 @@ fn render_pane_to_image(
     let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
     let cached_tiles: Vec<_> = visible_tiles
         .iter()
-        .filter_map(|coord| tile_cache.get(coord).map(|data| (*coord, data)))
+        .filter_map(|coord| tile_cache.peek(coord).map(|data| (*coord, data)))
         .collect();
     let cached_count = cached_tiles.len() as u32;
 
@@ -621,7 +621,7 @@ fn render_pane_to_image(
                     margin_tiles,
                 )
                 .into_iter()
-                .filter_map(|coord| tile_cache.get(&coord).map(|data| (coord, data)))
+                .filter_map(|coord| tile_cache.peek(&coord).map(|data| (coord, data)))
                 .collect()
         } else {
             Vec::new()
@@ -754,7 +754,7 @@ fn render_pane_to_image(
         );
 
         for fb_coord in fallback_tiles.iter().take(100) {
-            let Some(fallback_tile) = tile_cache.get(fb_coord) else {
+            let Some(fallback_tile) = tile_cache.peek(fb_coord) else {
                 continue;
             };
 
@@ -782,15 +782,13 @@ fn render_pane_to_image(
         }
     }
 
-    let Some(pane_state) = file.pane_state_mut(pane) else {
+    let Some(_pane_state) = file.pane_state_mut(pane) else {
         return PaneRenderOutcome::default();
     };
-    let buffer_size = (render_width * render_height * 4) as usize;
-    if pane_state.render_buffer.len() != buffer_size {
-        pane_state.render_buffer.resize(buffer_size, 0);
-    }
-    blitter::fast_fill_rgba(&mut pane_state.render_buffer, 30, 30, 30, 255);
-    let buffer = &mut pane_state.render_buffer[..];
+    // Render directly into SharedPixelBuffer to avoid an intermediate copy.
+    let mut pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
+    let buffer = pixel_buffer.make_mut_bytes();
+    blitter::fast_fill_rgba(buffer, 30, 30, 30, 255);
 
     for (fallback_tile, screen_x, screen_y, screen_w, screen_h) in fallback_blits {
         blitter::blit_tile(
@@ -834,8 +832,7 @@ fn render_pane_to_image(
     }
 
     PaneRenderOutcome {
-        image: blitter::create_image_buffer(buffer, render_width, render_height)
-            .map(Image::from_rgba8),
+        image: Some(Image::from_rgba8(pixel_buffer)),
         keep_running,
         rendered: true,
     }
@@ -869,7 +866,7 @@ fn collect_tile_draws(
         );
 
         for coord in fallback_tiles.iter().take(100) {
-            let Some(tile_data) = tile_cache.get(coord) else {
+            let Some(tile_data) = tile_cache.peek(coord) else {
                 continue;
             };
             if let Some(draw) = tile_draw_from_tile(
@@ -900,7 +897,7 @@ fn collect_tile_draws(
     );
 
     for coord in visible_tiles.iter().take(500) {
-        let Some(tile_data) = tile_cache.get(coord) else {
+        let Some(tile_data) = tile_cache.peek(coord) else {
             continue;
         };
         let coarse_blend = coarse_blend_for_tile(
@@ -974,7 +971,7 @@ fn coarse_blend_for_tile(
         coarse_tile_size as u32,
     );
 
-    let coarse_tile = tile_cache.get(&coarse_coord)?;
+    let coarse_tile = tile_cache.peek(&coarse_coord)?;
     let coarse_origin_x = coarse_coord.x as f64 * coarse_coord.tile_size as f64;
     let coarse_origin_y = coarse_coord.y as f64 * coarse_coord.tile_size as f64;
     let coarse_src_x = (coarse_tile_x - coarse_origin_x).max(0.0);

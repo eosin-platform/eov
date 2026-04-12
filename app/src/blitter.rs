@@ -75,6 +75,26 @@ pub fn blit_tile(
         return;
     }
 
+    // Fast path: 1:1 mapping (tile pixels map exactly to screen pixels).
+    // Bilinear interpolation with zero fractional parts is equivalent to
+    // direct copy, so row-by-row memcpy produces identical output.
+    if scaled_width == src_width as i32 && scaled_height == src_height as i32 {
+        let dest_stride = (dest_width * 4) as usize;
+        let src_stride = (src_width * 4) as usize;
+        let copy_width = (end_x - start_x) as usize * 4;
+        let src_x_offset = (start_x as i32 - dest_x) as usize * 4;
+        for y in start_y..end_y {
+            let src_y = (y as i32 - dest_y) as usize;
+            let src_off = src_y * src_stride + src_x_offset;
+            let dest_off = y as usize * dest_stride + start_x as usize * 4;
+            if src_off + copy_width <= src.len() && dest_off + copy_width <= dest.len() {
+                dest[dest_off..dest_off + copy_width]
+                    .copy_from_slice(&src[src_off..src_off + copy_width]);
+            }
+        }
+        return;
+    }
+
     let scale_x_fp = ((src_width as u64) << 16) / (scaled_width as u64).max(1);
     let scale_y_fp = ((src_height as u64) << 16) / (scaled_height as u64).max(1);
 

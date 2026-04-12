@@ -136,6 +136,15 @@ impl TileCache {
         tile
     }
 
+    /// Read a tile without updating LRU ordering or statistics.
+    ///
+    /// This is significantly cheaper than [`get`](Self::get) because it avoids
+    /// acquiring the LRU and stats mutexes, making it ideal for hot render-loop
+    /// lookups where eviction priority updates are unnecessary.
+    pub fn peek(&self, coord: &TileCoord) -> Option<Arc<TileData>> {
+        self.cache.get(coord).map(|entry| Arc::clone(&entry.tile))
+    }
+
     /// Insert a tile into the cache
     pub fn insert(&self, tile: TileData) {
         let coord = tile.coord;

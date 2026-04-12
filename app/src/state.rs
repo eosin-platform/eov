@@ -263,6 +263,7 @@ impl OpenFile {
 #[derive(Clone)]
 pub struct FilePaneState {
     pub viewport: ViewportState,
+    #[allow(dead_code)]
     pub render_buffer: Vec<u8>,
     pub last_render_zoom: f64,
     pub last_render_center_x: f64,
