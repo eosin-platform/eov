@@ -899,8 +899,7 @@ impl GpuRenderer {
             // Lazily create the array for this layer size.
             let array = tile_arrays.entry(array_ls).or_insert_with(|| {
                 let bytes_per_layer = array_ls as u64 * array_ls as u64 * 4;
-                let max_layers =
-                    (MAX_TILE_ARRAY_BYTES / bytes_per_layer).clamp(16, 256) as u32;
+                let max_layers = (MAX_TILE_ARRAY_BYTES / bytes_per_layer).clamp(16, 256) as u32;
                 TileArray::new(
                     &runtime.device,
                     &runtime.bind_group_layout,
@@ -913,8 +912,7 @@ impl GpuRenderer {
             });
 
             // Upload tiles.
-            let Some((fine_layer, _)) =
-                array.get_or_insert(&runtime.queue, &draw.tile, frame_id)
+            let Some((fine_layer, _)) = array.get_or_insert(&runtime.queue, &draw.tile, frame_id)
             else {
                 continue;
             };
