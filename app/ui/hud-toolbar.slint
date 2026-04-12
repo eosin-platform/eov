@@ -1,0 +1,175 @@
+component HudButton inherits Rectangle {
+    in property <string> label;
+    in property <string> tooltip-text;
+    in property <bool> active: false;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 38px;
+    height: 38px;
+    border-radius: 0px;
+    background: touch.has-hover ? #ffffff22 : active ? #ffffff15 : transparent;
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.label;
+        color: root.active ? white : #cccccc;
+        font-size: 18px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component HudToolbar inherits Rectangle {
+    in property <float> zoom-level: 1.0;
+    in property <bool> show-scale-bar: true;
+    in property <bool> dropdown-open: false;
+    in property <bool> has-adjustments: false;
+
+    callback fit-to-view();
+    callback toggle-scale-bar();
+    callback toggle-dropdown();
+    callback zoom-input(float);
+
+    property <string> zoom-text: zoom-level >= 1.0
+        ? Math.round(zoom-level * 100) + "%"
+        : Math.round(zoom-level * 1000) / 10 + "%";
+    property <bool> editing-zoom: false;
+
+    property <string> active-tooltip:
+        fit-btn.hovered ? fit-btn.tooltip-text
+        : scale-btn.hovered ? scale-btn.tooltip-text
+        : adjust-btn.hovered ? adjust-btn.tooltip-text
+        : "";
+    property <length> tooltip-center-x:
+        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2
+        : scale-btn.hovered ? scale-btn.x + scale-btn.width / 2
+        : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2
+        : 0px;
+
+    // Fixed width: 72px zoom area + 1px sep + 3 * 38px buttons = 187px
+    width: 187px;
+    height: 38px;
+    background: transparent;
+
+    // Clipped bar container for rounded corners
+    bar := Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #101419cc;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #ffffff12;
+        clip: true;
+
+        HorizontalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Zoom label / text input
+            Rectangle {
+                width: 72px;
+                height: 38px;
+                border-radius: 0px;
+                background: zoom-touch.has-hover || root.editing-zoom ? #ffffff15 : transparent;
+
+                Text {
+                    visible: !root.editing-zoom;
+                    text: root.zoom-text;
+                    color: #e0e0e0;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    visible: root.editing-zoom;
+                    x: 4px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 8px;
+                    height: 26px;
+                    background: root.editing-zoom ? #1a1f28 : transparent;
+                    border-radius: 4px;
+                    border-width: root.editing-zoom ? 1px : 0px;
+                    border-color: #4da3d9;
+
+                    zoom-text-input := TextInput {
+                        x: 4px;
+                        width: parent.width - 8px;
+                        color: white;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        text: root.zoom-text;
+                        input-type: InputType.decimal;
+
+                        accepted => {
+                            root.editing-zoom = false;
+                            root.zoom-input(self.text.to-float() / 100.0);
+                        }
+                    }
+                }
+
+                zoom-touch := TouchArea {
+                    enabled: !root.editing-zoom;
+                    clicked => {
+                        root.editing-zoom = true;
+                        zoom-text-input.focus();
+                        zoom-text-input.select-all();
+                    }
+                }
+            }
+
+            // Separator
+            Rectangle {
+                width: 1px;
+                height: 26px;
+                background: #ffffff20;
+            }
+
+            fit-btn := HudButton {
+                label: "⊞";
+                tooltip-text: "Fit to view";
+                clicked => { root.fit-to-view(); }
+            }
+
+            scale-btn := HudButton {
+                label: "⊡";
+                tooltip-text: "Toggle scale bar";
+                active: root.show-scale-bar;
+                clicked => { root.toggle-scale-bar(); }
+            }
+
+            adjust-btn := HudButton {
+                label: "⚙";
+                tooltip-text: "Adjustments";
+                active: root.dropdown-open || root.has-adjustments;
+                clicked => { root.toggle-dropdown(); }
+            }
+        }
+    }
+
+    // Tooltip rendered outside the clipped bar
+    if active-tooltip != "": Rectangle {
+        x: root.tooltip-center-x - self.width / 2;
+        y: root.height + 6px;
+        width: hud-tt-text.preferred-width + 12px;
+        height: hud-tt-text.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: #ffffff30;
+
+        hud-tt-text := Text {
+            x: 6px;
+            y: 3px;
+            text: root.active-tooltip;
+            color: white;
+            font-size: 11px;
+        }
+    }
+}

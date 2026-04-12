@@ -1,0 +1,74 @@
+import { MetadataItem } from "types.slint";
+
+export component MetadataHud inherits Rectangle {
+    in property <[MetadataItem]> items: [];
+
+    property <int> item-count: items.length;
+
+    width: 292px;
+    height: 52px + item-count * 22px;
+    background: #101419dd;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #ffffff1a;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000070;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 3px;
+        background: #4da3d9;
+        border-top-left-radius: parent.border-radius;
+        border-top-right-radius: parent.border-radius;
+    }
+
+    Text {
+        x: 16px;
+        y: 12px;
+        text: "Slide Metadata";
+        color: white;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    Rectangle {
+        x: 16px;
+        y: 34px;
+        width: parent.width - 32px;
+        height: 1px;
+        background: #ffffff12;
+    }
+
+    for item[index] in root.items: Rectangle {
+        x: 16px;
+        y: 42px + index * 22px;
+        width: parent.width - 32px;
+        height: 18px;
+        background: transparent;
+
+        Text {
+            x: 0px;
+            y: 1px;
+            width: 78px;
+            text: item.label;
+            color: #8ea0b2;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Text {
+            x: 86px;
+            y: 1px;
+            width: parent.width - 86px;
+            text: item.value;
+            color: #f3f6f8;
+            font-size: 11px;
+            font-weight: 500;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+}

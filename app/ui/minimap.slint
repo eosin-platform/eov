@@ -1,0 +1,181 @@
+import { Theme } from "theme.slint";
+import { MinimapRect } from "types.slint";
+
+export component Minimap inherits Rectangle {
+    in property <image> thumbnail;
+    in property <MinimapRect> viewport-rect;
+    in property <float> image-width: 1.0;
+    in property <float> image-height: 1.0;
+    callback navigate(float, float);
+
+    property <bool> is-dragging: false;
+    property <length> content-x: 5px;
+    property <length> content-y: 5px;
+    property <length> content-width: self.width - 10px;
+    property <length> content-height: self.height - 10px;
+    property <float> image-aspect: image-width / max(image-height, 0.001);
+    property <float> content-aspect: (content-width / 1px) / max(content-height / 1px, 0.001);
+    property <length> img-display-width: image-aspect > content-aspect ? content-width : content-height * image-aspect;
+    property <length> img-display-height: image-aspect > content-aspect ? content-width / image-aspect : content-height;
+    property <length> img-display-x: content-x + (content-width - img-display-width) / 2;
+    property <length> img-display-y: content-y + (content-height - img-display-height) / 2;
+
+    width: 150px;
+    height: 150px;
+    background: Theme.minimap-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    Image {
+        x: content-x;
+        y: content-y;
+        width: content-width;
+        height: content-height;
+        source: thumbnail;
+        image-fit: contain;
+    }
+
+    Rectangle {
+        x: img-display-x + viewport-rect.x * img-display-width;
+        y: img-display-y + viewport-rect.y * img-display-height;
+        width: viewport-rect.width * img-display-width;
+        height: viewport-rect.height * img-display-height;
+        background: transparent;
+        border-width: 2px;
+        border-color: Theme.minimap-rect;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.is-dragging = true;
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
+                root.navigate(rel-x, rel-y);
+            } else if e.kind == PointerEventKind.up {
+                root.is-dragging = false;
+            } else if e.kind == PointerEventKind.move && root.is-dragging {
+                let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
+                let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
+                root.navigate(rel-x, rel-y);
+            }
+        }
+    }
+}
+
+export component ZoomSlider inherits Rectangle {
+    in property <float> value: 0.5;
+    in property <float> zoom-level: 1.0;
+    callback value-changed(float);
+
+    width: 20px;
+    height: 150px;
+    background: Theme.minimap-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    property <float> clamped-value: max(0, min(1, value));
+    property <length> track-top: 22px;
+    property <length> track-bottom: 22px;
+    property <length> track-height: self.height - root.track-top - root.track-bottom;
+    property <length> handle-size: 10px;
+    property <bool> hovered: plus-touch.has-hover || minus-touch.has-hover || slider-touch.has-hover;
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: root.track-top;
+        background: plus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        plus-touch := TouchArea {
+            clicked => { root.value-changed(Math.min(1, root.clamped-value + 0.08)); }
+        }
+
+        Text {
+            text: "+";
+            color: Theme.text-primary;
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    Rectangle {
+        x: root.width / 2 - 1px;
+        y: root.track-top;
+        width: 2px;
+        height: root.track-height;
+        border-radius: 2px;
+        background: Theme.border;
+    }
+
+    Rectangle {
+        x: root.width / 2 - root.handle-size / 2;
+        y: root.track-top + (1 - root.clamped-value) * root.track-height - root.handle-size / 2;
+        width: root.handle-size;
+        height: root.handle-size;
+        border-radius: root.handle-size / 2;
+        background: Theme.accent;
+        border-width: 1px;
+        border-color: white;
+    }
+
+    slider-touch := TouchArea {
+        y: root.track-top;
+        width: 100%;
+        height: root.track-height;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                let normalized = 1 - max(0, min(1, self.mouse-y / max(root.track-height, 1px)));
+                root.value-changed(normalized);
+            }
+        }
+    }
+
+    Rectangle {
+        y: root.height - root.track-bottom;
+        width: 100%;
+        height: root.track-bottom;
+        background: minus-touch.has-hover ? Theme.surface-hover : transparent;
+
+        minus-touch := TouchArea {
+            clicked => { root.value-changed(Math.max(0, root.clamped-value - 0.08)); }
+        }
+
+        Text {
+            text: "-";
+            color: Theme.text-primary;
+            font-size: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // Tooltip showing magnification level
+    if root.hovered: Rectangle {
+        x: -self.width - 6px;
+        y: (root.height - self.height) / 2;
+        width: zoom-tooltip-text.preferred-width + 12px;
+        height: zoom-tooltip-text.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        zoom-tooltip-text := Text {
+            x: 6px;
+            y: 3px;
+            text: root.zoom-level >= 1.0
+                ? Math.round(root.zoom-level * 100) + "%"
+                : Math.round(root.zoom-level * 1000) / 10 + "%";
+            color: white;
+            font-size: 11px;
+        }
+    }
+}
