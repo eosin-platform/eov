@@ -7,7 +7,7 @@ use slint::ComponentHandle;
 use slint::wgpu_28::wgpu;
 use slint::{GraphicsAPI, Image, RenderingState};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -337,10 +337,19 @@ struct GpuRuntime {
     surfaces: HashMap<usize, ImportedSurface>,
 }
 
+/// Key for cached bind groups — identifies the (fine tile, coarse tile, sampler) combination.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct BindGroupKey {
+    fine_coord: TileCoord,
+    coarse_coord: TileCoord,
+    bilinear: bool,
+}
+
 pub struct GpuRenderer {
     runtime: Option<GpuRuntime>,
     pending_frames: HashMap<usize, QueuedFrame>,
     tile_textures: HashMap<TileCoord, TileTexture>,
+    bind_group_cache: HashMap<BindGroupKey, wgpu::BindGroup>,
     frame_counter: u64,
 }
 
@@ -359,6 +368,7 @@ impl GpuRenderer {
             runtime: None,
             pending_frames: HashMap::new(),
             tile_textures: HashMap::new(),
+            bind_group_cache: HashMap::new(),
             frame_counter: 0,
         }
     }
@@ -652,6 +662,7 @@ impl GpuRenderer {
         self.runtime = None;
         self.pending_frames.clear();
         self.tile_textures.clear();
+        self.bind_group_cache.clear();
     }
 
     fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
@@ -718,6 +729,7 @@ impl GpuRenderer {
                 Self::render_frame(
                     runtime,
                     &mut self.tile_textures,
+                    &mut self.bind_group_cache,
                     SurfaceSlot(slot_index),
                     frame,
                     frame_id,
@@ -733,15 +745,25 @@ impl GpuRenderer {
                 .collect();
             entries.sort_by_key(|(_, last_used_frame)| *last_used_frame);
             let remove_count = self.tile_textures.len() - MAX_GPU_TILE_TEXTURES;
-            for (coord, _) in entries.into_iter().take(remove_count) {
-                self.tile_textures.remove(&coord);
+            let evicted: HashSet<TileCoord> = entries
+                .into_iter()
+                .take(remove_count)
+                .map(|(coord, _)| coord)
+                .collect();
+            for coord in &evicted {
+                self.tile_textures.remove(coord);
             }
+            // Purge bind groups that reference evicted tile textures
+            self.bind_group_cache.retain(|key, _| {
+                !evicted.contains(&key.fine_coord) && !evicted.contains(&key.coarse_coord)
+            });
         }
     }
 
     fn render_frame(
         runtime: &mut GpuRuntime,
         tile_textures: &mut HashMap<TileCoord, TileTexture>,
+        bind_group_cache: &mut HashMap<BindGroupKey, wgpu::BindGroup>,
         slot: SurfaceSlot,
         frame: QueuedFrame,
         frame_id: u64,
@@ -830,7 +852,8 @@ impl GpuRenderer {
             .map(|d| d.filtering_mode)
             .unwrap_or(FilteringMode::Bilinear);
         let use_lanczos = matches!(filtering_mode, FilteringMode::Lanczos3);
-        let active_sampler = if filtering_mode == FilteringMode::Bilinear {
+        let is_bilinear = filtering_mode == FilteringMode::Bilinear;
+        let active_sampler = if is_bilinear {
             &runtime.bilinear_sampler
         } else {
             &runtime.sampler
@@ -866,43 +889,55 @@ impl GpuRenderer {
             render_pass.set_vertex_buffer(0, runtime.vertex_buffer.slice(..));
 
             for (index, draw) in frame.draws.iter().enumerate() {
-                let fine_view = tile_textures.get(&draw.tile.coord).map(|t| t.view.clone());
-                let coarse_view = draw
+                let fine_coord = draw.tile.coord;
+                let coarse_coord = draw
                     .coarse_tile
                     .as_ref()
-                    .and_then(|tile| tile_textures.get(&tile.coord))
-                    .map(|t| t.view.clone())
-                    .or_else(|| fine_view.clone());
-                let Some(fine_view) = fine_view else {
-                    continue;
-                };
-                let coarse_view = coarse_view.unwrap_or_else(|| fine_view.clone());
+                    .map(|t| t.coord)
+                    .unwrap_or(fine_coord);
 
-                let bind_group = runtime
-                    .device
-                    .create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("viewport-tile-bind-group"),
-                        layout: &runtime.bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&fine_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::TextureView(&coarse_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::Sampler(active_sampler),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 3,
-                                resource: runtime.adjustments_buffer.as_entire_binding(),
-                            },
-                        ],
-                    });
-                render_pass.set_bind_group(0, &bind_group, &[]);
+                if !tile_textures.contains_key(&fine_coord) {
+                    continue;
+                }
+
+                let cache_key = BindGroupKey {
+                    fine_coord,
+                    coarse_coord,
+                    bilinear: is_bilinear,
+                };
+
+                let bind_group = bind_group_cache.entry(cache_key).or_insert_with(|| {
+                    let fine_view = &tile_textures[&fine_coord].view;
+                    let coarse_view = tile_textures
+                        .get(&coarse_coord)
+                        .map(|t| &t.view)
+                        .unwrap_or(fine_view);
+                    runtime
+                        .device
+                        .create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("viewport-tile-bind-group"),
+                            layout: &runtime.bind_group_layout,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: wgpu::BindingResource::TextureView(fine_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(coarse_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::Sampler(active_sampler),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 3,
+                                    resource: runtime.adjustments_buffer.as_entire_binding(),
+                                },
+                            ],
+                        })
+                });
+                render_pass.set_bind_group(0, &*bind_group, &[]);
                 let start = (index * 6) as u32;
                 render_pass.draw(start..start + 6, 0..1);
             }
