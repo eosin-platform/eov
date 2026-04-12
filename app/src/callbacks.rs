@@ -1,5 +1,8 @@
 use crate::config;
-use crate::state::{self, AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend, StainNormalization};
+use crate::state::{
+    self, AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend,
+    StainNormalization,
+};
 use crate::{
     AppWindow, FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit,
     RenderMode, StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,

@@ -479,10 +479,7 @@ fn vahadane_extract(od_pixels: &[[f32; 3]], regularizer: f32) -> Option<[[f32; 3
 
 /// Given a source stain matrix (2×3 row-major), compute the inverse stain matrix
 /// and the concentration scale factors from source OD pixels → target.
-fn compute_norm_params(
-    stain_matrix: &[[f32; 3]; 2],
-    od_pixels: &[[f32; 3]],
-) -> StainNormParams {
+fn compute_norm_params(stain_matrix: &[[f32; 3]; 2], od_pixels: &[[f32; 3]]) -> StainNormParams {
     let col_major = stain_mat_to_col_major(stain_matrix);
     let inv = pseudo_inverse_2x3(&col_major);
 
@@ -572,8 +569,16 @@ fn apply_normalization_to_buffer(buffer: &mut [u8], params: &StainNormParams) {
         return;
     }
     let inv = [
-        [params.inv_stain_r0[0], params.inv_stain_r0[1], params.inv_stain_r0[2]],
-        [params.inv_stain_r1[0], params.inv_stain_r1[1], params.inv_stain_r1[2]],
+        [
+            params.inv_stain_r0[0],
+            params.inv_stain_r0[1],
+            params.inv_stain_r0[2],
+        ],
+        [
+            params.inv_stain_r1[0],
+            params.inv_stain_r1[1],
+            params.inv_stain_r1[2],
+        ],
     ];
     let scale = [params.inv_stain_r0[3], params.inv_stain_r1[3]];
 
@@ -597,10 +602,7 @@ fn apply_normalization_to_buffer(buffer: &mut [u8], params: &StainNormParams) {
 /// Compute stain normalization parameters from GPU tile draw data.
 /// The heavy fitting runs on CPU; the returned parameters are uploaded
 /// as shader uniforms for per-pixel transform on the GPU.
-pub fn compute_gpu_stain_params(
-    draws: &[TileDraw],
-    method: StainNormalization,
-) -> StainNormParams {
+pub fn compute_gpu_stain_params(draws: &[TileDraw], method: StainNormalization) -> StainNormParams {
     if method == StainNormalization::None || draws.is_empty() {
         return StainNormParams::default();
     }
@@ -652,10 +654,7 @@ fn top_two_eigenvectors(cov: &[[f32; 3]; 3]) -> ([f32; 3], [f32; 3]) {
     let lambda1 = cov[0][0] * v1[0] * v1[0]
         + cov[1][1] * v1[1] * v1[1]
         + cov[2][2] * v1[2] * v1[2]
-        + 2.0
-            * (cov[0][1] * v1[0] * v1[1]
-                + cov[0][2] * v1[0] * v1[2]
-                + cov[1][2] * v1[1] * v1[2]);
+        + 2.0 * (cov[0][1] * v1[0] * v1[1] + cov[0][2] * v1[0] * v1[2] + cov[1][2] * v1[1] * v1[2]);
     let mut cov2 = *cov;
     for i in 0..3 {
         for j in 0..3 {
@@ -729,8 +728,12 @@ mod tests {
         let back = od_to_rgb(od);
         // Should round-trip within 1 level due to quantization
         for i in 0..3 {
-            assert!((rgb[i] as i32 - back[i] as i32).unsigned_abs() <= 1,
-                "channel {i}: {rgb_v} != {back_v}", rgb_v = rgb[i], back_v = back[i]);
+            assert!(
+                (rgb[i] as i32 - back[i] as i32).unsigned_abs() <= 1,
+                "channel {i}: {rgb_v} != {back_v}",
+                rgb_v = rgb[i],
+                back_v = back[i]
+            );
         }
     }
 
@@ -765,7 +768,10 @@ mod tests {
         // Both rows should be unit-normalized (approximately)
         for (i, row) in sm.iter().enumerate() {
             let norm = (row[0] * row[0] + row[1] * row[1] + row[2] * row[2]).sqrt();
-            assert!((norm - 1.0).abs() < 0.05, "row {i} norm = {norm}, expected ~1.0");
+            assert!(
+                (norm - 1.0).abs() < 0.05,
+                "row {i} norm = {norm}, expected ~1.0"
+            );
         }
     }
 
@@ -781,7 +787,10 @@ mod tests {
         // Both rows should be unit-normalized
         for (i, row) in sm.iter().enumerate() {
             let norm = (row[0] * row[0] + row[1] * row[1] + row[2] * row[2]).sqrt();
-            assert!((norm - 1.0).abs() < 0.05, "row {i} norm = {norm}, expected ~1.0");
+            assert!(
+                (norm - 1.0).abs() < 0.05,
+                "row {i} norm = {norm}, expected ~1.0"
+            );
         }
     }
 

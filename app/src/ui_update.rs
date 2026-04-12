@@ -3,15 +3,16 @@
 //! This module contains functions for updating UI elements like tabs,
 //! recent files, and render backend settings.
 
-use crate::state::{AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend, StainNormalization};
+use crate::state::{
+    AppState, FilteringMode, HudSettings, MeasurementUnit, PaneId, RenderBackend,
+    StainNormalization,
+};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
 use crate::{
-    ContextMenuItem, FilteringMode as SlintFilteringMode,
-    HudSettings as SlintHudSettings, MeasurementUnit as SlintMeasurementUnit,
-    MetadataItem, MinimapRect,
-    PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData, RenderMode,
-    StainNormalization as SlintStainNormalization, TabData,
-    ViewportInfo,
+    ContextMenuItem, FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
+    MeasurementUnit as SlintMeasurementUnit, MetadataItem, MinimapRect, PaneRenderCacheEntry,
+    PaneUiModels, PaneViewData, RecentFileData, RenderMode,
+    StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use slint::{Image, Model, SharedString, VecModel};

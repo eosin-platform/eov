@@ -7,8 +7,7 @@ use crate::AppWindow;
 use crate::blitter;
 use crate::gpu::{SurfaceSlot, TileDraw};
 use crate::state::{
-    AppState, FilteringMode, OpenFile, PaneId, RenderBackend,
-    TileRequestSignature,
+    AppState, FilteringMode, OpenFile, PaneId, RenderBackend, TileRequestSignature,
 };
 use crate::tile_loader::calculate_wanted_tiles;
 use crate::tools;
