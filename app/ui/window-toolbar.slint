@@ -198,50 +198,41 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            Rectangle {
-                height: 28px;
-                width: filter-combo-area.width + 4px;
-                border-radius: 3px;
+            VerticalLayout {
+                alignment: center;
+                filter-combo-area := Rectangle {
+                    width: 82px;
+                    height: 26px;
+                    border-radius: 3px;
+                    background: filter-combo-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: root.filter-popup-visible ? Theme.accent : Theme.border;
 
-                HorizontalLayout {
-                    spacing: 4px;
-                    padding-left: 3px;
-                    padding-right: 3px;
+                    filter-combo-touch := TouchArea {
+                        clicked => {
+                            root.filter-popup-visible = !root.filter-popup-visible;
+                        }
+                    }
 
-                    filter-combo-area := Rectangle {
-                        width: 82px;
-                        height: 22px;
-                        border-radius: 3px;
-                        background: filter-combo-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: root.filter-popup-visible ? Theme.accent : Theme.border;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 6px;
+                        spacing: 4px;
 
-                        filter-combo-touch := TouchArea {
-                            clicked => {
-                                root.filter-popup-visible = !root.filter-popup-visible;
-                            }
+                        Text {
+                            text: root.filtering-mode == FilteringMode.bilinear ? "Bilinear" : root.filtering-mode == FilteringMode.trilinear ? "Trilinear" : "Lanczos-3";
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
 
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 6px;
-                            spacing: 4px;
-
-                            Text {
-                                text: root.filtering-mode == FilteringMode.bilinear ? "Bilinear" : root.filtering-mode == FilteringMode.trilinear ? "Trilinear" : "Lanczos-3";
-                                color: Theme.text-primary;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                horizontal-stretch: 1;
-                                overflow: elide;
-                            }
-
-                            Text {
-                                text: "▾";
-                                color: Theme.text-secondary;
-                                font-size: 10px;
-                                vertical-alignment: center;
-                            }
+                        Text {
+                            text: "▾";
+                            color: Theme.text-secondary;
+                            font-size: 10px;
+                            vertical-alignment: center;
                         }
                     }
                 }
