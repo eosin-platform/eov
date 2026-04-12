@@ -171,7 +171,25 @@ To **manually** build eov and run the binary, you need:
 - OpenSlide installed on the system, including the development package needed for linking.
 - The native libraries required by Slint, winit, and the selected graphics stack on your platform.
 
-On Linux, the most important dependency is usually OpenSlide itself. Depending on your distribution, you may also need the usual X11, Wayland, EGL, and font development packages used by Rust GUI applications.
+On Linux, the most important dependency is usually OpenSlide itself. Depending on your distribution, you may also need the usual X11, Wayland, EGL, and font development packages used by Rust GUI applications. Generally, you can just run this you're good to go:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    cargo \
+    curl \
+    file \
+    libegl1-mesa-dev \
+    libfontconfig-dev \
+    libopenslide-dev \
+    libwayland-dev \
+    libx11-dev \
+    libxkbcommon-dev \
+    pkg-config \
+    squashfs-tools \
+    zsync
+```
 
 ### How to Build
 
