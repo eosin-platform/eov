@@ -341,6 +341,9 @@ pub struct FilePaneState {
     pub last_render_time: std::time::Instant,
     pub last_seen_tile_epoch: u64,
     pub last_request: Option<TileRequestSignature>,
+    pub last_render_gamma: f32,
+    pub last_render_brightness: f32,
+    pub last_render_contrast: f32,
     pub hud: HudSettings,
 }
 
@@ -360,6 +363,9 @@ impl FilePaneState {
             last_render_time: std::time::Instant::now(),
             last_seen_tile_epoch: 0,
             last_request: None,
+            last_render_gamma: 1.0,
+            last_render_brightness: 0.0,
+            last_render_contrast: 1.0,
             hud: HudSettings::default(),
         }
     }

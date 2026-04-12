@@ -300,9 +300,9 @@ export component ScaleBar inherits Rectangle {
     property <string> label-text:
         !has-calibration ? ""
         : unit == MeasurementUnit.inches ? (nice-um >= 25400 ? Math.round(nice-um / 254) / 100 + " in" : Math.round(nice-um / 25.4 * 1000) / 1000 + " in")
-        : unit == MeasurementUnit.mm ? (nice-um >= 1000 ? Math.round(nice-um / 10) / 100 + " mm" : Math.round(nice-um * 100) / 100 + " µm")
+        : unit == MeasurementUnit.mm ? Math.round(nice-um / 10) / 100 + " mm"
         : nice-um >= 1000 ? Math.round(nice-um / 10) / 100 + " mm"
-        : Math.round(nice-um * 100) / 100 + " µm";
+        : Math.round(nice-um) + " µm";
 
     width: max(60px, bar-width-px * 1px + 24px);
     height: 32px;
@@ -576,12 +576,12 @@ export component HudSettingsPanel inherits Rectangle {
 
     width: 260px;
     height: layout.preferred-height + 8px;
-    background: #101419ee;
+    background: #101419dd;
     border-radius: 8px;
     border-width: 1px;
     border-color: #ffffff1a;
-    drop-shadow-blur: 12px;
-    drop-shadow-color: #00000060;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000070;
 
     layout := VerticalLayout {
         padding: 4px;

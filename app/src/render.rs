@@ -565,6 +565,9 @@ fn render_pane_to_image(
         hud_gamma,
         hud_brightness,
         hud_contrast,
+        last_render_gamma,
+        last_render_brightness,
+        last_render_contrast,
     ) = {
         let Some(pane_state) = file.pane_state_mut(pane) else {
             return PaneRenderOutcome::default();
@@ -587,6 +590,9 @@ fn render_pane_to_image(
             pane_state.hud.gamma,
             pane_state.hud.brightness,
             pane_state.hud.contrast,
+            pane_state.last_render_gamma,
+            pane_state.last_render_brightness,
+            pane_state.last_render_contrast,
         )
     };
 
@@ -688,7 +694,16 @@ fn render_pane_to_image(
         );
     }
 
-    if !force_render && !is_first_frame && !viewport_changed && !level_changed && !new_tiles_loaded
+    let adjustments_changed = (hud_gamma - last_render_gamma).abs() > 0.001
+        || (hud_brightness - last_render_brightness).abs() > 0.001
+        || (hud_contrast - last_render_contrast).abs() > 0.001;
+
+    if !force_render
+        && !is_first_frame
+        && !viewport_changed
+        && !level_changed
+        && !new_tiles_loaded
+        && !adjustments_changed
     {
         return PaneRenderOutcome {
             image: None,
@@ -708,6 +723,9 @@ fn render_pane_to_image(
         pane_state.last_render_level = level;
         pane_state.tiles_loaded_since_render = cached_count;
         pane_state.last_seen_tile_epoch = loaded_tile_epoch;
+        pane_state.last_render_gamma = hud_gamma;
+        pane_state.last_render_brightness = hud_brightness;
+        pane_state.last_render_contrast = hud_contrast;
     }
 
     let render_width = vp_width as u32;
@@ -744,9 +762,15 @@ fn render_pane_to_image(
             _ => SurfaceSlot(pane.0),
         };
         let image = crate::with_gpu_renderer(|renderer| {
-            renderer
-                .borrow_mut()
-                .queue_frame(slot, render_width, render_height, draws)
+            renderer.borrow_mut().queue_frame(
+                slot,
+                render_width,
+                render_height,
+                draws,
+                hud_gamma,
+                hud_brightness,
+                hud_contrast,
+            )
         })
         .flatten();
 

@@ -68,7 +68,7 @@ Current capabilities include:
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
 - Toggle between CPU and GPU rendering, with automatic fallback to CPU when GPU rendering is unavailable.
-- [Trilinear filtering](https://en.wikipedia.org/wiki/Trilinear_filtering) for industry-standard image quality (GPU only)
+- Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) image filtering
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Various quality of life enhancements expected from modern software packages

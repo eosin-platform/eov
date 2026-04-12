@@ -29,6 +29,13 @@ struct VertexOutput {
     @location(2) mip_blend: f32,
 };
 
+struct Adjustments {
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    _pad: f32,
+};
+
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
@@ -48,11 +55,22 @@ var coarse_texture: texture_2d<f32>;
 @group(0) @binding(2)
 var tile_sampler: sampler;
 
+@group(0) @binding(3)
+var<uniform> adjustments: Adjustments;
+
+fn apply_adj(color: vec4<f32>) -> vec4<f32> {
+    let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
+    let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
+    let b = g + vec3<f32>(adjustments.brightness);
+    let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
+    return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let fine = textureSample(fine_texture, tile_sampler, input.fine_uv);
     let coarse = textureSample(coarse_texture, tile_sampler, input.coarse_uv);
-    return mix(fine, coarse, input.mip_blend);
+    return apply_adj(mix(fine, coarse, input.mip_blend));
 }
 "#;
 
@@ -99,6 +117,13 @@ struct VertexOutput {
     @location(2) mip_blend: f32,
 };
 
+struct Adjustments {
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    _pad: f32,
+};
+
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
@@ -118,6 +143,9 @@ var coarse_texture: texture_2d<f32>;
 @group(0) @binding(2)
 var tile_sampler: sampler;
 
+@group(0) @binding(3)
+var<uniform> adjustments: Adjustments;
+
 const PI: f32 = 3.14159265358979323846;
 const LANCZOS_A: f32 = 3.0;
 
@@ -134,6 +162,14 @@ fn lanczos_weight(x: f32) -> f32 {
         return 0.0;
     }
     return sinc(x) * sinc(x / LANCZOS_A);
+}
+
+fn apply_adj(color: vec4<f32>) -> vec4<f32> {
+    let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
+    let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
+    let b = g + vec3<f32>(adjustments.brightness);
+    let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
+    return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
 }
 
 @fragment
@@ -166,7 +202,7 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
         color = color / weight_sum;
     }
 
-    return clamp(color, vec4<f32>(0.0), vec4<f32>(1.0));
+    return apply_adj(clamp(color, vec4<f32>(0.0), vec4<f32>(1.0)));
 }
 "#;
 
@@ -196,11 +232,23 @@ impl SurfaceSlot {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct AdjustmentsUniform {
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    _pad: f32,
+}
+
 #[derive(Clone)]
 struct QueuedFrame {
     width: u32,
     height: u32,
     draws: Vec<TileDraw>,
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
 }
 
 #[derive(Clone)]
@@ -234,6 +282,7 @@ struct GpuRuntime {
     mipgen_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
+    adjustments_buffer: wgpu::Buffer,
     surfaces: HashMap<usize, ImportedSurface>,
 }
 
@@ -278,12 +327,16 @@ impl GpuRenderer {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn queue_frame(
         &mut self,
         slot: SurfaceSlot,
         width: u32,
         height: u32,
         draws: Vec<TileDraw>,
+        gamma: f32,
+        brightness: f32,
+        contrast: f32,
     ) -> Option<Image> {
         if width == 0 || height == 0 {
             return None;
@@ -297,6 +350,9 @@ impl GpuRenderer {
             width,
             height,
             draws,
+            gamma,
+            brightness,
+            contrast,
         };
         self.pending_frames.insert(slot.index(), frame);
 
@@ -348,6 +404,16 @@ impl GpuRenderer {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
             ],
@@ -418,6 +484,13 @@ impl GpuRenderer {
             label: Some("viewport-tile-vertex-buffer"),
             size: std::mem::size_of::<Vertex>() as u64 * 6,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let adjustments_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viewport-adjustments-buffer"),
+            size: std::mem::size_of::<AdjustmentsUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -538,6 +611,7 @@ impl GpuRenderer {
             mipgen_sampler,
             vertex_buffer,
             vertex_capacity: 6,
+            adjustments_buffer,
             surfaces: HashMap::new(),
         });
     }
@@ -688,6 +762,17 @@ impl GpuRenderer {
                 .write_buffer(&runtime.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
         }
 
+        // Upload adjustments uniform
+        let adj = AdjustmentsUniform {
+            gamma: frame.gamma,
+            brightness: frame.brightness,
+            contrast: frame.contrast,
+            _pad: 0.0,
+        };
+        runtime
+            .queue
+            .write_buffer(&runtime.adjustments_buffer, 0, bytemuck::bytes_of(&adj));
+
         let mut encoder = runtime
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -781,6 +866,10 @@ impl GpuRenderer {
                             wgpu::BindGroupEntry {
                                 binding: 2,
                                 resource: wgpu::BindingResource::Sampler(active_sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: runtime.adjustments_buffer.as_entire_binding(),
                             },
                         ],
                     });
