@@ -36,13 +36,13 @@ There are two methods of installation: AppImage and Flatpak. The AppImage is dir
 
 ```bash
 # Make it executable (ensure correct filename!)
-chmod +x eov-v0.1.23-linux-x86_64.AppImage
+chmod +x eov-v0.1.24-linux-x86_64.AppImage
 
 # Run it directly
-./eov-v0.1.23-linux-x86_64.AppImage
+./eov-v0.1.24-linux-x86_64.AppImage
 
 # Install it system-wide (optional)
-sudo mv eov-v0.1.23-linux-x86_64.AppImage /usr/local/bin/eov
+sudo mv eov-v0.1.24-linux-x86_64.AppImage /usr/local/bin/eov
 
 # Start the installed app with a nice, short command.
 eov
