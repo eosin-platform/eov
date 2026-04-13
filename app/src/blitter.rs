@@ -11,6 +11,15 @@ pub struct BlitRect {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// Exact floating-point origin and size of the tile in screen pixels.
+    /// When `exact_width > 0`, the bilinear/lanczos samplers derive source
+    /// UV mapping from the exact coordinates instead of `x`/`y`/`width`/
+    /// `height`, keeping UV coordinates stable as the integer rect
+    /// oscillates ±1 px during smooth zoom.
+    pub exact_x: f64,
+    pub exact_y: f64,
+    pub exact_width: f64,
+    pub exact_height: f64,
 }
 
 /// Fast fill RGBA buffer with a single color using u32 writes
@@ -70,6 +79,7 @@ pub fn blit_tile(
         y: dest_y,
         width: scaled_width,
         height: scaled_height,
+        ..
     } = rect;
     if scaled_width <= 0 || scaled_height <= 0 {
         return;
@@ -117,8 +127,16 @@ pub fn blit_tile(
     let data_w_minus_1 = data_width.saturating_sub(1);
     let data_h_minus_1 = data_height.saturating_sub(1);
 
-    let scale_x_fp = ((src_width as u64) << 16) / (scaled_width as u64).max(1);
-    let scale_y_fp = ((src_height as u64) << 16) / (scaled_height as u64).max(1);
+    // Use exact floating-point tile size for UV mapping when available.
+    // This keeps the src→dest mapping stable even when the integer rect
+    // oscillates ±1 px during smooth zoom.
+    let use_exact = rect.exact_width > 0.0;
+    let exact_x = rect.exact_x;
+    let exact_y = rect.exact_y;
+    let exact_w = if use_exact { rect.exact_width } else { scaled_width as f64 };
+    let exact_h = if use_exact { rect.exact_height } else { scaled_height as f64 };
+    let scale_x_f = src_width as f64 / exact_w;
+    let scale_y_f = src_height as f64 / exact_h;
 
     let dest_stride = (dest_width * 4) as usize;
     let src_stride = (data_width * 4) as usize;
@@ -134,8 +152,15 @@ pub fn blit_tile(
     }
 
     for y in start_y..end_y {
-        let local_y = (y as i32 - dest_y) as u64;
-        let src_y_fp = (local_y * scale_y_fp) as u32;
+        // Map dest pixel to source coord using exact float origin/size.
+        // This produces the same source coordinate for a given dest pixel
+        // regardless of integer rect rounding: src = (dest_px - exact_origin) * scale
+        let src_yf = if use_exact {
+            (y as f64 - exact_y) * scale_y_f
+        } else {
+            (y as i32 - dest_y) as f64 * scale_y_f
+        };
+        let src_y_fp = (src_yf * 65536.0).max(0.0) as u32;
         let y0_inner = src_y_fp >> 16;
         let fy = (src_y_fp & 0xFFFF) >> 8;
         let inv_fy = 256 - fy;
@@ -148,8 +173,12 @@ pub fn blit_tile(
         let src_row1 = y1 as usize * src_stride;
 
         for x in start_x..end_x {
-            let local_x = (x as i32 - dest_x) as u64;
-            let src_x_fp = (local_x * scale_x_fp) as u32;
+            let src_xf = if use_exact {
+                (x as f64 - exact_x) * scale_x_f
+            } else {
+                (x as i32 - dest_x) as f64 * scale_x_f
+            };
+            let src_x_fp = (src_xf * 65536.0).max(0.0) as u32;
             let x0_inner = src_x_fp >> 16;
             let fx = (src_x_fp & 0xFFFF) >> 8;
             let inv_fx = 256 - fx;
@@ -228,6 +257,7 @@ pub fn blit_tile_lanczos3(
         y: dest_y,
         width: scaled_width,
         height: scaled_height,
+        ..
     } = rect;
     if scaled_width <= 0 || scaled_height <= 0 {
         return;
@@ -269,8 +299,13 @@ pub fn blit_tile_lanczos3(
     let data_width = src_width + 2 * border;
     let data_height = src_height + 2 * border;
 
-    let scale_x = src_width as f64 / scaled_width.max(1) as f64;
-    let scale_y = src_height as f64 / scaled_height.max(1) as f64;
+    let use_exact = rect.exact_width > 0.0;
+    let exact_x = rect.exact_x;
+    let exact_y = rect.exact_y;
+    let exact_w = if use_exact { rect.exact_width } else { scaled_width.max(1) as f64 };
+    let exact_h = if use_exact { rect.exact_height } else { scaled_height.max(1) as f64 };
+    let scale_x = src_width as f64 / exact_w;
+    let scale_y = src_height as f64 / exact_h;
     let dest_stride = (dest_width * 4) as usize;
     let src_stride = (data_width * 4) as usize;
     let data_w = data_width as i32;
@@ -279,16 +314,24 @@ pub fn blit_tile_lanczos3(
     let a = 3.0_f64;
 
     for y in start_y..end_y {
-        let local_y = (y as i32 - dest_y) as f64;
-        let src_yf = local_y * scale_y;
+        let src_yf = if use_exact {
+            (y as f64 - exact_y) * scale_y
+        } else {
+            (y as i32 - dest_y) as f64 * scale_y
+        };
+        let src_yf = src_yf.max(0.0);
         let center_y = src_yf.floor() as i32;
         let frac_y = src_yf - center_y as f64;
 
         let dest_row = y as usize * dest_stride;
 
         for x in start_x..end_x {
-            let local_x = (x as i32 - dest_x) as f64;
-            let src_xf = local_x * scale_x;
+            let src_xf = if use_exact {
+                (x as f64 - exact_x) * scale_x
+            } else {
+                (x as i32 - dest_x) as f64 * scale_x
+            };
+            let src_xf = src_xf.max(0.0);
             let center_x = src_xf.floor() as i32;
             let frac_x = src_xf - center_x as f64;
 

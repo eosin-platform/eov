@@ -760,7 +760,7 @@ fn render_pane_to_image(
     };
 
     let level_count = file.wsi.level_count();
-    let mut fallback_blits = Vec::new();
+    let mut fallback_blits: Vec<(Arc<common::TileData>, blitter::BlitRect)> = Vec::new();
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= level {
             continue;
@@ -792,10 +792,14 @@ fn render_pane_to_image(
             let fb_image_y_end =
                 (fb_origin_y + fallback_tile.height as f64) * fallback_level_info.downsample;
 
-            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).floor() as i32;
-            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).floor() as i32;
+            let exact_sx = (fb_image_x - bounds.left) * vp.zoom;
+            let exact_sy = (fb_image_y - bounds.top) * vp.zoom;
+            let exact_sx_end = (fb_image_x_end - bounds.left) * vp.zoom;
+            let exact_sy_end = (fb_image_y_end - bounds.top) * vp.zoom;
+            let screen_x = exact_sx.floor() as i32;
+            let screen_y = exact_sy.floor() as i32;
+            let screen_x_end = exact_sx_end.floor() as i32;
+            let screen_y_end = exact_sy_end.floor() as i32;
             let screen_w = screen_x_end - screen_x;
             let screen_h = screen_y_end - screen_y;
 
@@ -803,7 +807,19 @@ fn render_pane_to_image(
                 continue;
             }
 
-            fallback_blits.push((fallback_tile, screen_x, screen_y, screen_w, screen_h));
+            fallback_blits.push((
+                fallback_tile,
+                blitter::BlitRect {
+                    x: screen_x,
+                    y: screen_y,
+                    width: screen_w,
+                    height: screen_h,
+                    exact_x: exact_sx,
+                    exact_y: exact_sy,
+                    exact_width: exact_sx_end - exact_sx,
+                    exact_height: exact_sy_end - exact_sy,
+                },
+            ));
         }
     }
 
@@ -818,7 +834,7 @@ fn render_pane_to_image(
 
     // Helper: blit all fallback + fine tiles into a buffer with a given blit function
     let blit_all_tiles = |buf: &mut [u8], blit_fn: CpuBlitFn| {
-        for (fallback_tile, sx, sy, sw, sh) in &fallback_blits {
+        for (fallback_tile, rect) in &fallback_blits {
             blit_fn(
                 buf,
                 render_width,
@@ -827,12 +843,7 @@ fn render_pane_to_image(
                 fallback_tile.width,
                 fallback_tile.height,
                 fallback_tile.border,
-                blitter::BlitRect {
-                    x: *sx,
-                    y: *sy,
-                    width: *sw,
-                    height: *sh,
-                },
+                *rect,
             );
         }
         for (coord, tile_data) in cached_tiles.iter() {
@@ -842,10 +853,14 @@ fn render_pane_to_image(
             let image_y = origin_y * level_info.downsample;
             let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
             let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
-            let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
-            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).floor() as i32;
+            let exact_sx = (image_x - bounds.left) * vp.zoom;
+            let exact_sy = (image_y - bounds.top) * vp.zoom;
+            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
+            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
+            let screen_x = exact_sx.floor() as i32;
+            let screen_y = exact_sy.floor() as i32;
+            let screen_x_end = exact_sx_end.floor() as i32;
+            let screen_y_end = exact_sy_end.floor() as i32;
             blit_fn(
                 buf,
                 render_width,
@@ -859,6 +874,10 @@ fn render_pane_to_image(
                     y: screen_y,
                     width: screen_x_end - screen_x,
                     height: screen_y_end - screen_y,
+                    exact_x: exact_sx,
+                    exact_y: exact_sy,
+                    exact_width: exact_sx_end - exact_sx,
+                    exact_height: exact_sy_end - exact_sy,
                 },
             );
         }
@@ -881,10 +900,14 @@ fn render_pane_to_image(
             let image_y = origin_y * coarse_info.downsample;
             let image_x_end = (origin_x + tile_data.width as f64) * coarse_info.downsample;
             let image_y_end = (origin_y + tile_data.height as f64) * coarse_info.downsample;
-            let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
-            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).floor() as i32;
-            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).floor() as i32;
+            let exact_sx = (image_x - bounds.left) * vp.zoom;
+            let exact_sy = (image_y - bounds.top) * vp.zoom;
+            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
+            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
+            let screen_x = exact_sx.floor() as i32;
+            let screen_y = exact_sy.floor() as i32;
+            let screen_x_end = exact_sx_end.floor() as i32;
+            let screen_y_end = exact_sy_end.floor() as i32;
             blitter::blit_tile(
                 &mut coarse_buffer,
                 render_width,
@@ -898,6 +921,10 @@ fn render_pane_to_image(
                     y: screen_y,
                     width: screen_x_end - screen_x,
                     height: screen_y_end - screen_y,
+                    exact_x: exact_sx,
+                    exact_y: exact_sy,
+                    exact_width: exact_sx_end - exact_sx,
+                    exact_height: exact_sy_end - exact_sy,
                 },
             );
         }
