@@ -933,7 +933,9 @@ impl GpuRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -956,6 +958,75 @@ impl GpuRenderer {
             .as_ref()
             .and_then(|runtime| runtime.surfaces.get(&slot.index()))
             .and_then(|surface| Image::try_from(surface.texture.clone()).ok())
+    }
+
+    pub fn read_surface_rgba(&mut self, slot: SurfaceSlot) -> Option<(u32, u32, Vec<u8>)> {
+        let runtime = self.runtime.as_mut()?;
+        let surface = runtime.surfaces.get(&slot.index())?;
+
+        let bytes_per_row = surface.width.checked_mul(4)?;
+        let padded_bytes_per_row = bytes_per_row
+            .div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer_size = padded_bytes_per_row as u64 * surface.height as u64;
+
+        let readback = runtime.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pane-viewport-readback"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = runtime
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pane-viewport-readback-encoder"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &surface.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(surface.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: surface.width,
+                height: surface.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        runtime.queue.submit(Some(encoder.finish()));
+
+        let slice = readback.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        let _ = runtime.device.poll(wgpu::PollType::wait_indefinitely());
+        rx.recv().ok()?.ok()?;
+
+        let mapped = slice.get_mapped_range();
+        let mut pixels = vec![0; (surface.width as usize) * (surface.height as usize) * 4];
+        let src_stride = padded_bytes_per_row as usize;
+        let dst_stride = bytes_per_row as usize;
+        for row in 0..surface.height as usize {
+            let src_start = row * src_stride;
+            let dst_start = row * dst_stride;
+            pixels[dst_start..dst_start + dst_stride]
+                .copy_from_slice(&mapped[src_start..src_start + dst_stride]);
+        }
+        drop(mapped);
+        readback.unmap();
+
+        Some((surface.width, surface.height, pixels))
     }
 
     // -----------------------------------------------------------------------

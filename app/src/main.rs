@@ -25,6 +25,7 @@ use parking_lot::RwLock;
 use render_pool::CachedCpuFrame;
 use slint::{BackendSelector, Image, SharedString, Timer, TimerMode, VecModel};
 use state::{AppState, PaneId, RenderBackend};
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -38,6 +39,8 @@ pub(crate) struct PaneRenderCacheEntry {
     pub(crate) minimap_thumbnail: Option<Image>,
     pub(crate) cpu_frame: Option<CachedCpuFrame>,
     pub(crate) preview_buffer: Vec<u8>,
+    pub(crate) preview_width: u32,
+    pub(crate) preview_height: u32,
 }
 
 impl Clone for PaneRenderCacheEntry {
@@ -47,8 +50,16 @@ impl Clone for PaneRenderCacheEntry {
             minimap_thumbnail: self.minimap_thumbnail.clone(),
             cpu_frame: None,
             preview_buffer: Vec::new(),
+            preview_width: 0,
+            preview_height: 0,
         }
     }
+}
+
+pub(crate) struct PaneClipboardImage {
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    pub(crate) pixels: Vec<u8>,
 }
 
 #[derive(Clone)]
@@ -611,6 +622,9 @@ pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: Cach
         }
         cache[pane.0].content = Some(image);
         cache[pane.0].cpu_frame = Some(frame);
+        cache[pane.0].preview_buffer.clear();
+        cache[pane.0].preview_width = 0;
+        cache[pane.0].preview_height = 0;
     });
 }
 
@@ -721,6 +735,76 @@ fn copy_text_to_clipboard(clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>, t
         warn!("Failed to copy text to clipboard: {}", err);
         *clipboard_handle = None;
     }
+}
+
+fn copy_image_to_clipboard(
+    clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>,
+    image: PaneClipboardImage,
+) -> bool {
+    let mut clipboard_handle = clipboard.borrow_mut();
+    if clipboard_handle.is_none() {
+        match arboard::Clipboard::new() {
+            Ok(new_clipboard) => {
+                *clipboard_handle = Some(new_clipboard);
+            }
+            Err(err) => {
+                warn!("Failed to initialize clipboard: {}", err);
+                return false;
+            }
+        }
+    }
+
+    if let Some(clipboard) = clipboard_handle.as_mut() {
+        let image_data = arboard::ImageData {
+            width: image.width,
+            height: image.height,
+            bytes: Cow::Owned(image.pixels),
+        };
+        if let Err(err) = clipboard.set_image(image_data) {
+            warn!("Failed to copy image to clipboard: {}", err);
+            *clipboard_handle = None;
+            return false;
+        }
+        return true;
+    }
+
+    false
+}
+
+pub(crate) fn capture_pane_clipboard_image(pane: PaneId) -> Option<PaneClipboardImage> {
+    let cached_image = with_pane_render_cache(pane.0 + 1, |cache| {
+        let entry = cache.get(pane.0)?;
+        if !entry.preview_buffer.is_empty() && entry.preview_width > 0 && entry.preview_height > 0 {
+            return Some(PaneClipboardImage {
+                width: entry.preview_width as usize,
+                height: entry.preview_height as usize,
+                pixels: entry.preview_buffer.clone(),
+            });
+        }
+
+        let cpu_frame = entry.cpu_frame.as_ref()?;
+        Some(PaneClipboardImage {
+            width: cpu_frame.width as usize,
+            height: cpu_frame.height as usize,
+            pixels: cpu_frame.pixels.clone(),
+        })
+    });
+
+    if cached_image.is_some() {
+        return cached_image;
+    }
+
+    with_gpu_renderer(|renderer| {
+        renderer
+            .borrow_mut()
+            .read_surface_rgba(crate::gpu::SurfaceSlot(pane.0))
+    })
+    .flatten()
+    .map(|(width, height, pixels)| PaneClipboardImage {
+        width: width as usize,
+        height: height as usize,
+        pixels,
+    })
 }
 
 fn request_render_loop(

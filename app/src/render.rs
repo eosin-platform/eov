@@ -2055,6 +2055,8 @@ fn render_cached_preview(
         if entry.preview_buffer.len() < needed {
             entry.preview_buffer.resize(needed, 0);
         }
+        entry.preview_width = render_width;
+        entry.preview_height = render_height;
         let preview = &mut entry.preview_buffer[..needed];
         blitter::reproject_frame(
             preview,

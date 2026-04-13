@@ -79,6 +79,8 @@ export component AppWindow inherits Window {
     in-out property <length> context-menu-y: 0px;
     in-out property <[ContextMenuItem]> context-menu-items: [];
     in-out property <int> context-menu-tab-id: -1;
+    in-out property <bool> toast-visible: false;
+    in-out property <string> toast-text: "";
 
     in-out property <bool> filter-popup-visible: false;
     in-out property <bool> lanczos-confirm-visible: false;
@@ -604,6 +606,28 @@ export component AppWindow inherits Window {
             } else {
                 root.context-menu-command(id);
             }
+        }
+    }
+
+    Rectangle {
+        opacity: root.toast-visible ? 1.0 : 0.0;
+        y: root.toast-visible ? root.height - self.height - 20px : root.height + 12px;
+        x: root.width / 2 - self.width / 2;
+        width: toast-label.preferred-width + 28px;
+        height: toast-label.preferred-height + 14px;
+        background: #111111ee;
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: Theme.border;
+        animate opacity { duration: 180ms; }
+        animate y { duration: 220ms; }
+
+        toast-label := Text {
+            x: 14px;
+            y: 7px;
+            text: root.toast-text;
+            color: white;
+            font-size: 12px;
         }
     }
 

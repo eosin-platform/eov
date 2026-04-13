@@ -6,10 +6,11 @@ use crate::state::{
 use crate::{
     AppWindow, FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit,
     RenderMode, StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
-    copy_text_to_clipboard, handle_tool_mouse_down, handle_tool_mouse_move, handle_tool_mouse_up,
-    insert_pane_ui_state, open_file, pane_from_index, refresh_tab_ui, request_render_loop,
-    slider_value_to_zoom, update_filtering_mode, update_render_backend, update_tabs,
-    update_tool_overlays, update_tool_state,
+    capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
+    handle_tool_mouse_down, handle_tool_mouse_move, handle_tool_mouse_up, insert_pane_ui_state,
+    open_file, pane_from_index, refresh_tab_ui, request_render_loop, slider_value_to_zoom,
+    update_filtering_mode, update_render_backend, update_tabs, update_tool_overlays,
+    update_tool_state,
 };
 use common::TileCache;
 use common::viewport::ZOOM_FACTOR;
@@ -274,6 +275,21 @@ fn show_stub_viewport_action(ui: &AppWindow, label: &str) {
     info!(action = label, "viewport context menu stub invoked");
 }
 
+fn show_toast(ui: &AppWindow, toast_timer: &Rc<Timer>, message: &str) {
+    ui.set_toast_text(SharedString::from(message));
+    ui.set_toast_visible(true);
+    let ui_weak = ui.as_weak();
+    toast_timer.start(
+        slint::TimerMode::SingleShot,
+        Duration::from_millis(2200),
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_toast_visible(false);
+            }
+        },
+    );
+}
+
 fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let show_minimap = {
         let mut state = state.write();
@@ -323,6 +339,7 @@ pub fn setup_callbacks(
 ) {
     let ui_weak = ui.as_weak();
     let clipboard = Rc::new(RefCell::new(None));
+    let toast_timer = Rc::new(Timer::default());
 
     {
         let state = Arc::clone(&state);
@@ -412,6 +429,7 @@ pub fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         let clipboard = Rc::clone(&clipboard);
+        let toast_timer = Rc::clone(&toast_timer);
 
         ui.on_context_menu_command(move |id| {
             let Some(ui) = ui_weak.upgrade() else {
@@ -434,7 +452,19 @@ pub fn setup_callbacks(
 
             match command.as_str() {
                 "viewport-copy-image" => {
-                    show_stub_viewport_action(&ui, "Copy Image");
+                    if let Some(image) = capture_pane_clipboard_image(pane) {
+                        if copy_image_to_clipboard(&clipboard, image) {
+                            show_toast(&ui, &toast_timer, "Viewport image copied to clipboard.");
+                        } else {
+                            ui.set_status_text(SharedString::from(
+                                "Failed to copy viewport image to clipboard",
+                            ));
+                        }
+                    } else {
+                        ui.set_status_text(SharedString::from(
+                            "Viewport image is not available yet",
+                        ));
+                    }
                 }
                 "viewport-export-image" => {
                     show_stub_viewport_action(&ui, "Export Image");
