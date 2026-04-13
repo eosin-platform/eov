@@ -789,10 +789,11 @@ export component ContextMenu inherits Rectangle {
     in property <length> menu-x: 0px;
     in property <length> menu-y: 0px;
     callback item-clicked(string);
+    property <length> menu-width: 140px;
 
     x: menu-x;
     y: menu-y;
-    width: root.is-visible ? 200px : 0px;
+    width: root.is-visible ? root.menu-width : 0px;
     height: root.is-visible ? items.length * 28px : 0px;
     background: Theme.context-menu-bg;
     border-radius: 4px;
@@ -828,6 +829,22 @@ export component ContextMenu inherits Rectangle {
             HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
+                spacing: 8px;
+
+                Rectangle {
+                    width: 14px;
+                    height: parent.height;
+
+                    if item.icon != "": Image {
+                        x: 0px;
+                        y: (parent.height - self.height) / 2;
+                        width: 14px;
+                        height: 14px;
+                        source: item.icon == "copy" ? @image-url("copy.svg") : item.icon == "export" ? @image-url("export.svg") : @image-url("open-file.svg");
+                        image-fit: contain;
+                        colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                    }
+                }
 
                 Text {
                     text: item.label;

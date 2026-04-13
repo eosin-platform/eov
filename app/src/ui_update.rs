@@ -399,6 +399,7 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
         return vec![ContextMenuItem {
             id: SharedString::from("recent-empty"),
             label: SharedString::from("No recent files"),
+            icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: false,
             separator_after: false,
@@ -412,6 +413,7 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
         .map(|file| ContextMenuItem {
             id: SharedString::from(format!("recent-file:{}", file.path.display())),
             label: SharedString::from(file.name.clone()),
+            icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: true,
             separator_after: false,

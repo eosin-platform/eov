@@ -48,6 +48,7 @@ export component Viewport inherits Rectangle {
     callback tool-mouse-down(float, float);
     callback tool-mouse-move(float, float);
     callback tool-mouse-up(float, float);
+    callback viewport-context-menu(length, length);
     callback cancel-tool();
     callback close-tab();
     callback hud-toggle-scale-bar();
@@ -335,6 +336,8 @@ export component Viewport inherits Rectangle {
 
         property <bool> is-dragging: false;
         property <bool> is-tool-dragging: false;
+        property <bool> drag-from-secondary: false;
+        property <bool> secondary-dragged: false;
 
         clicked => {
             focus-scope.focus();
@@ -344,11 +347,27 @@ export component Viewport inherits Rectangle {
             if e.kind == PointerEventKind.down {
                 focus-scope.focus();
             }
-            if e.kind == PointerEventKind.down && (e.button == PointerEventButton.right || e.button == PointerEventButton.middle) {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                 self.is-dragging = true;
+                self.drag-from-secondary = true;
+                self.secondary-dragged = false;
                 root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-            } else if e.kind == PointerEventKind.up && (e.button == PointerEventButton.right || e.button == PointerEventButton.middle) {
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                let open-menu = self.drag-from-secondary && !self.secondary-dragged;
                 self.is-dragging = false;
+                self.drag-from-secondary = false;
+                self.secondary-dragged = false;
+                root.end-pan();
+                if open-menu {
+                    root.viewport-context-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.middle {
+                self.is-dragging = true;
+                self.drag-from-secondary = false;
+                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.middle {
+                self.is-dragging = false;
+                self.drag-from-secondary = false;
                 root.end-pan();
             } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 if root.current-tool == ToolType.navigate {
@@ -368,6 +387,9 @@ export component Viewport inherits Rectangle {
                 }
             } else if e.kind == PointerEventKind.move {
                 if self.is-dragging {
+                    if self.drag-from-secondary {
+                        self.secondary-dragged = true;
+                    }
                     root.pan(self.mouse-x / 1px, self.mouse-y / 1px);
                 } else if self.is-tool-dragging || root.current-tool != ToolType.navigate {
                     root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);

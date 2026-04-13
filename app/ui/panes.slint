@@ -40,6 +40,7 @@ component PaneView inherits Rectangle {
     callback viewport-fit-to-view();
     callback viewport-start-pan(float, float);
     callback viewport-end-pan();
+    callback viewport-context-menu(int, length, length);
     callback minimap-navigate(float, float);
     callback file-dropped(string);
     callback pane-focused(int);
@@ -156,6 +157,10 @@ component PaneView inherits Rectangle {
                 }
                 end-pan => {
                     root.viewport-end-pan();
+                }
+                viewport-context-menu(x, y) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.viewport-context-menu(root.pane-data.id, x, y);
                 }
                 minimap-navigate(nx, ny) => {
                     root.pane-focused(root.pane-data.id);
@@ -365,6 +370,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback viewport-fit-to-view();
     callback viewport-start-pan(float, float);
     callback viewport-end-pan();
+    callback viewport-context-menu(int, length, length);
     callback minimap-navigate(float, float);
     callback file-dropped(string);
     callback pane-focused(int);
@@ -452,6 +458,9 @@ export component SplitPaneContainer inherits Rectangle {
             }
             viewport-end-pan => {
                 root.viewport-end-pan();
+            }
+            viewport-context-menu(pane-id, x, y) => {
+                root.viewport-context-menu(pane-id, x, y);
             }
             minimap-navigate(nx, ny) => {
                 root.minimap-navigate(nx, ny);

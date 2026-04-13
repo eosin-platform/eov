@@ -23,7 +23,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
-const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR * ZOOM_FACTOR;
+const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR
+    * ZOOM_FACTOR;
 #[cfg(target_os = "macos")]
 const MACOS_TOOLBAR_HEIGHT: f64 = 40.0;
 
@@ -260,6 +269,11 @@ fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     true
 }
 
+fn show_stub_viewport_action(ui: &AppWindow, label: &str) {
+    ui.set_status_text(SharedString::from(format!("{label} is not implemented yet")));
+    info!(action = label, "viewport context menu stub invoked");
+}
+
 fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let show_minimap = {
         let mut state = state.write();
@@ -419,6 +433,12 @@ pub fn setup_callbacks(
             let tab_id = ui.get_context_menu_tab_id();
 
             match command.as_str() {
+                "viewport-copy-image" => {
+                    show_stub_viewport_action(&ui, "Copy Image");
+                }
+                "viewport-export-image" => {
+                    show_stub_viewport_action(&ui, "Export Image");
+                }
                 "close" => {
                     {
                         let mut state = state_handle.write();

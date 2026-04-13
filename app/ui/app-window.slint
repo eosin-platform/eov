@@ -126,6 +126,7 @@ export component AppWindow inherits Window {
     callback viewport-fit-to-view();
     callback viewport-start-pan(float, float);
     callback viewport-end-pan();
+    callback viewport-context-menu(int, length, length);
     callback minimap-navigate(float, float);
     callback file-dropped(string);
     callback pane-focused(int);
@@ -320,10 +321,11 @@ export component AppWindow inherits Window {
                     root.context-menu-x = x;
                     root.context-menu-y = y;
                     root.context-menu-items = [
-                        { id: "close", label: "Close", shortcut: "Ctrl+W", enabled: true, separator-after: false },
+                        { id: "close", label: "Close", icon: "", shortcut: "Ctrl+W", enabled: true, separator-after: false },
                         {
                             id: "close-others",
                             label: "Close Others",
+                            icon: "",
                             shortcut: "",
                             enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false,
                             separator-after: false
@@ -331,22 +333,25 @@ export component AppWindow inherits Window {
                         {
                             id: "close-right",
                             label: "Close to the Right",
+                            icon: "",
                             shortcut: "",
                             enabled: true,
                             separator-after: false
                         },
-                        { id: "close-all", label: "Close All", shortcut: "", enabled: true, separator-after: true },
+                        { id: "close-all", label: "Close All", icon: "", shortcut: "", enabled: true, separator-after: true },
                         {
                             id: "open-folder",
                             label: "Open Containing Folder",
+                            icon: "",
                             shortcut: "",
                             enabled: true,
                             separator-after: false
                         },
-                        { id: "copy-path", label: "Copy Path", shortcut: "", enabled: true, separator-after: true },
+                        { id: "copy-path", label: "Copy Path", icon: "", shortcut: "", enabled: true, separator-after: true },
                         {
                             id: "split-right",
                             label: "Split Right",
+                            icon: "",
                             shortcut: "",
                             enabled: true,
                             separator-after: false
@@ -369,6 +374,31 @@ export component AppWindow inherits Window {
                 }
                 viewport-end-pan => {
                     root.viewport-end-pan();
+                }
+                viewport-context-menu(pane, x, y) => {
+                    root.context-menu-tab-id = -1;
+                    root.drag-source-pane = pane;
+                    root.context-menu-x = x;
+                    root.context-menu-y = y;
+                    root.context-menu-items = [
+                        {
+                            id: "viewport-copy-image",
+                            label: "Copy Image",
+                            icon: "copy",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                        {
+                            id: "viewport-export-image",
+                            label: "Export Image",
+                            icon: "export",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                    ];
+                    root.context-menu-visible = true;
                 }
                 minimap-navigate(nx, ny) => {
                     root.minimap-navigate(nx, ny);
