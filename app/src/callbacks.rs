@@ -366,6 +366,7 @@ fn draw_measurement_overlays(
     export_vp: &common::Viewport,
     settings: &SlintExportSettings,
     dpi_scale: f32,
+    font: Option<&common::overlay::FontArc>,
 ) {
     if !settings.show_measurement || !settings.has_measurement {
         return;
@@ -381,6 +382,16 @@ fn draw_measurement_overlays(
     let thickness = settings.measurement_thickness * dpi_scale;
     let w = image_data.width as u32;
     let h = image_data.height as u32;
+    let font_size_px = settings.measurement_font_size * dpi_scale;
+
+    // Compute mpp for distance labels (same as tools.rs)
+    let mpp = file
+        .wsi
+        .properties()
+        .mpp_x
+        .zip(file.wsi.properties().mpp_y)
+        .map(|(mx, my)| (mx + my) / 2.0)
+        .unwrap_or(0.0);
 
     for m in &file.measurements {
         if m.pane != pane {
@@ -413,6 +424,31 @@ fn draw_measurement_overlays(
                 p.x as f32, p.y as f32,
                 endpoint_r,
                 color,
+            );
+        }
+
+        // Distance label pill (centered between endpoints, above the line)
+        if let Some(font) = font {
+            let distance_um = m.distance() * mpp;
+            let label = if distance_um > 0.0 {
+                common::overlay::format_measurement_label(distance_um)
+            } else {
+                // Fallback: distance in screen pixels
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let px_dist = (dx * dx + dy * dy).sqrt();
+                format!("{:.1} px", (px_dist * 10.0).round() / 10.0)
+            };
+
+            let mid_x = (p1.x + p2.x) as f32 / 2.0;
+            let mid_y = (p1.y + p2.y) as f32 / 2.0;
+            common::overlay::draw_measurement_label(
+                &mut image_data.pixels, w, h,
+                mid_x, mid_y,
+                &label,
+                font,
+                font_size_px,
+                dpi_scale,
             );
         }
     }
@@ -478,6 +514,7 @@ fn render_export_image(
     pane: PaneId,
     slint_settings: &SlintExportSettings,
     override_dpi: Option<u32>,
+    overlay_font: Option<&common::overlay::FontArc>,
 ) -> Option<common::RgbaImageData> {
     let file_id = state.active_file_id_for_pane(pane)?;
     let file = state.get_file(file_id)?;
@@ -491,7 +528,7 @@ fn render_export_image(
     // Draw overlays
     let export_vp = common::export::export_viewport(viewport, render_dpi);
     let dpi_scale = render_dpi as f32 / 96.0;
-    draw_measurement_overlays(&mut img, file, pane, &export_vp, slint_settings, dpi_scale);
+    draw_measurement_overlays(&mut img, file, pane, &export_vp, slint_settings, dpi_scale, overlay_font);
     draw_roi_overlays(&mut img, file, &export_vp, slint_settings, dpi_scale);
     Some(img)
 }
@@ -558,10 +595,40 @@ fn build_default_export_settings(state: &AppState, pane: PaneId) -> SlintExportS
 }
 
 /// Open the export dialog, populating it with defaults derived from the current viewport.
-fn open_export_dialog(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>, pane: PaneId) {
+/// If `cached` has a value, reuse those settings (except has_measurement/has_roi which
+/// are derived from the current file state).
+fn open_export_dialog(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    pane: PaneId,
+    cached: &Rc<RefCell<Option<SlintExportSettings>>>,
+    overlay_font: Option<&common::overlay::FontArc>,
+) {
     let settings = {
         let state = state.read();
-        build_default_export_settings(&state, pane)
+        let mut s = cached
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| build_default_export_settings(&state, pane));
+
+        // Always refresh has_measurement / has_roi from current file state
+        let file_id = state.active_file_id_for_pane(pane);
+        s.has_measurement = file_id
+            .and_then(|id| state.get_file(id))
+            .is_some_and(|f| !f.measurements.is_empty());
+        s.has_roi = file_id
+            .and_then(|id| state.get_file(id))
+            .is_some_and(|f| f.roi.is_some());
+        // Disable overlay toggles if the feature no longer exists
+        if !s.has_measurement {
+            s.show_measurement = false;
+        }
+        if !s.has_roi {
+            s.show_roi_outline = false;
+            s.roi_outside_overlay = false;
+        }
+        s
     };
     ui.set_export_settings(settings.clone());
 
@@ -575,7 +642,7 @@ fn open_export_dialog(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache:
             .map(|ps| (ps.viewport.viewport.width, ps.viewport.viewport.height))
             .unwrap_or((0.0, 0.0));
 
-        let img = render_export_image(&state, tile_cache, pane, &settings, Some(96));
+        let img = render_export_image(&state, tile_cache, pane, &settings, Some(96), overlay_font);
         let slint_img = img
             .and_then(|img| {
                 let w = img.width as u32;
@@ -638,6 +705,9 @@ pub fn setup_callbacks(
     let ui_weak = ui.as_weak();
     let clipboard = Rc::new(RefCell::new(None));
     let toast_timer = Rc::new(Timer::default());
+    let cached_export_settings: Rc<RefCell<Option<SlintExportSettings>>> =
+        Rc::new(RefCell::new(None));
+    let overlay_font: Option<common::overlay::FontArc> = common::overlay::load_system_font();
 
     {
         let state = Arc::clone(&state);
@@ -729,6 +799,8 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
         let clipboard = Rc::clone(&clipboard);
         let toast_timer = Rc::clone(&toast_timer);
+        let cached_export = Rc::clone(&cached_export_settings);
+        let overlay_font_clone = overlay_font.clone();
 
         ui.on_context_menu_command(move |id| {
             let Some(ui) = ui_weak.upgrade() else {
@@ -779,7 +851,7 @@ pub fn setup_callbacks(
                     }
                 }
                 "viewport-export-image" => {
-                    open_export_dialog(&ui, &state_handle, &tile_cache, pane);
+                    open_export_dialog(&ui, &state_handle, &tile_cache, pane, &cached_export, overlay_font_clone.as_ref());
                 }
                 "close" => {
                     {
@@ -2093,8 +2165,11 @@ pub fn setup_callbacks(
     {
         let ui_weak = ui_weak.clone();
         let debounce_timer = Rc::clone(&export_debounce_timer);
+        let cached = Rc::clone(&cached_export_settings);
 
-        ui.on_export_dialog_settings_changed(move |_settings| {
+        ui.on_export_dialog_settings_changed(move |settings| {
+            // Persist to cache for reuse across dialog opens
+            *cached.borrow_mut() = Some(settings);
             let ui_weak = ui_weak.clone();
             debounce_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(300), move || {
                 if let Some(ui) = ui_weak.upgrade() {
@@ -2108,6 +2183,7 @@ pub fn setup_callbacks(
         let state_handle = Arc::clone(&state);
         let tile_cache_clone = Arc::clone(&tile_cache);
         let ui_weak = ui_weak.clone();
+        let overlay_font_preview = overlay_font.clone();
 
         ui.on_export_dialog_request_preview(move || {
             if let Some(ui) = ui_weak.upgrade() {
@@ -2117,7 +2193,7 @@ pub fn setup_callbacks(
 
                 // Render at 96 DPI for preview (thumbnail-sized)
                 let preview_image =
-                    if let Some(img) = render_export_image(&state, &tile_cache_clone, pane, &settings, Some(96)) {
+                    if let Some(img) = render_export_image(&state, &tile_cache_clone, pane, &settings, Some(96), overlay_font_preview.as_ref()) {
                         let w = img.width as u32;
                         let h = img.height as u32;
                         crate::blitter::create_image_buffer(&img.pixels, w, h)
@@ -2139,6 +2215,7 @@ pub fn setup_callbacks(
         let tile_cache_clone = Arc::clone(&tile_cache);
         let ui_weak = ui_weak.clone();
         let toast_timer = Rc::clone(&toast_timer);
+        let overlay_font_export = overlay_font.clone();
 
         ui.on_export_dialog_export_requested(move || {
             let Some(ui) = ui_weak.upgrade() else {
@@ -2164,7 +2241,7 @@ pub fn setup_callbacks(
                 let state = state_handle.read();
                 let pane = state.focused_pane;
 
-                let image_data = render_export_image(&state, &tile_cache_clone, pane, &settings, None);
+                let image_data = render_export_image(&state, &tile_cache_clone, pane, &settings, None, overlay_font_export.as_ref());
                 drop(state);
 
                 let Some(image_data) = image_data else {
@@ -2223,9 +2300,12 @@ pub fn setup_callbacks(
 
     {
         let ui_weak = ui_weak.clone();
+        let cached = Rc::clone(&cached_export_settings);
 
         ui.on_export_dialog_cancel_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
+                // Save current settings for reuse
+                *cached.borrow_mut() = Some(ui.get_export_settings());
                 ui.set_export_dialog_visible(false);
             }
         });
@@ -2234,12 +2314,14 @@ pub fn setup_callbacks(
     {
         let state_handle = Arc::clone(&state);
         let ui_weak = ui_weak.clone();
+        let cached = Rc::clone(&cached_export_settings);
 
         ui.on_export_dialog_reset_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 let state = state_handle.read();
                 let pane = state.focused_pane;
                 let settings = build_default_export_settings(&state, pane);
+                *cached.borrow_mut() = None; // clear cache on reset
                 ui.set_export_settings(settings);
             }
         });

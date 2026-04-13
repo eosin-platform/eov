@@ -1093,6 +1093,7 @@ dependencies = [
 name = "common"
 version = "0.2.7"
 dependencies = [
+ "ab_glyph",
  "anyhow",
  "criterion",
  "dashmap",

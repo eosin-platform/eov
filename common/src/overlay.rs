@@ -339,3 +339,154 @@ pub fn fill_outside_rect(
         fill_rect(buffer, buf_width, buf_height, roi_right, roi_y, bw - roi_right, roi_height, color);
     }
 }
+
+// ── text rendering (ab_glyph) ───────────────────────────────────────────────
+
+pub use ab_glyph::FontArc;
+
+/// Try to load a system font suitable for overlay text rendering.
+///
+/// Searches common system font paths across Linux, macOS, and Windows.
+/// Returns `None` if no usable font is found.
+pub fn load_system_font() -> Option<FontArc> {
+    let candidates = [
+        // Linux (Debian/Ubuntu)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        // Linux (Arch)
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        // Linux (Fedora)
+        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+        // Linux (Noto fallback)
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+        // macOS
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/SFNSText.ttf",
+        // Windows
+        "C:\\Windows\\Fonts\\segoeui.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf",
+    ];
+    for path in &candidates {
+        if let Ok(data) = std::fs::read(path)
+            && let Ok(font) = FontArc::try_from_vec(data)
+        {
+            return Some(font);
+        }
+    }
+    None
+}
+
+/// Measure the pixel width of a text string rendered at `size_px`.
+pub fn measure_text(text: &str, font: &FontArc, size_px: f32) -> f32 {
+    use ab_glyph::{Font, ScaleFont};
+    let scaled = font.as_scaled(size_px);
+    text.chars()
+        .map(|ch| scaled.h_advance(font.glyph_id(ch)))
+        .sum()
+}
+
+/// Draw a text string at `(x, y)` (top-left) onto an RGBA buffer.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text(
+    buffer: &mut [u8],
+    buf_width: u32,
+    buf_height: u32,
+    x: f32,
+    y: f32,
+    text: &str,
+    color: OverlayColor,
+    font: &FontArc,
+    size_px: f32,
+) {
+    use ab_glyph::{Font, ScaleFont, point};
+    let scaled = font.as_scaled(size_px);
+    let ascent = scaled.ascent();
+    let mut cursor_x = x;
+
+    for ch in text.chars() {
+        let glyph_id = font.glyph_id(ch);
+        let glyph = ab_glyph::Glyph {
+            id: glyph_id,
+            scale: ab_glyph::PxScale::from(size_px),
+            position: point(cursor_x, y + ascent),
+        };
+        if let Some(outlined) = font.outline_glyph(glyph) {
+            let bounds = outlined.px_bounds();
+            outlined.draw(|gx, gy, cov| {
+                let px = gx as i32 + bounds.min.x as i32;
+                let py = gy as i32 + bounds.min.y as i32;
+                if px >= 0
+                    && py >= 0
+                    && (px as u32) < buf_width
+                    && (py as u32) < buf_height
+                    && cov > 0.0
+                {
+                    blend_pixel(buffer, buf_width, px as u32, py as u32, color, cov);
+                }
+            });
+        }
+        cursor_x += scaled.h_advance(glyph_id);
+    }
+}
+
+/// Format a measurement distance (in micrometres) as a human-readable label.
+pub fn format_measurement_label(distance_um: f64) -> String {
+    if distance_um <= 0.0 {
+        return String::new();
+    }
+    if distance_um >= 1000.0 {
+        let mm = distance_um / 1000.0;
+        format!("{:.2} mm", (mm * 100.0).round() / 100.0)
+    } else {
+        // Show as µm for sub-millimetre distances
+        format!("{:.1} µm", (distance_um * 10.0).round() / 10.0)
+    }
+}
+
+/// Draw a measurement label pill (dark background + white text) centred
+/// above the midpoint between two endpoints.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_measurement_label(
+    buffer: &mut [u8],
+    buf_width: u32,
+    buf_height: u32,
+    cx: f32,
+    cy: f32,
+    label: &str,
+    font: &FontArc,
+    font_size_px: f32,
+    dpi_scale: f32,
+) {
+    if label.is_empty() {
+        return;
+    }
+    use ab_glyph::{Font, ScaleFont};
+    let scaled = font.as_scaled(font_size_px);
+    let text_w = measure_text(label, font, font_size_px);
+    let text_h = scaled.ascent() - scaled.descent();
+    let pad_x = 7.0 * dpi_scale;
+    let pad_y = 3.0 * dpi_scale;
+    let pill_w = text_w + pad_x * 2.0;
+    let pill_h = text_h + pad_y * 2.0;
+    let pill_x = cx - pill_w / 2.0;
+    let pill_y = cy - pill_h - 6.0 * dpi_scale;
+
+    // Dark semi-transparent background
+    let bg = OverlayColor::new(26, 26, 26, 220);
+    fill_rect(buffer, buf_width, buf_height, pill_x, pill_y, pill_w, pill_h, bg);
+
+    // Border
+    let border = OverlayColor::new(46, 204, 113, 128);
+    let bw = 1.0 * dpi_scale;
+    draw_rect_outline(
+        buffer, buf_width, buf_height,
+        pill_x, pill_y, pill_w, pill_h,
+        border, bw, StrokeStyle::Solid, CapStyle::Flat,
+    );
+
+    // White text
+    let white = OverlayColor::new(255, 255, 255, 255);
+    let text_x = pill_x + pad_x;
+    let text_y = pill_y + pad_y;
+    draw_text(buffer, buf_width, buf_height, text_x, text_y, label, white, font, font_size_px);
+}

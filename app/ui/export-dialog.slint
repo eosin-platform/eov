@@ -22,7 +22,6 @@ component ExportSlider inherits Rectangle {
     in property <float> max-value: 1.0;
     in property <string> display-text;
     in property <bool> enabled: true;
-    in-out property <int> global-drag-count: 0;
     callback changed(float);
     callback released();
 
@@ -71,15 +70,11 @@ component ExportSlider inherits Rectangle {
         height: root.height;
 
         pointer-event(e) => {
-            if e.kind == PointerEventKind.down {
-                root.global-drag-count = root.global-drag-count + 1;
-            }
             if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
                 let norm = max(0.0, min(1.0, (self.mouse-x - 6px) / max(root.track-width, 1px)));
                 root.changed(root.min-value + norm * (root.max-value - root.min-value));
             }
             if e.kind == PointerEventKind.up {
-                root.global-drag-count = root.global-drag-count - 1;
                 root.released();
             }
         }
@@ -250,10 +245,30 @@ component ToggleSwitch inherits Rectangle {
     }
 }
 
+component PickerSwatch inherits Rectangle {
+    in property <color> swatch-color;
+    in property <bool> selected: false;
+    callback picked(color);
+
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: root.swatch-color;
+    border-width: root.selected ? 2px : (swatch-ta.has-hover ? 1.5px : 1px);
+    border-color: root.selected ? white : (swatch-ta.has-hover ? #ffffffa0 : #ffffff30);
+
+    swatch-ta := TouchArea {
+        clicked => {
+            root.picked(root.swatch-color);
+        }
+    }
+}
+
 component ColorField inherits Rectangle {
     in-out property <color> current-color: #2ECC71;
     in-out property <float> opacity-pct: 100;
     callback opacity-changed(float);
+    callback color-changed(color);
     callback request-preview();
 
     height: 28px;
@@ -263,7 +278,7 @@ component ColorField inherits Rectangle {
         spacing: 8px;
         alignment: start;
 
-        // Color swatch
+        // Clickable color swatch
         Rectangle {
             y: (parent.height - self.height) / 2;
             width: 22px;
@@ -271,7 +286,13 @@ component ColorField inherits Rectangle {
             border-radius: 4px;
             background: root.current-color;
             border-width: 1px;
-            border-color: #ffffff30;
+            border-color: swatch-touch.has-hover ? #ffffff80 : #ffffff30;
+
+            swatch-touch := TouchArea {
+                clicked => {
+                    color-popup.show();
+                }
+            }
         }
 
         Text {
@@ -315,6 +336,67 @@ component ColorField inherits Rectangle {
                 color: #8ea0b2;
                 font-size: 10px;
                 vertical-alignment: center;
+            }
+        }
+    }
+
+    color-popup := PopupWindow {
+        x: 0px;
+        y: root.height + 4px;
+
+        Rectangle {
+            width: 192px;
+            height: 124px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #ffffff20;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000080;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 6px;
+
+                Text {
+                    text: "Pick a Color";
+                    color: #c0c0c0;
+                    font-size: 10px;
+                    font-weight: 500;
+                }
+
+                // Row 1: warm / primary
+                HorizontalLayout {
+                    spacing: 4px;
+                    PickerSwatch { swatch-color: #E74C3C; selected: root.current-color == #E74C3C; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #E67E22; selected: root.current-color == #E67E22; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #F1C40F; selected: root.current-color == #F1C40F; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #2ECC71; selected: root.current-color == #2ECC71; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #1ABC9C; selected: root.current-color == #1ABC9C; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #3498DB; selected: root.current-color == #3498DB; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                }
+
+                // Row 2: deep / accent
+                HorizontalLayout {
+                    spacing: 4px;
+                    PickerSwatch { swatch-color: #9B59B6; selected: root.current-color == #9B59B6; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #E91E8A; selected: root.current-color == #E91E8A; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #C0392B; selected: root.current-color == #C0392B; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #27AE60; selected: root.current-color == #27AE60; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #2980B9; selected: root.current-color == #2980B9; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #8E44AD; selected: root.current-color == #8E44AD; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                }
+
+                // Row 3: neutrals
+                HorizontalLayout {
+                    spacing: 4px;
+                    PickerSwatch { swatch-color: #FFFFFF; selected: root.current-color == #FFFFFF; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #ECF0F1; selected: root.current-color == #ECF0F1; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #95A5A6; selected: root.current-color == #95A5A6; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #7F8C8D; selected: root.current-color == #7F8C8D; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #2C3E50; selected: root.current-color == #2C3E50; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                    PickerSwatch { swatch-color: #000000; selected: root.current-color == #000000; picked(c) => { root.current-color = c; root.color-changed(c); root.request-preview(); } }
+                }
             }
         }
     }
@@ -519,9 +601,6 @@ export component ExportDialog inherits Rectangle {
     callback reset-requested();
     callback settings-changed(ExportSettings);
 
-    // Counter of actively-dragged sliders; disables Flickable scrolling.
-    property <int> active-slider-count: 0;
-
     // Reactive export dimensions (update instantly when DPI changes).
     property <int> export-width: Math.max(1, Math.round(root.preview-info.viewport-width * root.settings.dpi / 96));
     property <int> export-height: Math.max(1, Math.round(root.preview-info.viewport-height * root.settings.dpi / 96));
@@ -640,10 +719,9 @@ export component ExportDialog inherits Rectangle {
             // ---------------------------------------------------------------
             // Scrollable settings area
             // ---------------------------------------------------------------
-            Flickable {
+            settings-flick := Flickable {
                 vertical-stretch: 1;
                 viewport-height: settings-content.preferred-height;
-                interactive: root.active-slider-count <= 0;
 
                 settings-content := VerticalLayout {
                     padding: 16px;
@@ -664,7 +742,6 @@ export component ExportDialog inherits Rectangle {
                             min-value: 72;
                             max-value: 600;
                             display-text: "";
-                            global-drag-count <=> root.active-slider-count;
                             changed(v) => {
                                 root.settings.dpi = Math.round(v);
                                 root.settings-changed(root.settings);
@@ -802,7 +879,6 @@ export component ExportDialog inherits Rectangle {
                         min-value: 0.0;
                         max-value: 1.0;
                         display-text: Math.round(root.settings.sharpness * 100) + "%";
-                        global-drag-count <=> root.active-slider-count;
                         changed(v) => {
                             root.settings.sharpness = v;
                             root.settings-changed(root.settings);
@@ -819,7 +895,6 @@ export component ExportDialog inherits Rectangle {
                         min-value: 0.2;
                         max-value: 3.0;
                         display-text: Math.round(root.settings.gamma * 100) / 100 + "";
-                        global-drag-count <=> root.active-slider-count;
                         changed(v) => {
                             root.settings.gamma = v;
                             root.settings-changed(root.settings);
@@ -836,7 +911,6 @@ export component ExportDialog inherits Rectangle {
                         min-value: -1.0;
                         max-value: 1.0;
                         display-text: (root.settings.brightness >= 0 ? "+" : "") + Math.round(root.settings.brightness * 100) + "%";
-                        global-drag-count <=> root.active-slider-count;
                         changed(v) => {
                             root.settings.brightness = v;
                             root.settings-changed(root.settings);
@@ -853,7 +927,6 @@ export component ExportDialog inherits Rectangle {
                         min-value: 0.2;
                         max-value: 3.0;
                         display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
-                        global-drag-count <=> root.active-slider-count;
                         changed(v) => {
                             root.settings.contrast = v;
                             root.settings-changed(root.settings);
@@ -932,6 +1005,10 @@ export component ExportDialog inherits Rectangle {
                         ColorField {
                             current-color: root.settings.measurement-color;
                             opacity-pct: root.settings.measurement-opacity;
+                            color-changed(c) => {
+                                root.settings.measurement-color = c;
+                                root.notify-settings();
+                            }
                             opacity-changed(v) => {
                                 root.settings.measurement-opacity = v;
                             }
@@ -947,7 +1024,6 @@ export component ExportDialog inherits Rectangle {
                             min-value: 0.5;
                             max-value: 10.0;
                             display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
-                            global-drag-count <=> root.active-slider-count;
                             changed(v) => {
                                 root.settings.measurement-thickness = v;
                                 root.settings-changed(root.settings);
@@ -996,7 +1072,6 @@ export component ExportDialog inherits Rectangle {
                             min-value: 6;
                             max-value: 32;
                             display-text: Math.round(root.settings.measurement-font-size) + "pt";
-                            global-drag-count <=> root.active-slider-count;
                             changed(v) => {
                                 root.settings.measurement-font-size = v;
                                 root.settings-changed(root.settings);
@@ -1034,6 +1109,10 @@ export component ExportDialog inherits Rectangle {
                         ColorField {
                             current-color: root.settings.roi-color;
                             opacity-pct: root.settings.roi-opacity;
+                            color-changed(c) => {
+                                root.settings.roi-color = c;
+                                root.notify-settings();
+                            }
                             opacity-changed(v) => {
                                 root.settings.roi-opacity = v;
                             }
@@ -1049,7 +1128,6 @@ export component ExportDialog inherits Rectangle {
                             min-value: 0.5;
                             max-value: 10.0;
                             display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
-                            global-drag-count <=> root.active-slider-count;
                             changed(v) => {
                                 root.settings.roi-thickness = v;
                                 root.settings-changed(root.settings);
@@ -1113,6 +1191,10 @@ export component ExportDialog inherits Rectangle {
                         if root.settings.roi-outside-overlay: ColorField {
                             current-color: root.settings.roi-outside-color;
                             opacity-pct: root.settings.roi-outside-opacity;
+                            color-changed(c) => {
+                                root.settings.roi-outside-color = c;
+                                root.notify-settings();
+                            }
                             opacity-changed(v) => {
                                 root.settings.roi-outside-opacity = v;
                             }
@@ -1166,7 +1248,6 @@ export component ExportDialog inherits Rectangle {
                             min-value: 1;
                             max-value: 100;
                             display-text: root.settings.jpeg-quality + "%";
-                            global-drag-count <=> root.active-slider-count;
                             changed(v) => {
                                 root.settings.jpeg-quality = Math.round(v);
                                 root.settings-changed(root.settings);

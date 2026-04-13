@@ -18,6 +18,8 @@ path = "src/lib.rs"
 openslide-rs = "0.2"
 # Image processing
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Font rendering for overlays
+ab_glyph = "0.2"
 # Async runtime for background loading
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs"] }
 # Thread-safe caching
