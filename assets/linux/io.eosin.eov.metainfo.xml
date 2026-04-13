@@ -23,7 +23,7 @@
     <binary>eov</binary>
   </provides>
   <releases>
-    <release version="0.2.4" date="2026-04-10" />
+    <release version="0.2.5" date="2026-04-10" />
   </releases>
   <content_rating type="oars-1.1" />
 </component>
