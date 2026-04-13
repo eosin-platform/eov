@@ -74,7 +74,7 @@ Current capabilities include:
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
 - Toggle between CPU and GPU rendering, with automatic fallback to CPU when GPU rendering is unavailable.
 - Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) texture filtering.
-- Real-time image adjustments: gamma, brightness, and contrast sliders applied via a per-channel LUT (CPU) or per-pixel shader (GPU).
+- Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
 - A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available.
 - A minimap thumbnail with viewport navigation and a zoom slider.
@@ -105,15 +105,16 @@ Both CPU and GPU backends support all three modes. On the GPU path, trilinear bl
 
 ## Image Adjustments
 
-Real-time gamma, brightness, and contrast controls are available in the HUD settings panel:
+Real-time image adjustment controls are available in the HUD settings panel:
 
 | Parameter | Range | Default | Description |
 |-----------|-------|---------|-------------|
+| Sharpness | 0.0 – 1.0 | 0.0 | Unsharp mask via 4-connected Laplacian kernel. 0 = disabled (bypass), 1 = maximum sharpening. |
 | Gamma | 0.2 – 3.0 | 1.0 | Power-law intensity curve. Values below 1.0 brighten shadows; above 1.0 darkens them. |
 | Brightness | -1.0 – 1.0 | 0.0 | Additive offset applied after gamma correction. |
 | Contrast | 0.2 – 3.0 | 1.0 | Multiplicative scaling around the midpoint (0.5) after brightness. |
 
-The CPU backend applies adjustments through a precomputed 256-entry lookup table for zero per-pixel branching. The GPU backend applies the same pipeline per-pixel in the fragment shader.
+The CPU backend applies sharpening as a Laplacian convolution pass over the composited buffer, followed by gamma/brightness/contrast through a precomputed 256-entry lookup table. The GPU backend applies the same pipeline per-pixel in the fragment shader.
 
 ## Stain Normalization
 
