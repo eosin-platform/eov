@@ -779,22 +779,10 @@ fn render_pane_to_image(
         pending_cpu_job_id = None;
     }
 
-    let preview_image = if is_moving {
+    if is_moving {
         if let Some(pane_state) = file.pane_state_mut(pane) {
             pane_state.needs_settled_cpu_render = true;
         }
-
-        render_cached_preview(pane, file.id, vp, render_width, render_height)
-    } else {
-        None
-    };
-
-    if let Some(image) = preview_image {
-        return PaneRenderOutcome {
-            image: Some(image),
-            keep_running: true,
-            rendered: true,
-        };
     }
 
     let effective_filtering = if is_moving {
@@ -988,6 +976,20 @@ fn render_pane_to_image(
         None
     };
 
+    let preview_image = if is_moving {
+        render_cached_preview(
+            pane,
+            file.id,
+            vp,
+            render_width,
+            render_height,
+            &fallback_commands,
+            &fine_commands,
+        )
+    } else {
+        None
+    };
+
     let submit_cpu_job = !is_moving || pending_cpu_job_id.is_none();
     if submit_cpu_job && pending_cpu_job_id.is_none() {
         let Some(pool) = crate::render_pool::global() else {
@@ -1022,6 +1024,14 @@ fn render_pane_to_image(
         pending_cpu_job_id = Some(job_id);
     }
 
+    if let Some(image) = preview_image {
+        return PaneRenderOutcome {
+            image: Some(image),
+            keep_running: true,
+            rendered: true,
+        };
+    }
+
     PaneRenderOutcome {
         image: None,
         keep_running: keep_running || pending_cpu_job_id.is_some() || needs_settled_cpu_render,
@@ -1035,6 +1045,8 @@ fn render_cached_preview(
     viewport: &Viewport,
     render_width: u32,
     render_height: u32,
+    fallback_commands: &[CpuBlitCommand],
+    fine_commands: &[CpuBlitCommand],
 ) -> Option<Image> {
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -1060,8 +1072,75 @@ fn render_cached_preview(
             [30, 30, 30, 255],
         );
 
+        for command in fallback_commands {
+            composite_command_into_preview(preview, render_width, render_height, command);
+        }
+        for command in fine_commands {
+            composite_command_into_preview(preview, render_width, render_height, command);
+        }
+
         blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
     })
+}
+
+fn composite_command_into_preview(
+    buffer: &mut [u8],
+    render_width: u32,
+    render_height: u32,
+    command: &CpuBlitCommand,
+) {
+    match &command.kind {
+        CpuBlitKind::Bilinear => blitter::blit_tile(
+            buffer,
+            render_width,
+            render_height,
+            blitter::TileSrc {
+                data: &command.tile.data,
+                width: command.tile.width,
+                height: command.tile.height,
+                border: command.tile.border,
+            },
+            command.rect,
+        ),
+        CpuBlitKind::Lanczos3 => blitter::blit_tile_lanczos3(
+            buffer,
+            render_width,
+            render_height,
+            blitter::TileSrc {
+                data: &command.tile.data,
+                width: command.tile.width,
+                height: command.tile.height,
+                border: command.tile.border,
+            },
+            command.rect,
+        ),
+        CpuBlitKind::Trilinear {
+            coarse_tile,
+            uv_min,
+            uv_max,
+            blend,
+        } => blitter::blit_tile_trilinear(
+            buffer,
+            render_width,
+            render_height,
+            blitter::TileSrc {
+                data: &command.tile.data,
+                width: command.tile.width,
+                height: command.tile.height,
+                border: command.tile.border,
+            },
+            &blitter::CoarseSrc {
+                data: &coarse_tile.data,
+                width: coarse_tile.width,
+                height: coarse_tile.height,
+                border: coarse_tile.border,
+                uv_min: *uv_min,
+                uv_max: *uv_max,
+                blend: *blend,
+            },
+            command.rect,
+        ),
+    }
 }
 
 fn collect_tile_draws(
