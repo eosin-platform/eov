@@ -7,6 +7,7 @@ mod config;
 mod file_ops;
 mod gpu;
 mod render;
+mod render_pool;
 mod stain;
 mod state;
 mod tile_loader;
@@ -21,6 +22,7 @@ use common::{
 };
 use gpu::GpuRenderer;
 use parking_lot::RwLock;
+use render_pool::CachedCpuFrame;
 use slint::{BackendSelector, Image, SharedString, Timer, TimerMode, VecModel};
 use state::{AppState, PaneId, RenderBackend};
 use std::cell::RefCell;
@@ -30,10 +32,23 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-#[derive(Clone, Default)]
-struct PaneRenderCacheEntry {
-    content: Option<Image>,
-    minimap_thumbnail: Option<Image>,
+#[derive(Default)]
+pub(crate) struct PaneRenderCacheEntry {
+    pub(crate) content: Option<Image>,
+    pub(crate) minimap_thumbnail: Option<Image>,
+    pub(crate) cpu_frame: Option<CachedCpuFrame>,
+    pub(crate) preview_buffer: Vec<u8>,
+}
+
+impl Clone for PaneRenderCacheEntry {
+    fn clone(&self) -> Self {
+        Self {
+            content: self.content.clone(),
+            minimap_thumbnail: self.minimap_thumbnail.clone(),
+            cpu_frame: None,
+            preview_buffer: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -587,6 +602,18 @@ pub(crate) fn set_cached_pane_content(pane: PaneId, image: Image) {
     }
 }
 
+pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: CachedCpuFrame) {
+    with_pane_render_cache(pane.0 + 1, |cache| {
+        if let Some(old_frame) = cache[pane.0].cpu_frame.take()
+            && let Some(pool) = render_pool::global()
+        {
+            pool.recycle_buffer(old_frame.pixels);
+        }
+        cache[pane.0].content = Some(image);
+        cache[pane.0].cpu_frame = Some(frame);
+    });
+}
+
 pub(crate) fn set_cached_pane_minimap(pane: PaneId, image: Option<Image>) {
     let has_minimap = image.is_some();
     with_pane_render_cache(pane.0 + 1, |cache| {
@@ -642,6 +669,11 @@ fn insert_pane_ui_state(new_pane: PaneId, source_pane: Option<PaneId>) {
 
 pub(crate) fn clear_cached_pane(pane: PaneId) {
     with_pane_render_cache(pane.0 + 1, |cache| {
+        if let Some(old_frame) = cache[pane.0].cpu_frame.take()
+            && let Some(pool) = render_pool::global()
+        {
+            pool.recycle_buffer(old_frame.pixels);
+        }
         cache[pane.0] = PaneRenderCacheEntry::default();
     });
 
@@ -781,6 +813,7 @@ fn main() -> Result<()> {
         launch_options.max_tiles,
         launch_options.cache_size_bytes,
     ));
+    render_pool::init_global()?;
 
     let ui = AppWindow::new()?;
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));

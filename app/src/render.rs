@@ -6,6 +6,7 @@
 use crate::AppWindow;
 use crate::blitter;
 use crate::gpu::{QueuedFrame, SurfaceSlot, TileDraw};
+use crate::render_pool::{CachedCpuFrame, CpuBlitCommand, CpuBlitKind, CpuRenderJob, CpuRenderPostProcess};
 use crate::state::{
     AppState, FilteringMode, OpenFile, PaneId, RenderBackend, TileRequestSignature,
 };
@@ -34,30 +35,6 @@ fn lanczos_adaptive_weight(zoom: f64) -> f64 {
         0.0
     } else {
         (zoom - TRILINEAR_FULL) / (LANCZOS_FULL - TRILINEAR_FULL)
-    }
-}
-
-/// Apply gamma, brightness, and contrast adjustments to an RGBA pixel buffer.
-fn apply_adjustments(buffer: &mut [u8], gamma: f32, brightness: f32, contrast: f32) {
-    // Pre-compute a 256-entry lookup table for the combined transformation.
-    // Pipeline: input → gamma → brightness → contrast → clamp
-    let inv_gamma = if gamma > 0.001 { 1.0 / gamma } else { 1.0 };
-    let mut lut = [0u8; 256];
-    for (i, entry) in lut.iter_mut().enumerate() {
-        let normalized = i as f32 / 255.0;
-        // Apply gamma
-        let g = normalized.powf(inv_gamma);
-        // Apply brightness (additive)
-        let b = g + brightness;
-        // Apply contrast (multiply around midpoint 0.5)
-        let c = (b - 0.5) * contrast + 0.5;
-        *entry = (c * 255.0).clamp(0.0, 255.0) as u8;
-    }
-    // Apply LUT to RGB channels (skip alpha every 4th byte)
-    for chunk in buffer.chunks_exact_mut(4) {
-        chunk[0] = lut[chunk[0] as usize];
-        chunk[1] = lut[chunk[1] as usize];
-        chunk[2] = lut[chunk[2] as usize];
     }
 }
 
@@ -245,6 +222,7 @@ pub(crate) fn update_and_render(
     tile_cache: &Arc<TileCache>,
 ) -> bool {
     let mut state = state.write();
+    let (completed_cpu_frame, cpu_jobs_pending) = apply_completed_cpu_renders(&mut state);
     let render_backend = state.render_backend;
     let filtering_mode = state.filtering_mode;
     let pane_count = state.panes.len();
@@ -263,7 +241,7 @@ pub(crate) fn update_and_render(
         return false;
     }
 
-    let render_requested = std::mem::take(&mut state.needs_render);
+    let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
 
     let content_width = (ui.get_content_area_width() as f64).max(100.0);
@@ -336,8 +314,8 @@ pub(crate) fn update_and_render(
         }
     }
 
-    let mut keep_running = render_requested;
-    let mut rendered_frame = false;
+    let mut keep_running = render_requested || cpu_jobs_pending;
+    let mut rendered_frame = completed_cpu_frame;
 
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
         let pane = PaneId(pane_index);
@@ -436,6 +414,71 @@ pub(crate) fn update_and_render(
     keep_running
 }
 
+fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
+    let Some(pool) = crate::render_pool::global() else {
+        return (false, false);
+    };
+
+    let mut applied = false;
+
+    while let Some(result) = pool.try_recv() {
+        let pane = PaneId(result.pane_index);
+        let is_active = state.active_file_id_for_pane(pane) == Some(result.file_id);
+        let Some(file) = state.open_files.iter_mut().find(|file| file.id == result.file_id) else {
+            pool.recycle_buffer(result.pixels);
+            continue;
+        };
+        let Some(pane_state) = file.pane_state_mut(pane) else {
+            pool.recycle_buffer(result.pixels);
+            continue;
+        };
+
+        if pane_state.pending_cpu_job_id != Some(result.job_id) {
+            pool.recycle_buffer(result.pixels);
+            continue;
+        }
+
+        pane_state.pending_cpu_job_id = None;
+        pane_state.needs_settled_cpu_render = !result.settled_quality;
+
+        if !is_active {
+            pool.recycle_buffer(result.pixels);
+            continue;
+        }
+
+        let Some(buffer) = blitter::create_image_buffer(&result.pixels, result.width, result.height) else {
+            pool.recycle_buffer(result.pixels);
+            continue;
+        };
+
+        crate::set_cached_pane_cpu_result(
+            pane,
+            Image::from_rgba8(buffer),
+            CachedCpuFrame {
+                file_id: result.file_id,
+                width: result.width,
+                height: result.height,
+                viewport: result.viewport,
+                pixels: result.pixels,
+            },
+        );
+        state.set_last_rendered_file_id(pane, Some(result.file_id));
+        applied = true;
+    }
+
+    let pending = state
+        .open_files
+        .iter()
+        .flat_map(|file| file.pane_states.iter().flatten())
+        .any(|pane_state| pane_state.pending_cpu_job_id.is_some());
+
+    if applied {
+        state.request_render();
+    }
+
+    (applied, pending)
+}
+
 fn render_pane_to_image(
     file: &mut OpenFile,
     pane: PaneId,
@@ -473,6 +516,8 @@ fn render_pane_to_image(
         last_render_brightness,
         last_render_contrast,
         last_render_stain_normalization,
+        pending_cpu_job_id,
+        needs_settled_cpu_render,
     ) = {
         let Some(pane_state) = file.pane_state_mut(pane) else {
             return PaneRenderOutcome::default();
@@ -502,6 +547,8 @@ fn render_pane_to_image(
             pane_state.last_render_brightness,
             pane_state.last_render_contrast,
             pane_state.last_render_stain_normalization,
+            pane_state.pending_cpu_job_id,
+            pane_state.needs_settled_cpu_render,
         )
     };
 
@@ -615,10 +662,11 @@ fn render_pane_to_image(
         && !level_changed
         && !new_tiles_loaded
         && !adjustments_changed
+        && !needs_settled_cpu_render
     {
         return PaneRenderOutcome {
             image: None,
-            keep_running,
+            keep_running: keep_running || pending_cpu_job_id.is_some(),
             rendered: false,
         };
     }
@@ -715,20 +763,61 @@ fn render_pane_to_image(
         None => {
             return PaneRenderOutcome {
                 image: None,
-                keep_running,
+                keep_running: keep_running || pending_cpu_job_id.is_some(),
                 rendered: false,
             };
         }
     };
 
-    // Detect whether the viewport is actively moving (drag, inertia, zoom
-    // animation, navigation). While moving on CPU we skip expensive
-    // post-processing (Lanczos, sharpening, stain normalization) and use
-    // fused trilinear instead, matching the browser-style fluid path.
     let is_moving = viewport_state.is_moving() || animating;
+    let mut pending_cpu_job_id = pending_cpu_job_id;
+
+    if pending_cpu_job_id.is_some() && (viewport_changed || level_changed || adjustments_changed) {
+        if let Some(pane_state) = file.pane_state_mut(pane) {
+            pane_state.pending_cpu_job_id = None;
+        }
+        pending_cpu_job_id = None;
+    }
+
+    let preview_image = if is_moving {
+        if let Some(pane_state) = file.pane_state_mut(pane) {
+            pane_state.needs_settled_cpu_render = true;
+        }
+
+        render_cached_preview(pane, file.id, vp, render_width, render_height)
+    } else {
+        None
+    };
+
+    if let Some(image) = preview_image {
+        return PaneRenderOutcome {
+            image: Some(image),
+            keep_running: true,
+            rendered: true,
+        };
+    }
+
+    let effective_filtering = if is_moving {
+        if use_trilinear_blend {
+            FilteringMode::Trilinear
+        } else {
+            FilteringMode::Bilinear
+        }
+    } else {
+        filtering_mode
+    };
+
+    let is_adaptive_lanczos = effective_filtering == FilteringMode::Lanczos3;
+    let effective_lanczos_weight = if is_adaptive_lanczos {
+        lanczos_adaptive_weight(vp_zoom)
+    } else {
+        1.0
+    };
+    let effective_trilinear = effective_filtering == FilteringMode::Trilinear
+        || (is_adaptive_lanczos && effective_lanczos_weight < 1.0);
 
     let level_count = file.wsi.level_count();
-    let mut fallback_blits: Vec<(Arc<common::TileData>, blitter::BlitRect)> = Vec::new();
+    let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= level {
             continue;
@@ -759,7 +848,6 @@ fn render_pane_to_image(
                 (fb_origin_x + fallback_tile.width as f64) * fallback_level_info.downsample;
             let fb_image_y_end =
                 (fb_origin_y + fallback_tile.height as f64) * fallback_level_info.downsample;
-
             let exact_sx = (fb_image_x - bounds.left) * vp.zoom;
             let exact_sy = (fb_image_y - bounds.top) * vp.zoom;
             let exact_sx_end = (fb_image_x_end - bounds.left) * vp.zoom;
@@ -770,14 +858,13 @@ fn render_pane_to_image(
             let screen_y_end = exact_sy_end.floor() as i32;
             let screen_w = screen_x_end - screen_x;
             let screen_h = screen_y_end - screen_y;
-
             if screen_w <= 0 || screen_h <= 0 {
                 continue;
             }
 
-            fallback_blits.push((
-                fallback_tile,
-                blitter::BlitRect {
+            fallback_commands.push(CpuBlitCommand {
+                tile: fallback_tile,
+                rect: blitter::BlitRect {
                     x: screen_x,
                     y: screen_y,
                     width: screen_w,
@@ -787,41 +874,11 @@ fn render_pane_to_image(
                     exact_width: exact_sx_end - exact_sx,
                     exact_height: exact_sy_end - exact_sy,
                 },
-            ));
+                kind: CpuBlitKind::Bilinear,
+            });
         }
     }
 
-    let Some(_) = file.pane_state(pane) else {
-        return PaneRenderOutcome::default();
-    };
-    // Render directly into SharedPixelBuffer to avoid an intermediate copy.
-    let mut pixel_buffer =
-        slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
-    let buffer = pixel_buffer.make_mut_bytes();
-    blitter::fast_fill_rgba(buffer, 30, 30, 30, 255);
-
-    // While moving, always use bilinear (+ fused trilinear if applicable).
-    // When settled, use the user's chosen filtering mode.
-    let effective_filtering = if is_moving && render_backend == RenderBackend::Cpu {
-        if use_trilinear_blend {
-            FilteringMode::Trilinear
-        } else {
-            FilteringMode::Bilinear
-        }
-    } else {
-        filtering_mode
-    };
-
-    let is_adaptive_lanczos = effective_filtering == FilteringMode::Lanczos3;
-    let effective_lanczos_weight = if is_adaptive_lanczos {
-        lanczos_adaptive_weight(vp_zoom)
-    } else {
-        1.0
-    };
-    let effective_trilinear = effective_filtering == FilteringMode::Trilinear
-        || (is_adaptive_lanczos && effective_lanczos_weight < 1.0);
-
-    // Helper: compute the BlitRect for a fine tile
     let fine_blit_rect =
         |coord: &common::TileCoord, tile_data: &common::TileData| -> blitter::BlitRect {
             let origin_x = coord.x as f64 * coord.tile_size as f64;
@@ -850,104 +907,58 @@ fn render_pane_to_image(
             }
         };
 
-    // --- Blit fallback tiles (always bilinear, no trilinear) ---
-    for (fallback_tile, rect) in &fallback_blits {
-        blitter::blit_tile(
-            buffer,
-            render_width,
-            render_height,
-            blitter::TileSrc {
-                data: &fallback_tile.data,
-                width: fallback_tile.width,
-                height: fallback_tile.height,
-                border: fallback_tile.border,
-            },
-            *rect,
-        );
-    }
-
-    // --- Blit fine tiles with optional fused trilinear ---
+    let cached_coarse_tile_map: HashMap<_, _> = cached_coarse_tiles.iter().cloned().collect();
     let do_fused_trilinear = effective_trilinear
         && trilinear.level_fine != trilinear.level_coarse
         && trilinear.blend > 0.01
-        && !cached_coarse_tiles.is_empty();
+        && !cached_coarse_tile_map.is_empty();
+    let coarse_blends: HashMap<_, _> = if do_fused_trilinear {
+        cached_tiles
+            .iter()
+            .filter_map(|(coord, tile)| {
+                coarse_blend_for_tile(
+                    file,
+                    &cached_coarse_tile_map,
+                    trilinear,
+                    level_info.downsample,
+                    *coord,
+                    tile,
+                )
+                .map(|blend| (*coord, blend))
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
 
+    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.len());
     for (coord, tile_data) in cached_tiles.iter() {
         let rect = fine_blit_rect(coord, tile_data);
-
-        // Try fused trilinear path: find the matching coarse tile and blit both in one pass
-        if do_fused_trilinear
-            && let Some((coarse_tile, uv_min, uv_max, blend)) = coarse_blend_for_tile(
-                file,
-                tile_cache,
-                trilinear,
-                level_info.downsample,
-                *coord,
-                tile_data,
-            )
-        {
-            blitter::blit_tile_trilinear(
-                buffer,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &tile_data.data,
-                    width: tile_data.width,
-                    height: tile_data.height,
-                    border: tile_data.border,
-                },
-                &blitter::CoarseSrc {
-                    data: &coarse_tile.data,
-                    width: coarse_tile.width,
-                    height: coarse_tile.height,
-                    border: coarse_tile.border,
-                    uv_min,
-                    uv_max,
-                    blend,
-                },
-                rect,
-            );
+        if rect.width <= 0 || rect.height <= 0 {
             continue;
         }
 
-        // Non-trilinear path or no coarse tile found: use the selected filter
-        if is_adaptive_lanczos && effective_lanczos_weight >= 1.0 {
-            blitter::blit_tile_lanczos3(
-                buffer,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &tile_data.data,
-                    width: tile_data.width,
-                    height: tile_data.height,
-                    border: tile_data.border,
-                },
-                rect,
-            );
+        let kind = if let Some((coarse_tile, uv_min, uv_max, blend)) = coarse_blends.get(coord) {
+            CpuBlitKind::Trilinear {
+                coarse_tile: Arc::clone(coarse_tile),
+                uv_min: *uv_min,
+                uv_max: *uv_max,
+                blend: *blend,
+            }
+        } else if is_adaptive_lanczos && effective_lanczos_weight >= 1.0 {
+            CpuBlitKind::Lanczos3
         } else {
-            blitter::blit_tile(
-                buffer,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &tile_data.data,
-                    width: tile_data.width,
-                    height: tile_data.height,
-                    border: tile_data.border,
-                },
-                rect,
-            );
-        }
+            CpuBlitKind::Bilinear
+        };
+
+        fine_commands.push(CpuBlitCommand {
+            tile: Arc::clone(tile_data),
+            rect,
+            kind,
+        });
     }
 
-    // Post-processing: skip expensive operations while moving for fluid panning.
-    let skip_expensive_postprocess = is_moving && render_backend == RenderBackend::Cpu;
-
-    // Post-processing: apply stain normalization if enabled (cached)
-    if !skip_expensive_postprocess
-        && hud_stain_normalization != crate::state::StainNormalization::None
-    {
-        // Use cached stain params if the tile epoch and method haven't changed.
+    let stain_params = if !is_moving && hud_stain_normalization != crate::state::StainNormalization::None {
         let need_recompute = file
             .pane_state(pane)
             .map(|ps| {
@@ -961,10 +972,9 @@ fn render_pane_to_image(
             let tile_slices: Vec<&[u8]> = cached_tiles
                 .iter()
                 .map(|(_, td)| td.data.as_slice())
-                .chain(fallback_blits.iter().map(|(td, ..)| td.data.as_slice()))
+                .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
                 .collect();
-            let params =
-                crate::stain::compute_cpu_stain_params(hud_stain_normalization, &tile_slices);
+            let params = crate::stain::compute_cpu_stain_params(hud_stain_normalization, &tile_slices);
             if let Some(ps) = file.pane_state_mut(pane) {
                 ps.cached_stain_params = Some(params);
                 ps.stain_params_epoch = loaded_tile_epoch;
@@ -972,86 +982,86 @@ fn render_pane_to_image(
             }
         }
 
-        if let Some(ps) = file.pane_state(pane)
-            && let Some(ref params) = ps.cached_stain_params
-        {
-            crate::stain::apply_stain_params_to_buffer(buffer, params);
+        file.pane_state(pane)
+            .and_then(|ps| ps.cached_stain_params)
+    } else {
+        None
+    };
+
+    let submit_cpu_job = !is_moving || pending_cpu_job_id.is_none();
+    if submit_cpu_job && pending_cpu_job_id.is_none() {
+        let Some(pool) = crate::render_pool::global() else {
+            return PaneRenderOutcome::default();
+        };
+
+        let job_id = pool.next_job_id();
+        pool.submit(CpuRenderJob {
+            pane_index: pane.0,
+            file_id: file.id,
+            job_id,
+            width: render_width,
+            height: render_height,
+            viewport: vp.clone(),
+            background_rgba: [30, 30, 30, 255],
+            fallback_blits: fallback_commands,
+            fine_blits: fine_commands,
+            postprocess: CpuRenderPostProcess {
+                stain_params: if is_moving { None } else { stain_params },
+                sharpness: if is_moving { 0.0 } else { hud_sharpness },
+                gamma: hud_gamma,
+                brightness: hud_brightness,
+                contrast: hud_contrast,
+            },
+            settled_quality: !is_moving,
+        });
+
+        if let Some(pane_state) = file.pane_state_mut(pane) {
+            pane_state.pending_cpu_job_id = Some(job_id);
+            pane_state.needs_settled_cpu_render = is_moving;
         }
-    }
-
-    // Post-processing: apply sharpening (unsharp mask) if enabled
-    // Reuse scratch buffer to avoid per-frame allocation.
-    if !skip_expensive_postprocess && hud_sharpness > 0.001 {
-        apply_sharpening_reuse(
-            file,
-            pane,
-            buffer,
-            render_width,
-            render_height,
-            hud_sharpness,
-        );
-    }
-
-    // Post-processing: apply gamma, brightness, contrast if they differ from defaults
-    let has_adjustments = (hud_gamma - 1.0).abs() > 0.001
-        || hud_brightness.abs() > 0.001
-        || (hud_contrast - 1.0).abs() > 0.001;
-    if has_adjustments {
-        apply_adjustments(buffer, hud_gamma, hud_brightness, hud_contrast);
+        pending_cpu_job_id = Some(job_id);
     }
 
     PaneRenderOutcome {
-        image: Some(Image::from_rgba8(pixel_buffer)),
-        keep_running,
-        rendered: true,
+        image: None,
+        keep_running: keep_running || pending_cpu_job_id.is_some() || needs_settled_cpu_render,
+        rendered: false,
     }
 }
 
-/// Apply sharpening reusing a persistent scratch buffer stored in
-/// `FilePaneState` to avoid a full-frame allocation every frame.
-fn apply_sharpening_reuse(
-    file: &mut OpenFile,
+fn render_cached_preview(
     pane: PaneId,
-    buffer: &mut [u8],
-    width: u32,
-    height: u32,
-    sharpness: f32,
-) {
-    let w = width as usize;
-    let h = height as usize;
-    if w < 3 || h < 3 {
-        return;
-    }
-    let needed = buffer.len();
-    // Resize scratch buffer once; subsequent frames reuse the allocation.
-    if let Some(ps) = file.pane_state_mut(pane) {
-        if ps.scratch_buffer.len() < needed {
-            ps.scratch_buffer.resize(needed, 0);
+    file_id: i32,
+    viewport: &Viewport,
+    render_width: u32,
+    render_height: u32,
+) -> Option<Image> {
+    crate::with_pane_render_cache(pane.0 + 1, |cache| {
+        let entry = cache.get_mut(pane.0)?;
+        let cpu_frame = entry.cpu_frame.as_ref()?;
+        if cpu_frame.file_id != file_id {
+            return None;
         }
-        ps.scratch_buffer[..needed].copy_from_slice(buffer);
-    }
-    let Some(ps) = file.pane_state(pane) else {
-        return;
-    };
-    let src = &ps.scratch_buffer;
-    let stride = w * 4;
-    for y in 1..h - 1 {
-        for x in 1..w - 1 {
-            let idx = y * stride + x * 4;
-            let n = idx - stride;
-            let s = idx + stride;
-            let we = idx - 4;
-            let e = idx + 4;
-            for c in 0..3 {
-                let center = src[idx + c] as f32;
-                let neighbors =
-                    src[n + c] as f32 + src[s + c] as f32 + src[we + c] as f32 + src[e + c] as f32;
-                let detail = center * 4.0 - neighbors;
-                let sharpened = center + sharpness * detail;
-                buffer[idx + c] = sharpened.clamp(0.0, 255.0) as u8;
-            }
+
+        let needed = (render_width as usize) * (render_height as usize) * 4;
+        if entry.preview_buffer.len() < needed {
+            entry.preview_buffer.resize(needed, 0);
         }
-    }
+        let preview = &mut entry.preview_buffer[..needed];
+        blitter::reproject_frame(
+            preview,
+            render_width,
+            render_height,
+            &cpu_frame.pixels,
+            cpu_frame.width,
+            cpu_frame.height,
+            cpu_frame,
+            viewport,
+            [30, 30, 30, 255],
+        );
+
+        blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
+    })
 }
 
 fn collect_tile_draws(
@@ -1070,6 +1080,26 @@ fn collect_tile_draws(
         downsample: 1.0,
     };
     let level_count = file.wsi.level_count();
+    let coarse_tile_map: HashMap<common::TileCoord, Arc<common::TileData>> =
+        if filtering_mode == FilteringMode::Trilinear
+            && trilinear.level_fine != trilinear.level_coarse
+            && trilinear.blend > 0.01
+        {
+            file.tile_manager
+                .visible_tiles_with_margin(
+                    trilinear.level_coarse,
+                    bounds.left,
+                    bounds.top,
+                    bounds.right,
+                    bounds.bottom,
+                    0,
+                )
+                .into_iter()
+                .filter_map(|coord| tile_cache.peek(&coord).map(|tile| (coord, tile)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
 
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= trilinear.level_fine {
@@ -1127,7 +1157,7 @@ fn collect_tile_draws(
         };
         let coarse_blend = coarse_blend_for_tile(
             file,
-            tile_cache,
+            &coarse_tile_map,
             trilinear,
             level_info.downsample,
             *coord,
@@ -1145,7 +1175,7 @@ fn collect_tile_draws(
 
 fn coarse_blend_for_tile(
     file: &OpenFile,
-    tile_cache: &Arc<TileCache>,
+    coarse_tiles: &HashMap<common::TileCoord, Arc<common::TileData>>,
     trilinear: TrilinearLevels,
     fine_downsample: f64,
     fine_coord: common::TileCoord,
@@ -1191,7 +1221,7 @@ fn coarse_blend_for_tile(
         coarse_tile_size as u32,
     );
 
-    let coarse_tile = tile_cache.peek(&coarse_coord)?;
+    let coarse_tile = coarse_tiles.get(&coarse_coord)?.clone();
     let coarse_origin_x = coarse_coord.x as f64 * coarse_coord.tile_size as f64;
     let coarse_origin_y = coarse_coord.y as f64 * coarse_coord.tile_size as f64;
     let coarse_src_x = (coarse_tile_x - coarse_origin_x).max(0.0);

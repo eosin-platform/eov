@@ -292,6 +292,7 @@ dependencies = [
  "open",
  "parking_lot",
  "raw-window-handle",
+ "rayon",
  "rfd",
  "serde",
  "slint",

@@ -12,14 +12,22 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::thread;
 use tracing::trace;
 
-/// Number of background worker threads for tile loading
-const WORKER_COUNT: usize = 4;
-
-/// Maximum tiles to send to workers per frame
-const MAX_TILES_PER_FRAME: usize = 32;
-
 /// Number of wanted-tile generations to suppress immediately retrying a failed tile.
 const FAILED_RETRY_GENERATIONS: u64 = 12;
+
+fn loader_worker_count() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| count.get().clamp(4, 8))
+        .unwrap_or(4)
+}
+
+fn max_tiles_per_frame(worker_count: usize) -> usize {
+    (worker_count * 12).clamp(32, 96)
+}
+
+fn request_channel_capacity(worker_count: usize) -> usize {
+    (worker_count * 16).clamp(64, 256)
+}
 
 /// Background tile loader with automatic cancellation of stale requests
 pub struct TileLoader {
@@ -41,13 +49,16 @@ pub struct TileLoader {
     shutdown: Arc<std::sync::atomic::AtomicBool>,
     /// Reference to cache
     cache: Arc<TileCache>,
+    /// Maximum tiles to enqueue per frame for the current machine.
+    max_tiles_per_frame: usize,
 }
 
 impl TileLoader {
     /// Create a new tile loader
     pub fn new(tile_manager: Arc<TileManager>, cache: Arc<TileCache>) -> Self {
+        let worker_count = loader_worker_count();
         // Bounded channel for tile requests - sized for good throughput
-        let (request_tx, request_rx) = bounded::<TileCoord>(64);
+        let (request_tx, request_rx) = bounded::<TileCoord>(request_channel_capacity(worker_count));
         let failed = Arc::new(Mutex::new(HashMap::new()));
         let generation = Arc::new(AtomicU64::new(0));
         let pending = Arc::new(Mutex::new(HashSet::new()));
@@ -55,9 +66,9 @@ impl TileLoader {
         let loaded_epoch = Arc::new(AtomicU64::new(0));
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        let mut workers = Vec::with_capacity(WORKER_COUNT);
+        let mut workers = Vec::with_capacity(worker_count);
 
-        for i in 0..WORKER_COUNT {
+        for i in 0..worker_count {
             let request_rx = request_rx.clone();
             let tile_manager = Arc::clone(&tile_manager);
             let worker_path = tile_manager.wsi().properties().path.clone();
@@ -105,6 +116,7 @@ impl TileLoader {
             workers,
             shutdown,
             cache,
+            max_tiles_per_frame: max_tiles_per_frame(worker_count),
         }
     }
 
@@ -123,7 +135,7 @@ impl TileLoader {
 
         // Send tiles to workers (limited to avoid flooding)
         for coord in tiles {
-            if sent >= MAX_TILES_PER_FRAME {
+            if sent >= self.max_tiles_per_frame {
                 break;
             }
 

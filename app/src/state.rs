@@ -350,14 +350,17 @@ pub struct FilePaneState {
     pub last_render_sharpness: f32,
     pub last_render_stain_normalization: StainNormalization,
     pub hud: HudSettings,
-    /// Reusable scratch buffer for sharpening (avoids per-frame allocation).
-    pub scratch_buffer: Vec<u8>,
     /// Cached stain normalization parameters.
     pub cached_stain_params: Option<crate::stain::StainNormParams>,
     /// Tile epoch at which stain params were last computed.
     pub stain_params_epoch: u64,
     /// Stain normalization method for which cached params were computed.
     pub stain_params_method: StainNormalization,
+    /// ID of the currently pending async CPU render job for this pane.
+    pub pending_cpu_job_id: Option<u64>,
+    /// Whether the pane is showing an interaction preview and still needs a
+    /// settled, full-quality CPU render.
+    pub needs_settled_cpu_render: bool,
 }
 
 impl FilePaneState {
@@ -381,10 +384,11 @@ impl FilePaneState {
             last_render_sharpness: 0.0,
             last_render_stain_normalization: StainNormalization::None,
             hud: HudSettings::default(),
-            scratch_buffer: Vec::new(),
             cached_stain_params: None,
             stain_params_epoch: 0,
             stain_params_method: StainNormalization::None,
+            pending_cpu_job_id: None,
+            needs_settled_cpu_render: false,
         }
     }
 
@@ -399,6 +403,8 @@ impl FilePaneState {
         self.frame_count = 0;
         self.last_seen_tile_epoch = 0;
         self.last_request = None;
+        self.pending_cpu_job_id = None;
+        self.needs_settled_cpu_render = false;
     }
 }
 

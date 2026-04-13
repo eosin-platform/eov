@@ -46,6 +46,7 @@ parking_lot = "0.12"
 # Concurrent data structures
 crossbeam-channel = "0.5"
 dashmap = "6"
+rayon = "1.10"
 
 # Clipboard
 arboard = "3"
