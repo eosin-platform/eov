@@ -1070,11 +1070,7 @@ impl GpuRenderer {
                         coarse_size: (coarse_w, coarse_h),
                         layer_size: array_ls,
                         fine_border: draw.tile.border,
-                        coarse_border: draw
-                            .coarse_tile
-                            .as_ref()
-                            .map(|t| t.border)
-                            .unwrap_or(0),
+                        coarse_border: draw.coarse_tile.as_ref().map(|t| t.border).unwrap_or(0),
                     },
                 ),
             });
@@ -1228,11 +1224,21 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
     let fb = params.fine_border as f32;
     let (fu_min, fv_min, fu_max, fv_max) = if fb > 0.0 {
         // Inner tile spans texels [border .. border+inner_w) in the padded data.
-        (fb / ls, fb / ls, (fine_w as f32 - fb) / ls, (fine_h as f32 - fb) / ls)
+        (
+            fb / ls,
+            fb / ls,
+            (fine_w as f32 - fb) / ls,
+            (fine_h as f32 - fb) / ls,
+        )
     } else {
         // Legacy (border=0): half-texel inset to avoid sampling stale padding.
         let half = 0.5 / ls;
-        (half, half, (fine_w as f32 - 0.5) / ls, (fine_h as f32 - 0.5) / ls)
+        (
+            half,
+            half,
+            (fine_w as f32 - 0.5) / ls,
+            (fine_h as f32 - 0.5) / ls,
+        )
     };
 
     // Coarse UV: the draw's coarse_uv_min/max are in [0,1] of the coarse

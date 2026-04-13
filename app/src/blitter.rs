@@ -133,8 +133,16 @@ pub fn blit_tile(
     let use_exact = rect.exact_width > 0.0;
     let exact_x = rect.exact_x;
     let exact_y = rect.exact_y;
-    let exact_w = if use_exact { rect.exact_width } else { scaled_width as f64 };
-    let exact_h = if use_exact { rect.exact_height } else { scaled_height as f64 };
+    let exact_w = if use_exact {
+        rect.exact_width
+    } else {
+        scaled_width as f64
+    };
+    let exact_h = if use_exact {
+        rect.exact_height
+    } else {
+        scaled_height as f64
+    };
     let scale_x_f = src_width as f64 / exact_w;
     let scale_y_f = src_height as f64 / exact_h;
 
@@ -302,8 +310,16 @@ pub fn blit_tile_lanczos3(
     let use_exact = rect.exact_width > 0.0;
     let exact_x = rect.exact_x;
     let exact_y = rect.exact_y;
-    let exact_w = if use_exact { rect.exact_width } else { scaled_width.max(1) as f64 };
-    let exact_h = if use_exact { rect.exact_height } else { scaled_height.max(1) as f64 };
+    let exact_w = if use_exact {
+        rect.exact_width
+    } else {
+        scaled_width.max(1) as f64
+    };
+    let exact_h = if use_exact {
+        rect.exact_height
+    } else {
+        scaled_height.max(1) as f64
+    };
     let scale_x = src_width as f64 / exact_w;
     let scale_y = src_height as f64 / exact_h;
     let dest_stride = (dest_width * 4) as usize;

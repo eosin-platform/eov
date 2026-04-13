@@ -45,7 +45,12 @@ fn create_bordered_tile(
     if dx > 0 {
         for iy in dy..dy + read_h as usize {
             let src_off = iy * dst_stride + dx * 4;
-            let pixel = [out[src_off], out[src_off + 1], out[src_off + 2], out[src_off + 3]];
+            let pixel = [
+                out[src_off],
+                out[src_off + 1],
+                out[src_off + 2],
+                out[src_off + 3],
+            ];
             for ix in 0..dx {
                 let off = iy * dst_stride + ix * 4;
                 out[off..off + 4].copy_from_slice(&pixel);
@@ -58,7 +63,12 @@ fn create_bordered_tile(
     if right_data_end < out_w {
         for iy in dy..dy + read_h as usize {
             let src_off = iy * dst_stride + (right_data_end - 1) * 4;
-            let pixel = [out[src_off], out[src_off + 1], out[src_off + 2], out[src_off + 3]];
+            let pixel = [
+                out[src_off],
+                out[src_off + 1],
+                out[src_off + 2],
+                out[src_off + 3],
+            ];
             for ix in right_data_end..out_w {
                 let off = iy * dst_stride + ix * 4;
                 out[off..off + 4].copy_from_slice(&pixel);
@@ -295,20 +305,13 @@ impl TileManager {
         let read_x0 = (read_x as f64 * level_info.downsample) as i64;
         let read_y0 = (read_y as f64 * level_info.downsample) as i64;
 
-        let read_data =
-            self.wsi
-                .read_region(read_x0, read_y0, coord.level, read_w, read_h)?;
+        let read_data = self
+            .wsi
+            .read_region(read_x0, read_y0, coord.level, read_w, read_h)?;
 
         // Build the uniformly-bordered output buffer.
         let data = create_bordered_tile(
-            &read_data,
-            read_w,
-            read_h,
-            inner_w,
-            inner_h,
-            BORDER,
-            avail_left,
-            avail_top,
+            &read_data, read_w, read_h, inner_w, inner_h, BORDER, avail_left, avail_top,
         );
 
         Ok(TileData::new(coord, data, inner_w, inner_h, BORDER))

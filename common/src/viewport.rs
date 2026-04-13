@@ -468,7 +468,10 @@ impl ViewportState {
                 self.viewport
                     .anchor_at(self.zoom_anchor_image, self.zoom_anchor_screen);
                 is_animating = true;
-                trace!("Zoom chase: zoom={:.4}, target={:.4}", new_zoom, self.target_zoom);
+                trace!(
+                    "Zoom chase: zoom={:.4}, target={:.4}",
+                    new_zoom, self.target_zoom
+                );
             }
         }
 

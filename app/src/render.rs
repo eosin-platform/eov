@@ -85,10 +85,8 @@ fn apply_sharpening(buffer: &mut [u8], width: u32, height: u32, sharpness: f32) 
             let e = idx + 4; // (x+1, y)
             for c in 0..3 {
                 let center = src[idx + c] as f32;
-                let neighbors = src[n + c] as f32
-                    + src[s + c] as f32
-                    + src[we + c] as f32
-                    + src[e + c] as f32;
+                let neighbors =
+                    src[n + c] as f32 + src[s + c] as f32 + src[we + c] as f32 + src[e + c] as f32;
                 // Laplacian detail = 4*center - sum(neighbors)
                 let detail = center * 4.0 - neighbors;
                 let sharpened = center + sharpness * detail;
