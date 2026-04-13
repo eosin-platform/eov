@@ -423,13 +423,13 @@ struct AdjustmentsUniform {
     inv_stain_r1: [f32; 4], // [inv[1][0], inv[1][1], inv[1][2], scale_e]
     sharpness: f32,
     // Color deconvolution parameters
-    deconv_enabled: f32,    // 0.0 = disabled, 1.0 = enabled
-    deconv_isolated: f32,   // 0.0 = blended, 1.0 = H isolated, 2.0 = E isolated
+    deconv_enabled: f32,  // 0.0 = disabled, 1.0 = enabled
+    deconv_isolated: f32, // 0.0 = blended, 1.0 = H isolated, 2.0 = E isolated
     _pad0: f32,
-    deconv_inv_row0: [f32; 4], // inverse stain row 0 + H intensity
-    deconv_inv_row1: [f32; 4], // inverse stain row 1 + E intensity
-    deconv_stain_h: [f32; 4],  // H stain OD vector
-    deconv_stain_e: [f32; 4],  // E stain OD vector
+    deconv_inv_row0: [f32; 4],   // inverse stain row 0 + H intensity
+    deconv_inv_row1: [f32; 4],   // inverse stain row 1 + E intensity
+    deconv_stain_h: [f32; 4],    // H stain OD vector
+    deconv_stain_e: [f32; 4],    // E stain OD vector
     deconv_visibility: [f32; 4], // [h_vis, e_vis, 0, 0]
 }
 
@@ -1307,7 +1307,11 @@ impl GpuRenderer {
             inv_stain_r0: frame.inv_stain_r0,
             inv_stain_r1: frame.inv_stain_r1,
             sharpness: frame.sharpness,
-            deconv_enabled: if frame.deconv_params.enabled { 1.0 } else { 0.0 },
+            deconv_enabled: if frame.deconv_params.enabled {
+                1.0
+            } else {
+                0.0
+            },
             deconv_isolated: frame.deconv_params.isolated_mode,
             _pad0: 0.0,
             deconv_inv_row0: frame.deconv_params.inv_row0,

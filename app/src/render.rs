@@ -899,16 +899,11 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_sharpness = frame_update.last_render_sharpness;
             pane_state.last_render_stain_normalization =
                 frame_update.last_render_stain_normalization;
-            pane_state.last_render_deconv_h_intensity =
-                frame_update.last_render_deconv_h_intensity;
-            pane_state.last_render_deconv_h_visible =
-                frame_update.last_render_deconv_h_visible;
-            pane_state.last_render_deconv_e_intensity =
-                frame_update.last_render_deconv_e_intensity;
-            pane_state.last_render_deconv_e_visible =
-                frame_update.last_render_deconv_e_visible;
-            pane_state.last_render_deconv_isolated =
-                frame_update.last_render_deconv_isolated;
+            pane_state.last_render_deconv_h_intensity = frame_update.last_render_deconv_h_intensity;
+            pane_state.last_render_deconv_h_visible = frame_update.last_render_deconv_h_visible;
+            pane_state.last_render_deconv_e_intensity = frame_update.last_render_deconv_e_intensity;
+            pane_state.last_render_deconv_e_visible = frame_update.last_render_deconv_e_visible;
+            pane_state.last_render_deconv_isolated = frame_update.last_render_deconv_isolated;
         }
 
         if let Some(pending_cpu_job_id) = execution.commit.pending_cpu_job_id {
@@ -1317,8 +1312,7 @@ fn render_cpu_pane_from_snapshot(
         });
     }
 
-    let stain_params = if snapshot.hud_stain_normalization != StainNormalization::None
-    {
+    let stain_params = if snapshot.hud_stain_normalization != StainNormalization::None {
         let tile_slices: Vec<&[u8]> = cached_tiles
             .fine_tiles
             .iter()
@@ -1367,8 +1361,8 @@ fn render_cpu_pane_from_snapshot(
     };
 
     let postprocess = CpuRenderPostProcess {
-        stain_params: stain_params.clone(),
-        deconv_params: deconv_params.clone(),
+        stain_params,
+        deconv_params,
         sharpness: snapshot.hud_sharpness,
         gamma: snapshot.hud_gamma,
         brightness: snapshot.hud_brightness,
@@ -1376,16 +1370,16 @@ fn render_cpu_pane_from_snapshot(
     };
 
     let preview_image = if is_moving {
-        render_cached_preview(
-            snapshot.pane,
-            snapshot.file_id,
-            vp,
+        render_cached_preview(RenderCachedPreview {
+            pane: snapshot.pane,
+            file_id: snapshot.file_id,
+            viewport: vp,
             render_width,
             render_height,
-            &fallback_commands,
-            &fine_commands,
-            &postprocess,
-        )
+            fallback_commands: &fallback_commands,
+            fine_commands: &fine_commands,
+            postprocess: &postprocess,
+        })
     } else {
         None
     };
@@ -1735,7 +1729,11 @@ fn render_pane_to_image(
                     hud_deconv_e_intensity,
                     hud_deconv_e_visible,
                     isolated_mode,
-                    if stain_params.enabled { Some(&stain_params) } else { None },
+                    if stain_params.enabled {
+                        Some(&stain_params)
+                    } else {
+                        None
+                    },
                 )
             } else {
                 crate::stain::ColorDeconvParams::default()
@@ -2018,8 +2016,8 @@ fn render_pane_to_image(
     };
 
     let postprocess = CpuRenderPostProcess {
-        stain_params: stain_params.clone(),
-        deconv_params: deconv_params.clone(),
+        stain_params,
+        deconv_params,
         sharpness: hud_sharpness,
         gamma: hud_gamma,
         brightness: hud_brightness,
@@ -2027,16 +2025,16 @@ fn render_pane_to_image(
     };
 
     let preview_image = if is_moving {
-        render_cached_preview(
+        render_cached_preview(RenderCachedPreview {
             pane,
-            file.id,
-            vp,
+            file_id: file.id,
+            viewport: vp,
             render_width,
             render_height,
-            &fallback_commands,
-            &fine_commands,
-            &postprocess,
-        )
+            fallback_commands: &fallback_commands,
+            fine_commands: &fine_commands,
+            postprocess: &postprocess,
+        })
     } else {
         None
     };
@@ -2084,16 +2082,28 @@ fn render_pane_to_image(
     }
 }
 
-fn render_cached_preview(
+struct RenderCachedPreview<'a> {
     pane: PaneId,
     file_id: i32,
-    viewport: &Viewport,
+    viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
-    fallback_commands: &[CpuBlitCommand],
-    fine_commands: &[CpuBlitCommand],
-    postprocess: &CpuRenderPostProcess,
-) -> Option<Image> {
+    fallback_commands: &'a [CpuBlitCommand],
+    fine_commands: &'a [CpuBlitCommand],
+    postprocess: &'a CpuRenderPostProcess,
+}
+
+fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
+    let RenderCachedPreview {
+        pane,
+        file_id,
+        viewport,
+        render_width,
+        render_height,
+        fallback_commands,
+        fine_commands,
+        postprocess,
+    } = input;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
         let cpu_frame = entry.cpu_frame.as_ref()?;

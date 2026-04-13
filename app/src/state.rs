@@ -79,16 +79,6 @@ impl HudSettings {
         self.deconv_eosin_visible = true;
         self.deconv_isolated_channel = IsolatedChannel::None;
     }
-
-    /// Returns true if color deconvolution is effectively active (any channel
-    /// has non-default settings).
-    pub fn deconv_active(&self) -> bool {
-        self.deconv_isolated_channel != IsolatedChannel::None
-            || !self.deconv_hematoxylin_visible
-            || !self.deconv_eosin_visible
-            || (self.deconv_hematoxylin_intensity - 1.0).abs() > 0.001
-            || (self.deconv_eosin_intensity - 1.0).abs() > 0.001
-    }
 }
 
 /// Maximum number of recently opened files to track
@@ -1047,15 +1037,14 @@ impl AppState {
         self.candidate_point = None;
         self.needs_render = true;
         // Only clear ROI and measurements when switching to Navigate
-        if tool == Tool::Navigate {
-            if let Some(file) = self
+        if tool == Tool::Navigate
+            && let Some(file) = self
                 .open_files
                 .iter_mut()
                 .find(|f| Some(f.id) == self.active_file_id)
-            {
-                file.roi = None;
-                file.measurements.clear();
-            }
+        {
+            file.roi = None;
+            file.measurements.clear();
         }
     }
 

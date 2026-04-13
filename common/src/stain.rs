@@ -685,8 +685,16 @@ pub fn build_deconv_params(
         // The normalization params already contain the inverse stain matrix;
         // reconstruct the forward matrix from the default target for OD reconstruction.
         let inv = [
-            [params.inv_stain_r0[0], params.inv_stain_r0[1], params.inv_stain_r0[2]],
-            [params.inv_stain_r1[0], params.inv_stain_r1[1], params.inv_stain_r1[2]],
+            [
+                params.inv_stain_r0[0],
+                params.inv_stain_r0[1],
+                params.inv_stain_r0[2],
+            ],
+            [
+                params.inv_stain_r1[0],
+                params.inv_stain_r1[1],
+                params.inv_stain_r1[2],
+            ],
         ];
         (inv, DEFAULT_DECONV_MATRIX)
     } else {
@@ -696,8 +704,18 @@ pub fn build_deconv_params(
     ColorDeconvParams {
         inv_row0: [inv[0][0], inv[0][1], inv[0][2], h_intensity],
         inv_row1: [inv[1][0], inv[1][1], inv[1][2], e_intensity],
-        stain_h: [stain_mat[0][0], stain_mat[0][1], stain_mat[0][2], h_intensity],
-        stain_e: [stain_mat[1][0], stain_mat[1][1], stain_mat[1][2], e_intensity],
+        stain_h: [
+            stain_mat[0][0],
+            stain_mat[0][1],
+            stain_mat[0][2],
+            h_intensity,
+        ],
+        stain_e: [
+            stain_mat[1][0],
+            stain_mat[1][1],
+            stain_mat[1][2],
+            e_intensity,
+        ],
         visibility: [
             if h_visible { 1.0 } else { 0.0 },
             if e_visible { 1.0 } else { 0.0 },

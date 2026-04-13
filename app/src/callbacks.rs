@@ -2300,11 +2300,12 @@ pub fn setup_callbacks(
                 state.set_focused_pane(pane_from_index(pane));
                 if let Some(hud) = active_hud_mut(&mut state) {
                     use crate::state::IsolatedChannel;
-                    hud.deconv_isolated_channel = if hud.deconv_isolated_channel == IsolatedChannel::Hematoxylin {
-                        IsolatedChannel::None
-                    } else {
-                        IsolatedChannel::Hematoxylin
-                    };
+                    hud.deconv_isolated_channel =
+                        if hud.deconv_isolated_channel == IsolatedChannel::Hematoxylin {
+                            IsolatedChannel::None
+                        } else {
+                            IsolatedChannel::Hematoxylin
+                        };
                 }
                 state.request_render();
             }
@@ -2326,11 +2327,12 @@ pub fn setup_callbacks(
                 state.set_focused_pane(pane_from_index(pane));
                 if let Some(hud) = active_hud_mut(&mut state) {
                     use crate::state::IsolatedChannel;
-                    hud.deconv_isolated_channel = if hud.deconv_isolated_channel == IsolatedChannel::Eosin {
-                        IsolatedChannel::None
-                    } else {
-                        IsolatedChannel::Eosin
-                    };
+                    hud.deconv_isolated_channel =
+                        if hud.deconv_isolated_channel == IsolatedChannel::Eosin {
+                            IsolatedChannel::None
+                        } else {
+                            IsolatedChannel::Eosin
+                        };
                 }
                 state.request_render();
             }

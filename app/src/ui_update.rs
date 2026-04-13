@@ -7,9 +7,9 @@ use crate::state::{AppState, HudSettings, PaneId};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
 use crate::{
     ContextMenuItem, FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
-    IsolatedChannel as SlintIsolatedChannel, MeasurementUnit as SlintMeasurementUnit,
-    MetadataItem, MinimapRect, PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData,
-    RenderMode, StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
+    IsolatedChannel as SlintIsolatedChannel, MeasurementUnit as SlintMeasurementUnit, MetadataItem,
+    MinimapRect, PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData, RenderMode,
+    StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use common::{
