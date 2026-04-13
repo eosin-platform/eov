@@ -284,10 +284,10 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
 pub struct TileDraw {
     pub tile: Arc<TileData>,
     pub coarse_tile: Option<Arc<TileData>>,
-    pub screen_x: i32,
-    pub screen_y: i32,
-    pub screen_w: i32,
-    pub screen_h: i32,
+    pub screen_x: f32,
+    pub screen_y: f32,
+    pub screen_w: f32,
+    pub screen_h: f32,
     pub coarse_uv_min: [f32; 2],
     pub coarse_uv_max: [f32; 2],
     pub mip_blend: f32,
@@ -357,10 +357,10 @@ impl QueuedFrame {
         for draw in &self.draws {
             draw.tile.coord.hash(&mut hasher);
             draw.coarse_tile.as_ref().map(|t| t.coord).hash(&mut hasher);
-            draw.screen_x.hash(&mut hasher);
-            draw.screen_y.hash(&mut hasher);
-            draw.screen_w.hash(&mut hasher);
-            draw.screen_h.hash(&mut hasher);
+            draw.screen_x.to_bits().hash(&mut hasher);
+            draw.screen_y.to_bits().hash(&mut hasher);
+            draw.screen_w.to_bits().hash(&mut hasher);
+            draw.screen_h.to_bits().hash(&mut hasher);
             for v in &draw.coarse_uv_min {
                 v.to_bits().hash(&mut hasher);
             }
@@ -1211,10 +1211,10 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
     let (fine_w, fine_h) = params.fine_size;
     let (coarse_w, coarse_h) = params.coarse_size;
     let layer_size = params.layer_size;
-    let x0 = draw.screen_x as f32;
-    let y0 = draw.screen_y as f32;
-    let x1 = (draw.screen_x + draw.screen_w) as f32;
-    let y1 = (draw.screen_y + draw.screen_h) as f32;
+    let x0 = draw.screen_x;
+    let y0 = draw.screen_y;
+    let x1 = draw.screen_x + draw.screen_w;
+    let y1 = draw.screen_y + draw.screen_h;
 
     let left = x0 / vw * 2.0 - 1.0;
     let right = x1 / vw * 2.0 - 1.0;

@@ -783,19 +783,19 @@ fn render_pane_to_image(
                 continue;
             };
 
-            let fb_image_x =
-                fb_coord.x as f64 * fb_coord.tile_size as f64 * fallback_level_info.downsample;
-            let fb_image_y =
-                fb_coord.y as f64 * fb_coord.tile_size as f64 * fallback_level_info.downsample;
+            let fb_origin_x = fb_coord.x as f64 * fb_coord.tile_size as f64;
+            let fb_origin_y = fb_coord.y as f64 * fb_coord.tile_size as f64;
+            let fb_image_x = fb_origin_x * fallback_level_info.downsample;
+            let fb_image_y = fb_origin_y * fallback_level_info.downsample;
             let fb_image_x_end =
-                fb_image_x + fallback_tile.width as f64 * fallback_level_info.downsample;
+                (fb_origin_x + fallback_tile.width as f64) * fallback_level_info.downsample;
             let fb_image_y_end =
-                fb_image_y + fallback_tile.height as f64 * fallback_level_info.downsample;
+                (fb_origin_y + fallback_tile.height as f64) * fallback_level_info.downsample;
 
-            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).round() as i32;
-            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).round() as i32;
-            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).round() as i32;
-            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).round() as i32;
+            let screen_x = ((fb_image_x - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y = ((fb_image_y - bounds.top) * vp.zoom).floor() as i32;
+            let screen_x_end = ((fb_image_x_end - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y_end = ((fb_image_y_end - bounds.top) * vp.zoom).floor() as i32;
             let screen_w = screen_x_end - screen_x;
             let screen_h = screen_y_end - screen_y;
 
@@ -836,14 +836,16 @@ fn render_pane_to_image(
             );
         }
         for (coord, tile_data) in cached_tiles.iter() {
-            let image_x = coord.x as f64 * coord.tile_size as f64 * level_info.downsample;
-            let image_y = coord.y as f64 * coord.tile_size as f64 * level_info.downsample;
-            let image_x_end = image_x + tile_data.width as f64 * level_info.downsample;
-            let image_y_end = image_y + tile_data.height as f64 * level_info.downsample;
-            let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
-            let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
-            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
-            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+            let origin_x = coord.x as f64 * coord.tile_size as f64;
+            let origin_y = coord.y as f64 * coord.tile_size as f64;
+            let image_x = origin_x * level_info.downsample;
+            let image_y = origin_y * level_info.downsample;
+            let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
+            let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
+            let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
+            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).floor() as i32;
             blit_fn(
                 buf,
                 render_width,
@@ -873,14 +875,16 @@ fn render_pane_to_image(
         let mut coarse_buffer = vec![0u8; (render_width * render_height * 4) as usize];
         blitter::fast_fill_rgba(&mut coarse_buffer, 30, 30, 30, 255);
         for (coord, tile_data) in cached_coarse_tiles.iter() {
-            let image_x = coord.x as f64 * coord.tile_size as f64 * coarse_info.downsample;
-            let image_y = coord.y as f64 * coord.tile_size as f64 * coarse_info.downsample;
-            let image_x_end = image_x + tile_data.width as f64 * coarse_info.downsample;
-            let image_y_end = image_y + tile_data.height as f64 * coarse_info.downsample;
-            let screen_x = ((image_x - bounds.left) * vp.zoom).round() as i32;
-            let screen_y = ((image_y - bounds.top) * vp.zoom).round() as i32;
-            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).round() as i32;
-            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).round() as i32;
+            let origin_x = coord.x as f64 * coord.tile_size as f64;
+            let origin_y = coord.y as f64 * coord.tile_size as f64;
+            let image_x = origin_x * coarse_info.downsample;
+            let image_y = origin_y * coarse_info.downsample;
+            let image_x_end = (origin_x + tile_data.width as f64) * coarse_info.downsample;
+            let image_y_end = (origin_y + tile_data.height as f64) * coarse_info.downsample;
+            let screen_x = ((image_x - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y = ((image_y - bounds.top) * vp.zoom).floor() as i32;
+            let screen_x_end = ((image_x_end - bounds.left) * vp.zoom).floor() as i32;
+            let screen_y_end = ((image_y_end - bounds.top) * vp.zoom).floor() as i32;
             blitter::blit_tile(
                 &mut coarse_buffer,
                 render_width,
@@ -1144,19 +1148,21 @@ fn tile_draw_from_tile(
         downsample,
     } = projection;
 
-    let image_x = coord.x as f64 * coord.tile_size as f64 * downsample;
-    let image_y = coord.y as f64 * coord.tile_size as f64 * downsample;
-    let image_x_end = image_x + tile_data.width as f64 * downsample;
-    let image_y_end = image_y + tile_data.height as f64 * downsample;
+    let origin_x = coord.x as f64 * coord.tile_size as f64;
+    let origin_y = coord.y as f64 * coord.tile_size as f64;
+    let image_x = origin_x * downsample;
+    let image_y = origin_y * downsample;
+    let image_x_end = (origin_x + tile_data.width as f64) * downsample;
+    let image_y_end = (origin_y + tile_data.height as f64) * downsample;
 
-    let screen_x = ((image_x - bounds_left) * vp.zoom).round() as i32;
-    let screen_y = ((image_y - bounds_top) * vp.zoom).round() as i32;
-    let screen_x_end = ((image_x_end - bounds_left) * vp.zoom).round() as i32;
-    let screen_y_end = ((image_y_end - bounds_top) * vp.zoom).round() as i32;
+    let screen_x = ((image_x - bounds_left) * vp.zoom) as f32;
+    let screen_y = ((image_y - bounds_top) * vp.zoom) as f32;
+    let screen_x_end = ((image_x_end - bounds_left) * vp.zoom) as f32;
+    let screen_y_end = ((image_y_end - bounds_top) * vp.zoom) as f32;
     let screen_w = screen_x_end - screen_x;
     let screen_h = screen_y_end - screen_y;
 
-    if screen_w <= 0 || screen_h <= 0 {
+    if screen_w <= 0.0 || screen_h <= 0.0 {
         return None;
     }
 
