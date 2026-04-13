@@ -15,16 +15,24 @@ export component ScaleBar inherits Rectangle {
     // target distance in um
     property <float> target-um: has-calibration && px-per-um > 0.0 ? target-bar-px / px-per-um : 0.0;
 
-    // Pick a nice round distance and compute bar width from it.
-    // We use a chain of conditionals to select the nearest "nice" value.
-    property <float> nice-um:
+    // Pick a nice round distance in metric (µm)
+    property <float> nice-um-metric:
         target-um <= 0.0 ? 0.0 : target-um < 0.15 ? 0.1 : target-um < 0.35 ? 0.25 : target-um < 0.75 ? 0.5 : target-um < 1.5 ? 1.0 : target-um < 3.5 ? 2.5 : target-um < 7.5 ? 5.0 : target-um < 15.0 ? 10.0 : target-um < 35.0 ? 25.0 : target-um < 75.0 ? 50.0 : target-um < 150.0 ? 100.0 : target-um < 350.0 ? 250.0 : target-um < 750.0 ? 500.0 : target-um < 1500.0 ? 1000.0 : target-um < 3500.0 ? 2500.0 : target-um < 7500.0 ? 5000.0 : target-um < 15000.0 ? 10000.0 : target-um < 35000.0 ? 25000.0 : target-um < 75000.0 ? 50000.0 : target-um < 150000.0 ? 100000.0 : target-um < 350000.0 ? 250000.0 : 500000.0;
+
+    // Pick a nice round distance in imperial (mil = 1/1000 inch)
+    property <float> target-mil: target-um / 25.4;
+    property <float> nice-mil:
+        target-mil <= 0.0 ? 0.0 : target-mil < 0.15 ? 0.1 : target-mil < 0.35 ? 0.25 : target-mil < 0.75 ? 0.5 : target-mil < 1.5 ? 1.0 : target-mil < 3.5 ? 2.5 : target-mil < 7.5 ? 5.0 : target-mil < 15.0 ? 10.0 : target-mil < 35.0 ? 25.0 : target-mil < 75.0 ? 50.0 : target-mil < 150.0 ? 100.0 : target-mil < 350.0 ? 250.0 : target-mil < 750.0 ? 500.0 : target-mil < 1500.0 ? 1000.0 : target-mil < 3500.0 ? 2500.0 : target-mil < 7500.0 ? 5000.0 : target-mil < 15000.0 ? 10000.0 : target-mil < 35000.0 ? 25000.0 : target-mil < 75000.0 ? 50000.0 : target-mil < 150000.0 ? 100000.0 : target-mil < 350000.0 ? 250000.0 : 500000.0;
+
+    // When unit is inches, pick nice imperial values and convert back to µm for bar width
+    property <float> nice-um: unit == MeasurementUnit.inches ? nice-mil * 25.4 : nice-um-metric;
 
     property <float> bar-width-px: has-calibration ? nice-um * px-per-um : 0.0;
 
     // Label: convert to appropriate unit
+    // inches: mil for < 1000 mil (1 in), inches for >= 1000 mil (mirrors µm/mm transition)
     property <string> label-text:
-        !has-calibration ? "" : unit == MeasurementUnit.inches ? (nice-um >= 25400 ? Math.round(nice-um / 254) / 100 + " in" : Math.round(nice-um / 25.4 * 1000) / 1000 + " in") : unit == MeasurementUnit.mm ? Math.round(nice-um / 10) / 100 + " mm" : nice-um >= 1000 ? Math.round(nice-um / 10) / 100 + " mm" : Math.round(nice-um) + " µm";
+        !has-calibration ? "" : unit == MeasurementUnit.inches ? (nice-mil >= 1000 ? Math.round(nice-mil / 10) / 100 + " in" : Math.round(nice-mil * 100) / 100 + " mil") : unit == MeasurementUnit.mm ? Math.round(nice-um / 10) / 100 + " mm" : nice-um >= 1000 ? Math.round(nice-um / 10) / 100 + " mm" : Math.round(nice-um) + " µm";
 
     width: max(60px, bar-width-px * 1px + 24px);
     height: 32px;
