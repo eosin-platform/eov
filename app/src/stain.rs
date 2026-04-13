@@ -15,7 +15,6 @@
 //! 6. Reconstruction via target stain matrix
 //! 7. OD → RGB conversion
 
-use crate::gpu::TileDraw;
 use crate::state::StainNormalization;
 use tracing::debug;
 
@@ -103,26 +102,6 @@ fn collect_tissue_od(buffer: &[u8]) -> Vec<[f32; 3]> {
         let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
         if is_tissue(&od) {
             result.push(od);
-        }
-    }
-    result
-}
-
-/// Sample tissue OD pixels from GPU tile draws with subsampling.
-fn sample_tissue_od_from_tiles(draws: &[TileDraw], max_samples: usize) -> Vec<[f32; 3]> {
-    let total_pixels: usize = draws.iter().map(|d| d.tile.data.len() / 4).sum();
-    let sample_step = (total_pixels / max_samples).max(1);
-    let mut result = Vec::with_capacity(max_samples);
-    let mut idx = 0usize;
-    for draw in draws {
-        for chunk in draw.tile.data.chunks_exact(4) {
-            if idx.is_multiple_of(sample_step) {
-                let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
-                if is_tissue(&od) {
-                    result.push(od);
-                }
-            }
-            idx += 1;
         }
     }
     result
@@ -621,42 +600,6 @@ fn apply_normalization_to_buffer(buffer: &mut [u8], params: &StainNormParams) {
         chunk[1] = rgb[1];
         chunk[2] = rgb[2];
     }
-}
-
-// ─── Public API: GPU parameter computation ───────────────────────────────────
-
-/// Compute stain normalization parameters from GPU tile draw data.
-/// The heavy fitting runs on CPU; the returned parameters are uploaded
-/// as shader uniforms for per-pixel transform on the GPU.
-pub fn compute_gpu_stain_params(draws: &[TileDraw], method: StainNormalization) -> StainNormParams {
-    if method == StainNormalization::None || draws.is_empty() {
-        return StainNormParams::default();
-    }
-
-    let od_pixels = sample_tissue_od_from_tiles(draws, 10000);
-    if od_pixels.len() < MIN_TISSUE_PIXELS {
-        return StainNormParams::default();
-    }
-
-    let stain_matrix = match method {
-        StainNormalization::None => return StainNormParams::default(),
-        StainNormalization::Macenko => macenko_extract(&od_pixels),
-        StainNormalization::Vahadane => vahadane_extract(&od_pixels, 0.1),
-    };
-
-    let Some(sm) = stain_matrix else {
-        return StainNormParams::default();
-    };
-
-    debug!(
-        method = ?method,
-        stain_h = ?sm[0],
-        stain_e = ?sm[1],
-        tissue_pixels = od_pixels.len(),
-        "GPU stain params computed"
-    );
-
-    compute_norm_params(&sm, &od_pixels)
 }
 
 // ─── Linear algebra helpers ──────────────────────────────────────────────────

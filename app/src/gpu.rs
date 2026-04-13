@@ -37,7 +37,7 @@ struct VertexOutput {
 };
 
 struct Adjustments {
-    gamma: f32,
+    inv_gamma: f32,
     brightness: f32,
     contrast: f32,
     stain_norm_enabled: f32,
@@ -89,8 +89,11 @@ fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
 }
 
 fn apply_adj(color: vec4<f32>) -> vec4<f32> {
-    let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
-    let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
+    let g = vec3<f32>(
+        pow(color.r, adjustments.inv_gamma),
+        pow(color.g, adjustments.inv_gamma),
+        pow(color.b, adjustments.inv_gamma),
+    );
     let b = g + vec3<f32>(adjustments.brightness);
     let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
     return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
@@ -148,7 +151,7 @@ struct VertexOutput {
 };
 
 struct Adjustments {
-    gamma: f32,
+    inv_gamma: f32,
     brightness: f32,
     contrast: f32,
     stain_norm_enabled: f32,
@@ -219,8 +222,11 @@ fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
 }
 
 fn apply_adj(color: vec4<f32>) -> vec4<f32> {
-    let inv_gamma = 1.0 / max(adjustments.gamma, 0.001);
-    let g = vec3<f32>(pow(color.r, inv_gamma), pow(color.g, inv_gamma), pow(color.b, inv_gamma));
+    let g = vec3<f32>(
+        pow(color.r, adjustments.inv_gamma),
+        pow(color.g, adjustments.inv_gamma),
+        pow(color.b, adjustments.inv_gamma),
+    );
     let b = g + vec3<f32>(adjustments.brightness);
     let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
     return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
@@ -309,7 +315,7 @@ impl SurfaceSlot {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, PartialEq)]
 struct AdjustmentsUniform {
-    gamma: f32,
+    inv_gamma: f32,
     brightness: f32,
     contrast: f32,
     stain_norm_enabled: f32,
@@ -1101,7 +1107,11 @@ impl GpuRenderer {
 
         // Upload adjustments uniform only when values changed.
         let adj = AdjustmentsUniform {
-            gamma: frame.gamma,
+            inv_gamma: if frame.gamma > 0.001 {
+                1.0 / frame.gamma
+            } else {
+                1.0
+            },
             brightness: frame.brightness,
             contrast: frame.contrast,
             stain_norm_enabled: if frame.stain_norm_enabled { 1.0 } else { 0.0 },

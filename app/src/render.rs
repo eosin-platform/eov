@@ -254,6 +254,137 @@ struct TileProjection<'a> {
     downsample: f64,
 }
 
+struct CachedVisibleTiles {
+    fine_tiles: Vec<(common::TileCoord, Arc<common::TileData>)>,
+    coarse_tiles: Vec<(common::TileCoord, Arc<common::TileData>)>,
+}
+
+#[derive(Clone, Copy)]
+struct RenderAdjustments {
+    sharpness: f32,
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    stain_normalization: StainNormalization,
+}
+
+impl RenderAdjustments {
+    fn changed_from(self, previous: Self) -> bool {
+        (self.sharpness - previous.sharpness).abs() > 0.001
+            || (self.gamma - previous.gamma).abs() > 0.001
+            || (self.brightness - previous.brightness).abs() > 0.001
+            || (self.contrast - previous.contrast).abs() > 0.001
+            || self.stain_normalization != previous.stain_normalization
+    }
+}
+
+fn requested_trilinear_blend(filtering_mode: FilteringMode, zoom: f64) -> (f64, bool) {
+    let lanczos_weight = if filtering_mode == FilteringMode::Lanczos3 {
+        lanczos_adaptive_weight(zoom)
+    } else {
+        1.0
+    };
+    let use_trilinear_blend = filtering_mode == FilteringMode::Trilinear
+        || (filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0);
+    (lanczos_weight, use_trilinear_blend)
+}
+
+fn effective_cpu_filtering_mode(
+    filtering_mode: FilteringMode,
+    use_trilinear_blend: bool,
+    is_moving: bool,
+) -> FilteringMode {
+    if is_moving {
+        if use_trilinear_blend {
+            FilteringMode::Trilinear
+        } else {
+            FilteringMode::Bilinear
+        }
+    } else {
+        filtering_mode
+    }
+}
+
+fn filter_uses_trilinear(filtering_mode: FilteringMode, lanczos_weight: f64) -> bool {
+    filtering_mode == FilteringMode::Trilinear
+        || (filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0)
+}
+
+fn collect_cached_visible_tiles(
+    tile_manager: &TileManager,
+    tile_cache: &Arc<TileCache>,
+    viewport: &Viewport,
+    trilinear: TrilinearLevels,
+    margin_tiles: i32,
+    fetch_coarse_tiles: bool,
+) -> CachedVisibleTiles {
+    let bounds = viewport.bounds();
+    let fine_tiles = tile_manager
+        .visible_tiles_with_margin(
+            trilinear.level_fine,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+            margin_tiles,
+        )
+        .into_iter()
+        .take(500)
+        .filter_map(|coord| tile_cache.peek(&coord).map(|data| (coord, data)))
+        .collect();
+
+    let coarse_tiles = if fetch_coarse_tiles
+        && trilinear.level_fine != trilinear.level_coarse
+        && trilinear.blend > 0.01
+    {
+        tile_manager
+            .visible_tiles_with_margin(
+                trilinear.level_coarse,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            )
+            .into_iter()
+            .filter_map(|coord| tile_cache.peek(&coord).map(|data| (coord, data)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    CachedVisibleTiles {
+        fine_tiles,
+        coarse_tiles,
+    }
+}
+
+fn resolve_stain_params_from_tiles(
+    method: StainNormalization,
+    loaded_tile_epoch: u64,
+    cached_stain_params: Option<crate::stain::StainNormParams>,
+    cached_epoch: u64,
+    cached_method: StainNormalization,
+    tile_slices: &[&[u8]],
+) -> (
+    Option<crate::stain::StainNormParams>,
+    Option<(crate::stain::StainNormParams, u64, StainNormalization)>,
+) {
+    if method == StainNormalization::None {
+        return (None, None);
+    }
+
+    let cache_valid = cached_stain_params.is_some()
+        && cached_epoch == loaded_tile_epoch
+        && cached_method == method;
+    if cache_valid {
+        return (cached_stain_params, None);
+    }
+
+    let params = crate::stain::compute_cpu_stain_params(method, tile_slices);
+    (Some(params), Some((params, loaded_tile_epoch, method)))
+}
+
 fn tile_request_signature(
     tile_manager: &TileManager,
     viewport: &Viewport,
@@ -925,48 +1056,17 @@ fn render_cpu_pane_from_snapshot(
     let margin_tiles = if is_moving { 1 } else { 0 };
     let level_changed = level != snapshot.last_render_level;
     let bounds = vp.bounds();
-    let visible_tiles = snapshot.tile_manager.visible_tiles_with_margin(
-        level,
-        bounds.left,
-        bounds.top,
-        bounds.right,
-        bounds.bottom,
+    let (lanczos_weight, use_trilinear_blend) =
+        requested_trilinear_blend(snapshot.filtering_mode, vp_zoom);
+    let cached_tiles = collect_cached_visible_tiles(
+        &snapshot.tile_manager,
+        tile_cache,
+        vp,
+        trilinear,
         margin_tiles,
+        use_trilinear_blend,
     );
-    let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
-    let cached_tiles: Vec<_> = visible_tiles
-        .iter()
-        .filter_map(|coord| tile_cache.peek(coord).map(|data| (*coord, data)))
-        .collect();
-    let cached_count = cached_tiles.len() as u32;
-
-    let lanczos_weight = if snapshot.filtering_mode == FilteringMode::Lanczos3 {
-        lanczos_adaptive_weight(vp_zoom)
-    } else {
-        1.0
-    };
-    let use_trilinear_blend = snapshot.filtering_mode == FilteringMode::Trilinear
-        || (snapshot.filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0);
-    let cached_coarse_tiles: Vec<_> = if use_trilinear_blend
-        && trilinear.level_fine != trilinear.level_coarse
-        && trilinear.blend > 0.01
-    {
-        snapshot
-            .tile_manager
-            .visible_tiles_with_margin(
-                trilinear.level_coarse,
-                bounds.left,
-                bounds.top,
-                bounds.right,
-                bounds.bottom,
-                margin_tiles,
-            )
-            .into_iter()
-            .filter_map(|coord| tile_cache.peek(&coord).map(|data| (coord, data)))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let cached_count = cached_tiles.fine_tiles.len() as u32;
 
     let loaded_tile_epoch = snapshot.tile_loader.loaded_epoch();
     let tile_epoch_advanced = loaded_tile_epoch > snapshot.last_seen_tile_epoch;
@@ -976,17 +1076,25 @@ fn render_cpu_pane_from_snapshot(
         } else {
             snapshot.previous_tiles_loaded
         }
-        || !cached_coarse_tiles.is_empty()
+        || !cached_tiles.coarse_tiles.is_empty()
         || tile_epoch_advanced;
     let tiles_pending = snapshot.tile_loader.pending_count() > 0;
     let keep_running = is_moving || new_tiles_loaded || tiles_pending;
 
-    let adjustments_changed = (snapshot.hud_sharpness - snapshot.last_render_sharpness).abs()
-        > 0.001
-        || (snapshot.hud_gamma - snapshot.last_render_gamma).abs() > 0.001
-        || (snapshot.hud_brightness - snapshot.last_render_brightness).abs() > 0.001
-        || (snapshot.hud_contrast - snapshot.last_render_contrast).abs() > 0.001
-        || snapshot.hud_stain_normalization != snapshot.last_render_stain_normalization;
+    let adjustments_changed = RenderAdjustments {
+        sharpness: snapshot.hud_sharpness,
+        gamma: snapshot.hud_gamma,
+        brightness: snapshot.hud_brightness,
+        contrast: snapshot.hud_contrast,
+        stain_normalization: snapshot.hud_stain_normalization,
+    }
+    .changed_from(RenderAdjustments {
+        sharpness: snapshot.last_render_sharpness,
+        gamma: snapshot.last_render_gamma,
+        brightness: snapshot.last_render_brightness,
+        contrast: snapshot.last_render_contrast,
+        stain_normalization: snapshot.last_render_stain_normalization,
+    });
 
     let mut commit = CpuRenderCommit {
         frame_update: None,
@@ -1074,23 +1182,15 @@ fn render_cpu_pane_from_snapshot(
         commit.needs_settled_cpu_render = Some(true);
     }
 
-    let filtering_mode = if is_moving {
-        if use_trilinear_blend {
-            FilteringMode::Trilinear
-        } else {
-            FilteringMode::Bilinear
-        }
-    } else {
-        snapshot.filtering_mode
-    };
+    let filtering_mode =
+        effective_cpu_filtering_mode(snapshot.filtering_mode, use_trilinear_blend, is_moving);
     let is_adaptive_lanczos = filtering_mode == FilteringMode::Lanczos3;
     let effective_lanczos_weight = if is_adaptive_lanczos {
-        lanczos_adaptive_weight(vp_zoom)
+        lanczos_weight
     } else {
         1.0
     };
-    let effective_trilinear = filtering_mode == FilteringMode::Trilinear
-        || (is_adaptive_lanczos && effective_lanczos_weight < 1.0);
+    let effective_trilinear = filter_uses_trilinear(filtering_mode, effective_lanczos_weight);
 
     let level_count = snapshot.tile_manager.wsi().level_count();
     let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
@@ -1180,13 +1280,14 @@ fn render_cpu_pane_from_snapshot(
             }
         };
 
-    let cached_coarse_tile_map: HashMap<_, _> = cached_coarse_tiles.iter().cloned().collect();
+    let cached_coarse_tile_map: HashMap<_, _> = cached_tiles.coarse_tiles.iter().cloned().collect();
     let do_fused_trilinear = effective_trilinear
         && trilinear.level_fine != trilinear.level_coarse
         && trilinear.blend > 0.01
         && !cached_coarse_tile_map.is_empty();
     let coarse_blends: HashMap<_, _> = if do_fused_trilinear {
         cached_tiles
+            .fine_tiles
             .iter()
             .filter_map(|(coord, tile)| {
                 coarse_blend_for_tile(
@@ -1204,8 +1305,8 @@ fn render_cpu_pane_from_snapshot(
         HashMap::new()
     };
 
-    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.len());
-    for (coord, tile_data) in cached_tiles.iter() {
+    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.fine_tiles.len());
+    for (coord, tile_data) in cached_tiles.fine_tiles.iter() {
         let rect = fine_blit_rect(coord, tile_data);
         if rect.width <= 0 || rect.height <= 0 {
             continue;
@@ -1231,25 +1332,24 @@ fn render_cpu_pane_from_snapshot(
 
     let stain_params = if !is_moving && snapshot.hud_stain_normalization != StainNormalization::None
     {
-        let need_recompute = snapshot.cached_stain_params.is_none()
-            || snapshot.stain_params_epoch != loaded_tile_epoch
-            || snapshot.stain_params_method != snapshot.hud_stain_normalization;
-        if need_recompute {
-            let tile_slices: Vec<&[u8]> = cached_tiles
-                .iter()
-                .map(|(_, td)| td.data.as_slice())
-                .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
-                .collect();
-            let params = crate::stain::compute_cpu_stain_params(
-                snapshot.hud_stain_normalization,
-                &tile_slices,
-            );
-            commit.stain_cache_update =
-                Some((params, loaded_tile_epoch, snapshot.hud_stain_normalization));
-            Some(params)
-        } else {
-            snapshot.cached_stain_params
+        let tile_slices: Vec<&[u8]> = cached_tiles
+            .fine_tiles
+            .iter()
+            .map(|(_, td)| td.data.as_slice())
+            .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
+            .collect();
+        let (params, cache_update) = resolve_stain_params_from_tiles(
+            snapshot.hud_stain_normalization,
+            loaded_tile_epoch,
+            snapshot.cached_stain_params,
+            snapshot.stain_params_epoch,
+            snapshot.stain_params_method,
+            &tile_slices,
+        );
+        if let Some(cache_update) = cache_update {
+            commit.stain_cache_update = Some(cache_update);
         }
+        params
     } else {
         None
     };
@@ -1418,49 +1518,16 @@ fn render_pane_to_image(
     let level_changed = level != last_render_level;
 
     let bounds = vp.bounds();
-    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
-        level,
-        bounds.left,
-        bounds.top,
-        bounds.right,
-        bounds.bottom,
+    let (lanczos_weight, use_trilinear_blend) = requested_trilinear_blend(filtering_mode, vp_zoom);
+    let cached_tiles = collect_cached_visible_tiles(
+        &file.tile_manager,
+        tile_cache,
+        vp,
+        trilinear,
         margin_tiles,
+        use_trilinear_blend,
     );
-    let visible_tiles: Vec<_> = visible_tiles.into_iter().take(500).collect();
-    let cached_tiles: Vec<_> = visible_tiles
-        .iter()
-        .filter_map(|coord| tile_cache.peek(coord).map(|data| (*coord, data)))
-        .collect();
-    let cached_count = cached_tiles.len() as u32;
-
-    // Only fetch coarse tiles for trilinear blending
-    let lanczos_weight = if filtering_mode == FilteringMode::Lanczos3 {
-        lanczos_adaptive_weight(vp_zoom)
-    } else {
-        1.0
-    };
-    // Trilinear blend needed for explicit Trilinear mode or adaptive Lanczos at low zoom
-    let use_trilinear_blend = filtering_mode == FilteringMode::Trilinear
-        || (filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0);
-    let cached_coarse_tiles: Vec<_> = if use_trilinear_blend
-        && trilinear.level_fine != trilinear.level_coarse
-        && trilinear.blend > 0.01
-    {
-        file.tile_manager
-            .visible_tiles_with_margin(
-                trilinear.level_coarse,
-                bounds.left,
-                bounds.top,
-                bounds.right,
-                bounds.bottom,
-                margin_tiles,
-            )
-            .into_iter()
-            .filter_map(|coord| tile_cache.peek(&coord).map(|data| (coord, data)))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let cached_count = cached_tiles.fine_tiles.len() as u32;
 
     let loaded_tile_epoch = file.tile_loader.loaded_epoch();
     let tile_epoch_advanced = loaded_tile_epoch > last_seen_tile_epoch;
@@ -1470,7 +1537,7 @@ fn render_pane_to_image(
         } else {
             previous_tiles_loaded
         }
-        || !cached_coarse_tiles.is_empty()
+        || !cached_tiles.coarse_tiles.is_empty()
         || tile_epoch_advanced;
     let tiles_pending = file.tile_loader.pending_count() > 0;
 
@@ -1484,7 +1551,7 @@ fn render_pane_to_image(
             height = vp_height,
             level,
             cached_count,
-            coarse_tiles = cached_coarse_tiles.len(),
+            coarse_tiles = cached_tiles.coarse_tiles.len(),
             previous_tiles_loaded,
             tile_epoch_advanced,
             tiles_pending,
@@ -1496,11 +1563,20 @@ fn render_pane_to_image(
         );
     }
 
-    let adjustments_changed = (hud_sharpness - last_render_sharpness).abs() > 0.001
-        || (hud_gamma - last_render_gamma).abs() > 0.001
-        || (hud_brightness - last_render_brightness).abs() > 0.001
-        || (hud_contrast - last_render_contrast).abs() > 0.001
-        || hud_stain_normalization != last_render_stain_normalization;
+    let adjustments_changed = RenderAdjustments {
+        sharpness: hud_sharpness,
+        gamma: hud_gamma,
+        brightness: hud_brightness,
+        contrast: hud_contrast,
+        stain_normalization: hud_stain_normalization,
+    }
+    .changed_from(RenderAdjustments {
+        sharpness: last_render_sharpness,
+        gamma: last_render_gamma,
+        brightness: last_render_brightness,
+        contrast: last_render_contrast,
+        stain_normalization: last_render_stain_normalization,
+    });
 
     if !force_render
         && !is_first_frame
@@ -1562,8 +1638,36 @@ fn render_pane_to_image(
                 blend: 0.0,
             }
         };
-        let draws = collect_tile_draws(file, tile_cache, vp, gpu_trilinear, gpu_filtering);
-        let stain_params = crate::stain::compute_gpu_stain_params(&draws, hud_stain_normalization);
+        let draws = collect_tile_draws_from_cached(
+            file,
+            tile_cache,
+            vp,
+            gpu_trilinear,
+            gpu_filtering,
+            &cached_tiles.fine_tiles,
+            &cached_tiles.coarse_tiles,
+        );
+        let tile_slices: Vec<&[u8]> = draws.iter().map(|draw| draw.tile.data.as_slice()).collect();
+        let (stain_params, stain_cache_update) = resolve_stain_params_from_tiles(
+            hud_stain_normalization,
+            loaded_tile_epoch,
+            file.pane_state(pane).and_then(|ps| ps.cached_stain_params),
+            file.pane_state(pane)
+                .map(|ps| ps.stain_params_epoch)
+                .unwrap_or(0),
+            file.pane_state(pane)
+                .map(|ps| ps.stain_params_method)
+                .unwrap_or(StainNormalization::None),
+            &tile_slices,
+        );
+        if let Some((params, epoch, method)) = stain_cache_update
+            && let Some(pane_state) = file.pane_state_mut(pane)
+        {
+            pane_state.cached_stain_params = Some(params);
+            pane_state.stain_params_epoch = epoch;
+            pane_state.stain_params_method = method;
+        }
+        let stain_params = stain_params.unwrap_or_default();
         let slot = match pane {
             PaneId::PRIMARY => SurfaceSlot::PRIMARY,
             PaneId::SECONDARY => SurfaceSlot::SECONDARY,
@@ -1629,24 +1733,16 @@ fn render_pane_to_image(
         pane_state.needs_settled_cpu_render = true;
     }
 
-    let effective_filtering = if is_moving {
-        if use_trilinear_blend {
-            FilteringMode::Trilinear
-        } else {
-            FilteringMode::Bilinear
-        }
-    } else {
-        filtering_mode
-    };
+    let effective_filtering =
+        effective_cpu_filtering_mode(filtering_mode, use_trilinear_blend, is_moving);
 
     let is_adaptive_lanczos = effective_filtering == FilteringMode::Lanczos3;
     let effective_lanczos_weight = if is_adaptive_lanczos {
-        lanczos_adaptive_weight(vp_zoom)
+        lanczos_weight
     } else {
         1.0
     };
-    let effective_trilinear = effective_filtering == FilteringMode::Trilinear
-        || (is_adaptive_lanczos && effective_lanczos_weight < 1.0);
+    let effective_trilinear = filter_uses_trilinear(effective_filtering, effective_lanczos_weight);
 
     let level_count = file.wsi.level_count();
     let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
@@ -1739,13 +1835,14 @@ fn render_pane_to_image(
             }
         };
 
-    let cached_coarse_tile_map: HashMap<_, _> = cached_coarse_tiles.iter().cloned().collect();
+    let cached_coarse_tile_map: HashMap<_, _> = cached_tiles.coarse_tiles.iter().cloned().collect();
     let do_fused_trilinear = effective_trilinear
         && trilinear.level_fine != trilinear.level_coarse
         && trilinear.blend > 0.01
         && !cached_coarse_tile_map.is_empty();
     let coarse_blends: HashMap<_, _> = if do_fused_trilinear {
         cached_tiles
+            .fine_tiles
             .iter()
             .filter_map(|(coord, tile)| {
                 coarse_blend_for_tile(
@@ -1763,8 +1860,8 @@ fn render_pane_to_image(
         HashMap::new()
     };
 
-    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.len());
-    for (coord, tile_data) in cached_tiles.iter() {
+    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.fine_tiles.len());
+    for (coord, tile_data) in cached_tiles.fine_tiles.iter() {
         let rect = fine_blit_rect(coord, tile_data);
         if rect.width <= 0 || rect.height <= 0 {
             continue;
@@ -1792,31 +1889,32 @@ fn render_pane_to_image(
 
     let stain_params =
         if !is_moving && hud_stain_normalization != crate::state::StainNormalization::None {
-            let need_recompute = file
-                .pane_state(pane)
-                .map(|ps| {
-                    ps.cached_stain_params.is_none()
-                        || ps.stain_params_epoch != loaded_tile_epoch
-                        || ps.stain_params_method != hud_stain_normalization
-                })
-                .unwrap_or(true);
-
-            if need_recompute {
-                let tile_slices: Vec<&[u8]> = cached_tiles
-                    .iter()
-                    .map(|(_, td)| td.data.as_slice())
-                    .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
-                    .collect();
-                let params =
-                    crate::stain::compute_cpu_stain_params(hud_stain_normalization, &tile_slices);
-                if let Some(ps) = file.pane_state_mut(pane) {
-                    ps.cached_stain_params = Some(params);
-                    ps.stain_params_epoch = loaded_tile_epoch;
-                    ps.stain_params_method = hud_stain_normalization;
-                }
+            let tile_slices: Vec<&[u8]> = cached_tiles
+                .fine_tiles
+                .iter()
+                .map(|(_, td)| td.data.as_slice())
+                .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
+                .collect();
+            let (params, cache_update) = resolve_stain_params_from_tiles(
+                hud_stain_normalization,
+                loaded_tile_epoch,
+                file.pane_state(pane).and_then(|ps| ps.cached_stain_params),
+                file.pane_state(pane)
+                    .map(|ps| ps.stain_params_epoch)
+                    .unwrap_or(0),
+                file.pane_state(pane)
+                    .map(|ps| ps.stain_params_method)
+                    .unwrap_or(StainNormalization::None),
+                &tile_slices,
+            );
+            if let Some((params, epoch, method)) = cache_update
+                && let Some(ps) = file.pane_state_mut(pane)
+            {
+                ps.cached_stain_params = Some(params);
+                ps.stain_params_epoch = epoch;
+                ps.stain_params_method = method;
             }
-
-            file.pane_state(pane).and_then(|ps| ps.cached_stain_params)
+            params
         } else {
             None
         };
@@ -2035,12 +2133,14 @@ fn composite_command_into_preview_chunk(
     }
 }
 
-fn collect_tile_draws(
+fn collect_tile_draws_from_cached(
     file: &OpenFile,
     tile_cache: &Arc<TileCache>,
     vp: &Viewport,
     trilinear: TrilinearLevels,
     filtering_mode: FilteringMode,
+    cached_tiles: &[(common::TileCoord, Arc<common::TileData>)],
+    cached_coarse_tiles: &[(common::TileCoord, Arc<common::TileData>)],
 ) -> Vec<TileDraw> {
     let mut draws = Vec::new();
     let bounds = vp.bounds();
@@ -2056,18 +2156,7 @@ fn collect_tile_draws(
         && trilinear.level_fine != trilinear.level_coarse
         && trilinear.blend > 0.01
     {
-        file.tile_manager
-            .visible_tiles_with_margin(
-                trilinear.level_coarse,
-                bounds.left,
-                bounds.top,
-                bounds.right,
-                bounds.bottom,
-                0,
-            )
-            .into_iter()
-            .filter_map(|coord| tile_cache.peek(&coord).map(|tile| (coord, tile)))
-            .collect()
+        cached_coarse_tiles.iter().cloned().collect()
     } else {
         HashMap::new()
     };
@@ -2109,19 +2198,7 @@ fn collect_tile_draws(
         return draws;
     };
 
-    let visible_tiles = file.tile_manager.visible_tiles_with_margin(
-        trilinear.level_fine,
-        bounds.left,
-        bounds.top,
-        bounds.right,
-        bounds.bottom,
-        0,
-    );
-
-    for coord in visible_tiles.iter().take(500) {
-        let Some(tile_data) = tile_cache.peek(coord) else {
-            continue;
-        };
+    for (coord, tile_data) in cached_tiles.iter() {
         let projection = TileProjection {
             downsample: level_info.downsample,
             ..base_projection
@@ -2132,11 +2209,15 @@ fn collect_tile_draws(
             trilinear,
             level_info.downsample,
             *coord,
-            &tile_data,
+            tile_data,
         );
-        if let Some(draw) =
-            tile_draw_from_tile(projection, *coord, tile_data, coarse_blend, filtering_mode)
-        {
+        if let Some(draw) = tile_draw_from_tile(
+            projection,
+            *coord,
+            Arc::clone(tile_data),
+            coarse_blend,
+            filtering_mode,
+        ) {
             draws.push(draw);
         }
     }
