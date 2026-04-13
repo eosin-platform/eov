@@ -1,10 +1,9 @@
 use crate::config;
 use crate::state::{self, AppState, HudSettings, PaneId};
 use crate::{
-    AppWindow, ExportFilteringMode as SlintExportFilteringMode,
-    ExportFormat as SlintExportFormat, ExportPreviewInfo as SlintExportPreviewInfo,
-    ExportSettings as SlintExportSettings, FilteringMode as SlintFilteringMode,
-    MeasurementUnit as SlintMeasurementUnit, RenderMode,
+    AppWindow, ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
+    ExportPreviewInfo as SlintExportPreviewInfo, ExportSettings as SlintExportSettings,
+    FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit, RenderMode,
     StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
     capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
     crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
@@ -328,7 +327,9 @@ fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
 }
 
 fn slint_color_to_overlay(color: slint::Color, opacity_pct: f32) -> common::overlay::OverlayColor {
-    let a = (color.alpha() as f32 * opacity_pct / 100.0).round().clamp(0.0, 255.0) as u8;
+    let a = (color.alpha() as f32 * opacity_pct / 100.0)
+        .round()
+        .clamp(0.0, 255.0) as u8;
     common::overlay::OverlayColor::new(color.red(), color.green(), color.blue(), a)
 }
 
@@ -403,10 +404,16 @@ fn draw_measurement_overlays(
         // Draw line
         common::overlay::draw_line(
             &mut image_data.pixels,
-            w, h,
-            p1.x as f32, p1.y as f32,
-            p2.x as f32, p2.y as f32,
-            color, thickness, stroke, cap,
+            w,
+            h,
+            p1.x as f32,
+            p1.y as f32,
+            p2.x as f32,
+            p2.y as f32,
+            color,
+            thickness,
+            stroke,
+            cap,
         );
 
         // Endpoint circles (white border + filled color, matching viewport style)
@@ -414,14 +421,20 @@ fn draw_measurement_overlays(
         let white = common::overlay::OverlayColor::new(255, 255, 255, color.a);
         for p in [p1, p2] {
             common::overlay::draw_filled_circle(
-                &mut image_data.pixels, w, h,
-                p.x as f32, p.y as f32,
+                &mut image_data.pixels,
+                w,
+                h,
+                p.x as f32,
+                p.y as f32,
                 endpoint_r + 1.5 * dpi_scale,
                 white,
             );
             common::overlay::draw_filled_circle(
-                &mut image_data.pixels, w, h,
-                p.x as f32, p.y as f32,
+                &mut image_data.pixels,
+                w,
+                h,
+                p.x as f32,
+                p.y as f32,
                 endpoint_r,
                 color,
             );
@@ -443,8 +456,11 @@ fn draw_measurement_overlays(
             let mid_x = (p1.x + p2.x) as f32 / 2.0;
             let mid_y = (p1.y + p2.y) as f32 / 2.0;
             common::overlay::draw_measurement_label(
-                &mut image_data.pixels, w, h,
-                mid_x, mid_y,
+                &mut image_data.pixels,
+                w,
+                h,
+                mid_x,
+                mid_y,
                 &label,
                 font,
                 font_size_px,
@@ -474,13 +490,16 @@ fn draw_roi_overlays(
 
     // Outside overlay (drawn first, beneath the outline)
     if settings.roi_outside_overlay {
-        let outside_color = slint_color_to_overlay(
-            settings.roi_outside_color,
-            settings.roi_outside_opacity,
-        );
+        let outside_color =
+            slint_color_to_overlay(settings.roi_outside_color, settings.roi_outside_opacity);
         common::overlay::fill_outside_rect(
-            &mut image_data.pixels, w, h,
-            rx, ry, rw, rh,
+            &mut image_data.pixels,
+            w,
+            h,
+            rx,
+            ry,
+            rw,
+            rh,
             outside_color,
         );
     }
@@ -497,9 +516,17 @@ fn draw_roi_overlays(
         let cap = slint_cap_to_overlay(settings.roi_cap_style);
         let thickness = settings.roi_thickness * dpi_scale;
         common::overlay::draw_rect_outline(
-            &mut image_data.pixels, w, h,
-            rx, ry, rw, rh,
-            color, thickness, stroke, cap,
+            &mut image_data.pixels,
+            w,
+            h,
+            rx,
+            ry,
+            rw,
+            rh,
+            color,
+            thickness,
+            stroke,
+            cap,
         );
     }
 }
@@ -523,12 +550,21 @@ fn render_export_image(
     let mut settings = slint_to_export_settings(slint_settings);
     let render_dpi = override_dpi.unwrap_or(settings.dpi);
     settings.dpi = render_dpi;
-    let mut img = common::export::render_export(&file.tile_manager, tile_cache, viewport, &settings)?;
+    let mut img =
+        common::export::render_export(&file.tile_manager, tile_cache, viewport, &settings)?;
 
     // Draw overlays
     let export_vp = common::export::export_viewport(viewport, render_dpi);
     let dpi_scale = render_dpi as f32 / 96.0;
-    draw_measurement_overlays(&mut img, file, pane, &export_vp, slint_settings, dpi_scale, overlay_font);
+    draw_measurement_overlays(
+        &mut img,
+        file,
+        pane,
+        &export_vp,
+        slint_settings,
+        dpi_scale,
+        overlay_font,
+    );
     draw_roi_overlays(&mut img, file, &export_vp, slint_settings, dpi_scale);
     Some(img)
 }
@@ -647,8 +683,7 @@ fn open_export_dialog(
             .and_then(|img| {
                 let w = img.width as u32;
                 let h = img.height as u32;
-                crate::blitter::create_image_buffer(&img.pixels, w, h)
-                    .map(slint::Image::from_rgba8)
+                crate::blitter::create_image_buffer(&img.pixels, w, h).map(slint::Image::from_rgba8)
             })
             .or_else(|| {
                 capture_pane_clipboard_image(pane).and_then(|d| {
@@ -851,7 +886,14 @@ pub fn setup_callbacks(
                     }
                 }
                 "viewport-export-image" => {
-                    open_export_dialog(&ui, &state_handle, &tile_cache, pane, &cached_export, overlay_font_clone.as_ref());
+                    open_export_dialog(
+                        &ui,
+                        &state_handle,
+                        &tile_cache,
+                        pane,
+                        &cached_export,
+                        overlay_font_clone.as_ref(),
+                    );
                 }
                 "close" => {
                     {
@@ -2171,11 +2213,15 @@ pub fn setup_callbacks(
             // Persist to cache for reuse across dialog opens
             *cached.borrow_mut() = Some(settings);
             let ui_weak = ui_weak.clone();
-            debounce_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(300), move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    ui.invoke_export_dialog_request_preview();
-                }
-            });
+            debounce_timer.start(
+                slint::TimerMode::SingleShot,
+                Duration::from_millis(300),
+                move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        ui.invoke_export_dialog_request_preview();
+                    }
+                },
+            );
         });
     }
 
@@ -2192,16 +2238,22 @@ pub fn setup_callbacks(
                 let pane = state.focused_pane;
 
                 // Render at 96 DPI for preview (thumbnail-sized)
-                let preview_image =
-                    if let Some(img) = render_export_image(&state, &tile_cache_clone, pane, &settings, Some(96), overlay_font_preview.as_ref()) {
-                        let w = img.width as u32;
-                        let h = img.height as u32;
-                        crate::blitter::create_image_buffer(&img.pixels, w, h)
-                            .map(slint::Image::from_rgba8)
-                            .unwrap_or_default()
-                    } else {
-                        ui.get_export_preview_info().preview_image
-                    };
+                let preview_image = if let Some(img) = render_export_image(
+                    &state,
+                    &tile_cache_clone,
+                    pane,
+                    &settings,
+                    Some(96),
+                    overlay_font_preview.as_ref(),
+                ) {
+                    let w = img.width as u32;
+                    let h = img.height as u32;
+                    crate::blitter::create_image_buffer(&img.pixels, w, h)
+                        .map(slint::Image::from_rgba8)
+                        .unwrap_or_default()
+                } else {
+                    ui.get_export_preview_info().preview_image
+                };
 
                 let mut info = ui.get_export_preview_info();
                 info.preview_image = preview_image;
@@ -2241,13 +2293,18 @@ pub fn setup_callbacks(
                 let state = state_handle.read();
                 let pane = state.focused_pane;
 
-                let image_data = render_export_image(&state, &tile_cache_clone, pane, &settings, None, overlay_font_export.as_ref());
+                let image_data = render_export_image(
+                    &state,
+                    &tile_cache_clone,
+                    pane,
+                    &settings,
+                    None,
+                    overlay_font_export.as_ref(),
+                );
                 drop(state);
 
                 let Some(image_data) = image_data else {
-                    ui.set_status_text(SharedString::from(
-                        "No viewport image available to export",
-                    ));
+                    ui.set_status_text(SharedString::from("No viewport image available to export"));
                     return;
                 };
 
@@ -2269,13 +2326,7 @@ pub fn setup_callbacks(
                         .chunks_exact(4)
                         .flat_map(|px| [px[0], px[1], px[2]])
                         .collect();
-                    image::save_buffer(
-                        &path,
-                        &rgb,
-                        width,
-                        height,
-                        image::ExtendedColorType::Rgb8,
-                    )
+                    image::save_buffer(&path, &rgb, width, height, image::ExtendedColorType::Rgb8)
                 };
 
                 match result {
@@ -2289,9 +2340,7 @@ pub fn setup_callbacks(
                     }
                     Err(e) => {
                         error!("Failed to export image: {e}");
-                        ui.set_status_text(SharedString::from(format!(
-                            "Export failed: {e}"
-                        )));
+                        ui.set_status_text(SharedString::from(format!("Export failed: {e}")));
                     }
                 }
             }

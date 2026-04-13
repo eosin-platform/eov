@@ -12,11 +12,11 @@ use crate::render_pool::{
 use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::tools;
+use common::render::single_level_trilinear;
 use common::{
     FilteringMode, RenderBackend, StainNormalization, TileCache, TileManager, TrilinearLevels,
     Viewport, calculate_trilinear_levels,
 };
-use common::render::single_level_trilinear;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use slint::{ComponentHandle, Image};

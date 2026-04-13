@@ -601,6 +601,9 @@ export component ExportDialog inherits Rectangle {
     callback reset-requested();
     callback settings-changed(ExportSettings);
 
+    // Scroll offset for the settings area (manual wheel-scroll).
+    property <length> scroll-y: 0px;
+
     // Reactive export dimensions (update instantly when DPI changes).
     property <int> export-width: Math.max(1, Math.round(root.preview-info.viewport-width * root.settings.dpi / 96));
     property <int> export-height: Math.max(1, Math.round(root.preview-info.viewport-height * root.settings.dpi / 96));
@@ -717,15 +720,34 @@ export component ExportDialog inherits Rectangle {
             SectionDivider { }
 
             // ---------------------------------------------------------------
-            // Scrollable settings area
+            // Scrollable settings area — no Flickable (its gesture
+            // recognition conflicts with slider drags). Instead, a
+            // clipped Rectangle with a parent TouchArea that handles
+            // only scroll-wheel events. Inner slider TouchAreas take
+            // event priority over the parent TouchArea.
             // ---------------------------------------------------------------
-            settings-flick := Flickable {
+            scroll-clip := Rectangle {
                 vertical-stretch: 1;
-                viewport-height: settings-content.preferred-height;
+                clip: true;
+                // Report content height as preferred so the dialog card
+                // allocates full available space for this area.
+                preferred-height: settings-content.preferred-height;
 
-                settings-content := VerticalLayout {
-                    padding: 16px;
-                    spacing: 4px;
+                TouchArea {
+                    scroll-event(e) => {
+                        root.scroll-y = clamp(
+                            root.scroll-y + e.delta-y,
+                            min(0px, scroll-clip.height - settings-content.preferred-height),
+                            0px
+                        );
+                        return accept;
+                    }
+
+                    settings-content := VerticalLayout {
+                        y: root.scroll-y;
+                        width: parent.width;
+                        padding: 16px;
+                        spacing: 4px;
 
                     // ------- Resolution (DPI) -------
                     SectionHeader {
@@ -1262,6 +1284,7 @@ export component ExportDialog inherits Rectangle {
                     Rectangle {
                         height: 8px;
                     }
+                }
                 }
             }
 

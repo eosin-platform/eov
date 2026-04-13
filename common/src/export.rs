@@ -194,7 +194,14 @@ pub fn render_export(
         }
 
         let coarse_blend = if use_trilinear {
-            compute_coarse_blend(tile_manager, &coarse_tiles, trilinear, level_info.downsample, *coord, tile)
+            compute_coarse_blend(
+                tile_manager,
+                &coarse_tiles,
+                trilinear,
+                level_info.downsample,
+                *coord,
+                tile,
+            )
         } else {
             None
         };
@@ -383,10 +390,8 @@ fn compute_coarse_blend(
 
     let coarse_tile_x = image_x / coarse_info.downsample;
     let coarse_tile_y = image_y / coarse_info.downsample;
-    let coarse_tile_x_end =
-        ((image_x_end - EPSILON) / coarse_info.downsample).max(coarse_tile_x);
-    let coarse_tile_y_end =
-        ((image_y_end - EPSILON) / coarse_info.downsample).max(coarse_tile_y);
+    let coarse_tile_x_end = ((image_x_end - EPSILON) / coarse_info.downsample).max(coarse_tile_x);
+    let coarse_tile_y_end = ((image_y_end - EPSILON) / coarse_info.downsample).max(coarse_tile_y);
     let coarse_start_tile_x = (coarse_tile_x / coarse_tile_size).floor().max(0.0) as u64;
     let coarse_start_tile_y = (coarse_tile_y / coarse_tile_size).floor().max(0.0) as u64;
     let coarse_end_tile_x = (coarse_tile_x_end / coarse_tile_size).floor().max(0.0) as u64;
@@ -427,10 +432,7 @@ fn compute_coarse_blend(
 
     Some(CoarseBlendInfo {
         tile: coarse_tile,
-        uv_min: [
-            (coarse_src_x / cw) as f32,
-            (coarse_src_y / ch) as f32,
-        ],
+        uv_min: [(coarse_src_x / cw) as f32, (coarse_src_y / ch) as f32],
         uv_max: [
             (coarse_src_x_end / cw) as f32,
             (coarse_src_y_end / ch) as f32,

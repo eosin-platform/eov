@@ -133,11 +133,7 @@ fn line_pixel_coverage(
                 1.0
             } else {
                 let pos = along % period;
-                if pos < *length {
-                    1.0
-                } else {
-                    0.0
-                }
+                if pos < *length { 1.0 } else { 0.0 }
             }
         }
         StrokeStyle::Dotted { spacing } => {
@@ -222,14 +218,8 @@ pub fn draw_filled_circle(
     let extend = radius + 1.0;
     let min_x = (cx - extend).floor().max(0.0) as u32;
     let min_y = (cy - extend).floor().max(0.0) as u32;
-    let max_x = (cx + extend)
-        .ceil()
-        .min(buf_width as f32 - 1.0)
-        .max(0.0) as u32;
-    let max_y = (cy + extend)
-        .ceil()
-        .min(buf_height as f32 - 1.0)
-        .max(0.0) as u32;
+    let max_x = (cx + extend).ceil().min(buf_width as f32 - 1.0).max(0.0) as u32;
+    let max_y = (cy + extend).ceil().min(buf_height as f32 - 1.0).max(0.0) as u32;
 
     for py in min_y..=max_y {
         for px in min_x..=max_x {
@@ -262,13 +252,21 @@ pub fn draw_rect_outline(
     let x2 = x + width;
     let y2 = y + height;
     // Top
-    draw_line(buffer, buf_width, buf_height, x, y, x2, y, color, thickness, stroke, cap);
+    draw_line(
+        buffer, buf_width, buf_height, x, y, x2, y, color, thickness, stroke, cap,
+    );
     // Bottom
-    draw_line(buffer, buf_width, buf_height, x, y2, x2, y2, color, thickness, stroke, cap);
+    draw_line(
+        buffer, buf_width, buf_height, x, y2, x2, y2, color, thickness, stroke, cap,
+    );
     // Left
-    draw_line(buffer, buf_width, buf_height, x, y, x, y2, color, thickness, stroke, cap);
+    draw_line(
+        buffer, buf_width, buf_height, x, y, x, y2, color, thickness, stroke, cap,
+    );
     // Right
-    draw_line(buffer, buf_width, buf_height, x2, y, x2, y2, color, thickness, stroke, cap);
+    draw_line(
+        buffer, buf_width, buf_height, x2, y, x2, y2, color, thickness, stroke, cap,
+    );
 }
 
 /// Fill a rectangle region with alpha blending (sub-pixel AA on edges).
@@ -288,8 +286,14 @@ pub fn fill_rect(
     }
     let x1 = x.max(0.0).floor() as u32;
     let y1 = y.max(0.0).floor() as u32;
-    let x2 = (x + width).min(buf_width as f32).ceil().min(buf_width as f32) as u32;
-    let y2 = (y + height).min(buf_height as f32).ceil().min(buf_height as f32) as u32;
+    let x2 = (x + width)
+        .min(buf_width as f32)
+        .ceil()
+        .min(buf_width as f32) as u32;
+    let y2 = (y + height)
+        .min(buf_height as f32)
+        .ceil()
+        .min(buf_height as f32) as u32;
 
     for py in y1..y2 {
         for px in x1..x2 {
@@ -327,16 +331,36 @@ pub fn fill_outside_rect(
     // Bottom strip (full width, below ROI)
     let roi_bottom = roi_y + roi_height;
     if roi_bottom < bh {
-        fill_rect(buffer, buf_width, buf_height, 0.0, roi_bottom, bw, bh - roi_bottom, color);
+        fill_rect(
+            buffer,
+            buf_width,
+            buf_height,
+            0.0,
+            roi_bottom,
+            bw,
+            bh - roi_bottom,
+            color,
+        );
     }
     // Left strip (between top and bottom)
     if roi_x > 0.0 {
-        fill_rect(buffer, buf_width, buf_height, 0.0, roi_y, roi_x, roi_height, color);
+        fill_rect(
+            buffer, buf_width, buf_height, 0.0, roi_y, roi_x, roi_height, color,
+        );
     }
     // Right strip (between top and bottom)
     let roi_right = roi_x + roi_width;
     if roi_right < bw {
-        fill_rect(buffer, buf_width, buf_height, roi_right, roi_y, bw - roi_right, roi_height, color);
+        fill_rect(
+            buffer,
+            buf_width,
+            buf_height,
+            roi_right,
+            roi_y,
+            bw - roi_right,
+            roi_height,
+            color,
+        );
     }
 }
 
@@ -473,20 +497,40 @@ pub fn draw_measurement_label(
 
     // Dark semi-transparent background
     let bg = OverlayColor::new(26, 26, 26, 220);
-    fill_rect(buffer, buf_width, buf_height, pill_x, pill_y, pill_w, pill_h, bg);
+    fill_rect(
+        buffer, buf_width, buf_height, pill_x, pill_y, pill_w, pill_h, bg,
+    );
 
     // Border
     let border = OverlayColor::new(46, 204, 113, 128);
     let bw = 1.0 * dpi_scale;
     draw_rect_outline(
-        buffer, buf_width, buf_height,
-        pill_x, pill_y, pill_w, pill_h,
-        border, bw, StrokeStyle::Solid, CapStyle::Flat,
+        buffer,
+        buf_width,
+        buf_height,
+        pill_x,
+        pill_y,
+        pill_w,
+        pill_h,
+        border,
+        bw,
+        StrokeStyle::Solid,
+        CapStyle::Flat,
     );
 
     // White text
     let white = OverlayColor::new(255, 255, 255, 255);
     let text_x = pill_x + pad_x;
     let text_y = pill_y + pad_y;
-    draw_text(buffer, buf_width, buf_height, text_x, text_y, label, white, font, font_size_px);
+    draw_text(
+        buffer,
+        buf_width,
+        buf_height,
+        text_x,
+        text_y,
+        label,
+        white,
+        font,
+        font_size_px,
+    );
 }

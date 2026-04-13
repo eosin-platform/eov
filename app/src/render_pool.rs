@@ -324,5 +324,3 @@ fn draw_command_into_chunk(
         ),
     }
 }
-
-
