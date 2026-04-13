@@ -190,6 +190,7 @@ Example backend config:
 
 ```toml
 render_backend = "gpu"
+filtering_mode = "trilinear"
 ```
 
 ## Architecture
