@@ -316,6 +316,13 @@ impl ViewportState {
         // Pan viewport
         self.viewport.pan(delta.x, delta.y);
 
+        // Keep zoom anchor in sync so the chase doesn't snap back
+        if self.zoom_chasing || self.zoom_start_time.is_some() {
+            self.zoom_anchor_image = self
+                .viewport
+                .screen_to_image(self.zoom_anchor_screen.x, self.zoom_anchor_screen.y);
+        }
+
         self.drag_start = current;
         self.last_update = now;
     }
@@ -423,7 +430,7 @@ impl ViewportState {
 
                 // If a zoom animation is also running, update its anchor so the
                 // zoom tracks the inertia-displaced viewport instead of fighting it.
-                if self.zoom_start_time.is_some() {
+                if self.zoom_start_time.is_some() || self.zoom_chasing {
                     self.zoom_anchor_image = self
                         .viewport
                         .screen_to_image(self.zoom_anchor_screen.x, self.zoom_anchor_screen.y);
