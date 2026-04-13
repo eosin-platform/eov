@@ -28,8 +28,8 @@ component HudButton inherits Rectangle {
     }
 
     if root.text != "": Text {
-        x: (parent.width - self.width) / 2;
         width: parent.width;
+        height: parent.height;
         text: root.text;
         color: root.active ? white : #cccccc;
         font-size: 18px;
@@ -137,8 +137,15 @@ export component HudToolbar inherits Rectangle {
             // Separator
             Rectangle {
                 width: 1px;
-                height: 26px;
-                background: #ffffff20;
+                height: 38px;
+
+                Rectangle {
+                    x: 0px;
+                    y: (parent.height - self.height) / 2;
+                    width: 1px;
+                    height: 26px;
+                    background: #ffffff20;
+                }
             }
 
             fit-btn := HudButton {
