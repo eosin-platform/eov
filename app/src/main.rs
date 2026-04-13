@@ -27,9 +27,11 @@ use slint::{BackendSelector, Image, SharedString, Timer, TimerMode, VecModel};
 use state::{AppState, PaneId, RenderBackend};
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::sync::OnceLock;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::thread;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
@@ -61,6 +63,19 @@ pub(crate) struct PaneClipboardImage {
     pub(crate) height: usize,
     pub(crate) pixels: Vec<u8>,
 }
+
+enum ClipboardCommand {
+    SetText {
+        text: String,
+        response: mpsc::Sender<bool>,
+    },
+    SetImage {
+        image: PaneClipboardImage,
+        response: mpsc::Sender<bool>,
+    },
+}
+
+static CLIPBOARD_WORKER: OnceLock<mpsc::Sender<ClipboardCommand>> = OnceLock::new();
 
 #[derive(Clone)]
 struct PaneUiModels {
@@ -716,24 +731,9 @@ pub(crate) fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> 
 }
 
 fn copy_text_to_clipboard(clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>, text: String) {
-    let mut clipboard_handle = clipboard.borrow_mut();
-    if clipboard_handle.is_none() {
-        match arboard::Clipboard::new() {
-            Ok(new_clipboard) => {
-                *clipboard_handle = Some(new_clipboard);
-            }
-            Err(err) => {
-                warn!("Failed to initialize clipboard: {}", err);
-                return;
-            }
-        }
-    }
-
-    if let Some(clipboard) = clipboard_handle.as_mut()
-        && let Err(err) = clipboard.set_text(text)
-    {
-        warn!("Failed to copy text to clipboard: {}", err);
-        *clipboard_handle = None;
+    let _ = clipboard;
+    if !send_text_to_clipboard_worker(text) {
+        warn!("Failed to copy text to clipboard");
     }
 }
 
@@ -741,35 +741,142 @@ fn copy_image_to_clipboard(
     clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>,
     image: PaneClipboardImage,
 ) -> bool {
+    let _ = clipboard;
     let image = crop_transparent_edges(image);
-    let mut clipboard_handle = clipboard.borrow_mut();
-    if clipboard_handle.is_none() {
-        match arboard::Clipboard::new() {
-            Ok(new_clipboard) => {
-                *clipboard_handle = Some(new_clipboard);
+    send_image_to_clipboard_worker(image)
+}
+
+fn clipboard_worker_sender() -> &'static mpsc::Sender<ClipboardCommand> {
+    CLIPBOARD_WORKER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<ClipboardCommand>();
+        let worker = tx.clone();
+        thread::Builder::new()
+            .name("clipboard-worker".to_string())
+            .spawn(move || clipboard_worker_loop(rx))
+            .expect("failed to spawn clipboard worker");
+        worker
+    })
+}
+
+fn send_text_to_clipboard_worker(text: String) -> bool {
+    let (response_tx, response_rx) = mpsc::channel();
+    if clipboard_worker_sender()
+        .send(ClipboardCommand::SetText {
+            text,
+            response: response_tx,
+        })
+        .is_err()
+    {
+        return false;
+    }
+    response_rx.recv().unwrap_or(false)
+}
+
+fn send_image_to_clipboard_worker(image: PaneClipboardImage) -> bool {
+    let (response_tx, response_rx) = mpsc::channel();
+    if clipboard_worker_sender()
+        .send(ClipboardCommand::SetImage {
+            image,
+            response: response_tx,
+        })
+        .is_err()
+    {
+        return false;
+    }
+    response_rx.recv().unwrap_or(false)
+}
+
+fn clipboard_worker_loop(rx: mpsc::Receiver<ClipboardCommand>) {
+    let mut clipboard = match arboard::Clipboard::new() {
+        Ok(clipboard) => clipboard,
+        Err(err) => {
+            warn!("Failed to initialize clipboard worker: {}", err);
+            while let Ok(command) = rx.recv() {
+                match command {
+                    ClipboardCommand::SetText { response, .. }
+                    | ClipboardCommand::SetImage { response, .. } => {
+                        let _ = response.send(false);
+                    }
+                }
             }
-            Err(err) => {
-                warn!("Failed to initialize clipboard: {}", err);
-                return false;
+            return;
+        }
+    };
+
+    while let Ok(command) = rx.recv() {
+        match command {
+            ClipboardCommand::SetText { text, response } => {
+                let ok = set_text_with_clipboard(&mut clipboard, text);
+                let _ = response.send(ok);
+            }
+            ClipboardCommand::SetImage { image, response } => {
+                let ok = set_image_with_clipboard(&mut clipboard, image);
+                let _ = response.send(ok);
             }
         }
     }
+}
 
-    if let Some(clipboard) = clipboard_handle.as_mut() {
-        let image_data = arboard::ImageData {
-            width: image.width,
-            height: image.height,
-            bytes: Cow::Owned(image.pixels),
-        };
-        if let Err(err) = clipboard.set_image(image_data) {
-            warn!("Failed to copy image to clipboard: {}", err);
-            *clipboard_handle = None;
+fn set_text_with_clipboard(clipboard: &mut arboard::Clipboard, text: String) -> bool {
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    ))]
+    {
+        use arboard::SetExtLinux;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        if let Err(err) = clipboard.set().wait_until(deadline).text(text) {
+            warn!("Failed to copy text to clipboard: {}", err);
             return false;
         }
         return true;
     }
 
-    false
+    #[cfg(not(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    )))]
+    {
+        if let Err(err) = clipboard.set_text(text) {
+            warn!("Failed to copy text to clipboard: {}", err);
+            return false;
+        }
+        true
+    }
+}
+
+fn set_image_with_clipboard(clipboard: &mut arboard::Clipboard, image: PaneClipboardImage) -> bool {
+    let image_data = arboard::ImageData {
+        width: image.width,
+        height: image.height,
+        bytes: Cow::Owned(image.pixels),
+    };
+
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    ))]
+    {
+        use arboard::SetExtLinux;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        if let Err(err) = clipboard.set().wait_until(deadline).image(image_data) {
+            warn!("Failed to copy image to clipboard: {}", err);
+            return false;
+        }
+        return true;
+    }
+
+    #[cfg(not(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    )))]
+    {
+        if let Err(err) = clipboard.set_image(image_data) {
+            warn!("Failed to copy image to clipboard: {}", err);
+            return false;
+        }
+        true
+    }
 }
 
 fn crop_transparent_edges(image: PaneClipboardImage) -> PaneClipboardImage {
