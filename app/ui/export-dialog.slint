@@ -1,0 +1,1262 @@
+// EOV WSI Viewer - Export Image Dialog
+
+import { Theme } from "theme.slint";
+import {
+    CapStyle,
+    ExportFilteringMode,
+    ExportFormat,
+    ExportPreviewInfo,
+    ExportSettings,
+    StainNormalization,
+    StrokeStyle,
+} from "types.slint";
+
+// ---------------------------------------------------------------------------
+// Reusable sub-components
+// ---------------------------------------------------------------------------
+
+component ExportSlider inherits Rectangle {
+    in property <string> label;
+    in property <float> value: 0.0;
+    in property <float> min-value: 0.0;
+    in property <float> max-value: 1.0;
+    in property <string> display-text;
+    callback changed(float);
+    callback released();
+
+    height: 32px;
+    background: transparent;
+
+    property <float> normalized: (value - min-value) / max(max-value - min-value, 0.001);
+    property <length> track-left: 0px;
+    property <length> track-right: 50px;
+    property <length> track-width: self.width - track-left - track-right;
+
+    Rectangle {
+        x: root.track-left;
+        y: (parent.height - 3px) / 2;
+        width: root.track-width;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff20;
+
+        Rectangle {
+            x: 0px;
+            width: root.normalized * parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: #4da3d9;
+        }
+    }
+
+    Rectangle {
+        x: root.track-left + root.normalized * root.track-width - 6px;
+        y: (parent.height - 12px) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: white;
+        border-width: 1px;
+        border-color: #4da3d9;
+    }
+
+    slider-touch := TouchArea {
+        x: root.track-left - 6px;
+        y: 0px;
+        width: root.track-width + 12px;
+        height: root.height;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                let norm = max(0.0, min(1.0, (self.mouse-x - 6px) / max(root.track-width, 1px)));
+                root.changed(root.min-value + norm * (root.max-value - root.min-value));
+            }
+            if e.kind == PointerEventKind.up {
+                root.released();
+            }
+        }
+    }
+
+    Text {
+        x: parent.width - root.track-right + 6px;
+        y: (parent.height - self.height) / 2;
+        width: root.track-right - 8px;
+        text: root.display-text;
+        color: #e0e0e0;
+        font-size: 11px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+component SectionHeader inherits Rectangle {
+    in property <string> text;
+    in property <image> icon-source;
+
+    height: 34px;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 8px;
+        alignment: start;
+
+        Image {
+            y: (parent.height - self.height) / 2;
+            width: 16px;
+            height: 16px;
+            source: root.icon-source;
+            image-fit: contain;
+            colorize: #4da3d9;
+        }
+
+        Text {
+            text: root.text;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component SectionDivider inherits Rectangle {
+    height: 1px;
+    background: #ffffff12;
+}
+
+component SegmentButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    out property <bool> hovered: seg-touch.has-hover;
+    callback clicked();
+
+    height: 26px;
+    border-radius: 3px;
+    background: root.active ? #4da3d940 : seg-touch.has-hover ? #ffffff15 : transparent;
+    border-width: root.active ? 1px : 0px;
+    border-color: #4da3d9;
+
+    seg-touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        text: root.text;
+        color: root.active ? white : #cccccc;
+        font-size: 10px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component DpiChip inherits Rectangle {
+    in property <int> chip-value;
+    in property <bool> active: false;
+    out property <bool> hovered: chip-touch.has-hover;
+    callback clicked();
+
+    width: 42px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.active ? #4da3d940 : chip-touch.has-hover ? #ffffff15 : #ffffff0a;
+    border-width: root.active ? 1px : 0px;
+    border-color: #4da3d9;
+
+    chip-touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        text: root.chip-value;
+        color: root.active ? white : #aaaaaa;
+        font-size: 10px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component LabelRow inherits Rectangle {
+    in property <string> label;
+    height: 28px;
+
+    Text {
+        x: 4px;
+        text: root.label;
+        color: #8ea0b2;
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+}
+
+component ToggleSwitch inherits Rectangle {
+    in property <string> label;
+    in-out property <bool> checked: false;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+
+    height: 28px;
+    opacity: root.enabled ? 1.0 : 0.4;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 8px;
+        alignment: start;
+
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 32px;
+            height: 16px;
+            border-radius: 8px;
+            background: root.checked ? #4da3d9 : #ffffff30;
+            animate background { duration: 150ms; }
+
+            Rectangle {
+                x: root.checked ? parent.width - self.width - 2px : 2px;
+                y: 2px;
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: white;
+                animate x { duration: 150ms; }
+            }
+
+            toggle-touch := TouchArea {
+                enabled: root.enabled;
+                clicked => {
+                    root.checked = !root.checked;
+                    root.toggled(root.checked);
+                }
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: root.enabled ? Theme.text-primary : Theme.text-secondary;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component ColorField inherits Rectangle {
+    in-out property <color> current-color: #2ECC71;
+    in-out property <float> opacity-pct: 100;
+    callback opacity-changed(float);
+    callback request-preview();
+
+    height: 28px;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 8px;
+        alignment: start;
+
+        // Color swatch
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            background: root.current-color;
+            border-width: 1px;
+            border-color: #ffffff30;
+        }
+
+        Text {
+            text: "Opacity";
+            color: #8ea0b2;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 48px;
+            height: 22px;
+            border-radius: 3px;
+            background: #ffffff10;
+            border-width: 1px;
+            border-color: #ffffff1a;
+
+            opacity-input := TextInput {
+                x: 4px;
+                y: (parent.height - self.height) / 2;
+                width: parent.width - 20px;
+                text: Math.round(root.opacity-pct);
+                color: #e0e0e0;
+                font-size: 10px;
+                horizontal-alignment: right;
+
+                accepted => {
+                    root.opacity-changed(max(0, min(100, self.text.to-float())));
+                    root.request-preview();
+                }
+                edited => {
+                    // live feedback on typing handled via accepted
+                }
+            }
+
+            Text {
+                x: parent.width - 14px;
+                y: (parent.height - self.height) / 2;
+                text: "%";
+                color: #8ea0b2;
+                font-size: 10px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component SmallTextInput inherits Rectangle {
+    in property <string> label: "";
+    in-out property <float> value: 0;
+    callback value-changed(float);
+    callback request-preview();
+
+    width: 48px;
+    height: 22px;
+    border-radius: 3px;
+    background: #ffffff10;
+    border-width: 1px;
+    border-color: #ffffff1a;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+
+        if root.label != "": Text {
+            text: root.label;
+            color: #8ea0b2;
+            font-size: 9px;
+            vertical-alignment: center;
+        }
+
+        small-input := TextInput {
+            text: Math.round(root.value * 10) / 10;
+            color: #e0e0e0;
+            font-size: 10px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+
+            accepted => {
+                root.value-changed(self.text.to-float());
+                root.request-preview();
+            }
+        }
+    }
+}
+
+component StrokeStyleSelector inherits Rectangle {
+    in-out property <StrokeStyle> stroke-style: StrokeStyle.solid;
+    in-out property <float> dash-length: 8;
+    in-out property <float> dash-gap: 4;
+    in-out property <float> dot-spacing: 4;
+    callback style-changed(StrokeStyle);
+    callback dash-length-changed(float);
+    callback dash-gap-changed(float);
+    callback dot-spacing-changed(float);
+    callback request-preview();
+
+    height: 28px;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 4px;
+        alignment: start;
+
+        Text {
+            text: "Stroke";
+            color: #8ea0b2;
+            font-size: 11px;
+            vertical-alignment: center;
+            width: 46px;
+        }
+
+        SegmentButton {
+            width: 48px;
+            text: "Solid";
+            active: root.stroke-style == StrokeStyle.solid;
+            clicked => {
+                root.style-changed(StrokeStyle.solid);
+                root.request-preview();
+            }
+        }
+
+        SegmentButton {
+            width: 48px;
+            text: "Dashed";
+            active: root.stroke-style == StrokeStyle.dashed;
+            clicked => {
+                root.style-changed(StrokeStyle.dashed);
+                root.request-preview();
+            }
+        }
+
+        SegmentButton {
+            width: 48px;
+            text: "Dotted";
+            active: root.stroke-style == StrokeStyle.dotted;
+            clicked => {
+                root.style-changed(StrokeStyle.dotted);
+                root.request-preview();
+            }
+        }
+
+        if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
+            label: "L";
+            value: root.dash-length;
+            value-changed(v) => {
+                root.dash-length-changed(v);
+            }
+            request-preview => {
+                root.request-preview();
+            }
+        }
+
+        if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
+            label: "G";
+            value: root.dash-gap;
+            value-changed(v) => {
+                root.dash-gap-changed(v);
+            }
+            request-preview => {
+                root.request-preview();
+            }
+        }
+
+        if root.stroke-style == StrokeStyle.dotted: SmallTextInput {
+            label: "S";
+            value: root.dot-spacing;
+            value-changed(v) => {
+                root.dot-spacing-changed(v);
+            }
+            request-preview => {
+                root.request-preview();
+            }
+        }
+    }
+}
+
+component CapStyleSelector inherits Rectangle {
+    in-out property <CapStyle> cap-style: CapStyle.round;
+    callback cap-changed(CapStyle);
+    callback request-preview();
+
+    height: 28px;
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 4px;
+        alignment: start;
+
+        Text {
+            text: "Caps";
+            color: #8ea0b2;
+            font-size: 11px;
+            vertical-alignment: center;
+            width: 46px;
+        }
+
+        SegmentButton {
+            width: 52px;
+            text: "Round";
+            active: root.cap-style == CapStyle.round;
+            clicked => {
+                root.cap-changed(CapStyle.round);
+                root.request-preview();
+            }
+        }
+
+        SegmentButton {
+            width: 52px;
+            text: "Square";
+            active: root.cap-style == CapStyle.square;
+            clicked => {
+                root.cap-changed(CapStyle.square);
+                root.request-preview();
+            }
+        }
+
+        SegmentButton {
+            width: 52px;
+            text: "Flat";
+            active: root.cap-style == CapStyle.flat;
+            clicked => {
+                root.cap-changed(CapStyle.flat);
+                root.request-preview();
+            }
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Main export dialog
+// ---------------------------------------------------------------------------
+
+export component ExportDialog inherits Rectangle {
+    in-out property <bool> visible-state: false;
+    in-out property <ExportSettings> settings;
+    in-out property <ExportPreviewInfo> preview-info;
+    in property <length> toolbar-height: 40px;
+
+    callback request-preview();
+    callback export-requested();
+    callback cancel-requested();
+    callback reset-requested();
+    callback settings-changed(ExportSettings);
+
+    // Emit settings-changed after any modification
+    function notify-settings() {
+        root.settings-changed(root.settings);
+        root.request-preview();
+    }
+
+    // Full-window overlay, but with toolbar area unblurred
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    visible: root.visible-state;
+
+    // Dimming layer beneath the dialog (from toolbar bottom downward)
+    Rectangle {
+        x: 0px;
+        y: root.toolbar-height;
+        width: parent.width;
+        height: parent.height - root.toolbar-height;
+        background: #000000aa;
+
+        // Dismiss on outside click
+        TouchArea {
+            clicked => {
+                root.cancel-requested();
+            }
+        }
+    }
+
+    // Dialog card – centered, anchored below toolbar
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: root.toolbar-height + 24px;
+        width: min(560px, parent.width - 48px);
+        height: min(parent.height - root.toolbar-height - 48px, dialog-layout.preferred-height);
+        background: #1e1e1e;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: #ffffff1a;
+        drop-shadow-blur: 32px;
+        drop-shadow-color: #000000aa;
+
+        // Block clicks from dismissing through the card
+        TouchArea { }
+
+        dialog-layout := VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // ---------------------------------------------------------------
+            // Preview section (fixed, non-scrollable)
+            // ---------------------------------------------------------------
+            Rectangle {
+                height: 210px;
+                background: #141414;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: "Export Preview";
+                        color: white;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+
+                    Rectangle {
+                        height: 120px;
+                        background: #0a0a0a;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: #ffffff10;
+
+                        Image {
+                            width: parent.width - 8px;
+                            height: parent.height - 8px;
+                            x: 4px;
+                            y: 4px;
+                            source: root.preview-info.preview-image;
+                            image-fit: contain;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: center;
+
+                        Text {
+                            text: "Estimated Size: " + (Math.round(root.preview-info.estimated-size-mb * 100) / 100) + " MB";
+                            color: #8ea0b2;
+                            font-size: 10px;
+                        }
+
+                        Text {
+                            text: root.preview-info.width-px + " × " + root.preview-info.height-px + " px";
+                            color: #8ea0b2;
+                            font-size: 10px;
+                        }
+                    }
+                }
+            }
+
+            SectionDivider { }
+
+            // ---------------------------------------------------------------
+            // Scrollable settings area
+            // ---------------------------------------------------------------
+            Flickable {
+                vertical-stretch: 1;
+                viewport-height: settings-content.preferred-height;
+
+                settings-content := VerticalLayout {
+                    padding: 16px;
+                    spacing: 4px;
+
+                    // ------- Resolution (DPI) -------
+                    SectionHeader {
+                        text: "Resolution (DPI)";
+                        icon-source: @image-url("resolution.svg");
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        ExportSlider {
+                            horizontal-stretch: 1;
+                            value: root.settings.dpi;
+                            min-value: 72;
+                            max-value: 600;
+                            display-text: "";
+                            changed(v) => {
+                                root.settings.dpi = Math.round(v);
+                            }
+                            released => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        Rectangle {
+                            width: 52px;
+                            height: 26px;
+                            border-radius: 3px;
+                            background: #ffffff10;
+                            border-width: 1px;
+                            border-color: #ffffff1a;
+
+                            dpi-input := TextInput {
+                                x: 4px;
+                                y: (parent.height - self.height) / 2;
+                                width: parent.width - 8px;
+                                text: root.settings.dpi;
+                                color: #e0e0e0;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                input-type: number;
+
+                                accepted => {
+                                    root.settings.dpi = max(72, min(600, Math.round(self.text.to-float())));
+                                    root.notify-settings();
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick-select chips
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        padding-top: 2px;
+                        padding-bottom: 4px;
+
+                        DpiChip {
+                            chip-value: 72;
+                            active: root.settings.dpi == 72;
+                            clicked => {
+                                root.settings.dpi = 72;
+                                root.notify-settings();
+                            }
+                        }
+
+                        DpiChip {
+                            chip-value: 96;
+                            active: root.settings.dpi == 96;
+                            clicked => {
+                                root.settings.dpi = 96;
+                                root.notify-settings();
+                            }
+                        }
+
+                        DpiChip {
+                            chip-value: 150;
+                            active: root.settings.dpi == 150;
+                            clicked => {
+                                root.settings.dpi = 150;
+                                root.notify-settings();
+                            }
+                        }
+
+                        DpiChip {
+                            chip-value: 300;
+                            active: root.settings.dpi == 300;
+                            clicked => {
+                                root.settings.dpi = 300;
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Filtering Mode -------
+                    SectionHeader {
+                        text: "Filtering Mode";
+                        icon-source: @image-url("sample-mode.svg");
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        padding-bottom: 4px;
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "Bilinear";
+                            active: root.settings.filtering-mode == ExportFilteringMode.bilinear;
+                            clicked => {
+                                root.settings.filtering-mode = ExportFilteringMode.bilinear;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "Trilinear";
+                            active: root.settings.filtering-mode == ExportFilteringMode.trilinear;
+                            clicked => {
+                                root.settings.filtering-mode = ExportFilteringMode.trilinear;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "Lanczos";
+                            active: root.settings.filtering-mode == ExportFilteringMode.lanczos;
+                            clicked => {
+                                root.settings.filtering-mode = ExportFilteringMode.lanczos;
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Image Adjustment -------
+                    SectionHeader {
+                        text: "Image Adjustment";
+                        icon-source: @image-url("settings.svg");
+                    }
+
+                    LabelRow { label: "Sharpness"; }
+
+                    ExportSlider {
+                        value: root.settings.sharpness;
+                        min-value: 0.0;
+                        max-value: 1.0;
+                        display-text: Math.round(root.settings.sharpness * 100) + "%";
+                        changed(v) => {
+                            root.settings.sharpness = v;
+                        }
+                        released => {
+                            root.notify-settings();
+                        }
+                    }
+
+                    LabelRow { label: "Gamma"; }
+
+                    ExportSlider {
+                        value: root.settings.gamma;
+                        min-value: 0.2;
+                        max-value: 3.0;
+                        display-text: Math.round(root.settings.gamma * 100) / 100 + "";
+                        changed(v) => {
+                            root.settings.gamma = v;
+                        }
+                        released => {
+                            root.notify-settings();
+                        }
+                    }
+
+                    LabelRow { label: "Brightness"; }
+
+                    ExportSlider {
+                        value: root.settings.brightness;
+                        min-value: -1.0;
+                        max-value: 1.0;
+                        display-text: (root.settings.brightness >= 0 ? "+" : "") + Math.round(root.settings.brightness * 100) + "%";
+                        changed(v) => {
+                            root.settings.brightness = v;
+                        }
+                        released => {
+                            root.notify-settings();
+                        }
+                    }
+
+                    LabelRow { label: "Contrast"; }
+
+                    ExportSlider {
+                        value: root.settings.contrast;
+                        min-value: 0.2;
+                        max-value: 3.0;
+                        display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
+                        changed(v) => {
+                            root.settings.contrast = v;
+                        }
+                        released => {
+                            root.notify-settings();
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Stain Normalization -------
+                    SectionHeader {
+                        text: "Stain Normalization";
+                        icon-source: @image-url("settings.svg");
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        padding-bottom: 4px;
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "None";
+                            active: root.settings.stain-normalization == StainNormalization.none;
+                            clicked => {
+                                root.settings.stain-normalization = StainNormalization.none;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "Macenko";
+                            active: root.settings.stain-normalization == StainNormalization.macenko;
+                            clicked => {
+                                root.settings.stain-normalization = StainNormalization.macenko;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "Vahadane";
+                            active: root.settings.stain-normalization == StainNormalization.vahadane;
+                            clicked => {
+                                root.settings.stain-normalization = StainNormalization.vahadane;
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Measurement -------
+                    SectionHeader {
+                        text: "Measurement";
+                        icon-source: @image-url("measure.svg");
+                    }
+
+                    ToggleSwitch {
+                        label: "Show Measurement";
+                        checked: root.settings.show-measurement;
+                        enabled: root.settings.has-measurement;
+                        toggled(v) => {
+                            root.settings.show-measurement = v;
+                            root.notify-settings();
+                        }
+                    }
+
+                    if root.settings.show-measurement && root.settings.has-measurement: VerticalLayout {
+                        spacing: 4px;
+
+                        LabelRow { label: "Color"; }
+
+                        ColorField {
+                            current-color: root.settings.measurement-color;
+                            opacity-pct: root.settings.measurement-opacity;
+                            opacity-changed(v) => {
+                                root.settings.measurement-opacity = v;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        LabelRow { label: "Thickness"; }
+
+                        ExportSlider {
+                            value: root.settings.measurement-thickness;
+                            min-value: 0.5;
+                            max-value: 10.0;
+                            display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
+                            changed(v) => {
+                                root.settings.measurement-thickness = v;
+                            }
+                            released => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        StrokeStyleSelector {
+                            stroke-style: root.settings.measurement-stroke-style;
+                            dash-length: root.settings.measurement-dash-length;
+                            dash-gap: root.settings.measurement-dash-gap;
+                            dot-spacing: root.settings.measurement-dot-spacing;
+                            style-changed(s) => {
+                                root.settings.measurement-stroke-style = s;
+                            }
+                            dash-length-changed(v) => {
+                                root.settings.measurement-dash-length = v;
+                            }
+                            dash-gap-changed(v) => {
+                                root.settings.measurement-dash-gap = v;
+                            }
+                            dot-spacing-changed(v) => {
+                                root.settings.measurement-dot-spacing = v;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        CapStyleSelector {
+                            cap-style: root.settings.measurement-cap-style;
+                            cap-changed(c) => {
+                                root.settings.measurement-cap-style = c;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        LabelRow { label: "Font Size"; }
+
+                        ExportSlider {
+                            value: root.settings.measurement-font-size;
+                            min-value: 6;
+                            max-value: 32;
+                            display-text: Math.round(root.settings.measurement-font-size) + "pt";
+                            changed(v) => {
+                                root.settings.measurement-font-size = v;
+                            }
+                            released => {
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Region of Interest -------
+                    SectionHeader {
+                        text: "Region of Interest";
+                        // ROI icon drawn inline (matches toolbar icon)
+                        icon-source: @image-url("navigate.svg");
+                    }
+
+                    ToggleSwitch {
+                        label: "Show Outline";
+                        checked: root.settings.show-roi-outline;
+                        enabled: root.settings.has-roi;
+                        toggled(v) => {
+                            root.settings.show-roi-outline = v;
+                            root.notify-settings();
+                        }
+                    }
+
+                    if root.settings.show-roi-outline && root.settings.has-roi: VerticalLayout {
+                        spacing: 4px;
+
+                        LabelRow { label: "Color"; }
+
+                        ColorField {
+                            current-color: root.settings.roi-color;
+                            opacity-pct: root.settings.roi-opacity;
+                            opacity-changed(v) => {
+                                root.settings.roi-opacity = v;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        LabelRow { label: "Thickness"; }
+
+                        ExportSlider {
+                            value: root.settings.roi-thickness;
+                            min-value: 0.5;
+                            max-value: 10.0;
+                            display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
+                            changed(v) => {
+                                root.settings.roi-thickness = v;
+                            }
+                            released => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        StrokeStyleSelector {
+                            stroke-style: root.settings.roi-stroke-style;
+                            dash-length: root.settings.roi-dash-length;
+                            dash-gap: root.settings.roi-dash-gap;
+                            dot-spacing: root.settings.roi-dot-spacing;
+                            style-changed(s) => {
+                                root.settings.roi-stroke-style = s;
+                            }
+                            dash-length-changed(v) => {
+                                root.settings.roi-dash-length = v;
+                            }
+                            dash-gap-changed(v) => {
+                                root.settings.roi-dash-gap = v;
+                            }
+                            dot-spacing-changed(v) => {
+                                root.settings.roi-dot-spacing = v;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+
+                        CapStyleSelector {
+                            cap-style: root.settings.roi-cap-style;
+                            cap-changed(c) => {
+                                root.settings.roi-cap-style = c;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    // Outside Overlay subsection
+                    if root.settings.has-roi: VerticalLayout {
+                        spacing: 4px;
+                        padding-top: 4px;
+
+                        SectionDivider { }
+
+                        LabelRow { label: "Outside Overlay"; }
+
+                        ToggleSwitch {
+                            label: "Enable Overlay";
+                            checked: root.settings.roi-outside-overlay;
+                            toggled(v) => {
+                                root.settings.roi-outside-overlay = v;
+                                root.notify-settings();
+                            }
+                        }
+
+                        if root.settings.roi-outside-overlay: ColorField {
+                            current-color: root.settings.roi-outside-color;
+                            opacity-pct: root.settings.roi-outside-opacity;
+                            opacity-changed(v) => {
+                                root.settings.roi-outside-opacity = v;
+                            }
+                            request-preview => {
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    SectionDivider { }
+
+                    // ------- Format -------
+                    SectionHeader {
+                        text: "Format";
+                        icon-source: @image-url("export.svg");
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        padding-bottom: 4px;
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "JPEG (Smaller)";
+                            active: root.settings.format == ExportFormat.jpeg;
+                            clicked => {
+                                root.settings.format = ExportFormat.jpeg;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SegmentButton {
+                            horizontal-stretch: 1;
+                            text: "PNG (Lossless)";
+                            active: root.settings.format == ExportFormat.png;
+                            clicked => {
+                                root.settings.format = ExportFormat.png;
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    if root.settings.format == ExportFormat.jpeg: VerticalLayout {
+                        spacing: 4px;
+
+                        LabelRow { label: "Quality"; }
+
+                        ExportSlider {
+                            value: root.settings.jpeg-quality;
+                            min-value: 1;
+                            max-value: 100;
+                            display-text: root.settings.jpeg-quality + "%";
+                            changed(v) => {
+                                root.settings.jpeg-quality = Math.round(v);
+                            }
+                            released => {
+                                root.notify-settings();
+                            }
+                        }
+                    }
+
+                    // Bottom padding for scroll area
+                    Rectangle {
+                        height: 8px;
+                    }
+                }
+            }
+
+            SectionDivider { }
+
+            // ---------------------------------------------------------------
+            // Bottom action bar (fixed, non-scrollable)
+            // ---------------------------------------------------------------
+            Rectangle {
+                height: 56px;
+                background: #141414;
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
+
+                HorizontalLayout {
+                    padding: 12px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 8px;
+
+                    // Reset (left-aligned)
+                    Rectangle {
+                        width: reset-text.preferred-width + 20px;
+                        height: 32px;
+                        border-radius: 4px;
+                        background: reset-touch.has-hover ? #ffffff15 : transparent;
+                        border-width: 1px;
+                        border-color: #ffffff1a;
+
+                        reset-touch := TouchArea {
+                            clicked => {
+                                root.reset-requested();
+                            }
+                        }
+
+                        reset-text := Text {
+                            text: "Reset";
+                            color: Theme.error;
+                            font-size: 12px;
+                            font-weight: 500;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Spacer
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    // Cancel
+                    Rectangle {
+                        width: cancel-text.preferred-width + 20px;
+                        height: 32px;
+                        border-radius: 4px;
+                        background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        cancel-touch := TouchArea {
+                            clicked => {
+                                root.cancel-requested();
+                            }
+                        }
+
+                        cancel-text := Text {
+                            text: "Cancel";
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Export
+                    Rectangle {
+                        width: export-row.preferred-width + 20px;
+                        height: 32px;
+                        border-radius: 4px;
+                        background: export-touch.has-hover ? #1177bb : Theme.accent;
+
+                        export-touch := TouchArea {
+                            clicked => {
+                                root.export-requested();
+                            }
+                        }
+
+                        export-row := HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            Image {
+                                y: (parent.height - self.height) / 2;
+                                width: 14px;
+                                height: 14px;
+                                source: @image-url("export.svg");
+                                image-fit: contain;
+                                colorize: white;
+                            }
+
+                            Text {
+                                text: "Export";
+                                color: white;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

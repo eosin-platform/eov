@@ -1,8 +1,11 @@
 use crate::config;
 use crate::state::{self, AppState, HudSettings, PaneId};
 use crate::{
-    AppWindow, FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit,
-    RenderMode, StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
+    AppWindow, ExportFilteringMode as SlintExportFilteringMode,
+    ExportFormat as SlintExportFormat, ExportPreviewInfo as SlintExportPreviewInfo,
+    ExportSettings as SlintExportSettings, FilteringMode as SlintFilteringMode,
+    MeasurementUnit as SlintMeasurementUnit, RenderMode,
+    StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
     capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
     crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
     handle_tool_mouse_up, insert_pane_ui_state, open_file, pane_from_index, refresh_tab_ui,
@@ -267,13 +270,6 @@ fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     true
 }
 
-fn show_stub_viewport_action(ui: &AppWindow, label: &str) {
-    ui.set_status_text(SharedString::from(format!(
-        "{label} is not implemented yet"
-    )));
-    info!(action = label, "viewport context menu stub invoked");
-}
-
 fn show_toast(ui: &AppWindow, toast_timer: &Rc<Timer>, message: &str) {
     ui.set_toast_text(SharedString::from(message));
     ui.set_toast_visible(true);
@@ -305,6 +301,114 @@ fn toggle_metadata_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         state.show_metadata
     };
     ui.set_show_metadata(show_metadata);
+}
+
+/// Build default export settings based on the current viewport state.
+fn build_default_export_settings(state: &AppState, pane: PaneId) -> SlintExportSettings {
+    let file_id = state.active_file_id_for_pane(pane);
+    let hud = file_id
+        .and_then(|id| state.get_file(id))
+        .and_then(|f| f.pane_state(pane))
+        .map(|ps| &ps.hud)
+        .cloned()
+        .unwrap_or_default();
+
+    let has_measurement = file_id
+        .and_then(|id| state.get_file(id))
+        .is_some_and(|f| !f.measurements.is_empty());
+
+    let has_roi = file_id
+        .and_then(|id| state.get_file(id))
+        .is_some_and(|f| f.roi.is_some());
+
+    let stain_norm = match hud.stain_normalization {
+        StainNormalization::None => SlintStainNormalization::None,
+        StainNormalization::Macenko => SlintStainNormalization::Macenko,
+        StainNormalization::Vahadane => SlintStainNormalization::Vahadane,
+    };
+
+    SlintExportSettings {
+        dpi: 150,
+        filtering_mode: SlintExportFilteringMode::Trilinear,
+        sharpness: hud.sharpness,
+        gamma: hud.gamma,
+        brightness: hud.brightness,
+        contrast: hud.contrast,
+        stain_normalization: stain_norm,
+        show_measurement: has_measurement,
+        has_measurement,
+        measurement_color: slint::Color::from_argb_u8(255, 46, 204, 113),
+        measurement_opacity: 100.0,
+        measurement_thickness: 2.0,
+        measurement_stroke_style: crate::StrokeStyle::Solid,
+        measurement_cap_style: crate::CapStyle::Round,
+        measurement_dash_length: 8.0,
+        measurement_dash_gap: 4.0,
+        measurement_dot_spacing: 4.0,
+        measurement_font_size: 12.0,
+        show_roi_outline: has_roi,
+        has_roi,
+        roi_color: slint::Color::from_argb_u8(255, 241, 196, 15),
+        roi_opacity: 100.0,
+        roi_thickness: 2.0,
+        roi_stroke_style: crate::StrokeStyle::Solid,
+        roi_cap_style: crate::CapStyle::Round,
+        roi_dash_length: 8.0,
+        roi_dash_gap: 4.0,
+        roi_dot_spacing: 4.0,
+        roi_outside_overlay: false,
+        roi_outside_color: slint::Color::from_argb_u8(255, 0, 0, 0),
+        roi_outside_opacity: 50.0,
+        format: SlintExportFormat::Png,
+        jpeg_quality: 85,
+    }
+}
+
+/// Open the export dialog, populating it with defaults derived from the current viewport.
+fn open_export_dialog(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane: PaneId) {
+    let settings = {
+        let state = state.read();
+        build_default_export_settings(&state, pane)
+    };
+    ui.set_export_settings(settings.clone());
+
+    // Compute initial preview info
+    let dpi = settings.dpi.max(72) as f64;
+    let scale = dpi / 96.0;
+    let viewport_w = ui.get_viewport_width() as f64;
+    let viewport_h = ui.get_viewport_height() as f64;
+    let width_px = (viewport_w * scale).round() as i32;
+    let height_px = (viewport_h * scale).round() as i32;
+    let bytes_per_pixel: f64 = if settings.format == SlintExportFormat::Png {
+        4.0
+    } else {
+        let q = settings.jpeg_quality.clamp(1, 100) as f64;
+        0.3 + (q / 100.0) * 2.5
+    };
+    let estimated_bytes = (width_px as f64) * (height_px as f64) * bytes_per_pixel;
+    let estimated_mb = estimated_bytes / (1024.0 * 1024.0);
+
+    // Use the current viewport content as the preview
+    let preview_image = if let Some(image_data) = capture_pane_clipboard_image(pane) {
+        let w = image_data.width as u32;
+        let h = image_data.height as u32;
+        if let Some(buf) = crate::blitter::create_image_buffer(&image_data.pixels, w, h) {
+            slint::Image::from_rgba8(buf)
+        } else {
+            slint::Image::default()
+        }
+    } else {
+        slint::Image::default()
+    };
+
+    let preview_info = SlintExportPreviewInfo {
+        preview_image,
+        estimated_size_mb: estimated_mb as f32,
+        width_px,
+        height_px,
+    };
+    ui.set_export_preview_info(preview_info);
+    ui.set_export_dialog_visible(true);
 }
 
 fn apply_filtering_mode(
@@ -480,7 +584,7 @@ pub fn setup_callbacks(
                     }
                 }
                 "viewport-export-image" => {
-                    show_stub_viewport_action(&ui, "Export Image");
+                    open_export_dialog(&ui, &state_handle, pane);
                 }
                 "close" => {
                     {
@@ -1785,6 +1889,166 @@ pub fn setup_callbacks(
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    // -- Export dialog callbacks --
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_export_dialog_settings_changed(move |_settings| {
+            // Settings are tracked in the Slint property; a preview re-render
+            // will be triggered by the request-preview callback.
+            let _ = ui_weak.upgrade();
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_export_dialog_request_preview(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                // Compute estimated size from current settings
+                let settings = ui.get_export_settings();
+                let dpi = settings.dpi.max(72) as f64;
+                // Assuming the current viewport size as the base resolution at 96 dpi
+                let scale = dpi / 96.0;
+                let viewport_w = ui.get_viewport_width() as f64;
+                let viewport_h = ui.get_viewport_height() as f64;
+                let width_px = (viewport_w * scale).round() as i32;
+                let height_px = (viewport_h * scale).round() as i32;
+                let bytes_per_pixel: f64 =
+                    if settings.format == SlintExportFormat::Png {
+                        4.0 // PNG, RGBA, rough estimate ~4 bytes compressed
+                    } else {
+                        // JPEG: estimate based on quality
+                        let q = settings.jpeg_quality.clamp(1, 100) as f64;
+                        0.3 + (q / 100.0) * 2.5
+                    };
+                let estimated_bytes =
+                    (width_px as f64) * (height_px as f64) * bytes_per_pixel;
+                let estimated_mb = estimated_bytes / (1024.0 * 1024.0);
+
+                let preview_info = SlintExportPreviewInfo {
+                    preview_image: ui.get_export_preview_info().preview_image,
+                    estimated_size_mb: estimated_mb as f32,
+                    width_px,
+                    height_px,
+                };
+                ui.set_export_preview_info(preview_info);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        let toast_timer = Rc::clone(&toast_timer);
+
+        ui.on_export_dialog_export_requested(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let settings = ui.get_export_settings();
+            let extension = if settings.format == SlintExportFormat::Png {
+                "png"
+            } else {
+                "jpg"
+            };
+            let filter_name = if settings.format == SlintExportFormat::Png {
+                "PNG Image"
+            } else {
+                "JPEG Image"
+            };
+
+            let dialog = FileDialog::new()
+                .add_filter(filter_name, &[extension])
+                .set_file_name(format!("export.{extension}"));
+
+            if let Some(path) = dialog.save_file() {
+                // Use the current viewport content as the export source.
+                // A full re-render at export DPI would go here in the future.
+                let pane = {
+                    let state = state_handle.read();
+                    state.focused_pane
+                };
+
+                let image_data = capture_pane_clipboard_image(pane);
+                let Some(image_data) = image_data else {
+                    ui.set_status_text(SharedString::from(
+                        "No viewport image available to export",
+                    ));
+                    return;
+                };
+
+                let width = image_data.width as u32;
+                let height = image_data.height as u32;
+
+                let result = if settings.format == SlintExportFormat::Png {
+                    image::save_buffer(
+                        &path,
+                        &image_data.pixels,
+                        width,
+                        height,
+                        image::ExtendedColorType::Rgba8,
+                    )
+                } else {
+                    // Convert RGBA to RGB for JPEG
+                    let rgb: Vec<u8> = image_data
+                        .pixels
+                        .chunks_exact(4)
+                        .flat_map(|px| [px[0], px[1], px[2]])
+                        .collect();
+                    image::save_buffer(
+                        &path,
+                        &rgb,
+                        width,
+                        height,
+                        image::ExtendedColorType::Rgb8,
+                    )
+                };
+
+                match result {
+                    Ok(()) => {
+                        ui.set_export_dialog_visible(false);
+                        show_toast(
+                            &ui,
+                            &toast_timer,
+                            &format!("Image exported to {}", path.display()),
+                        );
+                    }
+                    Err(e) => {
+                        error!("Failed to export image: {e}");
+                        ui.set_status_text(SharedString::from(format!(
+                            "Export failed: {e}"
+                        )));
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_export_dialog_cancel_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_export_dialog_visible(false);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_export_dialog_reset_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                let state = state_handle.read();
+                let pane = state.focused_pane;
+                let settings = build_default_export_settings(&state, pane);
+                ui.set_export_settings(settings);
             }
         });
     }

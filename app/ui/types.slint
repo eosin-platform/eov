@@ -129,3 +129,73 @@ export enum FilteringMode {
     trilinear,
     lanczos3,
 }
+
+export enum ExportFilteringMode {
+    bilinear,
+    trilinear,
+    lanczos,
+}
+
+export enum ExportFormat {
+    jpeg,
+    png,
+}
+
+export enum StrokeStyle {
+    solid,
+    dashed,
+    dotted,
+}
+
+export enum CapStyle {
+    round,
+    square,
+    flat,
+}
+
+export struct ExportSettings {
+    dpi: int,
+    filtering-mode: ExportFilteringMode,
+    sharpness: float,
+    gamma: float,
+    brightness: float,
+    contrast: float,
+    stain-normalization: StainNormalization,
+    // Measurement overlay
+    show-measurement: bool,
+    has-measurement: bool,
+    measurement-color: color,
+    measurement-opacity: float,
+    measurement-thickness: float,
+    measurement-stroke-style: StrokeStyle,
+    measurement-cap-style: CapStyle,
+    measurement-dash-length: float,
+    measurement-dash-gap: float,
+    measurement-dot-spacing: float,
+    measurement-font-size: float,
+    // ROI overlay
+    show-roi-outline: bool,
+    has-roi: bool,
+    roi-color: color,
+    roi-opacity: float,
+    roi-thickness: float,
+    roi-stroke-style: StrokeStyle,
+    roi-cap-style: CapStyle,
+    roi-dash-length: float,
+    roi-dash-gap: float,
+    roi-dot-spacing: float,
+    // ROI outside overlay
+    roi-outside-overlay: bool,
+    roi-outside-color: color,
+    roi-outside-opacity: float,
+    // Format
+    format: ExportFormat,
+    jpeg-quality: int,
+}
+
+export struct ExportPreviewInfo {
+    preview-image: image,
+    estimated-size-mb: float,
+    width-px: int,
+    height-px: int,
+}
