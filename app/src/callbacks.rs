@@ -1857,8 +1857,20 @@ pub fn setup_callbacks(
             let render_timer = Rc::clone(&render_timer);
 
             move |slint_window, event| match event {
-                winit::event::WindowEvent::Resized(_) => {
+                winit::event::WindowEvent::Resized(physical_size) => {
+                    let current = slint_window.size();
+                    eprintln!(
+                        "[RESIZE] winit physical={}x{} slint={}x{} scale={}",
+                        physical_size.width,
+                        physical_size.height,
+                        current.width,
+                        current.height,
+                        slint_window.scale_factor()
+                    );
                     if let Some(ui) = ui_weak.upgrade() {
+                        let cw = ui.get_content_area_width();
+                        let ch = ui.get_content_area_height();
+                        eprintln!("[RESIZE] content_area={}x{}", cw, ch);
                         request_render_loop(
                             &render_timer,
                             &ui.as_weak(),
