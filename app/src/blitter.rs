@@ -399,6 +399,7 @@ pub fn blit_tile_lanczos3(
 
 /// Alpha-blend two RGBA buffers: dest = fine * (1-blend) + coarse * blend
 /// Both buffers must be the same size (width * height * 4 bytes).
+#[allow(dead_code)]
 pub fn blend_buffers(dest: &mut [u8], coarse: &[u8], blend: f64) {
     let b = (blend * 256.0).round() as u32;
     let inv_b = 256 - b;
@@ -407,6 +408,223 @@ pub fn blend_buffers(dest: &mut [u8], coarse: &[u8], blend: f64) {
         d[1] = ((d[1] as u32 * inv_b + c[1] as u32 * b) >> 8) as u8;
         d[2] = ((d[2] as u32 * inv_b + c[2] as u32 * b) >> 8) as u8;
         d[3] = ((d[3] as u32 * inv_b + c[3] as u32 * b) >> 8) as u8;
+    }
+}
+
+/// Coarse tile source for fused trilinear blitting.
+/// Maps a sub-region of a coarse-level tile onto the same screen rect
+/// as a fine tile, blending the two per-pixel to avoid a full-screen
+/// intermediate buffer and blend pass.
+pub struct CoarseSrc<'a> {
+    pub data: &'a [u8],
+    pub width: u32,
+    pub height: u32,
+    pub border: u32,
+    /// UV sub-region of the coarse tile that covers this fine tile:
+    /// (u_min, v_min, u_max, v_max) in [0,1] normalised coordinates.
+    pub uv_min: [f32; 2],
+    pub uv_max: [f32; 2],
+    /// Mip blend factor: 0.0 = 100 % fine, 1.0 = 100 % coarse.
+    pub blend: f32,
+}
+
+/// Fused bilinear + trilinear blit: sample both fine and coarse tiles
+/// per-pixel and blend in a single pass, eliminating one full-screen
+/// allocation and two full-frame traversals.
+#[inline(always)]
+pub fn blit_tile_trilinear(
+    dest: &mut [u8],
+    dest_width: u32,
+    dest_height: u32,
+    tile: TileSrc,
+    coarse: &CoarseSrc,
+    rect: BlitRect,
+) {
+    let fine_src = tile.data;
+    let fine_w = tile.width;
+    let fine_h = tile.height;
+    let fine_border = tile.border;
+    let BlitRect {
+        x: dest_x,
+        y: dest_y,
+        width: scaled_width,
+        height: scaled_height,
+        ..
+    } = rect;
+    if scaled_width <= 0 || scaled_height <= 0 {
+        return;
+    }
+    if dest_x + scaled_width <= 0 || dest_y + scaled_height <= 0 {
+        return;
+    }
+    if dest_x >= dest_width as i32 || dest_y >= dest_height as i32 {
+        return;
+    }
+
+    let start_x = dest_x.max(0) as u32;
+    let start_y = dest_y.max(0) as u32;
+    let end_x = (dest_x + scaled_width).min(dest_width as i32) as u32;
+    let end_y = (dest_y + scaled_height).min(dest_height as i32) as u32;
+    if start_x >= end_x || start_y >= end_y {
+        return;
+    }
+
+    let blend_i = (coarse.blend * 256.0).round() as u32;
+    let inv_blend_i = 256u32.saturating_sub(blend_i);
+
+    // --- Fine tile setup ---
+    let fine_data_w = fine_w + 2 * fine_border;
+    let fine_data_h = fine_h + 2 * fine_border;
+    let fine_dw1 = fine_data_w.saturating_sub(1);
+    let fine_dh1 = fine_data_h.saturating_sub(1);
+    let use_exact = rect.exact_width > 0.0;
+    let exact_x = rect.exact_x;
+    let exact_y = rect.exact_y;
+    let exact_w = if use_exact { rect.exact_width } else { scaled_width as f64 };
+    let exact_h = if use_exact { rect.exact_height } else { scaled_height as f64 };
+    let fine_sx = fine_w as f64 / exact_w;
+    let fine_sy = fine_h as f64 / exact_h;
+    let dest_stride = (dest_width * 4) as usize;
+    let fine_stride = (fine_data_w * 4) as usize;
+
+    let fine_max_idx = fine_dh1 as usize * fine_stride + fine_dw1 as usize * 4 + 3;
+    if fine_src.len() <= fine_max_idx {
+        return;
+    }
+    let dest_max_idx = (end_y - 1) as usize * dest_stride + (end_x - 1) as usize * 4 + 3;
+    if dest.len() <= dest_max_idx {
+        return;
+    }
+
+    // --- Coarse tile setup ---
+    let coarse_src = coarse.data;
+    let coarse_w = coarse.width;
+    let coarse_h = coarse.height;
+    let coarse_border = coarse.border;
+    let coarse_data_w = coarse_w + 2 * coarse_border;
+    let coarse_data_h = coarse_h + 2 * coarse_border;
+    let coarse_dw1 = coarse_data_w.saturating_sub(1);
+    let coarse_dh1 = coarse_data_h.saturating_sub(1);
+    let coarse_stride = (coarse_data_w * 4) as usize;
+    let coarse_max_idx = coarse_dh1 as usize * coarse_stride + coarse_dw1 as usize * 4 + 3;
+    if coarse_src.len() <= coarse_max_idx {
+        // Fall back to fine-only if coarse data bad
+        blit_tile(dest, dest_width, dest_height, tile, rect);
+        return;
+    }
+
+    // UV range in coarse tile pixels (content, excl. border)
+    let cu_min = coarse.uv_min[0] as f64 * coarse_w as f64;
+    let cv_min = coarse.uv_min[1] as f64 * coarse_h as f64;
+    let cu_range = (coarse.uv_max[0] - coarse.uv_min[0]) as f64 * coarse_w as f64;
+    let cv_range = (coarse.uv_max[1] - coarse.uv_min[1]) as f64 * coarse_h as f64;
+    let coarse_sx = cu_range / exact_w;
+    let coarse_sy = cv_range / exact_h;
+
+    for y in start_y..end_y {
+        // --- Fine Y ---
+        let fyf = if use_exact {
+            (y as f64 - exact_y) * fine_sy
+        } else {
+            (y as i32 - dest_y) as f64 * fine_sy
+        };
+        let fyf_fp = (fyf * 65536.0).max(0.0) as u32;
+        let fy0i = fyf_fp >> 16;
+        let ffy = (fyf_fp & 0xFFFF) >> 8;
+        let ify = 256 - ffy;
+        let fy0 = (fy0i + fine_border).min(fine_dh1);
+        let fy1 = (fy0i + fine_border + 1).min(fine_dh1);
+        let frow0 = fy0 as usize * fine_stride;
+        let frow1 = fy1 as usize * fine_stride;
+
+        // --- Coarse Y ---
+        let cyf = if use_exact {
+            cv_min + (y as f64 - exact_y) * coarse_sy
+        } else {
+            cv_min + (y as i32 - dest_y) as f64 * coarse_sy
+        };
+        let cyf_fp = (cyf * 65536.0).max(0.0) as u32;
+        let cy0i = cyf_fp >> 16;
+        let fcy = (cyf_fp & 0xFFFF) >> 8;
+        let icy = 256 - fcy;
+        let cy0 = (cy0i + coarse_border).min(coarse_dh1);
+        let cy1 = (cy0i + coarse_border + 1).min(coarse_dh1);
+        let crow0 = cy0 as usize * coarse_stride;
+        let crow1 = cy1 as usize * coarse_stride;
+
+        let dest_row = y as usize * dest_stride;
+
+        for x in start_x..end_x {
+            // --- Fine pixel ---
+            let fxf = if use_exact {
+                (x as f64 - exact_x) * fine_sx
+            } else {
+                (x as i32 - dest_x) as f64 * fine_sx
+            };
+            let fxf_fp = (fxf * 65536.0).max(0.0) as u32;
+            let fx0i = fxf_fp >> 16;
+            let ffx = (fxf_fp & 0xFFFF) >> 8;
+            let ifx = 256 - ffx;
+            let fx0 = (fx0i + fine_border).min(fine_dw1);
+            let fx1 = (fx0i + fine_border + 1).min(fine_dw1);
+            let fx04 = fx0 as usize * 4;
+            let fx14 = fx1 as usize * 4;
+
+            let fw00 = ifx * ify;
+            let fw10 = ffx * ify;
+            let fw01 = ifx * ffy;
+            let fw11 = ffx * ffy;
+
+            // --- Coarse pixel ---
+            let cxf = if use_exact {
+                cu_min + (x as f64 - exact_x) * coarse_sx
+            } else {
+                cu_min + (x as i32 - dest_x) as f64 * coarse_sx
+            };
+            let cxf_fp = (cxf * 65536.0).max(0.0) as u32;
+            let cx0i = cxf_fp >> 16;
+            let fcx = (cxf_fp & 0xFFFF) >> 8;
+            let icx = 256 - fcx;
+            let cx0 = (cx0i + coarse_border).min(coarse_dw1);
+            let cx1 = (cx0i + coarse_border + 1).min(coarse_dw1);
+            let cx04 = cx0 as usize * 4;
+            let cx14 = cx1 as usize * 4;
+
+            let cw00 = icx * icy;
+            let cw10 = fcx * icy;
+            let cw01 = icx * fcy;
+            let cw11 = fcx * fcy;
+
+            let dest_idx = dest_row + x as usize * 4;
+
+            unsafe {
+                let fs00 = fine_src.get_unchecked(frow0 + fx04..frow0 + fx04 + 4);
+                let fs10 = fine_src.get_unchecked(frow0 + fx14..frow0 + fx14 + 4);
+                let fs01 = fine_src.get_unchecked(frow1 + fx04..frow1 + fx04 + 4);
+                let fs11 = fine_src.get_unchecked(frow1 + fx14..frow1 + fx14 + 4);
+
+                let cs00 = coarse_src.get_unchecked(crow0 + cx04..crow0 + cx04 + 4);
+                let cs10 = coarse_src.get_unchecked(crow0 + cx14..crow0 + cx14 + 4);
+                let cs01 = coarse_src.get_unchecked(crow1 + cx04..crow1 + cx04 + 4);
+                let cs11 = coarse_src.get_unchecked(crow1 + cx14..crow1 + cx14 + 4);
+
+                let d = dest.get_unchecked_mut(dest_idx..dest_idx + 4);
+
+                for c in 0..4 {
+                    let fine_val = (fs00[c] as u32 * fw00
+                        + fs10[c] as u32 * fw10
+                        + fs01[c] as u32 * fw01
+                        + fs11[c] as u32 * fw11)
+                        >> 16;
+                    let coarse_val = (cs00[c] as u32 * cw00
+                        + cs10[c] as u32 * cw10
+                        + cs01[c] as u32 * cw01
+                        + cs11[c] as u32 * cw11)
+                        >> 16;
+                    d[c] = ((fine_val * inv_blend_i + coarse_val * blend_i) >> 8) as u8;
+                }
+            }
+        }
     }
 }
 

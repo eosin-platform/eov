@@ -536,24 +536,46 @@ fn sample_tissue_od_from_raw(tile_slices: &[&[u8]], max_samples: usize) -> Vec<[
 /// `tile_data` provides raw RGBA byte slices from tiles for stain matrix
 /// estimation. Estimating from raw tiles (rather than the composited buffer)
 /// ensures identical results to the GPU path, which also estimates from tiles.
+#[allow(dead_code)]
 pub fn normalize_buffer(buffer: &mut [u8], method: StainNormalization, tile_data: &[&[u8]]) {
     if method == StainNormalization::None {
         return;
     }
 
+    let params = compute_cpu_stain_params(method, tile_data);
+    apply_normalization_to_buffer(buffer, &params);
+}
+
+/// Apply pre-computed stain normalization parameters to an RGBA buffer.
+/// Public so the render loop can apply cached params directly.
+pub fn apply_stain_params_to_buffer(buffer: &mut [u8], params: &StainNormParams) {
+    apply_normalization_to_buffer(buffer, params);
+}
+
+/// Compute stain normalization parameters from raw RGBA tile slices (CPU path).
+/// Separated from `normalize_buffer` so the render loop can cache the result
+/// and skip the expensive fitting when the visible tile set hasn't changed.
+pub fn compute_cpu_stain_params(
+    method: StainNormalization,
+    tile_data: &[&[u8]],
+) -> StainNormParams {
+    if method == StainNormalization::None {
+        return StainNormParams::default();
+    }
+
     let od_pixels = sample_tissue_od_from_raw(tile_data, 10000);
     if od_pixels.len() < MIN_TISSUE_PIXELS {
-        return;
+        return StainNormParams::default();
     }
 
     let stain_matrix = match method {
-        StainNormalization::None => return,
+        StainNormalization::None => return StainNormParams::default(),
         StainNormalization::Macenko => macenko_extract(&od_pixels),
         StainNormalization::Vahadane => vahadane_extract(&od_pixels, 0.1),
     };
 
     let Some(sm) = stain_matrix else {
-        return;
+        return StainNormParams::default();
     };
 
     debug!(
@@ -564,8 +586,7 @@ pub fn normalize_buffer(buffer: &mut [u8], method: StainNormalization, tile_data
         "stain matrix estimated"
     );
 
-    let params = compute_norm_params(&sm, &od_pixels);
-    apply_normalization_to_buffer(buffer, &params);
+    compute_norm_params(&sm, &od_pixels)
 }
 
 /// Apply pre-computed normalization parameters to an RGBA buffer.

@@ -350,6 +350,14 @@ pub struct FilePaneState {
     pub last_render_sharpness: f32,
     pub last_render_stain_normalization: StainNormalization,
     pub hud: HudSettings,
+    /// Reusable scratch buffer for sharpening (avoids per-frame allocation).
+    pub scratch_buffer: Vec<u8>,
+    /// Cached stain normalization parameters.
+    pub cached_stain_params: Option<crate::stain::StainNormParams>,
+    /// Tile epoch at which stain params were last computed.
+    pub stain_params_epoch: u64,
+    /// Stain normalization method for which cached params were computed.
+    pub stain_params_method: StainNormalization,
 }
 
 impl FilePaneState {
@@ -373,6 +381,10 @@ impl FilePaneState {
             last_render_sharpness: 0.0,
             last_render_stain_normalization: StainNormalization::None,
             hud: HudSettings::default(),
+            scratch_buffer: Vec::new(),
+            cached_stain_params: None,
+            stain_params_epoch: 0,
+            stain_params_method: StainNormalization::None,
         }
     }
 

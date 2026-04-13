@@ -61,41 +61,6 @@ fn apply_adjustments(buffer: &mut [u8], gamma: f32, brightness: f32, contrast: f
     }
 }
 
-/// Apply unsharp-mask sharpening to an RGBA pixel buffer in-place.
-///
-/// Uses a 3×3 Laplacian (4-connected) kernel — the standard single-pass
-/// unsharp mask widely used in digital histology image processing.
-///
-/// `sharpness` in [0, 1]: 0 = bypass, 1 = maximum sharpening.
-fn apply_sharpening(buffer: &mut [u8], width: u32, height: u32, sharpness: f32) {
-    let w = width as usize;
-    let h = height as usize;
-    if w < 3 || h < 3 {
-        return;
-    }
-    let stride = w * 4;
-    // Work on a copy to read original values while writing sharpened output.
-    let src = buffer.to_vec();
-    for y in 1..h - 1 {
-        for x in 1..w - 1 {
-            let idx = y * stride + x * 4;
-            let n = idx - stride; // (x, y-1)
-            let s = idx + stride; // (x, y+1)
-            let we = idx - 4; // (x-1, y)
-            let e = idx + 4; // (x+1, y)
-            for c in 0..3 {
-                let center = src[idx + c] as f32;
-                let neighbors =
-                    src[n + c] as f32 + src[s + c] as f32 + src[we + c] as f32 + src[e + c] as f32;
-                // Laplacian detail = 4*center - sum(neighbors)
-                let detail = center * 4.0 - neighbors;
-                let sharpened = center + sharpness * detail;
-                buffer[idx + c] = sharpened.clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
-}
-
 /// Result of trilinear level calculation
 #[derive(Debug, Clone, Copy)]
 pub struct TrilinearLevels {
@@ -204,7 +169,6 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
 }
 
 type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
-type CpuBlitFn = fn(&mut [u8], u32, u32, blitter::TileSrc, blitter::BlitRect);
 
 #[derive(Default)]
 struct PaneRenderOutcome {
@@ -757,6 +721,12 @@ fn render_pane_to_image(
         }
     };
 
+    // Detect whether the viewport is actively moving (drag, inertia, zoom
+    // animation, navigation). While moving on CPU we skip expensive
+    // post-processing (Lanczos, sharpening, stain normalization) and use
+    // fused trilinear instead, matching the browser-style fluid path.
+    let is_moving = viewport_state.is_moving() || animating;
+
     let level_count = file.wsi.level_count();
     let mut fallback_blits: Vec<(Arc<common::TileData>, blitter::BlitRect)> = Vec::new();
     for fallback_level in (0..level_count).rev() {
@@ -821,6 +791,30 @@ fn render_pane_to_image(
         }
     }
 
+    // Build a coarse-tile lookup for fused trilinear blitting.
+    // Maps (tile_x, tile_y) → Arc<TileData> for the coarse level so
+    // per-fine-tile blits can find their coarse counterpart in O(1).
+    let coarse_tile_map: HashMap<(u64, u64), Arc<common::TileData>> = cached_coarse_tiles
+        .iter()
+        .map(|(coord, data)| ((coord.x, coord.y), Arc::clone(data)))
+        .collect();
+
+    let coarse_info_opt = if use_trilinear_blend
+        && trilinear.level_fine != trilinear.level_coarse
+        && trilinear.blend > 0.01
+    {
+        file.wsi.level(trilinear.level_coarse).cloned()
+    } else {
+        None
+    };
+
+    let coarse_tile_size = if coarse_info_opt.is_some() {
+        file.tile_manager
+            .tile_size_for_level(trilinear.level_coarse) as f64
+    } else {
+        0.0
+    };
+
     let Some(_pane_state) = file.pane_state_mut(pane) else {
         return PaneRenderOutcome::default();
     };
@@ -830,152 +824,205 @@ fn render_pane_to_image(
     let buffer = pixel_buffer.make_mut_bytes();
     blitter::fast_fill_rgba(buffer, 30, 30, 30, 255);
 
-    // Helper: blit all fallback + fine tiles into a buffer with a given blit function
-    let blit_all_tiles = |buf: &mut [u8], blit_fn: CpuBlitFn| {
-        for (fallback_tile, rect) in &fallback_blits {
-            blit_fn(
-                buf,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &fallback_tile.data,
-                    width: fallback_tile.width,
-                    height: fallback_tile.height,
-                    border: fallback_tile.border,
-                },
-                *rect,
-            );
+    // While moving, always use bilinear (+ fused trilinear if applicable).
+    // When settled, use the user's chosen filtering mode.
+    let effective_filtering = if is_moving && render_backend == RenderBackend::Cpu {
+        if use_trilinear_blend {
+            FilteringMode::Trilinear
+        } else {
+            FilteringMode::Bilinear
         }
-        for (coord, tile_data) in cached_tiles.iter() {
-            let origin_x = coord.x as f64 * coord.tile_size as f64;
-            let origin_y = coord.y as f64 * coord.tile_size as f64;
-            let image_x = origin_x * level_info.downsample;
-            let image_y = origin_y * level_info.downsample;
-            let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
-            let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
-            let exact_sx = (image_x - bounds.left) * vp.zoom;
-            let exact_sy = (image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            blit_fn(
-                buf,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &tile_data.data,
-                    width: tile_data.width,
-                    height: tile_data.height,
-                    border: tile_data.border,
-                },
-                blitter::BlitRect {
-                    x: screen_x,
-                    y: screen_y,
-                    width: screen_x_end - screen_x,
-                    height: screen_y_end - screen_y,
-                    exact_x: exact_sx,
-                    exact_y: exact_sy,
-                    exact_width: exact_sx_end - exact_sx,
-                    exact_height: exact_sy_end - exact_sy,
-                },
-            );
-        }
-    };
-
-    // Helper: apply trilinear coarse-level blend into a buffer
-    let apply_trilinear_coarse = |buf: &mut [u8]| {
-        if !use_trilinear_blend || trilinear.blend <= 0.01 || cached_coarse_tiles.is_empty() {
-            return;
-        }
-        let Some(coarse_info) = file.wsi.level(trilinear.level_coarse) else {
-            return;
-        };
-        let mut coarse_buffer = vec![0u8; (render_width * render_height * 4) as usize];
-        blitter::fast_fill_rgba(&mut coarse_buffer, 30, 30, 30, 255);
-        for (coord, tile_data) in cached_coarse_tiles.iter() {
-            let origin_x = coord.x as f64 * coord.tile_size as f64;
-            let origin_y = coord.y as f64 * coord.tile_size as f64;
-            let image_x = origin_x * coarse_info.downsample;
-            let image_y = origin_y * coarse_info.downsample;
-            let image_x_end = (origin_x + tile_data.width as f64) * coarse_info.downsample;
-            let image_y_end = (origin_y + tile_data.height as f64) * coarse_info.downsample;
-            let exact_sx = (image_x - bounds.left) * vp.zoom;
-            let exact_sy = (image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            blitter::blit_tile(
-                &mut coarse_buffer,
-                render_width,
-                render_height,
-                blitter::TileSrc {
-                    data: &tile_data.data,
-                    width: tile_data.width,
-                    height: tile_data.height,
-                    border: tile_data.border,
-                },
-                blitter::BlitRect {
-                    x: screen_x,
-                    y: screen_y,
-                    width: screen_x_end - screen_x,
-                    height: screen_y_end - screen_y,
-                    exact_x: exact_sx,
-                    exact_y: exact_sy,
-                    exact_width: exact_sx_end - exact_sx,
-                    exact_height: exact_sy_end - exact_sy,
-                },
-            );
-        }
-        blitter::blend_buffers(buf, &coarse_buffer, trilinear.blend);
-    };
-
-    let is_adaptive_lanczos = filtering_mode == FilteringMode::Lanczos3;
-
-    if is_adaptive_lanczos && lanczos_weight > 0.0 && lanczos_weight < 1.0 {
-        // ADAPTIVE BLEND ZONE: render Lanczos and Trilinear, then cross-fade
-        // 1. Render Lanczos into main buffer
-        blit_all_tiles(buffer, blitter::blit_tile_lanczos3);
-
-        // 2. Render Trilinear into temp buffer (bilinear blit + coarse mip blend)
-        let mut tri_buffer = vec![0u8; (render_width * render_height * 4) as usize];
-        blitter::fast_fill_rgba(&mut tri_buffer, 30, 30, 30, 255);
-        blit_all_tiles(&mut tri_buffer, blitter::blit_tile);
-        apply_trilinear_coarse(&mut tri_buffer);
-
-        // 3. Cross-fade: buffer = lanczos_weight * lanczos + (1 - lanczos_weight) * trilinear
-        blitter::blend_buffers(buffer, &tri_buffer, 1.0 - lanczos_weight);
-    } else if is_adaptive_lanczos && lanczos_weight >= 1.0 {
-        // Pure Lanczos (high zoom)
-        blit_all_tiles(buffer, blitter::blit_tile_lanczos3);
-    } else if is_adaptive_lanczos {
-        // Pure Trilinear (very low zoom, adaptive Lanczos fully faded out)
-        blit_all_tiles(buffer, blitter::blit_tile);
-        apply_trilinear_coarse(buffer);
     } else {
-        // Non-Lanczos modes: Bilinear or explicit Trilinear
-        blit_all_tiles(buffer, blitter::blit_tile);
-        apply_trilinear_coarse(buffer);
+        filtering_mode
+    };
+
+    let is_adaptive_lanczos = effective_filtering == FilteringMode::Lanczos3;
+    let effective_lanczos_weight = if is_adaptive_lanczos {
+        lanczos_adaptive_weight(vp_zoom)
+    } else {
+        1.0
+    };
+    let effective_trilinear = effective_filtering == FilteringMode::Trilinear
+        || (is_adaptive_lanczos && effective_lanczos_weight < 1.0);
+
+    // Helper: compute the BlitRect for a fine tile
+    let fine_blit_rect = |coord: &common::TileCoord, tile_data: &common::TileData| -> blitter::BlitRect {
+        let origin_x = coord.x as f64 * coord.tile_size as f64;
+        let origin_y = coord.y as f64 * coord.tile_size as f64;
+        let image_x = origin_x * level_info.downsample;
+        let image_y = origin_y * level_info.downsample;
+        let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
+        let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
+        let exact_sx = (image_x - bounds.left) * vp.zoom;
+        let exact_sy = (image_y - bounds.top) * vp.zoom;
+        let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
+        let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
+        let screen_x = exact_sx.floor() as i32;
+        let screen_y = exact_sy.floor() as i32;
+        let screen_x_end = exact_sx_end.floor() as i32;
+        let screen_y_end = exact_sy_end.floor() as i32;
+        blitter::BlitRect {
+            x: screen_x,
+            y: screen_y,
+            width: screen_x_end - screen_x,
+            height: screen_y_end - screen_y,
+            exact_x: exact_sx,
+            exact_y: exact_sy,
+            exact_width: exact_sx_end - exact_sx,
+            exact_height: exact_sy_end - exact_sy,
+        }
+    };
+
+    // --- Blit fallback tiles (always bilinear, no trilinear) ---
+    for (fallback_tile, rect) in &fallback_blits {
+        blitter::blit_tile(
+            buffer,
+            render_width,
+            render_height,
+            blitter::TileSrc {
+                data: &fallback_tile.data,
+                width: fallback_tile.width,
+                height: fallback_tile.height,
+                border: fallback_tile.border,
+            },
+            *rect,
+        );
     }
 
-    // Post-processing: apply stain normalization if enabled
-    // Collect raw tile data for estimation (avoids contamination from
-    // composited buffer's dark background fill).
-    let tile_slices: Vec<&[u8]> = cached_tiles
-        .iter()
-        .map(|(_, td)| td.data.as_slice())
-        .chain(fallback_blits.iter().map(|(td, ..)| td.data.as_slice()))
-        .collect();
-    crate::stain::normalize_buffer(buffer, hud_stain_normalization, &tile_slices);
+    // --- Blit fine tiles with optional fused trilinear ---
+    let do_fused_trilinear = effective_trilinear
+        && coarse_info_opt.is_some()
+        && trilinear.blend > 0.01
+        && !coarse_tile_map.is_empty();
+
+    for (coord, tile_data) in cached_tiles.iter() {
+        let rect = fine_blit_rect(coord, tile_data);
+
+        // Try fused trilinear path: find the matching coarse tile and blit both in one pass
+        if do_fused_trilinear {
+            if let Some(ref coarse_info) = coarse_info_opt {
+                let fine_ds = level_info.downsample;
+                let coarse_ds = coarse_info.downsample;
+                let image_x = coord.x as f64 * coord.tile_size as f64 * fine_ds;
+                let image_y = coord.y as f64 * coord.tile_size as f64 * fine_ds;
+                let fine_image_w = tile_data.width as f64 * fine_ds;
+                let fine_image_h = tile_data.height as f64 * fine_ds;
+                let coarse_tile_x = image_x / coarse_ds;
+                let coarse_tile_y = image_y / coarse_ds;
+                let ctx = (coarse_tile_x / coarse_tile_size).floor().max(0.0) as u64;
+                let cty = (coarse_tile_y / coarse_tile_size).floor().max(0.0) as u64;
+
+                if let Some(coarse_tile) = coarse_tile_map.get(&(ctx, cty)) {
+                    let coarse_origin_x = ctx as f64 * coarse_tile_size;
+                    let coarse_origin_y = cty as f64 * coarse_tile_size;
+                    let cu_min = ((coarse_tile_x - coarse_origin_x) / coarse_tile.width as f64)
+                        .clamp(0.0, 1.0) as f32;
+                    let cv_min = ((coarse_tile_y - coarse_origin_y) / coarse_tile.height as f64)
+                        .clamp(0.0, 1.0) as f32;
+                    let cu_max = (cu_min as f64
+                        + fine_image_w / coarse_ds / coarse_tile.width as f64)
+                        .clamp(0.0, 1.0) as f32;
+                    let cv_max = (cv_min as f64
+                        + fine_image_h / coarse_ds / coarse_tile.height as f64)
+                        .clamp(0.0, 1.0) as f32;
+
+                    blitter::blit_tile_trilinear(
+                        buffer,
+                        render_width,
+                        render_height,
+                        blitter::TileSrc {
+                            data: &tile_data.data,
+                            width: tile_data.width,
+                            height: tile_data.height,
+                            border: tile_data.border,
+                        },
+                        &blitter::CoarseSrc {
+                            data: &coarse_tile.data,
+                            width: coarse_tile.width,
+                            height: coarse_tile.height,
+                            border: coarse_tile.border,
+                            uv_min: [cu_min, cv_min],
+                            uv_max: [cu_max, cv_max],
+                            blend: trilinear.blend as f32,
+                        },
+                        rect,
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // Non-trilinear path or no coarse tile found: use the selected filter
+        if is_adaptive_lanczos && effective_lanczos_weight >= 1.0 {
+            blitter::blit_tile_lanczos3(
+                buffer,
+                render_width,
+                render_height,
+                blitter::TileSrc {
+                    data: &tile_data.data,
+                    width: tile_data.width,
+                    height: tile_data.height,
+                    border: tile_data.border,
+                },
+                rect,
+            );
+        } else {
+            blitter::blit_tile(
+                buffer,
+                render_width,
+                render_height,
+                blitter::TileSrc {
+                    data: &tile_data.data,
+                    width: tile_data.width,
+                    height: tile_data.height,
+                    border: tile_data.border,
+                },
+                rect,
+            );
+        }
+    }
+
+    // Post-processing: skip expensive operations while moving for fluid panning.
+    let skip_expensive_postprocess = is_moving && render_backend == RenderBackend::Cpu;
+
+    // Post-processing: apply stain normalization if enabled (cached)
+    if !skip_expensive_postprocess && hud_stain_normalization != crate::state::StainNormalization::None {
+        // Use cached stain params if the tile epoch and method haven't changed.
+        let need_recompute = file
+            .pane_state(pane)
+            .map(|ps| {
+                ps.cached_stain_params.is_none()
+                    || ps.stain_params_epoch != loaded_tile_epoch
+                    || ps.stain_params_method != hud_stain_normalization
+            })
+            .unwrap_or(true);
+
+        if need_recompute {
+            let tile_slices: Vec<&[u8]> = cached_tiles
+                .iter()
+                .map(|(_, td)| td.data.as_slice())
+                .chain(fallback_blits.iter().map(|(td, ..)| td.data.as_slice()))
+                .collect();
+            let params =
+                crate::stain::compute_cpu_stain_params(hud_stain_normalization, &tile_slices);
+            if let Some(ps) = file.pane_state_mut(pane) {
+                ps.cached_stain_params = Some(params);
+                ps.stain_params_epoch = loaded_tile_epoch;
+                ps.stain_params_method = hud_stain_normalization;
+            }
+        }
+
+        if let Some(ps) = file.pane_state(pane) {
+            if let Some(ref params) = ps.cached_stain_params {
+                crate::stain::apply_stain_params_to_buffer(buffer, params);
+            }
+        }
+    }
 
     // Post-processing: apply sharpening (unsharp mask) if enabled
-    if hud_sharpness > 0.001 {
-        apply_sharpening(buffer, render_width, render_height, hud_sharpness);
+    // Reuse scratch buffer to avoid per-frame allocation.
+    if !skip_expensive_postprocess && hud_sharpness > 0.001 {
+        apply_sharpening_reuse(file, pane, buffer, render_width, render_height, hud_sharpness);
     }
 
     // Post-processing: apply gamma, brightness, contrast if they differ from defaults
@@ -990,6 +1037,53 @@ fn render_pane_to_image(
         image: Some(Image::from_rgba8(pixel_buffer)),
         keep_running,
         rendered: true,
+    }
+}
+
+/// Apply sharpening reusing a persistent scratch buffer stored in
+/// `FilePaneState` to avoid a full-frame allocation every frame.
+fn apply_sharpening_reuse(
+    file: &mut OpenFile,
+    pane: PaneId,
+    buffer: &mut [u8],
+    width: u32,
+    height: u32,
+    sharpness: f32,
+) {
+    let w = width as usize;
+    let h = height as usize;
+    if w < 3 || h < 3 {
+        return;
+    }
+    let needed = buffer.len();
+    // Resize scratch buffer once; subsequent frames reuse the allocation.
+    if let Some(ps) = file.pane_state_mut(pane) {
+        if ps.scratch_buffer.len() < needed {
+            ps.scratch_buffer.resize(needed, 0);
+        }
+        ps.scratch_buffer[..needed].copy_from_slice(buffer);
+    }
+    let Some(ps) = file.pane_state(pane) else {
+        return;
+    };
+    let src = &ps.scratch_buffer;
+    let stride = w * 4;
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let idx = y * stride + x * 4;
+            let n = idx - stride;
+            let s = idx + stride;
+            let we = idx - 4;
+            let e = idx + 4;
+            for c in 0..3 {
+                let center = src[idx + c] as f32;
+                let neighbors =
+                    src[n + c] as f32 + src[s + c] as f32 + src[we + c] as f32 + src[e + c] as f32;
+                let detail = center * 4.0 - neighbors;
+                let sharpened = center + sharpness * detail;
+                buffer[idx + c] = sharpened.clamp(0.0, 255.0) as u8;
+            }
+        }
     }
 }
 
