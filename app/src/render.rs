@@ -23,6 +23,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::debug;
 
+/// Conservative negative LOD bias applied only to the trilinear mip path.
+/// This offsets a slight tendency to choose overly coarse mip blends while
+/// keeping the result stable.
+pub const TRILINEAR_LOD_BIAS: f64 = -0.25;
+
 /// Adaptive Lanczos-to-Trilinear blending weight based on zoom level.
 ///
 /// At very low zoom, trilinear filtering produces better results than Lanczos.
@@ -51,26 +56,87 @@ pub struct TrilinearLevels {
     pub level_coarse: u32,
     /// Blend factor: 0.0 = use level_fine, 1.0 = use level_coarse
     pub blend: f64,
+    /// Continuous LOD before the optional trilinear-only bias is applied.
+    /// Kept for debugger inspection in quality tuning.
+    pub lod_before_bias: f64,
+    /// Continuous LOD after applying the trilinear-only bias and clamping.
+    pub lod_after_bias: f64,
+}
+
+fn trilinear_lod_bias_enabled(filtering_mode: FilteringMode) -> bool {
+    // Keep the correction restricted to the explicit Trilinear mode.
+    // Lanczos remains unbiased even when it internally falls back to
+    // trilinear blending at very low zoom.
+    filtering_mode == FilteringMode::Trilinear
+}
+
+fn single_level_trilinear(level: u32) -> TrilinearLevels {
+    let lod = level as f64;
+    TrilinearLevels {
+        level_fine: level,
+        level_coarse: level,
+        blend: 0.0,
+        lod_before_bias: lod,
+        lod_after_bias: lod,
+    }
+}
+
+fn continuous_trilinear_lod(
+    target_downsample: f64,
+    fine_downsample: f64,
+    coarse_downsample: f64,
+    level_fine: u32,
+) -> f64 {
+    let log_target = target_downsample.max(f64::MIN_POSITIVE).ln();
+    let log_fine = fine_downsample.max(f64::MIN_POSITIVE).ln();
+    let log_coarse = coarse_downsample.max(f64::MIN_POSITIVE).ln();
+
+    let blend = if (log_coarse - log_fine).abs() < 0.001 {
+        0.0
+    } else {
+        ((log_target - log_fine) / (log_coarse - log_fine)).clamp(0.0, 1.0)
+    };
+
+    level_fine as f64 + blend
+}
+
+fn finalize_trilinear_levels(
+    level_count: u32,
+    lod_before_bias: f64,
+    apply_lod_bias: bool,
+) -> TrilinearLevels {
+    let max_lod = level_count.saturating_sub(1) as f64;
+    let lod_after_bias = if apply_lod_bias {
+        (lod_before_bias + TRILINEAR_LOD_BIAS).clamp(0.0, max_lod)
+    } else {
+        lod_before_bias.clamp(0.0, max_lod)
+    };
+    let level_fine = lod_after_bias.floor() as u32;
+    let level_coarse = lod_after_bias.ceil() as u32;
+
+    TrilinearLevels {
+        level_fine,
+        level_coarse,
+        blend: lod_after_bias - level_fine as f64,
+        lod_before_bias,
+        lod_after_bias,
+    }
 }
 
 /// Calculate the two mip levels to blend for trilinear filtering
-pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> TrilinearLevels {
+pub fn calculate_trilinear_levels(
+    wsi: &WsiFile,
+    target_downsample: f64,
+    apply_lod_bias: bool,
+) -> TrilinearLevels {
     let level_count = wsi.level_count();
 
     if level_count == 0 {
-        return TrilinearLevels {
-            level_fine: 0,
-            level_coarse: 0,
-            blend: 0.0,
-        };
+        return single_level_trilinear(0);
     }
 
     if level_count == 1 {
-        return TrilinearLevels {
-            level_fine: 0,
-            level_coarse: 0,
-            blend: 0.0,
-        };
+        return single_level_trilinear(0);
     }
 
     // Find the best level (where pixel density is closest to 1:1)
@@ -79,11 +145,7 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
     let best_info = match wsi.level(best_level) {
         Some(info) => info,
         None => {
-            return TrilinearLevels {
-                level_fine: 0,
-                level_coarse: 0,
-                blend: 0.0,
-            };
+            return single_level_trilinear(0);
         }
     };
 
@@ -96,11 +158,7 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
             (best_level, best_level + 1)
         } else {
             // At coarsest level, no blending
-            return TrilinearLevels {
-                level_fine: best_level,
-                level_coarse: best_level,
-                blend: 0.0,
-            };
+            return single_level_trilinear(best_level);
         }
     } else {
         // Blend between previous finer level and best (coarse)
@@ -108,45 +166,23 @@ pub fn calculate_trilinear_levels(wsi: &WsiFile, target_downsample: f64) -> Tril
             (best_level - 1, best_level)
         } else {
             // At finest level, no blending
-            return TrilinearLevels {
-                level_fine: 0,
-                level_coarse: 0,
-                blend: 0.0,
-            };
+            return single_level_trilinear(0);
         }
     };
 
-    // Calculate blend factor using log space for perceptually linear transitions
-    let fine_info = wsi.level(level_fine);
-    let coarse_info = wsi.level(level_coarse);
-
-    let (fine_ds, coarse_ds) = match (fine_info, coarse_info) {
-        (Some(f), Some(c)) => (f.downsample, c.downsample),
+    let lod_before_bias = match (wsi.level(level_fine), wsi.level(level_coarse)) {
+        (Some(fine_info), Some(coarse_info)) => continuous_trilinear_lod(
+            target_downsample,
+            fine_info.downsample,
+            coarse_info.downsample,
+            level_fine,
+        ),
         _ => {
-            return TrilinearLevels {
-                level_fine,
-                level_coarse,
-                blend: 0.0,
-            };
+            return single_level_trilinear(level_fine);
         }
     };
 
-    // Log-space interpolation for smooth transitions
-    let log_target = target_downsample.ln();
-    let log_fine = fine_ds.ln();
-    let log_coarse = coarse_ds.ln();
-
-    let blend = if (log_coarse - log_fine).abs() < 0.001 {
-        0.0
-    } else {
-        ((log_target - log_fine) / (log_coarse - log_fine)).clamp(0.0, 1.0)
-    };
-
-    TrilinearLevels {
-        level_fine,
-        level_coarse,
-        blend,
-    }
+    finalize_trilinear_levels(level_count, lod_before_bias, apply_lod_bias)
 }
 
 type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
@@ -499,7 +535,11 @@ pub(crate) fn update_and_render(
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
         let request = {
             let file = &state.open_files[file_index];
-            let trilinear = calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
+            let trilinear = calculate_trilinear_levels(
+                &file.wsi,
+                vp.effective_downsample(),
+                trilinear_lod_bias_enabled(filtering_mode),
+            );
             let level = trilinear.level_fine;
             tile_request_signature(&file.tile_manager, vp, level, margin_tiles).map(|signature| {
                 let wanted = calculate_wanted_tiles(
@@ -657,8 +697,11 @@ fn update_and_render_cpu(
         } else {
             0
         };
-        let trilinear =
-            calculate_trilinear_levels(snapshot.tile_manager.wsi(), vp.effective_downsample());
+        let trilinear = calculate_trilinear_levels(
+            snapshot.tile_manager.wsi(),
+            vp.effective_downsample(),
+            trilinear_lod_bias_enabled(snapshot.filtering_mode),
+        );
         let wanted = calculate_wanted_tiles(
             &snapshot.tile_manager,
             trilinear.level_fine,
@@ -778,6 +821,7 @@ fn collect_cpu_frame_snapshot(
                 .is_none()
         });
 
+        let filtering_mode = state.filtering_mode;
         let Some(file) = state.open_files.iter_mut().find(|file| file.id == file_id) else {
             panes.push(None);
             continue;
@@ -860,7 +904,11 @@ fn collect_cpu_frame_snapshot(
 
         let vp = &viewport_state.viewport;
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-        let trilinear = calculate_trilinear_levels(tile_manager.wsi(), vp.effective_downsample());
+        let trilinear = calculate_trilinear_levels(
+            tile_manager.wsi(),
+            vp.effective_downsample(),
+            trilinear_lod_bias_enabled(filtering_mode),
+        );
         let request_signature =
             tile_request_signature(&tile_manager, vp, trilinear.level_fine, margin_tiles);
         if let Some(pane_state) = file.pane_state_mut(pane)
@@ -903,7 +951,7 @@ fn collect_cpu_frame_snapshot(
             cached_stain_params,
             stain_params_epoch,
             stain_params_method,
-            filtering_mode: state.filtering_mode,
+            filtering_mode,
         }));
     }
 
@@ -1050,8 +1098,11 @@ fn render_cpu_pane_from_snapshot(
         || (snapshot.last_render_width - vp_width).abs() > 1.0
         || (snapshot.last_render_height - vp_height).abs() > 1.0;
 
-    let trilinear =
-        calculate_trilinear_levels(snapshot.tile_manager.wsi(), vp.effective_downsample());
+    let trilinear = calculate_trilinear_levels(
+        snapshot.tile_manager.wsi(),
+        vp.effective_downsample(),
+        trilinear_lod_bias_enabled(snapshot.filtering_mode),
+    );
     let level = trilinear.level_fine;
     let margin_tiles = if is_moving { 1 } else { 0 };
     let level_changed = level != snapshot.last_render_level;
@@ -1512,7 +1563,11 @@ fn render_pane_to_image(
         || (last_render_width - vp_width).abs() > 1.0
         || (last_render_height - vp_height).abs() > 1.0;
 
-    let trilinear = calculate_trilinear_levels(&file.wsi, vp.effective_downsample());
+    let trilinear = calculate_trilinear_levels(
+        &file.wsi,
+        vp.effective_downsample(),
+        trilinear_lod_bias_enabled(filtering_mode),
+    );
     let level = trilinear.level_fine;
     let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
     let level_changed = level != last_render_level;
@@ -1550,6 +1605,8 @@ fn render_pane_to_image(
             width = vp_width,
             height = vp_height,
             level,
+            trilinear_lod_before_bias = trilinear.lod_before_bias,
+            trilinear_lod_after_bias = trilinear.lod_after_bias,
             cached_count,
             coarse_tiles = cached_tiles.coarse_tiles.len(),
             previous_tiles_loaded,
@@ -1632,11 +1689,7 @@ fn render_pane_to_image(
         let gpu_trilinear = if gpu_use_trilinear {
             trilinear
         } else {
-            TrilinearLevels {
-                level_fine: trilinear.level_fine,
-                level_coarse: trilinear.level_fine,
-                blend: 0.0,
-            }
+            single_level_trilinear(trilinear.level_fine)
         };
         let draws = collect_tile_draws_from_cached(
             file,
@@ -2356,4 +2409,44 @@ fn tile_draw_from_tile(
         mip_blend,
         filtering_mode,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TRILINEAR_LOD_BIAS, finalize_trilinear_levels};
+
+    #[test]
+    fn trilinear_bias_shifts_lod_toward_finer_mips() {
+        let unbiased = finalize_trilinear_levels(6, 2.5, false);
+        let biased = finalize_trilinear_levels(6, 2.5, true);
+
+        assert_eq!(unbiased.level_fine, 2);
+        assert_eq!(unbiased.level_coarse, 3);
+        assert!((unbiased.blend - 0.5).abs() < 1e-6);
+
+        assert_eq!(biased.level_fine, 2);
+        assert_eq!(biased.level_coarse, 3);
+        assert!((biased.lod_after_bias - (2.5 + TRILINEAR_LOD_BIAS)).abs() < 1e-6);
+        assert!((biased.blend - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trilinear_bias_clamps_at_finest_level() {
+        let biased = finalize_trilinear_levels(6, 0.1, true);
+
+        assert_eq!(biased.level_fine, 0);
+        assert_eq!(biased.level_coarse, 0);
+        assert_eq!(biased.blend, 0.0);
+        assert_eq!(biased.lod_after_bias, 0.0);
+    }
+
+    #[test]
+    fn trilinear_bias_clamps_at_coarsest_level() {
+        let biased = finalize_trilinear_levels(6, 5.5, true);
+
+        assert_eq!(biased.level_fine, 5);
+        assert_eq!(biased.level_coarse, 5);
+        assert_eq!(biased.blend, 0.0);
+        assert_eq!(biased.lod_after_bias, 5.0);
+    }
 }
