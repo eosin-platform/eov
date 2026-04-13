@@ -419,7 +419,7 @@ export component HudSettingsPanel inherits Rectangle {
             h-slider-area := Rectangle {
                 property <float> normalized: (root.deconv-hematoxylin-intensity - 0.0) / 1.0;
                 property <length> track-left: 24px;
-                property <length> track-right: 72px;
+                property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
 
                 x: 0px;
@@ -481,37 +481,13 @@ export component HudSettingsPanel inherits Rectangle {
                 }
             }
 
-            // Visibility toggle (eye icon)
-            Rectangle {
-                x: parent.width - 44px;
-                y: (parent.height - 20px) / 2;
-                width: 20px;
-                height: 20px;
-                border-radius: 3px;
-                background: h-vis-touch.has-hover ? #ffffff15 : transparent;
-
-                h-vis-touch := TouchArea {
-                    clicked => {
-                        root.deconv-h-visibility-toggled();
-                    }
-                }
-
-                Text {
-                    text: root.deconv-hematoxylin-visible ? "👁" : "✕";
-                    color: root.deconv-hematoxylin-visible ? #e0e0e0 : #666666;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-
             // View/isolate button
             Rectangle {
-                x: parent.width - 22px;
-                y: (parent.height - 20px) / 2;
-                width: 20px;
-                height: 20px;
-                border-radius: 10px;
+                x: parent.width - 20px;
+                y: (parent.height - 16px) / 2;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
                 background: root.deconv-isolated-channel == IsolatedChannel.hematoxylin ? #6a5acd : h-view-touch.has-hover ? #ffffff15 : transparent;
                 border-width: 1px;
                 border-color: root.deconv-isolated-channel == IsolatedChannel.hematoxylin ? #6a5acd : #666666;
@@ -543,7 +519,7 @@ export component HudSettingsPanel inherits Rectangle {
             e-slider-area := Rectangle {
                 property <float> normalized: (root.deconv-eosin-intensity - 0.0) / 1.0;
                 property <length> track-left: 24px;
-                property <length> track-right: 72px;
+                property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
 
                 x: 0px;
@@ -605,37 +581,13 @@ export component HudSettingsPanel inherits Rectangle {
                 }
             }
 
-            // Visibility toggle (eye icon)
-            Rectangle {
-                x: parent.width - 44px;
-                y: (parent.height - 20px) / 2;
-                width: 20px;
-                height: 20px;
-                border-radius: 3px;
-                background: e-vis-touch.has-hover ? #ffffff15 : transparent;
-
-                e-vis-touch := TouchArea {
-                    clicked => {
-                        root.deconv-e-visibility-toggled();
-                    }
-                }
-
-                Text {
-                    text: root.deconv-eosin-visible ? "👁" : "✕";
-                    color: root.deconv-eosin-visible ? #e0e0e0 : #666666;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-
             // View/isolate button
             Rectangle {
-                x: parent.width - 22px;
-                y: (parent.height - 20px) / 2;
-                width: 20px;
-                height: 20px;
-                border-radius: 10px;
+                x: parent.width - 20px;
+                y: (parent.height - 16px) / 2;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
                 background: root.deconv-isolated-channel == IsolatedChannel.eosin ? #e05070 : e-view-touch.has-hover ? #ffffff15 : transparent;
                 border-width: 1px;
                 border-color: root.deconv-isolated-channel == IsolatedChannel.eosin ? #e05070 : #666666;

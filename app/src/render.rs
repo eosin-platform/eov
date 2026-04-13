@@ -1319,7 +1319,7 @@ fn render_cpu_pane_from_snapshot(
         && let Some(pool) = crate::render_pool::global()
     {
         // Build color deconvolution params from HUD state.
-        let deconv_params = if !is_moving && snapshot.hud_deconv_isolated != crate::state::IsolatedChannel::None
+        let deconv_params = if snapshot.hud_deconv_isolated != crate::state::IsolatedChannel::None
             || !snapshot.hud_deconv_h_visible
             || !snapshot.hud_deconv_e_visible
             || (snapshot.hud_deconv_h_intensity - 1.0).abs() > 0.001
@@ -1356,7 +1356,7 @@ fn render_cpu_pane_from_snapshot(
             fine_blits: fine_commands,
             postprocess: CpuRenderPostProcess {
                 stain_params: if is_moving { None } else { stain_params },
-                deconv_params: if is_moving { None } else { deconv_params },
+                deconv_params,
                 sharpness: if is_moving {
                     0.0
                 } else {
@@ -1974,11 +1974,11 @@ fn render_pane_to_image(
         };
 
         // Build color deconvolution params for the CPU fallback path.
-        let deconv_params = if !is_moving && (hud_deconv_isolated != crate::state::IsolatedChannel::None
+        let deconv_params = if hud_deconv_isolated != crate::state::IsolatedChannel::None
             || !hud_deconv_h_visible
             || !hud_deconv_e_visible
             || (hud_deconv_h_intensity - 1.0).abs() > 0.001
-            || (hud_deconv_e_intensity - 1.0).abs() > 0.001)
+            || (hud_deconv_e_intensity - 1.0).abs() > 0.001
         {
             let isolated = match hud_deconv_isolated {
                 crate::state::IsolatedChannel::None => 0u8,
@@ -2011,7 +2011,7 @@ fn render_pane_to_image(
             fine_blits: fine_commands,
             postprocess: CpuRenderPostProcess {
                 stain_params: if is_moving { None } else { stain_params },
-                deconv_params: if is_moving { None } else { deconv_params },
+                deconv_params,
                 sharpness: if is_moving { 0.0 } else { hud_sharpness },
                 gamma: hud_gamma,
                 brightness: hud_brightness,
