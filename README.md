@@ -22,7 +22,7 @@ The name `eov` has no canonical expansion.
 
 ## Installation
 
-Windows, MacOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Releases](https://github.com/eosin-platform/eov/releases) page.
+Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Releases](https://github.com/eosin-platform/eov/releases) page.
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
 
@@ -43,7 +43,7 @@ sudo mv eov-v0.2.8-linux-x86_64.AppImage /usr/local/bin/eov
 eov
 ```
 
-### MacOS
+### macOS
 The `.app` file is available via the Releases page. Download and open the `.app` file to run it.
 
 For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle.
