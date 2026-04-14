@@ -21,6 +21,7 @@ component ExportSlider inherits Rectangle {
     in property <float> value: 0.0;
     in property <float> min-value: 0.0;
     in property <float> max-value: 1.0;
+    in property <float> default-value: 0.0;
     in property <string> display-text;
     in property <string> value-suffix: "";
     in property <float> display-divisor: 1.0;
@@ -72,6 +73,11 @@ component ExportSlider inherits Rectangle {
         y: 0px;
         width: root.track-width + 12px;
         height: root.height;
+
+        double-clicked => {
+            root.changed(root.default-value);
+            root.released();
+        }
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
@@ -1077,6 +1083,7 @@ export component ExportDialog inherits Rectangle {
                                 value: root.settings.dpi;
                                 min-value: 72;
                                 max-value: 600;
+                                default-value: 150;
                                 display-text: Math.round(root.settings.dpi) + "";
                                 changed(v) => {
                                     root.settings.dpi = Math.round(v);
@@ -1209,6 +1216,7 @@ export component ExportDialog inherits Rectangle {
                             value: root.settings.gamma;
                             min-value: 0.2;
                             max-value: 3.0;
+                            default-value: 1.0;
                             display-text: Math.round(root.settings.gamma * 100) / 100 + "";
                             changed(v) => {
                                 root.settings.gamma = v;
@@ -1245,6 +1253,7 @@ export component ExportDialog inherits Rectangle {
                             value: root.settings.contrast;
                             min-value: 0.2;
                             max-value: 3.0;
+                            default-value: 1.0;
                             display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
                             changed(v) => {
                                 root.settings.contrast = v;
@@ -1329,6 +1338,7 @@ export component ExportDialog inherits Rectangle {
                             value: root.settings.deconv-hematoxylin-intensity;
                             min-value: 0.0;
                             max-value: 3.0;
+                            default-value: 1.0;
                             display-text: Math.round(root.settings.deconv-hematoxylin-intensity * 100) / 100 + "x";
                             changed(v) => {
                                 root.settings.deconv-hematoxylin-intensity = v;
@@ -1362,6 +1372,7 @@ export component ExportDialog inherits Rectangle {
                             value: root.settings.deconv-eosin-intensity;
                             min-value: 0.0;
                             max-value: 3.0;
+                            default-value: 1.0;
                             display-text: Math.round(root.settings.deconv-eosin-intensity * 100) / 100 + "x";
                             changed(v) => {
                                 root.settings.deconv-eosin-intensity = v;
@@ -1471,6 +1482,7 @@ export component ExportDialog inherits Rectangle {
                                 value: root.settings.measurement-thickness;
                                 min-value: 0.5;
                                 max-value: 10.0;
+                                default-value: 2.0;
                                 display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
                                 changed(v) => {
                                     root.settings.measurement-thickness = v;
@@ -1521,6 +1533,7 @@ export component ExportDialog inherits Rectangle {
                                 value: root.settings.measurement-font-size;
                                 min-value: 6;
                                 max-value: 32;
+                                default-value: 12;
                                 display-text: Math.round(root.settings.measurement-font-size) + "pt";
                                 changed(v) => {
                                     root.settings.measurement-font-size = v;
@@ -1593,6 +1606,7 @@ export component ExportDialog inherits Rectangle {
                                 value: root.settings.roi-thickness;
                                 min-value: 0.5;
                                 max-value: 10.0;
+                                default-value: 2.0;
                                 display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
                                 changed(v) => {
                                     root.settings.roi-thickness = v;
@@ -1717,6 +1731,7 @@ export component ExportDialog inherits Rectangle {
                                 value: root.settings.jpeg-quality;
                                 min-value: 1;
                                 max-value: 100;
+                                default-value: 85;
                                 display-text: root.settings.jpeg-quality + "%";
                                 changed(v) => {
                                     root.settings.jpeg-quality = Math.round(v);

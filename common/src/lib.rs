@@ -5,6 +5,7 @@
 
 pub mod blitter;
 pub mod cache;
+pub mod dataset;
 pub mod error;
 pub mod export;
 pub mod formatting;

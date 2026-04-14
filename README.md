@@ -189,6 +189,56 @@ Notable options:
 - `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
 
+## Dataset Patch Extraction
+
+eov includes a CLI command for extracting fixed-grid image patches from whole-slide images, useful for building ML datasets.
+
+```bash
+eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--metadata csv|json]
+```
+
+The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
+
+### Examples
+
+```bash
+# Single slide
+eov dataset patches slide.svs --out ds/ --tile-size 512 --stride 512
+
+# Multiple slides
+eov dataset patches slide1.svs slide2.svs slide3.svs --out ds/ --tile-size 512 --stride 512
+
+# Directory of slides
+eov dataset patches path/to/slides/ --out ds/ --tile-size 512 --stride 512
+
+# With CSV metadata
+eov dataset patches slide.svs --out ds/ --tile-size 512 --stride 512 --metadata csv
+
+# With JSON metadata
+eov dataset patches path/to/slides/ --out ds/ --tile-size 512 --stride 512 --metadata json
+```
+
+### Output Layout
+
+```text
+ds/
+  slides/
+    <slide-stem>/
+      <slide-stem>_x000000_y000000_s512.png
+      <slide-stem>_x000512_y000000_s512.png
+      ...
+  metadata.csv   # if --metadata csv
+  metadata.json  # if --metadata json
+```
+
+Tile filenames encode the origin coordinates and tile size with zero-padded values for lexical sorting. Tiles from different slides are placed in separate subdirectories so filenames cannot collide.
+
+### Metadata
+
+When `--metadata csv` or `--metadata json` is provided, a single metadata file is written at the dataset root. Each record includes the slide path, slide stem, tile path, X/Y origin, tile size, slide dimensions, pyramid level (always 0), and microns-per-pixel when available from slide properties. No metadata file is written unless `--metadata` is explicitly provided.
+
+This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
+
 ## Configuration And Persistence
 
 eov currently persists two kinds of state:

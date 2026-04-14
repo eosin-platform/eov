@@ -6,6 +6,7 @@ use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use common::{
     FilteringMode, RenderBackend, WsiFile,
     cache::{DEFAULT_CACHE_SIZE_BYTES, DEFAULT_MAX_TILES},
+    dataset::{self, DatasetPatchesConfig, MetadataFormat},
     format_optional_decimal,
 };
 use std::path::{Path, PathBuf};
@@ -82,6 +83,71 @@ enum RecentCommand {
     List,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliMetadataFormat {
+    Csv,
+    Json,
+}
+
+impl CliMetadataFormat {
+    fn to_common(self) -> MetadataFormat {
+        match self {
+            Self::Csv => MetadataFormat::Csv,
+            Self::Json => MetadataFormat::Json,
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum DatasetCommand {
+    /// Extract fixed-grid image patches from whole-slide images.
+    ///
+    /// Reads one or more slide files (or directories of slide files) and
+    /// writes a deterministic grid of tile images to the output directory.
+    /// Only full tiles are emitted; partial edge tiles that would extend
+    /// beyond the slide bounds are skipped.
+    ///
+    /// Supported slide formats: .svs, .tif, .tiff, .ndpi, .vms, .vmu,
+    /// .scn, .mrxs, .svslide, .bif, .czi, .dcm
+    ///
+    /// Examples:
+    ///   eov dataset patches slide.svs --out ds/ --tile-size 512 --stride 512
+    ///   eov dataset patches slide1.svs slide2.svs --out ds/ --tile-size 512 --stride 512 --metadata csv
+    ///   eov dataset patches path/to/slides/ --out ds/ --tile-size 512 --stride 512 --metadata json
+    #[command(after_help = "OUTPUT LAYOUT:\n  \
+    ds/\n    \
+      slides/\n        \
+        <slide-stem>/\n          \
+        <slide-stem>_x000000_y000000_s512.png\n          \
+        <slide-stem>_x000512_y000000_s512.png\n          \
+        ...\n    \
+      metadata.csv   (if --metadata csv)\n    \
+      metadata.json  (if --metadata json)")]
+    Patches {
+        /// One or more slide files or directories containing slides.
+        /// Directories are searched recursively for supported slide formats.
+        #[arg(required = true, num_args = 1..)]
+        inputs: Vec<PathBuf>,
+
+        /// Output directory for extracted tiles and metadata.
+        #[arg(long, required = true)]
+        out: PathBuf,
+
+        /// Tile width and height in pixels (tiles are square).
+        #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
+        tile_size: u32,
+
+        /// Step size between tile origins in pixels.
+        #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
+        stride: u32,
+
+        /// Emit per-tile metadata in the given format.
+        /// If omitted, no metadata file is written.
+        #[arg(long, value_enum)]
+        metadata: Option<CliMetadataFormat>,
+    },
+}
+
 #[derive(Debug, Subcommand)]
 enum CliCommand {
     Probe {
@@ -92,6 +158,11 @@ enum CliCommand {
         command: RecentCommand,
     },
     ConfigPath,
+    /// Dataset generation utilities for ML workflows.
+    Dataset {
+        #[command(subcommand)]
+        command: DatasetCommand,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -183,6 +254,7 @@ enum CommandAction {
     Probe(PathBuf),
     RecentList,
     ConfigPath,
+    DatasetPatches(DatasetPatchesConfig),
 }
 
 pub(crate) struct PaneSpec {
@@ -268,6 +340,21 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             command: RecentCommand::List,
         }) => CommandAction::RecentList,
         Some(CliCommand::ConfigPath) => CommandAction::ConfigPath,
+        Some(CliCommand::Dataset { command }) => match command {
+            DatasetCommand::Patches {
+                inputs,
+                out,
+                tile_size,
+                stride,
+                metadata,
+            } => CommandAction::DatasetPatches(DatasetPatchesConfig {
+                inputs,
+                output_dir: out,
+                tile_size,
+                stride,
+                metadata_format: metadata.map(|m| m.to_common()),
+            }),
+        },
         None => CommandAction::LaunchUi,
     };
 
@@ -323,7 +410,73 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             println!("{}", config::resolve_config_path()?.display());
             Ok(true)
         }
+        CommandAction::DatasetPatches(config) => {
+            run_dataset_patches_cli(&config)?;
+            Ok(true)
+        }
     }
+}
+
+fn run_dataset_patches_cli(config: &DatasetPatchesConfig) -> Result<()> {
+    let report = dataset::run_dataset_patches(config)?;
+
+    // Print input-level errors.
+    for (path, err) in &report.input_errors {
+        eprintln!("warning: {}: {}", path.display(), err);
+    }
+
+    // Print per-slide results.
+    for slide in &report.slides {
+        match &slide.skipped {
+            Some(dataset::SlideSkipReason::OpenError(msg)) => {
+                eprintln!("warning: skipped {}: {}", slide.path.display(), msg);
+            }
+            Some(dataset::SlideSkipReason::TooSmall { width, height }) => {
+                eprintln!(
+                    "warning: skipped {} ({}×{} is smaller than tile size)",
+                    slide.path.display(),
+                    width,
+                    height,
+                );
+            }
+            None => {
+                println!(
+                    "{}: {} tile(s) written",
+                    slide.path.display(),
+                    slide.tiles_written,
+                );
+            }
+        }
+    }
+
+    // Summary.
+    println!();
+    println!(
+        "Done: {} slide(s) processed, {} skipped, {} tile(s) written",
+        report.processed_slides, report.skipped_slides, report.total_tiles,
+    );
+    if let Some(meta) = &report.metadata_path {
+        println!("Metadata: {}", meta.display());
+    }
+
+    // Non-zero exit if any slides were skipped due to errors.
+    if report.slides.iter().any(|s| {
+        matches!(
+            s.skipped,
+            Some(dataset::SlideSkipReason::OpenError(_))
+        )
+    }) {
+        bail!(
+            "{} slide(s) could not be opened",
+            report
+                .slides
+                .iter()
+                .filter(|s| matches!(s.skipped, Some(dataset::SlideSkipReason::OpenError(_))))
+                .count()
+        );
+    }
+
+    Ok(())
 }
 
 fn validate_input_file(path: &Path) -> Result<()> {

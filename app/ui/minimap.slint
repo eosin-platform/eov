@@ -132,6 +132,10 @@ export component ZoomSlider inherits Rectangle {
         width: 100%;
         height: root.track-height;
 
+        double-clicked => {
+            root.value-changed(0.5);
+        }
+
         pointer-event(e) => {
             if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
                 let normalized = 1 - max(0, min(1, self.mouse-y / max(root.track-height, 1px)));
