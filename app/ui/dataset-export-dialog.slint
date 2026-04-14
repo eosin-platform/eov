@@ -1,0 +1,524 @@
+// EOV WSI Viewer - Dataset Export Dialog
+
+import { Theme } from "theme.slint";
+import { DatasetExportSettings, DatasetExportProgress } from "types.slint";
+
+// ---------------------------------------------------------------------------
+// Dataset Export Configuration Dialog
+// ---------------------------------------------------------------------------
+
+export component DatasetExportDialog inherits Rectangle {
+    in property <bool> visible-state: false;
+    in-out property <DatasetExportSettings> settings;
+    in property <length> toolbar-height: 40px;
+    callback export-requested();
+    callback cancel-requested();
+    callback add-input-requested();
+    callback remove-input-requested(int);
+    callback change-output-dir-requested();
+    callback settings-changed(DatasetExportSettings);
+
+    in-out property <int> selected-input-index: -1;
+
+    property <length> dialog-width: 520px;
+    property <length> dialog-height: 560px;
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000088;
+
+    TouchArea {
+        clicked => {
+            root.cancel-requested();
+        }
+    }
+
+    Rectangle {
+        x: (parent.width - root.dialog-width) / 2;
+        y: (parent.height - root.dialog-height) / 2;
+        width: root.dialog-width;
+        height: root.dialog-height;
+        background: Theme.surface;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+
+            // Title
+            Text {
+                text: "Export Dataset";
+                color: Theme.text-primary;
+                font-size: 16px;
+                font-weight: 700;
+                horizontal-alignment: left;
+            }
+
+            // --- Inputs Section ---
+            Text {
+                text: "Inputs";
+                color: Theme.text-primary;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 180px;
+                background: #0a0c10;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                Flickable {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    viewport-height: input-list-layout.preferred-height;
+
+                    input-list-layout := VerticalLayout {
+                        padding: 2px;
+                        spacing: 0px;
+
+                        for item[idx] in root.settings.inputs: Rectangle {
+                            height: 22px;
+                            background: idx == root.selected-input-index ? #4da3d940 : item-touch.has-hover ? #ffffff10 : transparent;
+                            border-radius: 2px;
+
+                            item-touch := TouchArea {
+                                clicked => {
+                                    root.selected-input-index = idx;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                Text {
+                                    text: item;
+                                    color: idx == root.selected-input-index ? white : #cccccc;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Rectangle {
+                    width: 28px;
+                    height: 24px;
+                    border-radius: 3px;
+                    background: add-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    add-touch := TouchArea {
+                        clicked => {
+                            root.add-input-requested();
+                        }
+                    }
+
+                    Text {
+                        text: "+";
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    width: 28px;
+                    height: 24px;
+                    border-radius: 3px;
+                    background: root.selected-input-index >= 0 ? (remove-touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
+                    border-width: 1px;
+                    border-color: root.selected-input-index >= 0 ? Theme.border : #ffffff15;
+
+                    remove-touch := TouchArea {
+                        enabled: root.selected-input-index >= 0;
+                        clicked => {
+                            root.remove-input-requested(root.selected-input-index);
+                            root.selected-input-index = -1;
+                        }
+                    }
+
+                    Text {
+                        text: "−";
+                        color: root.selected-input-index >= 0 ? Theme.text-primary : Theme.text-secondary;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // --- Output Section ---
+            Text {
+                text: "Output";
+                color: Theme.text-primary;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 28px;
+                    background: #0a0c10;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: root.settings.output-dir;
+                            color: #cccccc;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 70px;
+                    height: 28px;
+                    border-radius: 4px;
+                    background: change-dir-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    change-dir-touch := TouchArea {
+                        clicked => {
+                            root.change-output-dir-requested();
+                        }
+                    }
+
+                    Text {
+                        text: "Change";
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // --- Tile Size / Stride / Threads ---
+            HorizontalLayout {
+                spacing: 12px;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: "Tile Size";
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                    }
+
+                    Rectangle {
+                        height: 28px;
+                        background: #0a0c10;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: tile-size-input.has-focus ? #4da3d9 : Theme.border;
+
+                        tile-size-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            color: white;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            input-type: InputType.number;
+                            text: root.settings.tile-size;
+
+                            accepted => {
+                                root.settings.tile-size = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+
+                            edited => {
+                                root.settings.tile-size = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: "Stride";
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                    }
+
+                    Rectangle {
+                        height: 28px;
+                        background: #0a0c10;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: stride-input.has-focus ? #4da3d9 : Theme.border;
+
+                        stride-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            color: white;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            input-type: InputType.number;
+                            text: root.settings.stride;
+
+                            accepted => {
+                                root.settings.stride = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+
+                            edited => {
+                                root.settings.stride = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: "Threads";
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                    }
+
+                    Rectangle {
+                        height: 28px;
+                        background: #0a0c10;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: threads-input.has-focus ? #4da3d9 : Theme.border;
+
+                        threads-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            color: white;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            input-type: InputType.number;
+                            text: root.settings.threads;
+
+                            accepted => {
+                                root.settings.threads = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+
+                            edited => {
+                                root.settings.threads = max(1, self.text.to-float());
+                                root.settings-changed(root.settings);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Spacer
+            Rectangle {
+                vertical-stretch: 1;
+            }
+
+            // --- Action Buttons ---
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                Rectangle {
+                    width: 72px;
+                    height: 30px;
+                    border-radius: 4px;
+                    background: cancel-btn-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    cancel-btn-touch := TouchArea {
+                        clicked => {
+                            root.cancel-requested();
+                        }
+                    }
+
+                    Text {
+                        text: "Cancel";
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    width: 80px;
+                    height: 30px;
+                    border-radius: 4px;
+                    background: confirm-btn-touch.has-hover ? #1177bb : Theme.accent;
+
+                    confirm-btn-touch := TouchArea {
+                        clicked => {
+                            root.export-requested();
+                        }
+                    }
+
+                    Text {
+                        text: "Confirm";
+                        color: white;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dataset Export Progress Dialog ("Exporting...")
+// ---------------------------------------------------------------------------
+
+export component DatasetExportProgressDialog inherits Rectangle {
+    in property <DatasetExportProgress> progress;
+    callback cancel-requested();
+
+    property <string> slide-text: progress.total-slides > 0 ? "File " + progress.current-slide + "/" + progress.total-slides : "";
+    property <string> tiles-text: progress.tiles-exported + " tiles exported";
+    property <float> fraction: progress.total-tiles-expected > 0 ? progress.tiles-exported / progress.total-tiles-expected : 0;
+    property <string> eta-text: progress.estimated-remaining-secs < 0 ? "Estimating..." :
+        progress.estimated-remaining-secs >= 60 ?
+            Math.floor(progress.estimated-remaining-secs / 60) + "m" + Math.round(Math.mod(progress.estimated-remaining-secs, 60)) + "s remaining" :
+            Math.round(progress.estimated-remaining-secs) + "s remaining";
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000088;
+
+    TouchArea { }
+
+    Rectangle {
+        x: (parent.width - 420px) / 2;
+        y: (parent.height - 220px) / 2;
+        width: 420px;
+        height: 220px;
+        background: Theme.surface;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 14px;
+
+            Text {
+                text: "Exporting...";
+                color: Theme.text-primary;
+                font-size: 16px;
+                font-weight: 700;
+                horizontal-alignment: left;
+            }
+
+            // Progress bar
+            Rectangle {
+                height: 6px;
+                background: #ffffff15;
+                border-radius: 3px;
+
+                Rectangle {
+                    width: max(0px, min(parent.width, parent.width * root.fraction));
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: #4da3d9;
+                    animate width { duration: 200ms; }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+
+                Text {
+                    text: root.slide-text;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.tiles-text;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+
+            Text {
+                text: root.eta-text;
+                color: Theme.text-secondary;
+                font-size: 11px;
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+
+                Rectangle {
+                    width: 72px;
+                    height: 30px;
+                    border-radius: 4px;
+                    background: progress-cancel-touch.has-hover ? #e81123 : Theme.surface;
+                    border-width: 1px;
+                    border-color: progress-cancel-touch.has-hover ? #e81123 : Theme.border;
+
+                    progress-cancel-touch := TouchArea {
+                        clicked => {
+                            root.cancel-requested();
+                        }
+                    }
+
+                    Text {
+                        text: "Cancel";
+                        color: progress-cancel-touch.has-hover ? white : Theme.text-primary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

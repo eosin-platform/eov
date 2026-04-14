@@ -15,4 +15,7 @@ pub use config::{DatasetPatchesConfig, MetadataFormat};
 pub use discovery::{expand_inputs, is_supported_slide_extension, SUPPORTED_SLIDE_EXTENSIONS};
 pub use grid::generate_patch_coords;
 pub use metadata::TileRecord;
-pub use pipeline::{run_dataset_patches, DatasetPatchesReport, SlideReport, SlideSkipReason};
+pub use pipeline::{
+    run_dataset_patches, run_dataset_patches_with_progress, DatasetPatchesProgress,
+    DatasetPatchesReport, SlideReport, SlideSkipReason,
+};

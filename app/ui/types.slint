@@ -221,3 +221,20 @@ export struct ExportPreviewInfo {
     viewport-width: float,
     viewport-height: float,
 }
+
+export struct DatasetExportSettings {
+    inputs: [string],
+    output-dir: string,
+    tile-size: int,
+    stride: int,
+    threads: int,
+}
+
+export struct DatasetExportProgress {
+    current-slide: int,
+    total-slides: int,
+    tiles-exported: int,
+    total-tiles-expected: int,
+    elapsed-secs: float,
+    estimated-remaining-secs: float,
+}

@@ -192,7 +192,7 @@ Notable options:
 
 ## Dataset Patch Extraction
 
-eov includes a CLI command for extracting fixed-grid image patches from whole-slide images, useful for building ML datasets.
+eov includes a functionality for extracting fixed-grid image patches from whole-slide images, useful for building ML datasets. This feature can be accessed via the "Export Dataset" action in the toolbar (icon <img src="app/ui/icons/dataset.svg" width="16">) or via CLI:
 
 ```bash
 eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--metadata csv|json]

@@ -3,6 +3,8 @@
 import { Theme } from "theme.slint";
 import {
     ContextMenuItem,
+    DatasetExportProgress,
+    DatasetExportSettings,
     ExportPreviewInfo,
     ExportSettings,
     FilteringMode,
@@ -20,6 +22,7 @@ import {
     ViewportInfo,
 } from "types.slint";
 import { ContextMenu } from "tab-controls.slint";
+import { DatasetExportDialog, DatasetExportProgressDialog } from "dataset-export-dialog.slint";
 import { ExportDialog } from "export-dialog.slint";
 import { HomeScreen } from "home-screen.slint";
 import { SplitPaneContainer } from "panes.slint";
@@ -102,6 +105,20 @@ export component AppWindow inherits Window {
     callback export-dialog-cancel-requested();
     callback export-dialog-reset-requested();
     callback export-dialog-request-preview();
+
+    // Dataset export dialog
+    in-out property <bool> dataset-export-dialog-visible: false;
+    in-out property <DatasetExportSettings> dataset-export-settings;
+    in-out property <bool> dataset-export-progress-visible: false;
+    in-out property <DatasetExportProgress> dataset-export-progress;
+    callback dataset-export-requested();
+    callback dataset-export-open-dialog();
+    callback dataset-export-cancel-requested();
+    callback dataset-export-add-input();
+    callback dataset-export-remove-input(int);
+    callback dataset-export-change-output-dir();
+    callback dataset-export-cancel-progress();
+    callback dataset-export-settings-changed(DatasetExportSettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
     in-out property <ROIRect> primary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
@@ -275,6 +292,9 @@ export component AppWindow inherits Window {
             }
             filtering-mode-selected(mode) => {
                 root.filtering-mode-selected(mode);
+            }
+            dataset-export-requested => {
+                root.dataset-export-open-dialog();
             }
             window-minimize => {
                 root.window-minimize();
@@ -943,6 +963,40 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Dataset export configuration dialog
+    if root.dataset-export-dialog-visible: DatasetExportDialog {
+        visible-state: root.dataset-export-dialog-visible;
+        settings <=> root.dataset-export-settings;
+        toolbar-height: root.toolbar-height;
+        export-requested => {
+            root.dataset-export-requested();
+        }
+        cancel-requested => {
+            root.dataset-export-dialog-visible = false;
+            root.dataset-export-cancel-requested();
+        }
+        add-input-requested => {
+            root.dataset-export-add-input();
+        }
+        remove-input-requested(idx) => {
+            root.dataset-export-remove-input(idx);
+        }
+        change-output-dir-requested => {
+            root.dataset-export-change-output-dir();
+        }
+        settings-changed(s) => {
+            root.dataset-export-settings-changed(s);
+        }
+    }
+
+    // Dataset export progress dialog
+    if root.dataset-export-progress-visible: DatasetExportProgressDialog {
+        progress: root.dataset-export-progress;
+        cancel-requested => {
+            root.dataset-export-cancel-progress();
+        }
+    }
+
     if root.dragging-tab-id != -1: Rectangle {
         x: root.drag-abs-x - 70px;
         y: root.drag-abs-y - 18px;
@@ -969,6 +1023,15 @@ export component AppWindow inherits Window {
         height: 0px;
 
         key-pressed(e) => {
+            if e.text == Key.Escape && root.dataset-export-progress-visible {
+                root.dataset-export-cancel-progress();
+                accept
+            }
+            if e.text == Key.Escape && root.dataset-export-dialog-visible {
+                root.dataset-export-dialog-visible = false;
+                root.dataset-export-cancel-requested();
+                accept
+            }
             if e.text == Key.Escape && root.export-dialog-visible {
                 root.export-dialog-visible = false;
                 root.export-dialog-cancel-requested();

@@ -1,7 +1,8 @@
 use crate::config;
 use crate::state::{self, AppState, HudSettings, IsolatedChannel, PaneId};
 use crate::{
-    AppWindow, ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
+    AppWindow, DatasetExportProgress, DatasetExportSettings,
+    ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
     ExportPreviewInfo as SlintExportPreviewInfo, ExportSettings as SlintExportSettings,
     FilteringMode as SlintFilteringMode, IsolatedChannel as SlintIsolatedChannel,
     MeasurementUnit as SlintMeasurementUnit, RenderMode,
@@ -16,7 +17,7 @@ use common::viewport::ZOOM_FACTOR;
 use common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
 use parking_lot::RwLock;
 use rfd::FileDialog;
-use slint::{ComponentHandle, SharedString, Timer, VecModel};
+use slint::{ComponentHandle, Model, SharedString, Timer, VecModel};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -2545,6 +2546,317 @@ pub fn setup_callbacks(
                 let _ = ui.hide();
                 let _ = slint::quit_event_loop();
             }
+        });
+    }
+
+    // -- Dataset export dialog callbacks --
+    let dataset_cancel_flag: Rc<RefCell<Option<Arc<std::sync::atomic::AtomicBool>>>> =
+        Rc::new(RefCell::new(None));
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_open_dialog(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let state = state_handle.read();
+            let inputs: Vec<slint::SharedString> = state
+                .open_files
+                .iter()
+                .map(|f| slint::SharedString::from(f.path.to_string_lossy().as_ref()))
+                .collect();
+            let threads = std::thread::available_parallelism()
+                .map(|n| n.get() as i32)
+                .unwrap_or(4);
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            let default_output = format!("{home}/Documents/EOV/Export");
+            let settings = DatasetExportSettings {
+                inputs: slint::ModelRc::from(Rc::new(slint::VecModel::from(inputs))),
+                output_dir: SharedString::from(default_output),
+                tile_size: 512,
+                stride: 512,
+                threads,
+            };
+            ui.set_dataset_export_settings(settings);
+            ui.set_dataset_export_dialog_visible(true);
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_add_input(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let dialog = rfd::FileDialog::new()
+                .add_filter(
+                    "WSI Files",
+                    &[
+                        ".svs", ".tif", ".dcm", ".ndpi", ".vms", ".vmu", ".scn", ".mrxs", ".tiff",
+                        ".svslide", ".bif", ".czi",
+                    ],
+                )
+                .add_filter("All Files", &["*"]);
+
+            if let Some(paths) = dialog.pick_files() {
+                let mut settings = ui.get_dataset_export_settings();
+                let model = settings
+                    .inputs
+                    .as_any()
+                    .downcast_ref::<slint::VecModel<SharedString>>()
+                    .map(|m| {
+                        let mut v: Vec<SharedString> = (0..m.row_count())
+                            .map(|i| m.row_data(i).unwrap())
+                            .collect();
+                        for p in &paths {
+                            v.push(SharedString::from(p.to_string_lossy().as_ref()));
+                        }
+                        v
+                    })
+                    .unwrap_or_else(|| {
+                        paths
+                            .iter()
+                            .map(|p| SharedString::from(p.to_string_lossy().as_ref()))
+                            .collect()
+                    });
+                settings.inputs =
+                    slint::ModelRc::from(Rc::new(slint::VecModel::from(model)));
+                ui.set_dataset_export_settings(settings);
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_remove_input(move |idx| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let mut settings = ui.get_dataset_export_settings();
+            if let Some(m) = settings
+                .inputs
+                .as_any()
+                .downcast_ref::<slint::VecModel<SharedString>>()
+            {
+                let mut v: Vec<SharedString> = (0..m.row_count())
+                    .map(|i| m.row_data(i).unwrap())
+                    .collect();
+                if (idx as usize) < v.len() {
+                    v.remove(idx as usize);
+                }
+                settings.inputs =
+                    slint::ModelRc::from(Rc::new(slint::VecModel::from(v)));
+                ui.set_dataset_export_settings(settings);
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_change_output_dir(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let dialog = rfd::FileDialog::new();
+            if let Some(dir) = dialog.pick_folder() {
+                let mut settings = ui.get_dataset_export_settings();
+                settings.output_dir = SharedString::from(dir.to_string_lossy().as_ref());
+                ui.set_dataset_export_settings(settings);
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_cancel_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_dataset_export_dialog_visible(false);
+            }
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+
+        ui.on_dataset_export_settings_changed(move |_settings| {
+            // Settings are stored in the UI model; nothing extra needed here.
+            let _ = ui_weak.upgrade();
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+        let toast_timer = Rc::clone(&toast_timer);
+        let cancel_flag = Rc::clone(&dataset_cancel_flag);
+
+        ui.on_dataset_export_requested(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let settings = ui.get_dataset_export_settings();
+
+            // Collect inputs
+            let inputs: Vec<PathBuf> = {
+                let model = &settings.inputs;
+                (0..model.row_count())
+                    .filter_map(|i| model.row_data(i))
+                    .map(|s| PathBuf::from(s.as_str()))
+                    .collect()
+            };
+
+            if inputs.is_empty() {
+                ui.set_status_text(SharedString::from("No input files specified"));
+                return;
+            }
+
+            let config = common::dataset::DatasetPatchesConfig {
+                inputs,
+                output_dir: PathBuf::from(settings.output_dir.as_str()),
+                tile_size: settings.tile_size.max(1) as u32,
+                stride: settings.stride.max(1) as u32,
+                metadata_format: None,
+                threads: settings.threads.max(1) as usize,
+            };
+
+            // Hide config dialog, show progress
+            ui.set_dataset_export_dialog_visible(false);
+            ui.set_dataset_export_progress(DatasetExportProgress {
+                current_slide: 0,
+                total_slides: 0,
+                tiles_exported: 0,
+                total_tiles_expected: 0,
+                elapsed_secs: 0.0,
+                estimated_remaining_secs: -1.0,
+            });
+            ui.set_dataset_export_progress_visible(true);
+
+            // Set up cancel flag
+            let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            *cancel_flag.borrow_mut() = Some(Arc::clone(&cancel));
+
+            // Shared atomic counters for progress
+            let progress_tiles = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let progress_current_slide = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let progress_total_slides = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let progress_total_tiles_expected = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let start_time = std::time::Instant::now();
+
+            // Spawn the pipeline on a background thread
+            let pt = Arc::clone(&progress_tiles);
+            let pcs = Arc::clone(&progress_current_slide);
+            let pts = Arc::clone(&progress_total_slides);
+            let ptte = Arc::clone(&progress_total_tiles_expected);
+            let cancel_bg = Arc::clone(&cancel);
+
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<
+                Result<common::dataset::DatasetPatchesReport, String>,
+            >();
+
+            std::thread::Builder::new()
+                .name("dataset-export".into())
+                .spawn(move || {
+                    let result = common::dataset::run_dataset_patches_with_progress(
+                        &config,
+                        &cancel_bg,
+                        &pt,
+                        &pcs,
+                        &pts,
+                        &ptte,
+                    );
+                    let _ = result_tx.send(result.map_err(|e| e.to_string()));
+                })
+                .expect("failed to spawn dataset-export thread");
+
+            // Poll progress using a timer
+            let ui_weak_poll = ui_weak.clone();
+            let toast_timer_poll = Rc::clone(&toast_timer);
+            let poll_timer = Rc::new(Timer::default());
+            let poll_timer_clone = Rc::clone(&poll_timer);
+
+            poll_timer.start(
+                slint::TimerMode::Repeated,
+                Duration::from_millis(200),
+                move || {
+                    let Some(ui) = ui_weak_poll.upgrade() else {
+                        poll_timer_clone.stop();
+                        return;
+                    };
+
+                    let tiles = progress_tiles.load(std::sync::atomic::Ordering::Relaxed);
+                    let cur_slide =
+                        progress_current_slide.load(std::sync::atomic::Ordering::Relaxed);
+                    let tot_slides =
+                        progress_total_slides.load(std::sync::atomic::Ordering::Relaxed);
+                    let tot_tiles =
+                        progress_total_tiles_expected.load(std::sync::atomic::Ordering::Relaxed);
+                    let elapsed = start_time.elapsed();
+
+                    let eta = if tiles > 0 && tot_tiles > tiles {
+                        let rate = tiles as f64 / elapsed.as_secs_f64();
+                        let remaining = (tot_tiles - tiles) as f64 / rate;
+                        remaining as f32
+                    } else if tiles > 0 && tot_tiles == tiles {
+                        0.0
+                    } else {
+                        -1.0
+                    };
+
+                    ui.set_dataset_export_progress(DatasetExportProgress {
+                        current_slide: cur_slide as i32,
+                        total_slides: tot_slides as i32,
+                        tiles_exported: tiles as i32,
+                        total_tiles_expected: tot_tiles as i32,
+                        elapsed_secs: elapsed.as_secs_f32(),
+                        estimated_remaining_secs: eta,
+                    });
+
+                    // Check if the background thread finished
+                    if let Ok(result) = result_rx.try_recv() {
+                        poll_timer_clone.stop();
+                        ui.set_dataset_export_progress_visible(false);
+                        match result {
+                            Ok(report) => {
+                                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                                    show_toast(&ui, &toast_timer_poll, "Dataset export cancelled.");
+                                } else {
+                                    show_toast(
+                                        &ui,
+                                        &toast_timer_poll,
+                                        &format!(
+                                            "Dataset export complete: {} tiles from {} slide(s).",
+                                            report.total_tiles, report.processed_slides
+                                        ),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                error!("Dataset export failed: {e}");
+                                ui.set_status_text(SharedString::from(format!(
+                                    "Dataset export failed: {e}"
+                                )));
+                            }
+                        }
+                    }
+                },
+            );
+        });
+    }
+
+    {
+        let ui_weak = ui_weak.clone();
+        let cancel_flag = Rc::clone(&dataset_cancel_flag);
+
+        ui.on_dataset_export_cancel_progress(move || {
+            if let Some(flag) = cancel_flag.borrow().as_ref() {
+                flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            // The poll timer will detect completion and hide the dialog.
+            let _ = ui_weak.upgrade();
         });
     }
 

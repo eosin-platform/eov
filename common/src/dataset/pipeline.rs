@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -57,6 +57,21 @@ pub struct DatasetPatchesReport {
     pub slides: Vec<SlideReport>,
     /// Input-level errors (nonexistent paths, unsupported extensions, etc.).
     pub input_errors: Vec<(PathBuf, String)>,
+}
+
+/// Progress snapshot for the dataset-patches pipeline.
+#[derive(Debug, Clone)]
+pub struct DatasetPatchesProgress {
+    /// 1-based index of the slide currently being processed.
+    pub current_slide: usize,
+    /// Total number of slides to process.
+    pub total_slides: usize,
+    /// Tiles written so far across all slides.
+    pub tiles_exported: u64,
+    /// Total tiles expected across all slides (may grow as slides are opened).
+    pub total_tiles_expected: u64,
+    /// Wall-clock time elapsed since the pipeline started.
+    pub elapsed: std::time::Duration,
 }
 
 /// Run the full dataset-patches extraction pipeline.
@@ -331,6 +346,243 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         skipped,
         total_tiles,
     );
+
+    Ok(DatasetPatchesReport {
+        input_count: config.inputs.len(),
+        discovered_slides: slide_paths.len(),
+        processed_slides: processed,
+        skipped_slides: skipped,
+        total_tiles,
+        metadata_path,
+        slides: slide_reports,
+        input_errors,
+    })
+}
+
+/// Run the dataset-patches pipeline with cancellation and progress reporting.
+///
+/// `cancel` — set to `true` from another thread to abort early.
+/// `progress` — shared progress counters updated atomically by workers.
+pub fn run_dataset_patches_with_progress(
+    config: &DatasetPatchesConfig,
+    cancel: &AtomicBool,
+    progress_tiles: &AtomicU64,
+    progress_current_slide: &AtomicU64,
+    progress_total_slides: &AtomicU64,
+    progress_total_tiles_expected: &AtomicU64,
+) -> crate::Result<DatasetPatchesReport> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(config.threads)
+        .thread_name(|i| format!("ds-patch-{i}"))
+        .build()
+        .map_err(|e| {
+            crate::Error::Io(std::io::Error::other(format!(
+                "failed to create thread pool: {e}"
+            )))
+        })?;
+
+    let (slide_paths, input_errors) = expand_inputs(&config.inputs);
+
+    if slide_paths.is_empty() && input_errors.is_empty() {
+        return Err(crate::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no valid slide files found in the provided inputs",
+        )));
+    }
+
+    progress_total_slides.store(slide_paths.len() as u64, Ordering::Relaxed);
+
+    std::fs::create_dir_all(&config.output_dir).map_err(|e| {
+        crate::Error::Io(std::io::Error::new(
+            e.kind(),
+            format!(
+                "failed to create output directory {}: {e}",
+                config.output_dir.display()
+            ),
+        ))
+    })?;
+
+    let mut all_records: Vec<TileRecord> = Vec::new();
+    let mut slide_reports: Vec<SlideReport> = Vec::new();
+    let mut total_tiles: u64 = 0;
+
+    for (slide_idx, slide_path) in slide_paths.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+
+        progress_current_slide.store((slide_idx + 1) as u64, Ordering::Relaxed);
+
+        let stem = output::slide_stem(slide_path);
+
+        let wsi = match WsiFile::open(slide_path) {
+            Ok(w) => w,
+            Err(e) => {
+                warn!("Skipping {}: {e}", slide_path.display());
+                slide_reports.push(SlideReport {
+                    path: slide_path.clone(),
+                    tiles_written: 0,
+                    skipped: Some(SlideSkipReason::OpenError(e.to_string())),
+                });
+                continue;
+            }
+        };
+
+        let props = wsi.properties().clone();
+        drop(wsi);
+
+        let coords = generate_patch_coords(
+            props.width,
+            props.height,
+            config.tile_size,
+            config.stride,
+        );
+
+        if coords.is_empty() {
+            slide_reports.push(SlideReport {
+                path: slide_path.clone(),
+                tiles_written: 0,
+                skipped: Some(SlideSkipReason::TooSmall {
+                    width: props.width,
+                    height: props.height,
+                }),
+            });
+            continue;
+        }
+
+        progress_total_tiles_expected.fetch_add(coords.len() as u64, Ordering::Relaxed);
+
+        let tiles_dir = output::slide_tiles_dir(&config.output_dir, &stem);
+        std::fs::create_dir_all(&tiles_dir).map_err(|e| {
+            crate::Error::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "failed to create tile directory {}: {e}",
+                    tiles_dir.display()
+                ),
+            ))
+        })?;
+
+        let collect_metadata = config.metadata_format.is_some();
+        let tile_size = config.tile_size;
+        let output_dir = &config.output_dir;
+        let first_error: Mutex<Option<crate::Error>> = Mutex::new(None);
+        let tile_records: Mutex<Vec<TileRecord>> = Mutex::new(Vec::new());
+        let slide_tile_count = AtomicU64::new(0);
+
+        pool.install(|| {
+            thread_local! {
+                static TLS_WSI: RefCell<Option<WsiFile>> = const { RefCell::new(None) };
+            }
+
+            coords.par_iter().for_each(|coord| {
+                if cancel.load(Ordering::Relaxed) || first_error.lock().unwrap().is_some() {
+                    return;
+                }
+
+                let read_result = TLS_WSI.with(|cell| {
+                    let mut slot = cell.borrow_mut();
+                    if slot.is_none() {
+                        match WsiFile::open(slide_path) {
+                            Ok(w) => *slot = Some(w),
+                            Err(e) => return Err(e),
+                        }
+                    }
+                    let wsi = slot.as_ref().unwrap();
+                    wsi.read_region(coord.x as i64, coord.y as i64, 0, tile_size, tile_size)
+                });
+
+                let data = match read_result {
+                    Ok(d) => d,
+                    Err(e) => {
+                        *first_error.lock().unwrap() = Some(e);
+                        return;
+                    }
+                };
+
+                let rel_path = output::tile_relative_path(&stem, coord.x, coord.y, tile_size);
+                let abs_path = output_dir.join(&rel_path);
+
+                if let Err(e) = output::write_tile_png(&abs_path, &data, tile_size, tile_size) {
+                    *first_error.lock().unwrap() = Some(crate::Error::Io(std::io::Error::other(
+                        format!("failed to write tile {}: {e}", abs_path.display()),
+                    )));
+                    return;
+                }
+
+                slide_tile_count.fetch_add(1, Ordering::Relaxed);
+                progress_tiles.fetch_add(1, Ordering::Relaxed);
+
+                if collect_metadata {
+                    tile_records.lock().unwrap().push(TileRecord {
+                        slide_path: slide_path.display().to_string(),
+                        slide_stem: stem.clone(),
+                        tile_path: rel_path,
+                        x: coord.x,
+                        y: coord.y,
+                        tile_size,
+                        width: tile_size,
+                        height: tile_size,
+                        slide_width: props.width,
+                        slide_height: props.height,
+                        level: 0,
+                        mpp_x: props.mpp_x,
+                        mpp_y: props.mpp_y,
+                    });
+                }
+            });
+        });
+
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+
+        if let Some(e) = first_error.into_inner().unwrap() {
+            return Err(e);
+        }
+
+        let slide_tiles = slide_tile_count.load(Ordering::Relaxed);
+        let mut records = tile_records.into_inner().unwrap();
+        records.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+        all_records.append(&mut records);
+        total_tiles += slide_tiles;
+        slide_reports.push(SlideReport {
+            path: slide_path.clone(),
+            tiles_written: slide_tiles,
+            skipped: None,
+        });
+    }
+
+    let metadata_path = if !cancel.load(Ordering::Relaxed) {
+        match config.metadata_format {
+            Some(MetadataFormat::Csv) => {
+                let p = config.output_dir.join("metadata.csv");
+                metadata::write_csv(&all_records, &p).map_err(|e| {
+                    crate::Error::Io(std::io::Error::new(
+                        e.kind(),
+                        format!("failed to write metadata CSV {}: {e}", p.display()),
+                    ))
+                })?;
+                Some(p)
+            }
+            Some(MetadataFormat::Json) => {
+                let p = config.output_dir.join("metadata.json");
+                metadata::write_json(&all_records, &p).map_err(|e| {
+                    crate::Error::Io(std::io::Error::new(
+                        e.kind(),
+                        format!("failed to write metadata JSON {}: {e}", p.display()),
+                    ))
+                })?;
+                Some(p)
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    let processed = slide_reports.iter().filter(|r| r.skipped.is_none()).count();
+    let skipped = slide_reports.iter().filter(|r| r.skipped.is_some()).count();
 
     Ok(DatasetPatchesReport {
         input_count: config.inputs.len(),
