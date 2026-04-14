@@ -144,13 +144,16 @@ eov relies on [OpenSlide](https://openslide.org/) for slide access, so the forma
 
 - `.svs`
 - `.tif`
-- `.tiff`
+- `.dcm`
 - `.ndpi`
 - `.vms`
 - `.vmu`
 - `.scn`
 - `.mrxs`
+- `.tiff`
+- `.svslide`
 - `.bif`
+- `.czi`
 
 If OpenSlide can open the file, eov should be able to load it.
 
