@@ -196,6 +196,7 @@ Notable options:
 - `--cache-size <MB>` to set the tile-cache budget in megabytes. Default and recommended value: `256`.
 - `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
+- `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
 
 ## Dataset Patch Extraction
 
@@ -249,6 +250,92 @@ When `--metadata csv` or `--metadata json` is provided, a single metadata file i
 
 This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
 
+## Plugins
+
+eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
+
+### Plugin Directory
+
+By default, eov looks for plugins in `~/.eov/plugins/`. Override this with the `--plugin-dir` flag:
+
+```bash
+eov --plugin-dir /path/to/my/plugins slide.svs
+```
+
+Each immediate subdirectory that contains a valid `plugin.toml` manifest is treated as a plugin.
+
+### Manifest Format
+
+Every plugin directory must contain a `plugin.toml` at its root:
+
+```toml
+[plugin]
+id = "example_plugin"
+name = "Example Plugin"
+version = "0.1.0"
+entry_ui = "ui/my_panel.slint"
+entry_component = "MyPanel"
+
+[icon]
+svg = '<svg>...</svg>'
+# OR: file = "icons/my-icon.svg"
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | yes | Unique plugin identifier. Must match the id used during registration. |
+| `name` | yes | Human-readable display name. |
+| `version` | yes | SemVer version string. |
+| `entry_ui` | no | Relative path to a `.slint` file loaded at runtime via the Slint interpreter. |
+| `entry_component` | no | Name of the exported component inside the `.slint` file. |
+| `icon.svg` | no | Inline SVG string for the toolbar button icon. |
+| `icon.file` | no | Relative path to an SVG icon file. |
+
+Paths must be relative (no leading `/` or `..` traversal) and are resolved against the plugin directory root.
+
+### Writing a Plugin
+
+1. Create a Rust library crate that depends on `plugin_api`.
+2. Implement the `Plugin` trait:
+
+```rust
+use plugin_api::{Plugin, HostContext, PluginError};
+use plugin_api::manifest::PluginManifest;
+
+pub struct MyPlugin { manifest: PluginManifest }
+
+impl Plugin for MyPlugin {
+    fn manifest(&self) -> &PluginManifest { &self.manifest }
+
+    fn activate(&self, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
+        // Register toolbar buttons, initialize state
+        host.add_toolbar_button(ToolbarButtonRegistration { /* ... */ })?;
+        Ok(())
+    }
+
+    fn on_action(&self, action: &str, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
+        // Respond to toolbar button clicks
+        if action == "open_panel" {
+            host.open_plugin_window(plugin_root, &self.manifest)?;
+        }
+        Ok(())
+    }
+}
+```
+
+3. Add a `plugin.toml` manifest and optionally a `.slint` UI file to the plugin directory.
+4. Register the plugin in the host app's `main.rs` (static registration in v1).
+
+### Example Plugin
+
+The `example_plugin/` crate in this repository demonstrates the full pattern: a toolbar button with an inline SVG icon that opens a standalone Slint window. To try it:
+
+1. Build the workspace: `cargo build --bin eov`
+2. Copy `example_plugin/` to `~/.eov/plugins/example_plugin/` (the directory must contain `plugin.toml` and the `ui/` folder)
+3. Run: `eov slide.svs`
+
+The smiley-face button should appear in the toolbar; clicking it opens the example panel window.
+
 ## Configuration And Persistence
 
 eov currently persists two kinds of state:
@@ -267,10 +354,12 @@ filtering_mode = "trilinear"
 
 ## Architecture
 
-This repository is a Cargo workspace with two crates:
+This repository is a Cargo workspace with four crates:
 
 - `common`: WSI access, tile management, caching, viewport math, and benchmarks.
 - `app`: the desktop application built with Slint + CPU/GPU rendering paths.
+- `plugin_api`: shared trait definitions and manifest types for the plugin system.
+- `example_plugin`: a reference plugin demonstrating toolbar buttons and runtime UI windows.
 
 At a high level, the flow is:
 
@@ -352,10 +441,17 @@ Current packaging entry points:
 ├── Cargo.toml            # Workspace definition
 ├── app/                  # Desktop application crate
 │   ├── src/              # Application logic, rendering, callbacks, state
+│   │   └── plugins/      # Plugin manager, discovery, toolbar wiring
 │   └── ui/               # Slint UI components
 ├── common/               # Shared WSI, tile, cache, and viewport code
 │   ├── src/
 │   └── benches/          # Benchmarks for various core functions
+├── plugin_api/           # Shared plugin trait definitions and manifest types
+│   └── src/
+├── example_plugin/       # Reference plugin with toolbar button and UI window
+│   ├── src/
+│   ├── ui/               # Runtime-loaded .slint file
+│   └── plugin.toml       # Plugin manifest
 └── fixtures/             # Sample data used for local testing/benchmarks
 ```
 

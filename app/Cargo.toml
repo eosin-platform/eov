@@ -17,11 +17,20 @@ path = "src/main.rs"
 # Common crate
 common = { path = "../common" }
 
+# Plugin API
+plugin_api = { path = "../plugin_api" }
+
+# Stable ABI for dynamic plugin loading
+abi_stable = { version = "0.11", default-features = false }
+
 # CLI parsing
 clap = { version = "4.5", features = ["derive"] }
 
 # Slint UI
 slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-28", "unstable-winit-030"] }
+
+# Slint interpreter for runtime plugin UI loading
+slint-interpreter = "1.15.1"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
@@ -81,3 +90,7 @@ objc = "0.2"
 
 [build-dependencies]
 slint-build = "1.15.1"
+
+[dev-dependencies]
+tempfile = "3"
+example_plugin = { path = "../example_plugin" }

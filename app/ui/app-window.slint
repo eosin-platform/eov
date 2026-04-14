@@ -12,6 +12,7 @@ import {
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
+    PluginButtonData,
     StainNormalization,
     PaneViewData,
     RecentFileData,
@@ -138,6 +139,7 @@ export component AppWindow inherits Window {
     in-out property <FilteringMode> filtering-mode: FilteringMode.trilinear;
     in-out property <bool> show-minimap: true;
     in-out property <bool> show-metadata: false;
+    in-out property <[PluginButtonData]> plugin-buttons: [];
 
     callback open-file-requested();
     callback new-tab-requested(int);
@@ -171,6 +173,7 @@ export component AppWindow inherits Window {
     callback cancel-tool();
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
+    callback plugin-button-clicked(/* plugin-id */ string, /* action-id */ string);
     callback move-tab-to-pane(int, int, int);
     callback split-tab-by-drop(int, int);
     callback reorder-tab(int, int, int);
@@ -275,6 +278,7 @@ export component AppWindow inherits Window {
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
             use-native-window-controls: root.use-native-window-controls;
+            plugin-buttons: root.plugin-buttons;
             open-file-requested => {
                 root.open-file-requested();
             }
@@ -298,6 +302,9 @@ export component AppWindow inherits Window {
             }
             dataset-export-requested => {
                 root.dataset-export-open-dialog();
+            }
+            plugin-button-clicked(plugin-id, action-id) => {
+                root.plugin-button-clicked(plugin-id, action-id);
             }
             window-minimize => {
                 root.window-minimize();

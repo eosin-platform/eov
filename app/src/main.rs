@@ -10,6 +10,7 @@ mod config;
 mod file_ops;
 mod gpu;
 mod pane_ui;
+mod plugins;
 mod render;
 mod render_pool;
 mod stain;
@@ -164,6 +165,23 @@ fn main() -> Result<()> {
     ));
     render_pool::init_global()?;
 
+    // ----- Plugin system initialization -----
+    let plugin_manager = Rc::new(RefCell::new(plugins::PluginManager::new(
+        launch_options.plugin_dir.clone(),
+    )));
+    {
+        let mut pm = plugin_manager.borrow_mut();
+        pm.discover();
+        if let Err(e) = pm.activate_all() {
+            tracing::warn!("Plugin activation error: {e}");
+        }
+        info!(
+            "Plugin system ready: {} toolbar button(s) from {} plugin(s)",
+            pm.toolbar.len(),
+            pm.descriptors.len()
+        );
+    }
+
     let ui = AppWindow::new()?;
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));
 
@@ -194,7 +212,26 @@ fn main() -> Result<()> {
         Arc::clone(&state),
         Arc::clone(&tile_cache),
         Rc::clone(&render_timer),
+        Rc::clone(&plugin_manager),
     );
+
+    // Set plugin toolbar buttons on the UI
+    {
+        let pm = plugin_manager.borrow();
+        let buttons: Vec<crate::PluginButtonData> = pm
+            .toolbar
+            .buttons()
+            .iter()
+            .map(|b| crate::PluginButtonData {
+                plugin_id: SharedString::from(&b.plugin_id),
+                button_id: SharedString::from(&b.button_id),
+                tooltip: SharedString::from(&b.tooltip),
+                action_id: SharedString::from(&b.action_id),
+            })
+            .collect();
+        let model = std::rc::Rc::new(slint::VecModel::from(buttons));
+        ui.set_plugin_buttons(slint::ModelRc::from(model));
+    }
 
     ui.set_debug_mode(launch_options.debug_mode);
     {
@@ -268,8 +305,36 @@ fn setup_callbacks(
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
+    plugin_manager: Rc<RefCell<plugins::PluginManager>>,
 ) {
     callbacks::setup_callbacks(ui, state, tile_cache, render_timer);
+
+    // Plugin button click callback — dispatch to plugin manager and open windows
+    let pm = Rc::clone(&plugin_manager);
+    ui.on_plugin_button_clicked(move |plugin_id, action_id| {
+        let plugin_id = plugin_id.to_string();
+        let action_id = action_id.to_string();
+        info!("Plugin button clicked: {plugin_id}:{action_id}");
+
+        let mut pm = pm.borrow_mut();
+        match pm.handle_action(&plugin_id, &action_id) {
+            Ok((window_requests, vtable)) => {
+                for req in window_requests {
+                    if let Some(vt) = vtable {
+                        crate::plugins::schedule_open_plugin_window(req, vt);
+                    } else {
+                        tracing::warn!(
+                            "Window requested for plugin '{}' but no vtable available",
+                            plugin_id
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Plugin action error: {e}");
+            }
+        }
+    });
 }
 
 fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_count: usize) {

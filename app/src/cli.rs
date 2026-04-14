@@ -261,6 +261,11 @@ struct Cli {
 
     #[arg(long, value_name = "PX", global = true)]
     window_y: Option<i32>,
+
+    /// Directory to search for plugins.
+    /// Defaults to ~/.eov/plugins/
+    #[arg(long, value_name = "PATH", global = true)]
+    plugin_dir: Option<PathBuf>,
 }
 
 enum CommandAction {
@@ -285,6 +290,7 @@ pub(crate) struct LaunchOptions {
     pub(crate) max_tiles: usize,
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) window_geometry: WindowGeometry,
+    pub(crate) plugin_dir: PathBuf,
     command: CommandAction,
 }
 
@@ -383,6 +389,8 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         None => CommandAction::LaunchUi,
     };
 
+    let plugin_dir = resolve_plugin_dir(cli.plugin_dir.as_deref());
+
     Ok(LaunchOptions {
         debug_mode: cli.debug,
         panes_to_open,
@@ -398,6 +406,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             x: cli.window_x,
             y: cli.window_y,
         },
+        plugin_dir,
         command,
     })
 }
@@ -410,6 +419,33 @@ pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {
     };
 
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
+}
+
+/// Default plugin directory: `~/.eov/plugins/`
+pub(crate) fn default_plugin_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".eov")
+        .join("plugins")
+}
+
+/// Resolve `--plugin-dir` with `~` expansion, falling back to the default.
+pub(crate) fn resolve_plugin_dir(explicit: Option<&Path>) -> PathBuf {
+    match explicit {
+        Some(p) => expand_tilde(p),
+        None => default_plugin_dir(),
+    }
+}
+
+/// Expand a leading `~` to the user's home directory.
+fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with("~/") || s == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(s.strip_prefix("~/").unwrap_or(""));
+        }
+    }
+    path.to_path_buf()
 }
 
 pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()> {
@@ -673,4 +709,52 @@ fn probe_file(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_plugin_dir_ends_with_eov_plugins() {
+        let dir = default_plugin_dir();
+        assert!(
+            dir.ends_with(".eov/plugins"),
+            "expected default plugin dir to end with .eov/plugins, got {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn resolve_plugin_dir_uses_default_when_none() {
+        let dir = resolve_plugin_dir(None);
+        assert_eq!(dir, default_plugin_dir());
+    }
+
+    #[test]
+    fn resolve_plugin_dir_expands_tilde() {
+        let dir = resolve_plugin_dir(Some(Path::new("~/my_plugins")));
+        // Should not start with ~
+        assert!(!dir.to_string_lossy().starts_with('~'));
+        assert!(dir.to_string_lossy().ends_with("my_plugins"));
+    }
+
+    #[test]
+    fn resolve_plugin_dir_absolute_path_unchanged() {
+        let dir = resolve_plugin_dir(Some(Path::new("/opt/eov/plugins")));
+        assert_eq!(dir, PathBuf::from("/opt/eov/plugins"));
+    }
+
+    #[test]
+    fn resolve_plugin_dir_relative_path_unchanged() {
+        let dir = resolve_plugin_dir(Some(Path::new("relative/plugins")));
+        assert_eq!(dir, PathBuf::from("relative/plugins"));
+    }
+
+    #[test]
+    fn expand_tilde_only_prefix() {
+        // A path that contains ~ in the middle should not be expanded
+        let path = expand_tilde(Path::new("/home/user/~config"));
+        assert_eq!(path, PathBuf::from("/home/user/~config"));
+    }
 }

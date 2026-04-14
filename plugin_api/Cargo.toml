@@ -1,0 +1,11 @@
+[package]
+name = "plugin_api"
+version = "0.1.0"
+edition = "2024"
+description = "Shared plugin API for EOV plugins"
+
+[dependencies]
+abi_stable = { version = "0.11", default-features = false }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"

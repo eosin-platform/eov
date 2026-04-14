@@ -1,5 +1,5 @@
 [workspace]
-members = ["common", "app", "example_plugin"]
+members = ["common", "app", "plugin_api", "example_plugin"]
 resolver = "3"
 
 [workspace.dependencies]

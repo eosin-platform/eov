@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { FilteringMode, RenderMode, ToolType } from "types.slint";
+import { FilteringMode, PluginButtonData, RenderMode, ToolType } from "types.slint";
 import {
     IconButton,
     MetadataToolButton,
@@ -20,6 +20,7 @@ export component WindowToolbar inherits Rectangle {
     in property <FilteringMode> filtering-mode: FilteringMode.trilinear;
     in property <int> filtering-mode-index: filtering-mode == FilteringMode.bilinear ? 0 : filtering-mode == FilteringMode.trilinear ? 1 : 2;
     in-out property <bool> filter-popup-visible: false;
+    in property <[PluginButtonData]> plugin-buttons: [];
 
     callback open-file-requested();
     callback open-recent-menu-requested(length, length);
@@ -29,6 +30,7 @@ export component WindowToolbar inherits Rectangle {
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
     callback dataset-export-requested();
+    callback plugin-button-clicked(string, string);
     callback window-minimize();
     callback window-maximize();
     callback window-close();
@@ -220,6 +222,16 @@ export component WindowToolbar inherits Rectangle {
                             }
                         }
                     }
+                }
+            }
+
+            // Plugin-contributed toolbar buttons
+            for btn[idx] in root.plugin-buttons: ToolButton {
+                width: 32px;
+                icon: "☺";
+                tooltip-text: btn.tooltip;
+                clicked => {
+                    root.plugin-button-clicked(btn.plugin-id, btn.action-id);
                 }
             }
 

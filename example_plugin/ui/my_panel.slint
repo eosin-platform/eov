@@ -1,0 +1,141 @@
+// Example Plugin Window — loaded at runtime via Slint interpreter.
+//
+// This file demonstrates a plugin-contributed panel with a variety of
+// standard Slint widgets. It has no real product functionality; it exists
+// purely for runtime plugin UI validation.
+
+import { Button, CheckBox, ComboBox, LineEdit, Slider, VerticalBox, HorizontalBox, GridBox, ProgressIndicator } from "std-widgets.slint";
+
+export component MyPanel inherits Window {
+    title: "Example Plugin Window";
+    min-width: 400px;
+    min-height: 480px;
+    preferred-width: 480px;
+    preferred-height: 560px;
+
+    // Callbacks wired by the host to call back into the plugin's Rust code.
+    callback greet-clicked();
+    callback clear-clicked();
+
+    VerticalBox {
+        padding: 16px;
+        spacing: 12px;
+
+        Text {
+            text: "Example Plugin Window";
+            font-size: 20px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "This window was loaded dynamically from an external .slint file by the EOV plugin system.";
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            height: 1px;
+            background: #444;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: "Name:";
+                vertical-alignment: center;
+            }
+            name-input := LineEdit {
+                placeholder-text: "Enter your name…";
+                horizontal-stretch: 1;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            greeting-button := Button {
+                text: "Greet";
+                clicked => {
+                    greeting-text.text = "Hello, " + (name-input.text == "" ? "World" : name-input.text) + "!";
+                    root.greet-clicked();
+                }
+            }
+            clear-button := Button {
+                text: "Clear";
+                clicked => {
+                    greeting-text.text = "";
+                    name-input.text = "";
+                    root.clear-clicked();
+                }
+            }
+        }
+
+        greeting-text := Text {
+            text: "";
+            font-size: 16px;
+            horizontal-alignment: center;
+            color: #4fc3f7;
+        }
+
+        Rectangle {
+            height: 1px;
+            background: #444;
+        }
+
+        CheckBox {
+            text: "Enable feature A";
+        }
+
+        CheckBox {
+            text: "Enable feature B";
+            checked: true;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: "Mode:";
+                vertical-alignment: center;
+            }
+            ComboBox {
+                model: ["Auto", "Manual", "Hybrid"];
+                current-index: 0;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: "Intensity:";
+                vertical-alignment: center;
+            }
+            Slider {
+                minimum: 0;
+                maximum: 100;
+                value: 50;
+                horizontal-stretch: 1;
+            }
+        }
+
+        Text {
+            text: "Progress:";
+        }
+
+        ProgressIndicator {
+            indeterminate: false;
+            progress: 0.65;
+            width: 100%;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        Text {
+            text: "Plugin v0.1.0 • EOV Plugin System";
+            font-size: 10px;
+            color: #888;
+            horizontal-alignment: center;
+        }
+    }
+}
