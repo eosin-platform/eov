@@ -30,16 +30,19 @@ Both x86_64 and arm64 builds for all supported platforms are available. Make you
 There are two methods of installation: AppImage and Flatpak. The AppImage is directly executable:
 
 ```bash
+# Download the binary
+curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.2.10/eov-v0.2.10-linux-x86_64.AppImage
+
 # Make it executable (ensure correct filename!)
-chmod +x eov-v0.2.10-linux-x86_64.AppImage
+chmod +x ./eov
 
 # Run it directly
-./eov-v0.2.10-linux-x86_64.AppImage
+./eov
 
 # Install it system-wide (optional)
-sudo mv eov-v0.2.10-linux-x86_64.AppImage /usr/local/bin/eov
+sudo mv eov /usr/local/bin/eov
 
-# Start the installed app with a nice, short command.
+# Start the installed app with a nice, short command from any directory:
 eov
 ```
 
