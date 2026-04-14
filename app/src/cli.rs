@@ -145,6 +145,12 @@ enum DatasetCommand {
         /// If omitted, no metadata file is written.
         #[arg(long, value_enum)]
         metadata: Option<CliMetadataFormat>,
+
+        /// Number of worker threads for parallel tile extraction.
+        /// Each thread opens its own slide file handle for maximum throughput.
+        /// Defaults to the number of available CPU cores.
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        threads: Option<u32>,
     },
 }
 
@@ -347,13 +353,22 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
                 tile_size,
                 stride,
                 metadata,
-            } => CommandAction::DatasetPatches(DatasetPatchesConfig {
-                inputs,
-                output_dir: out,
-                tile_size,
-                stride,
-                metadata_format: metadata.map(|m| m.to_common()),
-            }),
+                threads,
+            } => {
+                let threads = threads.map(|n| n as usize).unwrap_or_else(|| {
+                    std::thread::available_parallelism()
+                        .map(|n| n.get())
+                        .unwrap_or(4)
+                });
+                CommandAction::DatasetPatches(DatasetPatchesConfig {
+                    inputs,
+                    output_dir: out,
+                    tile_size,
+                    stride,
+                    metadata_format: metadata.map(|m| m.to_common()),
+                    threads,
+                })
+            }
         },
         None => CommandAction::LaunchUi,
     };

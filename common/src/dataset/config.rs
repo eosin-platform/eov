@@ -26,4 +26,7 @@ pub struct DatasetPatchesConfig {
     pub stride: u32,
     /// Optional metadata output format.
     pub metadata_format: Option<MetadataFormat>,
+    /// Number of worker threads for parallel tile extraction.
+    /// Each thread opens its own file handle for maximum throughput.
+    pub threads: usize,
 }

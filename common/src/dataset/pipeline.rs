@@ -4,9 +4,13 @@
 //! writing → metadata export. Designed for reuse from both the CLI and a
 //! future GUI dialog.
 
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 
+use rayon::prelude::*;
 use tracing::{info, warn};
 
 use crate::WsiFile;
@@ -66,10 +70,26 @@ pub struct DatasetPatchesReport {
 /// 5. Optionally writes per-tile metadata in CSV or JSON format.
 /// 6. Returns a structured report suitable for CLI display or GUI feedback.
 ///
+/// Tile extraction is parallelised across a rayon thread pool. Each worker
+/// thread opens its own `WsiFile` handle so there is no shared-lock
+/// contention on a single OpenSlide descriptor.
+///
 /// If a slide cannot be opened, it is skipped and the failure is recorded in
 /// the report. Processing continues with remaining slides.
 pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<DatasetPatchesReport> {
     let start = Instant::now();
+
+    // Build a dedicated rayon pool with the requested thread count.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(config.threads)
+        .thread_name(|i| format!("ds-patch-{i}"))
+        .build()
+        .map_err(|e| {
+            crate::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("failed to create thread pool: {e}"),
+            ))
+        })?;
 
     // --- 1. Resolve inputs ---
     let (slide_paths, input_errors) = expand_inputs(&config.inputs);
@@ -107,7 +127,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
     for slide_path in &slide_paths {
         let stem = output::slide_stem(slide_path);
 
-        // Try to open the slide.
+        // Open one handle on the main thread to read properties and validate.
         let wsi = match WsiFile::open(slide_path) {
             Ok(w) => w,
             Err(e) => {
@@ -121,7 +141,8 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
             }
         };
 
-        let props = wsi.properties();
+        let props = wsi.properties().clone();
+        drop(wsi); // closed; workers will each open their own handle
 
         // Generate patch coordinates.
         let coords = generate_patch_coords(
@@ -160,58 +181,109 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         })?;
 
         info!(
-            "Extracting {} tiles from {} ({}×{}) into {}",
+            "Extracting {} tiles from {} ({}×{}) into {} using {} thread(s)",
             coords.len(),
             stem,
             props.width,
             props.height,
             tiles_dir.display(),
+            pool.current_num_threads(),
         );
 
-        let mut slide_tiles: u64 = 0;
+        let collect_metadata = config.metadata_format.is_some();
+        let tile_size = config.tile_size;
+        let output_dir = &config.output_dir;
+        let first_error: Mutex<Option<crate::Error>> = Mutex::new(None);
+        let tile_records: Mutex<Vec<TileRecord>> = Mutex::new(Vec::new());
+        let slide_tile_count = AtomicU64::new(0);
 
-        for coord in &coords {
-            // Read a tile_size × tile_size region at level 0.
-            let data = wsi.read_region(
-                coord.x as i64,
-                coord.y as i64,
-                0,
-                config.tile_size,
-                config.tile_size,
-            )?;
-
-            let rel_path =
-                output::tile_relative_path(&stem, coord.x, coord.y, config.tile_size);
-            let abs_path = config.output_dir.join(&rel_path);
-
-            output::write_tile_png(&abs_path, &data, config.tile_size, config.tile_size)
-                .map_err(|e| {
-                    crate::Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("failed to write tile {}: {e}", abs_path.display()),
-                    ))
-                })?;
-
-            if config.metadata_format.is_some() {
-                all_records.push(TileRecord {
-                    slide_path: slide_path.display().to_string(),
-                    slide_stem: stem.clone(),
-                    tile_path: rel_path,
-                    x: coord.x,
-                    y: coord.y,
-                    tile_size: config.tile_size,
-                    width: config.tile_size,
-                    height: config.tile_size,
-                    slide_width: props.width,
-                    slide_height: props.height,
-                    level: 0,
-                    mpp_x: props.mpp_x,
-                    mpp_y: props.mpp_y,
-                });
+        pool.install(|| {
+            // Each rayon worker thread lazily opens its own WsiFile handle
+            // via thread-local storage—no cross-thread locking on reads.
+            thread_local! {
+                static TLS_WSI: RefCell<Option<WsiFile>> = const { RefCell::new(None) };
             }
 
-            slide_tiles += 1;
+            coords.par_iter().for_each(|coord| {
+                // Bail early if a previous tile already failed.
+                if first_error.lock().unwrap().is_some() {
+                    return;
+                }
+
+                // Open a per-thread handle on first use.
+                let read_result = TLS_WSI.with(|cell| {
+                    let mut slot = cell.borrow_mut();
+                    if slot.is_none() {
+                        match WsiFile::open(slide_path) {
+                            Ok(w) => *slot = Some(w),
+                            Err(e) => return Err(e),
+                        }
+                    }
+                    let wsi = slot.as_ref().unwrap();
+                    wsi.read_region(
+                        coord.x as i64,
+                        coord.y as i64,
+                        0,
+                        tile_size,
+                        tile_size,
+                    )
+                });
+
+                let data = match read_result {
+                    Ok(d) => d,
+                    Err(e) => {
+                        *first_error.lock().unwrap() = Some(e);
+                        return;
+                    }
+                };
+
+                let rel_path = output::tile_relative_path(&stem, coord.x, coord.y, tile_size);
+                let abs_path = output_dir.join(&rel_path);
+
+                if let Err(e) = output::write_tile_png(&abs_path, &data, tile_size, tile_size) {
+                    *first_error.lock().unwrap() = Some(crate::Error::Io(
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("failed to write tile {}: {e}", abs_path.display()),
+                        ),
+                    ));
+                    return;
+                }
+
+                slide_tile_count.fetch_add(1, Ordering::Relaxed);
+
+                if collect_metadata {
+                    tile_records.lock().unwrap().push(TileRecord {
+                        slide_path: slide_path.display().to_string(),
+                        slide_stem: stem.clone(),
+                        tile_path: rel_path,
+                        x: coord.x,
+                        y: coord.y,
+                        tile_size,
+                        width: tile_size,
+                        height: tile_size,
+                        slide_width: props.width,
+                        slide_height: props.height,
+                        level: 0,
+                        mpp_x: props.mpp_x,
+                        mpp_y: props.mpp_y,
+                    });
+                }
+            });
+        });
+
+        // Propagate any error from the parallel section.
+        if let Some(e) = first_error.into_inner().unwrap() {
+            return Err(e);
         }
+
+        let slide_tiles = slide_tile_count.load(Ordering::Relaxed);
+
+        // Sort metadata records by (y, x) to restore deterministic row-major
+        // order regardless of parallel scheduling.
+        let mut records = tile_records.into_inner().unwrap();
+        records.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+        all_records.append(&mut records);
 
         total_tiles += slide_tiles;
         slide_reports.push(SlideReport {
