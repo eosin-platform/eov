@@ -40,7 +40,7 @@ pub fn write_csv(records: &[TileRecord], path: &Path) -> std::io::Result<()> {
     let file = std::fs::File::create(path)?;
     let mut wtr = csv::Writer::from_writer(std::io::BufWriter::new(file));
     for rec in records {
-        wtr.serialize(rec).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        wtr.serialize(rec).map_err(std::io::Error::other)?;
     }
     wtr.flush()?;
     Ok(())
@@ -51,7 +51,7 @@ pub fn write_json(records: &[TileRecord], path: &Path) -> std::io::Result<()> {
     let file = std::fs::File::create(path)?;
     let mut writer = std::io::BufWriter::new(file);
     serde_json::to_writer_pretty(&mut writer, records)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(b"\n")?;
     writer.flush()?;
     Ok(())

@@ -85,8 +85,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         .thread_name(|i| format!("ds-patch-{i}"))
         .build()
         .map_err(|e| {
-            crate::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            crate::Error::Io(std::io::Error::other(
                 format!("failed to create thread pool: {e}"),
             ))
         })?;
@@ -242,8 +241,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
 
                 if let Err(e) = output::write_tile_png(&abs_path, &data, tile_size, tile_size) {
                     *first_error.lock().unwrap() = Some(crate::Error::Io(
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        std::io::Error::other(
                             format!("failed to write tile {}: {e}", abs_path.display()),
                         ),
                     ));

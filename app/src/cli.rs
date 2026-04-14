@@ -426,7 +426,7 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
         CommandAction::DatasetPatches(config) => {
-            run_dataset_patches_cli(&config)?;
+            run_dataset_patches_cli(config)?;
             Ok(true)
         }
     }

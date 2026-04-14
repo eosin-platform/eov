@@ -81,6 +81,7 @@ Current capabilities include:
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
+- Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
 - Various quality of life enhancements expected from modern software packages
 
 ## Screenshots
