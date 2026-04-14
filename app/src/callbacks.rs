@@ -2577,6 +2577,7 @@ pub fn setup_callbacks(
                 tile_size: 512,
                 stride: 512,
                 threads,
+                white_threshold: 0.8,
             };
             ui.set_dataset_export_settings(settings);
             ui.set_dataset_export_dialog_visible(true);
@@ -2721,6 +2722,11 @@ pub fn setup_callbacks(
                 stride: settings.stride.max(1) as u32,
                 metadata_format: None,
                 threads: settings.threads.max(1) as usize,
+                white_threshold: if settings.white_threshold > 0.0 {
+                    Some(settings.white_threshold)
+                } else {
+                    None
+                },
             };
 
             // Hide config dialog, show progress
@@ -2824,14 +2830,17 @@ pub fn setup_callbacks(
                                 if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                                     show_toast(&ui, &toast_timer_poll, "Dataset export cancelled.");
                                 } else {
-                                    show_toast(
-                                        &ui,
-                                        &toast_timer_poll,
-                                        &format!(
-                                            "Dataset export complete: {} tiles from {} slide(s).",
-                                            report.total_tiles, report.processed_slides
-                                        ),
+                                    let mut msg = format!(
+                                        "Dataset export complete: {} tiles from {} slide(s).",
+                                        report.total_tiles, report.processed_slides
                                     );
+                                    if report.total_tiles_skipped_white > 0 {
+                                        msg.push_str(&format!(
+                                            " {} tile(s) skipped (white).",
+                                            report.total_tiles_skipped_white
+                                        ));
+                                    }
+                                    show_toast(&ui, &toast_timer_poll, &msg);
                                 }
                             }
                             Err(e) => {

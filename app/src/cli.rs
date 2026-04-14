@@ -151,6 +151,12 @@ enum DatasetCommand {
         /// Defaults to the number of available CPU cores.
         #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
         threads: Option<u32>,
+
+        /// Skip tiles where the fraction of nearly-white pixels exceeds this
+        /// threshold (0.0–1.0). For example, 0.9 skips tiles that are ≥90%
+        /// white. Omit to keep all tiles.
+        #[arg(long, value_parser = clap::value_parser!(f32))]
+        white_threshold: Option<f32>,
     },
 }
 
@@ -354,6 +360,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
                 stride,
                 metadata,
                 threads,
+                white_threshold,
             } => {
                 let threads = threads.map(|n| n as usize).unwrap_or_else(|| {
                     std::thread::available_parallelism()
@@ -367,6 +374,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
                     stride,
                     metadata_format: metadata.map(|m| m.to_common()),
                     threads,
+                    white_threshold,
                 })
             }
         },
@@ -433,7 +441,88 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
 }
 
 fn run_dataset_patches_cli(config: &DatasetPatchesConfig) -> Result<()> {
-    let report = dataset::run_dataset_patches(config)?;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let progress_tiles = Arc::new(AtomicU64::new(0));
+    let progress_current_slide = Arc::new(AtomicU64::new(0));
+    let progress_total_slides = Arc::new(AtomicU64::new(0));
+    let progress_total_tiles_expected = Arc::new(AtomicU64::new(0));
+
+    // Install Ctrl-C handler for graceful cancellation.
+    {
+        let cancel = Arc::clone(&cancel);
+        let _ = ctrlc::set_handler(move || {
+            cancel.store(true, Ordering::Relaxed);
+            eprintln!("\nCancelling...");
+        });
+    }
+
+    let pt = Arc::clone(&progress_tiles);
+    let pcs = Arc::clone(&progress_current_slide);
+    let pts = Arc::clone(&progress_total_slides);
+    let ptte = Arc::clone(&progress_total_tiles_expected);
+    let cancel_bg = Arc::clone(&cancel);
+    let config_clone = config.clone();
+
+    // Run the pipeline on a background thread so we can drive the progress bar
+    // on the main thread.
+    let handle = std::thread::Builder::new()
+        .name("dataset-patches".into())
+        .spawn(move || {
+            dataset::run_dataset_patches_with_progress(
+                &config_clone,
+                &cancel_bg,
+                &pt,
+                &pcs,
+                &pts,
+                &ptte,
+            )
+        })
+        .expect("failed to spawn dataset-patches thread");
+
+    // Drive a progress bar on the main thread.
+    let pb = indicatif::ProgressBar::new(0);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} tiles ({eta} remaining)")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+    pb.enable_steady_tick(std::time::Duration::from_millis(200));
+
+    loop {
+        let total = progress_total_tiles_expected.load(Ordering::Relaxed);
+        let done = progress_tiles.load(Ordering::Relaxed);
+        if total > 0 {
+            pb.set_length(total);
+        }
+        pb.set_position(done);
+
+        if handle.is_finished() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // Final update.
+    let total = progress_total_tiles_expected.load(Ordering::Relaxed);
+    let done = progress_tiles.load(Ordering::Relaxed);
+    if total > 0 {
+        pb.set_length(total);
+    }
+    pb.set_position(done);
+    pb.finish_and_clear();
+
+    let report = handle
+        .join()
+        .expect("dataset-patches thread panicked")?;
+
+    if cancel.load(Ordering::Relaxed) {
+        eprintln!("Export cancelled. {} tile(s) were written before cancellation.", report.total_tiles);
+        return Ok(());
+    }
 
     // Print input-level errors.
     for (path, err) in &report.input_errors {
@@ -455,11 +544,20 @@ fn run_dataset_patches_cli(config: &DatasetPatchesConfig) -> Result<()> {
                 );
             }
             None => {
-                println!(
-                    "{}: {} tile(s) written",
-                    slide.path.display(),
-                    slide.tiles_written,
-                );
+                if slide.tiles_skipped_white > 0 {
+                    println!(
+                        "{}: {} tile(s) written, {} skipped (white)",
+                        slide.path.display(),
+                        slide.tiles_written,
+                        slide.tiles_skipped_white,
+                    );
+                } else {
+                    println!(
+                        "{}: {} tile(s) written",
+                        slide.path.display(),
+                        slide.tiles_written,
+                    );
+                }
             }
         }
     }
@@ -467,8 +565,8 @@ fn run_dataset_patches_cli(config: &DatasetPatchesConfig) -> Result<()> {
     // Summary.
     println!();
     println!(
-        "Done: {} slide(s) processed, {} skipped, {} tile(s) written",
-        report.processed_slides, report.skipped_slides, report.total_tiles,
+        "Done: {} slide(s) processed, {} skipped, {} tile(s) written, {} tile(s) skipped (white)",
+        report.processed_slides, report.skipped_slides, report.total_tiles, report.total_tiles_skipped_white,
     );
     if let Some(meta) = &report.metadata_path {
         println!("Metadata: {}", meta.display());

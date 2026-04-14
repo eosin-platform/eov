@@ -48,6 +48,43 @@ pub fn write_tile_png(
     img.save(path)
 }
 
+/// Returns `true` if the tile is "almost completely white" and should be
+/// skipped.
+///
+/// A pixel is considered "white" when **all three** of its RGB channels are
+/// ≥ 220 (out of 255). The function computes the fraction of such pixels and
+/// returns `true` when that fraction ≥ `threshold` (e.g. 0.9 → 90 %).
+///
+/// To keep this fast on large tiles, only every 4th pixel is sampled (stride
+/// of 4 in linearised pixel order), giving an ~4× speedup with negligible
+/// accuracy loss.
+pub fn is_tile_mostly_white(data: &[u8], threshold: f32) -> bool {
+    const WHITE_CHANNEL_MIN: u8 = 220;
+    const SAMPLE_STRIDE: usize = 4; // check every 4th pixel
+
+    let total_pixels = data.len() / 4;
+    if total_pixels == 0 {
+        return true;
+    }
+
+    let sampled = (total_pixels + SAMPLE_STRIDE - 1) / SAMPLE_STRIDE;
+    let mut white_count: u32 = 0;
+
+    let mut i = 0;
+    while i < data.len() {
+        // data[i..i+4] = [R, G, B, A]
+        if data[i] >= WHITE_CHANNEL_MIN
+            && data[i + 1] >= WHITE_CHANNEL_MIN
+            && data[i + 2] >= WHITE_CHANNEL_MIN
+        {
+            white_count += 1;
+        }
+        i += 4 * SAMPLE_STRIDE;
+    }
+
+    (white_count as f32 / sampled as f32) >= threshold
+}
+
 /// Derive a slide stem from its file path, ensuring it is filesystem-safe.
 ///
 /// Returns the file stem (no extension), or `"unknown"` as a fallback.

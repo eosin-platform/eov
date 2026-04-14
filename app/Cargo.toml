@@ -48,6 +48,12 @@ crossbeam-channel = "0.5"
 dashmap = "6"
 rayon = "1.10"
 
+# CLI progress bars
+indicatif = "0.17"
+
+# Ctrl-C handling
+ctrlc = "3"
+
 # Clipboard
 arboard = "3"
 

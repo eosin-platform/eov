@@ -35,6 +35,7 @@ pub enum SlideSkipReason {
 pub struct SlideReport {
     pub path: PathBuf,
     pub tiles_written: u64,
+    pub tiles_skipped_white: u64,
     pub skipped: Option<SlideSkipReason>,
 }
 
@@ -51,6 +52,8 @@ pub struct DatasetPatchesReport {
     pub skipped_slides: usize,
     /// Total tiles written across all slides.
     pub total_tiles: u64,
+    /// Total tiles skipped because they were mostly white.
+    pub total_tiles_skipped_white: u64,
     /// Path to the metadata file, if one was written.
     pub metadata_path: Option<PathBuf>,
     /// Per-slide details.
@@ -149,6 +152,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
                 slide_reports.push(SlideReport {
                     path: slide_path.clone(),
                     tiles_written: 0,
+                    tiles_skipped_white: 0,
                     skipped: Some(SlideSkipReason::OpenError(e.to_string())),
                 });
                 continue;
@@ -174,6 +178,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
             slide_reports.push(SlideReport {
                 path: slide_path.clone(),
                 tiles_written: 0,
+                tiles_skipped_white: 0,
                 skipped: Some(SlideSkipReason::TooSmall {
                     width: props.width,
                     height: props.height,
@@ -207,9 +212,11 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         let collect_metadata = config.metadata_format.is_some();
         let tile_size = config.tile_size;
         let output_dir = &config.output_dir;
+        let white_threshold = config.white_threshold;
         let first_error: Mutex<Option<crate::Error>> = Mutex::new(None);
         let tile_records: Mutex<Vec<TileRecord>> = Mutex::new(Vec::new());
         let slide_tile_count = AtomicU64::new(0);
+        let slide_white_count = AtomicU64::new(0);
 
         pool.install(|| {
             // Each rayon worker thread lazily opens its own WsiFile handle
@@ -251,6 +258,14 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
                     }
                 };
 
+                // Skip tiles that are almost completely white.
+                if let Some(thresh) = white_threshold {
+                    if output::is_tile_mostly_white(&data, thresh) {
+                        slide_white_count.fetch_add(1, Ordering::Relaxed);
+                        return;
+                    }
+                }
+
                 let rel_path = output::tile_relative_path(&stem, coord.x, coord.y, tile_size);
                 let abs_path = output_dir.join(&rel_path);
 
@@ -291,6 +306,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         }
 
         let slide_tiles = slide_tile_count.load(Ordering::Relaxed);
+        let slide_white = slide_white_count.load(Ordering::Relaxed);
 
         // Sort metadata records by (y, x) to restore deterministic row-major
         // order regardless of parallel scheduling.
@@ -302,6 +318,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         slide_reports.push(SlideReport {
             path: slide_path.clone(),
             tiles_written: slide_tiles,
+            tiles_skipped_white: slide_white,
             skipped: None,
         });
     }
@@ -339,12 +356,15 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         .count();
     let skipped = slide_reports.iter().filter(|r| r.skipped.is_some()).count();
 
+    let total_white: u64 = slide_reports.iter().map(|r| r.tiles_skipped_white).sum();
+
     info!(
-        "Dataset extraction complete in {:.1}s: {} slide(s) processed, {} skipped, {} tile(s) written",
+        "Dataset extraction complete in {:.1}s: {} slide(s) processed, {} skipped, {} tile(s) written, {} tile(s) skipped (white)",
         start.elapsed().as_secs_f64(),
         processed,
         skipped,
         total_tiles,
+        total_white,
     );
 
     Ok(DatasetPatchesReport {
@@ -353,6 +373,7 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
         processed_slides: processed,
         skipped_slides: skipped,
         total_tiles,
+        total_tiles_skipped_white: total_white,
         metadata_path,
         slides: slide_reports,
         input_errors,
@@ -422,6 +443,7 @@ pub fn run_dataset_patches_with_progress(
                 slide_reports.push(SlideReport {
                     path: slide_path.clone(),
                     tiles_written: 0,
+                    tiles_skipped_white: 0,
                     skipped: Some(SlideSkipReason::OpenError(e.to_string())),
                 });
                 continue;
@@ -442,6 +464,7 @@ pub fn run_dataset_patches_with_progress(
             slide_reports.push(SlideReport {
                 path: slide_path.clone(),
                 tiles_written: 0,
+                tiles_skipped_white: 0,
                 skipped: Some(SlideSkipReason::TooSmall {
                     width: props.width,
                     height: props.height,
@@ -466,9 +489,11 @@ pub fn run_dataset_patches_with_progress(
         let collect_metadata = config.metadata_format.is_some();
         let tile_size = config.tile_size;
         let output_dir = &config.output_dir;
+        let white_threshold = config.white_threshold;
         let first_error: Mutex<Option<crate::Error>> = Mutex::new(None);
         let tile_records: Mutex<Vec<TileRecord>> = Mutex::new(Vec::new());
         let slide_tile_count = AtomicU64::new(0);
+        let slide_white_count = AtomicU64::new(0);
 
         pool.install(|| {
             thread_local! {
@@ -499,6 +524,15 @@ pub fn run_dataset_patches_with_progress(
                         return;
                     }
                 };
+
+                // Skip tiles that are almost completely white.
+                if let Some(thresh) = white_threshold {
+                    if output::is_tile_mostly_white(&data, thresh) {
+                        slide_white_count.fetch_add(1, Ordering::Relaxed);
+                        progress_tiles.fetch_add(1, Ordering::Relaxed);
+                        return;
+                    }
+                }
 
                 let rel_path = output::tile_relative_path(&stem, coord.x, coord.y, tile_size);
                 let abs_path = output_dir.join(&rel_path);
@@ -542,6 +576,7 @@ pub fn run_dataset_patches_with_progress(
         }
 
         let slide_tiles = slide_tile_count.load(Ordering::Relaxed);
+        let slide_white = slide_white_count.load(Ordering::Relaxed);
         let mut records = tile_records.into_inner().unwrap();
         records.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
         all_records.append(&mut records);
@@ -549,6 +584,7 @@ pub fn run_dataset_patches_with_progress(
         slide_reports.push(SlideReport {
             path: slide_path.clone(),
             tiles_written: slide_tiles,
+            tiles_skipped_white: slide_white,
             skipped: None,
         });
     }
@@ -583,6 +619,7 @@ pub fn run_dataset_patches_with_progress(
 
     let processed = slide_reports.iter().filter(|r| r.skipped.is_none()).count();
     let skipped = slide_reports.iter().filter(|r| r.skipped.is_some()).count();
+    let total_white: u64 = slide_reports.iter().map(|r| r.tiles_skipped_white).sum();
 
     Ok(DatasetPatchesReport {
         input_count: config.inputs.len(),
@@ -590,6 +627,7 @@ pub fn run_dataset_patches_with_progress(
         processed_slides: processed,
         skipped_slides: skipped,
         total_tiles,
+        total_tiles_skipped_white: total_white,
         metadata_path,
         slides: slide_reports,
         input_errors,

@@ -29,4 +29,8 @@ pub struct DatasetPatchesConfig {
     /// Number of worker threads for parallel tile extraction.
     /// Each thread opens its own file handle for maximum throughput.
     pub threads: usize,
+    /// Skip tiles where the fraction of nearly-white pixels exceeds this
+    /// threshold. `None` disables the filter. A typical value is 0.9 (skip
+    /// tiles that are ≥ 90 % white).  Default is `Some(0.9)`.
+    pub white_threshold: Option<f32>,
 }

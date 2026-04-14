@@ -21,7 +21,7 @@ export component DatasetExportDialog inherits Rectangle {
     in-out property <int> selected-input-index: -1;
 
     property <length> dialog-width: 520px;
-    property <length> dialog-height: 560px;
+    property <length> dialog-height: 610px;
 
     x: 0px;
     y: 0px;
@@ -344,6 +344,105 @@ export component DatasetExportDialog inherits Rectangle {
                 }
             }
 
+            // --- White Threshold ---
+            Text {
+                text: "White Threshold";
+                color: Theme.text-secondary;
+                font-size: 11px;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: stretch;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 28px;
+
+                    white-slider-track := Rectangle {
+                        x: 0px;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: #333;
+
+                        Rectangle {
+                            x: 0px;
+                            width: parent.width * clamp(root.settings.white-threshold, 0, 1);
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: Theme.accent;
+                        }
+                    }
+
+                    white-slider-thumb := Rectangle {
+                        x: clamp(root.settings.white-threshold, 0, 1) * (parent.width - self.width);
+                        y: (parent.height - self.height) / 2;
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 7px;
+                        background: white-slider-touch.pressed ? #eee : white-slider-touch.has-hover ? #ddd : #ccc;
+                    }
+
+                    white-slider-touch := TouchArea {
+                        moved => {
+                            if (self.pressed) {
+                                root.settings.white-threshold = clamp((self.mouse-x - white-slider-thumb.width / 2) / (parent.width - white-slider-thumb.width), 0, 1);
+                                white-text-input.text = round(root.settings.white-threshold * 100);
+                                root.settings-changed(root.settings);
+                            }
+                        }
+                        clicked => {
+                            root.settings.white-threshold = clamp((self.mouse-x - white-slider-thumb.width / 2) / (parent.width - white-slider-thumb.width), 0, 1);
+                            white-text-input.text = round(root.settings.white-threshold * 100);
+                            root.settings-changed(root.settings);
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 56px;
+                    height: 28px;
+                    background: #0a0c10;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: white-text-input.has-focus ? #4da3d9 : Theme.border;
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 2px;
+                        spacing: 0px;
+
+                        white-text-input := TextInput {
+                            horizontal-stretch: 1;
+                            color: white;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            input-type: InputType.number;
+                            text: round(root.settings.white-threshold * 100);
+
+                            accepted => {
+                                root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
+                                root.settings-changed(root.settings);
+                            }
+
+                            edited => {
+                                root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
+                                root.settings-changed(root.settings);
+                            }
+                        }
+
+                        Text {
+                            text: "%";
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
             // Spacer
             Rectangle {
                 vertical-stretch: 1;
@@ -457,6 +556,7 @@ export component DatasetExportProgressDialog inherits Rectangle {
                 border-radius: 3px;
 
                 Rectangle {
+                    x: 0px;
                     width: max(0px, min(parent.width, parent.width * root.fraction));
                     height: parent.height;
                     border-radius: parent.border-radius;

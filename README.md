@@ -192,10 +192,12 @@ Notable options:
 
 ## Dataset Patch Extraction
 
-eov includes a functionality for extracting fixed-grid image patches from whole-slide images, useful for building ML datasets. This feature can be accessed via the "Export Dataset" action in the toolbar (icon <img src="app/ui/icons/dataset.svg" width="16">) or via CLI:
+eov includes a functionality for extracting fixed-grid image patches from whole-slide images, useful for building ML datasets. Tiles that are mostly white can be omitted via `--white-threshold` (range 0.0 to 1.0) so only useful tiles with useful data are exported. A white threshold of `0.8` tends to do well.
+
+This feature can be accessed via the "Export Dataset" action in the toolbar (icon <img src="app/ui/icons/dataset.svg" width="16">) or via CLI:
 
 ```bash
-eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--metadata csv|json]
+eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--metadata csv|json] --white-threshold 0.8
 ```
 
 The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
