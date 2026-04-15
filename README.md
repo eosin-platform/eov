@@ -161,7 +161,6 @@ eov relies on [OpenSlide](https://openslide.org/) for slide access, so the forma
 
 If OpenSlide can open the file, eov should be able to load it.
 
-
 ## CLI
 
 The application can be launched as a desktop viewer or used through a small CLI surface:
@@ -197,6 +196,7 @@ Notable options:
 - `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
+- `--extension-host-port <PORT>` the port use for the extension host (required for non-Rust plugins)
 
 ## Dataset Patch Extraction
 
@@ -253,6 +253,10 @@ This first version extracts fixed-grid patches only. Annotation-driven labeling 
 ## Plugins
 
 eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
+
+Plugins can be written in any language and need not use Slint for their GUIs. Example plugins written in Python are available in `example_plugins/`, which communicate with the host app via gRPC. Plugins can access underlying GPU resources via Vulkan DMA buf.
+
+Rust plugins can interact directly with the host application via FFI. The gRPC API surface is available when using other languages.
 
 ### Plugin Directory
 

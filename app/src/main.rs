@@ -399,11 +399,11 @@ fn setup_callbacks(
                 // registered remote filters), toggle those filters on/off rather
                 // than spawning a second instance.
                 if pm.spawned_python_plugins.contains(&plugin_id) {
-                    let s = filter_state.read();
-                    let mut ehs = s.extension_host_state.write();
-                    ehs.toggle_all_filters();
-                    drop(ehs);
-                    drop(s);
+                    {
+                        let mut s = filter_state.write();
+                        s.extension_host_state.write().toggle_all_filters();
+                        s.bump_filter_revision();
+                    }
                     // Request a re-render so the viewport reflects the toggled filter.
                     request_render_loop(
                         &rerender_timer,
@@ -418,9 +418,11 @@ fn setup_callbacks(
             }
             Ok(plugins::ActionOutcome::Handled) => {
                 // Sync filter enabled states from plugins into the filter chain.
-                let s = filter_state.read();
-                pm.sync_filter_states(&s.filter_chain);
-                drop(s);
+                {
+                    let mut s = filter_state.write();
+                    pm.sync_filter_states(&s.filter_chain);
+                    s.bump_filter_revision();
+                }
                 // Request a re-render so the viewport reflects the toggled filter.
                 request_render_loop(
                     &rerender_timer,

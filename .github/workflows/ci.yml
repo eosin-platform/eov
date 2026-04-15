@@ -103,6 +103,7 @@ jobs:
             libfontconfig-dev \
             libfreetype6-dev \
             libopenslide-dev \
+            protobuf-compiler \
             libwayland-dev \
             libx11-dev \
             libxkbcommon-dev \

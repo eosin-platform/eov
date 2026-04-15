@@ -356,6 +356,8 @@ pub struct FilePaneState {
     /// Whether the pane is showing an interaction preview and still needs a
     /// settled, full-quality CPU render.
     pub needs_settled_cpu_render: bool,
+    /// Filter revision last incorporated into a settled pane render.
+    pub last_render_filter_revision: u64,
 }
 
 impl FilePaneState {
@@ -389,6 +391,7 @@ impl FilePaneState {
             stain_params_method: StainNormalization::None,
             pending_cpu_job_id: None,
             needs_settled_cpu_render: false,
+            last_render_filter_revision: 0,
         }
     }
 
@@ -405,6 +408,7 @@ impl FilePaneState {
         self.last_request = None;
         self.pending_cpu_job_id = None;
         self.needs_settled_cpu_render = false;
+        self.last_render_filter_revision = 0;
     }
 }
 
@@ -479,6 +483,8 @@ pub struct AppState {
     pub extension_host_state: SharedExtensionHostState,
     /// Tokio runtime handle for async gRPC calls.
     pub tokio_handle: Option<tokio::runtime::Handle>,
+    /// Monotonic revision for viewport filter enable-state changes.
+    pub filter_revision: u64,
 }
 
 impl AppState {
@@ -514,6 +520,7 @@ impl AppState {
             filter_chain: crate::viewport_filter::new_shared_filter_chain(),
             extension_host_state: crate::extension_host::new_shared_state(),
             tokio_handle: None,
+            filter_revision: 0,
         }
     }
 
@@ -1144,6 +1151,11 @@ impl AppState {
     }
 
     pub fn request_render(&mut self) {
+        self.needs_render = true;
+    }
+
+    pub fn bump_filter_revision(&mut self) {
+        self.filter_revision = self.filter_revision.wrapping_add(1);
         self.needs_render = true;
     }
 

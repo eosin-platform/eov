@@ -489,6 +489,7 @@ pub(crate) struct QueuedFrame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) draws: Vec<TileDraw>,
+    pub(crate) gpu_post_process_enabled: bool,
     pub(crate) gamma: f32,
     pub(crate) brightness: f32,
     pub(crate) contrast: f32,
@@ -506,6 +507,7 @@ impl QueuedFrame {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.width.hash(&mut hasher);
         self.height.hash(&mut hasher);
+        self.gpu_post_process_enabled.hash(&mut hasher);
         self.gamma.to_bits().hash(&mut hasher);
         self.brightness.to_bits().hash(&mut hasher);
         self.contrast.to_bits().hash(&mut hasher);
@@ -835,8 +837,6 @@ pub struct GpuRenderer {
     last_rendered_fingerprint: HashMap<usize, u64>,
     /// Last uploaded adjustments uniform, used to skip redundant uploads.
     last_adjustments: Option<AdjustmentsUniform>,
-    /// Whether GPU post-process filters are enabled (e.g. grayscale).
-    pub gpu_filters_enabled: bool,
 }
 
 impl GpuRenderer {
@@ -848,7 +848,6 @@ impl GpuRenderer {
             frame_counter: 0,
             last_rendered_fingerprint: HashMap::new(),
             last_adjustments: None,
-            gpu_filters_enabled: false,
         }
     }
 
@@ -879,11 +878,7 @@ impl GpuRenderer {
         // Skip the vertex rebuild and render pass if the frame is identical
         // to what was last rendered on this slot.
         if !surface_recreated {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            hasher.write_u64(frame.fingerprint());
-            self.gpu_filters_enabled.hash(&mut hasher);
-            let fp = hasher.finish();
+            let fp = frame.fingerprint();
             if self
                 .last_rendered_fingerprint
                 .get(&slot.index())
@@ -895,11 +890,10 @@ impl GpuRenderer {
 
         self.pending_frames.insert(slot.index(), frame);
 
-        if surface_recreated {
-            None
-        } else {
-            self.surface_image(slot)
-        }
+        // Return a live handle to the surface texture even on first creation
+        // so the UI can keep sampling the same texture across the redraw that
+        // flushes the queued frame.
+        self.surface_image(slot)
     }
 
     // -----------------------------------------------------------------------
@@ -1339,11 +1333,8 @@ impl GpuRenderer {
 
         for (slot_index, frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                hasher.write_u64(frame.fingerprint());
-                self.gpu_filters_enabled.hash(&mut hasher);
-                let fp = hasher.finish();
+                let fp = frame.fingerprint();
+                let gpu_post_process_enabled = frame.gpu_post_process_enabled;
                 Self::render_frame(
                     runtime,
                     &mut self.tile_arrays,
@@ -1351,7 +1342,7 @@ impl GpuRenderer {
                     SurfaceSlot(slot_index),
                     frame,
                     frame_id,
-                    self.gpu_filters_enabled,
+                    gpu_post_process_enabled,
                 );
                 self.last_rendered_fingerprint.insert(slot_index, fp);
             }

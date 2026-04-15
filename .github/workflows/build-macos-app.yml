@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install openslide
+          brew install openslide protobuf
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

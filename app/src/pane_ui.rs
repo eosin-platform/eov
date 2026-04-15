@@ -47,9 +47,9 @@ impl Default for PaneUiModels {
 
 thread_local! {
     static GPU_RENDERER_HANDLE: RefCell<Option<Rc<RefCell<GpuRenderer>>>> = const { RefCell::new(None) };
-    static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = const { RefCell::new(Vec::new()) };
+    static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = RefCell::new(Vec::new());
     static PANE_VIEW_MODEL: RefCell<Rc<VecModel<PaneViewData>>> = RefCell::new(Rc::new(VecModel::default()));
-    static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
+    static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = RefCell::new(Vec::new());
 }
 
 pub(crate) fn pane_from_index(index: i32) -> PaneId {
@@ -64,8 +64,6 @@ pub(crate) fn with_pane_render_cache<T>(
         let mut cache = cache.borrow_mut();
         if cache.len() < pane_count {
             cache.resize_with(pane_count, PaneRenderCacheEntry::default);
-        } else if cache.len() > pane_count {
-            cache.truncate(pane_count);
         }
         f(&mut cache)
     })
@@ -108,7 +106,10 @@ pub(crate) fn set_cached_pane_minimap(pane: PaneId, image: Option<Image>) {
 }
 
 pub(crate) fn with_pane_view_model<T>(f: impl FnOnce(&Rc<VecModel<PaneViewData>>) -> T) -> T {
-    PANE_VIEW_MODEL.with(|model| f(&model.borrow()))
+    PANE_VIEW_MODEL.with(|model| {
+        let model = model.borrow();
+        f(&model)
+    })
 }
 
 pub(crate) fn with_pane_ui_models<T>(
@@ -119,8 +120,6 @@ pub(crate) fn with_pane_ui_models<T>(
         let mut models = models.borrow_mut();
         if models.len() < pane_count {
             models.resize_with(pane_count, PaneUiModels::default);
-        } else if models.len() > pane_count {
-            models.truncate(pane_count);
         }
         f(&mut models)
     })
@@ -174,5 +173,11 @@ pub(crate) fn set_gpu_renderer_handle(renderer: Rc<RefCell<GpuRenderer>>) {
 }
 
 pub(crate) fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> R) -> Option<R> {
-    GPU_RENDERER_HANDLE.with(|handle| handle.borrow().as_ref().map(f))
+    GPU_RENDERER_HANDLE.with(|handle| {
+        let handle = handle.borrow();
+        match handle.as_ref() {
+            Some(renderer) => Some(f(renderer)),
+            None => None,
+        }
+    })
 }

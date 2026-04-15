@@ -49,11 +49,6 @@ impl ExtensionHostState {
         }
     }
 
-    /// Returns `true` if any registered remote filter is enabled.
-    pub fn has_enabled_filters(&self) -> bool {
-        self.filters.values().any(|f| f.enabled)
-    }
-
     /// Toggle the enabled state of all registered remote filters.
     pub fn toggle_all_filters(&mut self) {
         for filter in self.filters.values_mut() {

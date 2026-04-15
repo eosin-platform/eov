@@ -18,7 +18,6 @@ use common::{
     Viewport, calculate_trilinear_levels,
 };
 use parking_lot::RwLock;
-use rayon::prelude::*;
 use slint::{ComponentHandle, Image};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -109,7 +108,8 @@ struct CpuPaneSnapshot {
     stain_params_epoch: u64,
     stain_params_method: StainNormalization,
     filtering_mode: FilteringMode,
-    force_render: bool,
+    filter_revision: u64,
+    last_render_filter_revision: u64,
 }
 
 struct CpuFrameSnapshot {
@@ -147,6 +147,7 @@ struct CpuFrameStateUpdate {
     last_render_deconv_e_intensity: f32,
     last_render_deconv_e_visible: bool,
     last_render_deconv_isolated: crate::state::IsolatedChannel,
+    last_render_filter_revision: u64,
 }
 
 struct CpuPaneExecution {
@@ -696,6 +697,7 @@ fn collect_cpu_frame_snapshot(
     }
 
     let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
+    let filter_revision = state.filter_revision;
     state.ant_offset = (state.ant_offset + 0.5) % 16.0;
 
     let content_width = (ui.get_content_area_width() as f64).max(100.0);
@@ -771,6 +773,7 @@ fn collect_cpu_frame_snapshot(
             last_render_deconv_e_intensity,
             last_render_deconv_e_visible,
             last_render_deconv_isolated,
+            last_render_filter_revision,
             pending_cpu_job_id,
             needs_settled_cpu_render,
             cached_stain_params,
@@ -814,6 +817,7 @@ fn collect_cpu_frame_snapshot(
                     pane_state.last_render_deconv_e_intensity,
                     pane_state.last_render_deconv_e_visible,
                     pane_state.last_render_deconv_isolated,
+                    pane_state.last_render_filter_revision,
                     pane_state.pending_cpu_job_id,
                     pane_state.needs_settled_cpu_render,
                     pane_state.cached_stain_params,
@@ -882,13 +886,14 @@ fn collect_cpu_frame_snapshot(
             last_render_deconv_e_intensity,
             last_render_deconv_e_visible,
             last_render_deconv_isolated,
+            last_render_filter_revision,
             pending_cpu_job_id,
             needs_settled_cpu_render,
             cached_stain_params,
             stain_params_epoch,
             stain_params_method,
             filtering_mode,
-            force_render: render_requested,
+            filter_revision,
         }));
     }
 
@@ -930,6 +935,7 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_deconv_e_intensity = frame_update.last_render_deconv_e_intensity;
             pane_state.last_render_deconv_e_visible = frame_update.last_render_deconv_e_visible;
             pane_state.last_render_deconv_isolated = frame_update.last_render_deconv_isolated;
+            pane_state.last_render_filter_revision = frame_update.last_render_filter_revision;
         }
 
         if let Some(pending_cpu_job_id) = execution.commit.pending_cpu_job_id {
@@ -1095,6 +1101,7 @@ fn render_cpu_pane_from_snapshot(
         || tile_epoch_advanced;
     let tiles_pending = snapshot.tile_loader.pending_count() > 0;
     let keep_running = is_moving || new_tiles_loaded || tiles_pending;
+    let filters_changed = snapshot.filter_revision != snapshot.last_render_filter_revision;
 
     let adjustments_changed = RenderAdjustments {
         sharpness: snapshot.hud_sharpness,
@@ -1130,12 +1137,12 @@ fn render_cpu_pane_from_snapshot(
 
     if !snapshot.file_switched
         && !snapshot.content_missing
-        && !snapshot.force_render
         && !is_first_frame
         && !viewport_changed
         && !level_changed
         && !new_tiles_loaded
         && !adjustments_changed
+        && !filters_changed
         && !snapshot.needs_settled_cpu_render
     {
         return CpuPaneExecution {
@@ -1188,6 +1195,7 @@ fn render_cpu_pane_from_snapshot(
         last_render_deconv_e_intensity: snapshot.hud_deconv_e_intensity,
         last_render_deconv_e_visible: snapshot.hud_deconv_e_visible,
         last_render_deconv_isolated: snapshot.hud_deconv_isolated,
+        last_render_filter_revision: snapshot.filter_revision,
     });
 
     let Some(level_info) = snapshot.tile_manager.wsi().level(level).cloned() else {
@@ -1800,17 +1808,14 @@ fn render_pane_to_image(
             _ => SurfaceSlot(pane.0),
         };
         let image = crate::with_gpu_renderer(|renderer| {
-            let has_gpu_filters = filter_chain.read().has_enabled_gpu_filters();
-            let has_cpu_filters = filter_chain.read().has_enabled_cpu_filters();
-            let has_remote_filters = extension_host_state.read().has_enabled_filters();
-            renderer.borrow_mut().gpu_filters_enabled =
-                has_gpu_filters || has_cpu_filters || has_remote_filters;
+            let gpu_post_process_enabled = filter_chain.read().has_enabled_gpu_filters();
             renderer.borrow_mut().queue_frame(
                 slot,
                 QueuedFrame {
                     width: render_width,
                     height: render_height,
                     draws,
+                    gpu_post_process_enabled,
                     gamma: hud_gamma,
                     brightness: hud_brightness,
                     contrast: hud_contrast,
@@ -2180,6 +2185,19 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
             return None;
         }
 
+        let src_bounds = cpu_frame.viewport.bounds();
+        let dest_bounds = viewport.bounds();
+        let overlap_left = src_bounds.left.max(dest_bounds.left);
+        let overlap_top = src_bounds.top.max(dest_bounds.top);
+        let overlap_right = src_bounds.right.min(dest_bounds.right);
+        let overlap_bottom = src_bounds.bottom.min(dest_bounds.bottom);
+        if overlap_right <= overlap_left || overlap_bottom <= overlap_top {
+            // A stale preview source with no visible overlap would reproject to
+            // an all-background frame. Keep the last displayed pane image
+            // instead of flashing black while a fresher CPU job is in flight.
+            return None;
+        }
+
         let needed = (render_width as usize) * (render_height as usize) * 4;
         if entry.preview_buffer.len() < needed {
             entry.preview_buffer.resize(needed, 0);
@@ -2251,26 +2269,22 @@ fn composite_commands_into_preview_parallel(
 
     let stride = render_width as usize * 4;
     let rows_per_chunk = ((render_height as usize) / rayon::current_num_threads()).max(32);
+    for (chunk_index, chunk) in buffer.chunks_mut(rows_per_chunk * stride).enumerate() {
+        let start_row = chunk_index * rows_per_chunk;
+        let chunk_rows = chunk.len() / stride;
+        let chunk_height = chunk_rows as u32;
+        let row_offset = start_row as i32;
 
-    buffer
-        .par_chunks_mut(rows_per_chunk * stride)
-        .enumerate()
-        .for_each(|(chunk_index, chunk)| {
-            let start_row = chunk_index * rows_per_chunk;
-            let chunk_rows = chunk.len() / stride;
-            let chunk_height = chunk_rows as u32;
-            let row_offset = start_row as i32;
-
-            for command in commands {
-                composite_command_into_preview_chunk(
-                    chunk,
-                    render_width,
-                    chunk_height,
-                    row_offset,
-                    command,
-                );
-            }
-        });
+        for command in commands {
+            composite_command_into_preview_chunk(
+                chunk,
+                render_width,
+                chunk_height,
+                row_offset,
+                command,
+            );
+        }
+    }
 }
 
 fn composite_command_into_preview_chunk(

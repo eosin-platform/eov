@@ -93,11 +93,23 @@ jobs:
             ${{ matrix.msys2_prefix }}-libtiff
             ${{ matrix.msys2_prefix }}-libxml2
             ${{ matrix.msys2_prefix }}-openjpeg2
+            ${{ matrix.msys2_prefix }}-protobuf
             ${{ matrix.msys2_prefix }}-sqlite3
             ${{ matrix.msys2_prefix }}-zlib
             ${{ matrix.msys2_prefix }}-ntldd
             ${{ matrix.msys2_prefix }}-tools
             git
+
+      - name: Export protoc path
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          protoc_path="$(cygpath -w "$MSYSTEM_PREFIX/bin/protoc.exe")"
+          [[ -x "$MSYSTEM_PREFIX/bin/protoc.exe" ]] || {
+            echo "protoc not found at $MSYSTEM_PREFIX/bin/protoc.exe" >&2
+            exit 1
+          }
+          echo "PROTOC=$protoc_path" >> "$GITHUB_ENV"
 
       - name: Derive release metadata
         id: meta

@@ -60,6 +60,7 @@ jobs:
             libvulkan-dev \
             libfontconfig-dev \
             libopenslide-dev \
+            protobuf-compiler \
             libwayland-dev \
             libx11-dev \
             libxkbcommon-dev \
