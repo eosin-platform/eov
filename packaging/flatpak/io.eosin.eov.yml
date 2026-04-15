@@ -59,6 +59,22 @@ modules:
         url: https://github.com/openslide/openslide.git
         commit: 615670d924d6dddce3d407d1a6440a32cf5350c7
 
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -Dprotobuf_BUILD_TESTS=OFF
+      - -Dprotobuf_BUILD_PROTOC_BINARIES=ON
+      - -Dprotobuf_INSTALL_EXAMPLES=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /lib/*.a
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protobuf-31.1.tar.gz
+        sha256: 12bfd76d27b9ac3d65c00966901609e020481b9474ef75c7ff4601ac06fa0b82
+
   - name: eov
     buildsystem: simple
     build-options:
@@ -69,6 +85,7 @@ modules:
         LIBRARY_PATH: /app/lib
         LD_LIBRARY_PATH: /app/lib
         PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
+        PROTOC: /app/bin/protoc
         RUSTFLAGS: -L native=/app/lib
 
     build-commands:

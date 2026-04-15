@@ -17,7 +17,11 @@
 //! where the host acts as a bridge between the render pipeline and the remote
 //! filter.
 
+#[cfg(unix)]
 use std::os::fd::RawFd;
+
+#[cfg(not(unix))]
+type RawFd = std::os::raw::c_int;
 
 /// Describes what an RGBA8 pixel buffer looks like in memory.
 pub struct CpuFrameBuffer<'a> {
