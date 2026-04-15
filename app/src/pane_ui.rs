@@ -47,9 +47,9 @@ impl Default for PaneUiModels {
 
 thread_local! {
     static GPU_RENDERER_HANDLE: RefCell<Option<Rc<RefCell<GpuRenderer>>>> = const { RefCell::new(None) };
-    static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = RefCell::new(Vec::new());
+    static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = const { RefCell::new(Vec::new()) };
     static PANE_VIEW_MODEL: RefCell<Rc<VecModel<PaneViewData>>> = RefCell::new(Rc::new(VecModel::default()));
-    static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = RefCell::new(Vec::new());
+    static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(crate) fn pane_from_index(index: i32) -> PaneId {
@@ -175,9 +175,6 @@ pub(crate) fn set_gpu_renderer_handle(renderer: Rc<RefCell<GpuRenderer>>) {
 pub(crate) fn with_gpu_renderer<R>(f: impl FnOnce(&Rc<RefCell<GpuRenderer>>) -> R) -> Option<R> {
     GPU_RENDERER_HANDLE.with(|handle| {
         let handle = handle.borrow();
-        match handle.as_ref() {
-            Some(renderer) => Some(f(renderer)),
-            None => None,
-        }
+        handle.as_ref().map(f)
     })
 }
