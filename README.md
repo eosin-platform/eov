@@ -360,11 +360,12 @@ eov currently persists two kinds of state:
 
 You can override the render-backend config path with the `EOV_CONFIG` environment variable.
 
-Example backend config:
+Example config file:
 
 ```toml
 render_backend = "gpu"
 filtering_mode = "trilinear"
+extension_host_port = 12345
 ```
 
 ## Architecture
