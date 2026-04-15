@@ -154,6 +154,39 @@ def _parse_apply_request(data):
     return filter_id, width, height, rgba_data
 
 
+def _parse_apply_response(data):
+    """Parse ApplyFilterCpuResponse -> (rgba_data, width, height)."""
+    pos = 0
+    rgba_data = b""
+    width = 0
+    height = 0
+    while pos < len(data):
+        tag, pos = _decode_varint(data, pos)
+        field_number = tag >> 3
+        wire_type = tag & 0x07
+        if wire_type == 2:
+            value, pos = _decode_string_field(data, pos)
+            if field_number == 1:
+                rgba_data = value
+        elif wire_type == 0:
+            value, pos = _decode_varint(data, pos)
+            if field_number == 2:
+                width = value
+            elif field_number == 3:
+                height = value
+    return rgba_data, width, height
+
+
+def _encode_apply_request(filter_id, width, height, rgba_data):
+    """Encode ApplyFilterCpuRequest."""
+    return (
+        _encode_string_field(1, filter_id)
+        + _encode_uint32_field(2, width)
+        + _encode_uint32_field(3, height)
+        + _encode_string_field(4, rgba_data)
+    )
+
+
 def main():
     host = os.environ.get("EOV_EXTENSION_HOST")
     if not host:
@@ -190,32 +223,47 @@ def main():
     print("[grayscale_python] Filter enabled")
 
     # ApplyFilterCpuStream: bidirectional streaming.
-    # We open a stream and process frames as they arrive.
+    # The host pushes frames via the response stream (ApplyFilterCpuResponse).
+    # We process them and send back via the request stream (ApplyFilterCpuRequest).
+
+    import queue as queue_mod
+    processed_queue = queue_mod.Queue()
+
     def request_iterator():
-        """Yield nothing — the host pushes frames to us via the stream."""
-        # Keep the iterator open indefinitely; the host sends frames.
-        event = threading.Event()
-        signal.signal(signal.SIGTERM, lambda *_: event.set())
-        signal.signal(signal.SIGINT, lambda *_: event.set())
-        event.wait()
+        """Yield initial handshake, then processed frames."""
+        # First message: identify ourselves by filter_id.
+        yield _encode_string_field(1, filter_id)
+
+        # Subsequent messages: processed frames pushed by the main loop.
+        while True:
+            item = processed_queue.get()
+            if item is None:
+                break
+            yield item
 
     try:
-        stream = channel.stream_stream(
+        responses = channel.stream_stream(
             "/eov.extension.ExtensionHost/ApplyFilterCpuStream",
             request_serializer=lambda x: x,
             response_deserializer=lambda x: x,
-        )
+        )(request_iterator())
 
-        # The host will invoke ApplyFilterCpu (unary) instead for now.
-        # Keep the plugin alive waiting for termination.
-        print("[grayscale_python] Waiting for frames (press Ctrl+C to exit)...")
-        event = threading.Event()
-        signal.signal(signal.SIGTERM, lambda *_: event.set())
-        signal.signal(signal.SIGINT, lambda *_: event.set())
-        event.wait()
+        print("[grayscale_python] Stream connected, processing frames...")
+        for resp_data in responses:
+            rgba_data, width, height = _parse_apply_response(resp_data)
+            if width == 0 or height == 0 or not rgba_data:
+                continue
+            processed = _apply_grayscale(rgba_data, width, height)
+            processed_queue.put(
+                _encode_apply_request(filter_id, width, height, processed)
+            )
+    except grpc.RpcError as e:
+        print(f"[grayscale_python] gRPC error: {e}", file=sys.stderr)
     except KeyboardInterrupt:
         pass
     finally:
+        processed_queue.put(None)  # signal request_iterator to stop
+
         # Unregister on exit
         unreg_req = _encode_string_field(1, filter_id)
         try:

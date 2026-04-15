@@ -160,6 +160,8 @@ impl ExtensionHost for ExtensionHostService {
         // this back to us.
         Ok(Response::new(ApplyFilterCpuResponse {
             rgba_data: req.rgba_data,
+            width: req.width,
+            height: req.height,
         }))
     }
 
@@ -175,32 +177,80 @@ impl ExtensionHost for ExtensionHostService {
         &self,
         request: Request<Streaming<ApplyFilterCpuRequest>>,
     ) -> Result<Response<Self::ApplyFilterCpuStreamStream>, Status> {
-        let mut stream = request.into_inner();
-        let (tx, rx) = mpsc::channel(4);
+        let mut in_stream = request.into_inner();
 
+        // The plugin's first message identifies the filter via filter_id.
+        let first_msg = in_stream
+            .message()
+            .await?
+            .ok_or_else(|| Status::invalid_argument("expected initial message with filter_id"))?;
+        let filter_id = first_msg.filter_id.clone();
+
+        // Create the channel that the render pipeline will use to push frames.
+        let (frame_tx, mut frame_rx) = mpsc::channel::<CpuFilterRequest>(1);
+
+        // Store the sender in the RemoteFilter so apply_remote_cpu_filters()
+        // can reach us.
+        {
+            let mut state = self.state.write();
+            if let Some(filter) = state.filters.get_mut(&filter_id) {
+                filter.cpu_request_tx = Some(frame_tx);
+                info!(
+                    "CPU stream connected for filter '{}' ({})",
+                    filter.name, filter_id
+                );
+            } else {
+                return Err(Status::not_found(format!(
+                    "filter '{}' not found",
+                    filter_id
+                )));
+            }
+        }
+
+        // Output channel: frames pushed to plugin via the gRPC response stream.
+        let (out_tx, out_rx) =
+            mpsc::channel::<Result<ApplyFilterCpuResponse, Status>>(1);
+
+        let state_clone = self.state.clone();
+        let fid = filter_id.clone();
+
+        // Coordinator task: bridge render pipeline ↔ plugin.
         tokio::spawn(async move {
-            while let Some(result) = stream.message().await.transpose() {
-                match result {
-                    Ok(req) => {
-                        // Echo back — the real filtering happens client-side.
-                        // The stream model: host sends frame -> plugin processes
-                        // -> plugin sends back. Here we just forward.
-                        let resp = ApplyFilterCpuResponse {
-                            rgba_data: req.rgba_data,
-                        };
-                        if tx.send(Ok(resp)).await.is_err() {
-                            break;
-                        }
+            while let Some(frame_req) = frame_rx.recv().await {
+                let oneshot_tx = frame_req.response_tx;
+
+                // Push the raw frame to the plugin via the response stream.
+                let resp = ApplyFilterCpuResponse {
+                    width: frame_req.width,
+                    height: frame_req.height,
+                    rgba_data: frame_req.rgba_data,
+                };
+                if out_tx.send(Ok(resp)).await.is_err() {
+                    break; // plugin disconnected
+                }
+
+                // Wait for the plugin to return the processed frame.
+                match in_stream.message().await {
+                    Ok(Some(processed)) => {
+                        let _ = oneshot_tx.send(processed.rgba_data);
                     }
+                    Ok(None) => break,
                     Err(e) => {
-                        let _ = tx.send(Err(e)).await;
+                        warn!("Remote filter stream error: {e}");
                         break;
                     }
                 }
             }
+
+            // Clean up when the stream closes.
+            let mut state = state_clone.write();
+            if let Some(filter) = state.filters.get_mut(&fid) {
+                filter.cpu_request_tx = None;
+                info!("CPU stream disconnected for filter '{}'", fid);
+            }
         });
 
-        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let stream = tokio_stream::wrappers::ReceiverStream::new(out_rx);
         Ok(Response::new(Box::pin(stream)))
     }
 

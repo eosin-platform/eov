@@ -88,6 +88,10 @@ message ApplyFilterCpuRequest {
 message ApplyFilterCpuResponse {
   // Transformed RGBA8 pixel data (same dimensions as the request).
   bytes rgba_data = 1;
+
+  // Image dimensions (set when the host pushes a frame via the streaming RPC).
+  uint32 width = 2;
+  uint32 height = 3;
 }
 
 message ApplyFilterGpuRequest {

@@ -58,6 +58,7 @@ struct RenderPaneRequest<'a> {
     force_render: bool,
     render_backend: RenderBackend,
     filtering_mode: FilteringMode,
+    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
 }
 
 #[derive(Clone)]
@@ -458,6 +459,7 @@ pub(crate) fn update_and_render(
 
     let mut keep_running = render_requested || cpu_jobs_pending;
     let mut rendered_frame = completed_cpu_frame;
+    let filter_chain = state.filter_chain.clone();
 
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
         let pane = PaneId(pane_index);
@@ -520,6 +522,7 @@ pub(crate) fn update_and_render(
                 force_render,
                 render_backend,
                 filtering_mode,
+                filter_chain: &filter_chain,
             },
         );
 
@@ -566,6 +569,11 @@ fn update_and_render_cpu(
     let Some(frame) = collect_cpu_frame_snapshot(ui, state, completed_cpu_frame, cpu_jobs_pending)
     else {
         return false;
+    };
+
+    let filter_chain = {
+        let state = state.read();
+        state.filter_chain.clone()
     };
 
     let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<common::TileCoord>)> =
@@ -623,7 +631,7 @@ fn update_and_render_cpu(
             crate::set_cached_pane_minimap(snapshot.pane, snapshot.minimap_image.clone());
         }
 
-        let execution = render_cpu_pane_from_snapshot(&snapshot, tile_cache);
+        let execution = render_cpu_pane_from_snapshot(&snapshot, tile_cache, &filter_chain);
         keep_running |= execution.outcome.keep_running || snapshot.file_switched;
         rendered_frame |= execution.outcome.rendered;
 
@@ -1017,6 +1025,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
 fn render_cpu_pane_from_snapshot(
     snapshot: &CpuPaneSnapshot,
     tile_cache: &Arc<TileCache>,
+    filter_chain: &crate::viewport_filter::SharedFilterChain,
 ) -> CpuPaneExecution {
     let vp = &snapshot.viewport_state.viewport;
     let vp_zoom = vp.zoom;
@@ -1398,6 +1407,7 @@ fn render_cpu_pane_from_snapshot(
             fallback_commands: &fallback_commands,
             fine_commands: &fine_commands,
             postprocess: &postprocess,
+            filter_chain,
         })
     } else {
         None
@@ -1463,6 +1473,7 @@ fn render_pane_to_image(
         force_render,
         render_backend,
         filtering_mode,
+        filter_chain,
     } = request;
 
     let (
@@ -1764,6 +1775,9 @@ fn render_pane_to_image(
             _ => SurfaceSlot(pane.0),
         };
         let image = crate::with_gpu_renderer(|renderer| {
+            let has_gpu_filters = filter_chain.read().has_enabled_gpu_filters();
+            let has_cpu_filters = filter_chain.read().has_enabled_cpu_filters();
+            renderer.borrow_mut().gpu_filters_enabled = has_gpu_filters || has_cpu_filters;
             renderer.borrow_mut().queue_frame(
                 slot,
                 QueuedFrame {
@@ -2053,6 +2067,7 @@ fn render_pane_to_image(
             fallback_commands: &fallback_commands,
             fine_commands: &fine_commands,
             postprocess: &postprocess,
+            filter_chain,
         })
     } else {
         None
@@ -2110,6 +2125,7 @@ struct RenderCachedPreview<'a> {
     fallback_commands: &'a [CpuBlitCommand],
     fine_commands: &'a [CpuBlitCommand],
     postprocess: &'a CpuRenderPostProcess,
+    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
 }
 
 fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
@@ -2122,6 +2138,7 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         fallback_commands,
         fine_commands,
         postprocess,
+        filter_chain,
     } = input;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -2165,6 +2182,14 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         );
 
         crate::render_pool::apply_postprocess(preview, render_width, render_height, postprocess);
+
+        // Apply viewport filters (same chain used in the settled CPU path).
+        {
+            let chain = filter_chain.read();
+            if chain.has_enabled_cpu_filters() {
+                chain.apply_cpu(preview, render_width, render_height);
+            }
+        }
 
         blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
     })
