@@ -12,7 +12,12 @@
 
 use ash::vk;
 use slint::wgpu_28::wgpu;
+
+#[cfg(unix)]
 use std::os::fd::RawFd;
+
+#[cfg(not(unix))]
+type RawFd = std::os::raw::c_int;
 
 struct ImageLayoutTransition {
     image: vk::Image,
