@@ -27,6 +27,7 @@ export component Viewport inherits Rectangle {
     in property <bool> show-minimap: true;
     in property <[MetadataItem]> metadata-items: [];
     in property <bool> show-metadata: false;
+    in property <bool> show-scale-bar: true;
     in property <string> status-text: "";
     in property <bool> is-loading: false;
     in property <bool> debug-mode: false;
@@ -53,7 +54,6 @@ export component Viewport inherits Rectangle {
     callback viewport-context-menu(length, length);
     callback cancel-tool();
     callback close-tab();
-    callback hud-toggle-scale-bar();
     callback hud-toggle-dropdown();
     callback hud-sharpness-changed(float);
     callback hud-gamma-changed(float);
@@ -466,15 +466,11 @@ export component Viewport inherits Rectangle {
         x: 16px;
         y: 16px;
         zoom-level: root.viewport-info.zoom;
-        show-scale-bar: root.hud.show-scale-bar;
         dropdown-open: root.hud.hud-dropdown-open;
         has-adjustments: root.hud.sharpness > 0.01 || (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
         plugin-buttons: root.plugin-hud-buttons;
         fit-to-view => {
             root.fit-to-view();
-        }
-        toggle-scale-bar => {
-            root.hud-toggle-scale-bar();
         }
         toggle-dropdown => {
             root.hud-toggle-dropdown();
@@ -551,7 +547,7 @@ export component Viewport inherits Rectangle {
     }
 
     // Scale bar (bottom-left)
-    if root.hud.show-scale-bar: ScaleBar {
+    if root.show-scale-bar: ScaleBar {
         x: 16px;
         y: parent.height - self.height - 16px;
         zoom: root.viewport-info.zoom;

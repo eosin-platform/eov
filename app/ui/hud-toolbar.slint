@@ -43,7 +43,6 @@ component HudButton inherits Rectangle {
 
 export component HudToolbar inherits Rectangle {
     in property <float> zoom-level: 1.0;
-    in property <bool> show-scale-bar: true;
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
     in property <[HudToolbarButtonData]> plugin-buttons: [];
@@ -51,7 +50,6 @@ export component HudToolbar inherits Rectangle {
     callback fit-to-view();
     callback zoom-in();
     callback zoom-out();
-    callback toggle-scale-bar();
     callback toggle-dropdown();
     callback zoom-input(float);
     callback plugin-button-clicked(string, string);
@@ -60,11 +58,11 @@ export component HudToolbar inherits Rectangle {
     property <bool> editing-zoom: false;
 
     property <string> active-tooltip:
-        fit-btn.hovered ? fit-btn.tooltip-text : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text : scale-btn.hovered ? scale-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
+        fit-btn.hovered ? fit-btn.tooltip-text : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
     property <length> tooltip-center-x:
-        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2 : zoom-in-btn.hovered ? zoom-in-btn.x + zoom-in-btn.width / 2 : zoom-out-btn.hovered ? zoom-out-btn.x + zoom-out-btn.width / 2 : scale-btn.hovered ? scale-btn.x + scale-btn.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
+        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2 : zoom-in-btn.hovered ? zoom-in-btn.x + zoom-in-btn.width / 2 : zoom-out-btn.hovered ? zoom-out-btn.x + zoom-out-btn.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
 
-    width: 72px + 1px + (5 + root.plugin-buttons.length) * 38px;
+    width: 72px + 1px + (4 + root.plugin-buttons.length) * 38px;
     height: 38px;
     background: transparent;
 
@@ -172,15 +170,6 @@ export component HudToolbar inherits Rectangle {
                 tooltip-text: "Zoom out";
                 clicked => {
                     root.zoom-out();
-                }
-            }
-
-            scale-btn := HudButton {
-                icon-source: @image-url("icons/toggle-measure.svg");
-                tooltip-text: "Toggle scale bar";
-                active: root.show-scale-bar;
-                clicked => {
-                    root.toggle-scale-bar();
                 }
             }
 

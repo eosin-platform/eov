@@ -77,12 +77,6 @@ export component AppWindow inherits Window {
     in-out property <int> split-drop-side: -1;
     in-out property <int> os-file-hover-pane: -1;
     in-out property <int> os-file-hover-side: -1;
-    out property <float> content-area-width: content-area.width / 1px;
-    out property <float> content-area-height: content-area.height / 1px;
-    out property <float> viewport-width: split-enabled ? (content-area.width * split-position - 3px) / 1px : content-area.width / 1px;
-    out property <float> viewport-height: (content-area.height - 35px) / 1px;
-    out property <float> secondary-viewport-width: (content-area.width * (1 - split-position) - 3px) / 1px;
-    out property <float> secondary-viewport-height: (content-area.height - 35px) / 1px;
     out property <float> toolbar-action-width: toolbar.action-cluster-width;
 
     in-out property <bool> context-menu-visible: false;
@@ -140,6 +134,8 @@ export component AppWindow inherits Window {
     in-out property <FilteringMode> filtering-mode: FilteringMode.trilinear;
     in-out property <bool> show-minimap: true;
     in-out property <bool> show-metadata: false;
+    in-out property <bool> show-scale-bar: true;
+    in-out property <bool> show-annotations-sidebar: false;
     in-out property <[PluginButtonData]> plugin-buttons: [];
     in-out property <[HudToolbarButtonData]> plugin-hud-buttons: [];
 
@@ -148,6 +144,8 @@ export component AppWindow inherits Window {
     callback open-recent-file(string);
     callback toggle-minimap-requested();
     callback toggle-metadata-requested();
+    callback toggle-scale-bar-requested();
+    callback toggle-annotations-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -188,7 +186,6 @@ export component AppWindow inherits Window {
     callback open-recent-menu-requested(length, length);
     callback context-menu-command(string);
     callback os-file-drop(/* pane */ int, /* side: -1=center, 0=left, 1=right */ int, /* path */ string);
-    callback hud-toggle-scale-bar(int);
     callback hud-toggle-dropdown(int);
     callback hud-sharpness-changed(int, float);
     callback hud-gamma-changed(int, float);
@@ -208,10 +205,20 @@ export component AppWindow inherits Window {
     callback hud-deconv-e-view-toggled(int);
 
     property <length> toolbar-height: 40px;
-    property <length> pane-gap: 6px;
+    property <length> pane-gap: 1px;
+    property <length> annotations-sidebar-width: 250px;
+    property <length> content-panel-gap: show-annotations-sidebar ? pane-gap : 0px;
     property <int> pane-count: max(1, panes.length);
-    property <length> pane-width: (content-area.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
+    property <length> pane-region-width: content-area.width - (show-annotations-sidebar ? annotations-sidebar-width + content-panel-gap : 0px);
+    property <length> pane-width: (pane-region-width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
     property <length> pane-stride: pane-width + pane-gap;
+
+    out property <float> content-area-width: pane-region-width / 1px;
+    out property <float> content-area-height: content-area.height / 1px;
+    out property <float> viewport-width: split-enabled ? (pane-region-width * split-position - 3px) / 1px : pane-region-width / 1px;
+    out property <float> viewport-height: (content-area.height - 35px) / 1px;
+    out property <float> secondary-viewport-width: (pane-region-width * (1 - split-position) - 3px) / 1px;
+    out property <float> secondary-viewport-height: (content-area.height - 35px) / 1px;
 
     property <bool> tab-tooltip-visible: false;
     property <string> tab-tooltip-text: "";
@@ -224,13 +231,19 @@ export component AppWindow inherits Window {
             self.split-drop-side = -1;
             return;
         }
-        let raw-pane = Math.floor(abs-x / self.pane-stride);
+        if abs-x < pane-region.absolute-position.x || abs-x > pane-region.absolute-position.x + pane-region.width {
+            self.drop-target-pane = -1;
+            self.split-drop-side = -1;
+            return;
+        }
+        let local-abs-x = abs-x - pane-region.absolute-position.x;
+        let raw-pane = Math.floor(local-abs-x / self.pane-stride);
         self.drop-target-pane = Math.max(0, Math.min(self.panes.length - 1, raw-pane));
         self.split-drop-side = -1;
         let drop-top = toolbar-height + 35px;
         let drop-bottom = self.height;
         if abs-y >= drop-top && abs-y <= drop-bottom {
-            let local-x = abs-x - self.drop-target-pane * self.pane-stride;
+            let local-x = local-abs-x - self.drop-target-pane * self.pane-stride;
             let edge-width = self.pane-width * 0.28;
             if local-x <= edge-width {
                 self.split-drop-side = 0;
@@ -246,13 +259,21 @@ export component AppWindow inherits Window {
             self.os-file-hover-side = -1;
             return;
         }
-        let raw-pane = Math.floor(abs-x * 1px / self.pane-stride);
+        let pane-left = pane-region.absolute-position.x / 1px;
+        let pane-right = (pane-region.absolute-position.x + pane-region.width) / 1px;
+        if abs-x < pane-left || abs-x > pane-right {
+            self.os-file-hover-pane = -1;
+            self.os-file-hover-side = -1;
+            return;
+        }
+        let local-abs-x = abs-x - pane-left;
+        let raw-pane = Math.floor(local-abs-x * 1px / self.pane-stride);
         self.os-file-hover-pane = Math.max(0, Math.min(self.panes.length - 1, raw-pane));
         self.os-file-hover-side = -1;
         let drop-top = (toolbar-height + 35px) / 1px;
         let drop-bottom = self.height / 1px;
         if abs-y >= drop-top && abs-y <= drop-bottom {
-            let local-x = abs-x - self.os-file-hover-pane * self.pane-stride / 1px;
+            let local-x = local-abs-x - self.os-file-hover-pane * self.pane-stride / 1px;
             let edge-width = self.pane-width / 1px * 0.20;
             if local-x <= edge-width {
                 self.os-file-hover-side = 0;
@@ -280,6 +301,8 @@ export component AppWindow inherits Window {
             filter-popup-visible <=> root.filter-popup-visible;
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
+            show-scale-bar: root.show-scale-bar;
+            show-annotations-sidebar: root.show-annotations-sidebar;
             use-native-window-controls: root.use-native-window-controls;
             plugin-buttons: root.plugin-buttons;
             open-file-requested => {
@@ -293,6 +316,12 @@ export component AppWindow inherits Window {
             }
             toggle-metadata-requested => {
                 root.toggle-metadata-requested();
+            }
+            toggle-scale-bar-requested => {
+                root.toggle-scale-bar-requested();
+            }
+            toggle-annotations-requested => {
+                root.toggle-annotations-requested();
             }
             tool-selected(tool) => {
                 root.tool-selected(tool);
@@ -323,305 +352,362 @@ export component AppWindow inherits Window {
         content-area := Rectangle {
             vertical-stretch: 1;
 
-            split-pane := SplitPaneContainer {
-                visible: root.panes.length > 0;
-                panes: root.panes;
-                status-text: root.status-text;
-                show-minimap: root.show-minimap;
-                show-metadata: root.show-metadata;
-                split-enabled: root.split-enabled;
-                focused-pane: root.focused-pane;
-                current-tool: root.current-tool;
-                plugin-hud-buttons: root.plugin-hud-buttons;
-                debug-mode: root.debug-mode;
-                fps: root.fps;
-                recent-files: root.recent-files;
-                dragging-tab-id: root.dragging-tab-id;
-                drag-source-pane: root.drag-source-pane;
-                drag-source-index: root.drag-source-index;
-                dragging-tab-title: root.dragging-tab-title;
-                drop-target-pane: root.drop-target-pane;
-                split-drop-side: root.split-drop-side;
-                drag-abs-x: root.drag-abs-x;
-                os-file-hover-pane: root.os-file-hover-pane;
-                os-file-hover-side: root.os-file-hover-side;
+            if root.show-annotations-sidebar: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: root.annotations-sidebar-width;
+                height: parent.height;
+                background: Theme.surface;
 
-                tab-activated(pane, id) => {
-                    root.tab-activated(pane, id);
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.border;
                 }
-                tab-close-requested(pane, id) => {
-                    root.tab-close-requested(pane, id);
-                }
-                new-tab-requested(pane) => {
-                    root.new-tab-requested(pane);
-                }
-                open-file-requested => {
-                    root.open-file-requested();
-                }
-                open-recent-file(path) => {
-                    root.open-recent-file(path);
-                }
-                tab-context-menu(pane, id, x, y) => {
-                    root.context-menu-tab-id = id;
-                    root.context-menu-x = x;
-                    root.context-menu-y = y;
-                    root.context-menu-items = [
-                        {
-                            id: "close",
-                            label: "Close",
-                            icon: "",
-                            shortcut: "Ctrl+W",
-                            enabled: true,
-                            separator-after: false
-                        },
-                        {
-                            id: "close-others",
-                            label: "Close Others",
-                            icon: "",
-                            shortcut: "",
-                            enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false,
-                            separator-after: false
-                        },
-                        {
-                            id: "close-right",
-                            label: "Close to the Right",
-                            icon: "",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: false
-                        },
-                        {
-                            id: "close-all",
-                            label: "Close All",
-                            icon: "",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: true
-                        },
-                        {
-                            id: "open-folder",
-                            label: "Open Containing Folder",
-                            icon: "",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: false
-                        },
-                        {
-                            id: "copy-path",
-                            label: "Copy Path",
-                            icon: "",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: true
-                        },
-                        {
-                            id: "split-right",
-                            label: "Split Right",
-                            icon: "",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: false
-                        },
-                    ];
-                    root.drag-source-pane = pane;
-                    root.context-menu-visible = true;
-                }
-                viewport-pan(dx, dy) => {
-                    root.viewport-pan(dx, dy);
-                }
-                viewport-zoom(f, x, y) => {
-                    root.viewport-zoom(f, x, y);
-                }
-                viewport-fit-to-view => {
-                    root.viewport-fit-to-view();
-                }
-                viewport-start-pan(x, y) => {
-                    root.viewport-start-pan(x, y);
-                }
-                viewport-end-pan => {
-                    root.viewport-end-pan();
-                }
-                viewport-context-menu(pane, x, y) => {
-                    root.context-menu-tab-id = -1;
-                    root.drag-source-pane = pane;
-                    root.context-menu-x = x;
-                    root.context-menu-y = y;
-                    root.context-menu-items = [
-                        {
-                            id: "viewport-copy-image",
-                            label: "Copy Image",
-                            icon: "copy",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: false
-                        },
-                        {
-                            id: "viewport-export-image",
-                            label: "Export Image",
-                            icon: "export",
-                            shortcut: "",
-                            enabled: true,
-                            separator-after: false
-                        },
-                    ];
-                    root.context-menu-visible = true;
-                }
-                minimap-navigate(nx, ny) => {
-                    root.minimap-navigate(nx, ny);
-                }
-                file-dropped(path) => {
-                    root.file-dropped(path);
-                }
-                pane-focused(pane) => {
-                    root.pane-focused(pane);
-                }
-                split-position-changed(pos) => {
-                    root.split-position-changed(pos);
-                }
-                tab-drag-started(id, pane, title, index, abs-x, abs-y) => {
-                    root.dragging-tab-id = id;
-                    root.drag-source-pane = pane;
-                    root.drag-source-index = index;
-                    root.dragging-tab-title = title;
-                    root.focused-pane = pane;
-                    root.drag-abs-x = abs-x;
-                    root.drag-abs-y = abs-y;
-                    root.update-drop-target(abs-x, abs-y);
-                }
-                tab-drag-moved(abs-x, abs-y) => {
-                    root.drag-abs-x = abs-x;
-                    root.drag-abs-y = abs-y;
-                    root.update-drop-target(abs-x, abs-y);
-                }
-                tab-drag-ended(abs-x, abs-y) => {
-                    root.drag-abs-x = abs-x;
-                    root.drag-abs-y = abs-y;
-                    root.update-drop-target(abs-x, abs-y);
-                    if root.drop-target-pane != -1 && root.split-drop-side != -1 {
-                        let insert-at = root.split-drop-side == 0 ? root.drop-target-pane : root.drop-target-pane + 1;
-                        root.focused-pane = insert-at;
-                        root.split-tab-by-drop(root.dragging-tab-id, insert-at);
-                    } else if root.drop-target-pane != root.drag-source-pane {
-                        root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
-                    } else if split-pane.active-drop-index >= 0 {
-                        root.reorder-tab(root.drop-target-pane, root.dragging-tab-id, split-pane.active-drop-index);
+
+                VerticalLayout {
+                    width: parent.width;
+                    height: parent.height;
+                    padding-top: 8px;
+                    padding-right: 12px;
+                    padding-bottom: 12px;
+                    padding-left: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Annotations";
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        font-weight: 700;
                     }
-                    root.dragging-tab-id = -1;
-                    root.drag-source-pane = -1;
-                    root.drag-source-index = -1;
-                    root.dragging-tab-title = "";
-                    root.drop-target-pane = -1;
-                    root.split-drop-side = -1;
-                }
-                move-tab-to-pane(id, from, to) => {
-                    root.focused-pane = to;
-                    root.move-tab-to-pane(id, from, to);
-                }
-                split-tab-by-drop(id, to) => {
-                    root.focused-pane = to;
-                    root.split-tab-by-drop(id, to);
-                }
-                reorder-tab(pane, id, new-index) => {
-                    root.reorder-tab(pane, id, new-index);
-                }
-                clear-tab-drag => {
-                    root.dragging-tab-id = -1;
-                    root.drag-source-pane = -1;
-                    root.drag-source-index = -1;
-                    root.dragging-tab-title = "";
-                    root.drop-target-pane = -1;
-                    root.split-drop-side = -1;
-                }
-                zoom-slider-changed(pane, value) => {
-                    root.zoom-slider-changed(pane, value);
-                }
-                tool-mouse-down(x, y) => {
-                    root.viewport-tool-mouse-down(x, y);
-                }
-                tool-mouse-move(x, y) => {
-                    root.viewport-tool-mouse-move(x, y);
-                }
-                tool-mouse-up(x, y) => {
-                    root.viewport-tool-mouse-up(x, y);
-                }
-                cancel-tool => {
-                    root.cancel-tool();
-                }
-                close-active-tab => {
-                    root.close-active-tab();
-                }
-                tab-tooltip-changed(visible, text, cx, ty) => {
-                    root.tab-tooltip-visible = visible;
-                    root.tab-tooltip-text = text;
-                    root.tab-tooltip-x = cx;
-                    root.tab-tooltip-y = ty;
-                }
-                hud-toggle-scale-bar(pane) => {
-                    root.hud-toggle-scale-bar(pane);
-                }
-                hud-toggle-dropdown(pane) => {
-                    root.hud-toggle-dropdown(pane);
-                }
-                hud-sharpness-changed(pane, v) => {
-                    root.hud-sharpness-changed(pane, v);
-                }
-                hud-gamma-changed(pane, v) => {
-                    root.hud-gamma-changed(pane, v);
-                }
-                hud-brightness-changed(pane, v) => {
-                    root.hud-brightness-changed(pane, v);
-                }
-                hud-contrast-changed(pane, v) => {
-                    root.hud-contrast-changed(pane, v);
-                }
-                hud-measurement-unit-changed(pane, u) => {
-                    root.hud-measurement-unit-changed(pane, u);
-                }
-                hud-stain-normalization-changed(pane, s) => {
-                    root.hud-stain-normalization-changed(pane, s);
-                }
-                hud-reset-adjustments(pane) => {
-                    root.hud-reset-adjustments(pane);
-                }
-                hud-zoom-input(pane, v) => {
-                    root.hud-zoom-input(pane, v);
-                }
-                hud-zoom-in(pane) => {
-                    root.hud-zoom-in(pane);
-                }
-                hud-zoom-out(pane) => {
-                    root.hud-zoom-out(pane);
-                }
-                hud-deconv-h-intensity-changed(pane, v) => {
-                    root.hud-deconv-h-intensity-changed(pane, v);
-                }
-                hud-deconv-e-intensity-changed(pane, v) => {
-                    root.hud-deconv-e-intensity-changed(pane, v);
-                }
-                hud-deconv-h-visibility-toggled(pane) => {
-                    root.hud-deconv-h-visibility-toggled(pane);
-                }
-                hud-deconv-e-visibility-toggled(pane) => {
-                    root.hud-deconv-e-visibility-toggled(pane);
-                }
-                hud-deconv-h-view-toggled(pane) => {
-                    root.hud-deconv-h-view-toggled(pane);
-                }
-                hud-deconv-e-view-toggled(pane) => {
-                    root.hud-deconv-e-view-toggled(pane);
-                }
-                hud-plugin-button-clicked(pane, plugin-id, action-id) => {
-                    root.hud-plugin-button-clicked(pane, plugin-id, action-id);
+
+                    Rectangle {
+                        width: 100%;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: transparent;
+                    }
                 }
             }
 
-            if panes.length == 0: HomeScreen {
-                recent-files: root.recent-files;
-                open-file-requested => {
-                    root.open-file-requested();
+            pane-region := Rectangle {
+                x: root.show-annotations-sidebar ? root.annotations-sidebar-width + root.content-panel-gap : 0px;
+                y: 0px;
+                width: content-area.width - (root.show-annotations-sidebar ? root.annotations-sidebar-width + root.content-panel-gap : 0px);
+                height: content-area.height;
+                background: Theme.background;
+
+                split-pane := SplitPaneContainer {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    visible: root.panes.length > 0;
+                    panes: root.panes;
+                    status-text: root.status-text;
+                    show-minimap: root.show-minimap;
+                    show-metadata: root.show-metadata;
+                    show-scale-bar: root.show-scale-bar;
+                    split-enabled: root.split-enabled;
+                    focused-pane: root.focused-pane;
+                    current-tool: root.current-tool;
+                    plugin-hud-buttons: root.plugin-hud-buttons;
+                    debug-mode: root.debug-mode;
+                    fps: root.fps;
+                    recent-files: root.recent-files;
+                    dragging-tab-id: root.dragging-tab-id;
+                    drag-source-pane: root.drag-source-pane;
+                    drag-source-index: root.drag-source-index;
+                    dragging-tab-title: root.dragging-tab-title;
+                    drop-target-pane: root.drop-target-pane;
+                    split-drop-side: root.split-drop-side;
+                    drag-abs-x: root.drag-abs-x;
+                    os-file-hover-pane: root.os-file-hover-pane;
+                    os-file-hover-side: root.os-file-hover-side;
+
+                    tab-activated(pane, id) => {
+                        root.tab-activated(pane, id);
+                    }
+                    tab-close-requested(pane, id) => {
+                        root.tab-close-requested(pane, id);
+                    }
+                    new-tab-requested(pane) => {
+                        root.new-tab-requested(pane);
+                    }
+                    open-file-requested => {
+                        root.open-file-requested();
+                    }
+                    open-recent-file(path) => {
+                        root.open-recent-file(path);
+                    }
+                    tab-context-menu(pane, id, x, y) => {
+                        root.context-menu-tab-id = id;
+                        root.context-menu-x = x;
+                        root.context-menu-y = y;
+                        root.context-menu-items = [
+                            {
+                                id: "close",
+                                label: "Close",
+                                icon: "",
+                                shortcut: "Ctrl+W",
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "close-others",
+                                label: "Close Others",
+                                icon: "",
+                                shortcut: "",
+                                enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false,
+                                separator-after: false
+                            },
+                            {
+                                id: "close-right",
+                                label: "Close to the Right",
+                                icon: "",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "close-all",
+                                label: "Close All",
+                                icon: "",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: true
+                            },
+                            {
+                                id: "open-folder",
+                                label: "Open Containing Folder",
+                                icon: "",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "copy-path",
+                                label: "Copy Path",
+                                icon: "",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: true
+                            },
+                            {
+                                id: "split-right",
+                                label: "Split Right",
+                                icon: "",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                        ];
+                        root.drag-source-pane = pane;
+                        root.context-menu-visible = true;
+                    }
+                    viewport-pan(dx, dy) => {
+                        root.viewport-pan(dx, dy);
+                    }
+                    viewport-zoom(f, x, y) => {
+                        root.viewport-zoom(f, x, y);
+                    }
+                    viewport-fit-to-view => {
+                        root.viewport-fit-to-view();
+                    }
+                    viewport-start-pan(x, y) => {
+                        root.viewport-start-pan(x, y);
+                    }
+                    viewport-end-pan => {
+                        root.viewport-end-pan();
+                    }
+                    viewport-context-menu(pane, x, y) => {
+                        root.context-menu-tab-id = -1;
+                        root.drag-source-pane = pane;
+                        root.context-menu-x = x;
+                        root.context-menu-y = y;
+                        root.context-menu-items = [
+                            {
+                                id: "viewport-copy-image",
+                                label: "Copy Image",
+                                icon: "copy",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "viewport-export-image",
+                                label: "Export Image",
+                                icon: "export",
+                                shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                        ];
+                        root.context-menu-visible = true;
+                    }
+                    minimap-navigate(nx, ny) => {
+                        root.minimap-navigate(nx, ny);
+                    }
+                    file-dropped(path) => {
+                        root.file-dropped(path);
+                    }
+                    pane-focused(pane) => {
+                        root.pane-focused(pane);
+                    }
+                    split-position-changed(pos) => {
+                        root.split-position-changed(pos);
+                    }
+                    tab-drag-started(id, pane, title, index, abs-x, abs-y) => {
+                        root.dragging-tab-id = id;
+                        root.drag-source-pane = pane;
+                        root.drag-source-index = index;
+                        root.dragging-tab-title = title;
+                        root.focused-pane = pane;
+                        root.drag-abs-x = abs-x;
+                        root.drag-abs-y = abs-y;
+                        root.update-drop-target(abs-x, abs-y);
+                    }
+                    tab-drag-moved(abs-x, abs-y) => {
+                        root.drag-abs-x = abs-x;
+                        root.drag-abs-y = abs-y;
+                        root.update-drop-target(abs-x, abs-y);
+                    }
+                    tab-drag-ended(abs-x, abs-y) => {
+                        root.drag-abs-x = abs-x;
+                        root.drag-abs-y = abs-y;
+                        root.update-drop-target(abs-x, abs-y);
+                        if root.drop-target-pane != -1 && root.split-drop-side != -1 {
+                            let insert-at = root.split-drop-side == 0 ? root.drop-target-pane : root.drop-target-pane + 1;
+                            root.focused-pane = insert-at;
+                            root.split-tab-by-drop(root.dragging-tab-id, insert-at);
+                        } else if root.drop-target-pane != root.drag-source-pane {
+                            root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
+                        } else if split-pane.active-drop-index >= 0 {
+                            root.reorder-tab(root.drop-target-pane, root.dragging-tab-id, split-pane.active-drop-index);
+                        }
+                        root.dragging-tab-id = -1;
+                        root.drag-source-pane = -1;
+                        root.drag-source-index = -1;
+                        root.dragging-tab-title = "";
+                        root.drop-target-pane = -1;
+                        root.split-drop-side = -1;
+                    }
+                    move-tab-to-pane(id, from, to) => {
+                        root.focused-pane = to;
+                        root.move-tab-to-pane(id, from, to);
+                    }
+                    split-tab-by-drop(id, to) => {
+                        root.focused-pane = to;
+                        root.split-tab-by-drop(id, to);
+                    }
+                    reorder-tab(pane, id, new-index) => {
+                        root.reorder-tab(pane, id, new-index);
+                    }
+                    clear-tab-drag => {
+                        root.dragging-tab-id = -1;
+                        root.drag-source-pane = -1;
+                        root.drag-source-index = -1;
+                        root.dragging-tab-title = "";
+                        root.drop-target-pane = -1;
+                        root.split-drop-side = -1;
+                    }
+                    zoom-slider-changed(pane, value) => {
+                        root.zoom-slider-changed(pane, value);
+                    }
+                    tool-mouse-down(x, y) => {
+                        root.viewport-tool-mouse-down(x, y);
+                    }
+                    tool-mouse-move(x, y) => {
+                        root.viewport-tool-mouse-move(x, y);
+                    }
+                    tool-mouse-up(x, y) => {
+                        root.viewport-tool-mouse-up(x, y);
+                    }
+                    cancel-tool => {
+                        root.cancel-tool();
+                    }
+                    close-active-tab => {
+                        root.close-active-tab();
+                    }
+                    tab-tooltip-changed(visible, text, cx, ty) => {
+                        root.tab-tooltip-visible = visible;
+                        root.tab-tooltip-text = text;
+                        root.tab-tooltip-x = cx;
+                        root.tab-tooltip-y = ty;
+                    }
+                    hud-toggle-dropdown(pane) => {
+                        root.hud-toggle-dropdown(pane);
+                    }
+                    hud-sharpness-changed(pane, v) => {
+                        root.hud-sharpness-changed(pane, v);
+                    }
+                    hud-gamma-changed(pane, v) => {
+                        root.hud-gamma-changed(pane, v);
+                    }
+                    hud-brightness-changed(pane, v) => {
+                        root.hud-brightness-changed(pane, v);
+                    }
+                    hud-contrast-changed(pane, v) => {
+                        root.hud-contrast-changed(pane, v);
+                    }
+                    hud-measurement-unit-changed(pane, u) => {
+                        root.hud-measurement-unit-changed(pane, u);
+                    }
+                    hud-stain-normalization-changed(pane, s) => {
+                        root.hud-stain-normalization-changed(pane, s);
+                    }
+                    hud-reset-adjustments(pane) => {
+                        root.hud-reset-adjustments(pane);
+                    }
+                    hud-zoom-input(pane, v) => {
+                        root.hud-zoom-input(pane, v);
+                    }
+                    hud-zoom-in(pane) => {
+                        root.hud-zoom-in(pane);
+                    }
+                    hud-zoom-out(pane) => {
+                        root.hud-zoom-out(pane);
+                    }
+                    hud-deconv-h-intensity-changed(pane, v) => {
+                        root.hud-deconv-h-intensity-changed(pane, v);
+                    }
+                    hud-deconv-e-intensity-changed(pane, v) => {
+                        root.hud-deconv-e-intensity-changed(pane, v);
+                    }
+                    hud-deconv-h-visibility-toggled(pane) => {
+                        root.hud-deconv-h-visibility-toggled(pane);
+                    }
+                    hud-deconv-e-visibility-toggled(pane) => {
+                        root.hud-deconv-e-visibility-toggled(pane);
+                    }
+                    hud-deconv-h-view-toggled(pane) => {
+                        root.hud-deconv-h-view-toggled(pane);
+                    }
+                    hud-deconv-e-view-toggled(pane) => {
+                        root.hud-deconv-e-view-toggled(pane);
+                    }
+                    hud-plugin-button-clicked(pane, plugin-id, action-id) => {
+                        root.hud-plugin-button-clicked(pane, plugin-id, action-id);
+                    }
                 }
-                open-recent-file(path) => {
-                    root.open-recent-file(path);
+
+                if panes.length == 0: HomeScreen {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    recent-files: root.recent-files;
+                    open-file-requested => {
+                        root.open-file-requested();
+                    }
+                    open-recent-file(path) => {
+                        root.open-recent-file(path);
+                    }
                 }
             }
         }

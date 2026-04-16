@@ -304,6 +304,24 @@ fn toggle_metadata_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_show_metadata(show_metadata);
 }
 
+fn toggle_scale_bar_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let show_scale_bar = {
+        let mut state = state.write();
+        state.toggle_scale_bar();
+        state.show_scale_bar
+    };
+    ui.set_show_scale_bar(show_scale_bar);
+}
+
+fn toggle_annotations_sidebar(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let show_annotations_sidebar = {
+        let mut state = state.write();
+        state.toggle_annotations_sidebar();
+        state.show_annotations_sidebar
+    };
+    ui.set_show_annotations_sidebar(show_annotations_sidebar);
+}
+
 /// Convert Slint export settings to common crate's `ExportSettings`.
 fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
     let filtering_mode = match s.filtering_mode {
@@ -846,6 +864,34 @@ pub fn setup_callbacks(
                 ui.set_context_menu_x(x);
                 ui.set_context_menu_y(y);
                 ui.set_context_menu_visible(true);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_scale_bar_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_scale_bar_visibility(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_annotations_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_annotations_sidebar(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });
     }
@@ -1961,25 +2007,6 @@ pub fn setup_callbacks(
     }
 
     // HUD callbacks
-    {
-        let state_handle = Arc::clone(&state);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_hud_toggle_scale_bar(move |pane| {
-            {
-                let mut state = state_handle.write();
-                state.set_focused_pane(pane_from_index(pane));
-                if let Some(hud) = active_hud_mut(&mut state) {
-                    hud.show_scale_bar = !hud.show_scale_bar;
-                }
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                let state = state_handle.read();
-                update_tabs(&ui, &state);
-            }
-        });
-    }
-
     {
         let state_handle = Arc::clone(&state);
         let ui_weak = ui_weak.clone();

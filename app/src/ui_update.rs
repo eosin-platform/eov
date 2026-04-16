@@ -338,6 +338,8 @@ pub fn update_tabs(
     ui.set_focused_pane(state.focused_pane.as_index());
     ui.set_show_minimap(state.show_minimap);
     ui.set_show_metadata(state.show_metadata);
+    ui.set_show_scale_bar(state.show_scale_bar);
+    ui.set_show_annotations_sidebar(state.show_annotations_sidebar);
 }
 
 /// Update the recent files list in the UI
@@ -420,7 +422,6 @@ fn ui_stain_normalization(sn: StainNormalization) -> SlintStainNormalization {
 /// Convert HudSettings to Slint HudSettings
 fn ui_hud_settings(hud: &HudSettings, mpp_x: f32, mpp_y: f32) -> SlintHudSettings {
     SlintHudSettings {
-        show_scale_bar: hud.show_scale_bar,
         show_hud_toolbar: hud.show_hud_toolbar,
         hud_dropdown_open: hud.hud_dropdown_open,
         sharpness: hud.sharpness,

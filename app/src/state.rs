@@ -31,7 +31,6 @@ pub enum IsolatedChannel {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HudSettings {
-    pub show_scale_bar: bool,
     pub show_hud_toolbar: bool,
     pub hud_dropdown_open: bool,
     pub sharpness: f32,
@@ -51,7 +50,6 @@ pub struct HudSettings {
 impl Default for HudSettings {
     fn default() -> Self {
         Self {
-            show_scale_bar: true,
             show_hud_toolbar: true,
             hud_dropdown_open: false,
             sharpness: 0.0,
@@ -474,6 +472,10 @@ pub struct AppState {
     pub show_minimap: bool,
     /// Whether the metadata HUD is shown in viewports
     pub show_metadata: bool,
+    /// Whether scale bars are shown in all viewports.
+    pub show_scale_bar: bool,
+    /// Whether the annotations sidebar is visible.
+    pub show_annotations_sidebar: bool,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -520,6 +522,8 @@ impl AppState {
             filtering_mode: FilteringMode::default(),
             show_minimap: true,
             show_metadata: false,
+            show_scale_bar: true,
+            show_annotations_sidebar: false,
             needs_render: true,
             render_loop_running: false,
             local_plugin_buttons: Vec::new(),
@@ -1173,6 +1177,16 @@ impl AppState {
 
     pub fn toggle_metadata(&mut self) {
         self.show_metadata = !self.show_metadata;
+        self.needs_render = true;
+    }
+
+    pub fn toggle_scale_bar(&mut self) {
+        self.show_scale_bar = !self.show_scale_bar;
+        self.needs_render = true;
+    }
+
+    pub fn toggle_annotations_sidebar(&mut self) {
+        self.show_annotations_sidebar = !self.show_annotations_sidebar;
         self.needs_render = true;
     }
 
