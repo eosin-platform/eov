@@ -3,7 +3,7 @@
 [![CI Status](https://github.com/eosin-platform/eov/actions/workflows/ci.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/ci.yml)
 [![Release Status](https://github.com/eosin-platform/eov/actions/workflows/release.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/release.yml)
 ![Multi-Arch](https://img.shields.io/badge/arch-x86__64%20%7C%20arm64-blue)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0366d6)](https://github.com/eosin-platform/eov#license)
+[![License: MIT OR Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0%20OR%20GPL--3.0-0366d6)](https://github.com/eosin-platform/eov#license)
 [![Status: Actively Maintained](https://img.shields.io/badge/status-actively%20maintained-2ea44f)](https://github.com/eosin-platform/eov/pulse)
 
 <p align="center">
@@ -484,9 +484,9 @@ Contributions are welcome. This project is part of the [Eosin Platform](https://
 
 ## License
 
-All of the code in this repository is released under Apache 2.0 / MIT dual license.
+All of the code in this repository is released under Apache 2.0 / MIT / GPLv3 license. Derivative works can choose to use EOV under any one of these, but must also comply with the license terms of OpenSlide and Slint. See below.
 
 ### Dependency License Notes
 
 - [OpenSlide](https://openslide.org/) is released under LGPL. EOV's releases bundle OpenSlide as a dynamic library to comply with the terms of LGPL.
-- [Slint](https://slint.dev/) is used under the Royalty-Free (non-GPL) license via registration. Derivative projects must abide by either slint's Royalty-Free license or GPLv3 terms. The Royalty-Free license permits proprietary applications excluding embedded systems and does not represent a barrier to institutional or commercial use outside of its embedding in hardware systems.
+- [Slint](https://slint.dev/) is used under the Royalty-Free (non-GPL) license via registration. Derivative projects must abide by either slint's Royalty-Free license or GPLv3 terms. The Royalty-Free license permits proprietary applications excluding embedded systems and does not represent a barrier to institutional or commercial use outside of its embedding in hardware systems. If you wish to use EOV in an embedded system, you must either abide by the terms of GPLv3 or [purchase a commercial Slint license](https://slint.dev/pricing).
