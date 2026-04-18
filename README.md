@@ -484,7 +484,7 @@ Contributions are welcome. This project is part of the [Eosin Platform](https://
 
 ## License
 
-All of the code in this repository is released under Apache 2.0 / MIT / GPLv3 license. Derivative works can choose to use EOV under any one of these, but must also comply with the license terms of OpenSlide and Slint. See below.
+All of the code in this repository is released under Apache 2.0 / MIT / GPLv3 triple-license. Derivative works can choose to use EOV under any one of these, but must also comply with the license terms of OpenSlide and Slint. See below.
 
 ### Dependency License Notes
 
