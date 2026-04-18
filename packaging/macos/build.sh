@@ -265,7 +265,11 @@ create_zip_archive() {
         cd "$STAGING_DIR"
         zip -r -y "$zip_path" "$APP_BUNDLE_NAME"
     )
-    shasum -a 256 "$zip_path" > "$checksum_path"
+
+    (
+        cd "$DIST_DIR"
+        shasum -a 256 "$(basename "$zip_path")" > "$(basename "$checksum_path")"
+    )
 }
 
 print_summary() {

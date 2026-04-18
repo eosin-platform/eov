@@ -178,7 +178,9 @@ jobs:
 
           artifact_path="dist/${{ steps.meta.outputs.artifact_name }}"
           mv "${artifacts[0]}" "$artifact_path"
-          sha256sum "$artifact_path" > "dist/${{ steps.meta.outputs.checksum_name }}"
+          cd dist
+          sha256sum ${{ steps.meta.outputs.artifact_name }} > "${{ steps.meta.outputs.checksum_name }}"
+          cd ..
 
           {
             echo "artifact_path=$artifact_path"
