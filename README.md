@@ -489,4 +489,4 @@ All of the code in this repository is released under Apache 2.0 / MIT dual licen
 ### Dependency License Notes
 
 - [OpenSlide](https://openslide.org/) is released under LGPL. EOV's releases bundle OpenSlide as a dynamic library to comply with the terms of LGPL.
-- [Slint](https://slint.dev/) is used under the free (non-GPL) license, which is permissive outside of embedded environments.
+- [Slint](https://slint.dev/) is used under the Royalty-Free (non-GPL) license via registration. Derivative projects must abide by either slint's Royalty-Free license or GPLv3 terms. The Royalty-Free license permits proprietary applications excluding embedded systems and does not represent a barrier to institutional or commercial use outside of its embedding in hardware systems.
