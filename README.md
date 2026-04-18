@@ -40,7 +40,7 @@ A zip file containing a portable Windows build is available:
 - [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.14/eov-v0.2.14-windows-x86_64.zip) (most Windows machines)
 - [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.14/eov-v0.2.14-windows-arm64.zip) (rarer)
 
-Extract and run `eov.exe` within the zip to start the program. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
+Extract the zip and run `eov.exe` to start the program. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
 If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure).
 
@@ -56,7 +56,7 @@ The AppImage is directly executable:
 # Download the binary
 curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.2.14/eov-v0.2.14-linux-x86_64.AppImage
 
-# Make it executable (ensure correct filename!)
+# Make it executable
 chmod +x ./eov
 
 # Run it directly
@@ -71,7 +71,7 @@ eov
 
 ### Example WSI Files
 
-To make testing easier, here are a few (relatively) small WSI files that can be opened by `eov`. These are clear cell renal carcinoma slides from [CPTAC-CRCC](https://www.cancerimagingarchive.net/collection/cptac-ccrcc/):
+To make testing easier, here are a few (relatively) small WSI files that can be opened by `eov`. These are clear cell renal carcinoma slides from The Cancer Imaging Archive's [CPTAC-CCRCC](https://www.cancerimagingarchive.net/collection/cptac-ccrcc/) available under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
 - [C3L-00004-21.svs](https://cptac.nyc3.digitaloceanspaces.com/images/CPTAC-CCRCC/C3L-00004-21.svs) (169MB)
 - [C3L-00088-22.svs](https://cptac.nyc3.digitaloceanspaces.com/images/CPTAC-CCRCC/C3L-00088-22.svs) (322MB)
 
