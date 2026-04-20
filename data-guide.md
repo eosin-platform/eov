@@ -1,15 +1,12 @@
 # Where to Find Whole Slide Images
 For those interested in WSI but lacking access to institutional data, this guide aims to provide you with some options to get started.
 
-## CAMELYON16/17
-The [CAMELYON16](https://camelyon16.grand-challenge.org/) and [CAMELYON17](https://camelyon17.grand-challenge.org/) are released under [CC0](https://creativecommons.org/public-domain/cc0/) (public domain). They can be downloaded via [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html):
+## CAMELYON17
+The [CAMELYON17](https://camelyon17.grand-challenge.org/) dataset is released under [CC0](https://creativecommons.org/public-domain/cc0/) (public domain). It can be downloaded via [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html):
 
 ```bash
 # List the objects in the bucket (amounts to "CAMELYON16/" and "CAMELYON17/")
 aws s3 ls --no-sign-request s3://camelyon-dataset/
-
-# Download all of CAMELYON16
-aws s3 sync --no-sign-request s3://camelyon-dataset/CAMELYON16/ ~/Datasets/CAMELYON16
 
 # Download all of CAMELYON17 (~1 TB total)
 aws s3 sync --no-sign-request s3://camelyon-dataset/CAMELYON17/ ~/Datasets/CAMELYON17
