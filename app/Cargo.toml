@@ -30,7 +30,7 @@ clap = { version = "4.5", features = ["derive"] }
 slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-28", "unstable-winit-030"] }
 
 # Slint interpreter for runtime plugin UI loading
-slint-interpreter = "1.15.1"
+slint-interpreter = { version = "1.15.1", features = ["internal"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }

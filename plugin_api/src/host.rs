@@ -2,6 +2,23 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SidebarRequest {
+    pub button_id: Option<String>,
+    pub width_px: u32,
+    pub ui_path: String,
+    pub component: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActiveSidebar {
+    pub plugin_id: String,
+    pub button_id: Option<String>,
+    pub width_px: u32,
+    pub ui_path: String,
+    pub component: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HostSnapshot {
     pub app_name: String,
@@ -14,6 +31,7 @@ pub struct HostSnapshot {
     pub active_file: Option<OpenFileInfo>,
     pub active_viewport: Option<ViewportSnapshot>,
     pub recent_files: Vec<String>,
+    pub active_sidebar: Option<ActiveSidebar>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

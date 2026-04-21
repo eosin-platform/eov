@@ -21,7 +21,6 @@ export component WindowToolbar inherits Rectangle {
     in property <bool> show-minimap: true;
     in property <bool> show-metadata: false;
     in property <bool> show-scale-bar: true;
-    in property <bool> show-annotations-sidebar: false;
     in property <bool> use-native-window-controls: false;
     in property <FilteringMode> filtering-mode: FilteringMode.trilinear;
     in property <int> filtering-mode-index: filtering-mode == FilteringMode.bilinear ? 0 : filtering-mode == FilteringMode.trilinear ? 1 : 2;
@@ -33,7 +32,6 @@ export component WindowToolbar inherits Rectangle {
     callback toggle-minimap-requested();
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
-    callback toggle-annotations-requested();
     callback tool-selected(ToolType);
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
@@ -49,11 +47,11 @@ export component WindowToolbar inherits Rectangle {
     out property <length> filter-combo-width: filter-combo-area.width;
     out property <bool> hovered-tooltip-visible: hovered-tooltip-text != "";
     out property <string> hovered-tooltip-text:
-        open-button.hovered ? open-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : annotations-button.hovered ? annotations-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? "Minimize window" : !root.use-native-window-controls && maximize-touch.has-hover ? "Maximize window" : !root.use-native-window-controls && close-win-touch.has-hover ? "Close window" : "";
+        open-button.hovered ? open-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? "Minimize window" : !root.use-native-window-controls && maximize-touch.has-hover ? "Maximize window" : !root.use-native-window-controls && close-win-touch.has-hover ? "Close window" : "";
     out property <length> hovered-tooltip-center-x:
-        open-button.hovered ? open-button.absolute-position.x + open-button.width / 2 : minimap-button.hovered ? minimap-button.absolute-position.x + minimap-button.width / 2 : navigate-button.hovered ? navigate-button.absolute-position.x + navigate-button.width / 2 : roi-button.hovered ? roi-button.absolute-position.x + roi-button.width / 2 : measure-button.hovered ? measure-button.absolute-position.x + measure-button.width / 2 : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2 : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2 : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2 : scale-bar-button.hovered ? scale-bar-button.absolute-position.x + scale-bar-button.width / 2 : annotations-button.hovered ? annotations-button.absolute-position.x + annotations-button.width / 2 : dataset-export-button.hovered ? dataset-export-button.absolute-position.x + dataset-export-button.width / 2 : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2 : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize-control.width / 2 : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close-control.width / 2 : 0px;
+        open-button.hovered ? open-button.absolute-position.x + open-button.width / 2 : minimap-button.hovered ? minimap-button.absolute-position.x + minimap-button.width / 2 : navigate-button.hovered ? navigate-button.absolute-position.x + navigate-button.width / 2 : roi-button.hovered ? roi-button.absolute-position.x + roi-button.width / 2 : measure-button.hovered ? measure-button.absolute-position.x + measure-button.width / 2 : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2 : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2 : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2 : scale-bar-button.hovered ? scale-bar-button.absolute-position.x + scale-bar-button.width / 2 : dataset-export-button.hovered ? dataset-export-button.absolute-position.x + dataset-export-button.width / 2 : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2 : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize-control.width / 2 : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close-control.width / 2 : 0px;
     out property <length> hovered-tooltip-top-y:
-        open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px : minimap-button.hovered ? minimap-button.absolute-position.y + minimap-button.height + 6px : navigate-button.hovered ? navigate-button.absolute-position.y + navigate-button.height + 6px : roi-button.hovered ? roi-button.absolute-position.y + roi-button.height + 6px : measure-button.hovered ? measure-button.absolute-position.y + measure-button.height + 6px : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px : scale-bar-button.hovered ? scale-bar-button.absolute-position.y + scale-bar-button.height + 6px : annotations-button.hovered ? annotations-button.absolute-position.y + annotations-button.height + 6px : dataset-export-button.hovered ? dataset-export-button.absolute-position.y + dataset-export-button.height + 6px : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize-control.height + 6px : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.y + maximize-control.height + 6px : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close-control.height + 6px : 0px;
+        open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px : minimap-button.hovered ? minimap-button.absolute-position.y + minimap-button.height + 6px : navigate-button.hovered ? navigate-button.absolute-position.y + navigate-button.height + 6px : roi-button.hovered ? roi-button.absolute-position.y + roi-button.height + 6px : measure-button.hovered ? measure-button.absolute-position.y + measure-button.height + 6px : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px : scale-bar-button.hovered ? scale-bar-button.absolute-position.y + scale-bar-button.height + 6px : dataset-export-button.hovered ? dataset-export-button.absolute-position.y + dataset-export-button.height + 6px : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize-control.height + 6px : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.y + maximize-control.height + 6px : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close-control.height + 6px : 0px;
 
     height: 40px;
     background: Theme.toolbar-bg;
@@ -181,15 +179,6 @@ export component WindowToolbar inherits Rectangle {
                     is-active: root.show-scale-bar;
                     clicked => {
                         root.toggle-scale-bar-requested();
-                    }
-                }
-
-                annotations-button := SvgToolButton {
-                    icon-source: @image-url("icons/annotations.svg");
-                    tooltip-text: "Toggle annotations sidebar";
-                    is-active: root.show-annotations-sidebar;
-                    clicked => {
-                        root.toggle-annotations-requested();
                     }
                 }
 

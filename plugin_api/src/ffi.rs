@@ -8,6 +8,16 @@
 use abi_stable::StableAbi;
 use abi_stable::std_types::{ROption, RResult, RString, RVec};
 
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ActiveSidebarFFI {
+    pub plugin_id: RString,
+    pub button_id: ROption<RString>,
+    pub width_px: u32,
+    pub ui_path: RString,
+    pub component: RString,
+}
+
 /// FFI-safe toolbar button registration data.
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
@@ -92,6 +102,7 @@ pub struct HostSnapshotFFI {
     pub active_file: ROption<OpenFileInfoFFI>,
     pub active_viewport: ROption<ViewportSnapshotFFI>,
     pub recent_files: RVec<RString>,
+    pub active_sidebar: ROption<ActiveSidebarFFI>,
 }
 
 #[repr(C)]
@@ -127,6 +138,14 @@ pub struct HostApiVTable {
         extern "C" fn(context: u64, button_id: RString, active: bool) -> RResult<(), RString>,
     pub set_hud_toolbar_button_active:
         extern "C" fn(context: u64, button_id: RString, active: bool) -> RResult<(), RString>,
+    pub show_sidebar: extern "C" fn(
+        context: u64,
+        button_id: RString,
+        width_px: u32,
+        ui_path: RString,
+        component: RString,
+    ) -> RResult<(), RString>,
+    pub hide_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub log_message: extern "C" fn(context: u64, level: HostLogLevelFFI, message: RString),
 }
 

@@ -31,7 +31,9 @@ pub mod host;
 pub mod manifest;
 pub mod viewport_filter;
 
-pub use host::{HostLogLevel, HostSnapshot, OpenFileInfo, ViewportSnapshot};
+pub use host::{
+    ActiveSidebar, HostLogLevel, HostSnapshot, OpenFileInfo, SidebarRequest, ViewportSnapshot,
+};
 pub use manifest::PluginManifest;
 pub use manifest::{ManifestToolbarButton, PluginLanguage};
 pub use viewport_filter::ViewportFilter;
@@ -125,6 +127,20 @@ pub trait HostContext {
         ui_path: &Path,
         component: &str,
     ) -> PluginResult<()>;
+
+    /// Show a plugin-owned sidebar inside the main application window.
+    fn show_sidebar(&mut self, plugin_id: &str, _request: SidebarRequest) -> PluginResult<()> {
+        Err(PluginError::Other(format!(
+            "host does not support sidebars for plugin '{plugin_id}'"
+        )))
+    }
+
+    /// Hide the currently active sidebar if it belongs to `plugin_id`.
+    fn hide_sidebar(&mut self, plugin_id: &str) -> PluginResult<()> {
+        Err(PluginError::Other(format!(
+            "host does not support sidebars for plugin '{plugin_id}'"
+        )))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -217,5 +233,30 @@ mod tests {
             desc.resolve_ui_path(),
             Some(PathBuf::from("/plugins/my_plugin/ui/panel.slint"))
         );
+    }
+
+    #[test]
+    fn host_snapshot_sidebar_roundtrip_shape() {
+        let snapshot = HostSnapshot {
+            app_name: "eov".into(),
+            app_version: "0.0.0".into(),
+            render_backend: "cpu".into(),
+            filtering_mode: "trilinear".into(),
+            split_enabled: false,
+            focused_pane: 0,
+            open_files: Vec::new(),
+            active_file: None,
+            active_viewport: None,
+            recent_files: Vec::new(),
+            active_sidebar: Some(ActiveSidebar {
+                plugin_id: "annotations".into(),
+                button_id: Some("toggle_annotations".into()),
+                width_px: 250,
+                ui_path: "/plugins/annotations/ui/sidebar.slint".into(),
+                component: "AnnotationsSidebar".into(),
+            }),
+        };
+
+        assert_eq!(snapshot.active_sidebar.as_ref().map(|s| s.width_px), Some(250));
     }
 }

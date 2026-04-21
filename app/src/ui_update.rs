@@ -339,7 +339,8 @@ pub fn update_tabs(
     ui.set_show_minimap(state.show_minimap);
     ui.set_show_metadata(state.show_metadata);
     ui.set_show_scale_bar(state.show_scale_bar);
-    ui.set_show_annotations_sidebar(state.show_annotations_sidebar);
+    ui.set_show_plugin_sidebar(state.has_active_sidebar());
+    ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
 }
 
 /// Update the recent files list in the UI

@@ -283,7 +283,15 @@ fn main() -> Result<()> {
     {
         let pm = plugin_manager.borrow();
         for (plugin_id, vtable) in pm.loaded_vtables() {
-            (vtable.set_host_api)(plugin_host::build_host_api(plugin_id, &state));
+            let Some(descriptor) = pm.descriptor(plugin_id) else {
+                continue;
+            };
+            (vtable.set_host_api)(plugin_host::build_host_api(
+                plugin_id,
+                &descriptor.root,
+                &state,
+                Some(vtable.on_ui_callback),
+            ));
         }
     }
 

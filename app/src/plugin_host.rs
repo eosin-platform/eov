@@ -5,12 +5,16 @@ use common::{FilteringMode, RenderBackend, TileCache};
 use parking_lot::RwLock;
 use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
-    HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, OpenFileInfoFFI, ViewportSnapshotFFI,
+    ActiveSidebarFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, OpenFileInfoFFI,
+    ViewportSnapshotFFI,
 };
-use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer, VecModel};
+use slint::{
+    ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
+    VecModel,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -19,7 +23,9 @@ use crate::state::{AppState, PaneId};
 
 struct HostApiContext {
     plugin_id: String,
+    plugin_root: PathBuf,
     state: Arc<RwLock<AppState>>,
+    on_ui_callback: Option<extern "C" fn(RString)>,
 }
 
 struct UiRuntime {
@@ -58,13 +64,20 @@ pub(crate) fn init_ui_runtime(
     });
 }
 
-pub(crate) fn build_host_api(plugin_id: &str, state: &Arc<RwLock<AppState>>) -> HostApiVTable {
+pub(crate) fn build_host_api(
+    plugin_id: &str,
+    plugin_root: &Path,
+    state: &Arc<RwLock<AppState>>,
+    on_ui_callback: Option<extern "C" fn(RString)>,
+) -> HostApiVTable {
     let context = NEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed);
     host_contexts().lock().unwrap().insert(
         context,
         HostApiContext {
             plugin_id: plugin_id.to_string(),
+            plugin_root: plugin_root.to_path_buf(),
             state: Arc::clone(state),
+            on_ui_callback,
         },
     );
 
@@ -78,6 +91,8 @@ pub(crate) fn build_host_api(plugin_id: &str, state: &Arc<RwLock<AppState>>) -> 
         frame_active_rect: ffi_frame_active_rect,
         set_toolbar_button_active: ffi_set_toolbar_button_active,
         set_hud_toolbar_button_active: ffi_set_hud_toolbar_button_active,
+        show_sidebar: ffi_show_sidebar,
+        hide_sidebar: ffi_hide_sidebar,
         log_message: ffi_log_message,
     }
 }
@@ -273,6 +288,110 @@ pub(crate) fn log_message(plugin_id: &str, level: plugin_api::HostLogLevel, mess
     }
 }
 
+pub(crate) fn show_sidebar(
+    plugin_id: &str,
+    plugin_root: Option<&Path>,
+    on_ui_callback: Option<extern "C" fn(RString)>,
+    request: plugin_api::SidebarRequest,
+) -> Result<(), String> {
+    let resolved_request = resolve_sidebar_request(plugin_root, request)?;
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+
+        let should_hide = {
+            let state = runtime.state.read();
+            state.has_matching_sidebar_request(&plugin_id, &resolved_request)
+        };
+
+        let factory = if should_hide {
+            None
+        } else {
+            Some(build_sidebar_factory(
+                &plugin_id,
+                &resolved_request.ui_path,
+                &resolved_request.component,
+                on_ui_callback,
+            )?)
+        };
+
+        {
+            let mut state = runtime.state.write();
+            let previous_button = state
+                .active_sidebar_button()
+                .map(|(owner, button)| (owner.to_string(), button.to_string()));
+
+            if should_hide {
+                state.clear_active_sidebar();
+                if let Some((owner, button)) = previous_button {
+                    set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
+                }
+                ui.set_plugin_sidebar_factory(ComponentFactory::default());
+                ui.set_show_plugin_sidebar(false);
+                ui.set_plugin_sidebar_width(0.0);
+            } else {
+                if let Some((owner, button)) = previous_button {
+                    set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
+                }
+                if let Some(button_id) = resolved_request.button_id.as_deref() {
+                    set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
+                }
+                state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
+                ui.set_plugin_sidebar_factory(factory.expect("sidebar factory missing"));
+                ui.set_show_plugin_sidebar(true);
+                ui.set_plugin_sidebar_width(resolved_request.width_px as f32);
+            }
+        }
+
+        refresh_plugin_buttons_in_ui(runtime)?;
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
+pub(crate) fn hide_sidebar(plugin_id: &str) -> Result<(), String> {
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        let mut state = runtime.state.write();
+        let Some((owner, button_id)) = state
+            .active_sidebar_button()
+            .map(|(owner, button)| (owner.to_string(), button.to_string()))
+        else {
+            return Ok(());
+        };
+        if owner != plugin_id {
+            return Ok(());
+        }
+
+        state.clear_active_sidebar();
+        set_toolbar_button_active_in_state(&mut state, &owner, &button_id, false);
+        ui.set_plugin_sidebar_factory(ComponentFactory::default());
+        ui.set_show_plugin_sidebar(false);
+        ui.set_plugin_sidebar_width(0.0);
+
+        refresh_plugin_buttons_in_ui(runtime)?;
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
 fn run_on_ui_thread<R: Send + 'static>(
     f: impl FnOnce(&UiRuntime) -> Result<R, String> + Send + 'static,
 ) -> Result<R, String> {
@@ -333,6 +452,7 @@ fn snapshot_from_state(state: &AppState) -> plugin_api::HostSnapshot {
             .iter()
             .map(|file| file.path.to_string_lossy().into_owned())
             .collect(),
+        active_sidebar: state.active_sidebar().cloned(),
     }
 }
 
@@ -482,6 +602,148 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
     Ok(())
 }
 
+fn resolve_sidebar_request(
+    plugin_root: Option<&Path>,
+    mut request: plugin_api::SidebarRequest,
+) -> Result<plugin_api::SidebarRequest, String> {
+    if request.width_px == 0 {
+        return Err("sidebar width must be greater than zero".to_string());
+    }
+
+    let ui_path = PathBuf::from(&request.ui_path);
+    let resolved_path = if ui_path.is_absolute() {
+        ui_path
+    } else {
+        let root = plugin_root.ok_or_else(|| {
+            format!(
+                "sidebar ui path '{}' is relative but no plugin root is available",
+                request.ui_path
+            )
+        })?;
+        root.join(ui_path)
+    };
+
+    request.ui_path = resolved_path.to_string_lossy().into_owned();
+    Ok(request)
+}
+
+fn build_sidebar_factory(
+    plugin_id: &str,
+    ui_path: &str,
+    component: &str,
+    on_ui_callback: Option<extern "C" fn(RString)>,
+) -> Result<ComponentFactory, String> {
+    let ui_path = PathBuf::from(ui_path);
+    let source = std::fs::read_to_string(&ui_path)
+        .map_err(|err| format!("failed to read sidebar UI {}: {err}", ui_path.display()))?;
+
+    let compiler = slint_interpreter::Compiler::default();
+    let result = spin_on(compiler.build_from_source(source, ui_path.clone()));
+    let mut has_errors = false;
+    for diag in result.diagnostics() {
+        if diag.level() == slint_interpreter::DiagnosticLevel::Error {
+            has_errors = true;
+            tracing::error!("Sidebar Slint compile error for '{}': {diag}", plugin_id);
+        }
+    }
+    if has_errors {
+        return Err(format!(
+            "failed to compile sidebar UI '{}' for plugin '{}'",
+            ui_path.display(),
+            plugin_id
+        ));
+    }
+
+    let definition = result.component(component).ok_or_else(|| {
+        format!(
+            "component '{}' not found in sidebar UI '{}' for plugin '{}'",
+            component,
+            ui_path.display(),
+            plugin_id
+        )
+    })?;
+    let plugin_id = plugin_id.to_string();
+
+    Ok(ComponentFactory::new(move |ctx| {
+        let instance: slint_interpreter::ComponentInstance = match definition.create_embedded(ctx) {
+            Ok(instance) => instance,
+            Err(err) => {
+                tracing::error!(
+                    "Failed to create embedded sidebar component for '{}': {err}",
+                    plugin_id
+                );
+                return None;
+            }
+        };
+
+        if let Some(on_ui_callback) = on_ui_callback {
+            for name in definition.callbacks() {
+                let callback_name = name.to_string();
+                if instance
+                    .set_callback(&name, move |_args| {
+                        (on_ui_callback)(RString::from(callback_name.as_str()));
+                        slint_interpreter::Value::Void
+                    })
+                    .is_err()
+                {
+                    tracing::info!(
+                        "Could not wire sidebar callback '{}' for plugin '{}'",
+                        name,
+                        plugin_id
+                    );
+                }
+            }
+        }
+
+        Some(instance)
+    }))
+}
+
+fn set_toolbar_button_active_in_state(
+    state: &mut AppState,
+    plugin_id: &str,
+    button_id: &str,
+    active: bool,
+) {
+    if let Some(button) = state
+        .local_plugin_buttons
+        .iter_mut()
+        .find(|button| button.plugin_id == plugin_id && button.button_id == button_id)
+    {
+        button.active = active;
+        return;
+    }
+
+    let mut extension_state = state.extension_host_state.write();
+    if let Some(button) = extension_state
+        .toolbar_buttons
+        .iter_mut()
+        .find(|button| button.plugin_id == plugin_id && button.button_id == button_id)
+    {
+        button.active = active;
+    }
+}
+
+fn spin_on<T>(future: impl std::future::Future<Output = T>) -> T {
+    use std::task::{Context, Poll, Wake, Waker};
+
+    struct NoopWaker;
+
+    impl Wake for NoopWaker {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    let waker = Waker::from(Arc::new(NoopWaker));
+    let mut cx = Context::from_waker(&waker);
+    let mut future = std::pin::pin!(future);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(value) => return value,
+            Poll::Pending => {}
+        }
+    }
+}
+
 fn image_from_svg(svg: &str) -> Image {
     if svg.trim().is_empty() {
         empty_image()
@@ -517,6 +779,17 @@ fn to_snapshot_ffi(snapshot: plugin_api::HostSnapshot) -> HostSnapshotFFI {
             .into_iter()
             .map(RString::from)
             .collect(),
+        active_sidebar: snapshot.active_sidebar.map(to_active_sidebar_ffi).into(),
+    }
+}
+
+fn to_active_sidebar_ffi(sidebar: plugin_api::ActiveSidebar) -> ActiveSidebarFFI {
+    ActiveSidebarFFI {
+        plugin_id: RString::from(sidebar.plugin_id),
+        button_id: sidebar.button_id.map(RString::from).into(),
+        width_px: sidebar.width_px,
+        ui_path: RString::from(sidebar.ui_path),
+        component: RString::from(sidebar.component),
     }
 }
 
@@ -580,6 +853,22 @@ fn context_plugin_id(context: u64) -> Option<String> {
         .map(|ctx| ctx.plugin_id.clone())
 }
 
+fn context_plugin_root(context: u64) -> Option<PathBuf> {
+    host_contexts()
+        .lock()
+        .unwrap()
+        .get(&context)
+        .map(|ctx| ctx.plugin_root.clone())
+}
+
+fn context_ui_callback(context: u64) -> Option<extern "C" fn(RString)> {
+    host_contexts()
+        .lock()
+        .unwrap()
+        .get(&context)
+        .and_then(|ctx| ctx.on_ui_callback)
+}
+
 extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
     match context_state(context) {
         Ok(state) => to_snapshot_ffi(snapshot(&state)),
@@ -594,6 +883,7 @@ extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
             active_file: ROption::RNone,
             active_viewport: ROption::RNone,
             recent_files: RVec::new(),
+            active_sidebar: ROption::RNone,
         },
     }
 }
@@ -691,6 +981,43 @@ extern "C" fn ffi_set_hud_toolbar_button_active(
         return RResult::RErr(RString::from("invalid host API context"));
     };
     match set_local_hud_toolbar_button_active(&plugin_id, button_id.as_str(), active) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_show_sidebar(
+    context: u64,
+    button_id: RString,
+    width_px: u32,
+    ui_path: RString,
+    component: RString,
+) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    let request = plugin_api::SidebarRequest {
+        button_id: (!button_id.is_empty()).then(|| button_id.to_string()),
+        width_px,
+        ui_path: ui_path.to_string(),
+        component: component.to_string(),
+    };
+    match show_sidebar(
+        &plugin_id,
+        context_plugin_root(context).as_deref(),
+        context_ui_callback(context),
+        request,
+    ) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_hide_sidebar(context: u64) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    match hide_sidebar(&plugin_id) {
         Ok(()) => RResult::ROk(()),
         Err(err) => RResult::RErr(RString::from(err)),
     }

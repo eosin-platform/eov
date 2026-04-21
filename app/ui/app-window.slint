@@ -135,7 +135,9 @@ export component AppWindow inherits Window {
     in-out property <bool> show-minimap: true;
     in-out property <bool> show-metadata: false;
     in-out property <bool> show-scale-bar: true;
-    in-out property <bool> show-annotations-sidebar: false;
+    in-out property <bool> show-plugin-sidebar: false;
+    in-out property <float> plugin-sidebar-width: 0;
+    in-out property <component-factory> plugin-sidebar-factory;
     in-out property <[PluginButtonData]> plugin-buttons: [];
     in-out property <[HudToolbarButtonData]> plugin-hud-buttons: [];
 
@@ -145,7 +147,6 @@ export component AppWindow inherits Window {
     callback toggle-minimap-requested();
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
-    callback toggle-annotations-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -206,10 +207,10 @@ export component AppWindow inherits Window {
 
     property <length> toolbar-height: 40px;
     property <length> pane-gap: 1px;
-    property <length> annotations-sidebar-width: 250px;
-    property <length> content-panel-gap: show-annotations-sidebar ? pane-gap : 0px;
+    property <length> plugin-sidebar-width-length: plugin-sidebar-width * 1px;
+    property <length> content-panel-gap: show-plugin-sidebar ? pane-gap : 0px;
     property <int> pane-count: max(1, panes.length);
-    property <length> pane-region-width: content-area.width - (show-annotations-sidebar ? annotations-sidebar-width + content-panel-gap : 0px);
+    property <length> pane-region-width: content-area.width - (show-plugin-sidebar ? plugin-sidebar-width-length + content-panel-gap : 0px);
     property <length> pane-width: (pane-region-width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
     property <length> pane-stride: pane-width + pane-gap;
 
@@ -302,7 +303,6 @@ export component AppWindow inherits Window {
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
-            show-annotations-sidebar: root.show-annotations-sidebar;
             use-native-window-controls: root.use-native-window-controls;
             plugin-buttons: root.plugin-buttons;
             open-file-requested => {
@@ -319,9 +319,6 @@ export component AppWindow inherits Window {
             }
             toggle-scale-bar-requested => {
                 root.toggle-scale-bar-requested();
-            }
-            toggle-annotations-requested => {
-                root.toggle-annotations-requested();
             }
             tool-selected(tool) => {
                 root.tool-selected(tool);
@@ -352,10 +349,10 @@ export component AppWindow inherits Window {
         content-area := Rectangle {
             vertical-stretch: 1;
 
-            if root.show-annotations-sidebar: Rectangle {
+            if root.show-plugin-sidebar: Rectangle {
                 x: 0px;
                 y: 0px;
-                width: root.annotations-sidebar-width;
+                width: root.plugin-sidebar-width-length;
                 height: parent.height;
                 background: Theme.surface;
 
@@ -366,39 +363,17 @@ export component AppWindow inherits Window {
                     background: Theme.border;
                 }
 
-                VerticalLayout {
+                ComponentContainer {
                     width: parent.width;
                     height: parent.height;
-                    padding-top: 8px;
-                    padding-right: 12px;
-                    padding-bottom: 12px;
-                    padding-left: 12px;
-                    spacing: 8px;
-
-                    Text {
-                        text: "Annotations";
-                        color: Theme.text-primary;
-                        font-size: 13px;
-                        font-weight: 700;
-                    }
-
-                    Rectangle {
-                        width: 100%;
-                        height: 1px;
-                        background: Theme.border;
-                    }
-
-                    Rectangle {
-                        vertical-stretch: 1;
-                        background: transparent;
-                    }
+                    component-factory: root.plugin-sidebar-factory;
                 }
             }
 
             pane-region := Rectangle {
-                x: root.show-annotations-sidebar ? root.annotations-sidebar-width + root.content-panel-gap : 0px;
+                x: root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px;
                 y: 0px;
-                width: content-area.width - (root.show-annotations-sidebar ? root.annotations-sidebar-width + root.content-panel-gap : 0px);
+                width: content-area.width - (root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px);
                 height: content-area.height;
                 background: Theme.background;
 

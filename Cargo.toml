@@ -1,5 +1,5 @@
 [workspace]
-members = ["common", "app", "plugin_api", "example_plugins/example_rust", "example_plugins/grayscale_rust"]
+members = ["common", "app", "plugin_api", "example_plugins/example_rust", "example_plugins/grayscale_rust", "example_plugins/annotations"]
 resolver = "3"
 
 [workspace.dependencies]

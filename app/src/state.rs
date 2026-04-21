@@ -474,8 +474,8 @@ pub struct AppState {
     pub show_metadata: bool,
     /// Whether scale bars are shown in all viewports.
     pub show_scale_bar: bool,
-    /// Whether the annotations sidebar is visible.
-    pub show_annotations_sidebar: bool,
+    /// Currently active plugin-provided sidebar, if any.
+    pub active_sidebar: Option<plugin_api::ActiveSidebar>,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -523,7 +523,7 @@ impl AppState {
             show_minimap: true,
             show_metadata: false,
             show_scale_bar: true,
-            show_annotations_sidebar: false,
+            active_sidebar: None,
             needs_render: true,
             render_loop_running: false,
             local_plugin_buttons: Vec::new(),
@@ -1185,9 +1185,77 @@ impl AppState {
         self.needs_render = true;
     }
 
-    pub fn toggle_annotations_sidebar(&mut self) {
-        self.show_annotations_sidebar = !self.show_annotations_sidebar;
+    pub fn set_active_sidebar(&mut self, sidebar: plugin_api::ActiveSidebar) {
+        self.active_sidebar = Some(sidebar);
         self.needs_render = true;
+    }
+
+    pub fn clear_active_sidebar(&mut self) {
+        self.active_sidebar = None;
+        self.needs_render = true;
+    }
+
+    pub fn plugin_sidebar_width_px(&self) -> f32 {
+        self.active_sidebar
+            .as_ref()
+            .map(|sidebar| sidebar.width_px as f32)
+            .unwrap_or(0.0)
+    }
+
+    pub fn has_active_sidebar(&self) -> bool {
+        self.active_sidebar.is_some()
+    }
+
+    pub fn active_sidebar(&self) -> Option<&plugin_api::ActiveSidebar> {
+        self.active_sidebar.as_ref()
+    }
+
+    pub fn sidebar_matches(
+        &self,
+        plugin_id: &str,
+        button_id: Option<&str>,
+        ui_path: &str,
+        component: &str,
+    ) -> bool {
+        self.active_sidebar.as_ref().is_some_and(|sidebar| {
+            sidebar.plugin_id == plugin_id
+                && sidebar.button_id.as_deref() == button_id
+                && sidebar.ui_path == ui_path
+                && sidebar.component == component
+        })
+    }
+
+    pub fn active_sidebar_button(&self) -> Option<(&str, &str)> {
+        let sidebar = self.active_sidebar.as_ref()?;
+        let button_id = sidebar.button_id.as_deref()?;
+        Some((sidebar.plugin_id.as_str(), button_id))
+    }
+
+    pub fn has_matching_sidebar_request(
+        &self,
+        plugin_id: &str,
+        request: &plugin_api::SidebarRequest,
+    ) -> bool {
+        self.sidebar_matches(
+            plugin_id,
+            request.button_id.as_deref(),
+            &request.ui_path,
+            &request.component,
+        )
+    }
+
+    pub fn set_sidebar_from_request(
+        &mut self,
+        plugin_id: String,
+        request: plugin_api::SidebarRequest,
+    ) {
+        self.set_active_sidebar(plugin_api::ActiveSidebar {
+            plugin_id,
+            button_id: request.button_id,
+            width_px: request.width_px,
+            ui_path: request.ui_path,
+            component: request.component,
+        });
     }
 
     pub fn select_render_backend(&mut self, backend: RenderBackend) {

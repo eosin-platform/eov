@@ -8,19 +8,21 @@
 use crate::eov_extension::extension_host_server::{ExtensionHost, ExtensionHostServer};
 use crate::eov_extension::{
     ApplyFilterCpuRequest, ApplyFilterCpuResponse, ApplyFilterGpuRequest, ApplyFilterGpuResponse,
-    Empty, FrameActiveRectRequest, HostCommandResponse, HostSnapshot, HudToolbarActionRequest,
-    HudToolbarActionStreamRequest, LogLevel, LogMessageRequest, OpenFileInfo, OpenFileRequest,
-    ReadRegionRequest, ReadRegionResponse, RegisterFilterRequest, RegisterFilterResponse,
-    RegisterHudToolbarButtonRequest, RegisterPluginRequest, RegisterPluginResponse,
-    RegisterToolbarButtonRequest, SetActiveViewportRequest, SetFilterEnabledRequest,
-    SetFilterEnabledResponse, SetHudToolbarButtonActiveRequest, SetToolbarButtonActiveRequest,
-    ToolbarActionRequest, ToolbarActionStreamRequest, UnregisterFilterRequest,
-    UnregisterFilterResponse, UnregisterHudToolbarButtonRequest, UnregisterPluginRequest,
-    UnregisterToolbarButtonRequest, ViewportSnapshot,
+    Empty, FrameActiveRectRequest, HideSidebarRequest, HostCommandResponse, HostSnapshot,
+    HudToolbarActionRequest, HudToolbarActionStreamRequest, LogLevel, LogMessageRequest,
+    OpenFileInfo, OpenFileRequest, ReadRegionRequest, ReadRegionResponse, RegisterFilterRequest,
+    RegisterFilterResponse, RegisterHudToolbarButtonRequest, RegisterPluginRequest,
+    RegisterPluginResponse, RegisterToolbarButtonRequest, SetActiveViewportRequest,
+    SetFilterEnabledRequest, SetFilterEnabledResponse, SetHudToolbarButtonActiveRequest,
+    SetToolbarButtonActiveRequest, ShowSidebarRequest, ToolbarActionRequest,
+    ToolbarActionStreamRequest, UnregisterFilterRequest, UnregisterFilterResponse,
+    UnregisterHudToolbarButtonRequest, UnregisterPluginRequest, UnregisterToolbarButtonRequest,
+    ViewportSnapshot,
 };
 use parking_lot::RwLock;
 use plugin_api::PluginError;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -35,6 +37,7 @@ pub(crate) struct RemotePlugin {
     pub display_name: String,
     pub version: String,
     pub language: String,
+    pub plugin_root: Option<PathBuf>,
     pub filter_ids: HashSet<String>,
 }
 
@@ -123,6 +126,7 @@ impl ExtensionHostState {
         display_name: String,
         version: String,
         language: String,
+        plugin_root: Option<PathBuf>,
     ) -> Result<String, String> {
         if self
             .remote_plugins
@@ -142,6 +146,7 @@ impl ExtensionHostState {
                 display_name,
                 version,
                 language,
+                plugin_root,
                 filter_ids: HashSet::new(),
             },
         );
@@ -440,6 +445,7 @@ impl ExtensionHost for ExtensionHostService {
         };
         let version = req.version.clone();
         let language = req.language.clone();
+        let plugin_root = (!req.plugin_root.trim().is_empty()).then(|| PathBuf::from(&req.plugin_root));
 
         let plugin_handle = {
             let mut state = self.state.write();
@@ -449,6 +455,7 @@ impl ExtensionHost for ExtensionHostService {
                     display_name.clone(),
                     version.clone(),
                     language.clone(),
+                    plugin_root,
                 )
                 .map_err(Status::already_exists)?
         };
@@ -476,6 +483,8 @@ impl ExtensionHost for ExtensionHostService {
                 .unregister_plugin(&req.plugin_handle)
                 .map_err(Status::not_found)?
         };
+
+        let _ = crate::plugin_host::hide_sidebar(&plugin.plugin_id);
 
         crate::plugin_host::refresh_plugin_buttons().map_err(Status::failed_precondition)?;
         info!(
@@ -551,6 +560,54 @@ impl ExtensionHost for ExtensionHostService {
             "Updated remote toolbar button active state '{}:{}' -> {}",
             plugin_id, req.button_id, req.active
         );
+        Ok(Response::new(HostCommandResponse {}))
+    }
+
+    async fn show_sidebar(
+        &self,
+        request: Request<ShowSidebarRequest>,
+    ) -> Result<Response<HostCommandResponse>, Status> {
+        let req = request.into_inner();
+        let (plugin_id, plugin_root) = {
+            let state = self.state.read();
+            let plugin = state
+                .plugin(&req.plugin_handle)
+                .ok_or_else(|| Status::not_found("remote plugin handle is not registered"))?;
+            (plugin.plugin_id.clone(), plugin.plugin_root.clone())
+        };
+
+        crate::plugin_host::show_sidebar(
+            &plugin_id,
+            plugin_root.as_deref(),
+            None,
+            plugin_api::SidebarRequest {
+                button_id: (!req.button_id.trim().is_empty()).then_some(req.button_id),
+                width_px: req.width_px,
+                ui_path: req.ui_path,
+                component: req.component,
+            },
+        )
+        .map_err(Status::failed_precondition)?;
+
+        info!("Updated remote sidebar '{}': show/toggle request applied", plugin_id);
+        Ok(Response::new(HostCommandResponse {}))
+    }
+
+    async fn hide_sidebar(
+        &self,
+        request: Request<HideSidebarRequest>,
+    ) -> Result<Response<HostCommandResponse>, Status> {
+        let req = request.into_inner();
+        let plugin_id = {
+            let state = self.state.read();
+            state
+                .plugin(&req.plugin_handle)
+                .map(|plugin| plugin.plugin_id.clone())
+                .ok_or_else(|| Status::not_found("remote plugin handle is not registered"))?
+        };
+
+        crate::plugin_host::hide_sidebar(&plugin_id).map_err(Status::failed_precondition)?;
+        info!("Updated remote sidebar '{}': hide request applied", plugin_id);
         Ok(Response::new(HostCommandResponse {}))
     }
 

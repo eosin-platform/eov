@@ -1,0 +1,33 @@
+import { Theme } from "theme.slint";
+
+export component AnnotationsSidebar inherits Rectangle {
+    background: transparent;
+
+    VerticalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding-top: 8px;
+        padding-right: 12px;
+        padding-bottom: 12px;
+        padding-left: 12px;
+        spacing: 8px;
+
+        Text {
+            text: "Annotations";
+            color: Theme.text-primary;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 1px;
+            background: Theme.border;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+        }
+    }
+}

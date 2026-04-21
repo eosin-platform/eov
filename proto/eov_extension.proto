@@ -22,6 +22,8 @@ service ExtensionHost {
   rpc RegisterToolbarButton(RegisterToolbarButtonRequest) returns (HostCommandResponse);
   rpc UnregisterToolbarButton(UnregisterToolbarButtonRequest) returns (HostCommandResponse);
   rpc SetToolbarButtonActive(SetToolbarButtonActiveRequest) returns (HostCommandResponse);
+  rpc ShowSidebar(ShowSidebarRequest) returns (HostCommandResponse);
+  rpc HideSidebar(HideSidebarRequest) returns (HostCommandResponse);
   rpc ToolbarActionStream(ToolbarActionStreamRequest) returns (stream ToolbarActionRequest);
   rpc RegisterHudToolbarButton(RegisterHudToolbarButtonRequest) returns (HostCommandResponse);
   rpc UnregisterHudToolbarButton(UnregisterHudToolbarButtonRequest) returns (HostCommandResponse);
@@ -63,6 +65,7 @@ message RegisterPluginRequest {
   string display_name = 2;
   string version = 3;
   string language = 4;
+  string plugin_root = 5;
 }
 
 message RegisterPluginResponse {
@@ -189,6 +192,18 @@ message SetToolbarButtonActiveRequest {
   string plugin_handle = 1;
   string button_id = 2;
   bool active = 3;
+}
+
+message ShowSidebarRequest {
+  string plugin_handle = 1;
+  string button_id = 2;
+  uint32 width_px = 3;
+  string ui_path = 4;
+  string component = 5;
+}
+
+message HideSidebarRequest {
+  string plugin_handle = 1;
 }
 
 message ToolbarActionStreamRequest {
