@@ -48,7 +48,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <string> empty-state-text: "";
     in property <bool> can-export: false;
 
-    callback source-selected(int);
+    callback source-selected(string);
     callback export-clicked();
     callback row-clicked(string);
     callback toggle-set(string);
@@ -88,25 +88,6 @@ export component AnnotationsSidebar inherits Rectangle {
                 clicked => {
                     root.export-clicked();
                 }
-            }
-        }
-
-        if export-button.hovered: Rectangle {
-            x: parent.width - self.width;
-            y: 34px;
-            width: export-tooltip.preferred-width + 12px;
-            height: export-tooltip.preferred-height + 6px;
-            background: #111111ee;
-            border-radius: 4px;
-            border-width: 1px;
-            border-color: #ffffff24;
-
-            export-tooltip := Text {
-                x: 6px;
-                y: 3px;
-                text: "Export annotations";
-                color: white;
-                font-size: 11px;
             }
         }
 
@@ -163,7 +144,7 @@ export component AnnotationsSidebar inherits Rectangle {
                         }
 
                         HorizontalLayout {
-                            padding-left: 8px + row.indent * 18px;
+                            padding-left: (8 + row.indent * 18) * 1px;
                             padding-right: 8px;
                             spacing: 6px;
 
