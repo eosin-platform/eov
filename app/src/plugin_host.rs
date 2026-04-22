@@ -73,7 +73,10 @@ fn polygon_path_commands(vertices: &[crate::state::ImagePoint]) -> String {
     commands.trim().to_string()
 }
 
-fn point_in_polygon(point: crate::state::ImagePoint, vertices: &[crate::state::ImagePoint]) -> bool {
+fn point_in_polygon(
+    point: crate::state::ImagePoint,
+    vertices: &[crate::state::ImagePoint],
+) -> bool {
     if vertices.len() < 3 {
         return false;
     }
@@ -475,68 +478,74 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
                 .into_iter()
                 .map(move |polygon| (plugin_id.clone(), polygon))
         })
-        .map(|(plugin_id, polygon): (String, ViewportOverlayPolygonFFI)| {
-            let annotation_id = polygon.annotation_id.to_string();
-            let vertices = if dragged.is_some_and(|handle| {
-                handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-            }) {
-                match (dragged_state, dragged_position) {
-                    (Some(drag_state), Some(current)) => preview_polygon_vertices(drag_state, current),
-                    _ => polygon
-                        .vertices
-                        .iter()
-                        .map(|vertex| crate::state::ImagePoint {
-                            x: vertex.x_level0,
-                            y: vertex.y_level0,
-                        })
-                        .collect(),
-                }
-            } else if dragged_vertex.is_some_and(|handle| {
-                handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-            }) {
-                match (dragged_vertex_state, dragged_vertex_position) {
-                    (Some(drag_state), Some(current)) => preview_polygon_vertex_drag(drag_state, current),
-                    _ => polygon
-                        .vertices
-                        .iter()
-                        .map(|vertex| crate::state::ImagePoint {
-                            x: vertex.x_level0,
-                            y: vertex.y_level0,
-                        })
-                        .collect(),
-                }
-            } else {
-                polygon
-                    .vertices
-                    .iter()
-                    .map(|vertex| crate::state::ImagePoint {
-                        x: vertex.x_level0,
-                        y: vertex.y_level0,
-                    })
-                    .collect()
-            };
-            let hovered = polygon_tool_active
-                && active_tool_plugin_id == Some(plugin_id.as_str())
-                && hovered.is_some_and(|handle| {
+        .map(
+            |(plugin_id, polygon): (String, ViewportOverlayPolygonFFI)| {
+                let annotation_id = polygon.annotation_id.to_string();
+                let vertices = if dragged.is_some_and(|handle| {
                     handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-                });
-            OverlayPolygonShape {
-                plugin_id,
-                annotation_id,
-                vertices,
-                fill_color: polygon_fill_color(
-                    polygon.fill_red,
-                    polygon.fill_green,
-                    polygon.fill_blue,
-                    hovered,
-                ),
-                stroke_color: if hovered {
-                    Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+                }) {
+                    match (dragged_state, dragged_position) {
+                        (Some(drag_state), Some(current)) => {
+                            preview_polygon_vertices(drag_state, current)
+                        }
+                        _ => polygon
+                            .vertices
+                            .iter()
+                            .map(|vertex| crate::state::ImagePoint {
+                                x: vertex.x_level0,
+                                y: vertex.y_level0,
+                            })
+                            .collect(),
+                    }
+                } else if dragged_vertex.is_some_and(|handle| {
+                    handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+                }) {
+                    match (dragged_vertex_state, dragged_vertex_position) {
+                        (Some(drag_state), Some(current)) => {
+                            preview_polygon_vertex_drag(drag_state, current)
+                        }
+                        _ => polygon
+                            .vertices
+                            .iter()
+                            .map(|vertex| crate::state::ImagePoint {
+                                x: vertex.x_level0,
+                                y: vertex.y_level0,
+                            })
+                            .collect(),
+                    }
                 } else {
-                    Color::from_rgb_u8(0x00, 0x00, 0x00)
-                },
-            }
-        })
+                    polygon
+                        .vertices
+                        .iter()
+                        .map(|vertex| crate::state::ImagePoint {
+                            x: vertex.x_level0,
+                            y: vertex.y_level0,
+                        })
+                        .collect()
+                };
+                let hovered = polygon_tool_active
+                    && active_tool_plugin_id == Some(plugin_id.as_str())
+                    && hovered.is_some_and(|handle| {
+                        handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+                    });
+                OverlayPolygonShape {
+                    plugin_id,
+                    annotation_id,
+                    vertices,
+                    fill_color: polygon_fill_color(
+                        polygon.fill_red,
+                        polygon.fill_green,
+                        polygon.fill_blue,
+                        hovered,
+                    ),
+                    stroke_color: if hovered {
+                        Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+                    } else {
+                        Color::from_rgb_u8(0x00, 0x00, 0x00)
+                    },
+                }
+            },
+        )
         .collect::<Vec<_>>();
 
     if state.current_tool == crate::state::Tool::PolygonAnnotation
@@ -756,23 +765,27 @@ pub(crate) fn hit_test_overlay_polygon_vertex_for_pane(
             let plugin_id = polygon.plugin_id.clone();
             let annotation_id = polygon.annotation_id.clone();
             let vertices = polygon.vertices.clone();
-            polygon.vertices.into_iter().enumerate().map(move |(vertex_index, vertex)| {
-                let screen = vp.image_to_screen(vertex.x, vertex.y);
-                let dx = screen_x as f64 - screen.x;
-                let dy = screen_y as f64 - screen.y;
-                let distance_sq = dx * dx + dy * dy;
-                (
-                    distance_sq,
-                    PluginPolygonVertexDragCandidate {
-                        handle: crate::state::PluginPolygonVertexHandle {
-                            plugin_id: plugin_id.clone(),
-                            annotation_id: annotation_id.clone(),
-                            vertex_index,
+            polygon
+                .vertices
+                .into_iter()
+                .enumerate()
+                .map(move |(vertex_index, vertex)| {
+                    let screen = vp.image_to_screen(vertex.x, vertex.y);
+                    let dx = screen_x as f64 - screen.x;
+                    let dy = screen_y as f64 - screen.y;
+                    let distance_sq = dx * dx + dy * dy;
+                    (
+                        distance_sq,
+                        PluginPolygonVertexDragCandidate {
+                            handle: crate::state::PluginPolygonVertexHandle {
+                                plugin_id: plugin_id.clone(),
+                                annotation_id: annotation_id.clone(),
+                                vertex_index,
+                            },
+                            vertices: vertices.clone(),
                         },
-                        vertices: vertices.clone(),
-                    },
-                )
-            })
+                    )
+                })
         })
         .filter(|(distance_sq, _)| *distance_sq <= 36.0)
         .min_by(|left, right| left.0.total_cmp(&right.0))
@@ -996,12 +1009,14 @@ pub(crate) fn set_active_tool(plugin_id: &str, tool: HostToolModeFFI) -> Result<
                 HostToolModeFFI::MeasureDistance => {
                     state.set_tool(crate::state::Tool::MeasureDistance)
                 }
-                HostToolModeFFI::PointAnnotation => {
-                    state.set_plugin_annotation_tool(crate::state::Tool::PointAnnotation, plugin_id.clone())
-                }
-                HostToolModeFFI::PolygonAnnotation => {
-                    state.set_plugin_annotation_tool(crate::state::Tool::PolygonAnnotation, plugin_id.clone())
-                }
+                HostToolModeFFI::PointAnnotation => state.set_plugin_annotation_tool(
+                    crate::state::Tool::PointAnnotation,
+                    plugin_id.clone(),
+                ),
+                HostToolModeFFI::PolygonAnnotation => state.set_plugin_annotation_tool(
+                    crate::state::Tool::PolygonAnnotation,
+                    plugin_id.clone(),
+                ),
             }
             sync_tool_button_states(&mut state);
         }

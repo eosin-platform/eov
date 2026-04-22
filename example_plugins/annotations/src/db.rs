@@ -4,8 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    Annotation, AnnotationSet, PointAnnotation, PolygonAnnotation, PolygonVertex,
-    annotation_label,
+    Annotation, AnnotationSet, PointAnnotation, PolygonAnnotation, PolygonVertex, annotation_label,
 };
 
 fn annotations_db_path() -> Result<PathBuf, String> {

@@ -145,11 +145,7 @@ fn focus_sidebar_row(row_id: &str) -> Result<(), String> {
                                 .iter()
                                 .map(|vertex| vertex.y_level0)
                                 .fold(f64::NEG_INFINITY, f64::max);
-                            Some((
-                                set.id.clone(),
-                                (min_x + max_x) * 0.5,
-                                (min_y + max_y) * 0.5,
-                            ))
+                            Some((set.id.clone(), (min_x + max_x) * 0.5, (min_y + max_y) * 0.5))
                         }
                         _ => None,
                     })

@@ -8,9 +8,8 @@ use uuid::Uuid;
 use crate::db::{fingerprint_for_file, load_annotation_sets, open_database};
 use crate::model::{
     Annotation, AnnotationSet, ExportAnnotation, ExportAnnotationSet, ExportFile,
-    ExportPolygonVertex, LoadedFileAnnotations, PointAnnotation, PolygonAnnotation,
-    PolygonVertex, choose_annotation_set_color, now_unix_secs, sort_annotation_sets,
-    unique_untitled_set_name,
+    ExportPolygonVertex, LoadedFileAnnotations, PointAnnotation, PolygonAnnotation, PolygonVertex,
+    choose_annotation_set_color, now_unix_secs, sort_annotation_sets, unique_untitled_set_name,
 };
 use crate::state::{
     PluginState, active_file_from_snapshot, active_file_key, host_api, host_snapshot, plugin_state,

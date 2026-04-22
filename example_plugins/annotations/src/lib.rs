@@ -229,23 +229,25 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
         .filter(|set| !hidden_sets.is_some_and(|hidden| hidden.contains(&set.id)))
         .flat_map(|set| {
             let (fill_red, fill_green, fill_blue) = hex_color_to_rgb(&set.color_hex);
-            set.annotations.iter().filter_map(move |annotation| match annotation {
-                Annotation::Polygon(polygon) => Some(ViewportOverlayPolygonFFI {
-                    annotation_id: polygon.id.clone().into(),
-                    vertices: polygon
-                        .vertices
-                        .iter()
-                        .map(|vertex| ViewportOverlayVertexFFI {
-                            x_level0: vertex.x_level0,
-                            y_level0: vertex.y_level0,
-                        })
-                        .collect(),
-                    fill_red,
-                    fill_green,
-                    fill_blue,
-                }),
-                Annotation::Point(_) => None,
-            })
+            set.annotations
+                .iter()
+                .filter_map(move |annotation| match annotation {
+                    Annotation::Polygon(polygon) => Some(ViewportOverlayPolygonFFI {
+                        annotation_id: polygon.id.clone().into(),
+                        vertices: polygon
+                            .vertices
+                            .iter()
+                            .map(|vertex| ViewportOverlayVertexFFI {
+                                x_level0: vertex.x_level0,
+                                y_level0: vertex.y_level0,
+                            })
+                            .collect(),
+                        fill_red,
+                        fill_green,
+                        fill_blue,
+                    }),
+                    Annotation::Point(_) => None,
+                })
         })
         .collect::<Vec<_>>();
     RVec::from(polygons)

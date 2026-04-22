@@ -290,10 +290,8 @@ pub struct PluginVTable {
         extern "C" fn(viewport: ViewportSnapshotFFI, x_level0: f64, y_level0: f64),
 
     /// Called when the host commits a polygon annotation for the active polygon tool.
-    pub on_polygon_annotation_placed: extern "C" fn(
-        viewport: ViewportSnapshotFFI,
-        vertices: RVec<ViewportOverlayVertexFFI>,
-    ),
+    pub on_polygon_annotation_placed:
+        extern "C" fn(viewport: ViewportSnapshotFFI, vertices: RVec<ViewportOverlayVertexFFI>),
 
     /// Called when the host moves an existing point annotation for the active point tool.
     pub on_point_annotation_moved: extern "C" fn(

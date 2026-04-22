@@ -308,10 +308,11 @@ pub fn update_tabs(
                 plugin_overlay_points: plugin_overlay_points.as_slice().into(),
                 plugin_overlay_polygons: plugin_overlay_polygons.as_slice().into(),
                 plugin_overlay_vertex_boxes: plugin_overlay_vertex_boxes.as_slice().into(),
-                annotation_tool_hover_active:
-                    matches!(state.current_tool, crate::state::Tool::PointAnnotation | crate::state::Tool::PolygonAnnotation)
-                        && pane == state.focused_pane
-                        && state.hovered_plugin_annotation.is_some(),
+                annotation_tool_hover_active: matches!(
+                    state.current_tool,
+                    crate::state::Tool::PointAnnotation | crate::state::Tool::PolygonAnnotation
+                ) && pane == state.focused_pane
+                    && state.hovered_plugin_annotation.is_some(),
                 candidate_measurement,
                 is_loading: ui.get_is_loading() && pane == state.focused_pane,
                 hud,

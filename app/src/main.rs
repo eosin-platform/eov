@@ -151,8 +151,11 @@ fn tool_selection_for_button(
     };
     Some(state::ToolSelection {
         tool,
-        plugin_id: matches!(tool, state::Tool::PointAnnotation | state::Tool::PolygonAnnotation)
-            .then(|| button.plugin_id.clone()),
+        plugin_id: matches!(
+            tool,
+            state::Tool::PointAnnotation | state::Tool::PolygonAnnotation
+        )
+        .then(|| button.plugin_id.clone()),
     })
 }
 
@@ -164,8 +167,10 @@ fn selection_matches_button(
         return false;
     };
     app_state.current_tool == target.tool
-        && (!matches!(target.tool, state::Tool::PointAnnotation | state::Tool::PolygonAnnotation)
-            || app_state.active_tool_plugin_id == target.plugin_id)
+        && (!matches!(
+            target.tool,
+            state::Tool::PointAnnotation | state::Tool::PolygonAnnotation
+        ) || app_state.active_tool_plugin_id == target.plugin_id)
 }
 
 fn slider_value_to_zoom(value: f32) -> f64 {

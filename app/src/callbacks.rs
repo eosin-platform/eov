@@ -46,7 +46,12 @@ fn active_hud_mut(state: &mut AppState) -> Option<&mut HudSettings> {
     Some(&mut pane_state.hud)
 }
 
-fn image_point_for_screen(state: &AppState, pane: PaneId, x: f32, y: f32) -> Option<state::ImagePoint> {
+fn image_point_for_screen(
+    state: &AppState,
+    pane: PaneId,
+    x: f32,
+    y: f32,
+) -> Option<state::ImagePoint> {
     state
         .active_file_id_for_pane(pane)
         .and_then(|file_id| state.get_file(file_id))
@@ -74,7 +79,10 @@ fn polygon_closes_to_first_vertex(state: &AppState, pane: PaneId, x: f32, y: f32
     let Some(first) = state.polygon_candidate_vertices.first().copied() else {
         return false;
     };
-    let screen = pane_state.viewport.viewport.image_to_screen(first.x, first.y);
+    let screen = pane_state
+        .viewport
+        .viewport
+        .image_to_screen(first.x, first.y);
     let dx = screen.x as f32 - x;
     let dy = screen.y as f32 - y;
     dx * dx + dy * dy <= 64.0
@@ -94,7 +102,11 @@ pub(crate) fn confirm_active_polygon_annotation(
         let Some(plugin_id) = guard.active_tool_plugin_id.clone() else {
             return Ok(false);
         };
-        (plugin_id, guard.focused_pane, guard.polygon_candidate_vertices.clone())
+        (
+            plugin_id,
+            guard.focused_pane,
+            guard.polygon_candidate_vertices.clone(),
+        )
     };
 
     let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(state, pane) else {
@@ -2003,10 +2015,9 @@ pub fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         let plugin_manager = Rc::clone(&plugin_manager);
-        let last_polygon_vertex_click: Rc<RefCell<Option<(
-            std::time::Instant,
-            crate::state::PluginPolygonVertexHandle,
-        )>>> = Rc::new(RefCell::new(None));
+        let last_polygon_vertex_click: Rc<
+            RefCell<Option<(std::time::Instant, crate::state::PluginPolygonVertexHandle)>>,
+        > = Rc::new(RefCell::new(None));
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
@@ -2030,37 +2041,38 @@ pub fn setup_callbacks(
                 }
             };
 
-            let polygon_vertex_removal = if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
-                let now = std::time::Instant::now();
-                let is_double_click = last_polygon_vertex_click.borrow().as_ref().is_some_and(
-                    |(last_time, handle)| {
-                        now.duration_since(*last_time).as_millis() < 400
-                            && *handle == candidate.handle
-                    },
-                );
+            let polygon_vertex_removal =
+                if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
+                    let now = std::time::Instant::now();
+                    let is_double_click = last_polygon_vertex_click.borrow().as_ref().is_some_and(
+                        |(last_time, handle)| {
+                            now.duration_since(*last_time).as_millis() < 400
+                                && *handle == candidate.handle
+                        },
+                    );
 
-                if is_double_click && candidate.vertices.len() > 3 {
-                    last_polygon_vertex_click.borrow_mut().take();
-                    let mut vertices = candidate.vertices;
-                    vertices.remove(candidate.handle.vertex_index);
-                    let pane = {
-                        let state = state_handle.read();
-                        state.focused_pane
-                    };
-                    Some((
-                        candidate.handle.plugin_id,
-                        candidate.handle.annotation_id,
-                        pane,
-                        vertices,
-                    ))
+                    if is_double_click && candidate.vertices.len() > 3 {
+                        last_polygon_vertex_click.borrow_mut().take();
+                        let mut vertices = candidate.vertices;
+                        vertices.remove(candidate.handle.vertex_index);
+                        let pane = {
+                            let state = state_handle.read();
+                            state.focused_pane
+                        };
+                        Some((
+                            candidate.handle.plugin_id,
+                            candidate.handle.annotation_id,
+                            pane,
+                            vertices,
+                        ))
+                    } else {
+                        *last_polygon_vertex_click.borrow_mut() = Some((now, candidate.handle));
+                        None
+                    }
                 } else {
-                    *last_polygon_vertex_click.borrow_mut() = Some((now, candidate.handle));
+                    last_polygon_vertex_click.borrow_mut().take();
                     None
-                }
-            } else {
-                last_polygon_vertex_click.borrow_mut().take();
-                None
-            };
+                };
 
             if let Some((plugin_id, annotation_id, pane, vertices)) = polygon_vertex_removal {
                 suppress_polygon_mouse_up.set(true);
@@ -2078,7 +2090,8 @@ pub fn setup_callbacks(
                     state.request_render();
                 }
 
-                if let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                if let Some(viewport) =
+                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
                     && let Err(err) = plugin_manager.borrow_mut().handle_polygon_annotation_moved(
                         &plugin_id,
                         &viewport,
@@ -2122,18 +2135,15 @@ pub fn setup_callbacks(
                     None
                 } else {
                     let pane = state.focused_pane;
-                    state
-                        .active_tool_plugin_id
-                        .clone()
-                        .and_then(|plugin_id| {
-                            crate::plugin_host::hit_test_overlay_point_for_pane(
-                                &state,
-                                pane,
-                                x,
-                                y,
-                                Some(&plugin_id),
-                            )
-                        })
+                    state.active_tool_plugin_id.clone().and_then(|plugin_id| {
+                        crate::plugin_host::hit_test_overlay_point_for_pane(
+                            &state,
+                            pane,
+                            x,
+                            y,
+                            Some(&plugin_id),
+                        )
+                    })
                 }
             };
 
@@ -2163,16 +2173,13 @@ pub fn setup_callbacks(
                     if let Some(handle) = point_drag_candidate.clone() {
                         state.hovered_plugin_annotation = Some(handle.clone());
                         state.dragged_plugin_point = Some(handle);
-                        state.dragged_plugin_point_position = image_point_for_screen(
-                            &state,
-                            state.focused_pane,
-                            x,
-                            y,
-                        )
-                        .map(|point| crate::state::PluginAnnotationPreviewPosition {
-                            x_level0: point.x,
-                            y_level0: point.y,
-                        });
+                        state.dragged_plugin_point_position =
+                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
+                                crate::state::PluginAnnotationPreviewPosition {
+                                    x_level0: point.x,
+                                    y_level0: point.y,
+                                }
+                            });
                         state.request_render();
                         Some(true)
                     } else {
@@ -2180,30 +2187,24 @@ pub fn setup_callbacks(
                     }
                 } else if state.current_tool == state::Tool::PolygonAnnotation {
                     if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
-                        state.hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
-                            plugin_id: candidate.handle.plugin_id.clone(),
-                            annotation_id: candidate.handle.annotation_id.clone(),
-                        });
+                        state.hovered_plugin_annotation =
+                            Some(crate::state::PluginAnnotationHandle {
+                                plugin_id: candidate.handle.plugin_id.clone(),
+                                annotation_id: candidate.handle.annotation_id.clone(),
+                            });
                         state.hovered_plugin_polygon_vertex = Some(candidate.handle.clone());
                         state.hovered_plugin_polygon_edge = None;
                         state.dragged_plugin_polygon_vertex = Some(candidate.handle.clone());
-                        state.dragged_plugin_polygon_vertex_state = image_point_for_screen(
-                            &state,
-                            state.focused_pane,
-                            x,
-                            y,
-                        )
-                        .map(|point| crate::state::PluginPolygonVertexDragState {
-                            start_pointer: point,
-                            vertices: candidate.vertices,
-                            vertex_index: candidate.handle.vertex_index,
-                        });
-                        state.dragged_plugin_polygon_vertex_position = image_point_for_screen(
-                            &state,
-                            state.focused_pane,
-                            x,
-                            y,
-                        );
+                        state.dragged_plugin_polygon_vertex_state =
+                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
+                                crate::state::PluginPolygonVertexDragState {
+                                    start_pointer: point,
+                                    vertices: candidate.vertices,
+                                    vertex_index: candidate.handle.vertex_index,
+                                }
+                            });
+                        state.dragged_plugin_polygon_vertex_position =
+                            image_point_for_screen(&state, state.focused_pane, x, y);
                         state.dragged_plugin_polygon = None;
                         state.dragged_plugin_polygon_state = None;
                         state.dragged_plugin_polygon_position = None;
@@ -2217,21 +2218,22 @@ pub fn setup_callbacks(
                         };
                         let mut vertices = candidate.vertices;
                         vertices.insert(candidate.handle.insert_index, candidate.handle.position);
-                        state.hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
-                            plugin_id: new_vertex_handle.plugin_id.clone(),
-                            annotation_id: new_vertex_handle.annotation_id.clone(),
-                        });
+                        state.hovered_plugin_annotation =
+                            Some(crate::state::PluginAnnotationHandle {
+                                plugin_id: new_vertex_handle.plugin_id.clone(),
+                                annotation_id: new_vertex_handle.annotation_id.clone(),
+                            });
                         state.hovered_plugin_polygon_vertex = Some(new_vertex_handle.clone());
                         state.hovered_plugin_polygon_edge = None;
                         state.dragged_plugin_polygon_vertex = Some(new_vertex_handle.clone());
-                        state.dragged_plugin_polygon_vertex_state = Some(
-                            crate::state::PluginPolygonVertexDragState {
+                        state.dragged_plugin_polygon_vertex_state =
+                            Some(crate::state::PluginPolygonVertexDragState {
                                 start_pointer: candidate.handle.position,
                                 vertices,
                                 vertex_index: new_vertex_handle.vertex_index,
-                            },
-                        );
-                        state.dragged_plugin_polygon_vertex_position = Some(candidate.handle.position);
+                            });
+                        state.dragged_plugin_polygon_vertex_position =
+                            Some(candidate.handle.position);
                         state.dragged_plugin_polygon = None;
                         state.dragged_plugin_polygon_state = None;
                         state.dragged_plugin_polygon_position = None;
@@ -2242,22 +2244,15 @@ pub fn setup_callbacks(
                         state.hovered_plugin_polygon_vertex = None;
                         state.hovered_plugin_polygon_edge = None;
                         state.dragged_plugin_polygon = Some(candidate.handle);
-                        state.dragged_plugin_polygon_state = image_point_for_screen(
-                            &state,
-                            state.focused_pane,
-                            x,
-                            y,
-                        )
-                        .map(|point| crate::state::PluginPolygonDragState {
-                            start_pointer: point,
-                            vertices: candidate.vertices,
-                        });
-                        state.dragged_plugin_polygon_position = image_point_for_screen(
-                            &state,
-                            state.focused_pane,
-                            x,
-                            y,
-                        );
+                        state.dragged_plugin_polygon_state =
+                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
+                                crate::state::PluginPolygonDragState {
+                                    start_pointer: point,
+                                    vertices: candidate.vertices,
+                                }
+                            });
+                        state.dragged_plugin_polygon_position =
+                            image_point_for_screen(&state, state.focused_pane, x, y);
                         state.dragged_plugin_polygon_vertex = None;
                         state.dragged_plugin_polygon_vertex_state = None;
                         state.dragged_plugin_polygon_vertex_position = None;
@@ -2443,7 +2438,8 @@ pub fn setup_callbacks(
                         let _ = dragging;
                         true
                     } else {
-                        let hovered = point_hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
+                        let hovered =
+                            point_hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
                         if state.hovered_plugin_annotation != hovered {
                             state.hovered_plugin_annotation = hovered;
                             state.request_render();
@@ -2472,21 +2468,24 @@ pub fn setup_callbacks(
                         let pane = state.focused_pane;
                         state.dragged_plugin_polygon_vertex_position =
                             image_point_for_screen(&state, pane, x, y);
-                        state.hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
-                            plugin_id: dragging.plugin_id.clone(),
-                            annotation_id: dragging.annotation_id.clone(),
-                        });
+                        state.hovered_plugin_annotation =
+                            Some(crate::state::PluginAnnotationHandle {
+                                plugin_id: dragging.plugin_id.clone(),
+                                annotation_id: dragging.annotation_id.clone(),
+                            });
                         state.hovered_plugin_polygon_vertex = Some(dragging);
                         state.hovered_plugin_polygon_edge = None;
                         state.request_render();
                         true
                     } else if let Some(dragging) = state.dragged_plugin_polygon.clone() {
                         let pane = state.focused_pane;
-                        state.dragged_plugin_polygon_position = image_point_for_screen(&state, pane, x, y);
+                        state.dragged_plugin_polygon_position =
+                            image_point_for_screen(&state, pane, x, y);
                         if let Some(hovered) = polygon_hover_candidate.clone() {
                             state.hovered_plugin_annotation = Some(hovered);
                         }
-                        state.hovered_plugin_polygon_vertex = polygon_vertex_hover_candidate.clone();
+                        state.hovered_plugin_polygon_vertex =
+                            polygon_vertex_hover_candidate.clone();
                         state.hovered_plugin_polygon_edge = None;
                         state.request_render();
                         let _ = dragging;
@@ -2499,16 +2498,20 @@ pub fn setup_callbacks(
                         let hovered = polygon_hover_candidate
                             .filter(|handle| handle.plugin_id == plugin_id)
                             .or_else(|| {
-                                vertex_hover.as_ref().map(|handle| crate::state::PluginAnnotationHandle {
-                                    plugin_id: handle.plugin_id.clone(),
-                                    annotation_id: handle.annotation_id.clone(),
+                                vertex_hover.as_ref().map(|handle| {
+                                    crate::state::PluginAnnotationHandle {
+                                        plugin_id: handle.plugin_id.clone(),
+                                        annotation_id: handle.annotation_id.clone(),
+                                    }
                                 })
                             });
                         let hovered = hovered.or_else(|| {
-                            edge_hover.as_ref().map(|handle| crate::state::PluginAnnotationHandle {
-                                plugin_id: handle.plugin_id.clone(),
-                                annotation_id: handle.annotation_id.clone(),
-                            })
+                            edge_hover
+                                .as_ref()
+                                .map(|handle| crate::state::PluginAnnotationHandle {
+                                    plugin_id: handle.plugin_id.clone(),
+                                    annotation_id: handle.annotation_id.clone(),
+                                })
                         });
                         let next_hover = image_point_for_screen(&state, state.focused_pane, x, y);
                         if state.hovered_plugin_annotation != hovered
@@ -2591,7 +2594,8 @@ pub fn setup_callbacks(
                 }
             };
 
-            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) = handled_point_drag_release
+            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) =
+                handled_point_drag_release
             {
                 if let Some(viewport) =
                     crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
@@ -2671,7 +2675,12 @@ pub fn setup_callbacks(
                     state.hovered_plugin_annotation = None;
                     state.request_render();
                     preview_vertices.map(|candidate| {
-                        (candidate.handle.plugin_id, candidate.handle.annotation_id, pane, candidate.vertices)
+                        (
+                            candidate.handle.plugin_id,
+                            candidate.handle.annotation_id,
+                            pane,
+                            candidate.vertices,
+                        )
                     })
                 } else {
                     None
@@ -2705,8 +2714,7 @@ pub fn setup_callbacks(
                     let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
                         return;
                     };
-                    let Some(point) = image_point_for_screen(&state, pane, x, y)
-                    else {
+                    let Some(point) = image_point_for_screen(&state, pane, x, y) else {
                         return;
                     };
                     let Some(viewport) =
@@ -2753,7 +2761,8 @@ pub fn setup_callbacks(
             };
 
             if polygon_action == Some(true) {
-                if let Err(err) = confirm_active_polygon_annotation(&state_handle, &plugin_manager) {
+                if let Err(err) = confirm_active_polygon_annotation(&state_handle, &plugin_manager)
+                {
                     tracing::error!("Polygon annotation placement error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
