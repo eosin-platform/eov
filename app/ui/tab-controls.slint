@@ -512,7 +512,7 @@ component Tab inherits Rectangle {
     border-color: transparent;
     opacity: is-dragging ? 0.35 : 1.0;
 
-    if data.is-active: Rectangle {
+    if data.is-focused: Rectangle {
         x: 0px;
         y: 0px;
         width: 100%;

@@ -76,6 +76,7 @@ const APP_XDG_ID: &str = "io.eosin.eov";
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
     reset_pane_ui_state();
     update_tabs(ui, state);
+    let _ = crate::plugin_host::refresh_active_sidebar();
 }
 
 fn deactivate_active_plugin_tool_if_matching(

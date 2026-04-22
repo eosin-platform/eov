@@ -410,6 +410,48 @@ fn annotation_label(annotation: &Annotation) -> String {
     }
 }
 
+fn sort_annotation_sets(annotation_sets: &mut [AnnotationSet]) {
+    annotation_sets.sort_by(|left, right| {
+        right
+            .name
+            .to_ascii_lowercase()
+            .cmp(&left.name.to_ascii_lowercase())
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+}
+
+fn unique_untitled_set_name(annotation_sets: &[AnnotationSet]) -> String {
+    let existing = annotation_sets
+        .iter()
+        .map(|set| set.name.as_str())
+        .collect::<HashSet<_>>();
+    if !existing.contains("Untitled") {
+        return "Untitled".to_string();
+    }
+
+    let mut suffix = 1;
+    loop {
+        let candidate = format!("Untitled {suffix}");
+        if !existing.contains(candidate.as_str()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn refresh_sidebar_if_available() {
+    if let Some(host_api) = host_api() {
+        let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
+    }
+}
+
+fn request_render_if_available() {
+    if let Some(host_api) = host_api() {
+        let _ = (host_api.request_render)(host_api.context).into_result();
+    }
+}
+
 fn active_file_key(state: &PluginState) -> Option<&str> {
     state.active_file_path.as_deref()
 }
@@ -461,6 +503,129 @@ fn ensure_selected_set_for_active_file(state: &mut PluginState) -> Result<Option
         .selected_set_by_file
         .insert(active_file_path, id.clone());
     Ok(Some(id))
+}
+
+fn create_annotation_set_for_active_file() -> Result<(), String> {
+    sync_active_file()?;
+
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(());
+    };
+    let Some(loaded) = state.files.get(&active_file_path).cloned() else {
+        return Ok(());
+    };
+
+    let name = unique_untitled_set_name(&loaded.annotation_sets);
+    let id = Uuid::new_v4().to_string();
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "INSERT INTO annotation_sets (id, file_sha256, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
+            params![&id, loaded.file_sha256.as_slice(), &name, timestamp, timestamp],
+        )
+        .map_err(|err| format!("failed to create annotation set '{name}': {err}"))?;
+
+    let loaded_entry = state
+        .files
+        .get_mut(&active_file_path)
+        .ok_or_else(|| format!("active file '{}' is not loaded", active_file_path))?;
+    loaded_entry.annotation_sets.push(AnnotationSet {
+        id: id.clone(),
+        name,
+        notes: None,
+        created_at: timestamp,
+        updated_at: timestamp,
+        annotations: Vec::new(),
+    });
+    sort_annotation_sets(&mut loaded_entry.annotation_sets);
+    state.selected_set_by_file.insert(active_file_path, id);
+    Ok(())
+}
+
+fn delete_annotation_set_for_active_file(set_id: &str) -> Result<(), String> {
+    sync_active_file()?;
+
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(());
+    };
+    let connection = open_database()?;
+    connection
+        .execute("DELETE FROM annotation_sets WHERE id = ?1", params![set_id])
+        .map_err(|err| format!("failed to delete annotation set '{set_id}': {err}"))?;
+
+    let next_selected = {
+        let loaded_entry = match state.files.get_mut(&active_file_path) {
+            Some(entry) => entry,
+            None => return Ok(()),
+        };
+        loaded_entry.annotation_sets.retain(|set| set.id != set_id);
+        loaded_entry.annotation_sets.first().map(|set| set.id.clone())
+    };
+
+    if let Some(collapsed) = state.collapsed_sets_by_file.get_mut(&active_file_path) {
+        collapsed.remove(set_id);
+    }
+
+    match next_selected {
+        Some(next_id) => {
+            state.selected_set_by_file.insert(active_file_path, next_id);
+        }
+        None => {
+            state.selected_set_by_file.remove(&active_file_path);
+        }
+    }
+    Ok(())
+}
+
+fn delete_annotation_for_active_file(annotation_id: &str) -> Result<(), String> {
+    sync_active_file()?;
+
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(());
+    };
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+
+    let updated_set_id = state.files.get(&active_file_path).and_then(|loaded| {
+        loaded.annotation_sets.iter().find_map(|set| {
+            set.annotations.iter().any(|annotation| match annotation {
+                Annotation::Point(point) => point.id == annotation_id,
+            })
+            .then(|| set.id.clone())
+        })
+    });
+
+    connection
+        .execute("DELETE FROM annotations WHERE id = ?1", params![annotation_id])
+        .map_err(|err| format!("failed to delete annotation '{annotation_id}': {err}"))?;
+
+    if let Some(set_id) = updated_set_id.as_deref() {
+        connection
+            .execute(
+                "UPDATE annotation_sets SET updated_at = ?2 WHERE id = ?1",
+                params![set_id, timestamp],
+            )
+            .map_err(|err| format!("failed to update annotation set timestamp for '{set_id}': {err}"))?;
+    }
+
+    if let Some(loaded_entry) = state.files.get_mut(&active_file_path) {
+        for set in &mut loaded_entry.annotation_sets {
+            let before = set.annotations.len();
+            set.annotations.retain(|annotation| match annotation {
+                Annotation::Point(point) => point.id != annotation_id,
+            });
+            if set.annotations.len() != before {
+                set.updated_at = timestamp;
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn start_point_annotation_flow() -> Result<(), String> {
@@ -625,6 +790,29 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
 
     let result = match callback_name {
         "export-clicked" => export_active_file_annotations(),
+        "create-set-clicked" => {
+            create_annotation_set_for_active_file().map(|_| {
+                refresh_sidebar_if_available();
+            })
+        }
+        "delete-set-confirmed" => {
+            let Some(serde_json::Value::String(set_id)) = args.first() else {
+                return;
+            };
+            delete_annotation_set_for_active_file(set_id).map(|_| {
+                refresh_sidebar_if_available();
+                request_render_if_available();
+            })
+        }
+        "delete-annotation-clicked" => {
+            let Some(serde_json::Value::String(annotation_id)) = args.first() else {
+                return;
+            };
+            delete_annotation_for_active_file(annotation_id).map(|_| {
+                refresh_sidebar_if_available();
+                request_render_if_available();
+            })
+        }
         "source-selected" => Ok(()),
         "row-clicked" => {
             sync_active_file().and_then(|_| {
@@ -643,9 +831,7 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                     state
                         .selected_set_by_file
                         .insert(active_path, row_id.clone());
-                    if let Some(host_api) = host_api() {
-                        let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
-                    }
+                    refresh_sidebar_if_available();
                 }
                 Ok(())
             })
@@ -663,9 +849,7 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 if !collapsed.insert(set_id.clone()) {
                     collapsed.remove(set_id);
                 }
-                if let Some(host_api) = host_api() {
-                    let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
-                }
+                refresh_sidebar_if_available();
                 Ok(())
             })
         }
@@ -837,6 +1021,52 @@ extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
             name: "can-export".into(),
             json_value: (state.active_file_path.is_some()).to_string().into(),
         },
+        UiPropertyFFI {
+            name: "can-delete-set".into(),
+            json_value: state
+                .active_file_path
+                .as_deref()
+                .and_then(|path| state.selected_set_by_file.get(path))
+                .is_some()
+                .to_string()
+                .into(),
+        },
+        UiPropertyFFI {
+            name: "selected-set-id".into(),
+            json_value: serde_json::to_string(
+                &state
+                    .active_file_path
+                    .as_deref()
+                    .and_then(|path| state.selected_set_by_file.get(path).cloned())
+                    .unwrap_or_default(),
+            )
+            .unwrap_or_else(|_| "\"\"".to_string())
+            .into(),
+        },
+        UiPropertyFFI {
+            name: "selected-set-name".into(),
+            json_value: serde_json::to_string(
+                &state
+                    .active_file_path
+                    .as_deref()
+                    .and_then(|path| {
+                        let selected_id = state.selected_set_by_file.get(path)?;
+                        state
+                            .files
+                            .get(path)
+                            .and_then(|loaded| {
+                                loaded
+                                    .annotation_sets
+                                    .iter()
+                                    .find(|set| &set.id == selected_id)
+                                    .map(|set| set.name.clone())
+                            })
+                    })
+                    .unwrap_or_default(),
+            )
+            .unwrap_or_else(|_| "\"\"".to_string())
+            .into(),
+        },
     ])
 }
 
@@ -907,10 +1137,8 @@ extern "C" fn on_point_annotation_placed_ffi(
 ) {
     match persist_point_annotation(&viewport, x_level0, y_level0) {
         Ok(()) => {
-            if let Some(host_api) = host_api() {
-                let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
-                let _ = (host_api.request_render)(host_api.context).into_result();
-            }
+            refresh_sidebar_if_available();
+            request_render_if_available();
         }
         Err(err) => log_message(HostLogLevelFFI::Error, err),
     }

@@ -201,6 +201,8 @@ pub fn update_tabs(
                         path: SharedString::new(),
                         is_modified: false,
                         is_active: Some(tab_id) == state.active_tab_id_for_pane(pane),
+                        is_focused: pane == state.focused_pane
+                            && Some(tab_id) == state.active_tab_id_for_pane(pane),
                         is_home: true,
                     })
                 } else {
@@ -210,6 +212,8 @@ pub fn update_tabs(
                         path: SharedString::from(file.path.display().to_string()),
                         is_modified: false,
                         is_active: Some(tab_id) == state.active_tab_id_for_pane(pane),
+                        is_focused: pane == state.focused_pane
+                            && Some(tab_id) == state.active_tab_id_for_pane(pane),
                         is_home: false,
                     })
                 }

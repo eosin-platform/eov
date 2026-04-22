@@ -1347,10 +1347,13 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    state.activate_tab_in_pane(pane_from_index(pane), id);
+                    let pane_id = pane_from_index(pane);
+                    state.set_focused_pane(pane_id);
+                    state.activate_tab_in_pane(pane_id, id);
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                ui.set_focused_pane(pane);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1539,6 +1542,14 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_pane_focused(move |pane| {
+            let focus_changed = {
+                let state = state_handle.read();
+                state.focused_pane != pane_from_index(pane)
+            };
+            if !focus_changed {
+                return;
+            }
+
             {
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
@@ -1547,6 +1558,9 @@ pub fn setup_callbacks(
 
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_focused_pane(pane);
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
+                let _ = crate::plugin_host::refresh_active_sidebar();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
