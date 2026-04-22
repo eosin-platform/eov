@@ -38,6 +38,20 @@ pub struct PluginPolygonDragState {
     pub vertices: Vec<ImagePoint>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginPolygonVertexHandle {
+    pub plugin_id: String,
+    pub annotation_id: String,
+    pub vertex_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PluginPolygonVertexDragState {
+    pub start_pointer: ImagePoint,
+    pub vertices: Vec<ImagePoint>,
+    pub vertex_index: usize,
+}
+
 /// Per-tab HUD settings
 /// Which stain channel is being viewed in grayscale isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -501,6 +515,14 @@ pub struct AppState {
     pub dragged_plugin_polygon_state: Option<PluginPolygonDragState>,
     /// Current pointer position used to preview polygon dragging.
     pub dragged_plugin_polygon_position: Option<ImagePoint>,
+    /// Plugin-owned polygon vertex currently hovered in the viewport, if any.
+    pub hovered_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
+    /// Plugin-owned polygon vertex currently being dragged, if any.
+    pub dragged_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
+    /// Original polygon vertices and anchor pointer used for vertex drag previews.
+    pub dragged_plugin_polygon_vertex_state: Option<PluginPolygonVertexDragState>,
+    /// Current pointer position used to preview polygon vertex dragging.
+    pub dragged_plugin_polygon_vertex_position: Option<ImagePoint>,
     /// In-progress polygon vertices for the active polygon tool.
     pub polygon_candidate_vertices: Vec<ImagePoint>,
     /// Current hover point used to preview the next polygon segment.
@@ -577,6 +599,10 @@ impl AppState {
             dragged_plugin_polygon: None,
             dragged_plugin_polygon_state: None,
             dragged_plugin_polygon_position: None,
+            hovered_plugin_polygon_vertex: None,
+            dragged_plugin_polygon_vertex: None,
+            dragged_plugin_polygon_vertex_state: None,
+            dragged_plugin_polygon_vertex_position: None,
             polygon_candidate_vertices: Vec::new(),
             polygon_candidate_hover: None,
             ant_offset: 0.0,
@@ -1144,6 +1170,10 @@ impl AppState {
         self.dragged_plugin_polygon = None;
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
+        self.hovered_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex_state = None;
+        self.dragged_plugin_polygon_vertex_position = None;
         self.polygon_candidate_vertices.clear();
         self.polygon_candidate_hover = None;
         self.needs_render = true;
@@ -1169,6 +1199,10 @@ impl AppState {
         self.dragged_plugin_polygon = None;
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
+        self.hovered_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex_state = None;
+        self.dragged_plugin_polygon_vertex_position = None;
         self.polygon_candidate_vertices.clear();
         self.polygon_candidate_hover = None;
         self.current_tool = Tool::Navigate;
@@ -1196,6 +1230,10 @@ impl AppState {
         self.dragged_plugin_polygon = None;
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
+        self.hovered_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex = None;
+        self.dragged_plugin_polygon_vertex_state = None;
+        self.dragged_plugin_polygon_vertex_position = None;
         self.polygon_candidate_vertices.clear();
         self.polygon_candidate_hover = None;
         self.needs_render = true;

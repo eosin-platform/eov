@@ -101,6 +101,17 @@ export struct PluginOverlayPolygon {
     stroke-color: color,
 }
 
+export struct PluginOverlayVertexBox {
+    plugin-id: string,
+    annotation-id: string,
+    vertex-index: int,
+    x: float,
+    y: float,
+    size-px: float,
+    fill-color: color,
+    border-color: color,
+}
+
 export struct MetadataItem {
     label: string,
     value: string,
@@ -159,6 +170,7 @@ export struct PaneViewData {
     measurements: [MeasurementLine],
     plugin-overlay-points: [PluginOverlayPoint],
     plugin-overlay-polygons: [PluginOverlayPolygon],
+    plugin-overlay-vertex-boxes: [PluginOverlayVertexBox],
     annotation-tool-hover-active: bool,
     candidate-measurement: MeasurementLine,
     is-loading: bool,

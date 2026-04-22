@@ -233,6 +233,8 @@ pub fn update_tabs(
                 crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
             let plugin_overlay_polygons =
                 crate::plugin_host::viewport_overlay_polygons_for_pane(state, pane);
+            let plugin_overlay_vertex_boxes =
+                crate::plugin_host::viewport_overlay_polygon_vertex_boxes_for_pane(state, pane);
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;
@@ -305,6 +307,7 @@ pub fn update_tabs(
                 measurements: pane_ui.measurements.clone().into(),
                 plugin_overlay_points: plugin_overlay_points.as_slice().into(),
                 plugin_overlay_polygons: plugin_overlay_polygons.as_slice().into(),
+                plugin_overlay_vertex_boxes: plugin_overlay_vertex_boxes.as_slice().into(),
                 annotation_tool_hover_active:
                     matches!(state.current_tool, crate::state::Tool::PointAnnotation | crate::state::Tool::PolygonAnnotation)
                         && pane == state.focused_pane

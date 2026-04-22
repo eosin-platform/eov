@@ -8,6 +8,7 @@ import {
     MinimapRect,
     PluginOverlayPolygon,
     PluginOverlayPoint,
+    PluginOverlayVertexBox,
     ROIRect,
     StainNormalization,
     ToolType,
@@ -40,6 +41,7 @@ export component Viewport inherits Rectangle {
     in property <[MeasurementLine]> measurements: [];
     in property <[PluginOverlayPoint]> plugin-overlay-points: [];
     in property <[PluginOverlayPolygon]> plugin-overlay-polygons: [];
+    in property <[PluginOverlayVertexBox]> plugin-overlay-vertex-boxes: [];
     in property <bool> annotation-tool-hover-active: false;
     in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     in property <HudSettings> hud;
@@ -277,6 +279,16 @@ export component Viewport inherits Rectangle {
                 stroke: polygon.stroke-color;
                 stroke-width: 1px;
             }
+        }
+
+        for vertex-box in root.plugin-overlay-vertex-boxes: Rectangle {
+            x: (vertex-box.x - vertex-box.size-px / 2) * 1px;
+            y: (vertex-box.y - vertex-box.size-px / 2) * 1px;
+            width: vertex-box.size-px * 1px;
+            height: vertex-box.size-px * 1px;
+            background: vertex-box.fill-color;
+            border-width: 1px;
+            border-color: vertex-box.border-color;
         }
 
         for point in root.plugin-overlay-points: Rectangle {
