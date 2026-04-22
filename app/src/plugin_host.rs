@@ -600,7 +600,11 @@ pub(crate) fn viewport_overlay_polygon_vertex_boxes_for_pane(
                         } else {
                             Color::from_rgb_u8(0x00, 0x00, 0x00)
                         },
-                        border_color: Color::from_rgb_u8(0x00, 0x00, 0x00),
+                        border_color: if is_hovered {
+                            Color::from_rgb_u8(0x00, 0x00, 0x00)
+                        } else {
+                            Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+                        },
                     }
                 })
                 .collect::<Vec<_>>()
