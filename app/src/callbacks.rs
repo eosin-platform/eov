@@ -951,6 +951,8 @@ pub fn setup_callbacks(
         });
     }
 
+    let suppress_polygon_mouse_up = Rc::new(Cell::new(false));
+
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
@@ -2005,6 +2007,7 @@ pub fn setup_callbacks(
             std::time::Instant,
             crate::state::PluginPolygonVertexHandle,
         )>>> = Rc::new(RefCell::new(None));
+        let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             let polygon_vertex_drag_candidate = {
@@ -2060,6 +2063,7 @@ pub fn setup_callbacks(
             };
 
             if let Some((plugin_id, annotation_id, pane, vertices)) = polygon_vertex_removal {
+                suppress_polygon_mouse_up.set(true);
                 {
                     let mut state = state_handle.write();
                     state.hovered_plugin_annotation = None;
@@ -2552,8 +2556,16 @@ pub fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
         let plugin_manager = Rc::clone(&plugin_manager);
+        let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
 
         ui.on_viewport_tool_mouse_up(move |x, y| {
+            if suppress_polygon_mouse_up.replace(false) {
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
             let handled_point_drag_release = {
                 let mut state = state_handle.write();
                 if state.current_tool != state::Tool::PointAnnotation {
