@@ -265,9 +265,20 @@ export component Viewport inherits Rectangle {
             width: point.diameter-px * 1px;
             height: point.diameter-px * 1px;
             background: transparent;
-            border-width: 2px;
-            border-color: #f2f4f8;
+            border-width: 1.75px;
+            border-color: point.ring-color;
             border-radius: self.width / 2;
+
+            Rectangle {
+                x: -0.5px;
+                y: -0.5px;
+                width: parent.width + 1px;
+                height: parent.height + 1px;
+                background: transparent;
+                border-width: 0.75px;
+                border-color: #111318cc;
+                border-radius: self.width / 2;
+            }
 
             Rectangle {
                 x: 1px;
@@ -275,8 +286,8 @@ export component Viewport inherits Rectangle {
                 width: max(0px, parent.width - 2px);
                 height: max(0px, parent.height - 2px);
                 background: transparent;
-                border-width: 1px;
-                border-color: #111318cc;
+                border-width: 0.75px;
+                border-color: #11131866;
                 border-radius: self.width / 2;
             }
         }

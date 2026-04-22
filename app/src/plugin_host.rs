@@ -5,14 +5,14 @@ use common::{FilteringMode, RenderBackend, TileCache};
 use parking_lot::RwLock;
 use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
-    ActiveSidebarFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, HostToolModeFFI,
-    OpenFileInfoFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
-    ViewportOverlayPointFFI, ViewportSnapshotFFI,
+    ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
+    HostSnapshotFFI, HostToolModeFFI, OpenFileInfoFFI, PluginVTable, UiPropertyFFI,
+    ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use plugin_api::HostToolMode;
 use slint::{
-    ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
-    VecModel,
+    Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer,
+    Timer, VecModel,
 };
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
@@ -38,9 +38,19 @@ struct UiRuntime {
     render_timer: Rc<Timer>,
 }
 
+struct PendingPluginConfirmation {
+    vtable: PluginVTable,
+    confirm_callback: Option<String>,
+    confirm_args_json: String,
+    cancel_callback: Option<String>,
+    cancel_args_json: String,
+}
+
 static HOST_CONTEXTS: OnceLock<Mutex<HashMap<u64, HostApiContext>>> = OnceLock::new();
 static NEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 static UI_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
+static PENDING_PLUGIN_CONFIRMATION: OnceLock<Mutex<Option<PendingPluginConfirmation>>> =
+    OnceLock::new();
 
 thread_local! {
     static UI_RUNTIME: RefCell<Option<UiRuntime>> = const { RefCell::new(None) };
@@ -48,6 +58,10 @@ thread_local! {
 
 fn host_contexts() -> &'static Mutex<HashMap<u64, HostApiContext>> {
     HOST_CONTEXTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn pending_plugin_confirmation() -> &'static Mutex<Option<PendingPluginConfirmation>> {
+    PENDING_PLUGIN_CONFIRMATION.get_or_init(|| Mutex::new(None))
 }
 
 pub(crate) fn init_ui_runtime(
@@ -99,6 +113,7 @@ pub(crate) fn build_host_api(
         show_sidebar: ffi_show_sidebar,
         refresh_sidebar: ffi_refresh_sidebar,
         hide_sidebar: ffi_hide_sidebar,
+        show_confirmation_dialog: ffi_show_confirmation_dialog,
         save_file_dialog: ffi_save_file_dialog,
         log_message: ffi_log_message,
     }
@@ -222,20 +237,66 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
     let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
     let vp = &pane_state.viewport.viewport;
+    let hovered = state.hovered_plugin_point.as_ref();
+    let active_tool_plugin_id = state.active_point_tool_plugin_id.as_deref();
+    let point_tool_active = state.current_tool == crate::state::Tool::PointAnnotation;
 
     local_plugin_vtables()
         .into_iter()
-        .flat_map(|(_plugin_id, vtable)| (vtable.get_viewport_overlay_points)(snapshot_ffi.clone()))
-        .map(|point: ViewportOverlayPointFFI| {
+        .flat_map(|(plugin_id, vtable)| {
+            (vtable.get_viewport_overlay_points)(snapshot_ffi.clone())
+                .into_iter()
+                .map(move |point| (plugin_id.clone(), point))
+        })
+        .map(|(plugin_id, point): (String, ViewportOverlayPointFFI)| {
             let screen = vp.image_to_screen(point.x_level0, point.y_level0);
+            let annotation_id = point.annotation_id.to_string();
+            let ring_color = if point_tool_active
+                && active_tool_plugin_id == Some(plugin_id.as_str())
+                && hovered.is_some_and(|handle| {
+                    handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+                })
+            {
+                Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+            } else {
+                Color::from_rgb_u8(0xF2, 0xF4, 0xF8)
+            };
             crate::PluginOverlayPoint {
-                annotation_id: point.annotation_id.to_string().into(),
+                plugin_id: plugin_id.into(),
+                annotation_id: annotation_id.into(),
                 x: screen.x as f32,
                 y: screen.y as f32,
                 diameter_px: point.diameter_px,
+                ring_color,
             }
         })
         .collect()
+}
+
+pub(crate) fn hit_test_overlay_point_for_pane(
+    state: &AppState,
+    pane: PaneId,
+    screen_x: f32,
+    screen_y: f32,
+    plugin_id_filter: Option<&str>,
+) -> Option<crate::state::PluginPointHandle> {
+    viewport_overlay_points_for_pane(state, pane)
+        .into_iter()
+        .filter(|point| {
+            plugin_id_filter.is_none_or(|plugin_id| point.plugin_id.as_str() == plugin_id)
+        })
+        .filter_map(|point| {
+            let dx = screen_x - point.x;
+            let dy = screen_y - point.y;
+            let radius = point.diameter_px * 0.5 + 3.0;
+            let distance_sq = dx * dx + dy * dy;
+            (distance_sq <= radius * radius).then_some((distance_sq, point))
+        })
+        .min_by(|left, right| left.0.total_cmp(&right.0))
+        .map(|(_, point)| crate::state::PluginPointHandle {
+            plugin_id: point.plugin_id.to_string(),
+            annotation_id: point.annotation_id.to_string(),
+        })
 }
 
 pub(crate) fn viewport_context_menu_items_for_pane(
@@ -423,6 +484,79 @@ pub(crate) fn save_file_dialog(
             .save_file()
             .map(|path| path.to_string_lossy().into_owned())
             .ok_or_else(|| "save dialog was cancelled".to_string())
+    })
+}
+
+pub(crate) fn show_confirmation_dialog(
+    vtable: PluginVTable,
+    request: ConfirmationDialogRequestFFI,
+) -> Result<(), String> {
+    let title = request.title.to_string();
+    let message = request.message.to_string();
+    let confirm_label = request.confirm_label.to_string();
+    let cancel_label = request.cancel_label.to_string();
+    let confirm_callback = match request.confirm_callback {
+        ROption::RSome(value) => Some(value.to_string()),
+        ROption::RNone => None,
+    };
+    let confirm_args_json = match request.confirm_args_json {
+        ROption::RSome(value) => value.to_string(),
+        ROption::RNone => "[]".to_string(),
+    };
+    let cancel_callback = match request.cancel_callback {
+        ROption::RSome(value) => Some(value.to_string()),
+        ROption::RNone => None,
+    };
+    let cancel_args_json = match request.cancel_args_json {
+        ROption::RSome(value) => value.to_string(),
+        ROption::RNone => "[]".to_string(),
+    };
+
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        *pending_plugin_confirmation().lock().unwrap() = Some(PendingPluginConfirmation {
+            vtable,
+            confirm_callback,
+            confirm_args_json,
+            cancel_callback,
+            cancel_args_json,
+        });
+        ui.set_plugin_confirm_title(title.into());
+        ui.set_plugin_confirm_message(message.into());
+        ui.set_plugin_confirm_confirm_label(confirm_label.into());
+        ui.set_plugin_confirm_cancel_label(cancel_label.into());
+        ui.set_plugin_confirm_visible(true);
+        Ok(())
+    })
+}
+
+pub(crate) fn handle_confirmation_dialog_response(confirmed: bool) -> Result<(), String> {
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        ui.set_plugin_confirm_visible(false);
+
+        let pending = pending_plugin_confirmation().lock().unwrap().take();
+        let Some(pending) = pending else {
+            return Ok(());
+        };
+
+        let (callback_name, args_json) = if confirmed {
+            (pending.confirm_callback, pending.confirm_args_json)
+        } else {
+            (pending.cancel_callback, pending.cancel_args_json)
+        };
+
+        if let Some(callback_name) = callback_name {
+            (pending.vtable.on_ui_callback)(callback_name.into(), args_json.into());
+        }
+
+        Ok(())
     })
 }
 
@@ -1320,6 +1454,19 @@ extern "C" fn ffi_hide_sidebar(context: u64) -> RResult<(), RString> {
         return RResult::RErr(RString::from("invalid host API context"));
     };
     match hide_sidebar(&plugin_id) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_show_confirmation_dialog(
+    context: u64,
+    request: ConfirmationDialogRequestFFI,
+) -> RResult<(), RString> {
+    let Some(vtable) = context_vtable(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    match show_confirmation_dialog(vtable, request) {
         Ok(()) => RResult::ROk(()),
         Err(err) => RResult::RErr(RString::from(err)),
     }

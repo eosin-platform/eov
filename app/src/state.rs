@@ -19,6 +19,12 @@ pub struct PaneState {
     pub active_tab_id: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginPointHandle {
+    pub plugin_id: String,
+    pub annotation_id: String,
+}
+
 /// Per-tab HUD settings
 /// Which stain channel is being viewed in grayscale isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -450,6 +456,10 @@ pub struct AppState {
     pub tool_state: ToolInteractionState,
     /// Candidate point (for visual feedback during tool use)
     pub candidate_point: Option<ImagePoint>,
+    /// Plugin-owned point annotation currently hovered in the viewport, if any.
+    pub hovered_plugin_point: Option<PluginPointHandle>,
+    /// Plugin-owned point annotation currently being dragged, if any.
+    pub dragged_plugin_point: Option<PluginPointHandle>,
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
     /// Frame timestamps for FPS calculation
@@ -514,6 +524,8 @@ impl AppState {
             active_point_tool_plugin_id: None,
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
+            hovered_plugin_point: None,
+            dragged_plugin_point: None,
             ant_offset: 0.0,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
@@ -1072,6 +1084,8 @@ impl AppState {
         }
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
+        self.hovered_plugin_point = None;
+        self.dragged_plugin_point = None;
         self.needs_render = true;
         // Only clear ROI and measurements when switching to Navigate
         if tool == Tool::Navigate
@@ -1089,6 +1103,8 @@ impl AppState {
     pub fn cancel_tool(&mut self) {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
+        self.hovered_plugin_point = None;
+        self.dragged_plugin_point = None;
         self.current_tool = Tool::Navigate;
         self.active_point_tool_plugin_id = None;
         self.needs_render = true;
@@ -1108,6 +1124,8 @@ impl AppState {
         self.active_point_tool_plugin_id = Some(plugin_id);
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
+        self.hovered_plugin_point = None;
+        self.dragged_plugin_point = None;
         self.needs_render = true;
     }
 

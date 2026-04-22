@@ -90,10 +90,17 @@ export component AppWindow inherits Window {
     in-out property <bool> filter-popup-visible: false;
     in-out property <bool> lanczos-confirm-visible: false;
     in-out property <bool> lanczos-confirm-from-backend-switch: false;
+    in-out property <bool> plugin-confirm-visible: false;
+    in-out property <string> plugin-confirm-title: "";
+    in-out property <string> plugin-confirm-message: "";
+    in-out property <string> plugin-confirm-confirm-label: "Confirm";
+    in-out property <string> plugin-confirm-cancel-label: "Cancel";
 
     callback lanczos-confirm-accepted();
     callback lanczos-confirm-cancelled();
     callback lanczos-confirm-use-trilinear();
+    callback plugin-confirm-accepted();
+    callback plugin-confirm-cancelled();
 
     // Export dialog
     in-out property <bool> export-dialog-visible: false;
@@ -995,6 +1002,110 @@ export component AppWindow inherits Window {
         }
     }
 
+    if root.plugin-confirm-visible: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #00000088;
+
+        TouchArea {
+            clicked => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 420px;
+            height: 188px;
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                Text {
+                    text: root.plugin-confirm-title;
+                    color: Theme.text-primary;
+                    font-size: 14px;
+                    font-weight: 600;
+                    horizontal-alignment: left;
+                }
+
+                Text {
+                    text: root.plugin-confirm-message;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    horizontal-alignment: left;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        min-width: cancel-text.preferred-width + 16px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        plugin-cancel-touch := TouchArea {
+                            clicked => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-cancelled();
+                            }
+                        }
+
+                        cancel-text := Text {
+                            text: root.plugin-confirm-cancel-label;
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        min-width: confirm-text.preferred-width + 16px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: plugin-confirm-touch.has-hover ? #1177bb : Theme.accent;
+
+                        plugin-confirm-touch := TouchArea {
+                            clicked => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-accepted();
+                            }
+                        }
+
+                        confirm-text := Text {
+                            text: root.plugin-confirm-confirm-label;
+                            color: white;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Export image dialog overlay
     if root.export-dialog-visible: ExportDialog {
         visible-state: root.export-dialog-visible;
@@ -1091,6 +1202,11 @@ export component AppWindow inherits Window {
             if e.text == Key.Escape && root.export-dialog-visible {
                 root.export-dialog-visible = false;
                 root.export-dialog-cancel-requested();
+                accept
+            }
+            if e.text == Key.Escape && root.plugin-confirm-visible {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
                 accept
             }
             if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {

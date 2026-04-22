@@ -369,6 +369,42 @@ impl PluginManager {
         )))
     }
 
+    pub fn handle_point_annotation_moved(
+        &mut self,
+        plugin_id: &str,
+        viewport: &plugin_api::ViewportSnapshot,
+        annotation_id: &str,
+        x_level0: f64,
+        y_level0: f64,
+    ) -> PluginResult<ActionOutcome> {
+        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
+            let vt = *vtable;
+            let viewport = plugin_api::ffi::ViewportSnapshotFFI {
+                pane_index: viewport.pane_index,
+                file_id: viewport.file_id,
+                file_path: viewport.file_path.clone().into(),
+                filename: viewport.filename.clone().into(),
+                center_x: viewport.center_x,
+                center_y: viewport.center_y,
+                zoom: viewport.zoom,
+                width: viewport.width,
+                height: viewport.height,
+                image_width: viewport.image_width,
+                image_height: viewport.image_height,
+                bounds_left: viewport.bounds_left,
+                bounds_top: viewport.bounds_top,
+                bounds_right: viewport.bounds_right,
+                bounds_bottom: viewport.bounds_bottom,
+            };
+            (vt.on_point_annotation_moved)(viewport, annotation_id.into(), x_level0, y_level0);
+            return Ok(ActionOutcome::Handled);
+        }
+
+        Err(plugin_api::PluginError::Other(format!(
+            "unknown point annotation plugin '{plugin_id}'"
+        )))
+    }
+
     /// Activate a Python plugin: register its manifest-declared toolbar buttons
     /// and record it for subprocess spawning.
     fn activate_python_plugin(&mut self, desc: &PluginDescriptor) {

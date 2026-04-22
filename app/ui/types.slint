@@ -85,10 +85,12 @@ export struct MeasurementLine {
 }
 
 export struct PluginOverlayPoint {
+    plugin-id: string,
     annotation-id: string,
     x: float,
     y: float,
     diameter-px: float,
+    ring-color: color,
 }
 
 export struct MetadataItem {

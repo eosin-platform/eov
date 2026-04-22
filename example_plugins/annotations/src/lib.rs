@@ -1,8 +1,9 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{
-    ActionResponseFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, HostToolModeFFI,
-    HudToolbarButtonFFI, OpenFileInfoFFI, PluginVTable, ToolbarButtonFFI, UiPropertyFFI,
-    ViewportContextMenuItemFFI, ViewportFilterFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
+    ActionResponseFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
+    HostSnapshotFFI, HostToolModeFFI, HudToolbarButtonFFI, OpenFileInfoFFI, PluginVTable,
+    ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
+    ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use rusqlite::{Connection, params};
 use serde::Serialize;
@@ -378,6 +379,13 @@ fn active_file_from_snapshot(snapshot: &HostSnapshotFFI) -> Option<OpenFileInfoF
     }
 }
 
+fn active_viewport_from_snapshot(snapshot: &HostSnapshotFFI) -> Option<ViewportSnapshotFFI> {
+    match &snapshot.active_viewport {
+        ROption::RSome(viewport) => Some(viewport.clone()),
+        ROption::RNone => None,
+    }
+}
+
 fn sync_active_file() -> Result<(), String> {
     let snapshot = host_snapshot()?;
     let mut state = plugin_state().lock().unwrap();
@@ -628,6 +636,90 @@ fn delete_annotation_for_active_file(annotation_id: &str) -> Result<(), String> 
     Ok(())
 }
 
+fn request_delete_annotation_set(set_id: &str, set_name: &str) -> Result<(), String> {
+    let Some(host_api) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    let request = ConfirmationDialogRequestFFI {
+        title: "Delete Annotation Set".into(),
+        message: format!(
+            "Are you sure you want to delete annotation set '{set_name}'? This action cannot be undone."
+        )
+        .into(),
+        confirm_label: "Delete Permanently".into(),
+        cancel_label: "Cancel".into(),
+        confirm_callback: ROption::RSome("delete-set-confirmed".into()),
+        confirm_args_json: ROption::RSome(
+            serde_json::to_string(&vec![set_id]).unwrap_or_else(|_| "[]".to_string()).into(),
+        ),
+        cancel_callback: ROption::RNone,
+        cancel_args_json: ROption::RNone,
+    };
+    (host_api.show_confirmation_dialog)(host_api.context, request)
+        .into_result()
+        .map_err(|err| format!("failed to show delete annotation set confirmation: {err}"))
+}
+
+fn move_point_annotation(
+    viewport: &ViewportSnapshotFFI,
+    annotation_id: &str,
+    x_level0: f64,
+    y_level0: f64,
+) -> Result<(), String> {
+    ensure_loaded_for_viewport(viewport)?;
+    let file_path = viewport.file_path.to_string();
+    let mut state = plugin_state().lock().unwrap();
+    state.active_file_path = Some(file_path.clone());
+    state.active_filename = Some(viewport.filename.to_string());
+
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "UPDATE annotation_points SET x_level0 = ?2, y_level0 = ?3 WHERE annotation_id = ?1",
+            params![annotation_id, x_level0, y_level0],
+        )
+        .map_err(|err| format!("failed to move point annotation '{annotation_id}': {err}"))?;
+
+    let mut updated_set_id = None;
+    if let Some(loaded) = state.files.get_mut(&file_path) {
+        for set in &mut loaded.annotation_sets {
+            for annotation in &mut set.annotations {
+                let Annotation::Point(point) = annotation;
+                if point.id == annotation_id {
+                    point.x_level0 = x_level0;
+                    point.y_level0 = y_level0;
+                    point.updated_at = timestamp;
+                    set.updated_at = timestamp;
+                    updated_set_id = Some(set.id.clone());
+                    break;
+                }
+            }
+            if updated_set_id.is_some() {
+                break;
+            }
+        }
+    }
+
+    connection
+        .execute(
+            "UPDATE annotations SET updated_at = ?2 WHERE id = ?1",
+            params![annotation_id, timestamp],
+        )
+        .map_err(|err| format!("failed to update annotation timestamp for '{annotation_id}': {err}"))?;
+
+    if let Some(set_id) = updated_set_id {
+        connection
+            .execute(
+                "UPDATE annotation_sets SET updated_at = ?2 WHERE id = ?1",
+                params![set_id, timestamp],
+            )
+            .map_err(|err| format!("failed to update annotation set timestamp after move: {err}"))?;
+    }
+
+    Ok(())
+}
+
 fn start_point_annotation_flow() -> Result<(), String> {
     sync_active_file()?;
     {
@@ -804,6 +896,15 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 request_render_if_available();
             })
         }
+        "request-delete-set" => {
+            let Some(serde_json::Value::String(set_id)) = args.first() else {
+                return;
+            };
+            let Some(serde_json::Value::String(set_name)) = args.get(1) else {
+                return;
+            };
+            request_delete_annotation_set(set_id, set_name)
+        }
         "delete-annotation-clicked" => {
             let Some(serde_json::Value::String(annotation_id)) = args.first() else {
                 return;
@@ -823,15 +924,48 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 let Some(active_path) = active_file_key(&state).map(str::to_string) else {
                     return Ok(());
                 };
-                let is_set = state
-                    .files
-                    .get(&active_path)
-                    .is_some_and(|loaded| loaded.annotation_sets.iter().any(|set| &set.id == row_id));
-                if is_set {
-                    state
-                        .selected_set_by_file
-                        .insert(active_path, row_id.clone());
+                let Some(loaded) = state.files.get(&active_path) else {
+                    return Ok(());
+                };
+
+                if loaded.annotation_sets.iter().any(|set| &set.id == row_id) {
+                    state.selected_set_by_file.insert(active_path, row_id.clone());
                     refresh_sidebar_if_available();
+                    return Ok(());
+                }
+
+                let annotation_target = loaded.annotation_sets.iter().find_map(|set| {
+                    set.annotations.iter().find_map(|annotation| match annotation {
+                        Annotation::Point(point) if &point.id == row_id => {
+                            Some((set.id.clone(), point.x_level0, point.y_level0))
+                        }
+                        _ => None,
+                    })
+                });
+
+                if let Some((set_id, x_level0, y_level0)) = annotation_target {
+                    state.selected_set_by_file.insert(active_path, set_id);
+                    drop(state);
+                    refresh_sidebar_if_available();
+
+                    let snapshot = host_snapshot()?;
+                    let Some(active_viewport) = active_viewport_from_snapshot(&snapshot) else {
+                        return Ok(());
+                    };
+                    let width = active_viewport.width.max(1.0);
+                    let height = active_viewport.height.max(1.0);
+                    let Some(host_api) = host_api() else {
+                        return Ok(());
+                    };
+                    (host_api.frame_active_rect)(
+                        host_api.context,
+                        x_level0 - width / 2.0,
+                        y_level0 - height / 2.0,
+                        width,
+                        height,
+                    )
+                    .into_result()
+                    .map_err(|err| format!("failed to frame annotation '{row_id}': {err}"))?;
                 }
                 Ok(())
             })
@@ -1144,6 +1278,20 @@ extern "C" fn on_point_annotation_placed_ffi(
     }
 }
 
+extern "C" fn on_point_annotation_moved_ffi(
+    viewport: ViewportSnapshotFFI,
+    annotation_id: RString,
+    x_level0: f64,
+    y_level0: f64,
+) {
+    match move_point_annotation(&viewport, annotation_id.as_str(), x_level0, y_level0) {
+        Ok(()) => {
+            request_render_if_available();
+        }
+        Err(err) => log_message(HostLogLevelFFI::Error, err),
+    }
+}
+
 extern "C" fn get_viewport_filters_ffi() -> RVec<ViewportFilterFFI> {
     RVec::new()
 }
@@ -1181,6 +1329,7 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
+        on_point_annotation_moved: on_point_annotation_moved_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

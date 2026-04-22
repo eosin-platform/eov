@@ -55,6 +55,7 @@ export component AnnotationsSidebar inherits Rectangle {
     callback source-selected(string);
     callback create-set-clicked();
     callback export-clicked();
+    callback request-delete-set(string, string);
     callback delete-set-confirmed(string);
     callback delete-annotation-clicked(string);
     callback row-clicked(string);
@@ -66,9 +67,6 @@ export component AnnotationsSidebar inherits Rectangle {
     property <string> context-target-id: "";
     property <string> context-target-name: "";
     property <bool> context-target-is-set: false;
-    property <bool> delete-confirm-visible: false;
-    property <string> pending-delete-set-id: "";
-    property <string> pending-delete-set-name: "";
 
     background: Theme.surface;
 
@@ -112,9 +110,7 @@ export component AnnotationsSidebar inherits Rectangle {
                 enabled: root.can-delete-set;
                 clicked => {
                     if root.can-delete-set && root.selected-set-id != "" {
-                        root.pending-delete-set-id = root.selected-set-id;
-                        root.pending-delete-set-name = root.selected-set-name;
-                        root.delete-confirm-visible = true;
+                        root.request-delete-set(root.selected-set-id, root.selected-set-name);
                     }
                 }
             }
@@ -174,9 +170,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                         row-touch := TouchArea {
                             clicked => {
-                                if row.is-set {
-                                    root.row-clicked(row.row-id);
-                                }
+                                root.row-clicked(row.row-id);
                             }
 
                             pointer-event(e) => {
@@ -285,9 +279,7 @@ export component AnnotationsSidebar inherits Rectangle {
                     clicked => {
                         root.context-menu-visible = false;
                         if root.context-target-is-set {
-                            root.pending-delete-set-id = root.context-target-id;
-                            root.pending-delete-set-name = root.context-target-name;
-                            root.delete-confirm-visible = true;
+                            root.request-delete-set(root.context-target-id, root.context-target-name);
                         } else if root.context-target-id != "" {
                             root.delete-annotation-clicked(root.context-target-id);
                         }
@@ -301,114 +293,6 @@ export component AnnotationsSidebar inherits Rectangle {
                     color: Theme.text-primary;
                     font-size: 12px;
                     vertical-alignment: center;
-                }
-            }
-        }
-    }
-
-    if root.delete-confirm-visible: Rectangle {
-        x: 0px;
-        y: 0px;
-        width: parent.width;
-        height: parent.height;
-        background: #00000080;
-
-        TouchArea {
-            width: parent.width;
-            height: parent.height;
-            clicked => {
-                root.delete-confirm-visible = false;
-            }
-        }
-
-        Rectangle {
-            x: max(12px, (parent.width - self.width) / 2);
-            y: max(12px, (parent.height - self.height) / 2);
-            width: min(parent.width - 24px, 260px);
-            height: 154px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-blur: 18px;
-            drop-shadow-color: #00000088;
-
-            VerticalLayout {
-                padding-top: 14px;
-                padding-right: 14px;
-                padding-bottom: 14px;
-                padding-left: 14px;
-                spacing: 12px;
-
-                Text {
-                    text: "Delete Annotation Set";
-                    color: Theme.text-primary;
-                    font-size: 13px;
-                    font-weight: 700;
-                }
-
-                Text {
-                    text: "Are you sure you want to delete annotation set '" + root.pending-delete-set-name + "'? This action cannot be undone.";
-                    color: Theme.text-secondary;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                    background: transparent;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    Rectangle {
-                        horizontal-stretch: 1;
-                        height: 30px;
-                        border-radius: 5px;
-                        background: cancel-touch.has-hover ? Theme.surface-hover : #ffffff08;
-                        border-width: 1px;
-                        border-color: Theme.border;
-
-                        cancel-touch := TouchArea {
-                            clicked => {
-                                root.delete-confirm-visible = false;
-                            }
-                        }
-
-                        Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: "Cancel";
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                        }
-                    }
-
-                    Rectangle {
-                        horizontal-stretch: 1;
-                        height: 30px;
-                        border-radius: 5px;
-                        background: delete-touch.has-hover ? #b33a3a : #982d2d;
-
-                        delete-touch := TouchArea {
-                            clicked => {
-                                root.delete-confirm-visible = false;
-                                if root.pending-delete-set-id != "" {
-                                    root.delete-set-confirmed(root.pending-delete-set-id);
-                                }
-                            }
-                        }
-
-                        Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: "Delete Permanently";
-                            color: #ffffff;
-                            font-size: 12px;
-                            font-weight: 600;
-                        }
-                    }
                 }
             }
         }

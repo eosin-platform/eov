@@ -431,6 +431,14 @@ extern "C" fn set_filter_enabled_ffi(_filter_id: RString, enabled: bool) {
     ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+extern "C" fn on_point_annotation_moved_ffi(
+    _viewport: ViewportSnapshotFFI,
+    _annotation_id: RString,
+    _x_level0: f64,
+    _y_level0: f64,
+) {
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
     PluginVTable {
@@ -445,6 +453,7 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
+        on_point_annotation_moved: on_point_annotation_moved_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

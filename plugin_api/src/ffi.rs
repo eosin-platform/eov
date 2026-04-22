@@ -64,6 +64,19 @@ pub struct ViewportOverlayPointFFI {
     pub diameter_px: f32,
 }
 
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ConfirmationDialogRequestFFI {
+    pub title: RString,
+    pub message: RString,
+    pub confirm_label: RString,
+    pub cancel_label: RString,
+    pub confirm_callback: ROption<RString>,
+    pub confirm_args_json: ROption<RString>,
+    pub cancel_callback: ROption<RString>,
+    pub cancel_args_json: ROption<RString>,
+}
+
 /// FFI-safe response from a plugin action handler.
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
@@ -188,6 +201,8 @@ pub struct HostApiVTable {
     ) -> RResult<(), RString>,
     pub refresh_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub hide_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
+    pub show_confirmation_dialog:
+        extern "C" fn(context: u64, request: ConfirmationDialogRequestFFI) -> RResult<(), RString>,
     pub save_file_dialog: extern "C" fn(
         context: u64,
         default_file_name: RString,
@@ -248,6 +263,14 @@ pub struct PluginVTable {
     /// Called when the host commits a point annotation click for the active point tool.
     pub on_point_annotation_placed:
         extern "C" fn(viewport: ViewportSnapshotFFI, x_level0: f64, y_level0: f64),
+
+    /// Called when the host moves an existing point annotation for the active point tool.
+    pub on_point_annotation_moved: extern "C" fn(
+        viewport: ViewportSnapshotFFI,
+        annotation_id: RString,
+        x_level0: f64,
+        y_level0: f64,
+    ),
 
     /// Returns viewport filter descriptors this plugin provides.
     /// May return an empty vec if the plugin has no viewport filters.

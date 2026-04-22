@@ -28,6 +28,18 @@ pub struct ActiveSidebar {
     pub component: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ConfirmationDialogRequest {
+    pub title: String,
+    pub message: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub confirm_callback: Option<String>,
+    pub confirm_args_json: Option<String>,
+    pub cancel_callback: Option<String>,
+    pub cancel_args_json: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HostSnapshot {
     pub app_name: String,
