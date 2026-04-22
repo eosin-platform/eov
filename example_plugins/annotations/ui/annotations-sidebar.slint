@@ -64,6 +64,10 @@ component TreeIconButton inherits Rectangle {
     background: touch.has-hover ? #ffffff12 : transparent;
 
     touch := TouchArea {
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        x: -5px;
+        y: -5px;
         clicked => {
             root.clicked();
         }
@@ -99,6 +103,30 @@ component ColorSwatchButton inherits Rectangle {
         y: -5px;
         clicked => {
             root.clicked();
+        }
+    }
+}
+
+component PaletteSwatchButton inherits Rectangle {
+    in property <string> hex: "#ffffff";
+    in property <color> swatch-color: white;
+    out property <bool> hovered: touch.has-hover;
+    callback selected(string);
+
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : #ffffff24;
+    background: root.swatch-color;
+
+    touch := TouchArea {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        x: -4px;
+        y: -4px;
+        clicked => {
+            root.selected(root.hex);
         }
     }
 }
@@ -299,7 +327,7 @@ export component AnnotationsSidebar inherits Rectangle {
                         HorizontalLayout {
                             padding-left: (8 + row.indent * 18) * 1px;
                             padding-right: 8px;
-                            spacing: 6px;
+                            spacing: 4px;
 
                             if row.is-set: Rectangle {
                                 width: 12px;
@@ -401,7 +429,7 @@ export component AnnotationsSidebar inherits Rectangle {
                             }
 
                             if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
-                                width: 28px;
+                                width: 22px;
                                 height: parent.height;
                                 background: transparent;
 
@@ -417,7 +445,7 @@ export component AnnotationsSidebar inherits Rectangle {
                             }
 
                             if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
-                                width: 28px;
+                                width: 22px;
                                 height: parent.height;
                                 background: transparent;
 
@@ -447,6 +475,7 @@ export component AnnotationsSidebar inherits Rectangle {
         width: parent.width;
         height: parent.height;
         background: transparent;
+        z: 15;
 
         TouchArea {
             width: parent.width;
@@ -468,6 +497,7 @@ export component AnnotationsSidebar inherits Rectangle {
             drop-shadow-blur: 10px;
             drop-shadow-color: #00000066;
             clip: true;
+            z: 16;
 
             VerticalLayout {
                 width: parent.width;
@@ -507,6 +537,7 @@ export component AnnotationsSidebar inherits Rectangle {
         width: parent.width;
         height: parent.height;
         background: transparent;
+        z: 15;
 
         TouchArea {
             width: parent.width;
@@ -519,14 +550,16 @@ export component AnnotationsSidebar inherits Rectangle {
         Rectangle {
             x: min(root.color-menu-x, max(0px, root.width - self.width - 8px));
             y: min(root.color-menu-y, max(0px, root.height - self.height - 8px));
-            width: 136px;
-            height: 100px;
+            width: 118px;
+            height: 124px;
             background: Theme.surface;
             border-radius: 6px;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 10px;
             drop-shadow-color: #00000066;
+            clip: true;
+            z: 16;
 
             VerticalLayout {
                 width: parent.width;
@@ -541,34 +574,124 @@ export component AnnotationsSidebar inherits Rectangle {
                     font-weight: 600;
                 }
 
-                GridLayout {
+                VerticalLayout {
                     spacing: 8px;
-                    for swatch in [
-                        { hex: "#E85D75", swatch: #E85D75 },
-                        { hex: "#F08A5D", swatch: #F08A5D },
-                        { hex: "#F2C14E", swatch: #F2C14E },
-                        { hex: "#6BCB77", swatch: #6BCB77 },
-                        { hex: "#2EC4B6", swatch: #2EC4B6 },
-                        { hex: "#4D96FF", swatch: #4D96FF },
-                        { hex: "#6C63FF", swatch: #6C63FF },
-                        { hex: "#9D4EDD", swatch: #9D4EDD },
-                        { hex: "#F15BB5", swatch: #F15BB5 },
-                        { hex: "#00BBF9", swatch: #00BBF9 },
-                        { hex: "#43AA8B", swatch: #43AA8B },
-                        { hex: "#577590", swatch: #577590 }
-                    ]: Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-radius: 9px;
-                        border-width: 1px;
-                        border-color: #ffffff24;
-                        background: swatch.swatch;
 
-                        TouchArea {
-                            width: parent.width;
-                            height: parent.height;
-                            clicked => {
-                                root.set-set-color(root.color-target-id, swatch.hex);
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        PaletteSwatchButton {
+                            hex: "#E85D75";
+                            swatch-color: #E85D75;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#F08A5D";
+                            swatch-color: #F08A5D;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#F2C14E";
+                            swatch-color: #F2C14E;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#6BCB77";
+                            swatch-color: #6BCB77;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        PaletteSwatchButton {
+                            hex: "#2EC4B6";
+                            swatch-color: #2EC4B6;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#4D96FF";
+                            swatch-color: #4D96FF;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#6C63FF";
+                            swatch-color: #6C63FF;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#9D4EDD";
+                            swatch-color: #9D4EDD;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        PaletteSwatchButton {
+                            hex: "#F15BB5";
+                            swatch-color: #F15BB5;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#00BBF9";
+                            swatch-color: #00BBF9;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#43AA8B";
+                            swatch-color: #43AA8B;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#577590";
+                            swatch-color: #577590;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
                             }
                         }
