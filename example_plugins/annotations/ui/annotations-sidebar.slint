@@ -1,22 +1,113 @@
 import { Theme } from "theme.slint";
+import { ComboBox } from "std-widgets.slint";
+
+export struct AnnotationTreeRow {
+    row-id: string,
+    parent-set-id: string,
+    label: string,
+    indent: int,
+    is-set: bool,
+    is-collapsed: bool,
+    is-selected: bool,
+}
+
+component ExportIconButton inherits Rectangle {
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 4px;
+    background: enabled ? (touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
+    border-width: 1px;
+    border-color: enabled ? Theme.border : #ffffff14;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 15px;
+        height: 15px;
+        source: @image-url("icons/export.svg");
+        image-fit: contain;
+        colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
+    }
+}
 
 export component AnnotationsSidebar inherits Rectangle {
-    background: transparent;
+    in property <[string]> source-options: ["Local"];
+    in property <int> source-index: 0;
+    in property <[AnnotationTreeRow]> tree-items: [];
+    in property <string> empty-state-text: "";
+    in property <bool> can-export: false;
+
+    callback source-selected(int);
+    callback export-clicked();
+    callback row-clicked(string);
+    callback toggle-set(string);
+
+    background: Theme.surface;
 
     VerticalLayout {
         width: parent.width;
         height: parent.height;
-        padding-top: 8px;
-        padding-right: 12px;
-        padding-bottom: 12px;
-        padding-left: 12px;
-        spacing: 8px;
+        padding-top: 10px;
+        padding-right: 10px;
+        padding-bottom: 10px;
+        padding-left: 10px;
+        spacing: 10px;
 
-        Text {
-            text: "Annotations";
-            color: Theme.text-primary;
-            font-size: 13px;
-            font-weight: 700;
+        HorizontalLayout {
+            spacing: 8px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: transparent;
+
+                ComboBox {
+                    width: parent.width;
+                    height: parent.height;
+                    model: root.source-options;
+                    current-index: root.source-index;
+                    selected(index) => {
+                        root.source-selected(index);
+                    }
+                }
+            }
+
+            export-button := ExportIconButton {
+                enabled: root.can-export;
+                clicked => {
+                    root.export-clicked();
+                }
+            }
+        }
+
+        if export-button.hovered: Rectangle {
+            x: parent.width - self.width;
+            y: 34px;
+            width: export-tooltip.preferred-width + 12px;
+            height: export-tooltip.preferred-height + 6px;
+            background: #111111ee;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #ffffff24;
+
+            export-tooltip := Text {
+                x: 6px;
+                y: 3px;
+                text: "Export annotations";
+                color: white;
+                font-size: 11px;
+            }
         }
 
         Rectangle {
@@ -28,6 +119,103 @@ export component AnnotationsSidebar inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
             background: transparent;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            if root.tree-items.length == 0: Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: transparent;
+
+                Text {
+                    x: 14px;
+                    y: 14px;
+                    width: parent.width - 28px;
+                    text: root.empty-state-text;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+
+            Flickable {
+                width: parent.width;
+                height: parent.height;
+                viewport-height: tree-layout.preferred-height;
+                interactive: root.tree-items.length > 0;
+
+                tree-layout := VerticalLayout {
+                    width: parent.width;
+                    spacing: 0px;
+
+                    for row[idx] in root.tree-items: Rectangle {
+                        width: parent.width;
+                        height: 28px;
+                        background: row.is-selected ? #4da3d930 : row-touch.has-hover ? #ffffff10 : transparent;
+
+                        row-touch := TouchArea {
+                            clicked => {
+                                if row.is-set {
+                                    root.row-clicked(row.row-id);
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 8px + row.indent * 18px;
+                            padding-right: 8px;
+                            spacing: 6px;
+
+                            if row.is-set: Rectangle {
+                                width: 12px;
+                                height: 28px;
+                                background: transparent;
+
+                                Text {
+                                    text: row.is-collapsed ? "▸" : "▾";
+                                    color: Theme.text-secondary;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+
+                                TouchArea {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    clicked => {
+                                        root.toggle-set(row.row-id);
+                                    }
+                                }
+                            }
+
+                            if !row.is-set: Rectangle {
+                                width: 12px;
+                                height: 28px;
+                                background: transparent;
+
+                                Rectangle {
+                                    x: 3px;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 6px;
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: Theme.text-secondary;
+                                }
+                            }
+
+                            Text {
+                                vertical-stretch: 1;
+                                text: row.label;
+                                color: row.is-set ? Theme.text-primary : Theme.text-secondary;
+                                font-size: row.is-set ? 12px : 11px;
+                                font-weight: row.is-set ? 600 : 400;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -52,6 +52,9 @@ pub struct OpenFileInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ViewportSnapshot {
     pub pane_index: u32,
+    pub file_id: i32,
+    pub file_path: String,
+    pub filename: String,
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,

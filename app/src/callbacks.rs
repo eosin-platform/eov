@@ -768,6 +768,7 @@ pub fn setup_callbacks(
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
+    plugin_manager: Rc<RefCell<crate::plugins::PluginManager>>,
 ) {
     let ui_weak = ui.as_weak();
     let clipboard = Rc::new(RefCell::new(None));
@@ -878,6 +879,7 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+        let plugin_manager = Rc::clone(&plugin_manager);
         let clipboard = Rc::clone(&clipboard);
         let toast_timer = Rc::clone(&toast_timer);
         let cached_export = Rc::clone(&cached_export_settings);
@@ -901,6 +903,29 @@ pub fn setup_callbacks(
 
             let pane = pane_from_index(ui.get_drag_source_pane());
             let tab_id = ui.get_context_menu_tab_id();
+
+            if let Some(rest) = command.strip_prefix("plugin-viewport:") {
+                let Some((plugin_id, item_id)) = rest.split_once(':') else {
+                    tracing::warn!("Malformed plugin viewport context menu command: {command}");
+                    return;
+                };
+                let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
+                    tracing::warn!(
+                        "Viewport context menu action ignored without viewport: pane={}",
+                        pane.0
+                    );
+                    return;
+                };
+                if let Err(err) = plugin_manager
+                    .borrow_mut()
+                    .handle_viewport_context_menu_action(plugin_id, item_id, &viewport)
+                {
+                    tracing::error!("Viewport context menu plugin action error: {err}");
+                    return;
+                }
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                return;
+            }
 
             match command.as_str() {
                 "viewport-copy-image" => {
@@ -1039,6 +1064,48 @@ pub fn setup_callbacks(
                 }
                 _ => {}
             }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_viewport_context_menu(move |pane, x, y| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+
+            let pane = pane_from_index(pane);
+            let mut items = vec![
+                crate::ContextMenuItem {
+                    id: "viewport-copy-image".into(),
+                    label: "Copy Image".into(),
+                    icon: "copy".into(),
+                    shortcut: "".into(),
+                    enabled: true,
+                    separator_after: false,
+                },
+                crate::ContextMenuItem {
+                    id: "viewport-export-image".into(),
+                    label: "Export Image".into(),
+                    icon: "export".into(),
+                    shortcut: "".into(),
+                    enabled: true,
+                    separator_after: false,
+                },
+            ];
+            items.extend({
+                let state = state_handle.read();
+                crate::plugin_host::viewport_context_menu_items_for_pane(&state, pane)
+            });
+
+            ui.set_context_menu_tab_id(-1);
+            ui.set_drag_source_pane(pane.as_index());
+            ui.set_context_menu_x(x);
+            ui.set_context_menu_y(y);
+            ui.set_context_menu_items(Rc::new(VecModel::from(items)).into());
+            ui.set_context_menu_visible(true);
         });
     }
 
@@ -1764,6 +1831,7 @@ pub fn setup_callbacks(
                         ToolType::Navigate => state::Tool::Navigate,
                         ToolType::RegionOfInterest => state::Tool::RegionOfInterest,
                         ToolType::MeasureDistance => state::Tool::MeasureDistance,
+                        ToolType::PointAnnotation => state::Tool::PointAnnotation,
                     };
                     state.set_tool(tool);
                 }
@@ -1781,8 +1849,48 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+        let plugin_manager = Rc::clone(&plugin_manager);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
+            let point_action = {
+                let state = state_handle.read();
+                if state.current_tool != state::Tool::PointAnnotation {
+                    None
+                } else {
+                    let pane = state.focused_pane;
+                    let Some(plugin_id) = state.active_point_tool_plugin_id.clone() else {
+                        return;
+                    };
+                    let Some(image_point) = state
+                        .active_file_id_for_pane(pane)
+                        .and_then(|file_id| state.get_file(file_id))
+                        .and_then(|file| file.pane_state(pane))
+                        .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
+                    else {
+                        return;
+                    };
+                    let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
+                        return;
+                    };
+                    Some((plugin_id, viewport, image_point))
+                }
+            };
+
+            if let Some((plugin_id, viewport, (x_level0, y_level0))) = point_action {
+                if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_placed(
+                    &plugin_id,
+                    &viewport,
+                    x_level0,
+                    y_level0,
+                ) {
+                    tracing::error!("Point annotation placement error: {err}");
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();

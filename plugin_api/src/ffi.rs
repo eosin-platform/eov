@@ -38,6 +38,31 @@ pub struct HudToolbarButtonFFI {
     pub action_id: RString,
 }
 
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct UiPropertyFFI {
+    pub name: RString,
+    pub json_value: RString,
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ViewportContextMenuItemFFI {
+    pub item_id: RString,
+    pub label: RString,
+    pub icon: RString,
+    pub enabled: bool,
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ViewportOverlayPointFFI {
+    pub annotation_id: RString,
+    pub x_level0: f64,
+    pub y_level0: f64,
+    pub diameter_px: f32,
+}
+
 /// FFI-safe response from a plugin action handler.
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
@@ -54,6 +79,15 @@ pub enum HostLogLevelFFI {
     Info = 2,
     Warn = 3,
     Error = 4,
+}
+
+#[repr(u32)]
+#[derive(StableAbi, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostToolModeFFI {
+    Navigate = 0,
+    RegionOfInterest = 1,
+    MeasureDistance = 2,
+    PointAnnotation = 3,
 }
 
 #[repr(C)]
@@ -76,6 +110,9 @@ pub struct OpenFileInfoFFI {
 #[derive(StableAbi, Clone, Debug)]
 pub struct ViewportSnapshotFFI {
     pub pane_index: u32,
+    pub file_id: i32,
+    pub file_path: RString,
+    pub filename: RString,
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,
@@ -134,6 +171,9 @@ pub struct HostApiVTable {
         width: f64,
         height: f64,
     ) -> RResult<(), RString>,
+    pub set_active_tool:
+        extern "C" fn(context: u64, tool: HostToolModeFFI) -> RResult<(), RString>,
+    pub request_render: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub set_toolbar_button_active:
         extern "C" fn(context: u64, button_id: RString, active: bool) -> RResult<(), RString>,
     pub set_hud_toolbar_button_active:
@@ -145,7 +185,14 @@ pub struct HostApiVTable {
         ui_path: RString,
         component: RString,
     ) -> RResult<(), RString>,
+    pub refresh_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub hide_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
+    pub save_file_dialog: extern "C" fn(
+        context: u64,
+        default_file_name: RString,
+        filter_name: RString,
+        extension: RString,
+    ) -> RResult<RString, RString>,
     pub log_message: extern "C" fn(context: u64, level: HostLogLevelFFI, message: RString),
 }
 
@@ -179,7 +226,27 @@ pub struct PluginVTable {
     /// Called when a callback defined in the plugin's `.slint` UI is invoked.
     /// `callback_name` is the kebab-case name of the callback as declared in
     /// the `.slint` file.
-    pub on_ui_callback: extern "C" fn(callback_name: RString),
+    pub on_ui_callback: extern "C" fn(callback_name: RString, args_json: RString),
+
+    /// Returns the current values for public properties on the active sidebar.
+    /// Values are encoded as JSON and converted to typed Slint values by the host.
+    pub get_sidebar_properties: extern "C" fn() -> RVec<UiPropertyFFI>,
+
+    /// Returns plugin-contributed viewport context menu items for the given viewport.
+    pub get_viewport_context_menu_items:
+        extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<ViewportContextMenuItemFFI>,
+
+    /// Called when a plugin-contributed viewport context menu item is selected.
+    pub on_viewport_context_menu_action:
+        extern "C" fn(item_id: RString, viewport: ViewportSnapshotFFI) -> ActionResponseFFI,
+
+    /// Returns point overlay data that should be rendered over the given viewport.
+    pub get_viewport_overlay_points:
+        extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<ViewportOverlayPointFFI>,
+
+    /// Called when the host commits a point annotation click for the active point tool.
+    pub on_point_annotation_placed:
+        extern "C" fn(viewport: ViewportSnapshotFFI, x_level0: f64, y_level0: f64),
 
     /// Returns viewport filter descriptors this plugin provides.
     /// May return an empty vec if the plugin has no viewport filters.

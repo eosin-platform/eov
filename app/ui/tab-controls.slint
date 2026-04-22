@@ -840,7 +840,7 @@ export component ContextMenu inherits Rectangle {
                         y: (parent.height - self.height) / 2;
                         width: 14px;
                         height: 14px;
-                        source: item.icon == "copy" ? @image-url("icons/copy.svg") : item.icon == "export" ? @image-url("icons/export.svg") : @image-url("icons/open-file.svg");
+                        source: item.icon == "copy" ? @image-url("icons/copy.svg") : item.icon == "export" ? @image-url("icons/export.svg") : item.icon == "point" ? @image-url("icons/point.svg") : @image-url("icons/open-file.svg");
                         image-fit: contain;
                         colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
                     }

@@ -13,7 +13,8 @@ use ash::vk;
 use ash::vk::Handle;
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI,
-    PluginVTable, ToolbarButtonFFI, ViewportFilterFFI, ViewportSnapshotFFI,
+    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportFilterFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -84,7 +85,37 @@ extern "C" fn on_hud_action_ffi(
     ActionResponseFFI { open_window: false }
 }
 
-extern "C" fn on_ui_callback_ffi(_callback_name: RString) {}
+extern "C" fn on_ui_callback_ffi(_callback_name: RString, _args_json: RString) {}
+
+extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
+    RVec::new()
+}
+
+extern "C" fn get_viewport_context_menu_items_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<ViewportContextMenuItemFFI> {
+    RVec::new()
+}
+
+extern "C" fn on_viewport_context_menu_action_ffi(
+    _item_id: RString,
+    _viewport: ViewportSnapshotFFI,
+) -> ActionResponseFFI {
+    ActionResponseFFI { open_window: false }
+}
+
+extern "C" fn get_viewport_overlay_points_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<ViewportOverlayPointFFI> {
+    RVec::new()
+}
+
+extern "C" fn on_point_annotation_placed_ffi(
+    _viewport: ViewportSnapshotFFI,
+    _x_level0: f64,
+    _y_level0: f64,
+) {
+}
 
 extern "C" fn get_viewport_filters_ffi() -> RVec<ViewportFilterFFI> {
     RVec::from(vec![ViewportFilterFFI {
@@ -408,6 +439,11 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_action: on_action_ffi,
         on_hud_action: on_hud_action_ffi,
         on_ui_callback: on_ui_callback_ffi,
+        get_sidebar_properties: get_sidebar_properties_ffi,
+        get_viewport_context_menu_items: get_viewport_context_menu_items_ffi,
+        on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
+        get_viewport_overlay_points: get_viewport_overlay_points_ffi,
+        on_point_annotation_placed: on_point_annotation_placed_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

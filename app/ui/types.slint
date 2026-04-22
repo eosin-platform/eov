@@ -83,6 +83,13 @@ export struct MeasurementLine {
     visible: bool,
 }
 
+export struct PluginOverlayPoint {
+    annotation-id: string,
+    x: float,
+    y: float,
+    diameter-px: float,
+}
+
 export struct MetadataItem {
     label: string,
     value: string,
@@ -139,6 +146,7 @@ export struct PaneViewData {
     zoom-slider-position: float,
     roi-rect: ROIRect,
     measurements: [MeasurementLine],
+    plugin-overlay-points: [PluginOverlayPoint],
     candidate-measurement: MeasurementLine,
     is-loading: bool,
     hud: HudSettings,
@@ -148,6 +156,7 @@ export enum ToolType {
     navigate,
     region-of-interest,
     measure-distance,
+    point-annotation,
 }
 
 export enum RenderMode {

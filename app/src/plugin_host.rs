@@ -5,13 +5,15 @@ use common::{FilteringMode, RenderBackend, TileCache};
 use parking_lot::RwLock;
 use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
-    ActiveSidebarFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, OpenFileInfoFFI,
-    ViewportSnapshotFFI,
+    ActiveSidebarFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, HostToolModeFFI,
+    OpenFileInfoFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use slint::{
     ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
     VecModel,
 };
+use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -25,7 +27,7 @@ struct HostApiContext {
     plugin_id: String,
     plugin_root: PathBuf,
     state: Arc<RwLock<AppState>>,
-    on_ui_callback: Option<extern "C" fn(RString)>,
+    vtable: PluginVTable,
 }
 
 struct UiRuntime {
@@ -68,7 +70,7 @@ pub(crate) fn build_host_api(
     plugin_id: &str,
     plugin_root: &Path,
     state: &Arc<RwLock<AppState>>,
-    on_ui_callback: Option<extern "C" fn(RString)>,
+    vtable: PluginVTable,
 ) -> HostApiVTable {
     let context = NEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed);
     host_contexts().lock().unwrap().insert(
@@ -77,7 +79,7 @@ pub(crate) fn build_host_api(
             plugin_id: plugin_id.to_string(),
             plugin_root: plugin_root.to_path_buf(),
             state: Arc::clone(state),
-            on_ui_callback,
+            vtable,
         },
     );
 
@@ -89,10 +91,14 @@ pub(crate) fn build_host_api(
         set_active_viewport: ffi_set_active_viewport,
         fit_active_viewport: ffi_fit_active_viewport,
         frame_active_rect: ffi_frame_active_rect,
+        set_active_tool: ffi_set_active_tool,
+        request_render: ffi_request_render,
         set_toolbar_button_active: ffi_set_toolbar_button_active,
         set_hud_toolbar_button_active: ffi_set_hud_toolbar_button_active,
         show_sidebar: ffi_show_sidebar,
+        refresh_sidebar: ffi_refresh_sidebar,
         hide_sidebar: ffi_hide_sidebar,
+        save_file_dialog: ffi_save_file_dialog,
         log_message: ffi_log_message,
     }
 }
@@ -181,8 +187,77 @@ pub(crate) fn viewport_snapshot_for_pane(
     guard
         .active_file_id_for_pane(pane)
         .and_then(|file_id| guard.get_file(file_id))
-        .and_then(|file| file.pane_state(pane))
-        .map(|pane_state| to_viewport_snapshot(&pane_state.viewport, pane))
+        .and_then(|file| {
+            file.pane_state(pane)
+                .map(|pane_state| to_viewport_snapshot(file, &pane_state.viewport, pane))
+        })
+}
+
+pub(crate) fn viewport_overlay_points_for_pane(
+    state: &AppState,
+    pane: PaneId,
+) -> Vec<crate::PluginOverlayPoint> {
+    let Some(file_id) = state.active_file_id_for_pane(pane) else {
+        return Vec::new();
+    };
+    let Some(file) = state.get_file(file_id) else {
+        return Vec::new();
+    };
+    let Some(pane_state) = file.pane_state(pane) else {
+        return Vec::new();
+    };
+
+    let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
+    let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
+    let vp = &pane_state.viewport.viewport;
+
+    local_plugin_vtables()
+        .into_iter()
+        .flat_map(|(_plugin_id, vtable)| (vtable.get_viewport_overlay_points)(snapshot_ffi.clone()))
+        .map(|point: ViewportOverlayPointFFI| {
+            let screen = vp.image_to_screen(point.x_level0, point.y_level0);
+            crate::PluginOverlayPoint {
+                annotation_id: point.annotation_id.to_string().into(),
+                x: screen.x as f32,
+                y: screen.y as f32,
+                diameter_px: point.diameter_px,
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn viewport_context_menu_items_for_pane(
+    state: &AppState,
+    pane: PaneId,
+) -> Vec<crate::ContextMenuItem> {
+    let Some(file_id) = state.active_file_id_for_pane(pane) else {
+        return Vec::new();
+    };
+    let Some(file) = state.get_file(file_id) else {
+        return Vec::new();
+    };
+    let Some(pane_state) = file.pane_state(pane) else {
+        return Vec::new();
+    };
+
+    let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
+    let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
+
+    local_plugin_vtables()
+        .into_iter()
+        .flat_map(|(plugin_id, vtable)| {
+            (vtable.get_viewport_context_menu_items)(snapshot_ffi.clone())
+                .into_iter()
+                .map(move |item: ViewportContextMenuItemFFI| crate::ContextMenuItem {
+                    id: format!("plugin-viewport:{}:{}", plugin_id, item.item_id).into(),
+                    label: item.label.to_string().into(),
+                    icon: item.icon.to_string().into(),
+                    shortcut: slint::SharedString::default(),
+                    enabled: item.enabled,
+                    separator_after: false,
+                })
+        })
+        .collect()
 }
 
 pub(crate) fn read_region(
@@ -277,6 +352,66 @@ pub(crate) fn frame_active_rect(x: f64, y: f64, width: f64, height: f64) -> Resu
     })
 }
 
+pub(crate) fn set_active_tool(
+    plugin_id: &str,
+    tool: HostToolModeFFI,
+) -> Result<(), String> {
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        {
+            let mut state = runtime.state.write();
+            match tool {
+                HostToolModeFFI::Navigate => state.set_tool(crate::state::Tool::Navigate),
+                HostToolModeFFI::RegionOfInterest => {
+                    state.set_tool(crate::state::Tool::RegionOfInterest)
+                }
+                HostToolModeFFI::MeasureDistance => {
+                    state.set_tool(crate::state::Tool::MeasureDistance)
+                }
+                HostToolModeFFI::PointAnnotation => {
+                    state.set_point_annotation_tool(plugin_id.clone())
+                }
+            }
+        }
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
+pub(crate) fn request_render() -> Result<(), String> {
+    run_on_ui_thread(move |runtime| {
+        runtime.state.write().request_render();
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
+pub(crate) fn save_file_dialog(
+    default_file_name: String,
+    filter_name: String,
+    extension: String,
+) -> Result<String, String> {
+    run_on_ui_thread(move |_runtime| {
+        let dialog = rfd::FileDialog::new()
+            .add_filter(&filter_name, &[extension.as_str()])
+            .set_file_name(default_file_name);
+        dialog
+            .save_file()
+            .map(|path| path.to_string_lossy().into_owned())
+            .ok_or_else(|| "save dialog was cancelled".to_string())
+    })
+}
+
 pub(crate) fn log_message(plugin_id: &str, level: plugin_api::HostLogLevel, message: &str) {
     let message = format!("plugin[{plugin_id}]: {message}");
     match level {
@@ -291,7 +426,7 @@ pub(crate) fn log_message(plugin_id: &str, level: plugin_api::HostLogLevel, mess
 pub(crate) fn show_sidebar(
     plugin_id: &str,
     plugin_root: Option<&Path>,
-    on_ui_callback: Option<extern "C" fn(RString)>,
+    vtable: Option<PluginVTable>,
     request: plugin_api::SidebarRequest,
 ) -> Result<(), String> {
     let resolved_request = resolve_sidebar_request(plugin_root, request)?;
@@ -314,7 +449,7 @@ pub(crate) fn show_sidebar(
                 &plugin_id,
                 &resolved_request.ui_path,
                 &resolved_request.component,
-                on_ui_callback,
+                vtable,
             )?)
         };
 
@@ -434,8 +569,10 @@ fn snapshot_from_state(state: &AppState) -> plugin_api::HostSnapshot {
     let active_viewport = state
         .active_file_id_for_pane(focused_pane)
         .and_then(|file_id| state.get_file(file_id))
-        .and_then(|file| file.pane_state(focused_pane))
-        .map(|pane_state| to_viewport_snapshot(&pane_state.viewport, focused_pane));
+        .and_then(|file| {
+            file.pane_state(focused_pane)
+                .map(|pane_state| to_viewport_snapshot(file, &pane_state.viewport, focused_pane))
+        });
 
     plugin_api::HostSnapshot {
         app_name: "eov".to_string(),
@@ -474,12 +611,16 @@ fn to_open_file_info(file: &crate::state::OpenFile) -> plugin_api::OpenFileInfo 
 }
 
 fn to_viewport_snapshot(
+    file: &crate::state::OpenFile,
     viewport: &common::ViewportState,
     pane: PaneId,
 ) -> plugin_api::ViewportSnapshot {
     let bounds = viewport.viewport.bounds();
     plugin_api::ViewportSnapshot {
         pane_index: pane.0 as u32,
+        file_id: file.id,
+        file_path: file.path.to_string_lossy().into_owned(),
+        filename: file.filename.clone(),
         center_x: viewport.viewport.center.x,
         center_y: viewport.viewport.center.y,
         zoom: viewport.viewport.zoom,
@@ -631,7 +772,7 @@ fn build_sidebar_factory(
     plugin_id: &str,
     ui_path: &str,
     component: &str,
-    on_ui_callback: Option<extern "C" fn(RString)>,
+    vtable: Option<PluginVTable>,
 ) -> Result<ComponentFactory, String> {
     let ui_path = PathBuf::from(ui_path);
     let source = std::fs::read_to_string(&ui_path)
@@ -676,22 +817,40 @@ fn build_sidebar_factory(
             }
         };
 
-        if let Some(on_ui_callback) = on_ui_callback {
-            for name in definition.callbacks() {
-                let callback_name = name.to_string();
-                if instance
-                    .set_callback(&name, move |_args| {
-                        (on_ui_callback)(RString::from(callback_name.as_str()));
-                        slint_interpreter::Value::Void
-                    })
-                    .is_err()
-                {
-                    tracing::info!(
-                        "Could not wire sidebar callback '{}' for plugin '{}'",
-                        name,
-                        plugin_id
+        if let Some(vtable) = vtable
+            && let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance)
+        {
+            tracing::error!("Failed to apply sidebar properties for '{}': {err}", plugin_id);
+        }
+
+        for name in definition.callbacks() {
+            let callback_name = name.to_string();
+            let plugin_id = plugin_id.clone();
+            let Some(vtable) = vtable else {
+                continue;
+            };
+            if instance
+                .set_callback(&name, move |args| {
+                    let args_json = serde_json::Value::Array(
+                        args.iter()
+                            .map(value_to_json)
+                            .collect::<Result<Vec<_>, _>>()
+                            .unwrap_or_default(),
+                    )
+                    .to_string();
+                    (vtable.on_ui_callback)(
+                        RString::from(callback_name.as_str()),
+                        RString::from(args_json),
                     );
-                }
+                    slint_interpreter::Value::Void
+                })
+                .is_err()
+            {
+                tracing::info!(
+                    "Could not wire sidebar callback '{}' for plugin '{}'",
+                    name,
+                    plugin_id
+                );
             }
         }
 
@@ -812,6 +971,9 @@ fn to_open_file_info_ffi(file: plugin_api::OpenFileInfo) -> OpenFileInfoFFI {
 fn to_viewport_snapshot_ffi(viewport: plugin_api::ViewportSnapshot) -> ViewportSnapshotFFI {
     ViewportSnapshotFFI {
         pane_index: viewport.pane_index,
+        file_id: viewport.file_id,
+        file_path: RString::from(viewport.file_path),
+        filename: RString::from(viewport.filename),
         center_x: viewport.center_x,
         center_y: viewport.center_y,
         zoom: viewport.zoom,
@@ -861,12 +1023,88 @@ fn context_plugin_root(context: u64) -> Option<PathBuf> {
         .map(|ctx| ctx.plugin_root.clone())
 }
 
-fn context_ui_callback(context: u64) -> Option<extern "C" fn(RString)> {
+fn context_vtable(context: u64) -> Option<PluginVTable> {
     host_contexts()
         .lock()
         .unwrap()
         .get(&context)
-        .and_then(|ctx| ctx.on_ui_callback)
+        .map(|ctx| ctx.vtable)
+}
+
+fn local_plugin_vtables() -> Vec<(String, PluginVTable)> {
+    host_contexts()
+        .lock()
+        .unwrap()
+        .values()
+        .map(|ctx| (ctx.plugin_id.clone(), ctx.vtable))
+        .collect()
+}
+
+fn apply_sidebar_properties(
+    plugin_id: &str,
+    vtable: PluginVTable,
+    instance: &slint_interpreter::ComponentInstance,
+) -> Result<(), String> {
+    let property_types: Vec<_> = instance
+        .definition()
+        .properties_and_callbacks()
+        .filter_map(|(name, (ty, _visibility))| ty.is_property_type().then_some((name, ty)))
+        .collect();
+
+    for UiPropertyFFI { name, json_value } in (vtable.get_sidebar_properties)().into_iter() {
+        let property_name = name.to_string();
+        let Some((_, property_type)) = property_types
+            .iter()
+            .find(|(candidate, _)| candidate == &property_name)
+        else {
+            tracing::debug!(
+                "Ignoring sidebar property '{}' from plugin '{}' because the component does not expose it",
+                property_name,
+                plugin_id
+            );
+            continue;
+        };
+        let value = value_from_json_str(property_type, json_value.as_str()).map_err(|err| {
+            format!(
+                "failed to decode sidebar property '{}:{}' from JSON: {err}",
+                plugin_id, property_name
+            )
+        })?;
+        instance
+            .set_property(&property_name, value)
+            .map_err(|err| format!("failed to set sidebar property '{}:{}': {err}", plugin_id, property_name))?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
+    run_on_ui_thread(|runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        let active_sidebar = runtime.state.read().active_sidebar().cloned();
+        let Some(sidebar) = active_sidebar else {
+            return Ok(());
+        };
+        let Some((_, vtable)) = local_plugin_vtables()
+            .into_iter()
+            .find(|(candidate, _)| candidate == &sidebar.plugin_id)
+        else {
+            return Ok(());
+        };
+        let factory = build_sidebar_factory(
+            &sidebar.plugin_id,
+            &sidebar.ui_path,
+            &sidebar.component,
+            Some(vtable),
+        )?;
+        ui.set_plugin_sidebar_factory(factory);
+        ui.set_show_plugin_sidebar(true);
+        ui.set_plugin_sidebar_width(sidebar.width_px as f32);
+        Ok(())
+    })
 }
 
 extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
@@ -958,6 +1196,29 @@ extern "C" fn ffi_frame_active_rect(
     }
 }
 
+extern "C" fn ffi_set_active_tool(
+    context: u64,
+    tool: HostToolModeFFI,
+) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    match set_active_tool(&plugin_id, tool) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_request_render(context: u64) -> RResult<(), RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match request_render() {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
 extern "C" fn ffi_set_toolbar_button_active(
     context: u64,
     button_id: RString,
@@ -1005,9 +1266,19 @@ extern "C" fn ffi_show_sidebar(
     match show_sidebar(
         &plugin_id,
         context_plugin_root(context).as_deref(),
-        context_ui_callback(context),
+        context_vtable(context),
         request,
     ) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_refresh_sidebar(context: u64) -> RResult<(), RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match refresh_active_sidebar() {
         Ok(()) => RResult::ROk(()),
         Err(err) => RResult::RErr(RString::from(err)),
     }
@@ -1019,6 +1290,25 @@ extern "C" fn ffi_hide_sidebar(context: u64) -> RResult<(), RString> {
     };
     match hide_sidebar(&plugin_id) {
         Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_save_file_dialog(
+    context: u64,
+    default_file_name: RString,
+    filter_name: RString,
+    extension: RString,
+) -> RResult<RString, RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match save_file_dialog(
+        default_file_name.to_string(),
+        filter_name.to_string(),
+        extension.to_string(),
+    ) {
+        Ok(path) => RResult::ROk(RString::from(path)),
         Err(err) => RResult::RErr(RString::from(err)),
     }
 }

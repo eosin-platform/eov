@@ -136,6 +136,8 @@ pub enum Tool {
     RegionOfInterest,
     /// Measure Distance tool - measure distance between two points
     MeasureDistance,
+    /// Point annotation tool - click to place an annotation point.
+    PointAnnotation,
 }
 
 /// Point in image coordinates
@@ -442,6 +444,8 @@ pub struct AppState {
     pub focused_pane: PaneId,
     /// Current active tool
     pub current_tool: Tool,
+    /// Owning plugin for the active point annotation tool, if any.
+    pub active_point_tool_plugin_id: Option<String>,
     /// Current tool interaction state
     pub tool_state: ToolInteractionState,
     /// Candidate point (for visual feedback during tool use)
@@ -507,6 +511,7 @@ impl AppState {
             split_position: 0.5,
             focused_pane: PaneId::PRIMARY,
             current_tool: Tool::Navigate,
+            active_point_tool_plugin_id: None,
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
             ant_offset: 0.0,
@@ -1062,6 +1067,9 @@ impl AppState {
     /// Set the current tool and reset interaction state
     pub fn set_tool(&mut self, tool: Tool) {
         self.current_tool = tool;
+        if tool != Tool::PointAnnotation {
+            self.active_point_tool_plugin_id = None;
+        }
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.needs_render = true;
@@ -1082,6 +1090,7 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.current_tool = Tool::Navigate;
+        self.active_point_tool_plugin_id = None;
         self.needs_render = true;
         // Clear ROI and measurements when cancelling
         if let Some(file) = self
@@ -1092,6 +1101,14 @@ impl AppState {
             file.roi = None;
             file.measurements.clear();
         }
+    }
+
+    pub fn set_point_annotation_tool(&mut self, plugin_id: String) {
+        self.current_tool = Tool::PointAnnotation;
+        self.active_point_tool_plugin_id = Some(plugin_id);
+        self.tool_state = ToolInteractionState::Idle;
+        self.candidate_point = None;
+        self.needs_render = true;
     }
 
     /// Close a file by ID

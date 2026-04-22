@@ -30,7 +30,7 @@ clap = { version = "4.5", features = ["derive"] }
 slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-28", "unstable-winit-030"] }
 
 # Slint interpreter for runtime plugin UI loading
-slint-interpreter = { version = "1.15.1", features = ["internal"] }
+slint-interpreter = { version = "1.15.1", features = ["internal", "internal-json"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
@@ -72,6 +72,7 @@ open = "5"
 # Config directory access
 dirs = "6"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 
 # GPU vertex buffer casting

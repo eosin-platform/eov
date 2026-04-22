@@ -253,7 +253,13 @@ fn main() -> Result<()> {
         state.write().local_hud_plugin_buttons = pm.hud_toolbar.buttons().to_vec();
     }
 
+    info!(
+        "Creating application window (DISPLAY={:?}, WAYLAND_DISPLAY={:?})",
+        std::env::var("DISPLAY").ok(),
+        std::env::var("WAYLAND_DISPLAY").ok()
+    );
     let ui = AppWindow::new()?;
+    info!("Application window created");
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));
 
     // Apply CLI window size override. This must happen after AppWindow::new() so it
@@ -273,12 +279,15 @@ fn main() -> Result<()> {
 
     let ui_weak = ui.as_weak();
     let gpu_renderer = Rc::new(RefCell::new(GpuRenderer::new()));
+    info!("Installing GPU renderer");
     GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))?;
     set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
+    info!("GPU renderer installed");
 
     let render_timer = Rc::new(Timer::default());
     plugin_host::init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
     plugin_host::refresh_plugin_buttons().map_err(anyhow::Error::msg)?;
+    info!("Plugin UI runtime initialized");
 
     {
         let pm = plugin_manager.borrow();
@@ -290,7 +299,7 @@ fn main() -> Result<()> {
                 plugin_id,
                 &descriptor.root,
                 &state,
-                Some(vtable.on_ui_callback),
+                *vtable,
             ));
         }
     }
@@ -302,6 +311,7 @@ fn main() -> Result<()> {
         Rc::clone(&render_timer),
         Rc::clone(&plugin_manager),
     );
+    info!("UI callbacks installed");
 
     ui.set_debug_mode(launch_options.debug_mode);
     {
@@ -332,8 +342,10 @@ fn main() -> Result<()> {
         }
         let state = state.read();
         update_tabs(&ui, &state);
+        info!("Initialized home tab state");
     } else {
         prepare_launch_panes(&ui, &state, launch_options.panes_to_open.len());
+        info!("Prepared launch panes from CLI input");
     }
 
     for (pane_index, pane_spec) in launch_options.panes_to_open.into_iter().enumerate() {
@@ -361,8 +373,13 @@ fn main() -> Result<()> {
     }
 
     request_render_loop(&render_timer, &ui_weak, &state, &tile_cache);
+    info!("Initial render loop requested");
 
-    dbg_print!("[MAIN] Timer started, running UI");
+    info!("Showing application window");
+    ui.show()?;
+    info!("Application window shown");
+
+    info!("Entering Slint UI event loop");
 
     ui.run()?;
 
@@ -377,7 +394,13 @@ fn setup_callbacks(
     render_timer: Rc<Timer>,
     plugin_manager: Rc<RefCell<plugins::PluginManager>>,
 ) {
-    callbacks::setup_callbacks(ui, state.clone(), tile_cache.clone(), render_timer.clone());
+    callbacks::setup_callbacks(
+        ui,
+        state.clone(),
+        tile_cache.clone(),
+        render_timer.clone(),
+        Rc::clone(&plugin_manager),
+    );
 
     // Plugin button click callback — dispatch to plugin manager and open windows
     let pm = Rc::clone(&plugin_manager);

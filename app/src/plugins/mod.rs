@@ -88,7 +88,7 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
         let cb_name = name.clone();
         if instance
             .set_callback(&name, move |_args| {
-                (on_ui_cb)(RString::from(cb_name.as_str()));
+                (on_ui_cb)(RString::from(cb_name.as_str()), RString::from("[]"));
                 slint_interpreter::Value::Void
             })
             .is_err()

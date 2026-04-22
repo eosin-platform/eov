@@ -6,6 +6,7 @@ import {
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
+    PluginOverlayPoint,
     ROIRect,
     StainNormalization,
     ToolType,
@@ -36,6 +37,7 @@ export component Viewport inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
     in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
     in property <[MeasurementLine]> measurements: [];
+    in property <[PluginOverlayPoint]> plugin-overlay-points: [];
     in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     in property <HudSettings> hud;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
@@ -254,6 +256,28 @@ export component Viewport inherits Rectangle {
                     font-size: 11px;
                     font-weight: 500;
                 }
+            }
+        }
+
+        for point in root.plugin-overlay-points: Rectangle {
+            x: (point.x - point.diameter-px / 2) * 1px;
+            y: (point.y - point.diameter-px / 2) * 1px;
+            width: point.diameter-px * 1px;
+            height: point.diameter-px * 1px;
+            background: transparent;
+            border-width: 2px;
+            border-color: #f2f4f8;
+            border-radius: self.width / 2;
+
+            Rectangle {
+                x: 1px;
+                y: 1px;
+                width: max(0px, parent.width - 2px);
+                height: max(0px, parent.height - 2px);
+                background: transparent;
+                border-width: 1px;
+                border-color: #111318cc;
+                border-radius: self.width / 2;
             }
         }
 

@@ -140,6 +140,7 @@ pub fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> b
         || existing.is_home_tab != next.is_home_tab
         || existing.zoom_slider_position != next.zoom_slider_position
         || existing.roi_rect != next.roi_rect
+        || existing.plugin_overlay_points != next.plugin_overlay_points
         || existing.candidate_measurement != next.candidate_measurement
         || existing.is_loading != next.is_loading
         || existing.hud != next.hud
@@ -224,6 +225,7 @@ pub fn update_tabs(
             let pane = PaneId(pane_index);
             let tabs = build_pane_tabs(pane);
             let (roi_rect, measurements, candidate_measurement) = pane_overlay_data(state, pane);
+            let plugin_overlay_points = crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;
@@ -294,6 +296,7 @@ pub fn update_tabs(
                 zoom_slider_position,
                 roi_rect,
                 measurements: pane_ui.measurements.clone().into(),
+                plugin_overlay_points: plugin_overlay_points.as_slice().into(),
                 candidate_measurement,
                 is_loading: ui.get_is_loading() && pane == state.focused_pane,
                 hud,

@@ -1,29 +1,756 @@
-use abi_stable::std_types::{RString, RVec};
+use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{
-    ActionResponseFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI, PluginVTable,
-    ToolbarButtonFFI, ViewportFilterFFI, ViewportSnapshotFFI,
+    ActionResponseFFI, HostApiVTable, HostLogLevelFFI, HostSnapshotFFI, HostToolModeFFI,
+    HudToolbarButtonFFI, OpenFileInfoFFI, PluginVTable, ToolbarButtonFFI, UiPropertyFFI,
+    ViewportContextMenuItemFFI, ViewportFilterFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
-use std::sync::Mutex;
+use rusqlite::{Connection, params};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+use std::fs::{self, File};
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
-const ICON_SVG: &str = include_str!("../../../app/ui/icons/annotations.svg");
-const BUTTON_ID: &str = "toggle_annotations";
-const SIDEBAR_WIDTH_PX: u32 = 250;
+const SIDEBAR_WIDTH_PX: u32 = 300;
 const SIDEBAR_UI_PATH: &str = "ui/annotations-sidebar.slint";
 const SIDEBAR_COMPONENT: &str = "AnnotationsSidebar";
 
+const ACTION_TOGGLE_SIDEBAR: &str = "toggle_annotations";
+const ACTION_CREATE_POINT: &str = "create_point_annotation";
+const VIEWPORT_MENU_CREATE_POINT: &str = "create_point";
+
+const SIDEBAR_ICON_SVG: &str = include_str!("../../../app/ui/icons/annotations.svg");
+const POINT_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>"#;
+
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);
+static PLUGIN_STATE: OnceLock<Mutex<PluginState>> = OnceLock::new();
+
+#[derive(Default)]
+struct PluginState {
+    files: HashMap<String, LoadedFileAnnotations>,
+    sha_cache: HashMap<String, [u8; 32]>,
+    active_file_path: Option<String>,
+    active_filename: Option<String>,
+    selected_set_by_file: HashMap<String, String>,
+    collapsed_sets_by_file: HashMap<String, HashSet<String>>,
+}
+
+#[derive(Clone)]
+struct LoadedFileAnnotations {
+    file_path: String,
+    filename: String,
+    file_sha256: [u8; 32],
+    annotation_sets: Vec<AnnotationSet>,
+}
+
+#[derive(Clone)]
+struct AnnotationSet {
+    id: String,
+    name: String,
+    notes: Option<String>,
+    created_at: i64,
+    updated_at: i64,
+    annotations: Vec<Annotation>,
+}
+
+#[derive(Clone)]
+enum Annotation {
+    Point(PointAnnotation),
+}
+
+#[derive(Clone)]
+struct PointAnnotation {
+    id: String,
+    created_at: i64,
+    updated_at: i64,
+    x_level0: f64,
+    y_level0: f64,
+}
+
+#[derive(Serialize)]
+struct SidebarTreeRow {
+    row_id: String,
+    parent_set_id: String,
+    label: String,
+    indent: i32,
+    is_set: bool,
+    is_collapsed: bool,
+    is_selected: bool,
+}
+
+#[derive(Serialize)]
+struct ExportFile {
+    file_path: String,
+    file_sha256_hex: String,
+    annotation_sets: Vec<ExportAnnotationSet>,
+}
+
+#[derive(Serialize)]
+struct ExportAnnotationSet {
+    id: String,
+    name: String,
+    notes: Option<String>,
+    created_at: i64,
+    updated_at: i64,
+    annotations: Vec<ExportAnnotation>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ExportAnnotation {
+    Point {
+        id: String,
+        created_at: i64,
+        updated_at: i64,
+        x_level0: f64,
+        y_level0: f64,
+    },
+}
+
+fn plugin_state() -> &'static Mutex<PluginState> {
+    PLUGIN_STATE.get_or_init(|| Mutex::new(PluginState::default()))
+}
+
+fn host_api() -> Option<HostApiVTable> {
+    *HOST_API.lock().unwrap()
+}
+
+fn log_message(level: HostLogLevelFFI, message: impl Into<String>) {
+    if let Some(host_api) = host_api() {
+        (host_api.log_message)(host_api.context, level, RString::from(message.into()));
+    }
+}
+
+fn now_unix_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn annotations_db_path() -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var("EOV_ANNOTATIONS_DB") {
+        let path = PathBuf::from(path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                format!("failed to create annotations db directory '{}': {err}", parent.display())
+            })?;
+        }
+        return Ok(path);
+    }
+
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| "could not determine config directory for annotations db".to_string())?
+        .join("eov");
+    fs::create_dir_all(&config_dir).map_err(|err| {
+        format!(
+            "failed to create annotations config directory '{}': {err}",
+            config_dir.display()
+        )
+    })?;
+    Ok(config_dir.join("annotations.db"))
+}
+
+fn open_database() -> Result<Connection, String> {
+    let path = annotations_db_path()?;
+    let connection = Connection::open(&path)
+        .map_err(|err| format!("failed to open annotations db '{}': {err}", path.display()))?;
+    connection
+        .execute_batch(
+            r#"
+            PRAGMA foreign_keys = ON;
+
+            CREATE TABLE IF NOT EXISTS annotation_sets (
+                id TEXT PRIMARY KEY,
+                file_sha256 BLOB NOT NULL CHECK(length(file_sha256) = 32),
+                name TEXT NOT NULL CHECK(length(name) <= 255),
+                notes TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS annotations (
+                id TEXT PRIMARY KEY,
+                annotation_set_id TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('point', 'ellipse', 'polygon', 'bitmask')),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (annotation_set_id) REFERENCES annotation_sets(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_points (
+                annotation_id TEXT PRIMARY KEY,
+                x_level0 REAL NOT NULL,
+                y_level0 REAL NOT NULL,
+                FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_ellipses (
+                annotation_id TEXT PRIMARY KEY,
+                center_x_level0 REAL NOT NULL,
+                center_y_level0 REAL NOT NULL,
+                radius_x_level0 REAL NOT NULL CHECK(radius_x_level0 > 0),
+                radius_y_level0 REAL NOT NULL CHECK(radius_y_level0 > 0),
+                rotation_radians REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_polygons (
+                annotation_id TEXT PRIMARY KEY,
+                FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_polygon_vertices (
+                annotation_id TEXT NOT NULL,
+                vertex_index INTEGER NOT NULL,
+                x_level0 REAL NOT NULL,
+                y_level0 REAL NOT NULL,
+                PRIMARY KEY (annotation_id, vertex_index),
+                FOREIGN KEY (annotation_id) REFERENCES annotation_polygons(annotation_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_bitmasks (
+                annotation_id TEXT PRIMARY KEY,
+                FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_bitmask_strokes (
+                id TEXT PRIMARY KEY,
+                annotation_id TEXT NOT NULL,
+                stroke_index INTEGER NOT NULL,
+                brush_radius_level0 REAL NOT NULL CHECK(brush_radius_level0 > 0),
+                is_eraser INTEGER NOT NULL DEFAULT 0 CHECK(is_eraser IN (0, 1)),
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (annotation_id) REFERENCES annotation_bitmasks(annotation_id) ON DELETE CASCADE,
+                UNIQUE (annotation_id, stroke_index)
+            );
+
+            CREATE TABLE IF NOT EXISTS annotation_bitmask_stroke_points (
+                stroke_id TEXT NOT NULL,
+                point_index INTEGER NOT NULL,
+                x_level0 REAL NOT NULL,
+                y_level0 REAL NOT NULL,
+                PRIMARY KEY (stroke_id, point_index),
+                FOREIGN KEY (stroke_id) REFERENCES annotation_bitmask_strokes(id) ON DELETE CASCADE
+            );
+            "#,
+        )
+        .map_err(|err| format!("failed to initialize annotations db schema: {err}"))?;
+    Ok(connection)
+}
+
+fn sha256_for_file(path: &Path, state: &mut PluginState) -> Result<[u8; 32], String> {
+    let path_key = path.to_string_lossy().into_owned();
+    if let Some(bytes) = state.sha_cache.get(&path_key) {
+        return Ok(*bytes);
+    }
+
+    let file = File::open(path)
+        .map_err(|err| format!("failed to open WSI file '{}' for hashing: {err}", path.display()))?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|err| format!("failed while hashing WSI file '{}': {err}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    let digest: [u8; 32] = hasher.finalize().into();
+    state.sha_cache.insert(path_key, digest);
+    Ok(digest)
+}
+
+fn load_annotation_sets(
+    connection: &Connection,
+    file_sha256: &[u8; 32],
+) -> Result<Vec<AnnotationSet>, String> {
+    let mut sets_stmt = connection
+        .prepare(
+            "SELECT id, name, notes, created_at, updated_at FROM annotation_sets WHERE file_sha256 = ?1 ORDER BY lower(name) DESC, created_at DESC",
+        )
+        .map_err(|err| format!("failed to prepare annotation set query: {err}"))?;
+
+    let set_rows = sets_stmt
+        .query_map(params![file_sha256.as_slice()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .map_err(|err| format!("failed to query annotation sets: {err}"))?;
+
+    let mut annotation_stmt = connection
+        .prepare(
+            r#"
+            SELECT a.id, a.created_at, a.updated_at, p.x_level0, p.y_level0
+            FROM annotations a
+            INNER JOIN annotation_points p ON p.annotation_id = a.id
+            WHERE a.annotation_set_id = ?1 AND a.type = 'point'
+            ORDER BY a.created_at DESC, a.id DESC
+            "#,
+        )
+        .map_err(|err| format!("failed to prepare point annotation query: {err}"))?;
+
+    let mut sets = Vec::new();
+    for set_row in set_rows {
+        let (id, name, notes, created_at, updated_at) =
+            set_row.map_err(|err| format!("failed to read annotation set row: {err}"))?;
+        let annotation_rows = annotation_stmt
+            .query_map(params![&id], |row| {
+                Ok(Annotation::Point(PointAnnotation {
+                    id: row.get(0)?,
+                    created_at: row.get(1)?,
+                    updated_at: row.get(2)?,
+                    x_level0: row.get(3)?,
+                    y_level0: row.get(4)?,
+                }))
+            })
+            .map_err(|err| format!("failed to query point annotations for set '{id}': {err}"))?;
+        let mut annotations = Vec::new();
+        for annotation in annotation_rows {
+            annotations.push(
+                annotation.map_err(|err| format!("failed to read point annotation row: {err}"))?,
+            );
+        }
+        annotations.sort_by(|left, right| annotation_label(right).cmp(&annotation_label(left)));
+
+        sets.push(AnnotationSet {
+            id,
+            name,
+            notes,
+            created_at,
+            updated_at,
+            annotations,
+        });
+    }
+
+    Ok(sets)
+}
+
+fn ensure_loaded_for_file(
+    state: &mut PluginState,
+    file_path: &str,
+    filename: &str,
+) -> Result<(), String> {
+    if state.files.contains_key(file_path) {
+        return Ok(());
+    }
+
+    let path = Path::new(file_path);
+    let file_sha256 = sha256_for_file(path, state)?;
+    let connection = open_database()?;
+    let annotation_sets = load_annotation_sets(&connection, &file_sha256)?;
+    state.files.insert(
+        file_path.to_string(),
+        LoadedFileAnnotations {
+            file_path: file_path.to_string(),
+            filename: filename.to_string(),
+            file_sha256,
+            annotation_sets,
+        },
+    );
+    Ok(())
+}
+
+fn host_snapshot() -> Result<HostSnapshotFFI, String> {
+    let Some(host_api) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    Ok((host_api.get_snapshot)(host_api.context))
+}
+
+fn active_file_from_snapshot(snapshot: &HostSnapshotFFI) -> Option<OpenFileInfoFFI> {
+    match &snapshot.active_file {
+        ROption::RSome(file) => Some(file.clone()),
+        ROption::RNone => None,
+    }
+}
+
+fn sync_active_file() -> Result<(), String> {
+    let snapshot = host_snapshot()?;
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file) = active_file_from_snapshot(&snapshot) else {
+        state.active_file_path = None;
+        state.active_filename = None;
+        return Ok(());
+    };
+
+    let file_path = active_file.path.to_string();
+    let filename = active_file.filename.to_string();
+    ensure_loaded_for_file(&mut state, &file_path, &filename)?;
+    state.active_file_path = Some(file_path);
+    state.active_filename = Some(filename);
+    Ok(())
+}
+
+fn ensure_loaded_for_viewport(viewport: &ViewportSnapshotFFI) -> Result<(), String> {
+    let file_path = viewport.file_path.to_string();
+    if file_path.is_empty() {
+        return Ok(());
+    }
+    let filename = viewport.filename.to_string();
+    ensure_loaded_for_file(&mut plugin_state().lock().unwrap(), &file_path, &filename)
+}
+
+fn annotation_label(annotation: &Annotation) -> String {
+    match annotation {
+        Annotation::Point(_) => "Point".to_string(),
+    }
+}
+
+fn active_file_key(state: &PluginState) -> Option<&str> {
+    state.active_file_path.as_deref()
+}
+
+fn ensure_selected_set_for_active_file(state: &mut PluginState) -> Result<Option<String>, String> {
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(None);
+    };
+    let Some(loaded) = state.files.get(&active_file_path).cloned() else {
+        return Ok(None);
+    };
+
+    if let Some(selected_id) = state.selected_set_by_file.get(&active_file_path)
+        && loaded.annotation_sets.iter().any(|set| &set.id == selected_id)
+    {
+        return Ok(Some(selected_id.clone()));
+    }
+
+    if let Some(existing) = loaded.annotation_sets.iter().find(|set| set.name == "Untitled") {
+        state
+            .selected_set_by_file
+            .insert(active_file_path, existing.id.clone());
+        return Ok(Some(existing.id.clone()));
+    }
+
+    let connection = open_database()?;
+    let id = Uuid::new_v4().to_string();
+    let timestamp = now_unix_secs();
+    connection
+        .execute(
+            "INSERT INTO annotation_sets (id, file_sha256, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
+            params![&id, loaded.file_sha256.as_slice(), "Untitled", timestamp, timestamp],
+        )
+        .map_err(|err| format!("failed to create untitled annotation set: {err}"))?;
+
+    let loaded_entry = state.files.get_mut(&active_file_path).expect("loaded file missing");
+    loaded_entry.annotation_sets.insert(
+        0,
+        AnnotationSet {
+            id: id.clone(),
+            name: "Untitled".to_string(),
+            notes: None,
+            created_at: timestamp,
+            updated_at: timestamp,
+            annotations: Vec::new(),
+        },
+    );
+    state
+        .selected_set_by_file
+        .insert(active_file_path, id.clone());
+    Ok(Some(id))
+}
+
+fn start_point_annotation_flow() -> Result<(), String> {
+    sync_active_file()?;
+    {
+        let mut state = plugin_state().lock().unwrap();
+        let _ = ensure_selected_set_for_active_file(&mut state)?;
+    }
+    let Some(host_api) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    (host_api.set_active_tool)(host_api.context, HostToolModeFFI::PointAnnotation)
+        .into_result()
+        .map_err(|err| format!("failed to activate point annotation tool: {err}"))?;
+    let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
+    let _ = (host_api.request_render)(host_api.context).into_result();
+    Ok(())
+}
+
+fn export_active_file_annotations() -> Result<(), String> {
+    sync_active_file()?;
+    let Some(host_api) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+
+    let export_payload = {
+        let state = plugin_state().lock().unwrap();
+        let Some(active_path) = active_file_key(&state) else {
+            return Ok(());
+        };
+        let loaded = state
+            .files
+            .get(active_path)
+            .ok_or_else(|| format!("active file '{}' is not loaded", active_path))?;
+        ExportFile {
+            file_path: loaded.file_path.clone(),
+            file_sha256_hex: hex_string(&loaded.file_sha256),
+            annotation_sets: loaded
+                .annotation_sets
+                .iter()
+                .map(|set| ExportAnnotationSet {
+                    id: set.id.clone(),
+                    name: set.name.clone(),
+                    notes: set.notes.clone(),
+                    created_at: set.created_at,
+                    updated_at: set.updated_at,
+                    annotations: set
+                        .annotations
+                        .iter()
+                        .map(|annotation| match annotation {
+                            Annotation::Point(point) => ExportAnnotation::Point {
+                                id: point.id.clone(),
+                                created_at: point.created_at,
+                                updated_at: point.updated_at,
+                                x_level0: point.x_level0,
+                                y_level0: point.y_level0,
+                            },
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    };
+
+    let default_file_name = format!(
+        "{}_annotations.json",
+        export_payload
+            .annotation_sets
+            .first()
+            .and(Some(()))
+            .and_then(|_| {
+                let state = plugin_state().lock().unwrap();
+                state
+                    .active_file_path
+                    .as_deref()
+                    .and_then(|path| state.files.get(path))
+                    .map(|loaded| loaded.filename.clone())
+            })
+            .unwrap_or_else(|| {
+                export_payload
+                    .file_path
+                    .rsplit_once(std::path::MAIN_SEPARATOR)
+                    .map(|(_, name)| name.to_string())
+                    .unwrap_or_else(|| export_payload.file_path.clone())
+            })
+    );
+    let save_path = match (host_api.save_file_dialog)(
+        host_api.context,
+        default_file_name.into(),
+        "JSON".into(),
+        "json".into(),
+    )
+    .into_result()
+    {
+        Ok(path) => path.to_string(),
+        Err(_) => return Ok(()),
+    };
+
+    let json = serde_json::to_string_pretty(&export_payload)
+        .map_err(|err| format!("failed to serialize annotation export: {err}"))?;
+    fs::write(&save_path, json)
+        .map_err(|err| format!("failed to write annotation export '{}': {err}", save_path))?;
+    Ok(())
+}
+
+fn hex_string(bytes: &[u8; 32]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
+    let Some(active_path) = active_file_key(state) else {
+        return Vec::new();
+    };
+    let Some(loaded) = state.files.get(active_path) else {
+        return Vec::new();
+    };
+    let selected_set_id = state.selected_set_by_file.get(active_path);
+    let collapsed_sets = state.collapsed_sets_by_file.get(active_path);
+
+    let mut rows = Vec::new();
+    for set in &loaded.annotation_sets {
+        let is_collapsed = collapsed_sets.is_some_and(|collapsed| collapsed.contains(&set.id));
+        rows.push(SidebarTreeRow {
+            row_id: set.id.clone(),
+            parent_set_id: set.id.clone(),
+            label: set.name.clone(),
+            indent: 0,
+            is_set: true,
+            is_collapsed,
+            is_selected: selected_set_id.is_some_and(|selected| selected == &set.id),
+        });
+
+        if !is_collapsed {
+            for annotation in &set.annotations {
+                let annotation_id = match annotation {
+                    Annotation::Point(point) => point.id.clone(),
+                };
+                rows.push(SidebarTreeRow {
+                    row_id: annotation_id,
+                    parent_set_id: set.id.clone(),
+                    label: annotation_label(annotation),
+                    indent: 1,
+                    is_set: false,
+                    is_collapsed: false,
+                    is_selected: false,
+                });
+            }
+        }
+    }
+    rows
+}
+
+fn parse_callback_args(args_json: &str) -> Vec<serde_json::Value> {
+    match serde_json::from_str::<serde_json::Value>(args_json) {
+        Ok(serde_json::Value::Array(values)) => values,
+        _ => Vec::new(),
+    }
+}
+
+fn on_sidebar_callback(callback_name: &str, args_json: &str) {
+    let args = parse_callback_args(args_json);
+
+    let result = match callback_name {
+        "export-clicked" => export_active_file_annotations(),
+        "source-selected" => Ok(()),
+        "row-clicked" => {
+            sync_active_file().and_then(|_| {
+                let Some(serde_json::Value::String(row_id)) = args.first() else {
+                    return Ok(());
+                };
+                let mut state = plugin_state().lock().unwrap();
+                let Some(active_path) = active_file_key(&state).map(str::to_string) else {
+                    return Ok(());
+                };
+                let is_set = state
+                    .files
+                    .get(&active_path)
+                    .is_some_and(|loaded| loaded.annotation_sets.iter().any(|set| &set.id == row_id));
+                if is_set {
+                    state
+                        .selected_set_by_file
+                        .insert(active_path, row_id.clone());
+                    if let Some(host_api) = host_api() {
+                        let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
+                    }
+                }
+                Ok(())
+            })
+        }
+        "toggle-set" => {
+            sync_active_file().and_then(|_| {
+                let Some(serde_json::Value::String(set_id)) = args.first() else {
+                    return Ok(());
+                };
+                let mut state = plugin_state().lock().unwrap();
+                let Some(active_path) = active_file_key(&state).map(str::to_string) else {
+                    return Ok(());
+                };
+                let collapsed = state.collapsed_sets_by_file.entry(active_path).or_default();
+                if !collapsed.insert(set_id.clone()) {
+                    collapsed.remove(set_id);
+                }
+                if let Some(host_api) = host_api() {
+                    let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
+                }
+                Ok(())
+            })
+        }
+        _ => Ok(()),
+    };
+
+    if let Err(err) = result {
+        log_message(HostLogLevelFFI::Error, err);
+    }
+}
+
+fn persist_point_annotation(viewport: &ViewportSnapshotFFI, x_level0: f64, y_level0: f64) -> Result<(), String> {
+    ensure_loaded_for_viewport(viewport)?;
+    let file_path = viewport.file_path.to_string();
+    let mut state = plugin_state().lock().unwrap();
+    state.active_file_path = Some(file_path.clone());
+    state.active_filename = Some(viewport.filename.to_string());
+    let Some(annotation_set_id) = ensure_selected_set_for_active_file(&mut state)? else {
+        return Ok(());
+    };
+
+    let annotation_id = Uuid::new_v4().to_string();
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "INSERT INTO annotations (id, annotation_set_id, type, created_at, updated_at) VALUES (?1, ?2, 'point', ?3, ?4)",
+            params![&annotation_id, &annotation_set_id, timestamp, timestamp],
+        )
+        .map_err(|err| format!("failed to insert point annotation: {err}"))?;
+    connection
+        .execute(
+            "INSERT INTO annotation_points (annotation_id, x_level0, y_level0) VALUES (?1, ?2, ?3)",
+            params![&annotation_id, x_level0, y_level0],
+        )
+        .map_err(|err| format!("failed to insert point annotation geometry: {err}"))?;
+    connection
+        .execute(
+            "UPDATE annotation_sets SET updated_at = ?2 WHERE id = ?1",
+            params![&annotation_set_id, timestamp],
+        )
+        .map_err(|err| format!("failed to update annotation set timestamp: {err}"))?;
+
+    let loaded = state
+        .files
+        .get_mut(&file_path)
+        .ok_or_else(|| format!("file '{}' is not loaded in plugin state", file_path))?;
+    let set = loaded
+        .annotation_sets
+        .iter_mut()
+        .find(|set| set.id == annotation_set_id)
+        .ok_or_else(|| format!("annotation set '{}' is not loaded", annotation_set_id))?;
+    set.updated_at = timestamp;
+    set.annotations.insert(
+        0,
+        Annotation::Point(PointAnnotation {
+            id: annotation_id,
+            created_at: timestamp,
+            updated_at: timestamp,
+            x_level0,
+            y_level0,
+        }),
+    );
+    Ok(())
+}
 
 extern "C" fn set_host_api_ffi(host_api: HostApiVTable) {
     *HOST_API.lock().unwrap() = Some(host_api);
 }
 
 extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
-    RVec::from(vec![ToolbarButtonFFI {
-        button_id: RString::from(BUTTON_ID),
-        tooltip: RString::from("Toggle annotations sidebar"),
-        icon_svg: RString::from(ICON_SVG),
-        action_id: RString::from(BUTTON_ID),
-    }])
+    RVec::from(vec![
+        ToolbarButtonFFI {
+            button_id: RString::from(ACTION_TOGGLE_SIDEBAR),
+            tooltip: RString::from("Toggle annotations sidebar"),
+            icon_svg: RString::from(SIDEBAR_ICON_SVG),
+            action_id: RString::from(ACTION_TOGGLE_SIDEBAR),
+        },
+        ToolbarButtonFFI {
+            button_id: RString::from(ACTION_CREATE_POINT),
+            tooltip: RString::from("Create point annotation"),
+            icon_svg: RString::from(POINT_ICON_SVG),
+            action_id: RString::from(ACTION_CREATE_POINT),
+        },
+    ])
 }
 
 extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
@@ -31,22 +758,29 @@ extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
 }
 
 extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
-    if action_id.as_str() == BUTTON_ID && let Some(host_api) = *HOST_API.lock().unwrap() {
-        if let Err(err) = (host_api.show_sidebar)(
-            host_api.context,
-            RString::from(BUTTON_ID),
-            SIDEBAR_WIDTH_PX,
-            RString::from(SIDEBAR_UI_PATH),
-            RString::from(SIDEBAR_COMPONENT),
-        )
-        .into_result()
-        {
-            (host_api.log_message)(
-                host_api.context,
-                HostLogLevelFFI::Error,
-                RString::from(format!("Failed to toggle annotations sidebar: {err}")),
-            );
+    let result = match action_id.as_str() {
+        ACTION_TOGGLE_SIDEBAR => {
+            sync_active_file().and_then(|_| {
+                let Some(host_api) = host_api() else {
+                    return Err("host API is not available".to_string());
+                };
+                (host_api.show_sidebar)(
+                    host_api.context,
+                    RString::from(ACTION_TOGGLE_SIDEBAR),
+                    SIDEBAR_WIDTH_PX,
+                    RString::from(SIDEBAR_UI_PATH),
+                    RString::from(SIDEBAR_COMPONENT),
+                )
+                .into_result()
+                .map_err(|err| format!("failed to toggle annotations sidebar: {err}"))
+            })
         }
+        ACTION_CREATE_POINT => start_point_annotation_flow(),
+        _ => Ok(()),
+    };
+
+    if let Err(err) = result {
+        log_message(HostLogLevelFFI::Error, err);
     }
 
     ActionResponseFFI { open_window: false }
@@ -59,7 +793,126 @@ extern "C" fn on_hud_action_ffi(
     ActionResponseFFI { open_window: false }
 }
 
-extern "C" fn on_ui_callback_ffi(_callback_name: RString) {}
+extern "C" fn on_ui_callback_ffi(callback_name: RString, args_json: RString) {
+    on_sidebar_callback(callback_name.as_str(), args_json.as_str());
+}
+
+extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
+    if let Err(err) = sync_active_file() {
+        log_message(HostLogLevelFFI::Error, err);
+    }
+
+    let state = plugin_state().lock().unwrap();
+    let rows = sidebar_rows(&state);
+    let empty_state = if state.active_file_path.is_none() {
+        "Open a slide to view its annotation sets.".to_string()
+    } else if rows.is_empty() {
+        "No annotation sets for this slide yet.".to_string()
+    } else {
+        String::new()
+    };
+
+    RVec::from(vec![
+        UiPropertyFFI {
+            name: "source-options".into(),
+            json_value: "[\"Local\"]".into(),
+        },
+        UiPropertyFFI {
+            name: "source-index".into(),
+            json_value: "0".into(),
+        },
+        UiPropertyFFI {
+            name: "tree-items".into(),
+            json_value: serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()).into(),
+        },
+        UiPropertyFFI {
+            name: "empty-state-text".into(),
+            json_value: serde_json::to_string(&empty_state)
+                .unwrap_or_else(|_| "\"\"".to_string())
+                .into(),
+        },
+        UiPropertyFFI {
+            name: "can-export".into(),
+            json_value: (state.active_file_path.is_some()).to_string().into(),
+        },
+    ])
+}
+
+extern "C" fn get_viewport_context_menu_items_ffi(
+    viewport: ViewportSnapshotFFI,
+) -> RVec<ViewportContextMenuItemFFI> {
+    if viewport.file_id < 0 || viewport.file_path.is_empty() {
+        return RVec::new();
+    }
+
+    RVec::from(vec![ViewportContextMenuItemFFI {
+        item_id: VIEWPORT_MENU_CREATE_POINT.into(),
+        label: "Create Point".into(),
+        icon: "point".into(),
+        enabled: true,
+    }])
+}
+
+extern "C" fn on_viewport_context_menu_action_ffi(
+    item_id: RString,
+    _viewport: ViewportSnapshotFFI,
+) -> ActionResponseFFI {
+    if item_id.as_str() == VIEWPORT_MENU_CREATE_POINT
+        && let Err(err) = start_point_annotation_flow()
+    {
+        log_message(HostLogLevelFFI::Error, err);
+    }
+
+    ActionResponseFFI { open_window: false }
+}
+
+extern "C" fn get_viewport_overlay_points_ffi(
+    viewport: ViewportSnapshotFFI,
+) -> RVec<ViewportOverlayPointFFI> {
+    if viewport.file_id < 0 || viewport.file_path.is_empty() {
+        return RVec::new();
+    }
+    if let Err(err) = ensure_loaded_for_viewport(&viewport) {
+        log_message(HostLogLevelFFI::Error, err);
+        return RVec::new();
+    }
+
+    let state = plugin_state().lock().unwrap();
+    let Some(loaded) = state.files.get(viewport.file_path.as_str()) else {
+        return RVec::new();
+    };
+
+    let points = loaded
+        .annotation_sets
+        .iter()
+        .flat_map(|set| set.annotations.iter())
+        .filter_map(|annotation| match annotation {
+            Annotation::Point(point) => Some(ViewportOverlayPointFFI {
+                annotation_id: point.id.clone().into(),
+                x_level0: point.x_level0,
+                y_level0: point.y_level0,
+                diameter_px: 10.0,
+            }),
+        })
+        .collect::<Vec<_>>();
+    RVec::from(points)
+}
+
+extern "C" fn on_point_annotation_placed_ffi(
+    viewport: ViewportSnapshotFFI,
+    x_level0: f64,
+    y_level0: f64,
+) {
+    match persist_point_annotation(&viewport, x_level0, y_level0) {
+        Ok(()) => {
+            if let Some(host_api) = host_api() {
+                let _ = (host_api.refresh_sidebar)(host_api.context).into_result();
+                let _ = (host_api.request_render)(host_api.context).into_result();
+            }
+        }
+        Err(err) => log_message(HostLogLevelFFI::Error, err),
+    }
+}
 
 extern "C" fn get_viewport_filters_ffi() -> RVec<ViewportFilterFFI> {
     RVec::new()
@@ -93,6 +946,11 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_action: on_action_ffi,
         on_hud_action: on_hud_action_ffi,
         on_ui_callback: on_ui_callback_ffi,
+        get_sidebar_properties: get_sidebar_properties_ffi,
+        get_viewport_context_menu_items: get_viewport_context_menu_items_ffi,
+        on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
+        get_viewport_overlay_points: get_viewport_overlay_points_ffi,
+        on_point_annotation_placed: on_point_annotation_placed_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

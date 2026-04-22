@@ -20,6 +20,7 @@ pub fn update_tool_state(ui: &crate::AppWindow, state: &AppState) {
         Tool::Navigate => ToolType::Navigate,
         Tool::RegionOfInterest => ToolType::RegionOfInterest,
         Tool::MeasureDistance => ToolType::MeasureDistance,
+        Tool::PointAnnotation => ToolType::PointAnnotation,
     };
     ui.set_current_tool(tool_type);
 }
@@ -220,6 +221,10 @@ pub fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64
                 state.candidate_point = Some(point);
             }
         }
+        Tool::PointAnnotation => {
+            state.tool_state = ToolInteractionState::Idle;
+            state.candidate_point = None;
+        }
     }
 }
 
@@ -315,6 +320,10 @@ pub fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) 
                     state.tool_state = ToolInteractionState::FirstPointPlaced(start);
                     // Keep candidate_point so the preview line follows the mouse
                 }
+            }
+            Tool::PointAnnotation => {
+                state.tool_state = ToolInteractionState::Idle;
+                state.candidate_point = None;
             }
         }
     } else {

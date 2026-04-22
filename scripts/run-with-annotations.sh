@@ -7,6 +7,8 @@ PLUGINS_DIR="$REPO_ROOT/example_plugins"
 
 echo "Building eov and all example plugins..."
 
+cargo build -p app
+
 PLUGINS=(annotations) # only build these plugins
 
 for plugin_name in $PLUGINS; do    

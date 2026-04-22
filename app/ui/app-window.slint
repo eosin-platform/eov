@@ -501,29 +501,7 @@ export component AppWindow inherits Window {
                         root.viewport-end-pan();
                     }
                     viewport-context-menu(pane, x, y) => {
-                        root.context-menu-tab-id = -1;
-                        root.drag-source-pane = pane;
-                        root.context-menu-x = x;
-                        root.context-menu-y = y;
-                        root.context-menu-items = [
-                            {
-                                id: "viewport-copy-image",
-                                label: "Copy Image",
-                                icon: "copy",
-                                shortcut: "",
-                                enabled: true,
-                                separator-after: false
-                            },
-                            {
-                                id: "viewport-export-image",
-                                label: "Export Image",
-                                icon: "export",
-                                shortcut: "",
-                                enabled: true,
-                                separator-after: false
-                            },
-                        ];
-                        root.context-menu-visible = true;
+                        root.viewport-context-menu(pane, x, y);
                     }
                     minimap-navigate(nx, ny) => {
                         root.minimap-navigate(nx, ny);
