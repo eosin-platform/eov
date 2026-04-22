@@ -166,6 +166,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <string> selected-set-name: "";
     in-out property <string> editing-set-id: "";
     property <length> tree-scroll-y: 0px;
+    property <string> rename-draft-text: "";
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -219,6 +220,13 @@ export component AnnotationsSidebar inherits Rectangle {
         }
     }
 
+    function confirm-active-rename() {
+        if root.editing-set-id != "" {
+            root.rename-set-committed(root.editing-set-id, root.rename-draft-text);
+            root.editing-set-id = "";
+        }
+    }
+
     VerticalLayout {
         width: parent.width;
         height: parent.height;
@@ -251,6 +259,7 @@ export component AnnotationsSidebar inherits Rectangle {
                 icon-source: @image-url("icons/new_annotation_set.svg");
                 tooltip-text: "New Annotation Set";
                 clicked => {
+                    root.confirm-active-rename();
                     root.create-set-clicked();
                 }
             }
@@ -260,6 +269,7 @@ export component AnnotationsSidebar inherits Rectangle {
                 tooltip-text: "Export Annotations";
                 enabled: root.can-export;
                 clicked => {
+                    root.confirm-active-rename();
                     root.export-clicked();
                 }
             }
@@ -310,6 +320,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                         row-touch := TouchArea {
                             clicked => {
+                                root.confirm-active-rename();
                                 if row.is-set {
                                     root.selected-set-id = row.row-id;
                                 } else {
@@ -320,6 +331,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                                    root.confirm-active-rename();
                                     root.context-target-id = row.row-id;
                                     root.context-target-name = row.label;
                                     root.context-target-is-set = row.is-set;
@@ -360,6 +372,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                 width: 12px;
                                 height: parent.height;
                                 background: transparent;
+                                opacity: row.visible ? 1.0 : 0.65;
 
                                 Rectangle {
                                     x: 3px;
@@ -386,6 +399,9 @@ export component AnnotationsSidebar inherits Rectangle {
                                     width: parent.width - 10px;
                                     height: parent.height - 4px;
                                     text: row.label;
+                                    changed text => {
+                                        root.rename-draft-text = self.text;
+                                    }
                                     font-size: 12px;
                                     color: Theme.text-primary;
                                     selection-background-color: Theme.accent;
@@ -393,8 +409,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     text-cursor-width: 1px;
                                     vertical-alignment: center;
                                     accepted => {
-                                        root.rename-set-committed(row.row-id, self.text);
-                                        root.editing-set-id = "";
+                                        root.confirm-active-rename();
                                     }
                                     key-pressed(e) => {
                                         if e.text == Key.Escape {
@@ -406,8 +421,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     }
                                     changed has-focus => {
                                         if !self.has-focus && root.editing-set-id == row.row-id {
-                                            root.editing-set-id = "";
-                                            root.rename-set-committed(row.row-id, self.text);
+                                            root.confirm-active-rename();
                                         }
                                     }
                                 }
@@ -417,6 +431,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     running: true;
                                     triggered => {
                                         self.running = false;
+                                        root.rename-draft-text = row.label;
                                         rename-input.focus();
                                         rename-input.select-all();
                                     }
@@ -437,17 +452,21 @@ export component AnnotationsSidebar inherits Rectangle {
                                         width: parent.width;
                                         height: parent.height;
                                         clicked => {
+                                            root.confirm-active-rename();
                                             root.selected-set-id = row.row-id;
                                             root.row-clicked(row.row-id);
                                         }
 
                                         double-clicked => {
+                                            root.confirm-active-rename();
                                             root.selected-set-id = row.row-id;
+                                            root.rename-draft-text = row.label;
                                             root.editing-set-id = row.row-id;
                                         }
 
                                         pointer-event(e) => {
                                             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                                                root.confirm-active-rename();
                                                 root.context-target-id = row.row-id;
                                                 root.context-target-name = row.label;
                                                 root.context-target-is-set = true;
@@ -492,7 +511,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     width: parent.width;
                                     height: parent.height;
                                     text: row.label;
-                                    color: rgb(row.color-r, row.color-g, row.color-b);
+                                    color: row.visible ? rgb(row.color-r, row.color-g, row.color-b) : rgba(row.color-r, row.color-g, row.color-b, 0.65);
                                     font-size: 11px;
                                     font-weight: 400;
                                     vertical-alignment: center;
@@ -511,6 +530,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     icon-source: row.visible ? @image-url("icons/visible-true.svg") : @image-url("icons/visible-false.svg");
                                     tooltip-text: row.visible ? "Hide Annotation Set" : "Show Annotation Set";
                                     clicked => {
+                                        root.confirm-active-rename();
                                         root.toggle-set-visibility(row.row-id, !row.visible);
                                     }
                                 }
@@ -532,6 +552,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     y: (parent.height - self.height) / 2;
                                     swatch-color: rgb(row.color-r, row.color-g, row.color-b);
                                     clicked => {
+                                        root.confirm-active-rename();
                                         root.color-target-id = row.row-id;
                                         root.color-menu-x = self.absolute-position.x - root.absolute-position.x - 4px;
                                         root.color-menu-y = self.absolute-position.y - root.absolute-position.y + self.height + 8px;
@@ -632,6 +653,7 @@ export component AnnotationsSidebar inherits Rectangle {
             width: parent.width;
             height: parent.height;
             clicked => {
+                root.confirm-active-rename();
                 root.context-menu-visible = false;
             }
         }
@@ -694,6 +716,7 @@ export component AnnotationsSidebar inherits Rectangle {
             width: parent.width;
             height: parent.height;
             clicked => {
+                root.confirm-active-rename();
                 root.color-menu-visible = false;
             }
         }
