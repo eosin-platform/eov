@@ -270,12 +270,12 @@ name = "annotations"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
+ "common",
  "dirs",
  "plugin_api",
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "uuid",
 ]
 
@@ -1246,6 +1246,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

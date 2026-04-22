@@ -21,6 +21,31 @@ use super::grid::generate_patch_coords;
 use super::metadata::{self, TileRecord};
 use super::output;
 
+fn slide_file_ids(slide_path: &std::path::Path) -> crate::Result<(String, String)> {
+    let fingerprint = crate::file_id::compute_fingerprint(slide_path).map_err(|err| {
+        crate::Error::Io(std::io::Error::new(
+            err.kind(),
+            format!(
+                "failed to compute slide fingerprint for {}: {err}",
+                slide_path.display()
+            ),
+        ))
+    })?;
+    let file_sha256 = crate::file_id::cached_sha256(slide_path).map_err(|err| {
+        crate::Error::Io(std::io::Error::new(
+            err.kind(),
+            format!(
+                "failed to compute slide SHA-256 for {}: {err}",
+                slide_path.display()
+            ),
+        ))
+    })?;
+    Ok((
+        crate::file_id::hex_digest(&fingerprint),
+        crate::file_id::hex_digest(&file_sha256),
+    ))
+}
+
 /// Reason a slide was skipped during processing.
 #[derive(Debug, Clone)]
 pub enum SlideSkipReason {
@@ -183,6 +208,8 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
             continue;
         }
 
+        let (fingerprint, file_sha256) = slide_file_ids(slide_path)?;
+
         // Create per-slide output directory.
         let tiles_dir = output::slide_tiles_dir(&config.output_dir, &stem);
         std::fs::create_dir_all(&tiles_dir).map_err(|e| {
@@ -269,6 +296,8 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
 
                 tile_records.lock().unwrap().push(TileRecord {
                     slide_path: slide_path.display().to_string(),
+                    fingerprint: fingerprint.clone(),
+                    file_sha256: file_sha256.clone(),
                     slide_stem: stem.clone(),
                     tile_path: rel_path,
                     x: coord.x,
@@ -463,6 +492,8 @@ pub fn run_dataset_patches_with_progress(
             continue;
         }
 
+        let (fingerprint, file_sha256) = slide_file_ids(slide_path)?;
+
         progress_total_tiles_expected.fetch_add(coords.len() as u64, Ordering::Relaxed);
 
         let tiles_dir = output::slide_tiles_dir(&config.output_dir, &stem);
@@ -538,6 +569,8 @@ pub fn run_dataset_patches_with_progress(
 
                 tile_records.lock().unwrap().push(TileRecord {
                     slide_path: slide_path.display().to_string(),
+                    fingerprint: fingerprint.clone(),
+                    file_sha256: file_sha256.clone(),
                     slide_stem: stem.clone(),
                     tile_path: rel_path,
                     x: coord.x,

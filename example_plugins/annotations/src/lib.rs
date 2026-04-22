@@ -1,4 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
+use common::file_id::{compute_fingerprint, hex_digest};
 use plugin_api::ffi::{
     ActionResponseFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, HudToolbarButtonFFI, OpenFileInfoFFI, PluginVTable,
@@ -7,10 +8,8 @@ use plugin_api::ffi::{
 };
 use rusqlite::{Connection, params};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File};
-use std::io::{BufReader, Read};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,7 +32,6 @@ static PLUGIN_STATE: OnceLock<Mutex<PluginState>> = OnceLock::new();
 #[derive(Default)]
 struct PluginState {
     files: HashMap<String, LoadedFileAnnotations>,
-    sha_cache: HashMap<String, [u8; 32]>,
     active_file_path: Option<String>,
     active_filename: Option<String>,
     selected_set_by_file: HashMap<String, String>,
@@ -44,7 +42,7 @@ struct PluginState {
 struct LoadedFileAnnotations {
     file_path: String,
     filename: String,
-    file_sha256: [u8; 32],
+    fingerprint: [u8; 32],
     annotation_sets: Vec<AnnotationSet>,
 }
 
@@ -86,7 +84,7 @@ struct SidebarTreeRow {
 #[derive(Serialize)]
 struct ExportFile {
     file_path: String,
-    file_sha256_hex: String,
+    fingerprint_hex: String,
     annotation_sets: Vec<ExportAnnotationSet>,
 }
 
@@ -167,7 +165,7 @@ fn open_database() -> Result<Connection, String> {
 
             CREATE TABLE IF NOT EXISTS annotation_sets (
                 id TEXT PRIMARY KEY,
-                file_sha256 BLOB NOT NULL CHECK(length(file_sha256) = 32),
+                fingerprint BLOB NOT NULL CHECK(length(fingerprint) = 32),
                 name TEXT NOT NULL CHECK(length(name) <= 255),
                 notes TEXT,
                 created_at INTEGER NOT NULL,
@@ -244,44 +242,27 @@ fn open_database() -> Result<Connection, String> {
     Ok(connection)
 }
 
-fn sha256_for_file(path: &Path, state: &mut PluginState) -> Result<[u8; 32], String> {
-    let path_key = path.to_string_lossy().into_owned();
-    if let Some(bytes) = state.sha_cache.get(&path_key) {
-        return Ok(*bytes);
-    }
-
-    let file = File::open(path)
-        .map_err(|err| format!("failed to open WSI file '{}' for hashing: {err}", path.display()))?;
-    let mut reader = BufReader::new(file);
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|err| format!("failed while hashing WSI file '{}': {err}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-
-    let digest: [u8; 32] = hasher.finalize().into();
-    state.sha_cache.insert(path_key, digest);
-    Ok(digest)
+fn fingerprint_for_file(path: &Path) -> Result<[u8; 32], String> {
+    compute_fingerprint(path).map_err(|err| {
+        format!(
+            "failed to compute WSI fingerprint for '{}': {err}",
+            path.display()
+        )
+    })
 }
 
 fn load_annotation_sets(
     connection: &Connection,
-    file_sha256: &[u8; 32],
+    fingerprint: &[u8; 32],
 ) -> Result<Vec<AnnotationSet>, String> {
     let mut sets_stmt = connection
         .prepare(
-            "SELECT id, name, notes, created_at, updated_at FROM annotation_sets WHERE file_sha256 = ?1 ORDER BY lower(name) DESC, created_at DESC",
+            "SELECT id, name, notes, created_at, updated_at FROM annotation_sets WHERE fingerprint = ?1 ORDER BY lower(name) DESC, created_at DESC",
         )
         .map_err(|err| format!("failed to prepare annotation set query: {err}"))?;
 
     let set_rows = sets_stmt
-        .query_map(params![file_sha256.as_slice()], |row| {
+        .query_map(params![fingerprint.as_slice()], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -350,15 +331,15 @@ fn ensure_loaded_for_file(
     }
 
     let path = Path::new(file_path);
-    let file_sha256 = sha256_for_file(path, state)?;
+    let fingerprint = fingerprint_for_file(path)?;
     let connection = open_database()?;
-    let annotation_sets = load_annotation_sets(&connection, &file_sha256)?;
+    let annotation_sets = load_annotation_sets(&connection, &fingerprint)?;
     state.files.insert(
         file_path.to_string(),
         LoadedFileAnnotations {
             file_path: file_path.to_string(),
             filename: filename.to_string(),
-            file_sha256,
+            fingerprint,
             annotation_sets,
         },
     );
@@ -490,8 +471,8 @@ fn ensure_selected_set_for_active_file(state: &mut PluginState) -> Result<Option
     let timestamp = now_unix_secs();
     connection
         .execute(
-            "INSERT INTO annotation_sets (id, file_sha256, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
-            params![&id, loaded.file_sha256.as_slice(), "Untitled", timestamp, timestamp],
+            "INSERT INTO annotation_sets (id, fingerprint, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
+            params![&id, loaded.fingerprint.as_slice(), "Untitled", timestamp, timestamp],
         )
         .map_err(|err| format!("failed to create untitled annotation set: {err}"))?;
 
@@ -530,8 +511,8 @@ fn create_annotation_set_for_active_file() -> Result<(), String> {
     let connection = open_database()?;
     connection
         .execute(
-            "INSERT INTO annotation_sets (id, file_sha256, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
-            params![&id, loaded.file_sha256.as_slice(), &name, timestamp, timestamp],
+            "INSERT INTO annotation_sets (id, fingerprint, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
+            params![&id, loaded.fingerprint.as_slice(), &name, timestamp, timestamp],
         )
         .map_err(|err| format!("failed to create annotation set '{name}': {err}"))?;
 
@@ -787,7 +768,7 @@ fn export_active_file_annotations() -> Result<(), String> {
             .ok_or_else(|| format!("active file '{}' is not loaded", active_path))?;
         ExportFile {
             file_path: loaded.file_path.clone(),
-            file_sha256_hex: hex_string(&loaded.file_sha256),
+            fingerprint_hex: hex_digest(&loaded.fingerprint),
             annotation_sets: loaded
                 .annotation_sets
                 .iter()
@@ -854,10 +835,6 @@ fn export_active_file_annotations() -> Result<(), String> {
     fs::write(&save_path, json)
         .map_err(|err| format!("failed to write annotation export '{}': {err}", save_path))?;
     Ok(())
-}
-
-fn hex_string(bytes: &[u8; 32]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {

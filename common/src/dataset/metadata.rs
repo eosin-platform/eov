@@ -9,6 +9,10 @@ use std::path::Path;
 pub struct TileRecord {
     /// Original input path for the slide (as given on the CLI or discovered).
     pub slide_path: String,
+    /// Fast sampled slide fingerprint used for indexing/debugging.
+    pub fingerprint: String,
+    /// Full SHA-256 of the slide file, computed during export.
+    pub file_sha256: String,
     /// Stem of the slide filename (no extension).
     pub slide_stem: String,
     /// Relative path to the written tile image (relative to the dataset root).
@@ -63,6 +67,8 @@ mod tests {
     fn sample_record() -> TileRecord {
         TileRecord {
             slide_path: "slides/test.svs".into(),
+            fingerprint: "fingerprint".into(),
+            file_sha256: "sha256".into(),
             slide_stem: "test".into(),
             tile_path: "slides/test/test_x000000_y000000_s512.png".into(),
             x: 0,
