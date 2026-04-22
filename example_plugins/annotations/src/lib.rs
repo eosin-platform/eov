@@ -53,6 +53,7 @@ struct PluginState {
     active_file_path: Option<String>,
     active_filename: Option<String>,
     selected_set_by_file: HashMap<String, String>,
+    editing_set_by_file: HashMap<String, String>,
     collapsed_sets_by_file: HashMap<String, HashSet<String>>,
     hidden_sets_by_file: HashMap<String, HashSet<String>>,
 }
@@ -95,6 +96,7 @@ struct SidebarTreeRow {
     row_id: String,
     parent_set_id: String,
     label: String,
+    annotation_count: i32,
     indent: i32,
     is_set: bool,
     is_collapsed: bool,
@@ -613,7 +615,8 @@ fn create_annotation_set_for_active_file() -> Result<(), String> {
         annotations: Vec::new(),
     });
     sort_annotation_sets(&mut loaded_entry.annotation_sets);
-    state.selected_set_by_file.insert(active_file_path, id);
+    state.selected_set_by_file.insert(active_file_path.clone(), id.clone());
+    state.editing_set_by_file.insert(active_file_path, id);
     Ok(())
 }
 
@@ -640,6 +643,7 @@ fn set_annotation_set_color_for_active_file(set_id: &str, color_hex: &str) -> Re
     let Some(active_file_path) = state.active_file_path.clone() else {
         return Ok(());
     };
+    state.editing_set_by_file.remove(&active_file_path);
 
     let timestamp = now_unix_secs();
     let connection = open_database()?;
@@ -731,6 +735,11 @@ fn delete_annotation_set_for_active_file(set_id: &str) -> Result<(), String> {
     }
     if let Some(hidden) = state.hidden_sets_by_file.get_mut(&active_file_path) {
         hidden.remove(set_id);
+    }
+    if let Some(editing) = state.editing_set_by_file.get(&active_file_path)
+        && editing == set_id
+    {
+        state.editing_set_by_file.remove(&active_file_path);
     }
     match next_selected {
         Some(next_id) => {
@@ -995,6 +1004,7 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
             row_id: set.id.clone(),
             parent_set_id: set.id.clone(),
             label: set.name.clone(),
+            annotation_count: set.annotations.len() as i32,
             indent: 0,
             is_set: true,
             is_collapsed,
@@ -1014,6 +1024,7 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
                     row_id: annotation_id,
                     parent_set_id: set.id.clone(),
                     label: annotation_label(annotation),
+                    annotation_count: 0,
                     indent: 1,
                     is_set: false,
                     is_collapsed: false,
@@ -1320,6 +1331,11 @@ extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
 
     let state = plugin_state().lock().unwrap();
     let rows = sidebar_rows(&state);
+    let editing_set_id = state
+        .active_file_path
+        .as_deref()
+        .and_then(|path| state.editing_set_by_file.get(path).cloned())
+        .unwrap_or_default();
     let empty_state = if state.active_file_path.is_none() {
         "Open a slide to view its annotation sets.".to_string()
     } else if rows.is_empty() {
@@ -1372,6 +1388,12 @@ extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
             )
             .unwrap_or_else(|_| "\"\"".to_string())
             .into(),
+        },
+        UiPropertyFFI {
+            name: "editing-set-id".into(),
+            json_value: serde_json::to_string(&editing_set_id)
+                .unwrap_or_else(|_| "\"\"".to_string())
+                .into(),
         },
         UiPropertyFFI {
             name: "selected-set-name".into(),
@@ -1458,7 +1480,7 @@ extern "C" fn get_viewport_overlay_points_ffi(
                     annotation_id: point.id.clone().into(),
                     x_level0: point.x_level0,
                     y_level0: point.y_level0,
-                    diameter_px: 10.0,
+                    diameter_px: 12.0,
                     ring_red,
                     ring_green,
                     ring_blue,

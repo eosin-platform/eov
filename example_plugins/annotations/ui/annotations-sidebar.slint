@@ -5,6 +5,7 @@ export struct AnnotationTreeRow {
     row-id: string,
     parent-set-id: string,
     label: string,
+    annotation-count: int,
     indent: int,
     is-set: bool,
     is-collapsed: bool,
@@ -163,10 +164,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <bool> can-delete-set: false;
     in property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
-    property <string> editing-set-id: "";
-    property <bool> pending-create-rename: false;
-    property <string> create-rename-previous-set-id: "";
-    property <int> create-rename-attempts: 0;
+    in-out property <string> editing-set-id: "";
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -220,36 +218,6 @@ export component AnnotationsSidebar inherits Rectangle {
         }
     }
 
-    create-rename-dispatch := Timer {
-        interval: 16ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            if !root.pending-create-rename {
-                return;
-            }
-
-            if root.selected-set-id != "" && root.selected-set-id != root.create-rename-previous-set-id {
-                root.pending-create-rename = false;
-                root.create-rename-attempts = 0;
-                root.editing-set-id = root.selected-set-id;
-                return;
-            }
-
-            if root.create-rename-attempts >= 20 {
-                if root.selected-set-id != "" && root.create-rename-previous-set-id == "" {
-                    root.editing-set-id = root.selected-set-id;
-                }
-                root.pending-create-rename = false;
-                root.create-rename-attempts = 0;
-                return;
-            }
-
-            root.create-rename-attempts += 1;
-            self.start();
-        }
-    }
-
     VerticalLayout {
         width: parent.width;
         height: parent.height;
@@ -282,11 +250,7 @@ export component AnnotationsSidebar inherits Rectangle {
                 icon-source: @image-url("icons/new_annotation_set.svg");
                 tooltip-text: "New Annotation Set";
                 clicked => {
-                    root.create-rename-previous-set-id = root.selected-set-id;
-                    root.create-rename-attempts = 0;
-                    root.pending-create-rename = true;
                     root.create-set-clicked();
-                    create-rename-dispatch.start();
                 }
             }
 
@@ -298,12 +262,6 @@ export component AnnotationsSidebar inherits Rectangle {
                     root.export-clicked();
                 }
             }
-        }
-
-        Rectangle {
-            width: 100%;
-            height: 1px;
-            background: Theme.border;
         }
 
         Rectangle {
@@ -349,6 +307,12 @@ export component AnnotationsSidebar inherits Rectangle {
                                 root.row-clicked(row.row-id);
                             }
 
+                            double-clicked => {
+                                if row.is-set {
+                                    root.editing-set-id = row.row-id;
+                                }
+                            }
+
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                                     root.context-target-id = row.row-id;
@@ -363,8 +327,8 @@ export component AnnotationsSidebar inherits Rectangle {
 
                         HorizontalLayout {
                             padding-left: (8 + row.indent * 18) * 1px;
-                            padding-right: 8px;
-                            spacing: 4px;
+                            padding-right: 6px;
+                            spacing: 1px;
 
                             if row.is-set: Rectangle {
                                 width: 12px;
@@ -454,19 +418,59 @@ export component AnnotationsSidebar inherits Rectangle {
                                 }
                             }
 
-                            if !(root.editing-set-id == row.row-id && row.is-set): Text {
+                            if !(root.editing-set-id == row.row-id && row.is-set): Rectangle {
                                 horizontal-stretch: 1;
                                 vertical-stretch: 1;
-                                text: row.label;
-                                color: row.is-set ? (row.visible ? Theme.text-primary : Theme.text-secondary) : rgb(row.color-r, row.color-g, row.color-b);
-                                font-size: row.is-set ? 12px : 11px;
-                                font-weight: row.is-set ? 600 : 400;
-                                vertical-alignment: center;
-                                overflow: elide;
+                                background: transparent;
+
+                                if row.is-set: Rectangle {
+                                    width: min(parent.width, set-label.preferred-width + 4px + set-count.preferred-width);
+                                    height: parent.height;
+                                    background: transparent;
+
+                                    set-label := Text {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: max(0px, parent.width - 4px - set-count.preferred-width);
+                                        height: parent.height;
+                                        text: row.label;
+                                        color: row.visible ? Theme.text-primary : Theme.text-secondary;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    set-count := Text {
+                                        x: set-label.x + min(set-label.width, set-label.preferred-width) + 4px;
+                                        y: 0px;
+                                        width: parent.width - self.x;
+                                        height: parent.height;
+                                        text: "(" + row.annotation-count + ")";
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                        font-weight: 500;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: left;
+                                    }
+                                }
+
+                                if !row.is-set: Text {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    text: row.label;
+                                    color: rgb(row.color-r, row.color-g, row.color-b);
+                                    font-size: 11px;
+                                    font-weight: 400;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
                             }
 
                             if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
-                                width: 22px;
+                                width: 18px;
                                 height: parent.height;
                                 background: transparent;
 
@@ -482,12 +486,12 @@ export component AnnotationsSidebar inherits Rectangle {
                             }
 
                             if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
-                                width: 22px;
+                                width: 18px;
                                 height: parent.height;
                                 background: transparent;
 
                                 ColorSwatchButton {
-                                    x: (parent.width - self.width) / 2;
+                                    x: 0px;
                                     y: (parent.height - self.height) / 2;
                                     swatch-color: rgb(row.color-r, row.color-g, row.color-b);
                                     clicked => {
@@ -564,7 +568,7 @@ export component AnnotationsSidebar inherits Rectangle {
                     width: 3px;
                     height: parent.height;
                     border-radius: self.width / 2;
-                    background: scrollbar-touch.has-hover ? #ffffff10 : #ffffff06;
+                    background: scrollbar-touch.has-hover ? #1e252d : #191f26;
                 }
 
                 scrollbar-thumb := Rectangle {
