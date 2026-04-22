@@ -63,6 +63,9 @@ pub struct ViewportOverlayPointFFI {
     pub x_level0: f64,
     pub y_level0: f64,
     pub diameter_px: f32,
+    pub ring_red: u8,
+    pub ring_green: u8,
+    pub ring_blue: u8,
 }
 
 #[repr(C)]

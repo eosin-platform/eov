@@ -286,7 +286,7 @@ pub(crate) fn viewport_overlay_points_for_pane(
             {
                 Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
             } else {
-                Color::from_rgb_u8(0xF2, 0xF4, 0xF8)
+                Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
             };
             crate::PluginOverlayPoint {
                 plugin_id: plugin_id.into(),

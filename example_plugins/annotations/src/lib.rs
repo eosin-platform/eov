@@ -25,6 +25,20 @@ const VIEWPORT_MENU_CREATE_POINT: &str = "create_point";
 
 const SIDEBAR_ICON_SVG: &str = include_str!("../../../app/ui/icons/annotations.svg");
 const POINT_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>"#;
+const SET_COLOR_PALETTE: [&str; 12] = [
+    "#E85D75",
+    "#F08A5D",
+    "#F2C14E",
+    "#6BCB77",
+    "#2EC4B6",
+    "#4D96FF",
+    "#6C63FF",
+    "#9D4EDD",
+    "#F15BB5",
+    "#00BBF9",
+    "#43AA8B",
+    "#577590",
+];
 
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);
 static PLUGIN_STATE: OnceLock<Mutex<PluginState>> = OnceLock::new();
@@ -36,6 +50,7 @@ struct PluginState {
     active_filename: Option<String>,
     selected_set_by_file: HashMap<String, String>,
     collapsed_sets_by_file: HashMap<String, HashSet<String>>,
+    hidden_sets_by_file: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Clone)]
@@ -51,6 +66,7 @@ struct AnnotationSet {
     id: String,
     name: String,
     notes: Option<String>,
+    color_hex: String,
     created_at: i64,
     updated_at: i64,
     annotations: Vec<Annotation>,
@@ -79,6 +95,10 @@ struct SidebarTreeRow {
     is_set: bool,
     is_collapsed: bool,
     is_selected: bool,
+    visible: bool,
+    color_r: i32,
+    color_g: i32,
+    color_b: i32,
 }
 
 #[derive(Serialize)]
@@ -93,6 +113,7 @@ struct ExportAnnotationSet {
     id: String,
     name: String,
     notes: Option<String>,
+    color_hex: String,
     created_at: i64,
     updated_at: i64,
     annotations: Vec<ExportAnnotation>,
@@ -154,6 +175,58 @@ fn annotations_db_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("annotations.db"))
 }
 
+fn hex_color_to_rgb(color_hex: &str) -> (u8, u8, u8) {
+    let hex = color_hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return (0xF2, 0xF4, 0xF8);
+    }
+    let red = u8::from_str_radix(&hex[0..2], 16).ok();
+    let green = u8::from_str_radix(&hex[2..4], 16).ok();
+    let blue = u8::from_str_radix(&hex[4..6], 16).ok();
+    match (red, green, blue) {
+        (Some(red), Some(green), Some(blue)) => (red, green, blue),
+        _ => (0xF2, 0xF4, 0xF8),
+    }
+}
+
+fn palette_seed() -> usize {
+    let uuid = Uuid::new_v4();
+    let mut seed = 0usize;
+    for byte in uuid.as_bytes().iter().take(std::mem::size_of::<usize>()) {
+        seed = (seed << 8) | *byte as usize;
+    }
+    seed
+}
+
+fn choose_annotation_set_color(annotation_sets: &[AnnotationSet]) -> String {
+    let mut usage_counts: HashMap<&'static str, usize> =
+        SET_COLOR_PALETTE.iter().copied().map(|color| (color, 0)).collect();
+    let used_colors: HashSet<&str> = annotation_sets.iter().map(|set| set.color_hex.as_str()).collect();
+    for set in annotation_sets {
+        if let Some(count) = usage_counts.get_mut(set.color_hex.as_str()) {
+            *count += 1;
+        }
+    }
+
+    let unused_colors: Vec<&str> = SET_COLOR_PALETTE
+        .iter()
+        .copied()
+        .filter(|color| !used_colors.contains(color))
+        .collect();
+    let seed = palette_seed();
+    if !unused_colors.is_empty() {
+        return unused_colors[seed % unused_colors.len()].to_string();
+    }
+
+    let min_usage = usage_counts.values().copied().min().unwrap_or(0);
+    let least_used: Vec<&str> = SET_COLOR_PALETTE
+        .iter()
+        .copied()
+        .filter(|color| usage_counts.get(color).copied().unwrap_or(0) == min_usage)
+        .collect();
+    least_used[seed % least_used.len()].to_string()
+}
+
 fn open_database() -> Result<Connection, String> {
     let path = annotations_db_path()?;
     let connection = Connection::open(&path)
@@ -168,6 +241,7 @@ fn open_database() -> Result<Connection, String> {
                 fingerprint BLOB NOT NULL CHECK(length(fingerprint) = 32),
                 name TEXT NOT NULL CHECK(length(name) <= 255),
                 notes TEXT,
+                color TEXT NOT NULL CHECK(length(color) = 7),
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -257,7 +331,7 @@ fn load_annotation_sets(
 ) -> Result<Vec<AnnotationSet>, String> {
     let mut sets_stmt = connection
         .prepare(
-            "SELECT id, name, notes, created_at, updated_at FROM annotation_sets WHERE fingerprint = ?1 ORDER BY lower(name) DESC, created_at DESC",
+            "SELECT id, name, notes, color, created_at, updated_at FROM annotation_sets WHERE fingerprint = ?1 ORDER BY lower(name) DESC, created_at DESC",
         )
         .map_err(|err| format!("failed to prepare annotation set query: {err}"))?;
 
@@ -267,8 +341,9 @@ fn load_annotation_sets(
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
-                row.get::<_, i64>(3)?,
+                row.get::<_, String>(3)?,
                 row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
             ))
         })
         .map_err(|err| format!("failed to query annotation sets: {err}"))?;
@@ -287,7 +362,7 @@ fn load_annotation_sets(
 
     let mut sets = Vec::new();
     for set_row in set_rows {
-        let (id, name, notes, created_at, updated_at) =
+        let (id, name, notes, color_hex, created_at, updated_at) =
             set_row.map_err(|err| format!("failed to read annotation set row: {err}"))?;
         let annotation_rows = annotation_stmt
             .query_map(params![&id], |row| {
@@ -312,6 +387,7 @@ fn load_annotation_sets(
             id,
             name,
             notes,
+            color_hex,
             created_at,
             updated_at,
             annotations,
@@ -469,10 +545,11 @@ fn ensure_selected_set_for_active_file(state: &mut PluginState) -> Result<Option
     let connection = open_database()?;
     let id = Uuid::new_v4().to_string();
     let timestamp = now_unix_secs();
+    let color_hex = choose_annotation_set_color(&loaded.annotation_sets);
     connection
         .execute(
-            "INSERT INTO annotation_sets (id, fingerprint, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
-            params![&id, loaded.fingerprint.as_slice(), "Untitled", timestamp, timestamp],
+            "INSERT INTO annotation_sets (id, fingerprint, name, notes, color, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6)",
+            params![&id, loaded.fingerprint.as_slice(), "Untitled", &color_hex, timestamp, timestamp],
         )
         .map_err(|err| format!("failed to create untitled annotation set: {err}"))?;
 
@@ -483,6 +560,7 @@ fn ensure_selected_set_for_active_file(state: &mut PluginState) -> Result<Option
             id: id.clone(),
             name: "Untitled".to_string(),
             notes: None,
+            color_hex,
             created_at: timestamp,
             updated_at: timestamp,
             annotations: Vec::new(),
@@ -508,11 +586,12 @@ fn create_annotation_set_for_active_file() -> Result<(), String> {
     let name = unique_untitled_set_name(&loaded.annotation_sets);
     let id = Uuid::new_v4().to_string();
     let timestamp = now_unix_secs();
+    let color_hex = choose_annotation_set_color(&loaded.annotation_sets);
     let connection = open_database()?;
     connection
         .execute(
-            "INSERT INTO annotation_sets (id, fingerprint, name, notes, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5)",
-            params![&id, loaded.fingerprint.as_slice(), &name, timestamp, timestamp],
+            "INSERT INTO annotation_sets (id, fingerprint, name, notes, color, created_at, updated_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6)",
+            params![&id, loaded.fingerprint.as_slice(), &name, &color_hex, timestamp, timestamp],
         )
         .map_err(|err| format!("failed to create annotation set '{name}': {err}"))?;
 
@@ -524,6 +603,7 @@ fn create_annotation_set_for_active_file() -> Result<(), String> {
         id: id.clone(),
         name,
         notes: None,
+        color_hex,
         created_at: timestamp,
         updated_at: timestamp,
         annotations: Vec::new(),
@@ -531,6 +611,60 @@ fn create_annotation_set_for_active_file() -> Result<(), String> {
     sort_annotation_sets(&mut loaded_entry.annotation_sets);
     state.selected_set_by_file.insert(active_file_path, id);
     Ok(())
+}
+
+fn set_annotation_set_visibility_for_active_file(set_id: &str, visible: bool) -> Result<(), String> {
+    sync_active_file()?;
+
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(());
+    };
+    let hidden_sets = state.hidden_sets_by_file.entry(active_file_path).or_default();
+    if visible {
+        hidden_sets.remove(set_id);
+    } else {
+        hidden_sets.insert(set_id.to_string());
+    }
+    Ok(())
+}
+
+fn set_annotation_set_color_for_active_file(set_id: &str, color_hex: &str) -> Result<(), String> {
+    sync_active_file()?;
+
+    let mut state = plugin_state().lock().unwrap();
+    let Some(active_file_path) = state.active_file_path.clone() else {
+        return Ok(());
+    };
+
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "UPDATE annotation_sets SET color = ?2, updated_at = ?3 WHERE id = ?1",
+            params![set_id, color_hex, timestamp],
+        )
+        .map_err(|err| format!("failed to update annotation set color for '{set_id}': {err}"))?;
+
+    if let Some(loaded_entry) = state.files.get_mut(&active_file_path)
+        && let Some(set) = loaded_entry.annotation_sets.iter_mut().find(|set| set.id == set_id)
+    {
+        set.color_hex = color_hex.to_string();
+        set.updated_at = timestamp;
+    }
+
+    Ok(())
+}
+
+fn annotation_set_by_point_id<'a>(
+    annotation_sets: &'a [AnnotationSet],
+    annotation_id: &str,
+) -> Option<&'a AnnotationSet> {
+    annotation_sets.iter().find(|set| {
+        set.annotations.iter().any(|annotation| {
+            matches!(annotation, Annotation::Point(point) if point.id == annotation_id)
+        })
+    })
 }
 
 fn rename_annotation_set_for_active_file(set_id: &str, new_name: &str) -> Result<(), String> {
@@ -590,6 +724,9 @@ fn delete_annotation_set_for_active_file(set_id: &str) -> Result<(), String> {
 
     if let Some(collapsed) = state.collapsed_sets_by_file.get_mut(&active_file_path) {
         collapsed.remove(set_id);
+    }
+    if let Some(hidden) = state.hidden_sets_by_file.get_mut(&active_file_path) {
+        hidden.remove(set_id);
     }
     match next_selected {
         Some(next_id) => {
@@ -736,10 +873,6 @@ fn move_point_annotation(
 
 fn start_point_annotation_flow() -> Result<(), String> {
     sync_active_file()?;
-    {
-        let mut state = plugin_state().lock().unwrap();
-        let _ = ensure_selected_set_for_active_file(&mut state)?;
-    }
     let Some(host_api) = host_api() else {
         return Err("host API is not available".to_string());
     };
@@ -776,6 +909,7 @@ fn export_active_file_annotations() -> Result<(), String> {
                     id: set.id.clone(),
                     name: set.name.clone(),
                     notes: set.notes.clone(),
+                    color_hex: set.color_hex.clone(),
                     created_at: set.created_at,
                     updated_at: set.updated_at,
                     annotations: set
@@ -846,10 +980,13 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
     };
     let selected_set_id = state.selected_set_by_file.get(active_path);
     let collapsed_sets = state.collapsed_sets_by_file.get(active_path);
+    let hidden_sets = state.hidden_sets_by_file.get(active_path);
 
     let mut rows = Vec::new();
     for set in &loaded.annotation_sets {
         let is_collapsed = collapsed_sets.is_some_and(|collapsed| collapsed.contains(&set.id));
+        let is_visible = !hidden_sets.is_some_and(|hidden| hidden.contains(&set.id));
+        let (color_r, color_g, color_b) = hex_color_to_rgb(&set.color_hex);
         rows.push(SidebarTreeRow {
             row_id: set.id.clone(),
             parent_set_id: set.id.clone(),
@@ -858,6 +995,10 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
             is_set: true,
             is_collapsed,
             is_selected: selected_set_id.is_some_and(|selected| selected == &set.id),
+            visible: is_visible,
+            color_r: color_r as i32,
+            color_g: color_g as i32,
+            color_b: color_b as i32,
         });
 
         if !is_collapsed {
@@ -873,6 +1014,10 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
                     is_set: false,
                     is_collapsed: false,
                     is_selected: false,
+                    visible: is_visible,
+                    color_r: color_r as i32,
+                    color_g: color_g as i32,
+                    color_b: color_b as i32,
                 });
             }
         }
@@ -1006,6 +1151,30 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 }
                 refresh_sidebar_if_available();
                 Ok(())
+            })
+        }
+        "toggle-set-visibility" => {
+            let Some(serde_json::Value::String(set_id)) = args.first() else {
+                return;
+            };
+            let Some(serde_json::Value::Bool(visible)) = args.get(1) else {
+                return;
+            };
+            set_annotation_set_visibility_for_active_file(set_id, *visible).map(|_| {
+                refresh_sidebar_if_available();
+                request_render_if_available();
+            })
+        }
+        "set-set-color" => {
+            let Some(serde_json::Value::String(set_id)) = args.first() else {
+                return;
+            };
+            let Some(serde_json::Value::String(color_hex)) = args.get(1) else {
+                return;
+            };
+            set_annotation_set_color_for_active_file(set_id, color_hex).map(|_| {
+                refresh_sidebar_if_available();
+                request_render_if_available();
             })
         }
         _ => Ok(()),
@@ -1270,18 +1439,27 @@ extern "C" fn get_viewport_overlay_points_ffi(
     let Some(loaded) = state.files.get(viewport.file_path.as_str()) else {
         return RVec::new();
     };
+    let hidden_sets = state.hidden_sets_by_file.get(viewport.file_path.as_str());
 
     let points = loaded
         .annotation_sets
         .iter()
+        .filter(|set| !hidden_sets.is_some_and(|hidden| hidden.contains(&set.id)))
         .flat_map(|set| set.annotations.iter())
         .filter_map(|annotation| match annotation {
-            Annotation::Point(point) => Some(ViewportOverlayPointFFI {
-                annotation_id: point.id.clone().into(),
-                x_level0: point.x_level0,
-                y_level0: point.y_level0,
-                diameter_px: 10.0,
-            }),
+            Annotation::Point(point) => {
+                let set = annotation_set_by_point_id(&loaded.annotation_sets, &point.id)?;
+                let (ring_red, ring_green, ring_blue) = hex_color_to_rgb(&set.color_hex);
+                Some(ViewportOverlayPointFFI {
+                    annotation_id: point.id.clone().into(),
+                    x_level0: point.x_level0,
+                    y_level0: point.y_level0,
+                    diameter_px: 10.0,
+                    ring_red,
+                    ring_green,
+                    ring_blue,
+                })
+            }
         })
         .collect::<Vec<_>>();
     RVec::from(points)

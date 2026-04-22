@@ -9,6 +9,15 @@ export struct AnnotationTreeRow {
     is-set: bool,
     is-collapsed: bool,
     is-selected: bool,
+    visible: bool,
+    color-r: int,
+    color-g: int,
+    color-b: int,
+}
+
+struct ColorPaletteEntry {
+    hex: string,
+    swatch: color,
 }
 
 component ExportIconButton inherits Rectangle {
@@ -40,6 +49,56 @@ component ExportIconButton inherits Rectangle {
         source: root.icon-source;
         image-fit: contain;
         colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
+    }
+}
+
+component TreeIconButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <string> tooltip-text: "";
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: touch.has-hover ? #ffffff12 : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: Theme.text-secondary;
+    }
+}
+
+component ColorSwatchButton inherits Rectangle {
+    in property <color> swatch-color: white;
+    callback clicked();
+
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: #ffffff28;
+    background: root.swatch-color;
+
+    TouchArea {
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        x: -3px;
+        y: -3px;
+        clicked => {
+            root.clicked();
+        }
     }
 }
 
@@ -86,6 +145,8 @@ export component AnnotationsSidebar inherits Rectangle {
     callback rename-set-committed(string, string);
     callback row-clicked(string);
     callback toggle-set(string);
+    callback toggle-set-visibility(string, bool);
+    callback set-set-color(string, string);
 
     property <bool> context-menu-visible: false;
     property <length> context-menu-x: 0px;
@@ -97,6 +158,10 @@ export component AnnotationsSidebar inherits Rectangle {
     property <string> pending-context-id: "";
     property <string> pending-context-name: "";
     property <bool> pending-context-is-set: false;
+    property <bool> color-menu-visible: false;
+    property <length> color-menu-x: 0px;
+    property <length> color-menu-y: 0px;
+    property <string> color-target-id: "";
     property <string> active-tooltip:
         source-selector.has-focus ? "Source" : new-set-button.hovered ? new-set-button.tooltip-text : export-button.hovered ? export-button.tooltip-text : "";
     property <length> tooltip-center-x:
@@ -324,6 +389,7 @@ export component AnnotationsSidebar inherits Rectangle {
                             }
 
                             if !(root.editing-set-id == row.row-id && row.is-set): Text {
+                                horizontal-stretch: 1;
                                 vertical-stretch: 1;
                                 text: row.label;
                                 color: row.is-set ? Theme.text-primary : Theme.text-secondary;
@@ -331,6 +397,25 @@ export component AnnotationsSidebar inherits Rectangle {
                                 font-weight: row.is-set ? 600 : 400;
                                 vertical-alignment: center;
                                 overflow: elide;
+                            }
+
+                            if row.is-set && !(root.editing-set-id == row.row-id): TreeIconButton {
+                                icon-source: row.visible ? @image-url("icons/visible-true.svg") : @image-url("icons/visible-false.svg");
+                                tooltip-text: row.visible ? "Hide Annotation Set" : "Show Annotation Set";
+                                clicked => {
+                                    root.toggle-set-visibility(row.row-id, !row.visible);
+                                }
+                            }
+
+                            if row.is-set && !(root.editing-set-id == row.row-id): ColorSwatchButton {
+                                swatch-color: rgb(row.color-r, row.color-g, row.color-b);
+                                clicked => {
+                                    root.color-target-id = row.row-id;
+                                    root.color-menu-x = self.absolute-position.x - root.absolute-position.x - 4px;
+                                    root.color-menu-y = self.absolute-position.y - root.absolute-position.y + self.height + 8px;
+                                    root.color-menu-visible = true;
+                                    root.context-menu-visible = false;
+                                }
                             }
                         }
                     }
@@ -393,6 +478,83 @@ export component AnnotationsSidebar inherits Rectangle {
                         root.pending-context-is-set = root.context-target-is-set;
                         root.context-menu-visible = false;
                         action-dispatch.start();
+                    }
+                }
+            }
+        }
+    }
+
+    if root.color-menu-visible: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        background: transparent;
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+            clicked => {
+                root.color-menu-visible = false;
+            }
+        }
+
+        Rectangle {
+            x: min(root.color-menu-x, max(0px, root.width - self.width - 8px));
+            y: min(root.color-menu-y, max(0px, root.height - self.height - 8px));
+            width: 136px;
+            height: 100px;
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: #00000066;
+
+            VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 10px;
+                spacing: 8px;
+
+                Text {
+                    text: "Set Color";
+                    color: Theme.text-primary;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+
+                GridLayout {
+                    spacing: 8px;
+                    for swatch in [
+                        { hex: "#E85D75", swatch: #E85D75 },
+                        { hex: "#F08A5D", swatch: #F08A5D },
+                        { hex: "#F2C14E", swatch: #F2C14E },
+                        { hex: "#6BCB77", swatch: #6BCB77 },
+                        { hex: "#2EC4B6", swatch: #2EC4B6 },
+                        { hex: "#4D96FF", swatch: #4D96FF },
+                        { hex: "#6C63FF", swatch: #6C63FF },
+                        { hex: "#9D4EDD", swatch: #9D4EDD },
+                        { hex: "#F15BB5", swatch: #F15BB5 },
+                        { hex: "#00BBF9", swatch: #00BBF9 },
+                        { hex: "#43AA8B", swatch: #43AA8B },
+                        { hex: "#577590", swatch: #577590 }
+                    ]: Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 9px;
+                        border-width: 1px;
+                        border-color: #ffffff24;
+                        background: swatch.swatch;
+
+                        TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            clicked => {
+                                root.set-set-color(root.color-target-id, swatch.hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
                     }
                 }
             }
