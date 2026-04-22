@@ -42,6 +42,7 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
         tooltip: RString::from("Toggle Grayscale"),
         icon_svg: RString::from(SMILEY_SVG),
         action_id: RString::from(BUTTON_ID),
+        tool_mode: abi_stable::std_types::ROption::RNone,
     }])
 }
 

@@ -9,6 +9,7 @@ use plugin_api::ffi::{
     OpenFileInfoFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
     ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
+use plugin_api::HostToolMode;
 use slint::{
     ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
     VecModel,
@@ -157,6 +158,17 @@ pub(crate) fn set_local_hud_toolbar_button_active(
         }
         refresh_plugin_buttons_in_ui(runtime)
     })
+}
+
+pub(crate) fn sync_tool_button_states(state: &mut AppState) {
+    let point_owner = state.active_point_tool_plugin_id.as_deref();
+    let current_tool = state.current_tool;
+
+    for button in &mut state.local_plugin_buttons {
+        button.active = button.tool_mode.is_some_and(|tool_mode| {
+            tool_mode_matches_state(tool_mode, &button.plugin_id, current_tool, point_owner)
+        });
+    }
 }
 
 pub(crate) fn request_filter_repaint() -> Result<(), String> {
@@ -372,7 +384,9 @@ pub(crate) fn set_active_tool(
                     state.set_point_annotation_tool(plugin_id.clone())
                 }
             }
+            sync_tool_button_states(&mut state);
         }
+        refresh_plugin_buttons_in_ui(runtime)?;
         request_render_loop(
             &runtime.render_timer,
             &runtime.ui_weak,
@@ -880,6 +894,23 @@ fn set_toolbar_button_active_in_state(
         .find(|button| button.plugin_id == plugin_id && button.button_id == button_id)
     {
         button.active = active;
+    }
+}
+
+fn tool_mode_matches_state(
+    tool_mode: HostToolMode,
+    plugin_id: &str,
+    current_tool: crate::state::Tool,
+    point_owner: Option<&str>,
+) -> bool {
+    match tool_mode {
+        HostToolMode::Navigate => current_tool == crate::state::Tool::Navigate,
+        HostToolMode::RegionOfInterest => current_tool == crate::state::Tool::RegionOfInterest,
+        HostToolMode::MeasureDistance => current_tool == crate::state::Tool::MeasureDistance,
+        HostToolMode::PointAnnotation => {
+            current_tool == crate::state::Tool::PointAnnotation
+                && point_owner == Some(plugin_id)
+        }
     }
 }
 

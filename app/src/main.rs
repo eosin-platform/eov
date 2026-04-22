@@ -78,6 +78,56 @@ fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
     update_tabs(ui, state);
 }
 
+fn deactivate_active_plugin_tool_if_matching(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    plugin_id: &str,
+    action_id: &str,
+) -> bool {
+    let should_deactivate = {
+        let state = state.read();
+        state.local_plugin_buttons.iter().find_map(|button| {
+            (button.plugin_id == plugin_id && button.action_id == action_id)
+                .then_some(button.tool_mode)
+                .flatten()
+        })
+    };
+
+    let Some(tool_mode) = should_deactivate else {
+        return false;
+    };
+
+    {
+        let mut app_state = state.write();
+        let is_active = match tool_mode {
+            plugin_api::HostToolMode::Navigate => {
+                app_state.current_tool == crate::state::Tool::Navigate
+            }
+            plugin_api::HostToolMode::RegionOfInterest => {
+                app_state.current_tool == crate::state::Tool::RegionOfInterest
+            }
+            plugin_api::HostToolMode::MeasureDistance => {
+                app_state.current_tool == crate::state::Tool::MeasureDistance
+            }
+            plugin_api::HostToolMode::PointAnnotation => {
+                app_state.current_tool == crate::state::Tool::PointAnnotation
+                    && app_state.active_point_tool_plugin_id.as_deref() == Some(plugin_id)
+            }
+        };
+        if !is_active {
+            return false;
+        }
+
+        app_state.set_tool(crate::state::Tool::Navigate);
+        plugin_host::sync_tool_button_states(&mut app_state);
+    }
+
+    let app_state = state.read();
+    update_tool_state(ui, &app_state);
+    let _ = plugin_host::refresh_plugin_buttons();
+    true
+}
+
 fn slider_value_to_zoom(value: f32) -> f64 {
     ui_update::slider_value_to_zoom(value)
 }
@@ -414,6 +464,18 @@ fn setup_callbacks(
         let action_id = action_id.to_string();
         info!("Plugin button clicked: {plugin_id}:{action_id}");
 
+        if let Some(ui) = rerender_ui.upgrade()
+            && deactivate_active_plugin_tool_if_matching(&ui, &rerender_state, &plugin_id, &action_id)
+        {
+            request_render_loop(
+                &rerender_timer,
+                &rerender_ui,
+                &rerender_state,
+                &rerender_cache,
+            );
+            return;
+        }
+
         let extension_host_state = {
             let state = filter_state.read();
             Arc::clone(&state.extension_host_state)
@@ -477,6 +539,11 @@ fn setup_callbacks(
                     let mut s = filter_state.write();
                     pm.sync_filter_states(&s.filter_chain);
                     s.bump_filter_revision();
+                }
+                if let Some(ui) = rerender_ui.upgrade() {
+                    let state = rerender_state.read();
+                    update_tool_state(&ui, &state);
+                    let _ = plugin_host::refresh_plugin_buttons();
                 }
                 // Request a re-render so the viewport reflects the toggled filter.
                 request_render_loop(

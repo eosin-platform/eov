@@ -66,6 +66,7 @@ impl Plugin for ExamplePlugin {
                 data: SMILEY_SVG.into(),
             },
             action_id: ACTION_OPEN_PANEL.into(),
+            tool_mode: None,
             active: false,
         })?;
         self.event_log.lock().unwrap().record("plugin_activated");
@@ -124,6 +125,7 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
         tooltip: RString::from("Example Plugin"),
         icon_svg: RString::from(SMILEY_SVG),
         action_id: RString::from(ACTION_OPEN_PANEL),
+        tool_mode: abi_stable::std_types::ROption::RNone,
     }])
 }
 

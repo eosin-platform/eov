@@ -1834,9 +1834,11 @@ pub fn setup_callbacks(
                         ToolType::PointAnnotation => state::Tool::PointAnnotation,
                     };
                     state.set_tool(tool);
+                    crate::plugin_host::sync_tool_button_states(&mut state);
                 }
                 let state = state_handle.read();
                 update_tool_state(&ui, &state);
+                let _ = crate::plugin_host::refresh_plugin_buttons();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1958,10 +1960,12 @@ pub fn setup_callbacks(
                 {
                     let mut state = state_handle.write();
                     state.cancel_tool();
+                    crate::plugin_host::sync_tool_button_states(&mut state);
                 }
                 let state = state_handle.read();
                 update_tool_state(&ui, &state);
                 update_tool_overlays(&ui, &state);
+                let _ = crate::plugin_host::refresh_plugin_buttons();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);

@@ -743,12 +743,14 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
             tooltip: RString::from("Toggle annotations sidebar"),
             icon_svg: RString::from(SIDEBAR_ICON_SVG),
             action_id: RString::from(ACTION_TOGGLE_SIDEBAR),
+            tool_mode: ROption::RNone,
         },
         ToolbarButtonFFI {
             button_id: RString::from(ACTION_CREATE_POINT),
             tooltip: RString::from("Create point annotation"),
             icon_svg: RString::from(POINT_ICON_SVG),
             action_id: RString::from(ACTION_CREATE_POINT),
+            tool_mode: ROption::RSome(HostToolModeFFI::PointAnnotation),
         },
     ])
 }

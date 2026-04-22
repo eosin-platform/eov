@@ -20,7 +20,9 @@ use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
 use plugin_api::ffi::{self, PluginVTable};
 use plugin_api::manifest::PluginLanguage;
-use plugin_api::{IconDescriptor, PluginDescriptor, PluginResult, ToolbarButtonRegistration};
+use plugin_api::{
+    HostToolMode, IconDescriptor, PluginDescriptor, PluginResult, ToolbarButtonRegistration,
+};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -174,6 +176,7 @@ impl PluginManager {
                     data: btn.icon_svg.to_string(),
                 },
                 action_id: btn.action_id.to_string(),
+                tool_mode: btn.tool_mode.into_option().map(host_tool_mode_from_ffi),
                 active: false,
             };
             if let Err(e) = self.toolbar.register(registration) {
@@ -194,6 +197,7 @@ impl PluginManager {
                     data: btn.icon_svg.to_string(),
                 },
                 action_id: btn.action_id.to_string(),
+                tool_mode: None,
                 active: false,
             };
             if let Err(e) = self.hud_toolbar.register(registration) {
@@ -395,6 +399,7 @@ impl PluginManager {
                 tooltip: btn.tooltip.clone(),
                 icon: IconDescriptor::Svg { data: svg },
                 action_id: btn.action_id.clone(),
+                tool_mode: None,
                 active: false,
             };
             if let Err(e) = self.toolbar.register(registration) {
@@ -434,6 +439,15 @@ impl PluginManager {
                 chain.set_enabled(&f.filter_id, f.enabled);
             }
         }
+    }
+}
+
+fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMode {
+    match mode {
+        plugin_api::ffi::HostToolModeFFI::Navigate => HostToolMode::Navigate,
+        plugin_api::ffi::HostToolModeFFI::RegionOfInterest => HostToolMode::RegionOfInterest,
+        plugin_api::ffi::HostToolModeFFI::MeasureDistance => HostToolMode::MeasureDistance,
+        plugin_api::ffi::HostToolModeFFI::PointAnnotation => HostToolMode::PointAnnotation,
     }
 }
 

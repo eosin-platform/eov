@@ -32,7 +32,8 @@ pub mod manifest;
 pub mod viewport_filter;
 
 pub use host::{
-    ActiveSidebar, HostLogLevel, HostSnapshot, OpenFileInfo, SidebarRequest, ViewportSnapshot,
+    ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, OpenFileInfo, SidebarRequest,
+    ViewportSnapshot,
 };
 pub use manifest::PluginManifest;
 pub use manifest::{ManifestToolbarButton, PluginLanguage};
@@ -100,6 +101,8 @@ pub struct ToolbarButtonRegistration {
     pub icon: IconDescriptor,
     /// Opaque action identifier dispatched back to the plugin on click.
     pub action_id: String,
+    /// Optional host tool mode this button owns and toggles.
+    pub tool_mode: Option<HostToolMode>,
     /// Whether the host should render this button in its active state.
     pub active: bool,
 }
@@ -204,12 +207,14 @@ mod tests {
                 data: "<svg/>".into(),
             },
             action_id: "do_thing".into(),
+            tool_mode: None,
             active: false,
         };
         assert_eq!(reg.plugin_id, "test");
         assert_eq!(reg.button_id, "btn1");
         assert_eq!(reg.tooltip, "Test Button");
         assert_eq!(reg.action_id, "do_thing");
+        assert_eq!(reg.tool_mode, None);
         assert!(!reg.active);
     }
 
