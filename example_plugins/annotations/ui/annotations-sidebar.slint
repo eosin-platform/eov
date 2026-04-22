@@ -70,10 +70,10 @@ component TreeIconButton inherits Rectangle {
     }
 
     Image {
-        x: 1px;
-        y: 1px;
-        width: parent.width - 2px;
-        height: parent.height - 2px;
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
         source: root.icon-source;
         image-fit: contain;
         colorize: Theme.text-secondary;
@@ -82,20 +82,21 @@ component TreeIconButton inherits Rectangle {
 
 component ColorSwatchButton inherits Rectangle {
     in property <color> swatch-color: white;
+    out property <bool> hovered: touch.has-hover;
     callback clicked();
 
-    width: 14px;
-    height: 14px;
-    border-radius: 7px;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
     border-width: 1px;
-    border-color: #ffffff28;
+    border-color: touch.has-hover ? Theme.accent : #ffffff28;
     background: root.swatch-color;
 
-    TouchArea {
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        x: -3px;
-        y: -3px;
+    touch := TouchArea {
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        x: -5px;
+        y: -5px;
         clicked => {
             root.clicked();
         }
@@ -392,29 +393,45 @@ export component AnnotationsSidebar inherits Rectangle {
                                 horizontal-stretch: 1;
                                 vertical-stretch: 1;
                                 text: row.label;
-                                color: row.is-set ? Theme.text-primary : Theme.text-secondary;
+                                color: row.is-set ? (row.visible ? Theme.text-primary : Theme.text-secondary) : Theme.text-secondary;
                                 font-size: row.is-set ? 12px : 11px;
                                 font-weight: row.is-set ? 600 : 400;
                                 vertical-alignment: center;
                                 overflow: elide;
                             }
 
-                            if row.is-set && !(root.editing-set-id == row.row-id): TreeIconButton {
-                                icon-source: row.visible ? @image-url("icons/visible-true.svg") : @image-url("icons/visible-false.svg");
-                                tooltip-text: row.visible ? "Hide Annotation Set" : "Show Annotation Set";
-                                clicked => {
-                                    root.toggle-set-visibility(row.row-id, !row.visible);
+                            if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
+                                width: 28px;
+                                height: parent.height;
+                                background: transparent;
+
+                                TreeIconButton {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    icon-source: row.visible ? @image-url("icons/visible-true.svg") : @image-url("icons/visible-false.svg");
+                                    tooltip-text: row.visible ? "Hide Annotation Set" : "Show Annotation Set";
+                                    clicked => {
+                                        root.toggle-set-visibility(row.row-id, !row.visible);
+                                    }
                                 }
                             }
 
-                            if row.is-set && !(root.editing-set-id == row.row-id): ColorSwatchButton {
-                                swatch-color: rgb(row.color-r, row.color-g, row.color-b);
-                                clicked => {
-                                    root.color-target-id = row.row-id;
-                                    root.color-menu-x = self.absolute-position.x - root.absolute-position.x - 4px;
-                                    root.color-menu-y = self.absolute-position.y - root.absolute-position.y + self.height + 8px;
-                                    root.color-menu-visible = true;
-                                    root.context-menu-visible = false;
+                            if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
+                                width: 28px;
+                                height: parent.height;
+                                background: transparent;
+
+                                ColorSwatchButton {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    swatch-color: rgb(row.color-r, row.color-g, row.color-b);
+                                    clicked => {
+                                        root.color-target-id = row.row-id;
+                                        root.color-menu-x = self.absolute-position.x - root.absolute-position.x - 4px;
+                                        root.color-menu-y = self.absolute-position.y - root.absolute-position.y + self.height + 8px;
+                                        root.color-menu-visible = true;
+                                        root.context-menu-visible = false;
+                                    }
                                 }
                             }
                         }
