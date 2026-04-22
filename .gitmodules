@@ -1,3 +1,6 @@
 [submodule "packaging/flatpak/flatpak-builder-tools"]
 	path = packaging/flatpak/flatpak-builder-tools
 	url = https://github.com/flatpak/flatpak-builder-tools.git
+[submodule "plugins/annotations"]
+	path = plugins/annotations
+	url = git@github.com:eosin-platform/eov-annotations-plugin.git
