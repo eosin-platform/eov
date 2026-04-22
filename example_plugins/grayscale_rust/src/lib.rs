@@ -13,8 +13,8 @@ use ash::vk;
 use ash::vk::Handle;
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI,
-    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
-    ViewportFilterFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
+    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
+    ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};

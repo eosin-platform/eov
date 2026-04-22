@@ -3,16 +3,16 @@ use abi_stable::std_types::{ROption, RResult, RString, RVec};
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use common::{FilteringMode, RenderBackend, TileCache};
 use parking_lot::RwLock;
+use plugin_api::HostToolMode;
 use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, OpenFileInfoFFI, PluginVTable, UiPropertyFFI,
     ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
-use plugin_api::HostToolMode;
 use slint::{
-    Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer,
-    Timer, VecModel,
+    Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
+    VecModel,
 };
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
@@ -187,12 +187,8 @@ pub(crate) fn sync_tool_button_states(state: &mut AppState) {
 
     for button in &mut state.local_plugin_buttons {
         if let Some(tool_mode) = button.tool_mode {
-            button.active = tool_mode_matches_state(
-                tool_mode,
-                &button.plugin_id,
-                current_tool,
-                point_owner,
-            );
+            button.active =
+                tool_mode_matches_state(tool_mode, &button.plugin_id, current_tool, point_owner);
         }
     }
 }
@@ -288,8 +284,7 @@ pub(crate) fn viewport_overlay_points_for_pane(
                 && active_tool_plugin_id == Some(plugin_id.as_str())
                 && hovered.is_some_and(|handle| {
                     handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-                })
-            {
+                }) {
                 Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
             } else {
                 Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
@@ -354,14 +349,16 @@ pub(crate) fn viewport_context_menu_items_for_pane(
         .flat_map(|(plugin_id, vtable)| {
             (vtable.get_viewport_context_menu_items)(snapshot_ffi.clone())
                 .into_iter()
-                .map(move |item: ViewportContextMenuItemFFI| crate::ContextMenuItem {
-                    id: format!("plugin-viewport:{}:{}", plugin_id, item.item_id).into(),
-                    label: item.label.to_string().into(),
-                    icon: item.icon.to_string().into(),
-                    shortcut: slint::SharedString::default(),
-                    enabled: item.enabled,
-                    separator_after: false,
-                })
+                .map(
+                    move |item: ViewportContextMenuItemFFI| crate::ContextMenuItem {
+                        id: format!("plugin-viewport:{}:{}", plugin_id, item.item_id).into(),
+                        label: item.label.to_string().into(),
+                        icon: item.icon.to_string().into(),
+                        shortcut: slint::SharedString::default(),
+                        enabled: item.enabled,
+                        separator_after: false,
+                    },
+                )
         })
         .collect()
 }
@@ -458,10 +455,7 @@ pub(crate) fn frame_active_rect(x: f64, y: f64, width: f64, height: f64) -> Resu
     })
 }
 
-pub(crate) fn set_active_tool(
-    plugin_id: &str,
-    tool: HostToolModeFFI,
-) -> Result<(), String> {
+pub(crate) fn set_active_tool(plugin_id: &str, tool: HostToolModeFFI) -> Result<(), String> {
     let plugin_id = plugin_id.to_string();
     run_on_ui_thread(move |runtime| {
         {
@@ -1007,7 +1001,10 @@ fn build_sidebar_factory(
         if let Some(vtable) = vtable
             && let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance)
         {
-            tracing::error!("Failed to apply sidebar properties for '{}': {err}", plugin_id);
+            tracing::error!(
+                "Failed to apply sidebar properties for '{}': {err}",
+                plugin_id
+            );
         }
 
         ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
@@ -1088,8 +1085,7 @@ fn tool_mode_matches_state(
         HostToolMode::RegionOfInterest => current_tool == crate::state::Tool::RegionOfInterest,
         HostToolMode::MeasureDistance => current_tool == crate::state::Tool::MeasureDistance,
         HostToolMode::PointAnnotation => {
-            current_tool == crate::state::Tool::PointAnnotation
-                && point_owner == Some(plugin_id)
+            current_tool == crate::state::Tool::PointAnnotation && point_owner == Some(plugin_id)
         }
     }
 }
@@ -1283,7 +1279,12 @@ fn apply_sidebar_properties(
         })?;
         instance
             .set_property(&property_name, value)
-            .map_err(|err| format!("failed to set sidebar property '{}:{}': {err}", plugin_id, property_name))?;
+            .map_err(|err| {
+                format!(
+                    "failed to set sidebar property '{}:{}': {err}",
+                    plugin_id, property_name
+                )
+            })?;
     }
 
     Ok(())
@@ -1446,10 +1447,7 @@ extern "C" fn ffi_frame_active_rect(
     }
 }
 
-extern "C" fn ffi_set_active_tool(
-    context: u64,
-    tool: HostToolModeFFI,
-) -> RResult<(), RString> {
+extern "C" fn ffi_set_active_tool(context: u64, tool: HostToolModeFFI) -> RResult<(), RString> {
     let Some(plugin_id) = context_plugin_id(context) else {
         return RResult::RErr(RString::from("invalid host API context"));
     };

@@ -189,8 +189,7 @@ pub struct HostApiVTable {
         width: f64,
         height: f64,
     ) -> RResult<(), RString>,
-    pub set_active_tool:
-        extern "C" fn(context: u64, tool: HostToolModeFFI) -> RResult<(), RString>,
+    pub set_active_tool: extern "C" fn(context: u64, tool: HostToolModeFFI) -> RResult<(), RString>,
     pub request_render: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub set_toolbar_button_active:
         extern "C" fn(context: u64, button_id: RString, active: bool) -> RResult<(), RString>,

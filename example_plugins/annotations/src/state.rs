@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::model::LoadedFileAnnotations;
 
+#[derive(Default)]
 pub(crate) struct PluginState {
     pub(crate) files: HashMap<String, LoadedFileAnnotations>,
     pub(crate) active_file_path: Option<String>,
@@ -15,20 +16,6 @@ pub(crate) struct PluginState {
     pub(crate) editing_set_by_file: HashMap<String, String>,
     pub(crate) collapsed_sets_by_file: HashMap<String, HashSet<String>>,
     pub(crate) hidden_sets_by_file: HashMap<String, HashSet<String>>,
-}
-
-impl Default for PluginState {
-    fn default() -> Self {
-        Self {
-            files: HashMap::new(),
-            active_file_path: None,
-            active_filename: None,
-            selected_set_by_file: HashMap::new(),
-            editing_set_by_file: HashMap::new(),
-            collapsed_sets_by_file: HashMap::new(),
-            hidden_sets_by_file: HashMap::new(),
-        }
-    }
 }
 
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);

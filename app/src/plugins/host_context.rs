@@ -177,6 +177,7 @@ mod tests {
                 },
                 action_id: "a".into(),
                 tool_mode: None,
+                hotkey: None,
                 active: false,
             })
             .unwrap();

@@ -7,8 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 pub const FINGERPRINT_CHUNK_COUNT: u64 = 256;
 pub const FINGERPRINT_CHUNK_SIZE: usize = 1024;
-pub const MIN_FINGERPRINT_FILE_SIZE: u64 =
-    FINGERPRINT_CHUNK_COUNT * FINGERPRINT_CHUNK_SIZE as u64;
+pub const MIN_FINGERPRINT_FILE_SIZE: u64 = FINGERPRINT_CHUNK_COUNT * FINGERPRINT_CHUNK_SIZE as u64;
 
 static SHA256_CACHE: OnceLock<Mutex<HashMap<PathBuf, [u8; 32]>>> = OnceLock::new();
 
@@ -87,7 +86,10 @@ mod tests {
         let path = dir.path().join("small.bin");
         std::fs::write(&path, vec![0x5a; 32 * 1024]).unwrap();
 
-        assert_eq!(compute_fingerprint(&path).unwrap(), compute_sha256(&path).unwrap());
+        assert_eq!(
+            compute_fingerprint(&path).unwrap(),
+            compute_sha256(&path).unwrap()
+        );
     }
 
     #[test]

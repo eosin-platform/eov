@@ -909,7 +909,8 @@ pub fn setup_callbacks(
                     tracing::warn!("Malformed point deletion context menu command: {command}");
                     return;
                 };
-                let args_json = serde_json::to_string(&vec![annotation_id]).unwrap_or_else(|_| "[]".to_string());
+                let args_json = serde_json::to_string(&vec![annotation_id])
+                    .unwrap_or_else(|_| "[]".to_string());
                 if let Err(err) = crate::plugin_host::invoke_local_ui_callback(
                     plugin_id,
                     "delete-annotation-clicked",
@@ -927,7 +928,9 @@ pub fn setup_callbacks(
                     tracing::warn!("Malformed plugin viewport context menu command: {command}");
                     return;
                 };
-                let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
+                let Some(viewport) =
+                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                else {
                     tracing::warn!(
                         "Viewport context menu action ignored without viewport: pane={}",
                         pane.0
@@ -1097,8 +1100,7 @@ pub fn setup_callbacks(
             let pane = pane_from_index(pane);
             let point_delete_item = {
                 let state = state_handle.read();
-                (state.current_tool == state::Tool::PointAnnotation
-                    && pane == state.focused_pane)
+                (state.current_tool == state::Tool::PointAnnotation && pane == state.focused_pane)
                     .then(|| state.hovered_plugin_point.clone())
                     .flatten()
                     .map(|handle| (handle.plugin_id, handle.annotation_id))
@@ -1928,15 +1930,18 @@ pub fn setup_callbacks(
                     None
                 } else {
                     let pane = state.focused_pane;
-                    state.active_point_tool_plugin_id.clone().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_point_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    })
+                    state
+                        .active_point_tool_plugin_id
+                        .clone()
+                        .and_then(|plugin_id| {
+                            crate::plugin_host::hit_test_overlay_point_for_pane(
+                                &state,
+                                pane,
+                                x,
+                                y,
+                                Some(&plugin_id),
+                            )
+                        })
                 }
             };
 
@@ -1944,24 +1949,24 @@ pub fn setup_callbacks(
                 let mut state = state_handle.write();
                 if state.current_tool != state::Tool::PointAnnotation {
                     None
-                } else {
-                    if let Some(handle) = drag_candidate.clone() {
-                        state.hovered_plugin_point = Some(handle.clone());
-                        state.dragged_plugin_point = Some(handle);
-                        state.dragged_plugin_point_position = state
-                            .active_file_id_for_pane(state.focused_pane)
-                            .and_then(|file_id| state.get_file(file_id))
-                            .and_then(|file| file.pane_state(state.focused_pane))
-                            .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
-                            .map(|(x_level0, y_level0)| crate::state::PluginPointPreviewPosition {
+                } else if let Some(handle) = drag_candidate.clone() {
+                    state.hovered_plugin_point = Some(handle.clone());
+                    state.dragged_plugin_point = Some(handle);
+                    state.dragged_plugin_point_position = state
+                        .active_file_id_for_pane(state.focused_pane)
+                        .and_then(|file_id| state.get_file(file_id))
+                        .and_then(|file| file.pane_state(state.focused_pane))
+                        .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
+                        .map(
+                            |(x_level0, y_level0)| crate::state::PluginPointPreviewPosition {
                                 x_level0,
                                 y_level0,
-                            });
-                        state.request_render();
-                        drag_candidate
-                    } else {
-                        None
-                    }
+                            },
+                        );
+                    state.request_render();
+                    drag_candidate
+                } else {
+                    None
                 }
             };
 
@@ -2008,7 +2013,9 @@ pub fn setup_callbacks(
                             .active_file_id_for_pane(pane)
                             .and_then(|file_id| state.get_file(file_id))
                             .and_then(|file| file.pane_state(pane))
-                            .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64));
+                            .map(|pane_state| {
+                                pane_state.viewport.screen_to_image(x as f64, y as f64)
+                            });
                         if image_point.is_some() {
                             Some(dragging)
                         } else {
@@ -2044,7 +2051,9 @@ pub fn setup_callbacks(
                             .active_file_id_for_pane(pane)
                             .and_then(|file_id| state.get_file(file_id))
                             .and_then(|file| file.pane_state(pane))
-                            .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
+                            .map(|pane_state| {
+                                pane_state.viewport.screen_to_image(x as f64, y as f64)
+                            })
                         {
                             state.dragged_plugin_point_position =
                                 Some(crate::state::PluginPointPreviewPosition {
@@ -2059,7 +2068,8 @@ pub fn setup_callbacks(
                         let _ = dragging;
                         true
                     } else {
-                        let hovered = hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
+                        let hovered =
+                            hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
                         if state.hovered_plugin_point != hovered {
                             state.hovered_plugin_point = hovered;
                             state.request_render();
@@ -2126,17 +2136,19 @@ pub fn setup_callbacks(
                 }
             };
 
-            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) = handled_drag_release {
-                if let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) {
-                    if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_moved(
+            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) = handled_drag_release
+            {
+                if let Some(viewport) =
+                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                    && let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_moved(
                         &plugin_id,
                         &viewport,
                         &annotation_id,
                         x_level0,
                         y_level0,
-                    ) {
-                        tracing::error!("Point annotation move error: {err}");
-                    }
+                    )
+                {
+                    tracing::error!("Point annotation move error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -2161,7 +2173,9 @@ pub fn setup_callbacks(
                     else {
                         return;
                     };
-                    let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
+                    let Some(viewport) =
+                        crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                    else {
                         return;
                     };
                     Some((plugin_id, viewport, x_level0, y_level0))
@@ -2169,12 +2183,10 @@ pub fn setup_callbacks(
             };
 
             if let Some((plugin_id, viewport, x_level0, y_level0)) = point_action {
-                if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_placed(
-                    &plugin_id,
-                    &viewport,
-                    x_level0,
-                    y_level0,
-                ) {
+                if let Err(err) = plugin_manager
+                    .borrow_mut()
+                    .handle_point_annotation_placed(&plugin_id, &viewport, x_level0, y_level0)
+                {
                     tracing::error!("Point annotation placement error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {

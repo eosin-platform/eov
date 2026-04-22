@@ -445,7 +445,8 @@ impl ExtensionHost for ExtensionHostService {
         };
         let version = req.version.clone();
         let language = req.language.clone();
-        let plugin_root = (!req.plugin_root.trim().is_empty()).then(|| PathBuf::from(&req.plugin_root));
+        let plugin_root =
+            (!req.plugin_root.trim().is_empty()).then(|| PathBuf::from(&req.plugin_root));
 
         let plugin_handle = {
             let mut state = self.state.write();
@@ -589,7 +590,10 @@ impl ExtensionHost for ExtensionHostService {
         )
         .map_err(Status::failed_precondition)?;
 
-        info!("Updated remote sidebar '{}': show/toggle request applied", plugin_id);
+        info!(
+            "Updated remote sidebar '{}': show/toggle request applied",
+            plugin_id
+        );
         Ok(Response::new(HostCommandResponse {}))
     }
 
@@ -607,7 +611,10 @@ impl ExtensionHost for ExtensionHostService {
         };
 
         crate::plugin_host::hide_sidebar(&plugin_id).map_err(Status::failed_precondition)?;
-        info!("Updated remote sidebar '{}': hide request applied", plugin_id);
+        info!(
+            "Updated remote sidebar '{}': hide request applied",
+            plugin_id
+        );
         Ok(Response::new(HostCommandResponse {}))
     }
 

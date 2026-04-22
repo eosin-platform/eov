@@ -177,14 +177,14 @@ enum CliCommand {
         #[command(subcommand)]
         command: DatasetCommand,
     },
-    /// Open a plugin's .slint window in a standalone process.
+    /// Open a packaged plugin's .slint window in a standalone process.
     ///
     /// This is an internal subcommand spawned by the host when a Rust plugin
     /// requests a window. It runs its own Slint event loop so the plugin
     /// window doesn't conflict with the main window's wgpu renderer.
     #[command(hide = true)]
     PluginWindow {
-        /// Path to the plugin's root directory (contains plugin.toml).
+        /// Path to the extracted plugin root directory (contains plugin.toml).
         plugin_dir: PathBuf,
     },
 }
@@ -272,8 +272,8 @@ struct Cli {
     #[arg(long, value_name = "PX", global = true)]
     window_y: Option<i32>,
 
-    /// Directory to search for plugins.
-    /// Defaults to ~/.eov/plugins/
+    /// Directory to search for plugin packages.
+    /// Defaults to ~/.eov/plugins/ and scans for `.eop` files.
     #[arg(long, value_name = "PATH", global = true)]
     plugin_dir: Option<PathBuf>,
 

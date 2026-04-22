@@ -499,7 +499,12 @@ fn setup_callbacks(
         info!("Plugin button clicked: {plugin_id}:{action_id}");
 
         if let Some(ui) = rerender_ui.upgrade()
-            && deactivate_active_plugin_tool_if_matching(&ui, &rerender_state, &plugin_id, &action_id)
+            && deactivate_active_plugin_tool_if_matching(
+                &ui,
+                &rerender_state,
+                &plugin_id,
+                &action_id,
+            )
         {
             request_render_loop(
                 &rerender_timer,
@@ -640,9 +645,7 @@ fn setup_callbacks(
             });
         }
 
-        if !target_was_active
-            && let Some(ui) = hotkey_ui.upgrade()
-        {
+        if !target_was_active && let Some(ui) = hotkey_ui.upgrade() {
             ui.invoke_plugin_button_clicked(button.plugin_id.into(), button.action_id.into());
         }
 
@@ -666,7 +669,8 @@ fn setup_callbacks(
             return false;
         };
 
-        let was_held = entry.saw_repeat || entry.pressed_at.elapsed() >= MOMENTARY_TOOL_HOLD_THRESHOLD;
+        let was_held =
+            entry.saw_repeat || entry.pressed_at.elapsed() >= MOMENTARY_TOOL_HOLD_THRESHOLD;
 
         if was_held {
             if let Some(restore) = entry.restore

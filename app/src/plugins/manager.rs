@@ -494,11 +494,26 @@ fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMo
 mod tests {
     use super::*;
     use std::fs;
+    use std::fs::File;
     use std::sync::Arc;
 
-    fn create_example_plugin_dir(base: &Path) -> PathBuf {
-        let plugin_dir = base.join("example_plugin");
-        fs::create_dir_all(plugin_dir.join("ui")).unwrap();
+    fn append_tree(builder: &mut tar::Builder<File>, source_root: &Path, current: &Path) {
+        for entry in fs::read_dir(current).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let relative = path.strip_prefix(source_root).unwrap();
+            if path.is_dir() {
+                builder.append_dir(relative, &path).unwrap();
+                append_tree(builder, source_root, &path);
+            } else {
+                builder.append_path_with_name(&path, relative).unwrap();
+            }
+        }
+    }
+
+    fn create_example_plugin_package(base: &Path) -> PathBuf {
+        let source_dir = base.join("example_plugin_src");
+        fs::create_dir_all(source_dir.join("ui")).unwrap();
 
         let manifest = r#"
 id = "example_plugin"
@@ -511,20 +526,26 @@ entry_component = "MyPanel"
 kind = "svg"
 data = "<svg/>"
 "#;
-        fs::write(plugin_dir.join("plugin.toml"), manifest).unwrap();
+        fs::write(source_dir.join("plugin.toml"), manifest).unwrap();
         fs::write(
-            plugin_dir.join("ui/my_panel.slint"),
+            source_dir.join("ui/my_panel.slint"),
             "export component MyPanel inherits Window {}",
         )
         .unwrap();
 
-        plugin_dir
+        let package_path = base.join("example_plugin.eop");
+        let file = File::create(&package_path).unwrap();
+        let mut builder = tar::Builder::new(file);
+        append_tree(&mut builder, &source_dir, &source_dir);
+        builder.finish().unwrap();
+
+        package_path
     }
 
     #[test]
     fn manager_discovers_and_activates_example_plugin() {
         let tmp = tempfile::tempdir().unwrap();
-        create_example_plugin_dir(tmp.path());
+        create_example_plugin_package(tmp.path());
 
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
 
@@ -548,7 +569,7 @@ data = "<svg/>"
     #[test]
     fn manager_handle_action_returns_window_requests() {
         let tmp = tempfile::tempdir().unwrap();
-        create_example_plugin_dir(tmp.path());
+        create_example_plugin_package(tmp.path());
 
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
         let plugin = Arc::new(example_plugin::ExamplePlugin::new(
@@ -573,7 +594,7 @@ data = "<svg/>"
     #[test]
     fn manager_skips_unregistered_plugins() {
         let tmp = tempfile::tempdir().unwrap();
-        create_example_plugin_dir(tmp.path());
+        create_example_plugin_package(tmp.path());
 
         // Don't register any plugin implementation
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
@@ -588,7 +609,7 @@ data = "<svg/>"
     #[test]
     fn manager_descriptor_lookup() {
         let tmp = tempfile::tempdir().unwrap();
-        create_example_plugin_dir(tmp.path());
+        create_example_plugin_package(tmp.path());
 
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
         mgr.discover();

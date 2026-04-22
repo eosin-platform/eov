@@ -266,6 +266,9 @@ mod tests {
             }),
         };
 
-        assert_eq!(snapshot.active_sidebar.as_ref().map(|s| s.width_px), Some(250));
+        assert_eq!(
+            snapshot.active_sidebar.as_ref().map(|s| s.width_px),
+            Some(250)
+        );
     }
 }

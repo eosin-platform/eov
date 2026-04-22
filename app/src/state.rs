@@ -1197,10 +1197,7 @@ impl AppState {
         self.temporary_tool_overrides.push(entry);
     }
 
-    pub fn take_temporary_tool_override(
-        &mut self,
-        hotkey: &str,
-    ) -> Option<TemporaryToolOverride> {
+    pub fn take_temporary_tool_override(&mut self, hotkey: &str) -> Option<TemporaryToolOverride> {
         self.temporary_tool_overrides
             .iter()
             .rposition(|entry| entry.hotkey == hotkey)

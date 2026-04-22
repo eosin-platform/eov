@@ -5,7 +5,7 @@ mod sidebar;
 mod state;
 
 use abi_stable::std_types::{ROption, RString, RVec};
-use model::{hex_color_to_rgb, Annotation};
+use model::{Annotation, hex_color_to_rgb};
 use operations::{
     ensure_loaded_for_viewport, move_point_annotation, persist_point_annotation,
     refresh_sidebar_if_available, request_render_if_available, start_point_annotation_flow,
@@ -13,9 +13,8 @@ use operations::{
 };
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HostLogLevelFFI, HostToolModeFFI,
-    HudToolbarButtonFFI, PluginVTable, ToolbarButtonFFI, UiPropertyFFI,
-    ViewportContextMenuItemFFI, ViewportFilterFFI, ViewportOverlayPointFFI,
-    ViewportSnapshotFFI,
+    HudToolbarButtonFFI, PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportFilterFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
 };
 use sidebar::{get_sidebar_properties, on_sidebar_callback};
 use state::{host_api, log_message, plugin_state, set_host_api};
@@ -153,17 +152,19 @@ extern "C" fn get_viewport_overlay_points_ffi(
         .filter(|set| !hidden_sets.is_some_and(|hidden| hidden.contains(&set.id)))
         .flat_map(|set| {
             let (ring_red, ring_green, ring_blue) = hex_color_to_rgb(&set.color_hex);
-            set.annotations.iter().filter_map(move |annotation| match annotation {
-                Annotation::Point(point) => Some(ViewportOverlayPointFFI {
-                    annotation_id: point.id.clone().into(),
-                    x_level0: point.x_level0,
-                    y_level0: point.y_level0,
-                    diameter_px: 12.0,
-                    ring_red,
-                    ring_green,
-                    ring_blue,
-                }),
-            })
+            set.annotations
+                .iter()
+                .map(move |annotation| match annotation {
+                    Annotation::Point(point) => ViewportOverlayPointFFI {
+                        annotation_id: point.id.clone().into(),
+                        x_level0: point.x_level0,
+                        y_level0: point.y_level0,
+                        diameter_px: 12.0,
+                        ring_red,
+                        ring_green,
+                        ring_blue,
+                    },
+                })
         })
         .collect::<Vec<_>>();
     RVec::from(points)

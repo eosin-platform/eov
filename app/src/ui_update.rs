@@ -229,7 +229,8 @@ pub fn update_tabs(
             let pane = PaneId(pane_index);
             let tabs = build_pane_tabs(pane);
             let (roi_rect, measurements, candidate_measurement) = pane_overlay_data(state, pane);
-            let plugin_overlay_points = crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
+            let plugin_overlay_points =
+                crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;

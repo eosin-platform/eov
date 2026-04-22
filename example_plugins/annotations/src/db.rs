@@ -1,9 +1,9 @@
 use common::file_id::compute_fingerprint;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::model::{annotation_label, Annotation, AnnotationSet, PointAnnotation};
+use crate::model::{Annotation, AnnotationSet, PointAnnotation, annotation_label};
 
 fn annotations_db_path() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("EOV_ANNOTATIONS_DB") {
@@ -121,8 +121,12 @@ pub(crate) fn open_database() -> Result<Connection, String> {
 }
 
 pub(crate) fn fingerprint_for_file(path: &Path) -> Result<[u8; 32], String> {
-    compute_fingerprint(path)
-        .map_err(|err| format!("failed to compute WSI fingerprint for '{}': {err}", path.display()))
+    compute_fingerprint(path).map_err(|err| {
+        format!(
+            "failed to compute WSI fingerprint for '{}': {err}",
+            path.display()
+        )
+    })
 }
 
 pub(crate) fn load_annotation_sets(
@@ -181,7 +185,7 @@ pub(crate) fn load_annotation_sets(
                 annotation.map_err(|err| format!("failed to read point annotation row: {err}"))?,
             );
         }
-        annotations.sort_by(|left, right| annotation_label(right).cmp(&annotation_label(left)));
+        annotations.sort_by_key(|annotation| std::cmp::Reverse(annotation_label(annotation)));
 
         sets.push(AnnotationSet {
             id,
