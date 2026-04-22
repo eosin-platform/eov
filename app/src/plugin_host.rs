@@ -38,6 +38,11 @@ struct UiRuntime {
     render_timer: Rc<Timer>,
 }
 
+struct ActiveSidebarInstance {
+    plugin_id: String,
+    instance: slint_interpreter::Weak<slint_interpreter::ComponentInstance>,
+}
+
 struct PendingPluginConfirmation {
     vtable: PluginVTable,
     confirm_callback: Option<String>,
@@ -54,6 +59,7 @@ static PENDING_PLUGIN_CONFIRMATION: OnceLock<Mutex<Option<PendingPluginConfirmat
 
 thread_local! {
     static UI_RUNTIME: RefCell<Option<UiRuntime>> = const { RefCell::new(None) };
+    static ACTIVE_SIDEBAR_INSTANCE: RefCell<Option<ActiveSidebarInstance>> = const { RefCell::new(None) };
 }
 
 fn host_contexts() -> &'static Mutex<HashMap<u64, HostApiContext>> {
@@ -639,6 +645,9 @@ pub(crate) fn show_sidebar(
                 if let Some((owner, button)) = previous_button {
                     set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
                 }
+                ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+                    *slot.borrow_mut() = None;
+                });
                 ui.set_plugin_sidebar_factory(ComponentFactory::default());
                 ui.set_show_plugin_sidebar(false);
                 ui.set_plugin_sidebar_width(0.0);
@@ -687,6 +696,9 @@ pub(crate) fn hide_sidebar(plugin_id: &str) -> Result<(), String> {
 
         state.clear_active_sidebar();
         set_toolbar_button_active_in_state(&mut state, &owner, &button_id, false);
+        ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
         ui.set_plugin_sidebar_factory(ComponentFactory::default());
         ui.set_show_plugin_sidebar(false);
         ui.set_plugin_sidebar_width(0.0);
@@ -998,6 +1010,13 @@ fn build_sidebar_factory(
             tracing::error!("Failed to apply sidebar properties for '{}': {err}", plugin_id);
         }
 
+        ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+            *slot.borrow_mut() = Some(ActiveSidebarInstance {
+                plugin_id: plugin_id.clone(),
+                instance: instance.as_weak(),
+            });
+        });
+
         for name in definition.callbacks() {
             let callback_name = name.to_string();
             let plugin_id = plugin_id.clone();
@@ -1272,12 +1291,11 @@ fn apply_sidebar_properties(
 
 pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
     run_on_ui_thread(|runtime| {
-        let ui = runtime
-            .ui_weak
-            .upgrade()
-            .ok_or_else(|| "application window is no longer available".to_string())?;
         let active_sidebar = runtime.state.read().active_sidebar().cloned();
         let Some(sidebar) = active_sidebar else {
+            ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+                *slot.borrow_mut() = None;
+            });
             return Ok(());
         };
         let Some((_, vtable)) = local_plugin_vtables()
@@ -1286,6 +1304,30 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
         else {
             return Ok(());
         };
+
+        let refreshed = ACTIVE_SIDEBAR_INSTANCE.with(|slot| -> Result<bool, String> {
+            let active = slot.borrow();
+            let Some(active) = active.as_ref() else {
+                return Ok::<bool, String>(false);
+            };
+            if active.plugin_id != sidebar.plugin_id {
+                return Ok::<bool, String>(false);
+            }
+            let Some(instance) = active.instance.upgrade() else {
+                return Ok::<bool, String>(false);
+            };
+            apply_sidebar_properties(&sidebar.plugin_id, vtable, &instance)?;
+            Ok::<bool, String>(true)
+        })?;
+
+        if refreshed {
+            return Ok(());
+        }
+
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
         let factory = build_sidebar_factory(
             &sidebar.plugin_id,
             &sidebar.ui_path,

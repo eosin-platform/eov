@@ -216,6 +216,15 @@ export component AnnotationsSidebar inherits Rectangle {
                                 root.row-clicked(row.row-id);
                             }
 
+                            double-clicked => {
+                                if row.is-set {
+                                    root.confirm-active-rename();
+                                    root.selected-set-id = row.row-id;
+                                    root.rename-draft-text = row.label;
+                                    root.editing-set-id = row.row-id;
+                                }
+                            }
+
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                                     root.confirm-active-rename();
@@ -247,7 +256,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     vertical-alignment: center;
                                 }
 
-                                TouchArea {
+                                set-expander-touch := TouchArea {
                                     width: parent.width;
                                     height: parent.height;
                                     clicked => {
@@ -335,36 +344,6 @@ export component AnnotationsSidebar inherits Rectangle {
                                     width: parent.width;
                                     height: parent.height;
                                     background: transparent;
-
-                                    TouchArea {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        clicked => {
-                                            root.confirm-active-rename();
-                                            root.selected-set-id = row.row-id;
-                                            root.row-clicked(row.row-id);
-                                        }
-
-                                        double-clicked => {
-                                            root.confirm-active-rename();
-                                            root.selected-set-id = row.row-id;
-                                            root.rename-draft-text = row.label;
-                                            root.editing-set-id = row.row-id;
-                                        }
-
-                                        pointer-event(e) => {
-                                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
-                                                root.confirm-active-rename();
-                                                root.open-context-menu(
-                                                    row.row-id,
-                                                    row.label,
-                                                    true,
-                                                    self.absolute-position.x + self.mouse-x - root.absolute-position.x,
-                                                    self.absolute-position.y + self.mouse-y - root.absolute-position.y,
-                                                );
-                                            }
-                                        }
-                                    }
 
                                     set-label := Text {
                                         x: 0px;

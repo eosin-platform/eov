@@ -65,6 +65,7 @@ impl Plugin for ExamplePlugin {
             icon: IconDescriptor::Svg {
                 data: SMILEY_SVG.into(),
             },
+            hotkey: None,
             action_id: ACTION_OPEN_PANEL.into(),
             tool_mode: None,
             active: false,
