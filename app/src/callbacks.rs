@@ -816,7 +816,7 @@ pub fn setup_callbacks(
                     state.create_home_tab();
                 }
                 let state = state_handle.read();
-                update_tabs(&ui, &state);
+                refresh_tab_ui(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);

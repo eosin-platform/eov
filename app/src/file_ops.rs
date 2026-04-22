@@ -146,6 +146,8 @@ pub fn open_file(
                     .unwrap_or(0)
             };
 
+            let _ = crate::plugin_host::refresh_active_sidebar();
+
             ui.set_is_loading(false);
             ui.set_status_text(SharedString::from(format!(
                 "Opened {} ({} levels)",
