@@ -673,8 +673,10 @@ fn setup_callbacks(
                     app_state.apply_tool_selection(&restore);
                     plugin_host::sync_tool_button_states(&mut app_state);
                 }
-                let app_state = hotkey_state.read();
-                update_tool_state(&ui, &app_state);
+                {
+                    let app_state = hotkey_state.read();
+                    update_tool_state(&ui, &app_state);
+                }
                 let _ = plugin_host::refresh_plugin_buttons();
                 request_render_loop(
                     &hotkey_render_timer,
