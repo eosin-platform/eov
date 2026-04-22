@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Default)]
 pub struct PaneState {
@@ -166,6 +167,7 @@ pub struct TemporaryToolOverride {
     pub target: ToolSelection,
     pub restore: Option<ToolSelection>,
     pub target_was_active: bool,
+    pub pressed_at: Instant,
     pub saw_repeat: bool,
 }
 

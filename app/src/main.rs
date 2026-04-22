@@ -38,7 +38,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 use backend::select_backend;
@@ -72,6 +72,7 @@ slint::include_modules!();
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
+const MOMENTARY_TOOL_HOLD_THRESHOLD: Duration = Duration::from_millis(120);
 
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
     reset_pane_ui_state();
@@ -634,6 +635,7 @@ fn setup_callbacks(
                 target,
                 restore,
                 target_was_active,
+                pressed_at: Instant::now(),
                 saw_repeat: false,
             });
         }
@@ -664,7 +666,9 @@ fn setup_callbacks(
             return false;
         };
 
-        if entry.saw_repeat {
+        let was_held = entry.saw_repeat || entry.pressed_at.elapsed() >= MOMENTARY_TOOL_HOLD_THRESHOLD;
+
+        if was_held {
             if let Some(restore) = entry.restore
                 && let Some(ui) = hotkey_ui.upgrade()
             {
