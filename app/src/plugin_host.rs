@@ -1283,6 +1283,22 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
     })
 }
 
+pub(crate) fn invoke_local_ui_callback(
+    plugin_id: &str,
+    callback_name: &str,
+    args_json: &str,
+) -> Result<(), String> {
+    let Some((_, vtable)) = local_plugin_vtables()
+        .into_iter()
+        .find(|(candidate, _)| candidate == plugin_id)
+    else {
+        return Err(format!("local plugin '{plugin_id}' is not loaded"));
+    };
+
+    (vtable.on_ui_callback)(callback_name.into(), args_json.into());
+    Ok(())
+}
+
 extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
     match context_state(context) {
         Ok(state) => to_snapshot_ffi(snapshot(&state)),

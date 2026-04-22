@@ -38,6 +38,7 @@ export component Viewport inherits Rectangle {
     in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
     in property <[MeasurementLine]> measurements: [];
     in property <[PluginOverlayPoint]> plugin-overlay-points: [];
+    in property <bool> point-tool-hover-active: false;
     in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     in property <HudSettings> hud;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
@@ -384,6 +385,13 @@ export component Viewport inherits Rectangle {
         property <bool> is-tool-dragging: false;
         property <bool> drag-from-secondary: false;
         property <bool> secondary-dragged: false;
+        property <bool> lmb-down: false;
+        property <length> left-press-x: 0px;
+        property <length> left-press-y: 0px;
+        property <bool> left-pan-armed: false;
+        property <bool> left-pan-mode: false;
+        property <bool> point-dragging-existing: false;
+        mouse-cursor: root.current-tool == ToolType.point-annotation ? MouseCursor.crosshair : MouseCursor.default;
 
         clicked => {
             focus-scope.focus();
@@ -419,6 +427,17 @@ export component Viewport inherits Rectangle {
                 if root.current-tool == ToolType.navigate {
                     self.is-dragging = true;
                     root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else if root.current-tool == ToolType.point-annotation {
+                    self.lmb-down = true;
+                    self.left-press-x = self.mouse-x;
+                    self.left-press-y = self.mouse-y;
+                    self.left-pan-armed = !root.point-tool-hover-active;
+                    self.left-pan-mode = false;
+                    self.point-dragging-existing = root.point-tool-hover-active;
+                    if root.point-tool-hover-active {
+                        self.is-tool-dragging = true;
+                        root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 } else {
                     self.is-tool-dragging = true;
                     root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
@@ -427,6 +446,25 @@ export component Viewport inherits Rectangle {
                 if root.current-tool == ToolType.navigate {
                     self.is-dragging = false;
                     root.end-pan();
+                } else if root.current-tool == ToolType.point-annotation {
+                    if self.point-dragging-existing {
+                        self.is-tool-dragging = false;
+                        self.point-dragging-existing = false;
+                        self.left-pan-armed = false;
+                        self.left-pan-mode = false;
+                        self.lmb-down = false;
+                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
+                    } else if self.left-pan-mode || self.is-dragging {
+                        self.is-dragging = false;
+                        self.left-pan-mode = false;
+                        self.left-pan-armed = false;
+                        self.lmb-down = false;
+                        root.end-pan();
+                    } else if self.left-pan-armed && self.lmb-down {
+                        self.left-pan-armed = false;
+                        self.lmb-down = false;
+                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 } else {
                     self.is-tool-dragging = false;
                     root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
@@ -437,6 +475,21 @@ export component Viewport inherits Rectangle {
                         self.secondary-dragged = true;
                     }
                     root.pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else if root.current-tool == ToolType.point-annotation {
+                    if self.point-dragging-existing {
+                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                    } else if self.lmb-down && self.left-pan-armed {
+                        let dx = self.mouse-x - self.left-press-x;
+                        let dy = self.mouse-y - self.left-press-y;
+                        if abs(dx) > 6px || abs(dy) > 6px {
+                            self.left-pan-armed = false;
+                            self.left-pan-mode = true;
+                            self.is-dragging = true;
+                            root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                        }
+                    } else {
+                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 } else if self.is-tool-dragging || root.current-tool != ToolType.navigate {
                     root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
                 }

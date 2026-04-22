@@ -301,6 +301,9 @@ pub fn update_tabs(
                 roi_rect,
                 measurements: pane_ui.measurements.clone().into(),
                 plugin_overlay_points: plugin_overlay_points.as_slice().into(),
+                point_tool_hover_active: state.current_tool == crate::state::Tool::PointAnnotation
+                    && pane == state.focused_pane
+                    && state.hovered_plugin_point.is_some(),
                 candidate_measurement,
                 is_loading: ui.get_is_loading() && pane == state.focused_pane,
                 hud,

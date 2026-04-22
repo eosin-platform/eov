@@ -904,6 +904,24 @@ pub fn setup_callbacks(
             let pane = pane_from_index(ui.get_drag_source_pane());
             let tab_id = ui.get_context_menu_tab_id();
 
+            if let Some(rest) = command.strip_prefix("plugin-ui-delete-point:") {
+                let Some((plugin_id, annotation_id)) = rest.split_once(':') else {
+                    tracing::warn!("Malformed point deletion context menu command: {command}");
+                    return;
+                };
+                let args_json = serde_json::to_string(&vec![annotation_id]).unwrap_or_else(|_| "[]".to_string());
+                if let Err(err) = crate::plugin_host::invoke_local_ui_callback(
+                    plugin_id,
+                    "delete-annotation-clicked",
+                    &args_json,
+                ) {
+                    tracing::error!("Point annotation deletion error: {err}");
+                    return;
+                }
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                return;
+            }
+
             if let Some(rest) = command.strip_prefix("plugin-viewport:") {
                 let Some((plugin_id, item_id)) = rest.split_once(':') else {
                     tracing::warn!("Malformed plugin viewport context menu command: {command}");
@@ -1095,6 +1113,23 @@ pub fn setup_callbacks(
                     separator_after: false,
                 },
             ];
+            if let Some((plugin_id, annotation_id)) = {
+                let state = state_handle.read();
+                (state.current_tool == state::Tool::PointAnnotation
+                    && pane == state.focused_pane)
+                    .then(|| state.hovered_plugin_point.clone())
+                    .flatten()
+                    .map(|handle| (handle.plugin_id, handle.annotation_id))
+            } {
+                items.push(crate::ContextMenuItem {
+                    id: format!("plugin-ui-delete-point:{plugin_id}:{annotation_id}").into(),
+                    label: "Delete Point Annotation".into(),
+                    icon: "delete".into(),
+                    shortcut: "".into(),
+                    enabled: true,
+                    separator_after: true,
+                });
+            }
             items.extend({
                 let state = state_handle.read();
                 crate::plugin_host::viewport_context_menu_items_for_pane(&state, pane)
@@ -1881,7 +1916,6 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
-        let plugin_manager = Rc::clone(&plugin_manager);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             let drag_candidate = {
@@ -1928,45 +1962,6 @@ pub fn setup_callbacks(
             };
 
             if drag_handle.is_some() {
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let point_action = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PointAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_point_tool_plugin_id.clone() else {
-                        return;
-                    };
-                    let Some(image_point) = state
-                        .active_file_id_for_pane(pane)
-                        .and_then(|file_id| state.get_file(file_id))
-                        .and_then(|file| file.pane_state(pane))
-                        .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
-                    else {
-                        return;
-                    };
-                    let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
-                        return;
-                    };
-                    Some((plugin_id, viewport, image_point))
-                }
-            };
-
-            if let Some((plugin_id, viewport, (x_level0, y_level0))) = point_action {
-                if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_placed(
-                    &plugin_id,
-                    &viewport,
-                    x_level0,
-                    y_level0,
-                ) {
-                    tracing::error!("Point annotation placement error: {err}");
-                }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
@@ -2138,6 +2133,45 @@ pub fn setup_callbacks(
                     ) {
                         tracing::error!("Point annotation move error: {err}");
                     }
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
+            let point_action = {
+                let state = state_handle.read();
+                if state.current_tool != state::Tool::PointAnnotation {
+                    None
+                } else {
+                    let pane = state.focused_pane;
+                    let Some(plugin_id) = state.active_point_tool_plugin_id.clone() else {
+                        return;
+                    };
+                    let Some((x_level0, y_level0)) = state
+                        .active_file_id_for_pane(pane)
+                        .and_then(|file_id| state.get_file(file_id))
+                        .and_then(|file| file.pane_state(pane))
+                        .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
+                    else {
+                        return;
+                    };
+                    let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) else {
+                        return;
+                    };
+                    Some((plugin_id, viewport, x_level0, y_level0))
+                }
+            };
+
+            if let Some((plugin_id, viewport, x_level0, y_level0)) = point_action {
+                if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_placed(
+                    &plugin_id,
+                    &viewport,
+                    x_level0,
+                    y_level0,
+                ) {
+                    tracing::error!("Point annotation placement error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
