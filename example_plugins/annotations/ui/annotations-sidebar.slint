@@ -551,7 +551,7 @@ export component AnnotationsSidebar inherits Rectangle {
             x: min(root.color-menu-x, max(0px, root.width - self.width - 8px));
             y: min(root.color-menu-y, max(0px, root.height - self.height - 8px));
             width: 118px;
-            height: 124px;
+            height: 150px;
             background: Theme.surface;
             border-radius: 6px;
             border-width: 1px;
@@ -581,8 +581,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         spacing: 8px;
 
                         PaletteSwatchButton {
-                            hex: "#E85D75";
-                            swatch-color: #E85D75;
+                            hex: "#FF355E";
+                            swatch-color: #FF355E;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -590,8 +590,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         }
 
                         PaletteSwatchButton {
-                            hex: "#F08A5D";
-                            swatch-color: #F08A5D;
+                            hex: "#FF7A00";
+                            swatch-color: #FF7A00;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -599,8 +599,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         }
 
                         PaletteSwatchButton {
-                            hex: "#F2C14E";
-                            swatch-color: #F2C14E;
+                            hex: "#E7FF00";
+                            swatch-color: #E7FF00;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -608,8 +608,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         }
 
                         PaletteSwatchButton {
-                            hex: "#6BCB77";
-                            swatch-color: #6BCB77;
+                            hex: "#39FF14";
+                            swatch-color: #39FF14;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -621,8 +621,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         spacing: 8px;
 
                         PaletteSwatchButton {
-                            hex: "#2EC4B6";
-                            swatch-color: #2EC4B6;
+                            hex: "#00F5D4";
+                            swatch-color: #00F5D4;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -661,8 +661,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         spacing: 8px;
 
                         PaletteSwatchButton {
-                            hex: "#F15BB5";
-                            swatch-color: #F15BB5;
+                            hex: "#FF4FD8";
+                            swatch-color: #FF4FD8;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -670,8 +670,8 @@ export component AnnotationsSidebar inherits Rectangle {
                         }
 
                         PaletteSwatchButton {
-                            hex: "#00BBF9";
-                            swatch-color: #00BBF9;
+                            hex: "#F15BB5";
+                            swatch-color: #F15BB5;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;
@@ -690,6 +690,46 @@ export component AnnotationsSidebar inherits Rectangle {
                         PaletteSwatchButton {
                             hex: "#577590";
                             swatch-color: #577590;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        PaletteSwatchButton {
+                            hex: "#FF8A5B";
+                            swatch-color: #FF8A5B;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#FFD166";
+                            swatch-color: #FFD166;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#00BBF9";
+                            swatch-color: #00BBF9;
+                            selected(hex) => {
+                                root.set-set-color(root.color-target-id, hex);
+                                root.color-menu-visible = false;
+                            }
+                        }
+
+                        PaletteSwatchButton {
+                            hex: "#FFFFFF";
+                            swatch-color: #FFFFFF;
                             selected(hex) => {
                                 root.set-set-color(root.color-target-id, hex);
                                 root.color-menu-visible = false;

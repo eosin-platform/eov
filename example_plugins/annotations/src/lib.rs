@@ -25,19 +25,23 @@ const VIEWPORT_MENU_CREATE_POINT: &str = "create_point";
 
 const SIDEBAR_ICON_SVG: &str = include_str!("../../../app/ui/icons/annotations.svg");
 const POINT_ICON_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>"#;
-const SET_COLOR_PALETTE: [&str; 12] = [
-    "#E85D75",
-    "#F08A5D",
-    "#F2C14E",
-    "#6BCB77",
-    "#2EC4B6",
+const SET_COLOR_PALETTE: [&str; 16] = [
+    "#FF355E",
+    "#FF7A00",
+    "#E7FF00",
+    "#39FF14",
+    "#00F5D4",
+    "#00BBF9",
     "#4D96FF",
     "#6C63FF",
     "#9D4EDD",
+    "#FF4FD8",
     "#F15BB5",
-    "#00BBF9",
+    "#FF8A5B",
     "#43AA8B",
     "#577590",
+    "#FFD166",
+    "#FFFFFF",
 ];
 
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);
