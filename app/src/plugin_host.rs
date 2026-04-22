@@ -490,7 +490,7 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
             annotation_id: String::new(),
             vertices: candidate_vertices,
             fill_color: Color::from_argb_u8(0x40, 0xFF, 0xD1, 0x66),
-            stroke_color: Color::from_rgb_u8(0x00, 0x00, 0x00),
+            stroke_color: Color::from_rgb_u8(0xF1, 0xC4, 0x0F),
         });
     }
 
