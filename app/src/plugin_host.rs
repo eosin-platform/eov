@@ -38,6 +38,12 @@ pub(crate) struct PluginPolygonVertexDragCandidate {
     pub vertices: Vec<crate::state::ImagePoint>,
 }
 
+#[derive(Clone)]
+pub(crate) struct PluginPolygonEdgeInsertCandidate {
+    pub handle: crate::state::PluginPolygonEdgeHandle,
+    pub vertices: Vec<crate::state::ImagePoint>,
+}
+
 struct OverlayPolygonShape {
     plugin_id: String,
     annotation_id: String,
@@ -112,6 +118,28 @@ fn preview_polygon_vertex_drag(
         *vertex = current;
     }
     vertices
+}
+
+fn closest_point_on_segment(
+    point: crate::state::ImagePoint,
+    start: crate::state::ImagePoint,
+    end: crate::state::ImagePoint,
+) -> (crate::state::ImagePoint, f64) {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq <= f64::EPSILON {
+        return (start, 0.0);
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq;
+    let t = t.clamp(0.0, 1.0);
+    (
+        crate::state::ImagePoint {
+            x: start.x + dx * t,
+            y: start.y + dy * t,
+        },
+        t,
+    )
 }
 
 struct HostApiContext {
@@ -572,12 +600,13 @@ pub(crate) fn viewport_overlay_polygon_vertex_boxes_for_pane(
     };
 
     let hovered_vertex = state.hovered_plugin_polygon_vertex.as_ref();
+    let hovered_edge = state.hovered_plugin_polygon_edge.as_ref();
 
     overlay_polygon_shapes_for_pane(state, pane)
         .into_iter()
         .find(|polygon| polygon.plugin_id == plugin_id && polygon.annotation_id == annotation_id)
         .map(|polygon| {
-            polygon
+            let mut boxes = polygon
                 .vertices
                 .iter()
                 .enumerate()
@@ -607,7 +636,25 @@ pub(crate) fn viewport_overlay_polygon_vertex_boxes_for_pane(
                         },
                     }
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+
+            if let Some(edge) = hovered_edge.filter(|edge| {
+                edge.plugin_id == polygon.plugin_id && edge.annotation_id == polygon.annotation_id
+            }) {
+                let screen = vp.image_to_screen(edge.position.x, edge.position.y);
+                boxes.push(crate::PluginOverlayVertexBox {
+                    plugin_id: polygon.plugin_id.clone().into(),
+                    annotation_id: polygon.annotation_id.clone().into(),
+                    vertex_index: edge.insert_index as i32,
+                    x: screen.x as f32,
+                    y: screen.y as f32,
+                    size_px: 8.0,
+                    fill_color: Color::from_rgb_u8(0xF1, 0xC4, 0x0F),
+                    border_color: Color::from_rgb_u8(0x00, 0x00, 0x00),
+                });
+            }
+
+            boxes
         })
         .unwrap_or_default()
 }
@@ -721,6 +768,82 @@ pub(crate) fn hit_test_overlay_polygon_vertex_for_pane(
                             plugin_id: plugin_id.clone(),
                             annotation_id: annotation_id.clone(),
                             vertex_index,
+                        },
+                        vertices: vertices.clone(),
+                    },
+                )
+            })
+        })
+        .filter(|(distance_sq, _)| *distance_sq <= 36.0)
+        .min_by(|left, right| left.0.total_cmp(&right.0))
+        .map(|(_, candidate)| candidate)
+}
+
+pub(crate) fn hit_test_overlay_polygon_edge_for_pane(
+    state: &AppState,
+    pane: PaneId,
+    screen_x: f32,
+    screen_y: f32,
+    plugin_id_filter: Option<&str>,
+) -> Option<PluginPolygonEdgeInsertCandidate> {
+    let file_id = state.active_file_id_for_pane(pane)?;
+    let file = state.get_file(file_id)?;
+    let pane_state = file.pane_state(pane)?;
+    let vp = &pane_state.viewport.viewport;
+    let pointer = crate::state::ImagePoint {
+        x: screen_x as f64,
+        y: screen_y as f64,
+    };
+
+    overlay_polygon_shapes_for_pane(state, pane)
+        .into_iter()
+        .filter(|polygon| {
+            !polygon.annotation_id.is_empty()
+                && polygon.vertices.len() >= 2
+                && plugin_id_filter.is_none_or(|plugin_id| polygon.plugin_id == plugin_id)
+        })
+        .flat_map(|polygon| {
+            let plugin_id = polygon.plugin_id.clone();
+            let annotation_id = polygon.annotation_id.clone();
+            let vertices = polygon.vertices.clone();
+            let screen_vertices = polygon
+                .vertices
+                .iter()
+                .map(|vertex| {
+                    let screen = vp.image_to_screen(vertex.x, vertex.y);
+                    crate::state::ImagePoint {
+                        x: screen.x,
+                        y: screen.y,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            (0..screen_vertices.len()).map(move |index| {
+                let next_index = (index + 1) % screen_vertices.len();
+                let (closest_screen, t) = closest_point_on_segment(
+                    pointer,
+                    screen_vertices[index],
+                    screen_vertices[next_index],
+                );
+                let dx = pointer.x - closest_screen.x;
+                let dy = pointer.y - closest_screen.y;
+                let insertion_point = crate::state::ImagePoint {
+                    x: vertices[index].x + (vertices[next_index].x - vertices[index].x) * t,
+                    y: vertices[index].y + (vertices[next_index].y - vertices[index].y) * t,
+                };
+                let insert_index = if next_index == 0 {
+                    vertices.len()
+                } else {
+                    next_index
+                };
+                (
+                    dx * dx + dy * dy,
+                    PluginPolygonEdgeInsertCandidate {
+                        handle: crate::state::PluginPolygonEdgeHandle {
+                            plugin_id: plugin_id.clone(),
+                            annotation_id: annotation_id.clone(),
+                            insert_index,
+                            position: insertion_point,
                         },
                         vertices: vertices.clone(),
                     },

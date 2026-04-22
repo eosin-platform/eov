@@ -46,6 +46,14 @@ pub struct PluginPolygonVertexHandle {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PluginPolygonEdgeHandle {
+    pub plugin_id: String,
+    pub annotation_id: String,
+    pub insert_index: usize,
+    pub position: ImagePoint,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PluginPolygonVertexDragState {
     pub start_pointer: ImagePoint,
     pub vertices: Vec<ImagePoint>,
@@ -517,6 +525,8 @@ pub struct AppState {
     pub dragged_plugin_polygon_position: Option<ImagePoint>,
     /// Plugin-owned polygon vertex currently hovered in the viewport, if any.
     pub hovered_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
+    /// Plugin-owned polygon edge insertion candidate currently hovered, if any.
+    pub hovered_plugin_polygon_edge: Option<PluginPolygonEdgeHandle>,
     /// Plugin-owned polygon vertex currently being dragged, if any.
     pub dragged_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
     /// Original polygon vertices and anchor pointer used for vertex drag previews.
@@ -600,6 +610,7 @@ impl AppState {
             dragged_plugin_polygon_state: None,
             dragged_plugin_polygon_position: None,
             hovered_plugin_polygon_vertex: None,
+            hovered_plugin_polygon_edge: None,
             dragged_plugin_polygon_vertex: None,
             dragged_plugin_polygon_vertex_state: None,
             dragged_plugin_polygon_vertex_position: None,
@@ -1171,6 +1182,7 @@ impl AppState {
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
         self.hovered_plugin_polygon_vertex = None;
+        self.hovered_plugin_polygon_edge = None;
         self.dragged_plugin_polygon_vertex = None;
         self.dragged_plugin_polygon_vertex_state = None;
         self.dragged_plugin_polygon_vertex_position = None;
@@ -1200,6 +1212,7 @@ impl AppState {
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
         self.hovered_plugin_polygon_vertex = None;
+        self.hovered_plugin_polygon_edge = None;
         self.dragged_plugin_polygon_vertex = None;
         self.dragged_plugin_polygon_vertex_state = None;
         self.dragged_plugin_polygon_vertex_position = None;
@@ -1231,6 +1244,7 @@ impl AppState {
         self.dragged_plugin_polygon_state = None;
         self.dragged_plugin_polygon_position = None;
         self.hovered_plugin_polygon_vertex = None;
+        self.hovered_plugin_polygon_edge = None;
         self.dragged_plugin_polygon_vertex = None;
         self.dragged_plugin_polygon_vertex_state = None;
         self.dragged_plugin_polygon_vertex_position = None;
