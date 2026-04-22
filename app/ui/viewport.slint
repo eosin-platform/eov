@@ -261,34 +261,23 @@ export component Viewport inherits Rectangle {
         }
 
         for point in root.plugin-overlay-points: Rectangle {
-            x: (point.x - point.diameter-px / 2) * 1px;
-            y: (point.y - point.diameter-px / 2) * 1px;
-            width: point.diameter-px * 1px;
-            height: point.diameter-px * 1px;
+            x: (point.x - point.diameter-px / 2) * 1px - 1px;
+            y: (point.y - point.diameter-px / 2) * 1px - 1px;
+            width: point.diameter-px * 1px + 2px;
+            height: point.diameter-px * 1px + 2px;
             background: transparent;
-            border-width: 2.625px;
-            border-color: point.ring-color;
+            border-width: 1px;
+            border-color: #111318dd;
             border-radius: self.width / 2;
 
             Rectangle {
-                x: -0.5px;
-                y: -0.5px;
-                width: parent.width + 1px;
-                height: parent.height + 1px;
+                x: 1px;
+                y: 1px;
+                width: max(0px, parent.width - 2px);
+                height: max(0px, parent.height - 2px);
                 background: transparent;
-                border-width: 0.75px;
-                border-color: #111318cc;
-                border-radius: self.width / 2;
-            }
-
-            Rectangle {
-                x: 1.5px;
-                y: 1.5px;
-                width: max(0px, parent.width - 3px);
-                height: max(0px, parent.height - 3px);
-                background: transparent;
-                border-width: 0.75px;
-                border-color: #11131866;
+                border-width: 2.625px;
+                border-color: point.ring-color;
                 border-radius: self.width / 2;
             }
         }

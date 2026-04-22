@@ -361,7 +361,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                     width: 6px;
                                     height: 6px;
                                     border-radius: 3px;
-                                    background: Theme.text-secondary;
+                                    background: rgb(row.color-r, row.color-g, row.color-b);
                                 }
                             }
 
@@ -421,7 +421,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                 horizontal-stretch: 1;
                                 vertical-stretch: 1;
                                 text: row.label;
-                                color: row.is-set ? (row.visible ? Theme.text-primary : Theme.text-secondary) : Theme.text-secondary;
+                                color: row.is-set ? (row.visible ? Theme.text-primary : Theme.text-secondary) : rgb(row.color-r, row.color-g, row.color-b);
                                 font-size: row.is-set ? 12px : 11px;
                                 font-weight: row.is-set ? 600 : 400;
                                 vertical-alignment: center;
