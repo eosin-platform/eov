@@ -37,7 +37,6 @@ struct PluginState {
     active_file_path: Option<String>,
     active_filename: Option<String>,
     selected_set_by_file: HashMap<String, String>,
-    editing_set_by_file: HashMap<String, String>,
     collapsed_sets_by_file: HashMap<String, HashSet<String>>,
 }
 
@@ -584,7 +583,6 @@ fn rename_annotation_set_for_active_file(set_id: &str, new_name: &str) -> Result
         set.updated_at = timestamp;
         sort_annotation_sets(&mut loaded_entry.annotation_sets);
     }
-    state.editing_set_by_file.remove(&active_file_path);
     Ok(())
 }
 
@@ -612,14 +610,6 @@ fn delete_annotation_set_for_active_file(set_id: &str) -> Result<(), String> {
     if let Some(collapsed) = state.collapsed_sets_by_file.get_mut(&active_file_path) {
         collapsed.remove(set_id);
     }
-    if state
-        .editing_set_by_file
-        .get(&active_file_path)
-        .is_some_and(|editing_id| editing_id == set_id)
-    {
-        state.editing_set_by_file.remove(&active_file_path);
-    }
-
     match next_selected {
         Some(next_id) => {
             state.selected_set_by_file.insert(active_file_path, next_id);
@@ -930,24 +920,6 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 refresh_sidebar_if_available();
             })
         }
-        "rename-set-clicked" => sync_active_file().map(|_| {
-            let Some(serde_json::Value::String(set_id)) = args.first() else {
-                return;
-            };
-            let mut state = plugin_state().lock().unwrap();
-            let Some(active_path) = active_file_key(&state).map(str::to_string) else {
-                return;
-            };
-            if state
-                .files
-                .get(&active_path)
-                .is_some_and(|loaded| loaded.annotation_sets.iter().any(|set| set.id == *set_id))
-            {
-                state.editing_set_by_file.insert(active_path, set_id.clone());
-                drop(state);
-                refresh_sidebar_if_available();
-            }
-        }),
         "rename-set-committed" => {
             let Some(serde_json::Value::String(set_id)) = args.first() else {
                 return;
@@ -959,24 +931,6 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 refresh_sidebar_if_available();
             })
         }
-        "rename-set-cancelled" => sync_active_file().map(|_| {
-            let Some(serde_json::Value::String(set_id)) = args.first() else {
-                return;
-            };
-            let mut state = plugin_state().lock().unwrap();
-            let Some(active_path) = active_file_key(&state).map(str::to_string) else {
-                return;
-            };
-            if state
-                .editing_set_by_file
-                .get(&active_path)
-                .is_some_and(|editing_id| editing_id == set_id)
-            {
-                state.editing_set_by_file.remove(&active_path);
-                drop(state);
-                refresh_sidebar_if_available();
-            }
-        }),
         "delete-set-confirmed" => {
             let Some(serde_json::Value::String(set_id)) = args.first() else {
                 return;
@@ -1286,18 +1240,6 @@ extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
                                     .map(|set| set.name.clone())
                             })
                     })
-                    .unwrap_or_default(),
-            )
-            .unwrap_or_else(|_| "\"\"".to_string())
-            .into(),
-        },
-        UiPropertyFFI {
-            name: "editing-set-id".into(),
-            json_value: serde_json::to_string(
-                &state
-                    .active_file_path
-                    .as_deref()
-                    .and_then(|path| state.editing_set_by_file.get(path).cloned())
                     .unwrap_or_default(),
             )
             .unwrap_or_else(|_| "\"\"".to_string())
