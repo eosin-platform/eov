@@ -164,6 +164,9 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
     property <string> editing-set-id: "";
+    property <bool> pending-create-rename: false;
+    property <string> create-rename-previous-set-id: "";
+    property <int> create-rename-attempts: 0;
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -217,6 +220,36 @@ export component AnnotationsSidebar inherits Rectangle {
         }
     }
 
+    create-rename-dispatch := Timer {
+        interval: 16ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if !root.pending-create-rename {
+                return;
+            }
+
+            if root.selected-set-id != "" && root.selected-set-id != root.create-rename-previous-set-id {
+                root.pending-create-rename = false;
+                root.create-rename-attempts = 0;
+                root.editing-set-id = root.selected-set-id;
+                return;
+            }
+
+            if root.create-rename-attempts >= 20 {
+                if root.selected-set-id != "" && root.create-rename-previous-set-id == "" {
+                    root.editing-set-id = root.selected-set-id;
+                }
+                root.pending-create-rename = false;
+                root.create-rename-attempts = 0;
+                return;
+            }
+
+            root.create-rename-attempts += 1;
+            self.start();
+        }
+    }
+
     VerticalLayout {
         width: parent.width;
         height: parent.height;
@@ -249,7 +282,11 @@ export component AnnotationsSidebar inherits Rectangle {
                 icon-source: @image-url("icons/new_annotation_set.svg");
                 tooltip-text: "New Annotation Set";
                 clicked => {
+                    root.create-rename-previous-set-id = root.selected-set-id;
+                    root.create-rename-attempts = 0;
+                    root.pending-create-rename = true;
                     root.create-set-clicked();
+                    create-rename-dispatch.start();
                 }
             }
 
@@ -292,7 +329,7 @@ export component AnnotationsSidebar inherits Rectangle {
                 }
             }
 
-            Flickable {
+            tree-flick := Flickable {
                 width: parent.width;
                 height: parent.height;
                 viewport-height: tree-layout.preferred-height;
@@ -464,6 +501,79 @@ export component AnnotationsSidebar inherits Rectangle {
                             }
                         }
                     }
+                }
+            }
+
+            if tree-flick.viewport-height > tree-flick.height + 1px: Rectangle {
+                x: parent.width - self.width - 3px;
+                y: 4px;
+                width: 8px;
+                height: parent.height - 8px;
+                background: transparent;
+                z: 2;
+
+                property <length> max-scroll: max(0px, tree-flick.viewport-height - tree-flick.height);
+                property <length> thumb-height: max(30px, (tree-flick.height * self.height) / max(tree-flick.viewport-height, tree-flick.height));
+                property <length> thumb-travel: max(0px, self.height - self.thumb-height);
+                property <float> scroll-progress: self.max-scroll <= 0px ? 0 : max(0, min(1, -tree-flick.viewport-y / self.max-scroll));
+                property <length> thumb-y: self.scroll-progress * self.thumb-travel;
+
+                function set-scroll-from-thumb(offset: length) {
+                    let clamped = max(0px, min(self.thumb-travel, offset));
+                    if self.thumb-travel <= 0px || self.max-scroll <= 0px {
+                        tree-flick.viewport-y = 0px;
+                    } else {
+                        tree-flick.viewport-y = -(clamped * self.max-scroll / self.thumb-travel);
+                    }
+                }
+
+                scrollbar-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    mouse-cursor: MouseCursor.default;
+
+                    property <bool> dragging-thumb: false;
+                    property <length> thumb-drag-offset: 0px;
+
+                    pointer-event(e) => {
+                        if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                            if self.mouse-y >= parent.thumb-y && self.mouse-y <= parent.thumb-y + parent.thumb-height {
+                                self.dragging-thumb = true;
+                                self.thumb-drag-offset = self.mouse-y - parent.thumb-y;
+                            } else {
+                                self.dragging-thumb = true;
+                                self.thumb-drag-offset = parent.thumb-height / 2;
+                                parent.set-scroll-from-thumb(self.mouse-y - self.thumb-drag-offset);
+                            }
+                        } else if e.button == PointerEventButton.left && (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                            self.dragging-thumb = false;
+                            self.thumb-drag-offset = 0px;
+                        }
+                    }
+
+                    moved => {
+                        if self.dragging-thumb {
+                            parent.set-scroll-from-thumb(self.mouse-y - self.thumb-drag-offset);
+                        }
+                    }
+                }
+
+                Rectangle {
+                    x: 2.5px;
+                    y: 0px;
+                    width: 3px;
+                    height: parent.height;
+                    border-radius: self.width / 2;
+                    background: scrollbar-touch.has-hover ? #ffffff10 : #ffffff06;
+                }
+
+                scrollbar-thumb := Rectangle {
+                    x: 1.5px;
+                    y: parent.thumb-y;
+                    width: 5px;
+                    height: parent.thumb-height;
+                    border-radius: self.width / 2;
+                    background: scrollbar-touch.dragging-thumb ? #9baabd : scrollbar-touch.has-hover ? #8797aa : #748396;
                 }
             }
         }
