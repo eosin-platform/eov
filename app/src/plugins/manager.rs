@@ -27,6 +27,40 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+fn viewport_snapshot_to_ffi(
+    viewport: &plugin_api::ViewportSnapshot,
+) -> plugin_api::ffi::ViewportSnapshotFFI {
+    plugin_api::ffi::ViewportSnapshotFFI {
+        pane_index: viewport.pane_index,
+        file_id: viewport.file_id,
+        file_path: viewport.file_path.clone().into(),
+        filename: viewport.filename.clone().into(),
+        center_x: viewport.center_x,
+        center_y: viewport.center_y,
+        zoom: viewport.zoom,
+        width: viewport.width,
+        height: viewport.height,
+        image_width: viewport.image_width,
+        image_height: viewport.image_height,
+        bounds_left: viewport.bounds_left,
+        bounds_top: viewport.bounds_top,
+        bounds_right: viewport.bounds_right,
+        bounds_bottom: viewport.bounds_bottom,
+    }
+}
+
+fn vertices_to_ffi(
+    vertices: &[crate::state::ImagePoint],
+) -> abi_stable::std_types::RVec<plugin_api::ffi::ViewportOverlayVertexFFI> {
+    vertices
+        .iter()
+        .map(|vertex| plugin_api::ffi::ViewportOverlayVertexFFI {
+            x_level0: vertex.x,
+            y_level0: vertex.y,
+        })
+        .collect()
+}
+
 /// Outcome of handling a toolbar button action.
 pub enum ActionOutcome {
     /// Rust plugin: spawn `eov plugin-window <root>` as a subprocess.
@@ -345,23 +379,7 @@ impl PluginManager {
     ) -> PluginResult<ActionOutcome> {
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
             let vt = *vtable;
-            let viewport = plugin_api::ffi::ViewportSnapshotFFI {
-                pane_index: viewport.pane_index,
-                file_id: viewport.file_id,
-                file_path: viewport.file_path.clone().into(),
-                filename: viewport.filename.clone().into(),
-                center_x: viewport.center_x,
-                center_y: viewport.center_y,
-                zoom: viewport.zoom,
-                width: viewport.width,
-                height: viewport.height,
-                image_width: viewport.image_width,
-                image_height: viewport.image_height,
-                bounds_left: viewport.bounds_left,
-                bounds_top: viewport.bounds_top,
-                bounds_right: viewport.bounds_right,
-                bounds_bottom: viewport.bounds_bottom,
-            };
+            let viewport = viewport_snapshot_to_ffi(viewport);
             (vt.on_point_annotation_placed)(viewport, x_level0, y_level0);
             return Ok(ActionOutcome::Handled);
         }
@@ -381,29 +399,55 @@ impl PluginManager {
     ) -> PluginResult<ActionOutcome> {
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
             let vt = *vtable;
-            let viewport = plugin_api::ffi::ViewportSnapshotFFI {
-                pane_index: viewport.pane_index,
-                file_id: viewport.file_id,
-                file_path: viewport.file_path.clone().into(),
-                filename: viewport.filename.clone().into(),
-                center_x: viewport.center_x,
-                center_y: viewport.center_y,
-                zoom: viewport.zoom,
-                width: viewport.width,
-                height: viewport.height,
-                image_width: viewport.image_width,
-                image_height: viewport.image_height,
-                bounds_left: viewport.bounds_left,
-                bounds_top: viewport.bounds_top,
-                bounds_right: viewport.bounds_right,
-                bounds_bottom: viewport.bounds_bottom,
-            };
+            let viewport = viewport_snapshot_to_ffi(viewport);
             (vt.on_point_annotation_moved)(viewport, annotation_id.into(), x_level0, y_level0);
             return Ok(ActionOutcome::Handled);
         }
 
         Err(plugin_api::PluginError::Other(format!(
             "unknown point annotation plugin '{plugin_id}'"
+        )))
+    }
+
+    pub fn handle_polygon_annotation_placed(
+        &mut self,
+        plugin_id: &str,
+        viewport: &plugin_api::ViewportSnapshot,
+        vertices: &[crate::state::ImagePoint],
+    ) -> PluginResult<ActionOutcome> {
+        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
+            let vt = *vtable;
+            (vt.on_polygon_annotation_placed)(
+                viewport_snapshot_to_ffi(viewport),
+                vertices_to_ffi(vertices),
+            );
+            return Ok(ActionOutcome::Handled);
+        }
+
+        Err(plugin_api::PluginError::Other(format!(
+            "unknown polygon annotation plugin '{plugin_id}'"
+        )))
+    }
+
+    pub fn handle_polygon_annotation_moved(
+        &mut self,
+        plugin_id: &str,
+        viewport: &plugin_api::ViewportSnapshot,
+        annotation_id: &str,
+        vertices: &[crate::state::ImagePoint],
+    ) -> PluginResult<ActionOutcome> {
+        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
+            let vt = *vtable;
+            (vt.on_polygon_annotation_moved)(
+                viewport_snapshot_to_ffi(viewport),
+                annotation_id.into(),
+                vertices_to_ffi(vertices),
+            );
+            return Ok(ActionOutcome::Handled);
+        }
+
+        Err(plugin_api::PluginError::Other(format!(
+            "unknown polygon annotation plugin '{plugin_id}'"
         )))
     }
 
@@ -487,6 +531,7 @@ fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMo
         plugin_api::ffi::HostToolModeFFI::RegionOfInterest => HostToolMode::RegionOfInterest,
         plugin_api::ffi::HostToolModeFFI::MeasureDistance => HostToolMode::MeasureDistance,
         plugin_api::ffi::HostToolModeFFI::PointAnnotation => HostToolMode::PointAnnotation,
+        plugin_api::ffi::HostToolModeFFI::PolygonAnnotation => HostToolMode::PolygonAnnotation,
     }
 }
 

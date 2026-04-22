@@ -30,6 +30,7 @@ pub(crate) struct AnnotationSet {
 #[derive(Clone)]
 pub(crate) enum Annotation {
     Point(PointAnnotation),
+    Polygon(PolygonAnnotation),
 }
 
 #[derive(Clone)]
@@ -39,6 +40,20 @@ pub(crate) struct PointAnnotation {
     pub(crate) updated_at: i64,
     pub(crate) x_level0: f64,
     pub(crate) y_level0: f64,
+}
+
+#[derive(Clone)]
+pub(crate) struct PolygonVertex {
+    pub(crate) x_level0: f64,
+    pub(crate) y_level0: f64,
+}
+
+#[derive(Clone)]
+pub(crate) struct PolygonAnnotation {
+    pub(crate) id: String,
+    pub(crate) created_at: i64,
+    pub(crate) updated_at: i64,
+    pub(crate) vertices: Vec<PolygonVertex>,
 }
 
 #[derive(Serialize)]
@@ -85,6 +100,18 @@ pub(crate) enum ExportAnnotation {
         x_level0: f64,
         y_level0: f64,
     },
+    Polygon {
+        id: String,
+        created_at: i64,
+        updated_at: i64,
+        vertices: Vec<ExportPolygonVertex>,
+    },
+}
+
+#[derive(Serialize)]
+pub(crate) struct ExportPolygonVertex {
+    pub(crate) x_level0: f64,
+    pub(crate) y_level0: f64,
 }
 
 pub(crate) fn now_unix_secs() -> i64 {
@@ -155,6 +182,7 @@ pub(crate) fn choose_annotation_set_color(annotation_sets: &[AnnotationSet]) -> 
 pub(crate) fn annotation_label(annotation: &Annotation) -> String {
     match annotation {
         Annotation::Point(_) => "Point".to_string(),
+        Annotation::Polygon(_) => "Polygon".to_string(),
     }
 }
 

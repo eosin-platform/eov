@@ -93,6 +93,14 @@ export struct PluginOverlayPoint {
     ring-color: color,
 }
 
+export struct PluginOverlayPolygon {
+    plugin-id: string,
+    annotation-id: string,
+    path-commands: string,
+    fill-color: color,
+    stroke-color: color,
+}
+
 export struct MetadataItem {
     label: string,
     value: string,
@@ -150,7 +158,8 @@ export struct PaneViewData {
     roi-rect: ROIRect,
     measurements: [MeasurementLine],
     plugin-overlay-points: [PluginOverlayPoint],
-    point-tool-hover-active: bool,
+    plugin-overlay-polygons: [PluginOverlayPolygon],
+    annotation-tool-hover-active: bool,
     candidate-measurement: MeasurementLine,
     is-loading: bool,
     hud: HudSettings,
@@ -161,6 +170,7 @@ export enum ToolType {
     region-of-interest,
     measure-distance,
     point-annotation,
+    polygon-annotation,
 }
 
 export enum RenderMode {

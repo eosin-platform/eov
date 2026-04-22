@@ -70,6 +70,23 @@ pub struct ViewportOverlayPointFFI {
 
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
+pub struct ViewportOverlayVertexFFI {
+    pub x_level0: f64,
+    pub y_level0: f64,
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ViewportOverlayPolygonFFI {
+    pub annotation_id: RString,
+    pub vertices: RVec<ViewportOverlayVertexFFI>,
+    pub fill_red: u8,
+    pub fill_green: u8,
+    pub fill_blue: u8,
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
 pub struct ConfirmationDialogRequestFFI {
     pub title: RString,
     pub message: RString,
@@ -106,6 +123,7 @@ pub enum HostToolModeFFI {
     RegionOfInterest = 1,
     MeasureDistance = 2,
     PointAnnotation = 3,
+    PolygonAnnotation = 4,
 }
 
 #[repr(C)]
@@ -263,9 +281,19 @@ pub struct PluginVTable {
     pub get_viewport_overlay_points:
         extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<ViewportOverlayPointFFI>,
 
+    /// Returns polygon overlay data that should be rendered over the given viewport.
+    pub get_viewport_overlay_polygons:
+        extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<ViewportOverlayPolygonFFI>,
+
     /// Called when the host commits a point annotation click for the active point tool.
     pub on_point_annotation_placed:
         extern "C" fn(viewport: ViewportSnapshotFFI, x_level0: f64, y_level0: f64),
+
+    /// Called when the host commits a polygon annotation for the active polygon tool.
+    pub on_polygon_annotation_placed: extern "C" fn(
+        viewport: ViewportSnapshotFFI,
+        vertices: RVec<ViewportOverlayVertexFFI>,
+    ),
 
     /// Called when the host moves an existing point annotation for the active point tool.
     pub on_point_annotation_moved: extern "C" fn(
@@ -273,6 +301,13 @@ pub struct PluginVTable {
         annotation_id: RString,
         x_level0: f64,
         y_level0: f64,
+    ),
+
+    /// Called when the host moves an existing polygon annotation for the active polygon tool.
+    pub on_polygon_annotation_moved: extern "C" fn(
+        viewport: ViewportSnapshotFFI,
+        annotation_id: RString,
+        vertices: RVec<ViewportOverlayVertexFFI>,
     ),
 
     /// Returns viewport filter descriptors this plugin provides.

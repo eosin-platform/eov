@@ -178,6 +178,7 @@ export component AppWindow inherits Window {
     callback viewport-tool-mouse-down(float, float);
     callback viewport-tool-mouse-move(float, float);
     callback viewport-tool-mouse-up(float, float);
+    callback confirm-tool();
     callback cancel-tool();
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
@@ -634,6 +635,9 @@ export component AppWindow inherits Window {
                     }
                     tool-mouse-up(x, y) => {
                         root.viewport-tool-mouse-up(x, y);
+                    }
+                    confirm-tool => {
+                        root.confirm-tool();
                     }
                     cancel-tool => {
                         root.cancel-tool();

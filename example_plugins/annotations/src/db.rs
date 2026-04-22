@@ -3,7 +3,10 @@ use rusqlite::{Connection, params};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::model::{Annotation, AnnotationSet, PointAnnotation, annotation_label};
+use crate::model::{
+    Annotation, AnnotationSet, PointAnnotation, PolygonAnnotation, PolygonVertex,
+    annotation_label,
+};
 
 fn annotations_db_path() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("EOV_ANNOTATIONS_DB") {
@@ -164,6 +167,18 @@ pub(crate) fn load_annotation_sets(
         )
         .map_err(|err| format!("failed to prepare point annotation query: {err}"))?;
 
+    let mut polygon_stmt = connection
+        .prepare(
+            r#"
+            SELECT a.id, a.created_at, a.updated_at, pv.vertex_index, pv.x_level0, pv.y_level0
+            FROM annotations a
+            INNER JOIN annotation_polygon_vertices pv ON pv.annotation_id = a.id
+            WHERE a.annotation_set_id = ?1 AND a.type = 'polygon'
+            ORDER BY a.created_at DESC, a.id DESC, pv.vertex_index ASC
+            "#,
+        )
+        .map_err(|err| format!("failed to prepare polygon annotation query: {err}"))?;
+
     let mut sets = Vec::new();
     for set_row in set_rows {
         let (id, name, notes, color_hex, created_at, updated_at) =
@@ -184,6 +199,57 @@ pub(crate) fn load_annotation_sets(
             annotations.push(
                 annotation.map_err(|err| format!("failed to read point annotation row: {err}"))?,
             );
+        }
+
+        let mut polygon_rows = polygon_stmt
+            .query(params![&id])
+            .map_err(|err| format!("failed to query polygon annotations for set '{id}': {err}"))?;
+        let mut current_polygon: Option<PolygonAnnotation> = None;
+        while let Some(row) = polygon_rows
+            .next()
+            .map_err(|err| format!("failed to read polygon annotation row: {err}"))?
+        {
+            let annotation_id = row
+                .get::<_, String>(0)
+                .map_err(|err| format!("failed to read polygon annotation id: {err}"))?;
+            let created_at = row
+                .get::<_, i64>(1)
+                .map_err(|err| format!("failed to read polygon created_at: {err}"))?;
+            let updated_at = row
+                .get::<_, i64>(2)
+                .map_err(|err| format!("failed to read polygon updated_at: {err}"))?;
+            let vertex = PolygonVertex {
+                x_level0: row
+                    .get(4)
+                    .map_err(|err| format!("failed to read polygon vertex x: {err}"))?,
+                y_level0: row
+                    .get(5)
+                    .map_err(|err| format!("failed to read polygon vertex y: {err}"))?,
+            };
+
+            match current_polygon.as_mut() {
+                Some(polygon) if polygon.id == annotation_id => polygon.vertices.push(vertex),
+                Some(polygon) => {
+                    annotations.push(Annotation::Polygon(polygon.clone()));
+                    current_polygon = Some(PolygonAnnotation {
+                        id: annotation_id,
+                        created_at,
+                        updated_at,
+                        vertices: vec![vertex],
+                    });
+                }
+                None => {
+                    current_polygon = Some(PolygonAnnotation {
+                        id: annotation_id,
+                        created_at,
+                        updated_at,
+                        vertices: vec![vertex],
+                    });
+                }
+            }
+        }
+        if let Some(polygon) = current_polygon.take() {
+            annotations.push(Annotation::Polygon(polygon));
         }
         annotations.sort_by_key(|annotation| std::cmp::Reverse(annotation_label(annotation)));
 

@@ -8,8 +8,9 @@ use uuid::Uuid;
 use crate::db::{fingerprint_for_file, load_annotation_sets, open_database};
 use crate::model::{
     Annotation, AnnotationSet, ExportAnnotation, ExportAnnotationSet, ExportFile,
-    LoadedFileAnnotations, PointAnnotation, choose_annotation_set_color, now_unix_secs,
-    sort_annotation_sets, unique_untitled_set_name,
+    ExportPolygonVertex, LoadedFileAnnotations, PointAnnotation, PolygonAnnotation,
+    PolygonVertex, choose_annotation_set_color, now_unix_secs, sort_annotation_sets,
+    unique_untitled_set_name,
 };
 use crate::state::{
     PluginState, active_file_from_snapshot, active_file_key, host_api, host_snapshot, plugin_state,
@@ -342,6 +343,7 @@ pub(crate) fn delete_annotation_for_active_file(annotation_id: &str) -> Result<(
                 .iter()
                 .any(|annotation| match annotation {
                     Annotation::Point(point) => point.id == annotation_id,
+                    Annotation::Polygon(polygon) => polygon.id == annotation_id,
                 })
                 .then(|| set.id.clone())
         })
@@ -370,6 +372,7 @@ pub(crate) fn delete_annotation_for_active_file(annotation_id: &str) -> Result<(
             let before = set.annotations.len();
             set.annotations.retain(|annotation| match annotation {
                 Annotation::Point(point) => point.id != annotation_id,
+                Annotation::Polygon(polygon) => polygon.id != annotation_id,
             });
             if set.annotations.len() != before {
                 set.updated_at = timestamp;
@@ -432,8 +435,9 @@ pub(crate) fn move_point_annotation(
     if let Some(loaded) = state.files.get_mut(&file_path) {
         for set in &mut loaded.annotation_sets {
             for annotation in &mut set.annotations {
-                let Annotation::Point(point) = annotation;
-                if point.id == annotation_id {
+                if let Annotation::Point(point) = annotation
+                    && point.id == annotation_id
+                {
                     point.x_level0 = x_level0;
                     point.y_level0 = y_level0;
                     point.updated_at = timestamp;
@@ -471,6 +475,87 @@ pub(crate) fn move_point_annotation(
     Ok(())
 }
 
+pub(crate) fn move_polygon_annotation(
+    viewport: &ViewportSnapshotFFI,
+    annotation_id: &str,
+    vertices: &[plugin_api::ffi::ViewportOverlayVertexFFI],
+) -> Result<(), String> {
+    if vertices.len() < 3 {
+        return Ok(());
+    }
+
+    ensure_loaded_for_viewport(viewport)?;
+    let file_path = viewport.file_path.to_string();
+    let mut state = plugin_state().lock().unwrap();
+    state.active_file_path = Some(file_path.clone());
+    state.active_filename = Some(viewport.filename.to_string());
+
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "DELETE FROM annotation_polygon_vertices WHERE annotation_id = ?1",
+            params![annotation_id],
+        )
+        .map_err(|err| format!("failed to clear polygon vertices for '{annotation_id}': {err}"))?;
+    for (index, vertex) in vertices.iter().enumerate() {
+        connection
+            .execute(
+                "INSERT INTO annotation_polygon_vertices (annotation_id, vertex_index, x_level0, y_level0) VALUES (?1, ?2, ?3, ?4)",
+                params![annotation_id, index as i64, vertex.x_level0, vertex.y_level0],
+            )
+            .map_err(|err| format!("failed to update polygon vertex {index} for '{annotation_id}': {err}"))?;
+    }
+
+    let mut updated_set_id = None;
+    if let Some(loaded) = state.files.get_mut(&file_path) {
+        for set in &mut loaded.annotation_sets {
+            for annotation in &mut set.annotations {
+                if let Annotation::Polygon(polygon) = annotation
+                    && polygon.id == annotation_id
+                {
+                    polygon.vertices = vertices
+                        .iter()
+                        .map(|vertex| PolygonVertex {
+                            x_level0: vertex.x_level0,
+                            y_level0: vertex.y_level0,
+                        })
+                        .collect();
+                    polygon.updated_at = timestamp;
+                    set.updated_at = timestamp;
+                    updated_set_id = Some(set.id.clone());
+                    break;
+                }
+            }
+            if updated_set_id.is_some() {
+                break;
+            }
+        }
+    }
+
+    connection
+        .execute(
+            "UPDATE annotations SET updated_at = ?2 WHERE id = ?1",
+            params![annotation_id, timestamp],
+        )
+        .map_err(|err| {
+            format!("failed to update polygon annotation timestamp for '{annotation_id}': {err}")
+        })?;
+
+    if let Some(set_id) = updated_set_id {
+        connection
+            .execute(
+                "UPDATE annotation_sets SET updated_at = ?2 WHERE id = ?1",
+                params![set_id, timestamp],
+            )
+            .map_err(|err| {
+                format!("failed to update annotation set timestamp after polygon move: {err}")
+            })?;
+    }
+
+    Ok(())
+}
+
 pub(crate) fn start_point_annotation_flow() -> Result<(), String> {
     sync_active_file()?;
     let Some(host_api) = host_api() else {
@@ -479,6 +564,19 @@ pub(crate) fn start_point_annotation_flow() -> Result<(), String> {
     (host_api.set_active_tool)(host_api.context, HostToolModeFFI::PointAnnotation)
         .into_result()
         .map_err(|err| format!("failed to activate point annotation tool: {err}"))?;
+    refresh_sidebar_if_available();
+    request_render_if_available();
+    Ok(())
+}
+
+pub(crate) fn start_polygon_annotation_flow() -> Result<(), String> {
+    sync_active_file()?;
+    let Some(host_api) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    (host_api.set_active_tool)(host_api.context, HostToolModeFFI::PolygonAnnotation)
+        .into_result()
+        .map_err(|err| format!("failed to activate polygon annotation tool: {err}"))?;
     refresh_sidebar_if_available();
     request_render_if_available();
     Ok(())
@@ -522,6 +620,19 @@ pub(crate) fn export_active_file_annotations() -> Result<(), String> {
                                 updated_at: point.updated_at,
                                 x_level0: point.x_level0,
                                 y_level0: point.y_level0,
+                            },
+                            Annotation::Polygon(polygon) => ExportAnnotation::Polygon {
+                                id: polygon.id.clone(),
+                                created_at: polygon.created_at,
+                                updated_at: polygon.updated_at,
+                                vertices: polygon
+                                    .vertices
+                                    .iter()
+                                    .map(|vertex| ExportPolygonVertex {
+                                        x_level0: vertex.x_level0,
+                                        y_level0: vertex.y_level0,
+                                    })
+                                    .collect(),
                             },
                         })
                         .collect(),
@@ -620,6 +731,81 @@ pub(crate) fn persist_point_annotation(
             updated_at: timestamp,
             x_level0,
             y_level0,
+        }),
+    );
+    Ok(())
+}
+
+pub(crate) fn persist_polygon_annotation(
+    viewport: &ViewportSnapshotFFI,
+    vertices: &[plugin_api::ffi::ViewportOverlayVertexFFI],
+) -> Result<(), String> {
+    if vertices.len() < 3 {
+        return Ok(());
+    }
+
+    ensure_loaded_for_viewport(viewport)?;
+    let file_path = viewport.file_path.to_string();
+    let mut state = plugin_state().lock().unwrap();
+    state.active_file_path = Some(file_path.clone());
+    state.active_filename = Some(viewport.filename.to_string());
+    let Some(annotation_set_id) = ensure_selected_set_for_active_file(&mut state)? else {
+        return Ok(());
+    };
+
+    let annotation_id = Uuid::new_v4().to_string();
+    let timestamp = now_unix_secs();
+    let connection = open_database()?;
+    connection
+        .execute(
+            "INSERT INTO annotations (id, annotation_set_id, type, created_at, updated_at) VALUES (?1, ?2, 'polygon', ?3, ?4)",
+            params![&annotation_id, &annotation_set_id, timestamp, timestamp],
+        )
+        .map_err(|err| format!("failed to insert polygon annotation: {err}"))?;
+    connection
+        .execute(
+            "INSERT INTO annotation_polygons (annotation_id) VALUES (?1)",
+            params![&annotation_id],
+        )
+        .map_err(|err| format!("failed to insert polygon annotation shell: {err}"))?;
+    for (index, vertex) in vertices.iter().enumerate() {
+        connection
+            .execute(
+                "INSERT INTO annotation_polygon_vertices (annotation_id, vertex_index, x_level0, y_level0) VALUES (?1, ?2, ?3, ?4)",
+                params![&annotation_id, index as i64, vertex.x_level0, vertex.y_level0],
+            )
+            .map_err(|err| format!("failed to insert polygon vertex {index}: {err}"))?;
+    }
+    connection
+        .execute(
+            "UPDATE annotation_sets SET updated_at = ?2 WHERE id = ?1",
+            params![&annotation_set_id, timestamp],
+        )
+        .map_err(|err| format!("failed to update annotation set timestamp: {err}"))?;
+
+    let loaded = state
+        .files
+        .get_mut(&file_path)
+        .ok_or_else(|| format!("file '{}' is not loaded in plugin state", file_path))?;
+    let set = loaded
+        .annotation_sets
+        .iter_mut()
+        .find(|set| set.id == annotation_set_id)
+        .ok_or_else(|| format!("annotation set '{}' is not loaded", annotation_set_id))?;
+    set.updated_at = timestamp;
+    set.annotations.insert(
+        0,
+        Annotation::Polygon(PolygonAnnotation {
+            id: annotation_id,
+            created_at: timestamp,
+            updated_at: timestamp,
+            vertices: vertices
+                .iter()
+                .map(|vertex| PolygonVertex {
+                    x_level0: vertex.x_level0,
+                    y_level0: vertex.y_level0,
+                })
+                .collect(),
         }),
     );
     Ok(())

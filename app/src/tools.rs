@@ -21,6 +21,7 @@ pub fn update_tool_state(ui: &crate::AppWindow, state: &AppState) {
         Tool::RegionOfInterest => ToolType::RegionOfInterest,
         Tool::MeasureDistance => ToolType::MeasureDistance,
         Tool::PointAnnotation => ToolType::PointAnnotation,
+        Tool::PolygonAnnotation => ToolType::PolygonAnnotation,
     };
     ui.set_current_tool(tool_type);
 }
@@ -225,6 +226,10 @@ pub fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64
             state.tool_state = ToolInteractionState::Idle;
             state.candidate_point = None;
         }
+        Tool::PolygonAnnotation => {
+            state.tool_state = ToolInteractionState::Idle;
+            state.candidate_point = None;
+        }
     }
 }
 
@@ -322,6 +327,10 @@ pub fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) 
                 }
             }
             Tool::PointAnnotation => {
+                state.tool_state = ToolInteractionState::Idle;
+                state.candidate_point = None;
+            }
+            Tool::PolygonAnnotation => {
                 state.tool_state = ToolInteractionState::Idle;
                 state.candidate_point = None;
             }

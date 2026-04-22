@@ -21,15 +21,21 @@ pub struct PaneState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginPointHandle {
+pub struct PluginAnnotationHandle {
     pub plugin_id: String,
     pub annotation_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PluginPointPreviewPosition {
+pub struct PluginAnnotationPreviewPosition {
     pub x_level0: f64,
     pub y_level0: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PluginPolygonDragState {
+    pub start_pointer: ImagePoint,
+    pub vertices: Vec<ImagePoint>,
 }
 
 /// Per-tab HUD settings
@@ -151,12 +157,14 @@ pub enum Tool {
     MeasureDistance,
     /// Point annotation tool - click to place an annotation point.
     PointAnnotation,
+    /// Polygon annotation tool - click to place vertices and confirm a closed polygon.
+    PolygonAnnotation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolSelection {
     pub tool: Tool,
-    pub point_plugin_id: Option<String>,
+    pub plugin_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,7 +180,7 @@ pub struct TemporaryToolOverride {
 }
 
 /// Point in image coordinates
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ImagePoint {
     pub x: f64,
     pub y: f64,
@@ -475,18 +483,28 @@ pub struct AppState {
     pub focused_pane: PaneId,
     /// Current active tool
     pub current_tool: Tool,
-    /// Owning plugin for the active point annotation tool, if any.
-    pub active_point_tool_plugin_id: Option<String>,
+    /// Owning plugin for the active plugin-provided annotation tool, if any.
+    pub active_tool_plugin_id: Option<String>,
     /// Current tool interaction state
     pub tool_state: ToolInteractionState,
     /// Candidate point (for visual feedback during tool use)
     pub candidate_point: Option<ImagePoint>,
-    /// Plugin-owned point annotation currently hovered in the viewport, if any.
-    pub hovered_plugin_point: Option<PluginPointHandle>,
+    /// Plugin-owned annotation currently hovered in the viewport, if any.
+    pub hovered_plugin_annotation: Option<PluginAnnotationHandle>,
     /// Plugin-owned point annotation currently being dragged, if any.
-    pub dragged_plugin_point: Option<PluginPointHandle>,
+    pub dragged_plugin_point: Option<PluginAnnotationHandle>,
     /// Transient image-space preview position for the dragged plugin point.
-    pub dragged_plugin_point_position: Option<PluginPointPreviewPosition>,
+    pub dragged_plugin_point_position: Option<PluginAnnotationPreviewPosition>,
+    /// Plugin-owned polygon annotation currently being dragged, if any.
+    pub dragged_plugin_polygon: Option<PluginAnnotationHandle>,
+    /// Original polygon vertices and anchor pointer used for drag previews.
+    pub dragged_plugin_polygon_state: Option<PluginPolygonDragState>,
+    /// Current pointer position used to preview polygon dragging.
+    pub dragged_plugin_polygon_position: Option<ImagePoint>,
+    /// In-progress polygon vertices for the active polygon tool.
+    pub polygon_candidate_vertices: Vec<ImagePoint>,
+    /// Current hover point used to preview the next polygon segment.
+    pub polygon_candidate_hover: Option<ImagePoint>,
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
     /// Frame timestamps for FPS calculation
@@ -550,12 +568,17 @@ impl AppState {
             split_position: 0.5,
             focused_pane: PaneId::PRIMARY,
             current_tool: Tool::Navigate,
-            active_point_tool_plugin_id: None,
+            active_tool_plugin_id: None,
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
-            hovered_plugin_point: None,
+            hovered_plugin_annotation: None,
             dragged_plugin_point: None,
             dragged_plugin_point_position: None,
+            dragged_plugin_polygon: None,
+            dragged_plugin_polygon_state: None,
+            dragged_plugin_polygon_position: None,
+            polygon_candidate_vertices: Vec::new(),
+            polygon_candidate_hover: None,
             ant_offset: 0.0,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
@@ -1110,14 +1133,19 @@ impl AppState {
     /// Set the current tool and reset interaction state
     pub fn set_tool(&mut self, tool: Tool) {
         self.current_tool = tool;
-        if tool != Tool::PointAnnotation {
-            self.active_point_tool_plugin_id = None;
+        if !matches!(tool, Tool::PointAnnotation | Tool::PolygonAnnotation) {
+            self.active_tool_plugin_id = None;
         }
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
-        self.hovered_plugin_point = None;
+        self.hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
+        self.dragged_plugin_polygon = None;
+        self.dragged_plugin_polygon_state = None;
+        self.dragged_plugin_polygon_position = None;
+        self.polygon_candidate_vertices.clear();
+        self.polygon_candidate_hover = None;
         self.needs_render = true;
         // Only clear ROI and measurements when switching to Navigate
         if tool == Tool::Navigate
@@ -1135,11 +1163,16 @@ impl AppState {
     pub fn cancel_tool(&mut self) {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
-        self.hovered_plugin_point = None;
+        self.hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
+        self.dragged_plugin_polygon = None;
+        self.dragged_plugin_polygon_state = None;
+        self.dragged_plugin_polygon_position = None;
+        self.polygon_candidate_vertices.clear();
+        self.polygon_candidate_hover = None;
         self.current_tool = Tool::Navigate;
-        self.active_point_tool_plugin_id = None;
+        self.active_tool_plugin_id = None;
         self.needs_render = true;
         // Clear ROI and measurements when cancelling
         if let Some(file) = self
@@ -1152,29 +1185,34 @@ impl AppState {
         }
     }
 
-    pub fn set_point_annotation_tool(&mut self, plugin_id: String) {
-        self.current_tool = Tool::PointAnnotation;
-        self.active_point_tool_plugin_id = Some(plugin_id);
+    pub fn set_plugin_annotation_tool(&mut self, tool: Tool, plugin_id: String) {
+        self.current_tool = tool;
+        self.active_tool_plugin_id = Some(plugin_id);
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
-        self.hovered_plugin_point = None;
+        self.hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
+        self.dragged_plugin_polygon = None;
+        self.dragged_plugin_polygon_state = None;
+        self.dragged_plugin_polygon_position = None;
+        self.polygon_candidate_vertices.clear();
+        self.polygon_candidate_hover = None;
         self.needs_render = true;
     }
 
     pub fn current_tool_selection(&self) -> ToolSelection {
         ToolSelection {
             tool: self.current_tool,
-            point_plugin_id: self.active_point_tool_plugin_id.clone(),
+            plugin_id: self.active_tool_plugin_id.clone(),
         }
     }
 
     pub fn apply_tool_selection(&mut self, selection: &ToolSelection) {
         match selection.tool {
-            Tool::PointAnnotation => {
-                if let Some(plugin_id) = selection.point_plugin_id.clone() {
-                    self.set_point_annotation_tool(plugin_id);
+            Tool::PointAnnotation | Tool::PolygonAnnotation => {
+                if let Some(plugin_id) = selection.plugin_id.clone() {
+                    self.set_plugin_annotation_tool(selection.tool, plugin_id);
                 } else {
                     self.set_tool(Tool::Navigate);
                 }

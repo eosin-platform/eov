@@ -54,6 +54,7 @@ component PaneView inherits Rectangle {
     callback tool-mouse-down(float, float);
     callback tool-mouse-move(float, float);
     callback tool-mouse-up(float, float);
+    callback confirm-tool();
     callback cancel-tool();
     callback close-active-tab();
     callback tab-tooltip-changed(bool, string, length, length);
@@ -146,7 +147,8 @@ component PaneView inherits Rectangle {
                 roi-rect: root.pane-data.roi-rect;
                 measurements: root.pane-data.measurements;
                 plugin-overlay-points: root.pane-data.plugin-overlay-points;
-                point-tool-hover-active: root.pane-data.point-tool-hover-active;
+                plugin-overlay-polygons: root.pane-data.plugin-overlay-polygons;
+                annotation-tool-hover-active: root.pane-data.annotation-tool-hover-active;
                 candidate-measurement: root.pane-data.candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
@@ -198,6 +200,9 @@ component PaneView inherits Rectangle {
                 }
                 tool-mouse-up(x, y) => {
                     root.tool-mouse-up(x, y);
+                }
+                confirm-tool => {
+                    root.confirm-tool();
                 }
                 cancel-tool => {
                     root.cancel-tool();
@@ -435,6 +440,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback tool-mouse-down(float, float);
     callback tool-mouse-move(float, float);
     callback tool-mouse-up(float, float);
+    callback confirm-tool();
     callback cancel-tool();
     callback close-active-tab();
     callback tab-tooltip-changed(bool, string, length, length);
@@ -550,6 +556,9 @@ export component SplitPaneContainer inherits Rectangle {
             }
             tool-mouse-up(x, y) => {
                 root.tool-mouse-up(x, y);
+            }
+            confirm-tool => {
+                root.confirm-tool();
             }
             cancel-tool => {
                 root.cancel-tool();

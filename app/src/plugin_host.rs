@@ -8,7 +8,8 @@ use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, OpenFileInfoFFI, PluginVTable, UiPropertyFFI,
-    ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportSnapshotFFI,
+    ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+    ViewportSnapshotFFI,
 };
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -17,12 +18,84 @@ use slint::{
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::state::{AppState, PaneId};
+
+#[derive(Clone)]
+pub(crate) struct PluginPolygonDragCandidate {
+    pub handle: crate::state::PluginAnnotationHandle,
+    pub vertices: Vec<crate::state::ImagePoint>,
+}
+
+struct OverlayPolygonShape {
+    plugin_id: String,
+    annotation_id: String,
+    vertices: Vec<crate::state::ImagePoint>,
+    fill_color: Color,
+    stroke_color: Color,
+}
+
+fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
+    Color::from_argb_u8(if hovered { 0x58 } else { 0x40 }, red, green, blue)
+}
+
+fn polygon_path_commands(vertices: &[crate::state::ImagePoint]) -> String {
+    let mut commands = String::new();
+    for (index, vertex) in vertices.iter().enumerate() {
+        let _ = write!(
+            &mut commands,
+            "{} {:.3} {:.3} ",
+            if index == 0 { 'M' } else { 'L' },
+            vertex.x,
+            vertex.y
+        );
+    }
+    if vertices.len() >= 3 {
+        commands.push('Z');
+    }
+    commands.trim().to_string()
+}
+
+fn point_in_polygon(point: crate::state::ImagePoint, vertices: &[crate::state::ImagePoint]) -> bool {
+    if vertices.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut previous = vertices.last().copied().unwrap_or_default();
+    for current in vertices.iter().copied() {
+        let crosses = ((current.y > point.y) != (previous.y > point.y))
+            && (point.x
+                < (previous.x - current.x) * (point.y - current.y)
+                    / ((previous.y - current.y) + f64::EPSILON)
+                    + current.x);
+        if crosses {
+            inside = !inside;
+        }
+        previous = current;
+    }
+    inside
+}
+
+fn preview_polygon_vertices(
+    drag_state: &crate::state::PluginPolygonDragState,
+    current: crate::state::ImagePoint,
+) -> Vec<crate::state::ImagePoint> {
+    let dx = current.x - drag_state.start_pointer.x;
+    let dy = current.y - drag_state.start_pointer.y;
+    drag_state
+        .vertices
+        .iter()
+        .map(|vertex| crate::state::ImagePoint {
+            x: vertex.x + dx,
+            y: vertex.y + dy,
+        })
+        .collect()
+}
 
 struct HostApiContext {
     plugin_id: String,
@@ -182,7 +255,7 @@ pub(crate) fn set_local_hud_toolbar_button_active(
 }
 
 pub(crate) fn sync_tool_button_states(state: &mut AppState) {
-    let point_owner = state.active_point_tool_plugin_id.as_deref();
+    let point_owner = state.active_tool_plugin_id.as_deref();
     let current_tool = state.current_tool;
 
     for button in &mut state.local_plugin_buttons {
@@ -255,10 +328,10 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
     let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
     let vp = &pane_state.viewport.viewport;
-    let hovered = state.hovered_plugin_point.as_ref();
+    let hovered = state.hovered_plugin_annotation.as_ref();
     let dragged = state.dragged_plugin_point.as_ref();
     let dragged_position = state.dragged_plugin_point_position;
-    let active_tool_plugin_id = state.active_point_tool_plugin_id.as_deref();
+    let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
     let point_tool_active = state.current_tool == crate::state::Tool::PointAnnotation;
 
     local_plugin_vtables()
@@ -307,7 +380,7 @@ pub(crate) fn hit_test_overlay_point_for_pane(
     screen_x: f32,
     screen_y: f32,
     plugin_id_filter: Option<&str>,
-) -> Option<crate::state::PluginPointHandle> {
+) -> Option<crate::state::PluginAnnotationHandle> {
     viewport_overlay_points_for_pane(state, pane)
         .into_iter()
         .filter(|point| {
@@ -321,9 +394,181 @@ pub(crate) fn hit_test_overlay_point_for_pane(
             (distance_sq <= radius * radius).then_some((distance_sq, point))
         })
         .min_by(|left, right| left.0.total_cmp(&right.0))
-        .map(|(_, point)| crate::state::PluginPointHandle {
+        .map(|(_, point)| crate::state::PluginAnnotationHandle {
             plugin_id: point.plugin_id.to_string(),
             annotation_id: point.annotation_id.to_string(),
+        })
+}
+
+fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<OverlayPolygonShape> {
+    let Some(file_id) = state.active_file_id_for_pane(pane) else {
+        return Vec::new();
+    };
+    let Some(file) = state.get_file(file_id) else {
+        return Vec::new();
+    };
+    let Some(pane_state) = file.pane_state(pane) else {
+        return Vec::new();
+    };
+
+    let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
+    let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
+    let hovered = state.hovered_plugin_annotation.as_ref();
+    let dragged = state.dragged_plugin_polygon.as_ref();
+    let dragged_state = state.dragged_plugin_polygon_state.as_ref();
+    let dragged_position = state.dragged_plugin_polygon_position;
+    let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
+    let polygon_tool_active = state.current_tool == crate::state::Tool::PolygonAnnotation;
+
+    let mut polygons = local_plugin_vtables()
+        .into_iter()
+        .flat_map(|(plugin_id, vtable)| {
+            (vtable.get_viewport_overlay_polygons)(snapshot_ffi.clone())
+                .into_iter()
+                .map(move |polygon| (plugin_id.clone(), polygon))
+        })
+        .map(|(plugin_id, polygon): (String, ViewportOverlayPolygonFFI)| {
+            let annotation_id = polygon.annotation_id.to_string();
+            let vertices = if dragged.is_some_and(|handle| {
+                handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+            }) {
+                match (dragged_state, dragged_position) {
+                    (Some(drag_state), Some(current)) => preview_polygon_vertices(drag_state, current),
+                    _ => polygon
+                        .vertices
+                        .iter()
+                        .map(|vertex| crate::state::ImagePoint {
+                            x: vertex.x_level0,
+                            y: vertex.y_level0,
+                        })
+                        .collect(),
+                }
+            } else {
+                polygon
+                    .vertices
+                    .iter()
+                    .map(|vertex| crate::state::ImagePoint {
+                        x: vertex.x_level0,
+                        y: vertex.y_level0,
+                    })
+                    .collect()
+            };
+            let hovered = polygon_tool_active
+                && active_tool_plugin_id == Some(plugin_id.as_str())
+                && hovered.is_some_and(|handle| {
+                    handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+                });
+            OverlayPolygonShape {
+                plugin_id,
+                annotation_id,
+                vertices,
+                fill_color: polygon_fill_color(
+                    polygon.fill_red,
+                    polygon.fill_green,
+                    polygon.fill_blue,
+                    hovered,
+                ),
+                stroke_color: if hovered {
+                    Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+                } else {
+                    Color::from_rgb_u8(0x00, 0x00, 0x00)
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if state.current_tool == crate::state::Tool::PolygonAnnotation
+        && pane == state.focused_pane
+        && !state.polygon_candidate_vertices.is_empty()
+    {
+        let mut candidate_vertices = state.polygon_candidate_vertices.clone();
+        if let Some(hover) = state.polygon_candidate_hover {
+            candidate_vertices.push(hover);
+        }
+        polygons.push(OverlayPolygonShape {
+            plugin_id: String::new(),
+            annotation_id: String::new(),
+            vertices: candidate_vertices,
+            fill_color: Color::from_argb_u8(0x40, 0xFF, 0xD1, 0x66),
+            stroke_color: Color::from_rgb_u8(0x00, 0x00, 0x00),
+        });
+    }
+
+    polygons
+}
+
+pub(crate) fn viewport_overlay_polygons_for_pane(
+    state: &AppState,
+    pane: PaneId,
+) -> Vec<crate::PluginOverlayPolygon> {
+    let Some(file_id) = state.active_file_id_for_pane(pane) else {
+        return Vec::new();
+    };
+    let Some(file) = state.get_file(file_id) else {
+        return Vec::new();
+    };
+    let Some(pane_state) = file.pane_state(pane) else {
+        return Vec::new();
+    };
+    let vp = &pane_state.viewport.viewport;
+
+    overlay_polygon_shapes_for_pane(state, pane)
+        .into_iter()
+        .filter_map(|polygon| {
+            let screen_vertices = polygon
+                .vertices
+                .iter()
+                .map(|vertex| {
+                    let screen = vp.image_to_screen(vertex.x, vertex.y);
+                    crate::state::ImagePoint {
+                        x: screen.x,
+                        y: screen.y,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let commands = polygon_path_commands(&screen_vertices);
+            (!commands.is_empty()).then_some(crate::PluginOverlayPolygon {
+                plugin_id: polygon.plugin_id.into(),
+                annotation_id: polygon.annotation_id.into(),
+                path_commands: commands.into(),
+                fill_color: polygon.fill_color,
+                stroke_color: polygon.stroke_color,
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn hit_test_overlay_polygon_for_pane(
+    state: &AppState,
+    pane: PaneId,
+    screen_x: f32,
+    screen_y: f32,
+    plugin_id_filter: Option<&str>,
+) -> Option<PluginPolygonDragCandidate> {
+    let file_id = state.active_file_id_for_pane(pane)?;
+    let file = state.get_file(file_id)?;
+    let pane_state = file.pane_state(pane)?;
+    let image = pane_state
+        .viewport
+        .screen_to_image(screen_x as f64, screen_y as f64);
+    let point = crate::state::ImagePoint {
+        x: image.0,
+        y: image.1,
+    };
+
+    overlay_polygon_shapes_for_pane(state, pane)
+        .into_iter()
+        .filter(|polygon| {
+            !polygon.annotation_id.is_empty()
+                && plugin_id_filter.is_none_or(|plugin_id| polygon.plugin_id == plugin_id)
+        })
+        .find(|polygon| point_in_polygon(point, &polygon.vertices))
+        .map(|polygon| PluginPolygonDragCandidate {
+            handle: crate::state::PluginAnnotationHandle {
+                plugin_id: polygon.plugin_id,
+                annotation_id: polygon.annotation_id,
+            },
+            vertices: polygon.vertices,
         })
 }
 
@@ -469,7 +714,10 @@ pub(crate) fn set_active_tool(plugin_id: &str, tool: HostToolModeFFI) -> Result<
                     state.set_tool(crate::state::Tool::MeasureDistance)
                 }
                 HostToolModeFFI::PointAnnotation => {
-                    state.set_point_annotation_tool(plugin_id.clone())
+                    state.set_plugin_annotation_tool(crate::state::Tool::PointAnnotation, plugin_id.clone())
+                }
+                HostToolModeFFI::PolygonAnnotation => {
+                    state.set_plugin_annotation_tool(crate::state::Tool::PolygonAnnotation, plugin_id.clone())
                 }
             }
             sync_tool_button_states(&mut state);
@@ -1086,6 +1334,9 @@ fn tool_mode_matches_state(
         HostToolMode::MeasureDistance => current_tool == crate::state::Tool::MeasureDistance,
         HostToolMode::PointAnnotation => {
             current_tool == crate::state::Tool::PointAnnotation && point_owner == Some(plugin_id)
+        }
+        HostToolMode::PolygonAnnotation => {
+            current_tool == crate::state::Tool::PolygonAnnotation && point_owner == Some(plugin_id)
         }
     }
 }

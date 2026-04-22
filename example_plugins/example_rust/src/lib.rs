@@ -111,7 +111,8 @@ use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{
     ActionResponseFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI, PluginVTable,
     ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
-    ViewportOverlayPointFFI, ViewportSnapshotFFI,
+    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
+    ViewportSnapshotFFI,
 };
 
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);
@@ -198,6 +199,12 @@ extern "C" fn get_viewport_overlay_points_ffi(
     RVec::new()
 }
 
+extern "C" fn get_viewport_overlay_polygons_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<ViewportOverlayPolygonFFI> {
+    RVec::new()
+}
+
 extern "C" fn on_point_annotation_placed_ffi(
     _viewport: ViewportSnapshotFFI,
     _x_level0: f64,
@@ -210,6 +217,19 @@ extern "C" fn on_point_annotation_moved_ffi(
     _annotation_id: RString,
     _x_level0: f64,
     _y_level0: f64,
+) {
+}
+
+extern "C" fn on_polygon_annotation_placed_ffi(
+    _viewport: ViewportSnapshotFFI,
+    _vertices: RVec<ViewportOverlayVertexFFI>,
+) {
+}
+
+extern "C" fn on_polygon_annotation_moved_ffi(
+    _viewport: ViewportSnapshotFFI,
+    _annotation_id: RString,
+    _vertices: RVec<ViewportOverlayVertexFFI>,
 ) {
 }
 
@@ -250,8 +270,11 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         get_viewport_context_menu_items: get_viewport_context_menu_items_ffi,
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
+        get_viewport_overlay_polygons: get_viewport_overlay_polygons_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
+        on_polygon_annotation_placed: on_polygon_annotation_placed_ffi,
         on_point_annotation_moved: on_point_annotation_moved_ffi,
+        on_polygon_annotation_moved: on_polygon_annotation_moved_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

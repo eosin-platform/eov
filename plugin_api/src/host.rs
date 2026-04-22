@@ -9,6 +9,7 @@ pub enum HostToolMode {
     RegionOfInterest,
     MeasureDistance,
     PointAnnotation,
+    PolygonAnnotation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

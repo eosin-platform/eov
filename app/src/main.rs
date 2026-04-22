@@ -113,7 +113,11 @@ fn deactivate_active_plugin_tool_if_matching(
             }
             plugin_api::HostToolMode::PointAnnotation => {
                 app_state.current_tool == crate::state::Tool::PointAnnotation
-                    && app_state.active_point_tool_plugin_id.as_deref() == Some(plugin_id)
+                    && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
+            }
+            plugin_api::HostToolMode::PolygonAnnotation => {
+                app_state.current_tool == crate::state::Tool::PolygonAnnotation
+                    && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
             }
         };
         if !is_active {
@@ -143,10 +147,12 @@ fn tool_selection_for_button(
         plugin_api::HostToolMode::RegionOfInterest => state::Tool::RegionOfInterest,
         plugin_api::HostToolMode::MeasureDistance => state::Tool::MeasureDistance,
         plugin_api::HostToolMode::PointAnnotation => state::Tool::PointAnnotation,
+        plugin_api::HostToolMode::PolygonAnnotation => state::Tool::PolygonAnnotation,
     };
     Some(state::ToolSelection {
         tool,
-        point_plugin_id: (tool == state::Tool::PointAnnotation).then(|| button.plugin_id.clone()),
+        plugin_id: matches!(tool, state::Tool::PointAnnotation | state::Tool::PolygonAnnotation)
+            .then(|| button.plugin_id.clone()),
     })
 }
 
@@ -158,8 +164,8 @@ fn selection_matches_button(
         return false;
     };
     app_state.current_tool == target.tool
-        && (target.tool != state::Tool::PointAnnotation
-            || app_state.active_point_tool_plugin_id == target.point_plugin_id)
+        && (!matches!(target.tool, state::Tool::PointAnnotation | state::Tool::PolygonAnnotation)
+            || app_state.active_tool_plugin_id == target.plugin_id)
 }
 
 fn slider_value_to_zoom(value: f32) -> f64 {
@@ -657,6 +663,7 @@ fn setup_callbacks(
     let hotkey_render_state = Arc::clone(&state);
     let hotkey_render_timer = Rc::clone(&render_timer);
     let hotkey_render_cache = Arc::clone(&tile_cache);
+    let hotkey_plugin_manager = Rc::clone(&plugin_manager);
     ui.on_plugin_tool_hotkey_released(move |text| {
         let Some(key) = normalize_hotkey_text(text.as_str()) else {
             return false;
@@ -673,6 +680,14 @@ fn setup_callbacks(
             entry.saw_repeat || entry.pressed_at.elapsed() >= MOMENTARY_TOOL_HOLD_THRESHOLD;
 
         if was_held {
+            if entry.target.tool == state::Tool::PolygonAnnotation
+                && let Err(err) = crate::callbacks::confirm_active_polygon_annotation(
+                    &hotkey_state,
+                    &hotkey_plugin_manager,
+                )
+            {
+                tracing::error!("Polygon annotation confirmation error: {err}");
+            }
             if let Some(restore) = entry.restore
                 && let Some(ui) = hotkey_ui.upgrade()
             {

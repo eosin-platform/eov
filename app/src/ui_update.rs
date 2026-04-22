@@ -231,6 +231,8 @@ pub fn update_tabs(
             let (roi_rect, measurements, candidate_measurement) = pane_overlay_data(state, pane);
             let plugin_overlay_points =
                 crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
+            let plugin_overlay_polygons =
+                crate::plugin_host::viewport_overlay_polygons_for_pane(state, pane);
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;
@@ -302,9 +304,11 @@ pub fn update_tabs(
                 roi_rect,
                 measurements: pane_ui.measurements.clone().into(),
                 plugin_overlay_points: plugin_overlay_points.as_slice().into(),
-                point_tool_hover_active: state.current_tool == crate::state::Tool::PointAnnotation
-                    && pane == state.focused_pane
-                    && state.hovered_plugin_point.is_some(),
+                plugin_overlay_polygons: plugin_overlay_polygons.as_slice().into(),
+                annotation_tool_hover_active:
+                    matches!(state.current_tool, crate::state::Tool::PointAnnotation | crate::state::Tool::PolygonAnnotation)
+                        && pane == state.focused_pane
+                        && state.hovered_plugin_annotation.is_some(),
                 candidate_measurement,
                 is_loading: ui.get_is_loading() && pane == state.focused_pane,
                 hud,

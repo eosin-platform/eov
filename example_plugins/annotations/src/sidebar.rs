@@ -50,6 +50,7 @@ fn sidebar_rows(state: &PluginState) -> Vec<SidebarTreeRow> {
             for annotation in &set.annotations {
                 let annotation_id = match annotation {
                     Annotation::Point(point) => point.id.clone(),
+                    Annotation::Polygon(polygon) => polygon.id.clone(),
                 };
                 rows.push(SidebarTreeRow {
                     row_id: annotation_id,
@@ -122,6 +123,33 @@ fn focus_sidebar_row(row_id: &str) -> Result<(), String> {
                     .find_map(|annotation| match annotation {
                         Annotation::Point(point) if point.id == row_id => {
                             Some((set.id.clone(), point.x_level0, point.y_level0))
+                        }
+                        Annotation::Polygon(polygon) if polygon.id == row_id => {
+                            let min_x = polygon
+                                .vertices
+                                .iter()
+                                .map(|vertex| vertex.x_level0)
+                                .fold(f64::INFINITY, f64::min);
+                            let min_y = polygon
+                                .vertices
+                                .iter()
+                                .map(|vertex| vertex.y_level0)
+                                .fold(f64::INFINITY, f64::min);
+                            let max_x = polygon
+                                .vertices
+                                .iter()
+                                .map(|vertex| vertex.x_level0)
+                                .fold(f64::NEG_INFINITY, f64::max);
+                            let max_y = polygon
+                                .vertices
+                                .iter()
+                                .map(|vertex| vertex.y_level0)
+                                .fold(f64::NEG_INFINITY, f64::max);
+                            Some((
+                                set.id.clone(),
+                                (min_x + max_x) * 0.5,
+                                (min_y + max_y) * 0.5,
+                            ))
                         }
                         _ => None,
                     })
