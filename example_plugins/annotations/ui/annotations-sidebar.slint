@@ -165,6 +165,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
     in-out property <string> editing-set-id: "";
+    property <string> pending-rename-click-id: "";
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -215,6 +216,15 @@ export component AnnotationsSidebar inherits Rectangle {
             root.pending-context-id = "";
             root.pending-context-name = "";
             root.pending-context-is-set = false;
+        }
+    }
+
+    rename-click-clear := Timer {
+        interval: 320ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.pending-rename-click-id = "";
         }
     }
 
@@ -307,12 +317,6 @@ export component AnnotationsSidebar inherits Rectangle {
                                 root.row-clicked(row.row-id);
                             }
 
-                            double-clicked => {
-                                if row.is-set {
-                                    root.editing-set-id = row.row-id;
-                                }
-                            }
-
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                                     root.context-target-id = row.row-id;
@@ -388,12 +392,14 @@ export component AnnotationsSidebar inherits Rectangle {
                                     text-cursor-width: 1px;
                                     vertical-alignment: center;
                                     accepted => {
-                                        root.editing-set-id = "";
                                         root.rename-set-committed(row.row-id, self.text);
+                                        root.editing-set-id = "";
+                                        root.pending-rename-click-id = "";
                                     }
                                     key-pressed(e) => {
                                         if e.text == Key.Escape {
                                             root.editing-set-id = "";
+                                            root.pending-rename-click-id = "";
                                             accept
                                         } else {
                                             reject
@@ -424,14 +430,30 @@ export component AnnotationsSidebar inherits Rectangle {
                                 background: transparent;
 
                                 if row.is-set: Rectangle {
-                                    width: min(parent.width, set-label.preferred-width + 4px + set-count.preferred-width);
+                                    width: parent.width;
                                     height: parent.height;
                                     background: transparent;
+
+                                    TouchArea {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        clicked => {
+                                            if root.pending-rename-click-id == row.row-id {
+                                                rename-click-clear.running = false;
+                                                root.pending-rename-click-id = "";
+                                                root.editing-set-id = row.row-id;
+                                            } else {
+                                                root.pending-rename-click-id = row.row-id;
+                                                root.row-clicked(row.row-id);
+                                                rename-click-clear.start();
+                                            }
+                                        }
+                                    }
 
                                     set-label := Text {
                                         x: 0px;
                                         y: 0px;
-                                        width: max(0px, parent.width - 4px - set-count.preferred-width);
+                                        width: min(self.preferred-width, max(0px, parent.width - 4px - set-count.preferred-width));
                                         height: parent.height;
                                         text: row.label;
                                         color: row.visible ? Theme.text-primary : Theme.text-secondary;
@@ -439,12 +461,13 @@ export component AnnotationsSidebar inherits Rectangle {
                                         font-weight: 600;
                                         vertical-alignment: center;
                                         overflow: elide;
+                                        horizontal-alignment: left;
                                     }
 
                                     set-count := Text {
-                                        x: set-label.x + min(set-label.width, set-label.preferred-width) + 4px;
+                                        x: set-label.width + 4px;
                                         y: 0px;
-                                        width: parent.width - self.x;
+                                        width: min(self.preferred-width, max(0px, parent.width - self.x));
                                         height: parent.height;
                                         text: "(" + row.annotation-count + ")";
                                         color: Theme.text-secondary;
@@ -483,6 +506,12 @@ export component AnnotationsSidebar inherits Rectangle {
                                         root.toggle-set-visibility(row.row-id, !row.visible);
                                     }
                                 }
+                            }
+
+                            if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
+                                width: 2px;
+                                height: parent.height;
+                                background: transparent;
                             }
 
                             if row.is-set && !(root.editing-set-id == row.row-id): Rectangle {
