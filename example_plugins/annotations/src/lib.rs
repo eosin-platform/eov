@@ -483,12 +483,12 @@ fn annotation_label(annotation: &Annotation) -> String {
 
 fn sort_annotation_sets(annotation_sets: &mut [AnnotationSet]) {
     annotation_sets.sort_by(|left, right| {
-        right
+        left
             .name
             .to_ascii_lowercase()
-            .cmp(&left.name.to_ascii_lowercase())
-            .then_with(|| right.created_at.cmp(&left.created_at))
-            .then_with(|| right.id.cmp(&left.id))
+            .cmp(&right.name.to_ascii_lowercase())
+            .then_with(|| left.created_at.cmp(&right.created_at))
+            .then_with(|| left.id.cmp(&right.id))
     });
 }
 

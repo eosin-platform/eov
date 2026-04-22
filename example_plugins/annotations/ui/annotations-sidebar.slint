@@ -165,7 +165,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in-out property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
     in-out property <string> editing-set-id: "";
-    property <string> pending-rename-click-id: "";
+    property <length> tree-scroll-y: 0px;
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -216,15 +216,6 @@ export component AnnotationsSidebar inherits Rectangle {
             root.pending-context-id = "";
             root.pending-context-name = "";
             root.pending-context-is-set = false;
-        }
-    }
-
-    rename-click-clear := Timer {
-        interval: 320ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            root.pending-rename-click-id = "";
         }
     }
 
@@ -301,7 +292,12 @@ export component AnnotationsSidebar inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 viewport-height: tree-layout.preferred-height;
+                viewport-y: root.tree-scroll-y;
                 interactive: root.tree-items.length > 0;
+
+                changed viewport-y => {
+                    root.tree-scroll-y = self.viewport-y;
+                }
 
                 tree-layout := VerticalLayout {
                     width: parent.width;
@@ -319,7 +315,6 @@ export component AnnotationsSidebar inherits Rectangle {
                                 } else {
                                     root.selected-set-id = row.parent-set-id;
                                 }
-                                root.pending-rename-click-id = "";
                                 root.row-clicked(row.row-id);
                             }
 
@@ -400,12 +395,10 @@ export component AnnotationsSidebar inherits Rectangle {
                                     accepted => {
                                         root.rename-set-committed(row.row-id, self.text);
                                         root.editing-set-id = "";
-                                        root.pending-rename-click-id = "";
                                     }
                                     key-pressed(e) => {
                                         if e.text == Key.Escape {
                                             root.editing-set-id = "";
-                                            root.pending-rename-click-id = "";
                                             accept
                                         } else {
                                             reject
@@ -444,15 +437,23 @@ export component AnnotationsSidebar inherits Rectangle {
                                         width: parent.width;
                                         height: parent.height;
                                         clicked => {
-                                            if root.pending-rename-click-id == row.row-id {
-                                                rename-click-clear.running = false;
-                                                root.pending-rename-click-id = "";
-                                                root.editing-set-id = row.row-id;
-                                            } else {
-                                                root.selected-set-id = row.row-id;
-                                                root.pending-rename-click-id = row.row-id;
-                                                root.row-clicked(row.row-id);
-                                                rename-click-clear.start();
+                                            root.selected-set-id = row.row-id;
+                                            root.row-clicked(row.row-id);
+                                        }
+
+                                        double-clicked => {
+                                            root.selected-set-id = row.row-id;
+                                            root.editing-set-id = row.row-id;
+                                        }
+
+                                        pointer-event(e) => {
+                                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                                                root.context-target-id = row.row-id;
+                                                root.context-target-name = row.label;
+                                                root.context-target-is-set = true;
+                                                root.context-menu-x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                root.context-menu-y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                root.context-menu-visible = true;
                                             }
                                         }
                                     }
