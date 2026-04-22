@@ -1,0 +1,19 @@
+export struct AnnotationTreeRow {
+    row-id: string,
+    parent-set-id: string,
+    label: string,
+    annotation-count: int,
+    indent: int,
+    is-set: bool,
+    is-collapsed: bool,
+    is-selected: bool,
+    visible: bool,
+    color-r: int,
+    color-g: int,
+    color-b: int,
+}
+
+export struct ColorPaletteEntry {
+    hex: string,
+    swatch: color,
+}

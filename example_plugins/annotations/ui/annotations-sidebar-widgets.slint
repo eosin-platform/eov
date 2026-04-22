@@ -1,0 +1,135 @@
+import { Theme } from "theme.slint";
+
+export component ExportIconButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <string> tooltip-text: "";
+    in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 28px;
+    border-radius: 4px;
+    background: enabled ? (touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
+    border-width: 1px;
+    border-color: enabled ? Theme.border : #ffffff14;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 15px;
+        height: 15px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
+    }
+}
+
+export component TreeIconButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <string> tooltip-text: "";
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: touch.has-hover ? #ffffff12 : transparent;
+
+    touch := TouchArea {
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        x: -5px;
+        y: -5px;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Image {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        source: root.icon-source;
+        image-fit: contain;
+        colorize: Theme.text-secondary;
+    }
+}
+
+export component ColorSwatchButton inherits Rectangle {
+    in property <color> swatch-color: white;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : #ffffff28;
+    background: root.swatch-color;
+
+    touch := TouchArea {
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        x: -5px;
+        y: -5px;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component PaletteSwatchButton inherits Rectangle {
+    in property <string> hex: "#ffffff";
+    in property <color> swatch-color: white;
+    out property <bool> hovered: touch.has-hover;
+    callback selected(string);
+
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : #ffffff24;
+    background: root.swatch-color;
+
+    touch := TouchArea {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        x: -4px;
+        y: -4px;
+        clicked => {
+            root.selected(root.hex);
+        }
+    }
+}
+
+export component ContextMenuRow inherits Rectangle {
+    in property <string> label;
+    out property <bool> hovered: row-touch.has-hover;
+    callback clicked();
+
+    height: 32px;
+    background: row-touch.has-hover ? Theme.surface-hover : transparent;
+
+    row-touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        x: 12px;
+        y: 9px;
+        text: root.label;
+        color: Theme.text-primary;
+        font-size: 12px;
+    }
+}

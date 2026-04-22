@@ -1,159 +1,13 @@
 import { Theme } from "theme.slint";
 import { ComboBox } from "std-widgets.slint";
-
-export struct AnnotationTreeRow {
-    row-id: string,
-    parent-set-id: string,
-    label: string,
-    annotation-count: int,
-    indent: int,
-    is-set: bool,
-    is-collapsed: bool,
-    is-selected: bool,
-    visible: bool,
-    color-r: int,
-    color-g: int,
-    color-b: int,
-}
-
-struct ColorPaletteEntry {
-    hex: string,
-    swatch: color,
-}
-
-component ExportIconButton inherits Rectangle {
-    in property <image> icon-source;
-    in property <string> tooltip-text: "";
-    in property <bool> enabled: true;
-    out property <bool> hovered: touch.has-hover;
-    callback clicked();
-
-    width: 32px;
-    height: 28px;
-    border-radius: 4px;
-    background: enabled ? (touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
-    border-width: 1px;
-    border-color: enabled ? Theme.border : #ffffff14;
-
-    touch := TouchArea {
-        enabled: root.enabled;
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    Image {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: 15px;
-        height: 15px;
-        source: root.icon-source;
-        image-fit: contain;
-        colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
-    }
-}
-
-component TreeIconButton inherits Rectangle {
-    in property <image> icon-source;
-    in property <string> tooltip-text: "";
-    out property <bool> hovered: touch.has-hover;
-    callback clicked();
-
-    width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    background: touch.has-hover ? #ffffff12 : transparent;
-
-    touch := TouchArea {
-        width: parent.width + 10px;
-        height: parent.height + 10px;
-        x: -5px;
-        y: -5px;
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    Image {
-        x: 2px;
-        y: 2px;
-        width: parent.width - 4px;
-        height: parent.height - 4px;
-        source: root.icon-source;
-        image-fit: contain;
-        colorize: Theme.text-secondary;
-    }
-}
-
-component ColorSwatchButton inherits Rectangle {
-    in property <color> swatch-color: white;
-    out property <bool> hovered: touch.has-hover;
-    callback clicked();
-
-    width: 12px;
-    height: 12px;
-    border-radius: 6px;
-    border-width: 1px;
-    border-color: touch.has-hover ? Theme.accent : #ffffff28;
-    background: root.swatch-color;
-
-    touch := TouchArea {
-        width: parent.width + 10px;
-        height: parent.height + 10px;
-        x: -5px;
-        y: -5px;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-component PaletteSwatchButton inherits Rectangle {
-    in property <string> hex: "#ffffff";
-    in property <color> swatch-color: white;
-    out property <bool> hovered: touch.has-hover;
-    callback selected(string);
-
-    width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    border-width: 1px;
-    border-color: touch.has-hover ? Theme.accent : #ffffff24;
-    background: root.swatch-color;
-
-    touch := TouchArea {
-        width: parent.width + 8px;
-        height: parent.height + 8px;
-        x: -4px;
-        y: -4px;
-        clicked => {
-            root.selected(root.hex);
-        }
-    }
-}
-
-component ContextMenuRow inherits Rectangle {
-    in property <string> label;
-    out property <bool> hovered: row-touch.has-hover;
-    callback clicked();
-
-    height: 32px;
-    background: row-touch.has-hover ? Theme.surface-hover : transparent;
-
-    row-touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    Text {
-        x: 12px;
-        y: 9px;
-        text: root.label;
-        color: Theme.text-primary;
-        font-size: 12px;
-    }
-}
+import { AnnotationTreeRow, ColorPaletteEntry } from "annotations-sidebar-types.slint";
+import {
+    ColorSwatchButton,
+    ContextMenuRow,
+    ExportIconButton,
+    PaletteSwatchButton,
+    TreeIconButton,
+} from "annotations-sidebar-widgets.slint";
 
 export component AnnotationsSidebar inherits Rectangle {
     in property <[string]> source-options: ["Local"];
@@ -167,6 +21,24 @@ export component AnnotationsSidebar inherits Rectangle {
     in-out property <string> editing-set-id: "";
     property <length> tree-scroll-y: 0px;
     property <string> rename-draft-text: "";
+    property <[ColorPaletteEntry]> color-palette: [
+        { hex: "#FF355E", swatch: #FF355E },
+        { hex: "#FF7A00", swatch: #FF7A00 },
+        { hex: "#E7FF00", swatch: #E7FF00 },
+        { hex: "#39FF14", swatch: #39FF14 },
+        { hex: "#00F5D4", swatch: #00F5D4 },
+        { hex: "#4D96FF", swatch: #4D96FF },
+        { hex: "#6C63FF", swatch: #6C63FF },
+        { hex: "#9D4EDD", swatch: #9D4EDD },
+        { hex: "#FF4FD8", swatch: #FF4FD8 },
+        { hex: "#F15BB5", swatch: #F15BB5 },
+        { hex: "#43AA8B", swatch: #43AA8B },
+        { hex: "#577590", swatch: #577590 },
+        { hex: "#FF8A5B", swatch: #FF8A5B },
+        { hex: "#FFD166", swatch: #FFD166 },
+        { hex: "#00BBF9", swatch: #00BBF9 },
+        { hex: "#FFFFFF", swatch: #FFFFFF },
+    ];
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -225,6 +97,25 @@ export component AnnotationsSidebar inherits Rectangle {
             root.rename-set-committed(root.editing-set-id, root.rename-draft-text);
             root.editing-set-id = "";
         }
+    }
+
+    function open-context-menu(target-id: string, target-name: string, is-set: bool, local-x: length, local-y: length) {
+        root.context-target-id = target-id;
+        root.context-target-name = target-name;
+        root.context-target-is-set = is-set;
+        root.context-menu-x = local-x;
+        root.context-menu-y = local-y;
+        root.context-menu-visible = true;
+        root.color-menu-visible = false;
+    }
+
+    function queue-context-action(action: string, target-id: string, target-name: string, is-set: bool) {
+        root.pending-context-action = action;
+        root.pending-context-id = target-id;
+        root.pending-context-name = target-name;
+        root.pending-context-is-set = is-set;
+        root.context-menu-visible = false;
+        action-dispatch.start();
     }
 
     VerticalLayout {
@@ -321,23 +212,20 @@ export component AnnotationsSidebar inherits Rectangle {
                         row-touch := TouchArea {
                             clicked => {
                                 root.confirm-active-rename();
-                                if row.is-set {
-                                    root.selected-set-id = row.row-id;
-                                } else {
-                                    root.selected-set-id = row.parent-set-id;
-                                }
+                                root.selected-set-id = row.is-set ? row.row-id : row.parent-set-id;
                                 root.row-clicked(row.row-id);
                             }
 
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                                     root.confirm-active-rename();
-                                    root.context-target-id = row.row-id;
-                                    root.context-target-name = row.label;
-                                    root.context-target-is-set = row.is-set;
-                                    root.context-menu-x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
-                                    root.context-menu-y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
-                                    root.context-menu-visible = true;
+                                    root.open-context-menu(
+                                        row.row-id,
+                                        row.label,
+                                        row.is-set,
+                                        self.absolute-position.x + self.mouse-x - root.absolute-position.x,
+                                        self.absolute-position.y + self.mouse-y - root.absolute-position.y,
+                                    );
                                 }
                             }
                         }
@@ -467,12 +355,13 @@ export component AnnotationsSidebar inherits Rectangle {
                                         pointer-event(e) => {
                                             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
                                                 root.confirm-active-rename();
-                                                root.context-target-id = row.row-id;
-                                                root.context-target-name = row.label;
-                                                root.context-target-is-set = true;
-                                                root.context-menu-x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
-                                                root.context-menu-y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
-                                                root.context-menu-visible = true;
+                                                root.open-context-menu(
+                                                    row.row-id,
+                                                    row.label,
+                                                    true,
+                                                    self.absolute-position.x + self.mouse-x - root.absolute-position.x,
+                                                    self.absolute-position.y + self.mouse-y - root.absolute-position.y,
+                                                );
                                             }
                                         }
                                     }
@@ -680,24 +569,24 @@ export component AnnotationsSidebar inherits Rectangle {
                 if root.context-target-is-set: ContextMenuRow {
                     label: "Rename";
                     clicked => {
-                        root.pending-context-action = "rename-local";
-                        root.pending-context-id = root.context-target-id;
-                        root.pending-context-name = root.context-target-name;
-                        root.pending-context-is-set = true;
-                        root.context-menu-visible = false;
-                        action-dispatch.start();
+                        root.queue-context-action(
+                            "rename-local",
+                            root.context-target-id,
+                            root.context-target-name,
+                            true,
+                        );
                     }
                 }
 
                 ContextMenuRow {
                     label: root.context-target-is-set ? "Delete Annotation Set" : "Delete Annotation";
                     clicked => {
-                        root.pending-context-action = root.context-target-is-set ? "delete-set" : "delete-annotation";
-                        root.pending-context-id = root.context-target-id;
-                        root.pending-context-name = root.context-target-name;
-                        root.pending-context-is-set = root.context-target-is-set;
-                        root.context-menu-visible = false;
-                        action-dispatch.start();
+                        root.queue-context-action(
+                            root.context-target-is-set ? "delete-set" : "delete-annotation",
+                            root.context-target-id,
+                            root.context-target-name,
+                            root.context-target-is-set,
+                        );
                     }
                 }
             }
@@ -748,166 +637,19 @@ export component AnnotationsSidebar inherits Rectangle {
                     font-weight: 600;
                 }
 
-                VerticalLayout {
-                    spacing: 8px;
+                Rectangle {
+                    width: 98px;
+                    height: 98px;
+                    background: transparent;
 
-                    HorizontalLayout {
-                        spacing: 8px;
-
-                        PaletteSwatchButton {
-                            hex: "#FF355E";
-                            swatch-color: #FF355E;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#FF7A00";
-                            swatch-color: #FF7A00;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#E7FF00";
-                            swatch-color: #E7FF00;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#39FF14";
-                            swatch-color: #39FF14;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-
-                        PaletteSwatchButton {
-                            hex: "#00F5D4";
-                            swatch-color: #00F5D4;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#4D96FF";
-                            swatch-color: #4D96FF;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#6C63FF";
-                            swatch-color: #6C63FF;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#9D4EDD";
-                            swatch-color: #9D4EDD;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-
-                        PaletteSwatchButton {
-                            hex: "#FF4FD8";
-                            swatch-color: #FF4FD8;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#F15BB5";
-                            swatch-color: #F15BB5;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#43AA8B";
-                            swatch-color: #43AA8B;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#577590";
-                            swatch-color: #577590;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-
-                        PaletteSwatchButton {
-                            hex: "#FF8A5B";
-                            swatch-color: #FF8A5B;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#FFD166";
-                            swatch-color: #FFD166;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#00BBF9";
-                            swatch-color: #00BBF9;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
-                        }
-
-                        PaletteSwatchButton {
-                            hex: "#FFFFFF";
-                            swatch-color: #FFFFFF;
-                            selected(hex) => {
-                                root.set-set-color(root.color-target-id, hex);
-                                root.color-menu-visible = false;
-                            }
+                    for entry[idx] in root.color-palette: PaletteSwatchButton {
+                        x: (Math.mod(idx, 4) * 26) * 1px;
+                        y: ((idx / 4) * 26) * 1px;
+                        hex: entry.hex;
+                        swatch-color: entry.swatch;
+                        selected(hex) => {
+                            root.set-set-color(root.color-target-id, hex);
+                            root.color-menu-visible = false;
                         }
                     }
                 }
