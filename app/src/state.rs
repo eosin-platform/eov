@@ -25,6 +25,12 @@ pub struct PluginPointHandle {
     pub annotation_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PluginPointPreviewPosition {
+    pub x_level0: f64,
+    pub y_level0: f64,
+}
+
 /// Per-tab HUD settings
 /// Which stain channel is being viewed in grayscale isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -460,6 +466,8 @@ pub struct AppState {
     pub hovered_plugin_point: Option<PluginPointHandle>,
     /// Plugin-owned point annotation currently being dragged, if any.
     pub dragged_plugin_point: Option<PluginPointHandle>,
+    /// Transient image-space preview position for the dragged plugin point.
+    pub dragged_plugin_point_position: Option<PluginPointPreviewPosition>,
     /// Animation offset for marching ants (wraps at 16)
     pub ant_offset: f32,
     /// Frame timestamps for FPS calculation
@@ -526,6 +534,7 @@ impl AppState {
             candidate_point: None,
             hovered_plugin_point: None,
             dragged_plugin_point: None,
+            dragged_plugin_point_position: None,
             ant_offset: 0.0,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
@@ -1086,6 +1095,7 @@ impl AppState {
         self.candidate_point = None;
         self.hovered_plugin_point = None;
         self.dragged_plugin_point = None;
+        self.dragged_plugin_point_position = None;
         self.needs_render = true;
         // Only clear ROI and measurements when switching to Navigate
         if tool == Tool::Navigate
@@ -1105,6 +1115,7 @@ impl AppState {
         self.candidate_point = None;
         self.hovered_plugin_point = None;
         self.dragged_plugin_point = None;
+        self.dragged_plugin_point_position = None;
         self.current_tool = Tool::Navigate;
         self.active_point_tool_plugin_id = None;
         self.needs_render = true;
@@ -1126,6 +1137,7 @@ impl AppState {
         self.candidate_point = None;
         self.hovered_plugin_point = None;
         self.dragged_plugin_point = None;
+        self.dragged_plugin_point_position = None;
         self.needs_render = true;
     }
 

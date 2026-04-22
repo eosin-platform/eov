@@ -238,6 +238,8 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
     let vp = &pane_state.viewport.viewport;
     let hovered = state.hovered_plugin_point.as_ref();
+    let dragged = state.dragged_plugin_point.as_ref();
+    let dragged_position = state.dragged_plugin_point_position;
     let active_tool_plugin_id = state.active_point_tool_plugin_id.as_deref();
     let point_tool_active = state.current_tool == crate::state::Tool::PointAnnotation;
 
@@ -249,8 +251,17 @@ pub(crate) fn viewport_overlay_points_for_pane(
                 .map(move |point| (plugin_id.clone(), point))
         })
         .map(|(plugin_id, point): (String, ViewportOverlayPointFFI)| {
-            let screen = vp.image_to_screen(point.x_level0, point.y_level0);
             let annotation_id = point.annotation_id.to_string();
+            let (x_level0, y_level0) = if dragged.is_some_and(|handle| {
+                handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+            }) {
+                dragged_position
+                    .map(|preview| (preview.x_level0, preview.y_level0))
+                    .unwrap_or((point.x_level0, point.y_level0))
+            } else {
+                (point.x_level0, point.y_level0)
+            };
+            let screen = vp.image_to_screen(x_level0, y_level0);
             let ring_color = if point_tool_active
                 && active_tool_plugin_id == Some(plugin_id.as_str())
                 && hovered.is_some_and(|handle| {
