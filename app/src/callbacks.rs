@@ -2107,32 +2107,19 @@ pub fn setup_callbacks(
                 if state.current_tool != state::Tool::PointAnnotation {
                     None
                 } else if let Some(dragged) = state.dragged_plugin_point.clone() {
-                    let pane = state.focused_pane;
-                    let plugin_id = state.active_point_tool_plugin_id.clone();
                     let preview_position = state.dragged_plugin_point_position;
+                    let pane = state.focused_pane;
                     state.dragged_plugin_point = None;
                     state.dragged_plugin_point_position = None;
-                    state.hovered_plugin_point = plugin_id.as_deref().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_point_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(plugin_id),
-                        )
-                    });
+                    state.hovered_plugin_point = None;
                     state.request_render();
-                    preview_position.and_then(|preview| {
-                        crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane).map(
-                            |viewport| {
-                                (
-                                    dragged.plugin_id,
-                                    dragged.annotation_id,
-                                    viewport,
-                                    preview.x_level0,
-                                    preview.y_level0,
-                                )
-                            },
+                    preview_position.map(|preview| {
+                        (
+                            dragged.plugin_id,
+                            dragged.annotation_id,
+                            pane,
+                            preview.x_level0,
+                            preview.y_level0,
                         )
                     })
                 } else {
@@ -2140,15 +2127,17 @@ pub fn setup_callbacks(
                 }
             };
 
-            if let Some((plugin_id, annotation_id, viewport, x_level0, y_level0)) = handled_drag_release {
-                if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_moved(
-                    &plugin_id,
-                    &viewport,
-                    &annotation_id,
-                    x_level0,
-                    y_level0,
-                ) {
-                    tracing::error!("Point annotation move error: {err}");
+            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) = handled_drag_release {
+                if let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) {
+                    if let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_moved(
+                        &plugin_id,
+                        &viewport,
+                        &annotation_id,
+                        x_level0,
+                        y_level0,
+                    ) {
+                        tracing::error!("Point annotation move error: {err}");
+                    }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
