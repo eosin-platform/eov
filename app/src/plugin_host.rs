@@ -180,9 +180,14 @@ pub(crate) fn sync_tool_button_states(state: &mut AppState) {
     let current_tool = state.current_tool;
 
     for button in &mut state.local_plugin_buttons {
-        button.active = button.tool_mode.is_some_and(|tool_mode| {
-            tool_mode_matches_state(tool_mode, &button.plugin_id, current_tool, point_owner)
-        });
+        if let Some(tool_mode) = button.tool_mode {
+            button.active = tool_mode_matches_state(
+                tool_mode,
+                &button.plugin_id,
+                current_tool,
+                point_owner,
+            );
+        }
     }
 }
 

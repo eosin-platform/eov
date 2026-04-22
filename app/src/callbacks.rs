@@ -1095,45 +1095,49 @@ pub fn setup_callbacks(
             };
 
             let pane = pane_from_index(pane);
-            let mut items = vec![
-                crate::ContextMenuItem {
-                    id: "viewport-copy-image".into(),
-                    label: "Copy Image".into(),
-                    icon: "copy".into(),
-                    shortcut: "".into(),
-                    enabled: true,
-                    separator_after: false,
-                },
-                crate::ContextMenuItem {
-                    id: "viewport-export-image".into(),
-                    label: "Export Image".into(),
-                    icon: "export".into(),
-                    shortcut: "".into(),
-                    enabled: true,
-                    separator_after: false,
-                },
-            ];
-            if let Some((plugin_id, annotation_id)) = {
+            let point_delete_item = {
                 let state = state_handle.read();
                 (state.current_tool == state::Tool::PointAnnotation
                     && pane == state.focused_pane)
                     .then(|| state.hovered_plugin_point.clone())
                     .flatten()
                     .map(|handle| (handle.plugin_id, handle.annotation_id))
-            } {
-                items.push(crate::ContextMenuItem {
+            };
+
+            let items = if let Some((plugin_id, annotation_id)) = point_delete_item {
+                vec![crate::ContextMenuItem {
                     id: format!("plugin-ui-delete-point:{plugin_id}:{annotation_id}").into(),
                     label: "Delete Point Annotation".into(),
                     icon: "delete".into(),
                     shortcut: "".into(),
                     enabled: true,
-                    separator_after: true,
+                    separator_after: false,
+                }]
+            } else {
+                let mut items = vec![
+                    crate::ContextMenuItem {
+                        id: "viewport-copy-image".into(),
+                        label: "Copy Image".into(),
+                        icon: "copy".into(),
+                        shortcut: "".into(),
+                        enabled: true,
+                        separator_after: false,
+                    },
+                    crate::ContextMenuItem {
+                        id: "viewport-export-image".into(),
+                        label: "Export Image".into(),
+                        icon: "export".into(),
+                        shortcut: "".into(),
+                        enabled: true,
+                        separator_after: false,
+                    },
+                ];
+                items.extend({
+                    let state = state_handle.read();
+                    crate::plugin_host::viewport_context_menu_items_for_pane(&state, pane)
                 });
-            }
-            items.extend({
-                let state = state_handle.read();
-                crate::plugin_host::viewport_context_menu_items_for_pane(&state, pane)
-            });
+                items
+            };
 
             ui.set_context_menu_tab_id(-1);
             ui.set_drag_source_pane(pane.as_index());

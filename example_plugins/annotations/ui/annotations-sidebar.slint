@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ComboBox } from "std-widgets.slint";
+import { ComboBox, LineEdit } from "std-widgets.slint";
 
 export struct AnnotationTreeRow {
     row-id: string,
@@ -13,6 +13,7 @@ export struct AnnotationTreeRow {
 
 component ExportIconButton inherits Rectangle {
     in property <image> icon-source;
+    in property <string> tooltip-text: "";
     in property <bool> enabled: true;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
@@ -42,6 +43,29 @@ component ExportIconButton inherits Rectangle {
     }
 }
 
+component ContextMenuRow inherits Rectangle {
+    in property <string> label;
+    out property <bool> hovered: row-touch.has-hover;
+    callback clicked();
+
+    height: 32px;
+    background: row-touch.has-hover ? Theme.surface-hover : transparent;
+
+    row-touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        x: 12px;
+        y: 9px;
+        text: root.label;
+        color: Theme.text-primary;
+        font-size: 12px;
+    }
+}
+
 export component AnnotationsSidebar inherits Rectangle {
     in property <[string]> source-options: ["Local"];
     in property <int> source-index: 0;
@@ -51,6 +75,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <bool> can-delete-set: false;
     in property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
+    in property <string> editing-set-id: "";
 
     callback source-selected(string);
     callback create-set-clicked();
@@ -58,6 +83,9 @@ export component AnnotationsSidebar inherits Rectangle {
     callback request-delete-set(string, string);
     callback delete-set-confirmed(string);
     callback delete-annotation-clicked(string);
+    callback rename-set-clicked(string);
+    callback rename-set-committed(string, string);
+    callback rename-set-cancelled(string);
     callback row-clicked(string);
     callback toggle-set(string);
 
@@ -67,8 +95,32 @@ export component AnnotationsSidebar inherits Rectangle {
     property <string> context-target-id: "";
     property <string> context-target-name: "";
     property <bool> context-target-is-set: false;
+    property <string> pending-context-action: "";
+    property <string> pending-context-id: "";
+    property <string> pending-context-name: "";
+    property <bool> pending-context-is-set: false;
+    property <string> active-tooltip:
+        source-selector.has-focus ? "Source" : new-set-button.hovered ? new-set-button.tooltip-text : export-button.hovered ? export-button.tooltip-text : "";
+    property <length> tooltip-center-x:
+        source-selector.has-focus ? source-container.x + source-container.width / 2 : new-set-button.hovered ? new-set-button.x + new-set-button.width / 2 : export-button.hovered ? export-button.x + export-button.width / 2 : 0px;
 
     background: Theme.surface;
+
+    changed context-menu-visible => {
+        if !root.context-menu-visible && root.pending-context-action != "" {
+            if root.pending-context-action == "rename-set" {
+                root.rename-set-clicked(root.pending-context-id);
+            } else if root.pending-context-action == "delete-set" {
+                root.request-delete-set(root.pending-context-id, root.pending-context-name);
+            } else if root.pending-context-action == "delete-annotation" {
+                root.delete-annotation-clicked(root.pending-context-id);
+            }
+            root.pending-context-action = "";
+            root.pending-context-id = "";
+            root.pending-context-name = "";
+            root.pending-context-is-set = false;
+        }
+    }
 
     VerticalLayout {
         width: parent.width;
@@ -82,12 +134,12 @@ export component AnnotationsSidebar inherits Rectangle {
         HorizontalLayout {
             spacing: 8px;
 
-            Rectangle {
+            source-container := Rectangle {
                 horizontal-stretch: 1;
                 height: 28px;
                 background: transparent;
 
-                ComboBox {
+                source-selector := ComboBox {
                     width: parent.width;
                     height: parent.height;
                     model: root.source-options;
@@ -100,23 +152,15 @@ export component AnnotationsSidebar inherits Rectangle {
 
             new-set-button := ExportIconButton {
                 icon-source: @image-url("icons/new_annotation_set.svg");
+                tooltip-text: "New Annotation Set";
                 clicked => {
                     root.create-set-clicked();
                 }
             }
 
-            delete-set-button := ExportIconButton {
-                icon-source: @image-url("icons/delete_annotation_set.svg");
-                enabled: root.can-delete-set;
-                clicked => {
-                    if root.can-delete-set && root.selected-set-id != "" {
-                        root.request-delete-set(root.selected-set-id, root.selected-set-name);
-                    }
-                }
-            }
-
             export-button := ExportIconButton {
                 icon-source: @image-url("icons/export.svg");
+                tooltip-text: "Export Annotations";
                 enabled: root.can-export;
                 clicked => {
                     root.export-clicked();
@@ -165,7 +209,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                     for row[idx] in root.tree-items: Rectangle {
                         width: parent.width;
-                        height: 28px;
+                        height: 32px;
                         background: row.is-selected ? #4da3d930 : row-touch.has-hover ? #ffffff10 : transparent;
 
                         row-touch := TouchArea {
@@ -192,7 +236,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                             if row.is-set: Rectangle {
                                 width: 12px;
-                                height: 28px;
+                                height: parent.height;
                                 background: transparent;
 
                                 Text {
@@ -213,7 +257,7 @@ export component AnnotationsSidebar inherits Rectangle {
 
                             if !row.is-set: Rectangle {
                                 width: 12px;
-                                height: 28px;
+                                height: parent.height;
                                 background: transparent;
 
                                 Rectangle {
@@ -226,7 +270,33 @@ export component AnnotationsSidebar inherits Rectangle {
                                 }
                             }
 
-                            Text {
+                            if root.editing-set-id == row.row-id && row.is-set: LineEdit {
+                                text: row.label;
+                                horizontal-stretch: 1;
+                                font-size: 12px;
+                                init => {
+                                    self.focus();
+                                    self.select-all();
+                                }
+                                accepted(text) => {
+                                    root.rename-set-committed(row.row-id, text);
+                                }
+                                key-pressed(e) => {
+                                    if e.text == Key.Escape {
+                                        root.rename-set-cancelled(row.row-id);
+                                        accept
+                                    } else {
+                                        reject
+                                    }
+                                }
+                                changed has-focus => {
+                                    if !self.has-focus {
+                                        root.rename-set-committed(row.row-id, self.text);
+                                    }
+                                }
+                            }
+
+                            if !(root.editing-set-id == row.row-id && row.is-set): Text {
                                 vertical-stretch: 1;
                                 text: row.label;
                                 color: row.is-set ? Theme.text-primary : Theme.text-secondary;
@@ -260,41 +330,63 @@ export component AnnotationsSidebar inherits Rectangle {
         Rectangle {
             x: min(root.context-menu-x, max(0px, root.width - self.width - 8px));
             y: min(root.context-menu-y, max(0px, root.height - self.height - 8px));
-            width: root.context-target-is-set ? 172px : 154px;
-            height: 32px;
+            width: root.context-target-is-set ? 204px : 170px;
+            height: root.context-target-is-set ? 64px : 32px;
             background: Theme.surface;
             border-radius: 6px;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 10px;
             drop-shadow-color: #00000066;
+            clip: true;
 
-            Rectangle {
+            VerticalLayout {
                 width: parent.width;
                 height: parent.height;
-                background: menu-touch.has-hover ? Theme.surface-hover : transparent;
-                border-radius: 6px;
+                spacing: 1px;
 
-                menu-touch := TouchArea {
+                if root.context-target-is-set: ContextMenuRow {
+                    label: "Rename";
                     clicked => {
+                        root.pending-context-action = "rename-set";
+                        root.pending-context-id = root.context-target-id;
+                        root.pending-context-name = root.context-target-name;
+                        root.pending-context-is-set = true;
                         root.context-menu-visible = false;
-                        if root.context-target-is-set {
-                            root.request-delete-set(root.context-target-id, root.context-target-name);
-                        } else if root.context-target-id != "" {
-                            root.delete-annotation-clicked(root.context-target-id);
-                        }
                     }
                 }
 
-                Text {
-                    x: 12px;
-                    y: (parent.height - self.height) / 2;
-                    text: root.context-target-is-set ? "Delete Annotation Set" : "Delete Annotation";
-                    color: Theme.text-primary;
-                    font-size: 12px;
-                    vertical-alignment: center;
+                ContextMenuRow {
+                    label: root.context-target-is-set ? "Delete Annotation Set" : "Delete Annotation";
+                    clicked => {
+                        root.pending-context-action = root.context-target-is-set ? "delete-set" : "delete-annotation";
+                        root.pending-context-id = root.context-target-id;
+                        root.pending-context-name = root.context-target-name;
+                        root.pending-context-is-set = root.context-target-is-set;
+                        root.context-menu-visible = false;
+                    }
                 }
             }
+        }
+    }
+
+    if root.active-tooltip != "": Rectangle {
+        x: max(4px, min(root.width - self.width - 4px, root.tooltip-center-x - self.width / 2));
+        y: 42px;
+        width: tooltip-text.preferred-width + 12px;
+        height: tooltip-text.preferred-height + 6px;
+        background: #101419f2;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+        z: 20;
+
+        tooltip-text := Text {
+            x: 6px;
+            y: 3px;
+            text: root.active-tooltip;
+            color: Theme.text-primary;
+            font-size: 11px;
         }
     }
 }
