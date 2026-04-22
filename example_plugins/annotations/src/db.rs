@@ -135,7 +135,7 @@ pub(crate) fn load_annotation_sets(
 ) -> Result<Vec<AnnotationSet>, String> {
     let mut sets_stmt = connection
         .prepare(
-            "SELECT id, name, notes, color, created_at, updated_at FROM annotation_sets WHERE fingerprint = ?1 ORDER BY lower(name) DESC, created_at DESC",
+            "SELECT id, name, notes, color, created_at, updated_at FROM annotation_sets WHERE fingerprint = ?1 ORDER BY lower(name) ASC, created_at DESC",
         )
         .map_err(|err| format!("failed to prepare annotation set query: {err}"))?;
 
