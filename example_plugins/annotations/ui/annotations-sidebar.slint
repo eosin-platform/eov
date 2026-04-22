@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ComboBox, LineEdit } from "std-widgets.slint";
+import { ComboBox } from "std-widgets.slint";
 
 export struct AnnotationTreeRow {
     row-id: string,
@@ -273,23 +273,28 @@ export component AnnotationsSidebar inherits Rectangle {
 
                             if root.editing-set-id == row.row-id && row.is-set: Rectangle {
                                 horizontal-stretch: 1;
-                                height: 24px;
+                                height: 22px;
                                 y: (parent.height - self.height) / 2;
-                                background: #0f1419;
-                                border-radius: 4px;
+                                background: row.is-selected ? #0f1419f2 : #11161d;
+                                border-radius: 3px;
                                 border-width: 1px;
-                                border-color: rename-input.has-focus ? Theme.accent : Theme.border;
+                                border-color: rename-input.has-focus ? Theme.accent : #ffffff24;
 
-                                rename-input := LineEdit {
-                                    x: 6px;
-                                    y: 1px;
-                                    width: parent.width - 12px;
-                                    height: parent.height - 2px;
+                                rename-input := TextInput {
+                                    x: 5px;
+                                    y: 2px;
+                                    width: parent.width - 10px;
+                                    height: parent.height - 4px;
                                     text: row.label;
                                     font-size: 12px;
-                                    accepted(text) => {
+                                    color: Theme.text-primary;
+                                    selection-background-color: Theme.accent;
+                                    selection-foreground-color: #ffffff;
+                                    text-cursor-width: 1px;
+                                    vertical-alignment: center;
+                                    accepted => {
                                         root.editing-set-id = "";
-                                        root.rename-set-committed(row.row-id, text);
+                                        root.rename-set-committed(row.row-id, self.text);
                                     }
                                     key-pressed(e) => {
                                         if e.text == Key.Escape {
