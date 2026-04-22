@@ -162,7 +162,7 @@ export component AnnotationsSidebar inherits Rectangle {
     in property <string> empty-state-text: "";
     in property <bool> can-export: false;
     in property <bool> can-delete-set: false;
-    in property <string> selected-set-id: "";
+    in-out property <string> selected-set-id: "";
     in property <string> selected-set-name: "";
     in-out property <string> editing-set-id: "";
     property <string> pending-rename-click-id: "";
@@ -310,10 +310,16 @@ export component AnnotationsSidebar inherits Rectangle {
                     for row[idx] in root.tree-items: Rectangle {
                         width: parent.width;
                         height: 32px;
-                        background: row.is-selected ? #4da3d930 : row-touch.has-hover ? #ffffff10 : transparent;
+                        background: (row.is-set && root.selected-set-id == row.row-id) ? #4da3d930 : row-touch.has-hover ? #ffffff10 : transparent;
 
                         row-touch := TouchArea {
                             clicked => {
+                                if row.is-set {
+                                    root.selected-set-id = row.row-id;
+                                } else {
+                                    root.selected-set-id = row.parent-set-id;
+                                }
+                                root.pending-rename-click-id = "";
                                 root.row-clicked(row.row-id);
                             }
 
@@ -374,7 +380,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                 horizontal-stretch: 1;
                                 height: 22px;
                                 y: (parent.height - self.height) / 2;
-                                background: row.is-selected ? #0f1419f2 : #11161d;
+                                background: root.selected-set-id == row.row-id ? #0f1419f2 : #11161d;
                                 border-radius: 3px;
                                 border-width: 1px;
                                 border-color: rename-input.has-focus ? Theme.accent : #ffffff24;
@@ -443,6 +449,7 @@ export component AnnotationsSidebar inherits Rectangle {
                                                 root.pending-rename-click-id = "";
                                                 root.editing-set-id = row.row-id;
                                             } else {
+                                                root.selected-set-id = row.row-id;
                                                 root.pending-rename-click-id = row.row-id;
                                                 root.row-clicked(row.row-id);
                                                 rename-click-clear.start();

@@ -1111,7 +1111,6 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
 
                 if loaded.annotation_sets.iter().any(|set| &set.id == row_id) {
                     state.selected_set_by_file.insert(active_path, row_id.clone());
-                    refresh_sidebar_if_available();
                     return Ok(());
                 }
 
@@ -1127,7 +1126,6 @@ fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 if let Some((set_id, x_level0, y_level0)) = annotation_target {
                     state.selected_set_by_file.insert(active_path, set_id);
                     drop(state);
-                    refresh_sidebar_if_available();
 
                     let snapshot = host_snapshot()?;
                     let Some(active_viewport) = active_viewport_from_snapshot(&snapshot) else {
