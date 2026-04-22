@@ -1106,6 +1106,7 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
             icon_svg: RString::from(SIDEBAR_ICON_SVG),
             action_id: RString::from(ACTION_TOGGLE_SIDEBAR),
             tool_mode: ROption::RNone,
+            hotkey: ROption::RNone,
         },
         ToolbarButtonFFI {
             button_id: RString::from(ACTION_CREATE_POINT),
@@ -1113,6 +1114,7 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
             icon_svg: RString::from(POINT_ICON_SVG),
             action_id: RString::from(ACTION_CREATE_POINT),
             tool_mode: ROption::RSome(HostToolModeFFI::PointAnnotation),
+            hotkey: ROption::RSome("1".into()),
         },
     ])
 }

@@ -183,6 +183,8 @@ export component AppWindow inherits Window {
     callback filtering-mode-selected(FilteringMode);
     callback plugin-button-clicked(/* plugin-id */ string, /* action-id */ string);
     callback hud-plugin-button-clicked(int, /* plugin-id */ string, /* action-id */ string);
+    callback plugin-tool-hotkey-pressed(string, bool) -> bool;
+    callback plugin-tool-hotkey-released(string) -> bool;
     callback move-tab-to-pane(int, int, int);
     callback split-tab-by-drop(int, int);
     callback reorder-tab(int, int, int);
@@ -300,8 +302,53 @@ export component AppWindow inherits Window {
         global-keys.focus();
     }
 
-    VerticalLayout {
-        toolbar := WindowToolbar {
+    global-keys := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(e) => {
+            if e.text == Key.Escape && root.dataset-export-progress-visible {
+                root.dataset-export-cancel-progress();
+                accept
+            }
+            if e.text == Key.Escape && root.dataset-export-dialog-visible {
+                root.dataset-export-dialog-visible = false;
+                root.dataset-export-cancel-requested();
+                accept
+            }
+            if e.text == Key.Escape && root.export-dialog-visible {
+                root.export-dialog-visible = false;
+                root.export-dialog-cancel-requested();
+                accept
+            }
+            if e.text == Key.Escape && root.plugin-confirm-visible {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
+                accept
+            }
+            if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
+                root.window-close();
+                accept
+            }
+            if e.text == "w" && e.modifiers.control {
+                root.close-active-tab();
+                accept
+            }
+            if root.plugin-tool-hotkey-pressed(e.text, e.repeat) {
+                accept
+            }
+            reject
+        }
+
+        key-released(e) => {
+            if root.plugin-tool-hotkey-released(e.text) {
+                accept
+            }
+            reject
+        }
+
+        VerticalLayout {
+            toolbar := WindowToolbar {
             current-tool: root.current-tool;
             render-mode: root.render-mode;
             gpu-rendering-available: root.gpu-rendering-available;
@@ -1182,42 +1229,7 @@ export component AppWindow inherits Window {
             color: Theme.text-primary;
             font-size: 12px;
             overflow: elide;
-        }
-    }
-
-    global-keys := FocusScope {
-        width: 0px;
-        height: 0px;
-
-        key-pressed(e) => {
-            if e.text == Key.Escape && root.dataset-export-progress-visible {
-                root.dataset-export-cancel-progress();
-                accept
             }
-            if e.text == Key.Escape && root.dataset-export-dialog-visible {
-                root.dataset-export-dialog-visible = false;
-                root.dataset-export-cancel-requested();
-                accept
-            }
-            if e.text == Key.Escape && root.export-dialog-visible {
-                root.export-dialog-visible = false;
-                root.export-dialog-cancel-requested();
-                accept
-            }
-            if e.text == Key.Escape && root.plugin-confirm-visible {
-                root.plugin-confirm-visible = false;
-                root.plugin-confirm-cancelled();
-                accept
-            }
-            if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
-                root.window-close();
-                accept
-            }
-            if e.text == "w" && e.modifiers.control {
-                root.close-active-tab();
-                accept
-            }
-            reject
         }
     }
 }

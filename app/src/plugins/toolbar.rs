@@ -77,6 +77,7 @@ mod tests {
             },
             action_id: format!("{plugin_id}.{button_id}.action"),
             tool_mode: None,
+            hotkey: None,
             active: false,
         }
     }
@@ -130,6 +131,7 @@ mod tests {
             },
             action_id: "open_panel".into(),
             tool_mode: None,
+            hotkey: None,
             active: false,
         };
         mgr.register(btn).unwrap();

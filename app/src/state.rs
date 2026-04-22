@@ -152,6 +152,23 @@ pub enum Tool {
     PointAnnotation,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolSelection {
+    pub tool: Tool,
+    pub point_plugin_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemporaryToolOverride {
+    pub hotkey: String,
+    pub plugin_id: String,
+    pub action_id: String,
+    pub target: ToolSelection,
+    pub restore: Option<ToolSelection>,
+    pub target_was_active: bool,
+    pub saw_repeat: bool,
+}
+
 /// Point in image coordinates
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ImagePoint {
@@ -514,6 +531,8 @@ pub struct AppState {
     pub tokio_handle: Option<tokio::runtime::Handle>,
     /// Monotonic revision for viewport filter enable-state changes.
     pub filter_revision: u64,
+    /// Host-managed stack of held temporary tool overrides.
+    pub temporary_tool_overrides: Vec<TemporaryToolOverride>,
 }
 
 impl AppState {
@@ -558,6 +577,7 @@ impl AppState {
             extension_host_state: crate::extension_host::new_shared_state(),
             tokio_handle: None,
             filter_revision: 0,
+            temporary_tool_overrides: Vec::new(),
         }
     }
 
@@ -1139,6 +1159,50 @@ impl AppState {
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
         self.needs_render = true;
+    }
+
+    pub fn current_tool_selection(&self) -> ToolSelection {
+        ToolSelection {
+            tool: self.current_tool,
+            point_plugin_id: self.active_point_tool_plugin_id.clone(),
+        }
+    }
+
+    pub fn apply_tool_selection(&mut self, selection: &ToolSelection) {
+        match selection.tool {
+            Tool::PointAnnotation => {
+                if let Some(plugin_id) = selection.point_plugin_id.clone() {
+                    self.set_point_annotation_tool(plugin_id);
+                } else {
+                    self.set_tool(Tool::Navigate);
+                }
+            }
+            tool => self.set_tool(tool),
+        }
+    }
+
+    pub fn temporary_tool_override_mut(
+        &mut self,
+        hotkey: &str,
+    ) -> Option<&mut TemporaryToolOverride> {
+        self.temporary_tool_overrides
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.hotkey == hotkey)
+    }
+
+    pub fn push_temporary_tool_override(&mut self, entry: TemporaryToolOverride) {
+        self.temporary_tool_overrides.push(entry);
+    }
+
+    pub fn take_temporary_tool_override(
+        &mut self,
+        hotkey: &str,
+    ) -> Option<TemporaryToolOverride> {
+        self.temporary_tool_overrides
+            .iter()
+            .rposition(|entry| entry.hotkey == hotkey)
+            .map(|index| self.temporary_tool_overrides.remove(index))
     }
 
     /// Close a file by ID

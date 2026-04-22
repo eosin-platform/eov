@@ -191,6 +191,17 @@ pub(crate) fn sync_tool_button_states(state: &mut AppState) {
     }
 }
 
+pub(crate) fn hotkey_button_for_key(
+    state: &AppState,
+    key: &str,
+) -> Option<plugin_api::ToolbarButtonRegistration> {
+    state
+        .local_plugin_buttons
+        .iter()
+        .find(|button| button.hotkey.as_deref() == Some(key) && button.tool_mode.is_some())
+        .cloned()
+}
+
 pub(crate) fn request_filter_repaint() -> Result<(), String> {
     run_on_ui_thread(move |runtime| {
         {

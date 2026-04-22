@@ -177,6 +177,7 @@ impl PluginManager {
                 },
                 action_id: btn.action_id.to_string(),
                 tool_mode: btn.tool_mode.into_option().map(host_tool_mode_from_ffi),
+                hotkey: btn.hotkey.clone().into_option().map(|key| key.to_string()),
                 active: false,
             };
             if let Err(e) = self.toolbar.register(registration) {
@@ -198,6 +199,7 @@ impl PluginManager {
                 },
                 action_id: btn.action_id.to_string(),
                 tool_mode: None,
+                hotkey: None,
                 active: false,
             };
             if let Err(e) = self.hud_toolbar.register(registration) {
@@ -436,6 +438,7 @@ impl PluginManager {
                 icon: IconDescriptor::Svg { data: svg },
                 action_id: btn.action_id.clone(),
                 tool_mode: None,
+                hotkey: None,
                 active: false,
             };
             if let Err(e) = self.toolbar.register(registration) {

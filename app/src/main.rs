@@ -129,6 +129,38 @@ fn deactivate_active_plugin_tool_if_matching(
     true
 }
 
+fn normalize_hotkey_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_ascii_lowercase())
+}
+
+fn tool_selection_for_button(
+    button: &plugin_api::ToolbarButtonRegistration,
+) -> Option<state::ToolSelection> {
+    let tool = match button.tool_mode? {
+        plugin_api::HostToolMode::Navigate => state::Tool::Navigate,
+        plugin_api::HostToolMode::RegionOfInterest => state::Tool::RegionOfInterest,
+        plugin_api::HostToolMode::MeasureDistance => state::Tool::MeasureDistance,
+        plugin_api::HostToolMode::PointAnnotation => state::Tool::PointAnnotation,
+    };
+    Some(state::ToolSelection {
+        tool,
+        point_plugin_id: (tool == state::Tool::PointAnnotation).then(|| button.plugin_id.clone()),
+    })
+}
+
+fn selection_matches_button(
+    app_state: &AppState,
+    button: &plugin_api::ToolbarButtonRegistration,
+) -> bool {
+    let Some(target) = tool_selection_for_button(button) else {
+        return false;
+    };
+    app_state.current_tool == target.tool
+        && (target.tool != state::Tool::PointAnnotation
+            || app_state.active_point_tool_plugin_id == target.point_plugin_id)
+}
+
 fn slider_value_to_zoom(value: f32) -> f64 {
     ui_update::slider_value_to_zoom(value)
 }
@@ -558,6 +590,117 @@ fn setup_callbacks(
                 tracing::error!("Plugin action error: {e}");
             }
         }
+    });
+
+    let hotkey_state = Arc::clone(&state);
+    let hotkey_ui = ui.as_weak();
+    ui.on_plugin_tool_hotkey_pressed(move |text, repeat| {
+        let Some(key) = normalize_hotkey_text(text.as_str()) else {
+            return false;
+        };
+
+        if repeat {
+            let mut app_state = hotkey_state.write();
+            if let Some(active) = app_state.temporary_tool_override_mut(&key) {
+                active.saw_repeat = true;
+                return true;
+            }
+            return false;
+        }
+
+        let Some(button) = ({
+            let app_state = hotkey_state.read();
+            plugin_host::hotkey_button_for_key(&app_state, &key)
+        }) else {
+            return false;
+        };
+
+        let Some(target) = tool_selection_for_button(&button) else {
+            return false;
+        };
+
+        let target_was_active = {
+            let app_state = hotkey_state.read();
+            selection_matches_button(&app_state, &button)
+        };
+
+        {
+            let mut app_state = hotkey_state.write();
+            let restore = (!target_was_active).then(|| app_state.current_tool_selection());
+            app_state.push_temporary_tool_override(state::TemporaryToolOverride {
+                hotkey: key,
+                plugin_id: button.plugin_id.clone(),
+                action_id: button.action_id.clone(),
+                target,
+                restore,
+                target_was_active,
+                saw_repeat: false,
+            });
+        }
+
+        if !target_was_active
+            && let Some(ui) = hotkey_ui.upgrade()
+        {
+            ui.invoke_plugin_button_clicked(button.plugin_id.into(), button.action_id.into());
+        }
+
+        true
+    });
+
+    let hotkey_state = Arc::clone(&state);
+    let hotkey_ui = ui.as_weak();
+    let hotkey_render_state = Arc::clone(&state);
+    let hotkey_render_timer = Rc::clone(&render_timer);
+    let hotkey_render_cache = Arc::clone(&tile_cache);
+    ui.on_plugin_tool_hotkey_released(move |text| {
+        let Some(key) = normalize_hotkey_text(text.as_str()) else {
+            return false;
+        };
+
+        let Some(entry) = ({
+            let mut app_state = hotkey_state.write();
+            app_state.take_temporary_tool_override(&key)
+        }) else {
+            return false;
+        };
+
+        if entry.saw_repeat {
+            if let Some(restore) = entry.restore
+                && let Some(ui) = hotkey_ui.upgrade()
+            {
+                {
+                    let mut app_state = hotkey_state.write();
+                    app_state.apply_tool_selection(&restore);
+                    plugin_host::sync_tool_button_states(&mut app_state);
+                }
+                let app_state = hotkey_state.read();
+                update_tool_state(&ui, &app_state);
+                let _ = plugin_host::refresh_plugin_buttons();
+                request_render_loop(
+                    &hotkey_render_timer,
+                    &hotkey_ui,
+                    &hotkey_render_state,
+                    &hotkey_render_cache,
+                );
+            }
+        } else if entry.target_was_active
+            && let Some(ui) = hotkey_ui.upgrade()
+            && deactivate_active_plugin_tool_if_matching(
+                &ui,
+                &hotkey_state,
+                &entry.plugin_id,
+                &entry.action_id,
+            )
+        {
+            request_render_loop(
+                &hotkey_render_timer,
+                &hotkey_ui,
+                &hotkey_render_state,
+                &hotkey_render_cache,
+            );
+        }
+
+        true
     });
 
     let pm = Rc::clone(&plugin_manager);

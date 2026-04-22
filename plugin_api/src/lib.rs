@@ -103,6 +103,8 @@ pub struct ToolbarButtonRegistration {
     pub action_id: String,
     /// Optional host tool mode this button owns and toggles.
     pub tool_mode: Option<HostToolMode>,
+    /// Optional logical hotkey text that activates this tool button.
+    pub hotkey: Option<String>,
     /// Whether the host should render this button in its active state.
     pub active: bool,
 }
@@ -208,6 +210,7 @@ mod tests {
             },
             action_id: "do_thing".into(),
             tool_mode: None,
+            hotkey: None,
             active: false,
         };
         assert_eq!(reg.plugin_id, "test");
@@ -215,6 +218,7 @@ mod tests {
         assert_eq!(reg.tooltip, "Test Button");
         assert_eq!(reg.action_id, "do_thing");
         assert_eq!(reg.tool_mode, None);
+        assert_eq!(reg.hotkey, None);
         assert!(!reg.active);
     }
 

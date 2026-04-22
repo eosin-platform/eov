@@ -27,6 +27,7 @@ pub struct ToolbarButtonFFI {
     pub icon_svg: RString,
     pub action_id: RString,
     pub tool_mode: ROption<HostToolModeFFI>,
+    pub hotkey: ROption<RString>,
 }
 
 /// FFI-safe HUD toolbar button registration data.
