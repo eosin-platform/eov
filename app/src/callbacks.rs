@@ -2000,6 +2000,11 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+        let plugin_manager = Rc::clone(&plugin_manager);
+        let last_polygon_vertex_click: Rc<RefCell<Option<(
+            std::time::Instant,
+            crate::state::PluginPolygonVertexHandle,
+        )>>> = Rc::new(RefCell::new(None));
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             let polygon_vertex_drag_candidate = {
@@ -2021,6 +2026,70 @@ pub fn setup_callbacks(
                     })
                 }
             };
+
+            let polygon_vertex_removal = if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
+                let now = std::time::Instant::now();
+                let is_double_click = last_polygon_vertex_click.borrow().as_ref().is_some_and(
+                    |(last_time, handle)| {
+                        now.duration_since(*last_time).as_millis() < 400
+                            && *handle == candidate.handle
+                    },
+                );
+
+                if is_double_click && candidate.vertices.len() > 3 {
+                    last_polygon_vertex_click.borrow_mut().take();
+                    let mut vertices = candidate.vertices;
+                    vertices.remove(candidate.handle.vertex_index);
+                    let pane = {
+                        let state = state_handle.read();
+                        state.focused_pane
+                    };
+                    Some((
+                        candidate.handle.plugin_id,
+                        candidate.handle.annotation_id,
+                        pane,
+                        vertices,
+                    ))
+                } else {
+                    *last_polygon_vertex_click.borrow_mut() = Some((now, candidate.handle));
+                    None
+                }
+            } else {
+                last_polygon_vertex_click.borrow_mut().take();
+                None
+            };
+
+            if let Some((plugin_id, annotation_id, pane, vertices)) = polygon_vertex_removal {
+                {
+                    let mut state = state_handle.write();
+                    state.hovered_plugin_annotation = None;
+                    state.hovered_plugin_polygon_vertex = None;
+                    state.hovered_plugin_polygon_edge = None;
+                    state.dragged_plugin_polygon_vertex = None;
+                    state.dragged_plugin_polygon_vertex_state = None;
+                    state.dragged_plugin_polygon_vertex_position = None;
+                    state.dragged_plugin_polygon = None;
+                    state.dragged_plugin_polygon_state = None;
+                    state.dragged_plugin_polygon_position = None;
+                    state.request_render();
+                }
+
+                if let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                    && let Err(err) = plugin_manager.borrow_mut().handle_polygon_annotation_moved(
+                        &plugin_id,
+                        &viewport,
+                        &annotation_id,
+                        &vertices,
+                    )
+                {
+                    tracing::error!("Polygon annotation vertex removal error: {err}");
+                }
+
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
 
             let polygon_edge_insert_candidate = {
                 let state = state_handle.read();
