@@ -109,6 +109,12 @@ Current capabilities include:
     <img src="images/screenshot-1.webp" width="512">
     &nbsp;
     <img src="images/screenshot-2.webp" width="512">
+    <img src="images/screenshot-2.webp" width="512">
+</p>
+
+With the [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin):
+<p align="center">
+    <img src="images/screenshot-3.webp" width="512">
 </p>
 
 ## Texture Filtering
