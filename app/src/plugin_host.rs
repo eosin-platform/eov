@@ -1976,6 +1976,23 @@ pub(crate) fn invoke_local_ui_callback(
     Ok(())
 }
 
+pub(crate) fn active_sidebar_captures_hotkeys() -> bool {
+    ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+        let Some(instance) = slot
+            .borrow()
+            .as_ref()
+            .and_then(|active| active.instance.upgrade())
+        else {
+            return false;
+        };
+
+        matches!(
+            instance.get_property("capture-hotkeys"),
+            Ok(slint_interpreter::Value::Bool(true))
+        )
+    })
+}
+
 extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
     match context_state(context) {
         Ok(state) => to_snapshot_ffi(snapshot(&state)),

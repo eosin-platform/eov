@@ -186,6 +186,7 @@ export component AppWindow inherits Window {
     callback hud-plugin-button-clicked(int, /* plugin-id */ string, /* action-id */ string);
     callback plugin-tool-hotkey-pressed(string, bool) -> bool;
     callback plugin-tool-hotkey-released(string) -> bool;
+    callback global-hotkeys-enabled() -> bool;
     callback move-tab-to-pane(int, int, int);
     callback split-tab-by-drop(int, int);
     callback reorder-tab(int, int, int);
@@ -327,6 +328,9 @@ export component AppWindow inherits Window {
                 root.plugin-confirm-cancelled();
                 accept
             }
+            if !root.global-hotkeys-enabled() {
+                reject
+            }
             if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
                 root.window-close();
                 accept
@@ -342,6 +346,9 @@ export component AppWindow inherits Window {
         }
 
         key-released(e) => {
+            if !root.global-hotkeys-enabled() {
+                reject
+            }
             if root.plugin-tool-hotkey-released(e.text) {
                 accept
             }

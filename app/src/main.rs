@@ -618,6 +618,10 @@ fn setup_callbacks(
     let hotkey_state = Arc::clone(&state);
     let hotkey_ui = ui.as_weak();
     ui.on_plugin_tool_hotkey_pressed(move |text, repeat| {
+        if plugin_host::active_sidebar_captures_hotkeys() {
+            return false;
+        }
+
         let Some(key) = normalize_hotkey_text(text.as_str()) else {
             return false;
         };
@@ -676,6 +680,10 @@ fn setup_callbacks(
     let hotkey_render_cache = Arc::clone(&tile_cache);
     let hotkey_plugin_manager = Rc::clone(&plugin_manager);
     ui.on_plugin_tool_hotkey_released(move |text| {
+        if plugin_host::active_sidebar_captures_hotkeys() {
+            return false;
+        }
+
         let Some(key) = normalize_hotkey_text(text.as_str()) else {
             return false;
         };
@@ -738,6 +746,8 @@ fn setup_callbacks(
 
         true
     });
+
+    ui.on_global_hotkeys_enabled(|| !plugin_host::active_sidebar_captures_hotkeys());
 
     let pm = Rc::clone(&plugin_manager);
     let filter_state = Arc::clone(&state);

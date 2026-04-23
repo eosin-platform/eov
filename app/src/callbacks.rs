@@ -3898,6 +3898,10 @@ pub fn setup_callbacks(
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::KeyboardInput { event, .. } => {
+                    if crate::plugin_host::active_sidebar_captures_hotkeys() {
+                        return EventResult::Propagate;
+                    }
+
                     let modifier_state = modifiers.get();
                     let plain_shortcut = event.state == winit::event::ElementState::Pressed
                         && !event.repeat
