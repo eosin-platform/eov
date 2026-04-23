@@ -1,6 +1,6 @@
 [package]
 name = "common"
-version = "0.2.16"
+version = "0.2.17"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0"
