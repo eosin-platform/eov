@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.18"
+version = "0.2.19"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0"
