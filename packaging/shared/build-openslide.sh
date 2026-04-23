@@ -64,7 +64,7 @@ build_libdicom() {
     mkdir -p "$extract_dir"
     tar -xJf "$archive_path" -C "$extract_dir"
 
-    meson setup "$source_dir/_build" \
+    meson setup "$source_dir/_build" "$source_dir" \
         --prefix="$prefix" \
         --libdir=lib \
         -Dtests=false \
@@ -82,7 +82,7 @@ build_openslide() {
     rm -rf "$source_dir"
     git clone --depth 1 --branch "$OPENSLIDE_BRANCH" "$OPENSLIDE_REPO_URL" "$source_dir"
 
-    meson setup "$source_dir/_build" \
+    meson setup "$source_dir/_build" "$source_dir" \
         --prefix="$prefix" \
         --libdir=lib \
         -Dtest=disabled \
