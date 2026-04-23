@@ -8,8 +8,15 @@ The script builds a `.app` bundle, copies the checked-in macOS icon asset, bundl
 
 - macOS
 - Xcode command line tools (`codesign`, `install_name_tool`, `otool`)
-- Homebrew `openslide` installed, or `OPENSLIDE_LIB_DIR` set
+- Homebrew build dependencies needed to compile OpenSlide from source, or
+	`OPENSLIDE_LIB_DIR` set to a prebuilt OpenSlide install
 - Rust toolchain with Cargo
+
+Typical Homebrew dependencies:
+
+```bash
+brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite
+```
 
 ## Usage
 
@@ -35,3 +42,6 @@ Useful environment overrides:
 - `DIST_DIR`
 - `ICNS_SOURCE`
 - `CODESIGN_IDENTITY`
+
+By default, `build.sh` compiles OpenSlide from the current head of upstream
+`openslide/main` into a private staging prefix before building the app.

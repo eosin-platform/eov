@@ -21,6 +21,8 @@ BUNDLE_ICON_NAME="${BUNDLE_ICON_NAME:-$PRODUCT_NAME.icns}"
 ARCHIVE_BASENAME="${ARCHIVE_BASENAME:-}"
 CREATE_ZIP="${CREATE_ZIP:-1}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+OPENSLIDE_PREFIX="${OPENSLIDE_PREFIX:-$BUILD_ROOT/openslide-prefix}"
+OPENSLIDE_BUILD_ROOT="${OPENSLIDE_BUILD_ROOT:-$BUILD_ROOT/openslide-build}"
 
 STAGING_DIR="$BUILD_ROOT/staging"
 APP_BUNDLE_PATH="$STAGING_DIR/$APP_BUNDLE_NAME"
@@ -38,6 +40,18 @@ log() {
 fail() {
     echo "[macos] error: $*" >&2
     exit 1
+}
+
+prepend_env_path() {
+    local var_name="$1"
+    local dir="$2"
+    local current="${!var_name:-}"
+
+    if [[ -n "$current" ]]; then
+        export "$var_name=$dir:$current"
+    else
+        export "$var_name=$dir"
+    fi
 }
 
 require_file() {
@@ -94,13 +108,20 @@ derive_archive_basename() {
 }
 
 configure_build_env() {
-    if [[ -z "${OPENSLIDE_LIB_DIR:-}" ]] && command -v brew >/dev/null 2>&1; then
-        local openslide_prefix
-        openslide_prefix="$(brew --prefix openslide 2>/dev/null || true)"
-        if [[ -n "$openslide_prefix" ]]; then
-            export OPENSLIDE_LIB_DIR="$openslide_prefix/lib"
-        fi
+    if [[ -z "${OPENSLIDE_LIB_DIR:-}" ]]; then
+        log "Building OpenSlide from openslide/main"
+        OPENSLIDE_PREFIX="$OPENSLIDE_PREFIX" \
+        OPENSLIDE_BUILD_ROOT="$OPENSLIDE_BUILD_ROOT" \
+            bash "$REPO_ROOT/packaging/shared/build-openslide.sh"
+        export OPENSLIDE_LIB_DIR="$OPENSLIDE_PREFIX/lib"
     fi
+
+    [[ -d "$OPENSLIDE_LIB_DIR" ]] || fail "OpenSlide library directory not found: $OPENSLIDE_LIB_DIR"
+
+    prepend_env_path PKG_CONFIG_PATH "$OPENSLIDE_LIB_DIR/pkgconfig"
+    prepend_env_path LIBRARY_PATH "$OPENSLIDE_LIB_DIR"
+    prepend_env_path DYLD_LIBRARY_PATH "$OPENSLIDE_LIB_DIR"
+    export RUSTFLAGS="-L native=$OPENSLIDE_LIB_DIR ${RUSTFLAGS:-}"
 }
 
 binary_source_path() {

@@ -24,6 +24,8 @@ APPDIR_APPLICATIONS_DIR="$APPDIR_SHARE_DIR/applications"
 APPDIR_METAINFO_DIR="$APPDIR_SHARE_DIR/metainfo"
 BINARY_PATH="${BINARY_PATH:-$REPO_ROOT/target/release/$APP_NAME}"
 OPENSLIDE_LIB_PATH="${OPENSLIDE_LIB_PATH:-}"
+OPENSLIDE_PREFIX="${OPENSLIDE_PREFIX:-$BUILD_ROOT/openslide-prefix}"
+OPENSLIDE_BUILD_ROOT="${OPENSLIDE_BUILD_ROOT:-$BUILD_ROOT/openslide-build}"
 ARCH="${ARCH:-$(uname -m)}"
 
 BLACKLISTED_LIBRARIES=(
@@ -55,9 +57,38 @@ fail() {
     exit 1
 }
 
+prepend_env_path() {
+    local var_name="$1"
+    local dir="$2"
+    local current="${!var_name:-}"
+
+    if [[ -n "$current" ]]; then
+        export "$var_name=$dir:$current"
+    else
+        export "$var_name=$dir"
+    fi
+}
+
 require_file() {
     local path="$1"
     [[ -f "$path" ]] || fail "required file not found: $path"
+}
+
+configure_openslide_env() {
+    if [[ -z "$OPENSLIDE_LIB_PATH" ]]; then
+        log "Building OpenSlide from openslide/main"
+        OPENSLIDE_PREFIX="$OPENSLIDE_PREFIX" \
+        OPENSLIDE_BUILD_ROOT="$OPENSLIDE_BUILD_ROOT" \
+            bash "$REPO_ROOT/packaging/shared/build-openslide.sh"
+
+        OPENSLIDE_LIB_PATH="$(find "$OPENSLIDE_PREFIX/lib" -maxdepth 1 -name 'libopenslide.so*' -type f | sort | head -n 1)"
+        [[ -n "$OPENSLIDE_LIB_PATH" ]] || fail "failed to locate OpenSlide library in $OPENSLIDE_PREFIX/lib"
+        prepend_env_path PKG_CONFIG_PATH "$OPENSLIDE_PREFIX/lib/pkgconfig"
+    fi
+
+    prepend_env_path LD_LIBRARY_PATH "$(dirname "$(readlink -f "$OPENSLIDE_LIB_PATH")")"
+    prepend_env_path LIBRARY_PATH "$(dirname "$(readlink -f "$OPENSLIDE_LIB_PATH")")"
+    export RUSTFLAGS="-L native=$(dirname "$(readlink -f "$OPENSLIDE_LIB_PATH")") ${RUSTFLAGS:-}"
 }
 
 is_blacklisted_library() {
@@ -247,6 +278,7 @@ main() {
     require_file "$THIRD_PARTY_FILE"
 
     create_layout
+    configure_openslide_env
     build_binary
     copy_metadata
 

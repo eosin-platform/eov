@@ -35,8 +35,8 @@ flatpak-builder --force-clean --repo=repo build-flatpak packaging/flatpak/io.eos
 
 ## Notes
 
-- OpenSlide is sourced from the upstream `v4.0.0` release commit and built as a
-  shared library module.
+- OpenSlide is sourced from the current head of upstream `openslide/main` and
+  built as a shared library module.
 - If this project ever carries local OpenSlide patches, those patches must be
   made available under LGPL-2.1 terms.
 - For fully reproducible Flatpak builds, maintainers may still want to vendor

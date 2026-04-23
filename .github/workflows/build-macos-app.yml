@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install openslide protobuf
+          brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config protobuf sqlite
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

@@ -10,16 +10,15 @@ into the AppDir/AppImage instead of statically linking OpenSlide into eov.
 ## Requirements
 
 - Rust and Cargo
-- OpenSlide installed on the host so the Rust binary links dynamically during
-  the release build
 - Common Linux GUI development packages needed by Slint and winit on the host
+- Native build dependencies required to compile OpenSlide from source
 - `linuxdeploy` preferred, or `appimagetool` as a fallback
 - `ldd`, `ldconfig`, and standard POSIX shell utilities
 
 On Debian or Ubuntu hosts, a typical starting point is:
 
 ```bash
-sudo apt install build-essential cargo pkg-config libopenslide-dev libfontconfig-dev libx11-dev libxkbcommon-dev libwayland-dev libvulkan-dev
+sudo apt install build-essential cargo curl git libcairo2-dev libfontconfig-dev libgdk-pixbuf-2.0-dev libglib2.0-dev libjpeg-turbo8-dev libopenjp2-7-dev libpng-dev libsqlite3-dev libtiff-dev libvulkan-dev libwayland-dev libx11-dev libxkbcommon-dev libxml2-dev meson ninja-build pkg-config zlib1g-dev
 ```
 
 You still need either `linuxdeploy` or `appimagetool` available in `PATH`.
@@ -53,6 +52,8 @@ Useful overrides:
 ## Notes
 
 - The script intentionally avoids static linking for OpenSlide.
+- By default, the script builds OpenSlide from the current head of upstream
+  `openslide/main` into a private staging prefix before building `eov`.
 - The script bundles `libopenslide.so` and its non-blacklisted dependent shared
   libraries into `AppDir/usr/lib`.
 - glibc and related loader libraries are intentionally skipped rather than

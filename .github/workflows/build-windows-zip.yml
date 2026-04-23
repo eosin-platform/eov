@@ -53,8 +53,8 @@ jobs:
             ntldd_filter: clangarm64
 
     env:
-      # OpenSlide source commit to build (from openslide/openslide.git).
-      OPENSLIDE_COMMIT: "615670d924d6dddce3d407d1a6440a32cf5350c7"
+      # OpenSlide branch to build from (using the current head commit).
+      OPENSLIDE_BRANCH: "main"
 
     steps:
       - name: Check out repository
@@ -191,9 +191,8 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          git clone https://github.com/openslide/openslide.git openslide-src
+          git clone --depth 1 --branch "$OPENSLIDE_BRANCH" https://github.com/openslide/openslide.git openslide-src
           cd openslide-src
-          git checkout "$OPENSLIDE_COMMIT"
           meson setup _build \
             --prefix="$MSYSTEM_PREFIX" \
             --libdir=lib \

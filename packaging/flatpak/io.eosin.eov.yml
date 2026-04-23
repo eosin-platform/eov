@@ -57,7 +57,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/openslide/openslide.git
-        commit: 615670d924d6dddce3d407d1a6440a32cf5350c7
+        branch: main
 
   - name: protobuf
     buildsystem: simple

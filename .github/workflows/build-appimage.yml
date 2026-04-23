@@ -59,15 +59,27 @@ jobs:
             cargo \
             curl \
             file \
+            git \
+            libcairo2-dev \
             libvulkan-dev \
             libfontconfig-dev \
-            libopenslide-dev \
+            libgdk-pixbuf-2.0-dev \
+            libglib2.0-dev \
+            libjpeg-turbo8-dev \
+            libopenjp2-7-dev \
+            libpng-dev \
+            libsqlite3-dev \
+            libtiff-dev \
+            libxml2-dev \
+            meson \
+            ninja-build \
             protobuf-compiler \
             libwayland-dev \
             libx11-dev \
             libxkbcommon-dev \
             pkg-config \
             squashfs-tools \
+            zlib1g-dev \
             zsync
 
       - name: Install Rust toolchain

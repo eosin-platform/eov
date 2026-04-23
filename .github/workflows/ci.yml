@@ -104,15 +104,46 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            curl \
+            git \
+            libcairo2-dev \
+            libgdk-pixbuf-2.0-dev \
+            libglib2.0-dev \
+            libjpeg-turbo8-dev \
+            libopenjp2-7-dev \
+            libpng-dev \
+            libsqlite3-dev \
+            libtiff-dev \
             libvulkan-dev \
             libfontconfig-dev \
             libfreetype6-dev \
-            libopenslide-dev \
+            libxml2-dev \
+            meson \
+            ninja-build \
             protobuf-compiler \
             libwayland-dev \
             libx11-dev \
             libxkbcommon-dev \
-            pkg-config
+            pkg-config \
+            zlib1g-dev
+      - name: Build OpenSlide from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          openslide_prefix="$RUNNER_TEMP/openslide-prefix"
+          OPENSLIDE_PREFIX="$openslide_prefix" \
+          OPENSLIDE_BUILD_ROOT="$RUNNER_TEMP/openslide-build" \
+            bash packaging/shared/build-openslide.sh
+
+          {
+            echo "OPENSLIDE_PREFIX=$openslide_prefix"
+            echo "OPENSLIDE_LIB_DIR=$openslide_prefix/lib"
+            echo "PKG_CONFIG_PATH=$openslide_prefix/lib/pkgconfig${PKG_CONFIG_PATH+:$PKG_CONFIG_PATH}"
+            echo "LD_LIBRARY_PATH=$openslide_prefix/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+            echo "LIBRARY_PATH=$openslide_prefix/lib${LIBRARY_PATH+:$LIBRARY_PATH}"
+            echo "RUSTFLAGS=-L native=$openslide_prefix/lib ${RUSTFLAGS:-}"
+          } >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Cargo Clippy
@@ -149,6 +180,7 @@ jobs:
           bash -n packaging/appimage/build.sh
           bash -n packaging/macos/build.sh
           bash -n packaging/flatpak/build.sh
+          bash -n packaging/shared/build-openslide.sh
           test -f packaging/appimage/AppRun
           test -f assets/macos/Info.plist
           test -f assets/linux/io.eosin.eov.desktop
