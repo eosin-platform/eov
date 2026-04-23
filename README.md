@@ -14,7 +14,7 @@
 </p>
 
 
-eov is a cross-platform desktop viewer for whole-slide images built with [Rust](https://rust-lang.org/) and [Slint](https://slint.dev/). It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux-style utility for WSI".
+eov is a cross-platform desktop viewer for whole-slide images built with [Rust](https://rust-lang.org/) and [Slint](https://slint.dev/). It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux-style utility for WSI". However, eov is highly extensible, and a proper WSI workbench experience (e.g. annotations) can be achieved with [plugins](https://github.com/eosin-platform/eov-annotations-plugin).
 
 Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solves the institution-scale WSI problem, eov aims to provide researchers - and anyone else interested in WSI - with frictionless viewer capabilities free of extraneous dependencies (e.g. servers, cloud infrastructure).
 
@@ -108,7 +108,6 @@ Current capabilities include:
     &nbsp;
     <img src="images/screenshot-1.webp" width="512">
     &nbsp;
-    <img src="images/screenshot-2.webp" width="512">
     <img src="images/screenshot-2.webp" width="512">
 </p>
 
