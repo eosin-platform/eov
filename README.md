@@ -22,14 +22,14 @@ The name `eov` has no canonical expansion.
 
 ## Installation
 
-Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.2.17).
+Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.2.18).
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
 
 ### macOS
 The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
-- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-macos-arm64.zip) (all Macs released since June 2023)
-- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
+- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-macos-arm64.zip) (all Macs released since June 2023)
+- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
 Download and open the `.app` file to run it. The app is not signed and you'll see an error message about the app being from an unidentified developer. To fix this, go to System Preferences → Security & Privacy and hit the "Open Anyway" button. Expect to repeat this process whenever you download a new version. 
 
@@ -37,8 +37,8 @@ Installation via `brew` is currently a work-in-progress.
 
 ### Windows
 A zip file containing a portable Windows build is available:
-- [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-windows-x86_64.zip) (most Windows machines)
-- [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-windows-arm64.zip) (rarer)
+- [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-windows-x86_64.zip) (most Windows machines)
+- [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-windows-arm64.zip) (rarer)
 
 Extract the zip and run `eov.exe` to start the program. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
@@ -47,14 +47,14 @@ If you want the `eov` command to be available via PATH (e.g. for command prompt 
 ### Linux
 There are two methods of installation.
 
-- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-linux-aarch64.AppImage)
-- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-linux-aarch64.flatpak)
+- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-linux-aarch64.AppImage)
+- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-linux-aarch64.flatpak)
 
 The AppImage is directly executable:
 
 ```bash
 # Download the binary
-curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.2.17/eov-v0.2.17-linux-x86_64.AppImage
+curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.2.18/eov-v0.2.18-linux-x86_64.AppImage
 
 # Make it executable
 chmod +x ./eov
