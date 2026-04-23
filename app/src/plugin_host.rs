@@ -165,11 +165,20 @@ struct ActiveSidebarInstance {
 }
 
 struct PendingPluginConfirmation {
+    action: PendingPluginConfirmationAction,
+}
+
+struct PendingPluginCallbackConfirmation {
     vtable: PluginVTable,
     confirm_callback: Option<String>,
     confirm_args_json: String,
     cancel_callback: Option<String>,
     cancel_args_json: String,
+}
+
+enum PendingPluginConfirmationAction {
+    PluginCallback(Box<PendingPluginCallbackConfirmation>),
+    PrunePluginFiles { package_paths: Vec<PathBuf> },
 }
 
 static HOST_CONTEXTS: OnceLock<Mutex<HashMap<u64, HostApiContext>>> = OnceLock::new();
@@ -1091,16 +1100,52 @@ pub(crate) fn show_confirmation_dialog(
             .upgrade()
             .ok_or_else(|| "application window is no longer available".to_string())?;
         *pending_plugin_confirmation().lock().unwrap() = Some(PendingPluginConfirmation {
-            vtable,
-            confirm_callback,
-            confirm_args_json,
-            cancel_callback,
-            cancel_args_json,
+            action: PendingPluginConfirmationAction::PluginCallback(Box::new(
+                PendingPluginCallbackConfirmation {
+                    vtable,
+                    confirm_callback,
+                    confirm_args_json,
+                    cancel_callback,
+                    cancel_args_json,
+                },
+            )),
         });
         ui.set_plugin_confirm_title(title.into());
         ui.set_plugin_confirm_message(message.into());
         ui.set_plugin_confirm_confirm_label(confirm_label.into());
         ui.set_plugin_confirm_cancel_label(cancel_label.into());
+        ui.set_plugin_confirm_visible(true);
+        Ok(())
+    })
+}
+
+pub(crate) fn show_old_plugin_versions_dialog(package_paths: Vec<PathBuf>) -> Result<(), String> {
+    if package_paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut message = String::from(
+        "There are old versions of plugins installed. Only the latest versions of plugins will be loaded. Would you like to remove the old plugin files? Pruning will keep only the newest versions of the plugins.\n\nOld plugin files:\n",
+    );
+    for (index, path) in package_paths.iter().enumerate() {
+        if index > 0 {
+            message.push('\n');
+        }
+        message.push_str(&path.display().to_string());
+    }
+
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        *pending_plugin_confirmation().lock().unwrap() = Some(PendingPluginConfirmation {
+            action: PendingPluginConfirmationAction::PrunePluginFiles { package_paths },
+        });
+        ui.set_plugin_confirm_title("Old Plugin Versions Installed".into());
+        ui.set_plugin_confirm_message(message.into());
+        ui.set_plugin_confirm_confirm_label("Prune".into());
+        ui.set_plugin_confirm_cancel_label("Ignore".into());
         ui.set_plugin_confirm_visible(true);
         Ok(())
     })
@@ -1119,14 +1164,38 @@ pub(crate) fn handle_confirmation_dialog_response(confirmed: bool) -> Result<(),
             return Ok(());
         };
 
-        let (callback_name, args_json) = if confirmed {
-            (pending.confirm_callback, pending.confirm_args_json)
-        } else {
-            (pending.cancel_callback, pending.cancel_args_json)
-        };
+        match pending.action {
+            PendingPluginConfirmationAction::PluginCallback(callback) => {
+                let (callback_name, args_json) = if confirmed {
+                    (callback.confirm_callback, callback.confirm_args_json)
+                } else {
+                    (callback.cancel_callback, callback.cancel_args_json)
+                };
 
-        if let Some(callback_name) = callback_name {
-            (pending.vtable.on_ui_callback)(callback_name.into(), args_json.into());
+                if let Some(callback_name) = callback_name {
+                    (callback.vtable.on_ui_callback)(callback_name.into(), args_json.into());
+                }
+            }
+            PendingPluginConfirmationAction::PrunePluginFiles { package_paths } => {
+                if confirmed {
+                    let mut failures = Vec::new();
+                    for path in package_paths {
+                        match std::fs::remove_file(&path) {
+                            Ok(()) => {
+                                tracing::info!("Removed old plugin package {}", path.display())
+                            }
+                            Err(err) => failures.push(format!("{}: {err}", path.display())),
+                        }
+                    }
+
+                    if !failures.is_empty() {
+                        return Err(format!(
+                            "Failed to remove old plugin files:\n{}",
+                            failures.join("\n")
+                        ));
+                    }
+                }
+            }
         }
 
         Ok(())

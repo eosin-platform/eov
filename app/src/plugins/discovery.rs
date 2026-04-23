@@ -4,6 +4,9 @@
 //! plugin manifests from the extracted plugin root.
 
 use plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
+use semver::Version;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::path::{Component, Path, PathBuf};
@@ -12,18 +15,31 @@ use tracing::{debug, info, warn};
 
 const PLUGIN_PACKAGE_EXTENSION: &str = "eop";
 
+pub struct PluginDiscoveryResult {
+    pub descriptors: Vec<PluginDescriptor>,
+    pub old_plugin_files: Vec<PathBuf>,
+}
+
+struct ScannedPluginPackage {
+    descriptor: PluginDescriptor,
+    package_path: PathBuf,
+}
+
 /// Scan `plugin_dir` for plugin package tarballs.
 ///
 /// Returns descriptors sorted by plugin id for deterministic ordering.
 /// Invalid plugins are skipped with a warning; they do not prevent other
 /// plugins from being discovered.
-pub fn discover_plugins(plugin_dir: &Path) -> Vec<PluginDescriptor> {
+pub fn discover_plugins(plugin_dir: &Path) -> PluginDiscoveryResult {
     if !plugin_dir.is_dir() {
         info!(
             "Plugin directory does not exist, skipping discovery: {}",
             plugin_dir.display()
         );
-        return Vec::new();
+        return PluginDiscoveryResult {
+            descriptors: Vec::new(),
+            old_plugin_files: Vec::new(),
+        };
     }
 
     let read_dir = match std::fs::read_dir(plugin_dir) {
@@ -33,7 +49,10 @@ pub fn discover_plugins(plugin_dir: &Path) -> Vec<PluginDescriptor> {
                 "Failed to read plugin directory {}: {e}",
                 plugin_dir.display()
             );
-            return Vec::new();
+            return PluginDiscoveryResult {
+                descriptors: Vec::new(),
+                old_plugin_files: Vec::new(),
+            };
         }
     };
 
@@ -43,10 +62,13 @@ pub fn discover_plugins(plugin_dir: &Path) -> Vec<PluginDescriptor> {
             "Failed to create plugin cache directory {}: {e}",
             cache_dir.display()
         );
-        return Vec::new();
+        return PluginDiscoveryResult {
+            descriptors: Vec::new(),
+            old_plugin_files: Vec::new(),
+        };
     }
 
-    let mut descriptors = Vec::new();
+    let mut packages = Vec::new();
 
     for entry in read_dir {
         let entry = match entry {
@@ -70,7 +92,10 @@ pub fn discover_plugins(plugin_dir: &Path) -> Vec<PluginDescriptor> {
                     desc.manifest.id,
                     path.display()
                 );
-                descriptors.push(desc);
+                packages.push(ScannedPluginPackage {
+                    descriptor: desc,
+                    package_path: path,
+                });
             }
             Err(e) => {
                 warn!("Skipping invalid plugin at {}: {e}", path.display());
@@ -78,9 +103,78 @@ pub fn discover_plugins(plugin_dir: &Path) -> Vec<PluginDescriptor> {
         }
     }
 
-    // Sort by id for deterministic ordering
+    dedupe_plugin_versions(packages)
+}
+
+fn dedupe_plugin_versions(packages: Vec<ScannedPluginPackage>) -> PluginDiscoveryResult {
+    let mut grouped = BTreeMap::<String, Vec<ScannedPluginPackage>>::new();
+    for package in packages {
+        grouped
+            .entry(package.descriptor.manifest.id.clone())
+            .or_default()
+            .push(package);
+    }
+
+    let mut descriptors = Vec::new();
+    let mut old_plugin_files = Vec::new();
+
+    for (plugin_id, mut group) in grouped {
+        group.sort_by(|left, right| {
+            compare_plugin_versions(
+                &right.descriptor.manifest.version,
+                &left.descriptor.manifest.version,
+            )
+            .then_with(|| left.package_path.cmp(&right.package_path))
+        });
+
+        let winner_version = group[0].descriptor.manifest.version.clone();
+
+        for package in group.drain(1..) {
+            match compare_plugin_versions(&winner_version, &package.descriptor.manifest.version) {
+                Ordering::Greater => {
+                    warn!(
+                        "Skipping older plugin '{}' version {} from {} in favor of version {}",
+                        plugin_id,
+                        package.descriptor.manifest.version,
+                        package.package_path.display(),
+                        winner_version
+                    );
+                    old_plugin_files.push(package.package_path);
+                }
+                Ordering::Equal => {
+                    warn!(
+                        "Skipping duplicate plugin '{}' version {} from {}",
+                        plugin_id,
+                        package.descriptor.manifest.version,
+                        package.package_path.display()
+                    );
+                }
+                Ordering::Less => {}
+            }
+        }
+
+        let winner = group
+            .into_iter()
+            .next()
+            .map(|package| package.descriptor)
+            .expect("plugin discovery group must contain a winner");
+        descriptors.push(winner);
+    }
+
     descriptors.sort_by(|a, b| a.manifest.id.cmp(&b.manifest.id));
-    descriptors
+    old_plugin_files.sort();
+
+    PluginDiscoveryResult {
+        descriptors,
+        old_plugin_files,
+    }
+}
+
+fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
+    match (Version::parse(left), Version::parse(right)) {
+        (Ok(left), Ok(right)) => left.cmp(&right),
+        _ => left.cmp(right),
+    }
 }
 
 fn is_plugin_package(path: &Path) -> bool {
@@ -380,14 +474,16 @@ entry_component = "Panel"
     #[test]
     fn discover_from_nonexistent_dir() {
         let result = discover_plugins(Path::new("/nonexistent/plugin/dir/12345xyz"));
-        assert!(result.is_empty());
+        assert!(result.descriptors.is_empty());
+        assert!(result.old_plugin_files.is_empty());
     }
 
     #[test]
     fn discover_from_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let result = discover_plugins(tmp.path());
-        assert!(result.is_empty());
+        assert!(result.descriptors.is_empty());
+        assert!(result.old_plugin_files.is_empty());
     }
 
     #[test]
@@ -398,11 +494,12 @@ entry_component = "Panel"
         write_plugin_package(tmp.path(), "plugin_b", "beta", None);
 
         let result = discover_plugins(tmp.path());
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.descriptors.len(), 2);
         // Sorted by id
-        assert_eq!(result[0].manifest.id, "alpha");
-        assert_eq!(result[1].manifest.id, "beta");
-        assert!(result[0].root.join("plugin.toml").exists());
+        assert_eq!(result.descriptors[0].manifest.id, "alpha");
+        assert_eq!(result.descriptors[1].manifest.id, "beta");
+        assert!(result.descriptors[0].root.join("plugin.toml").exists());
+        assert!(result.old_plugin_files.is_empty());
     }
 
     #[test]
@@ -416,9 +513,9 @@ entry_component = "Panel"
         );
 
         let result = discover_plugins(tmp.path());
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].manifest.id, "wrapped");
-        assert!(result[0].root.ends_with("plugin_bundle"));
+        assert_eq!(result.descriptors.len(), 1);
+        assert_eq!(result.descriptors[0].manifest.id, "wrapped");
+        assert!(result.descriptors[0].root.ends_with("plugin_bundle"));
     }
 
     #[test]
@@ -427,9 +524,9 @@ entry_component = "Panel"
         write_plugin_package_with_dot_entries(tmp.path(), "dot_prefixed", "dot_prefixed");
 
         let result = discover_plugins(tmp.path());
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].manifest.id, "dot_prefixed");
-        assert!(result[0].root.join("plugin.toml").exists());
+        assert_eq!(result.descriptors.len(), 1);
+        assert_eq!(result.descriptors[0].manifest.id, "dot_prefixed");
+        assert!(result.descriptors[0].root.join("plugin.toml").exists());
     }
 
     #[test]
@@ -455,8 +552,8 @@ entry_component = "Panel"
         bad_builder.finish().unwrap();
 
         let result = discover_plugins(tmp.path());
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].manifest.id, "good");
+        assert_eq!(result.descriptors.len(), 1);
+        assert_eq!(result.descriptors[0].manifest.id, "good");
     }
 
     #[test]
@@ -468,7 +565,80 @@ entry_component = "Panel"
         }
 
         let result = discover_plugins(tmp.path());
-        let ids: Vec<&str> = result.iter().map(|d| d.manifest.id.as_str()).collect();
+        let ids: Vec<&str> = result
+            .descriptors
+            .iter()
+            .map(|d| d.manifest.id.as_str())
+            .collect();
         assert_eq!(ids, vec!["alpha", "mango", "zulu"]);
+    }
+
+    fn write_plugin_package_with_version(
+        base: &Path,
+        package_name: &str,
+        id: &str,
+        version: &str,
+    ) -> PathBuf {
+        let source_dir = base.join(format!("{package_name}_src"));
+        fs::create_dir_all(source_dir.join("ui")).unwrap();
+        fs::write(
+            source_dir.join("plugin.toml"),
+            format!(
+                r#"
+id = "{id}"
+name = "Test Plugin {id}"
+version = "{version}"
+entry_ui = "ui/panel.slint"
+entry_component = "Panel"
+"#
+            ),
+        )
+        .unwrap();
+        fs::write(
+            source_dir.join("ui/panel.slint"),
+            "export component Panel inherits Window {}",
+        )
+        .unwrap();
+
+        let package_path = base.join(format!("{package_name}.eop"));
+        let file = File::create(&package_path).unwrap();
+        let mut builder = tar::Builder::new(file);
+        append_tree(&mut builder, &source_dir, &source_dir, Path::new(""));
+        builder.finish().unwrap();
+        package_path
+    }
+
+    #[test]
+    fn discover_keeps_latest_plugin_version_and_reports_old_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old_path =
+            write_plugin_package_with_version(tmp.path(), "example_v1", "example", "1.2.0");
+        let new_path =
+            write_plugin_package_with_version(tmp.path(), "example_v2", "example", "1.10.0");
+        write_plugin_package_with_version(tmp.path(), "other_v1", "other", "0.1.0");
+
+        let result = discover_plugins(tmp.path());
+
+        assert_eq!(result.descriptors.len(), 2);
+        let example = result
+            .descriptors
+            .iter()
+            .find(|descriptor| descriptor.manifest.id == "example")
+            .unwrap();
+        assert_eq!(example.manifest.version, "1.10.0");
+        assert_eq!(result.old_plugin_files, vec![old_path]);
+        assert_ne!(example.root.join("plugin.toml"), new_path);
+    }
+
+    #[test]
+    fn discover_skips_same_version_duplicates_without_prune_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_plugin_package_with_version(tmp.path(), "example_a", "example", "1.2.0");
+        write_plugin_package_with_version(tmp.path(), "example_b", "example", "1.2.0");
+
+        let result = discover_plugins(tmp.path());
+
+        assert_eq!(result.descriptors.len(), 1);
+        assert!(result.old_plugin_files.is_empty());
     }
 }

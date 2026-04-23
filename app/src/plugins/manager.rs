@@ -81,6 +81,8 @@ pub struct PluginManager {
     pub hud_toolbar: ToolbarManager,
     /// Descriptors for all successfully discovered plugins on disk.
     pub descriptors: Vec<PluginDescriptor>,
+    /// Older `.eop` files skipped because a newer version of the same plugin exists.
+    old_plugin_package_files: Vec<PathBuf>,
     /// Plugin root directory.
     plugin_dir: PathBuf,
     /// Dynamically loaded plugin vtables, keyed by plugin id.
@@ -98,6 +100,7 @@ impl PluginManager {
             toolbar: ToolbarManager::new(),
             hud_toolbar: ToolbarManager::new(),
             descriptors: Vec::new(),
+            old_plugin_package_files: Vec::new(),
             plugin_dir,
             loaded_vtables: HashMap::new(),
             python_plugins: HashSet::new(),
@@ -108,8 +111,14 @@ impl PluginManager {
     /// Discover plugins from the plugin directory.
     pub fn discover(&mut self) {
         info!("Discovering plugins in {}", self.plugin_dir.display());
-        self.descriptors = discovery::discover_plugins(&self.plugin_dir);
+        let report = discovery::discover_plugins(&self.plugin_dir);
+        self.descriptors = report.descriptors;
+        self.old_plugin_package_files = report.old_plugin_files;
         info!("Discovered {} plugin(s)", self.descriptors.len());
+    }
+
+    pub fn old_plugin_package_files(&self) -> &[PathBuf] {
+        &self.old_plugin_package_files
     }
 
     /// Activate all discovered plugins.
@@ -633,6 +642,7 @@ data = "<svg/>"
         let mut mgr = PluginManager::new(PathBuf::from("/nonexistent/test/dir/123456"));
         mgr.discover();
         assert!(mgr.descriptors.is_empty());
+        assert!(mgr.old_plugin_package_files().is_empty());
         assert!(mgr.toolbar.is_empty());
     }
 

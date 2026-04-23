@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "annotations"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "abi_stable",
  "common",
@@ -363,6 +363,7 @@ dependencies = [
  "raw-window-handle",
  "rayon",
  "rfd",
+ "semver",
  "serde",
  "serde_json",
  "slint",

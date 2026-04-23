@@ -347,6 +347,7 @@ fn main() -> Result<()> {
         state.write().local_plugin_buttons = pm.toolbar.buttons().to_vec();
         state.write().local_hud_plugin_buttons = pm.hud_toolbar.buttons().to_vec();
     }
+    let old_plugin_package_files = plugin_manager.borrow().old_plugin_package_files().to_vec();
 
     info!(
         "Creating application window (DISPLAY={:?}, WAYLAND_DISPLAY={:?})",
@@ -473,6 +474,11 @@ fn main() -> Result<()> {
     info!("Showing application window");
     ui.show()?;
     info!("Application window shown");
+
+    if !old_plugin_package_files.is_empty() {
+        plugin_host::show_old_plugin_versions_dialog(old_plugin_package_files)
+            .map_err(anyhow::Error::msg)?;
+    }
 
     info!("Entering Slint UI event loop");
 
