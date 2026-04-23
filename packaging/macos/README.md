@@ -43,5 +43,6 @@ Useful environment overrides:
 - `ICNS_SOURCE`
 - `CODESIGN_IDENTITY`
 
-By default, `build.sh` compiles OpenSlide from the current head of upstream
-`openslide/main` into a private staging prefix before building the app.
+By default, `build.sh` compiles OpenSlide from
+`Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13`
+into a private staging prefix before building the app.

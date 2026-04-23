@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENSLIDE_REPO_URL="${OPENSLIDE_REPO_URL:-https://github.com/openslide/openslide.git}"
-OPENSLIDE_BRANCH="${OPENSLIDE_BRANCH:-main}"
+OPENSLIDE_REPO_URL="${OPENSLIDE_REPO_URL:-https://github.com/Yanstart/openslide.git}"
+OPENSLIDE_COMMIT="${OPENSLIDE_COMMIT:-00bebfb6a412485f7fbfe7fdb5919a3868594c13}"
 OPENSLIDE_PREFIX="${OPENSLIDE_PREFIX:-$(pwd)/.openslide-prefix}"
 OPENSLIDE_BUILD_ROOT="${OPENSLIDE_BUILD_ROOT:-$(pwd)/.openslide-build}"
 LIBDICOM_VERSION="${LIBDICOM_VERSION:-1.2.0}"
@@ -78,9 +78,12 @@ build_openslide() {
     local prefix="$2"
     local source_dir="$source_root/openslide-src"
 
-    log "Building OpenSlide from $OPENSLIDE_REPO_URL ($OPENSLIDE_BRANCH head)"
+    log "Building OpenSlide from $OPENSLIDE_REPO_URL at $OPENSLIDE_COMMIT"
     rm -rf "$source_dir"
-    git clone --depth 1 --branch "$OPENSLIDE_BRANCH" "$OPENSLIDE_REPO_URL" "$source_dir"
+    git init "$source_dir"
+    git -C "$source_dir" remote add origin "$OPENSLIDE_REPO_URL"
+    git -C "$source_dir" fetch --depth 1 origin "$OPENSLIDE_COMMIT"
+    git -C "$source_dir" checkout --detach FETCH_HEAD
 
     meson setup "$source_dir/_build" "$source_dir" \
         --prefix="$prefix" \

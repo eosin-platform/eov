@@ -76,7 +76,7 @@ require_file() {
 
 configure_openslide_env() {
     if [[ -z "$OPENSLIDE_LIB_PATH" ]]; then
-        log "Building OpenSlide from openslide/main"
+        log "Building OpenSlide from the pinned Yanstart fork commit"
         OPENSLIDE_PREFIX="$OPENSLIDE_PREFIX" \
         OPENSLIDE_BUILD_ROOT="$OPENSLIDE_BUILD_ROOT" \
             bash "$REPO_ROOT/packaging/shared/build-openslide.sh"

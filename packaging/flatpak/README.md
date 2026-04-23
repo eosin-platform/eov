@@ -35,8 +35,9 @@ flatpak-builder --force-clean --repo=repo build-flatpak packaging/flatpak/io.eos
 
 ## Notes
 
-- OpenSlide is sourced from the current head of upstream `openslide/main` and
-  built as a shared library module.
+- OpenSlide is sourced from
+  `Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13` and built as a
+  shared library module.
 - If this project ever carries local OpenSlide patches, those patches must be
   made available under LGPL-2.1 terms.
 - For fully reproducible Flatpak builds, maintainers may still want to vendor

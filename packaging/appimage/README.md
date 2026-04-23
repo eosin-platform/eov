@@ -52,8 +52,9 @@ Useful overrides:
 ## Notes
 
 - The script intentionally avoids static linking for OpenSlide.
-- By default, the script builds OpenSlide from the current head of upstream
-  `openslide/main` into a private staging prefix before building `eov`.
+- By default, the script builds OpenSlide from
+  `Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13`
+  into a private staging prefix before building `eov`.
 - The script bundles `libopenslide.so` and its non-blacklisted dependent shared
   libraries into `AppDir/usr/lib`.
 - glibc and related loader libraries are intentionally skipped rather than

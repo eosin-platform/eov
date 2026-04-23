@@ -53,8 +53,8 @@ jobs:
             ntldd_filter: clangarm64
 
     env:
-      # OpenSlide branch to build from (using the current head commit).
-      OPENSLIDE_BRANCH: "main"
+      OPENSLIDE_REPO_URL: "https://github.com/Yanstart/openslide.git"
+      OPENSLIDE_COMMIT: "00bebfb6a412485f7fbfe7fdb5919a3868594c13"
 
     steps:
       - name: Check out repository
@@ -191,7 +191,10 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch "$OPENSLIDE_BRANCH" https://github.com/openslide/openslide.git openslide-src
+          git init openslide-src
+          git -C openslide-src remote add origin "$OPENSLIDE_REPO_URL"
+          git -C openslide-src fetch --depth 1 origin "$OPENSLIDE_COMMIT"
+          git -C openslide-src checkout --detach FETCH_HEAD
           cd openslide-src
           meson setup _build \
             --prefix="$MSYSTEM_PREFIX" \
@@ -303,13 +306,19 @@ jobs:
       - name: Create zip archive
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           # Copy the release binary into staging
           Copy-Item "target\${{ matrix.rust_target }}\release\eov.exe" "staging\eov\"
 
           Write-Host "Zip contents:"
           Get-ChildItem -Path staging\eov | Format-Table Name, Length
 
-          Compress-Archive -Path "staging\eov" -DestinationPath "${{ steps.meta.outputs.artifact_name }}"
+          $archiveSource = Join-Path (Resolve-Path "staging\eov").Path '*'
+          if (Test-Path "${{ steps.meta.outputs.artifact_name }}") {
+            Remove-Item "${{ steps.meta.outputs.artifact_name }}" -Force
+          }
+          Compress-Archive -Path $archiveSource -DestinationPath "${{ steps.meta.outputs.artifact_name }}"
 
           # Generate checksum
           $hash = (Get-FileHash "${{ steps.meta.outputs.artifact_name }}" -Algorithm SHA256).Hash.ToLower()
@@ -318,7 +327,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.meta.outputs.artifact_name }}
+          name: windows-release-files-${{ matrix.arch }}
           path: |
             ${{ steps.meta.outputs.artifact_name }}
             ${{ steps.meta.outputs.checksum_name }}

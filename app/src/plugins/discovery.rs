@@ -7,13 +7,17 @@ use plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
 use semver::Version;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
 use std::ffi::OsStr;
 use std::fs::{self, File};
+use std::hash::{Hash, Hasher};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::time::UNIX_EPOCH;
 use tracing::{debug, info, warn};
 
 const PLUGIN_PACKAGE_EXTENSION: &str = "eop";
+static EXTRACT_ATTEMPT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct PluginDiscoveryResult {
     pub descriptors: Vec<PluginDescriptor>,
@@ -218,7 +222,11 @@ fn ensure_extracted_plugin_root(package_path: &Path, cache_dir: &Path) -> Plugin
         }
     }
 
-    let tmp_dir = extract_dir.with_extension(format!("tmp-{}", std::process::id()));
+    let tmp_dir = extract_dir.with_extension(format!(
+        "tmp-{}-{}",
+        std::process::id(),
+        EXTRACT_ATTEMPT_COUNTER.fetch_add(1, AtomicOrdering::Relaxed)
+    ));
     if tmp_dir.exists() {
         fs::remove_dir_all(&tmp_dir)?;
     }
@@ -256,14 +264,25 @@ fn package_cache_key(package_path: &Path) -> PluginResult<String> {
         .file_stem()
         .and_then(OsStr::to_str)
         .unwrap_or("plugin");
+    let path_hash = hash_path_for_cache(package_path);
 
     Ok(format!(
-        "{}-{}-{}-{}",
+        "{}-{}-{}-{}-{:016x}",
         sanitize_cache_component(stem),
         metadata.len(),
         modified.as_secs(),
-        modified.subsec_nanos()
+        modified.subsec_nanos(),
+        path_hash
     ))
+}
+
+fn hash_path_for_cache(package_path: &Path) -> u64 {
+    let stable_path = package_path
+        .canonicalize()
+        .unwrap_or_else(|_| package_path.to_path_buf());
+    let mut hasher = DefaultHasher::new();
+    stable_path.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn sanitize_cache_component(value: &str) -> String {

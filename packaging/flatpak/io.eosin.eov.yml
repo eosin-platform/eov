@@ -56,8 +56,8 @@ modules:
       - --wrap-mode=nofallback
     sources:
       - type: git
-        url: https://github.com/openslide/openslide.git
-        branch: main
+        url: https://github.com/Yanstart/openslide.git
+        commit: 00bebfb6a412485f7fbfe7fdb5919a3868594c13
 
   - name: protobuf
     buildsystem: simple
