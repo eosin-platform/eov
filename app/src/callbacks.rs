@@ -879,8 +879,8 @@ pub fn setup_callbacks(
                 .add_filter(
                     "WSI Files",
                     &[
-                        ".svs", ".tif", ".dcm", ".ndpi", ".vms", ".vmu", ".scn", ".mrxs", ".tiff",
-                        ".svslide", ".bif", ".czi",
+                        "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
+                        "svslide", "bif", "czi",
                     ],
                 )
                 .add_filter("All Files", &["*"]);
@@ -3571,8 +3571,8 @@ pub fn setup_callbacks(
                 .add_filter(
                     "WSI Files",
                     &[
-                        ".svs", ".tif", ".dcm", ".ndpi", ".vms", ".vmu", ".scn", ".mrxs", ".tiff",
-                        ".svslide", ".bif", ".czi",
+                        "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
+                        "svslide", "bif", "czi",
                     ],
                 )
                 .add_filter("All Files", &["*"]);
