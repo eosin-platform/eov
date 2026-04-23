@@ -44,11 +44,13 @@ install_uthash_headers() {
     mkdir -p "$extract_dir"
     tar -xzf "$archive_path" -C "$extract_dir"
 
-    install -Dm644 "$extract_dir/uthash-2.3.0/src/uthash.h" "$prefix/include/uthash.h"
-    install -Dm644 "$extract_dir/uthash-2.3.0/src/utarray.h" "$prefix/include/utarray.h"
-    install -Dm644 "$extract_dir/uthash-2.3.0/src/utlist.h" "$prefix/include/utlist.h"
-    install -Dm644 "$extract_dir/uthash-2.3.0/src/utringbuffer.h" "$prefix/include/utringbuffer.h"
-    install -Dm644 "$extract_dir/uthash-2.3.0/src/utstack.h" "$prefix/include/utstack.h"
+    mkdir -p "$prefix/include"
+
+    install -m 644 "$extract_dir/uthash-2.3.0/src/uthash.h" "$prefix/include/uthash.h"
+    install -m 644 "$extract_dir/uthash-2.3.0/src/utarray.h" "$prefix/include/utarray.h"
+    install -m 644 "$extract_dir/uthash-2.3.0/src/utlist.h" "$prefix/include/utlist.h"
+    install -m 644 "$extract_dir/uthash-2.3.0/src/utringbuffer.h" "$prefix/include/utringbuffer.h"
+    install -m 644 "$extract_dir/uthash-2.3.0/src/utstack.h" "$prefix/include/utstack.h"
 }
 
 build_libdicom() {
