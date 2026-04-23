@@ -44,7 +44,10 @@ export component WindowToolbar inherits Rectangle {
     callback window-maximize();
     callback window-close();
 
-    out property <float> action-cluster-width: (action-cluster.x + action-cluster.width) / 1px;
+    out property <float> left-drag-area-x: left-drag-area.x / 1px;
+    out property <float> left-drag-area-width: left-drag-area.width / 1px;
+    out property <float> right-drag-area-x: right-drag-area.x / 1px;
+    out property <float> right-drag-area-width: right-drag-area.width / 1px;
     out property <length> filter-combo-abs-x: filter-combo-area.absolute-position.x;
     out property <length> filter-combo-abs-y: filter-combo-area.absolute-position.y + filter-combo-area.height + 2px;
     out property <length> filter-combo-width: filter-combo-area.width;
@@ -264,7 +267,7 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            Rectangle {
+            left-drag-area := Rectangle {
                 horizontal-stretch: 1;
             }
 
@@ -277,7 +280,7 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            Rectangle {
+            right-drag-area := Rectangle {
                 horizontal-stretch: 1;
             }
         }

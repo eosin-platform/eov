@@ -4030,20 +4030,22 @@ pub fn setup_callbacks(
                     let lx = cx / scale;
 
                     let toolbar_height = 40.0;
-                    let win_w = slint_window.size().width as f64 / scale;
-                    let toolbar_action_width = if let Some(ui) = ui_weak.upgrade() {
-                        ui.get_toolbar_action_width() as f64
+                    let in_drag_area = if let Some(ui) = ui_weak.upgrade() {
+                        let left_drag_start = ui.get_toolbar_left_drag_area_x() as f64;
+                        let left_drag_end =
+                            left_drag_start + ui.get_toolbar_left_drag_area_width() as f64;
+                        let right_drag_start = ui.get_toolbar_right_drag_area_x() as f64;
+                        let right_drag_end =
+                            right_drag_start + ui.get_toolbar_right_drag_area_width() as f64;
+
+                        ly < toolbar_height
+                            && ((lx >= left_drag_start && lx < left_drag_end)
+                                || (lx >= right_drag_start && lx < right_drag_end))
                     } else {
-                        0.0
-                    };
-                    let buttons_right_start = if cfg!(target_os = "macos") {
-                        win_w
-                    } else {
-                        win_w - 138.0
+                        false
                     };
 
-                    if ly < toolbar_height && lx >= toolbar_action_width && lx < buttons_right_start
-                    {
+                    if in_drag_area {
                         drag_press.set(Some((cx, cy)));
 
                         let now = std::time::Instant::now();
