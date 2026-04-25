@@ -95,6 +95,10 @@ component HotRegionButton inherits Rectangle {
 component SidebarSectionHeader inherits Rectangle {
     in property <string> title;
     in property <bool> expanded: true;
+    in property <string> summary-text: "";
+    in property <bool> split-summary: false;
+    in property <string> summary-start-text: "";
+    in property <string> summary-end-text: "";
     callback toggled();
 
     height: 30px;
@@ -133,7 +137,61 @@ component SidebarSectionHeader inherits Rectangle {
             vertical-alignment: center;
         }
 
-        Rectangle { horizontal-stretch: 1; background: transparent; }
+        Rectangle {
+            horizontal-stretch: 1;
+            height: parent.height;
+            background: transparent;
+
+            if !root.split-summary && root.summary-text != "": Text {
+                width: parent.width;
+                height: parent.height;
+                text: root.summary-text;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                overflow: elide;
+            }
+
+            if root.split-summary && (root.summary-start-text != "" || root.summary-end-text != ""): HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                spacing: 6px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+
+                Text {
+                    text: root.summary-start-text;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+
+                Image {
+                    width: 14px;
+                    height: 14px;
+                    source: @image-url("icons/transforms.svg");
+                    image-fit: contain;
+                    colorize: Theme.text-secondary;
+                }
+
+                Text {
+                    text: root.summary-end-text;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+        }
     }
 }
 
@@ -157,6 +215,7 @@ export struct ErrorHistogramBin {
 
 export component EovaeSidebar inherits Rectangle {
     in property <string> model-path: "";
+    in property <string> model-summary: "";
     in property <string> model-status: "No ONNX model loaded.";
     in property <bool> model-loaded: false;
     in property <[TensorRow]> input-rows: [];
@@ -165,6 +224,8 @@ export component EovaeSidebar inherits Rectangle {
     in property <[string]> output-options: [];
     in property <int> selected-input-index: 0;
     in property <int> selected-output-index: 0;
+    in property <string> selected-input-name: "";
+    in property <string> selected-output-name: "";
     in property <[string]> mode-options: ["Original", "Reconstruction", "Error Map", "Difference"];
     in property <int> selected-mode-index: 0;
     in property <[string]> mip-options: ["1x", "2x", "4x", "8x"];
@@ -230,6 +291,7 @@ export component EovaeSidebar inherits Rectangle {
                     width: parent.width - 6px;
                     title: "Model";
                     expanded: root.model-section-expanded;
+                    summary-text: root.model-section-expanded ? "" : root.model-summary;
                     toggled => { root.model-section-expanded = !root.model-section-expanded; }
                 }
 
@@ -296,6 +358,9 @@ export component EovaeSidebar inherits Rectangle {
                     width: parent.width - 6px;
                     title: "Model I/O";
                     expanded: root.model-io-section-expanded;
+                    split-summary: !root.model-io-section-expanded;
+                    summary-start-text: root.model-io-section-expanded ? "" : root.selected-input-name;
+                    summary-end-text: root.model-io-section-expanded ? "" : root.selected-output-name;
                     toggled => { root.model-io-section-expanded = !root.model-io-section-expanded; }
                 }
 

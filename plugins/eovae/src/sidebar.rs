@@ -8,6 +8,7 @@ use crate::state::{
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
+use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,6 +27,16 @@ fn analysis_namespace(base_namespace: &str, mip_level: u32) -> String {
 pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
     let state = plugin_state().lock().unwrap();
     let summary = state.model.as_ref().map(|model| &model.summary);
+    let model_summary = if state.model_path.is_empty() {
+        String::new()
+    } else {
+        Path::new(&state.model_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| state.model_path.clone())
+    };
     let input_rows = summary
         .map(|summary| {
             summary
@@ -74,6 +85,22 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let selected_input_name = summary
+        .and_then(|summary| {
+            summary
+                .inputs
+                .get(summary.selected_input)
+                .map(|tensor| tensor.name.clone())
+        })
+        .unwrap_or_default();
+    let selected_output_name = summary
+        .and_then(|summary| {
+            summary
+                .outputs
+                .get(summary.selected_output)
+                .map(|tensor| tensor.name.clone())
+        })
+        .unwrap_or_default();
     let hot_regions = state
         .sidebar_regions
         .iter()
@@ -111,12 +138,15 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
 
     let properties = vec![
         property("model-path", json!(state.model_path)),
+        property("model-summary", json!(model_summary)),
         property("model-status", json!(state.model_status)),
         property("model-loaded", json!(state.model.is_some())),
         property("input-rows", json!(input_rows)),
         property("output-rows", json!(output_rows)),
         property("input-options", json!(input_options)),
         property("output-options", json!(output_options)),
+        property("selected-input-name", json!(selected_input_name)),
+        property("selected-output-name", json!(selected_output_name)),
         property(
             "selected-input-index",
             json!(
