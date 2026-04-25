@@ -85,6 +85,16 @@ struct TilePlan {
     read_height: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TileGridBounds {
+    left: u64,
+    top: u64,
+    right: u64,
+    bottom: u64,
+    image_width: u64,
+    image_height: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct HotRegion {
     pub id: String,
@@ -238,16 +248,7 @@ fn run_tile_plan_with_file(
             tile_plan.read_width,
             tile_plan.read_height,
         )?;
-        let tile = build_analyzed_tile(
-            tile_plan.x,
-            tile_plan.y,
-            tile_plan.width,
-            tile_plan.height,
-            tile_plan.read_width,
-            tile_plan.read_height,
-            bytes.as_slice(),
-            &reconstruction.rgb,
-        );
+        let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
         {
             let mut state = plugin_state().lock().unwrap();
             state.cache.insert(
@@ -275,17 +276,15 @@ fn update_progress(done: usize, total: usize, label: &str) {
 }
 
 fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
-    let left = viewport.bounds_left.max(0.0) as u64;
-    let top = viewport.bounds_top.max(0.0) as u64;
-    let right = viewport.bounds_right.max(0.0) as u64;
-    let bottom = viewport.bounds_bottom.max(0.0) as u64;
     grid_tiles(
-        left,
-        top,
-        right,
-        bottom,
-        viewport.image_width.max(0.0) as u64,
-        viewport.image_height.max(0.0) as u64,
+        TileGridBounds {
+            left: viewport.bounds_left.max(0.0) as u64,
+            top: viewport.bounds_top.max(0.0) as u64,
+            right: viewport.bounds_right.max(0.0) as u64,
+            bottom: viewport.bounds_bottom.max(0.0) as u64,
+            image_width: viewport.image_width.max(0.0) as u64,
+            image_height: viewport.image_height.max(0.0) as u64,
+        },
         tile_size,
         mip_level,
     )
@@ -298,35 +297,28 @@ fn full_slide_tiles(
     mip_level: u32,
 ) -> Vec<TilePlan> {
     grid_tiles(
-        0,
-        0,
-        image_width,
-        image_height,
-        image_width,
-        image_height,
+        TileGridBounds {
+            left: 0,
+            top: 0,
+            right: image_width,
+            bottom: image_height,
+            image_width,
+            image_height,
+        },
         tile_size,
         mip_level,
     )
 }
 
-fn grid_tiles(
-    left: u64,
-    top: u64,
-    right: u64,
-    bottom: u64,
-    image_width: u64,
-    image_height: u64,
-    tile_size: u32,
-    mip_level: u32,
-) -> Vec<TilePlan> {
+fn grid_tiles(bounds: TileGridBounds, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
     let mut tiles = Vec::new();
     let downsample = 1u64 << mip_level.min(3);
     let step = tile_size as u64 * downsample;
-    let mut y = (top / step) * step;
-    while y < bottom {
-        let mut x = (left / step) * step;
-        while x < right {
-            if x + step <= image_width && y + step <= image_height {
+    let mut y = (bounds.top / step) * step;
+    while y < bounds.bottom {
+        let mut x = (bounds.left / step) * step;
+        while x < bounds.right {
+            if x + step <= bounds.image_width && y + step <= bounds.image_height {
                 let world_width = step as u32;
                 let world_height = step as u32;
                 let read_width = tile_size;
@@ -363,22 +355,15 @@ fn should_skip_background(rgba: &[u8], threshold: u8) -> bool {
     bright_pixels * 100 / total_pixels.max(1) > 92
 }
 
-fn build_analyzed_tile(
-    x: u64,
-    y: u64,
-    width: u32,
-    height: u32,
-    sample_width: u32,
-    sample_height: u32,
-    rgba: &[u8],
-    reconstruction_rgb: &[u8],
-) -> AnalyzedTile {
+fn build_analyzed_tile(tile_plan: TilePlan, rgba: &[u8], reconstruction_rgb: &[u8]) -> AnalyzedTile {
+    let sample_width = tile_plan.read_width;
+    let sample_height = tile_plan.read_height;
     let mut difference_rgb = vec![0u8; sample_width as usize * sample_height as usize * 3];
     let mut error_map_luma = vec![0u8; sample_width as usize * sample_height as usize];
     let mut error_sum = 0f64;
     let mut max_error = 0u8;
 
-    for index in 0..(sample_width as usize * sample_height as usize) {
+    for (index, error_value) in error_map_luma.iter_mut().enumerate() {
         let src = index * 4;
         let dst = index * 3;
         let dr = rgba[src].abs_diff(reconstruction_rgb[dst]);
@@ -388,16 +373,16 @@ fn build_analyzed_tile(
         difference_rgb[dst] = dr;
         difference_rgb[dst + 1] = dg;
         difference_rgb[dst + 2] = db;
-        error_map_luma[index] = mean;
+        *error_value = mean;
         error_sum += mean as f64 / 255.0;
         max_error = max_error.max(mean);
     }
 
     AnalyzedTile {
-        x,
-        y,
-        width,
-        height,
+        x: tile_plan.x,
+        y: tile_plan.y,
+        width: tile_plan.width,
+        height: tile_plan.height,
         sample_width,
         sample_height,
         reconstruction_rgb: reconstruction_rgb.to_vec(),
@@ -418,8 +403,10 @@ mod tests {
 
     #[test]
     fn sorts_hot_regions_by_error() {
-        let mut state = crate::state::PluginState::default();
-        state.cache_namespace = "ns".to_string();
+        let mut state = crate::state::PluginState {
+            cache_namespace: "ns".to_string(),
+            ..Default::default()
+        };
         state.cache.insert(
             "a".to_string(),
             TileCacheEntry {
@@ -440,7 +427,18 @@ mod tests {
 
     #[test]
     fn grid_tiles_expand_world_coverage_for_selected_mip() {
-        let tiles = grid_tiles(0, 0, 700, 700, 700, 700, 256, 1);
+        let tiles = grid_tiles(
+            TileGridBounds {
+                left: 0,
+                top: 0,
+                right: 700,
+                bottom: 700,
+                image_width: 700,
+                image_height: 700,
+            },
+            256,
+            1,
+        );
 
         assert_eq!(tiles[0].width, 512);
         assert_eq!(tiles[0].height, 512);
@@ -459,7 +457,18 @@ mod tests {
 
     #[test]
     fn grid_tiles_skip_partial_right_and_bottom_edges() {
-        let tiles = grid_tiles(300, 300, 900, 900, 900, 900, 256, 0);
+        let tiles = grid_tiles(
+            TileGridBounds {
+                left: 300,
+                top: 300,
+                right: 900,
+                bottom: 900,
+                image_width: 900,
+                image_height: 900,
+            },
+            256,
+            0,
+        );
 
         assert_eq!(tiles.len(), 4);
         assert_eq!(tiles[0].x, 256);

@@ -664,6 +664,13 @@ pub fn show_sidebar() {
     );
 }
 
+fn property(name: &str, value: serde_json::Value) -> UiPropertyFFI {
+    UiPropertyFFI {
+        name: name.into(),
+        json_value: value.to_string().into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,12 +729,5 @@ mod tests {
             .config
             .auto_update_viewport =
             value));
-    }
-}
-
-fn property(name: &str, value: serde_json::Value) -> UiPropertyFFI {
-    UiPropertyFFI {
-        name: name.into(),
-        json_value: value.to_string().into(),
     }
 }

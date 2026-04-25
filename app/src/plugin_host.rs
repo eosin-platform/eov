@@ -2514,281 +2514,6 @@ pub(crate) fn active_modal_captures_hotkeys() -> bool {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use abi_stable::std_types::{RString, RVec};
-    use plugin_api::ffi::{
-        ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, UiPropertyFFI,
-        ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
-        ViewportOverlayVertexFFI, ViewportSnapshotFFI,
-    };
-
-    extern "C" fn noop_set_host_api(_host_api: HostApiVTable) {}
-    extern "C" fn noop_get_toolbar_buttons() -> RVec<plugin_api::ffi::ToolbarButtonFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_get_hud_toolbar_buttons() -> RVec<HudToolbarButtonFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_on_action(_action_id: RString) -> ActionResponseFFI {
-        ActionResponseFFI { open_window: false }
-    }
-    extern "C" fn noop_on_hud_action(
-        _action_id: RString,
-        _viewport: ViewportSnapshotFFI,
-    ) -> ActionResponseFFI {
-        ActionResponseFFI { open_window: false }
-    }
-    extern "C" fn noop_on_ui_callback(_callback_name: RString, _args_json: RString) {}
-    extern "C" fn fake_eovae_sidebar_properties() -> RVec<UiPropertyFFI> {
-        RVec::from(vec![
-            UiPropertyFFI {
-                name: "model-path".into(),
-                json_value: "\"\"".into(),
-            },
-            UiPropertyFFI {
-                name: "model-status".into(),
-                json_value: "\"No ONNX model loaded.\"".into(),
-            },
-            UiPropertyFFI {
-                name: "model-loaded".into(),
-                json_value: "false".into(),
-            },
-            UiPropertyFFI {
-                name: "input-rows".into(),
-                json_value: "[]".into(),
-            },
-            UiPropertyFFI {
-                name: "output-rows".into(),
-                json_value: "[]".into(),
-            },
-            UiPropertyFFI {
-                name: "input-options".into(),
-                json_value: "[]".into(),
-            },
-            UiPropertyFFI {
-                name: "output-options".into(),
-                json_value: "[]".into(),
-            },
-            UiPropertyFFI {
-                name: "selected-input-index".into(),
-                json_value: "0".into(),
-            },
-            UiPropertyFFI {
-                name: "selected-output-index".into(),
-                json_value: "0".into(),
-            },
-            UiPropertyFFI {
-                name: "selected-mode-index".into(),
-                json_value: "0".into(),
-            },
-            UiPropertyFFI {
-                name: "job-status".into(),
-                json_value: "\"Idle\"".into(),
-            },
-            UiPropertyFFI {
-                name: "progress-value".into(),
-                json_value: "0.0".into(),
-            },
-            UiPropertyFFI {
-                name: "job-running".into(),
-                json_value: "false".into(),
-            },
-            UiPropertyFFI {
-                name: "use-gpu".into(),
-                json_value: "false".into(),
-            },
-            UiPropertyFFI {
-                name: "auto-update".into(),
-                json_value: "false".into(),
-            },
-            UiPropertyFFI {
-                name: "stats-summary".into(),
-                json_value: "\"No analysis yet.\"".into(),
-            },
-            UiPropertyFFI {
-                name: "hot-regions".into(),
-                json_value: "[]".into(),
-            },
-        ])
-    }
-    extern "C" fn noop_get_viewport_context_menu_items(
-        _viewport: ViewportSnapshotFFI,
-    ) -> RVec<ViewportContextMenuItemFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_on_viewport_context_menu_action(
-        _item_id: RString,
-        _viewport: ViewportSnapshotFFI,
-    ) -> ActionResponseFFI {
-        ActionResponseFFI { open_window: false }
-    }
-    extern "C" fn noop_get_viewport_overlay_points(
-        _viewport: ViewportSnapshotFFI,
-    ) -> RVec<ViewportOverlayPointFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_get_viewport_overlay_polygons(
-        _viewport: ViewportSnapshotFFI,
-    ) -> RVec<ViewportOverlayPolygonFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_on_point_annotation_placed(
-        _viewport: ViewportSnapshotFFI,
-        _x_level0: f64,
-        _y_level0: f64,
-    ) {
-    }
-    extern "C" fn noop_on_polygon_annotation_placed(
-        _viewport: ViewportSnapshotFFI,
-        _vertices: RVec<ViewportOverlayVertexFFI>,
-    ) {
-    }
-    extern "C" fn noop_on_undo() -> ActionResponseFFI {
-        ActionResponseFFI { open_window: false }
-    }
-    extern "C" fn noop_on_redo() -> ActionResponseFFI {
-        ActionResponseFFI { open_window: false }
-    }
-    extern "C" fn noop_on_point_annotation_moved(
-        _viewport: ViewportSnapshotFFI,
-        _annotation_id: RString,
-        _x_level0: f64,
-        _y_level0: f64,
-    ) {
-    }
-    extern "C" fn noop_on_polygon_annotation_moved(
-        _viewport: ViewportSnapshotFFI,
-        _annotation_id: RString,
-        _vertices: RVec<ViewportOverlayVertexFFI>,
-    ) {
-    }
-    extern "C" fn noop_get_viewport_filters() -> RVec<plugin_api::ffi::ViewportFilterFFI> {
-        RVec::new()
-    }
-    extern "C" fn noop_apply_filter_cpu(
-        _filter_id: RString,
-        _rgba_data: *mut u8,
-        _len: u32,
-        _width: u32,
-        _height: u32,
-    ) -> bool {
-        false
-    }
-    extern "C" fn noop_apply_filter_gpu(
-        _filter_id: RString,
-        _ctx: *const GpuFilterContextFFI,
-    ) -> bool {
-        false
-    }
-    extern "C" fn noop_set_filter_enabled(_filter_id: RString, _enabled: bool) {}
-
-    fn fake_eovae_vtable() -> PluginVTable {
-        PluginVTable {
-            set_host_api: noop_set_host_api,
-            get_toolbar_buttons: noop_get_toolbar_buttons,
-            get_hud_toolbar_buttons: noop_get_hud_toolbar_buttons,
-            on_action: noop_on_action,
-            on_hud_action: noop_on_hud_action,
-            on_ui_callback: noop_on_ui_callback,
-            get_sidebar_properties: fake_eovae_sidebar_properties,
-            get_viewport_context_menu_items: noop_get_viewport_context_menu_items,
-            on_viewport_context_menu_action: noop_on_viewport_context_menu_action,
-            get_viewport_overlay_points: noop_get_viewport_overlay_points,
-            get_viewport_overlay_polygons: noop_get_viewport_overlay_polygons,
-            on_point_annotation_placed: noop_on_point_annotation_placed,
-            on_polygon_annotation_placed: noop_on_polygon_annotation_placed,
-            on_undo: noop_on_undo,
-            on_redo: noop_on_redo,
-            on_point_annotation_moved: noop_on_point_annotation_moved,
-            on_polygon_annotation_moved: noop_on_polygon_annotation_moved,
-            get_viewport_filters: noop_get_viewport_filters,
-            apply_filter_cpu: noop_apply_filter_cpu,
-            apply_filter_gpu: noop_apply_filter_gpu,
-            set_filter_enabled: noop_set_filter_enabled,
-        }
-    }
-
-    #[test]
-    fn eovae_embedded_sidebar_factory_attaches_to_app_window() {
-        let ui_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let factory =
-            build_sidebar_factory("eovae", ui_path.to_str().unwrap(), "EovaeSidebar", None)
-                .unwrap();
-
-        let ui = AppWindow::new().unwrap();
-        ui.set_plugin_sidebar_factory(factory);
-        ui.set_show_plugin_sidebar(true);
-        ui.set_plugin_sidebar_width(340.0);
-    }
-
-    #[test]
-    fn eovae_embedded_sidebar_factory_applies_initial_properties() {
-        let ui_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let factory = build_sidebar_factory(
-            "eovae",
-            ui_path.to_str().unwrap(),
-            "EovaeSidebar",
-            Some(fake_eovae_vtable()),
-        )
-        .unwrap();
-
-        let ui = AppWindow::new().unwrap();
-        ui.set_plugin_sidebar_factory(factory);
-        ui.set_show_plugin_sidebar(true);
-        ui.set_plugin_sidebar_width(340.0);
-    }
-
-    #[test]
-    fn eovae_show_sidebar_host_path_completes() {
-        let ui = AppWindow::new().unwrap();
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let tile_cache = Arc::new(TileCache::new());
-        let render_timer = Rc::new(Timer::default());
-        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
-
-        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
-        show_sidebar(
-            "eovae",
-            Some(&plugin_root),
-            Some(fake_eovae_vtable()),
-            plugin_api::SidebarRequest {
-                button_id: Some("toggle_eovae".to_string()),
-                width_px: 340,
-                ui_path: "ui/eovae-sidebar.slint".to_string(),
-                component: "EovaeSidebar".to_string(),
-            },
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn eovae_show_sidebar_host_path_completes_with_real_vtable() {
-        let ui = AppWindow::new().unwrap();
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let tile_cache = Arc::new(TileCache::new());
-        let render_timer = Rc::new(Timer::default());
-        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
-
-        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
-        show_sidebar(
-            "eovae",
-            Some(&plugin_root),
-            Some(eovae::eov_get_plugin_vtable()),
-            plugin_api::SidebarRequest {
-                button_id: Some("toggle_eovae".to_string()),
-                width_px: 340,
-                ui_path: "ui/eovae-sidebar.slint".to_string(),
-                component: "EovaeSidebar".to_string(),
-            },
-        )
-        .unwrap();
-    }
-}
-
 pub(crate) fn dismiss_active_modal_dialog() -> Result<(), String> {
     let plugin_id = ACTIVE_MODAL_INSTANCE.with(|slot| {
         slot.borrow()
@@ -3070,5 +2795,280 @@ extern "C" fn ffi_open_file_dialog(
 extern "C" fn ffi_log_message(context: u64, level: HostLogLevelFFI, message: RString) {
     if let Some(plugin_id) = context_plugin_id(context) {
         log_message(&plugin_id, host_log_level(level), message.as_str());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use abi_stable::std_types::{RString, RVec};
+    use plugin_api::ffi::{
+        ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, UiPropertyFFI,
+        ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+        ViewportOverlayVertexFFI, ViewportSnapshotFFI,
+    };
+
+    extern "C" fn noop_set_host_api(_host_api: HostApiVTable) {}
+    extern "C" fn noop_get_toolbar_buttons() -> RVec<plugin_api::ffi::ToolbarButtonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_get_hud_toolbar_buttons() -> RVec<HudToolbarButtonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_action(_action_id: RString) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_hud_action(
+        _action_id: RString,
+        _viewport: ViewportSnapshotFFI,
+    ) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_ui_callback(_callback_name: RString, _args_json: RString) {}
+    extern "C" fn fake_eovae_sidebar_properties() -> RVec<UiPropertyFFI> {
+        RVec::from(vec![
+            UiPropertyFFI {
+                name: "model-path".into(),
+                json_value: "\"\"".into(),
+            },
+            UiPropertyFFI {
+                name: "model-status".into(),
+                json_value: "\"No ONNX model loaded.\"".into(),
+            },
+            UiPropertyFFI {
+                name: "model-loaded".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "input-rows".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "output-rows".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "input-options".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "output-options".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-input-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-output-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-mode-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "job-status".into(),
+                json_value: "\"Idle\"".into(),
+            },
+            UiPropertyFFI {
+                name: "progress-value".into(),
+                json_value: "0.0".into(),
+            },
+            UiPropertyFFI {
+                name: "job-running".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "use-gpu".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "auto-update".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "stats-summary".into(),
+                json_value: "\"No analysis yet.\"".into(),
+            },
+            UiPropertyFFI {
+                name: "hot-regions".into(),
+                json_value: "[]".into(),
+            },
+        ])
+    }
+    extern "C" fn noop_get_viewport_context_menu_items(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportContextMenuItemFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_viewport_context_menu_action(
+        _item_id: RString,
+        _viewport: ViewportSnapshotFFI,
+    ) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_get_viewport_overlay_points(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportOverlayPointFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_get_viewport_overlay_polygons(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportOverlayPolygonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_point_annotation_placed(
+        _viewport: ViewportSnapshotFFI,
+        _x_level0: f64,
+        _y_level0: f64,
+    ) {
+    }
+    extern "C" fn noop_on_polygon_annotation_placed(
+        _viewport: ViewportSnapshotFFI,
+        _vertices: RVec<ViewportOverlayVertexFFI>,
+    ) {
+    }
+    extern "C" fn noop_on_undo() -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_redo() -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_point_annotation_moved(
+        _viewport: ViewportSnapshotFFI,
+        _annotation_id: RString,
+        _x_level0: f64,
+        _y_level0: f64,
+    ) {
+    }
+    extern "C" fn noop_on_polygon_annotation_moved(
+        _viewport: ViewportSnapshotFFI,
+        _annotation_id: RString,
+        _vertices: RVec<ViewportOverlayVertexFFI>,
+    ) {
+    }
+    extern "C" fn noop_get_viewport_filters() -> RVec<plugin_api::ffi::ViewportFilterFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_apply_filter_cpu(
+        _filter_id: RString,
+        _rgba_data: *mut u8,
+        _len: u32,
+        _width: u32,
+        _height: u32,
+    ) -> bool {
+        false
+    }
+    extern "C" fn noop_apply_filter_gpu(
+        _filter_id: RString,
+        _ctx: *const GpuFilterContextFFI,
+    ) -> bool {
+        false
+    }
+    extern "C" fn noop_set_filter_enabled(_filter_id: RString, _enabled: bool) {}
+
+    fn fake_eovae_vtable() -> PluginVTable {
+        PluginVTable {
+            set_host_api: noop_set_host_api,
+            get_toolbar_buttons: noop_get_toolbar_buttons,
+            get_hud_toolbar_buttons: noop_get_hud_toolbar_buttons,
+            on_action: noop_on_action,
+            on_hud_action: noop_on_hud_action,
+            on_ui_callback: noop_on_ui_callback,
+            get_sidebar_properties: fake_eovae_sidebar_properties,
+            get_viewport_context_menu_items: noop_get_viewport_context_menu_items,
+            on_viewport_context_menu_action: noop_on_viewport_context_menu_action,
+            get_viewport_overlay_points: noop_get_viewport_overlay_points,
+            get_viewport_overlay_polygons: noop_get_viewport_overlay_polygons,
+            on_point_annotation_placed: noop_on_point_annotation_placed,
+            on_polygon_annotation_placed: noop_on_polygon_annotation_placed,
+            on_undo: noop_on_undo,
+            on_redo: noop_on_redo,
+            on_point_annotation_moved: noop_on_point_annotation_moved,
+            on_polygon_annotation_moved: noop_on_polygon_annotation_moved,
+            get_viewport_filters: noop_get_viewport_filters,
+            apply_filter_cpu: noop_apply_filter_cpu,
+            apply_filter_gpu: noop_apply_filter_gpu,
+            set_filter_enabled: noop_set_filter_enabled,
+        }
+    }
+
+    #[test]
+    fn eovae_embedded_sidebar_factory_attaches_to_app_window() {
+        let ui_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let factory =
+            build_sidebar_factory("eovae", ui_path.to_str().unwrap(), "EovaeSidebar", None)
+                .unwrap();
+
+        let ui = AppWindow::new().unwrap();
+        ui.set_plugin_sidebar_factory(factory);
+        ui.set_show_plugin_sidebar(true);
+        ui.set_plugin_sidebar_width(340.0);
+    }
+
+    #[test]
+    fn eovae_embedded_sidebar_factory_applies_initial_properties() {
+        let ui_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let factory = build_sidebar_factory(
+            "eovae",
+            ui_path.to_str().unwrap(),
+            "EovaeSidebar",
+            Some(fake_eovae_vtable()),
+        )
+        .unwrap();
+
+        let ui = AppWindow::new().unwrap();
+        ui.set_plugin_sidebar_factory(factory);
+        ui.set_show_plugin_sidebar(true);
+        ui.set_plugin_sidebar_width(340.0);
+    }
+
+    #[test]
+    fn eovae_show_sidebar_host_path_completes() {
+        let ui = AppWindow::new().unwrap();
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let tile_cache = Arc::new(TileCache::new());
+        let render_timer = Rc::new(Timer::default());
+        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+        show_sidebar(
+            "eovae",
+            Some(&plugin_root),
+            Some(fake_eovae_vtable()),
+            plugin_api::SidebarRequest {
+                button_id: Some("toggle_eovae".to_string()),
+                width_px: 340,
+                ui_path: "ui/eovae-sidebar.slint".to_string(),
+                component: "EovaeSidebar".to_string(),
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn eovae_show_sidebar_host_path_completes_with_real_vtable() {
+        let ui = AppWindow::new().unwrap();
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let tile_cache = Arc::new(TileCache::new());
+        let render_timer = Rc::new(Timer::default());
+        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+        show_sidebar(
+            "eovae",
+            Some(&plugin_root),
+            Some(eovae::eov_get_plugin_vtable()),
+            plugin_api::SidebarRequest {
+                button_id: Some("toggle_eovae".to_string()),
+                width_px: 340,
+                ui_path: "ui/eovae-sidebar.slint".to_string(),
+                component: "EovaeSidebar".to_string(),
+            },
+        )
+        .unwrap();
     }
 }

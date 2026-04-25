@@ -87,8 +87,8 @@ impl HostContext for AppHostContext<'_> {
 #[cfg(test)]
 pub struct MockHostContext {
     pub toolbar: ToolbarManager,
-    pub undo_redo_states: HashMap<String, PluginUndoRedoState>,
-    pub undo_redo_order: Vec<String>,
+    _undo_redo_states: HashMap<String, PluginUndoRedoState>,
+    _undo_redo_order: Vec<String>,
     pub window_requests: Vec<WindowOpenRequest>,
 }
 
@@ -97,8 +97,8 @@ impl MockHostContext {
     pub fn new() -> Self {
         Self {
             toolbar: ToolbarManager::new(),
-            undo_redo_states: HashMap::new(),
-            undo_redo_order: Vec::new(),
+            _undo_redo_states: HashMap::new(),
+            _undo_redo_order: Vec::new(),
             window_requests: Vec::new(),
         }
     }

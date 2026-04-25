@@ -284,8 +284,10 @@ mod tests {
 
     #[test]
     fn clears_cache_when_namespace_changes() {
-        let mut state = PluginState::default();
-        state.cache_namespace = "a".to_string();
+        let mut state = PluginState {
+            cache_namespace: "a".to_string(),
+            ..Default::default()
+        };
         state.cache.insert(
             "key".to_string(),
             TileCacheEntry {
