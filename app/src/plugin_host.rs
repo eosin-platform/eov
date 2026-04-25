@@ -57,6 +57,30 @@ fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
     Color::from_argb_u8(if hovered { 0x58 } else { 0x40 }, red, green, blue)
 }
 
+fn overlay_polygon_fill_color(plugin_id: &str, red: u8, green: u8, blue: u8, hovered: bool) -> Color {
+    if plugin_id == "eovae" {
+        Color::from_argb_u8(0x00, red, green, blue)
+    } else {
+        polygon_fill_color(red, green, blue, hovered)
+    }
+}
+
+fn overlay_polygon_stroke_color(
+    plugin_id: &str,
+    red: u8,
+    green: u8,
+    blue: u8,
+    hovered: bool,
+) -> Color {
+    if plugin_id == "eovae" {
+        Color::from_rgb_u8(red, green, blue)
+    } else if hovered {
+        Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+    } else {
+        Color::from_rgb_u8(0x00, 0x00, 0x00)
+    }
+}
+
 fn polygon_path_commands(vertices: &[crate::state::ImagePoint]) -> String {
     let mut commands = String::new();
     for (index, vertex) in vertices.iter().enumerate() {
@@ -555,21 +579,26 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
                     && hovered.is_some_and(|handle| {
                         handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
                     });
+                let fill_color = overlay_polygon_fill_color(
+                    &plugin_id,
+                    polygon.fill_red,
+                    polygon.fill_green,
+                    polygon.fill_blue,
+                    hovered,
+                );
+                let stroke_color = overlay_polygon_stroke_color(
+                    &plugin_id,
+                    polygon.fill_red,
+                    polygon.fill_green,
+                    polygon.fill_blue,
+                    hovered,
+                );
                 OverlayPolygonShape {
                     plugin_id,
                     annotation_id,
                     vertices,
-                    fill_color: polygon_fill_color(
-                        polygon.fill_red,
-                        polygon.fill_green,
-                        polygon.fill_blue,
-                        hovered,
-                    ),
-                    stroke_color: if hovered {
-                        Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
-                    } else {
-                        Color::from_rgb_u8(0x00, 0x00, 0x00)
-                    },
+                    fill_color,
+                    stroke_color,
                 }
             },
         )

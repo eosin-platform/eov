@@ -13,7 +13,8 @@ use plugin_api::ffi::{
     ViewportSnapshotFFI,
 };
 use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
-use state::{request_render_if_available, set_host_api};
+use state::{plugin_state, request_render_if_available, set_host_api};
+use std::time::Duration;
 
 const BUTTON_ID: &str = "toggle_eovae";
 const FILTER_ID: &str = "eovae_overlay";
@@ -94,7 +95,94 @@ extern "C" fn get_viewport_overlay_points_ffi(
 extern "C" fn get_viewport_overlay_polygons_ffi(
     _viewport: ViewportSnapshotFFI,
 ) -> RVec<ViewportOverlayPolygonFFI> {
-    RVec::new()
+    let mut polygons = Vec::new();
+    let mut clear_pulse = false;
+    let state = plugin_state().lock().unwrap();
+
+    let hovered_region = state
+        .hovered_region_id
+        .as_deref()
+        .and_then(|id| state.cache.get(id))
+        .filter(|entry| entry.namespace == state.cache_namespace)
+        .map(|entry| entry.tile.clone());
+    let pulsing_region = state
+        .pulsing_region_id
+        .as_deref()
+        .and_then(|id| state.cache.get(id))
+        .filter(|entry| entry.namespace == state.cache_namespace)
+        .map(|entry| entry.tile.clone());
+
+    if let Some(tile) = hovered_region.as_ref().filter(|tile| {
+        pulsing_region
+            .as_ref()
+            .is_none_or(|pulse| pulse.id() != tile.id())
+    }) {
+        polygons.push(region_polygon(&tile.id(), tile, 0xF1, 0xC4, 0x0F));
+    }
+
+    if let Some(tile) = pulsing_region {
+        let elapsed = state
+            .pulsing_region_started_at
+            .map(|started_at| started_at.elapsed())
+            .unwrap_or(Duration::ZERO);
+        if elapsed >= Duration::from_millis(1300) {
+            clear_pulse = true;
+        } else {
+            let pulse = ((elapsed.as_secs_f32() / 1.3) * std::f32::consts::TAU).sin();
+            let intensity = ((pulse + 1.0) * 0.5).clamp(0.0, 1.0);
+            polygons.push(region_polygon(
+                &format!("pulse:{}", tile.id()),
+                &tile,
+                (0xF1 as f32 * intensity).round() as u8,
+                (0xC4 as f32 * intensity).round() as u8,
+                (0x0F as f32 * intensity).round() as u8,
+            ));
+        }
+    }
+
+    drop(state);
+
+    if clear_pulse {
+        let mut state = plugin_state().lock().unwrap();
+        state.pulsing_region_id = None;
+        state.pulsing_region_started_at = None;
+    }
+
+    RVec::from(polygons)
+}
+
+fn region_polygon(
+    annotation_id: &str,
+    tile: &crate::analysis::AnalyzedTile,
+    red: u8,
+    green: u8,
+    blue: u8,
+) -> ViewportOverlayPolygonFFI {
+    ViewportOverlayPolygonFFI {
+        annotation_id: annotation_id.into(),
+        vertices: vec![
+            ViewportOverlayVertexFFI {
+                x_level0: tile.x as f64,
+                y_level0: tile.y as f64,
+            },
+            ViewportOverlayVertexFFI {
+                x_level0: (tile.x + tile.width as u64) as f64,
+                y_level0: tile.y as f64,
+            },
+            ViewportOverlayVertexFFI {
+                x_level0: (tile.x + tile.width as u64) as f64,
+                y_level0: (tile.y + tile.height as u64) as f64,
+            },
+            ViewportOverlayVertexFFI {
+                x_level0: tile.x as f64,
+                y_level0: (tile.y + tile.height as u64) as f64,
+            },
+        ]
+        .into(),
+        fill_red: red,
+        fill_green: green,
+        fill_blue: blue,
+    }
 }
 
 extern "C" fn on_point_annotation_placed_ffi(
