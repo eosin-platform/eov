@@ -3898,7 +3898,9 @@ pub fn setup_callbacks(
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                    if crate::plugin_host::active_sidebar_captures_hotkeys() {
+                    if crate::plugin_host::active_sidebar_captures_hotkeys()
+                        || crate::plugin_host::active_modal_captures_hotkeys()
+                    {
                         return EventResult::Propagate;
                     }
 
