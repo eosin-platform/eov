@@ -7,8 +7,15 @@ use crate::state::{
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
+use std::thread;
 
 const TOOLBAR_BUTTON_ID: &str = "toggle_eovae";
+
+fn plugin_trace(message: impl AsRef<str>) {
+    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
+        eprintln!("[eovae/sidebar] {}", message.as_ref());
+    }
+}
 
 pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
     let state = plugin_state().lock().unwrap();
@@ -150,55 +157,133 @@ fn load_model_from_dialog() {
         log_message(HostLogLevelFFI::Error, "host API is not available");
         return;
     };
-    let path = match (host.open_file_dialog)(host.context, RString::from("ONNX"), RString::from("onnx")).into_result() {
-        Ok(path) if !path.is_empty() => path.to_string(),
-        Ok(_) => return,
-        Err(error) => {
-            log_message(HostLogLevelFFI::Error, error.to_string());
-            return;
-        }
-    };
 
-    match load_model(&path, plugin_state().lock().unwrap().config.use_gpu) {
-        Ok(model) => set_loaded_model(model),
-        Err(error) => {
+    plugin_trace("load_model dialog worker spawn");
+    thread::spawn(move || {
+        plugin_trace("load_model dialog worker opening dialog");
+        let path = match (host.open_file_dialog)(
+            host.context,
+            RString::from("ONNX"),
+            RString::from("onnx"),
+        )
+        .into_result()
+        {
+            Ok(path) if !path.is_empty() => path.to_string(),
+            Ok(_) => {
+                plugin_trace("load_model dialog canceled");
+                return;
+            }
+            Err(error) => {
+                log_message(HostLogLevelFFI::Error, error.to_string());
+                plugin_trace(format!("load_model dialog error err={}", error));
+                return;
+            }
+        };
+
+        let (load_generation, use_gpu) = {
             let mut state = plugin_state().lock().unwrap();
+            state.model_load_generation = state.model_load_generation.wrapping_add(1);
+            state.model_load_in_progress = true;
             state.model = None;
-            state.model_path = path;
-            state.model_status = error.clone();
-            log_message(HostLogLevelFFI::Error, error);
-        }
-    }
+            state.model_path = path.clone();
+            state.model_status = "Loading ONNX model...".to_string();
+            state.job_status = "Idle".to_string();
+            state.cache_namespace.clear();
+            state.cache.clear();
+            state.hot_regions.clear();
+            state.sidebar_regions.clear();
+            state.error_stats = crate::stats::ErrorStats::default();
+            state.progress_value = 0.0;
+            (state.model_load_generation, state.config.use_gpu)
+        };
+        refresh_sidebar_if_available();
+        request_render_if_available();
+
+        plugin_trace(format!(
+            "load_model spawn path={} generation={} use_gpu={}",
+            path, load_generation, use_gpu
+        ));
+        let result = load_model(&path, use_gpu);
+        plugin_trace(format!(
+            "load_model finished path={} generation={} success={}",
+            path,
+            load_generation,
+            result.is_ok()
+        ));
+        finish_model_load(load_generation, path, result);
+    });
 }
 
-fn set_loaded_model(model: LoadedModel) {
-    let namespace = model.summary.identity();
+fn finish_model_load(load_generation: u64, path: String, result: Result<LoadedModel, String>) {
+    let mut log_error = None;
+
     {
         let mut state = plugin_state().lock().unwrap();
-        state.model_path = model.summary.path.clone();
-        state.model_status = if model.summary.warnings.is_empty() {
-            format!(
-                "Loaded {} inputs / {} outputs. Layout {}. Tile {}.",
-                model.summary.inputs.len(),
-                model.summary.outputs.len(),
-                model.summary.layout,
-                model.summary.tile_size,
-            )
-        } else {
-            model.summary.warnings.join(" ")
-        };
-        state.model = Some(model);
+        if state.model_load_generation != load_generation {
+            plugin_trace(format!(
+                "load_model stale result ignored path={} generation={} current_generation={}",
+                path, load_generation, state.model_load_generation
+            ));
+            return;
+        }
+
+        state.model_load_in_progress = false;
         state.job_status = "Idle".to_string();
+
+        match result {
+            Ok(model) => {
+                let namespace = model.summary.identity();
+                state.model_path = model.summary.path.clone();
+                state.model_status = if model.summary.warnings.is_empty() {
+                    format!(
+                        "Loaded {} inputs / {} outputs. Layout {}. Tile {}.",
+                        model.summary.inputs.len(),
+                        model.summary.outputs.len(),
+                        model.summary.layout,
+                        model.summary.tile_size,
+                    )
+                } else {
+                    model.summary.warnings.join(" ")
+                };
+                state.model = Some(model);
+                state.cache_namespace = namespace;
+                state.cache.clear();
+                state.hot_regions.clear();
+                state.sidebar_regions.clear();
+                state.error_stats = crate::stats::ErrorStats::default();
+                state.progress_value = 0.0;
+            }
+            Err(error) => {
+                state.model = None;
+                state.model_path = path.clone();
+                state.model_status = error.clone();
+                state.cache_namespace.clear();
+                state.cache.clear();
+                state.hot_regions.clear();
+                state.sidebar_regions.clear();
+                state.error_stats = crate::stats::ErrorStats::default();
+                state.progress_value = 0.0;
+                log_error = Some(error);
+            }
+        }
     }
-    clear_cache_for_namespace(namespace);
+
+    if let Some(error) = log_error {
+        log_message(HostLogLevelFFI::Error, error);
+    }
+    refresh_sidebar_if_available();
+    request_render_if_available();
 }
 
 fn clear_model() {
     let mut state = plugin_state().lock().unwrap();
+    state.model_load_generation = state.model_load_generation.wrapping_add(1);
+    state.model_load_in_progress = false;
     state.model = None;
     state.model_path.clear();
     state.model_status = "No ONNX model loaded.".to_string();
     state.job_status = "Idle".to_string();
+    state.cache_namespace.clear();
     state.cache.clear();
     state.sidebar_regions.clear();
     state.hot_regions.clear();

@@ -2004,6 +2004,7 @@ fn build_plugin_component_factory(
         for name in definition.callbacks() {
             let callback_name = name.to_string();
             let plugin_id = plugin_id.clone();
+            let plugin_id_for_log = plugin_id.clone();
             let Some(vtable) = vtable else {
                 continue;
             };
@@ -2016,10 +2017,23 @@ fn build_plugin_component_factory(
                             .unwrap_or_default(),
                     )
                     .to_string();
-                    (vtable.on_ui_callback)(
-                        RString::from(callback_name.as_str()),
-                        RString::from(args_json),
-                    );
+                    let callback_name_for_timer = callback_name.clone();
+                    let args_json_for_timer = args_json.clone();
+                    let plugin_id_for_timer = plugin_id.clone();
+                    slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
+                        plugin_trace(format!(
+                            "dispatch ui_callback plugin={} name={} args={}",
+                            plugin_id_for_timer, callback_name_for_timer, args_json_for_timer
+                        ));
+                        (vtable.on_ui_callback)(
+                            RString::from(callback_name_for_timer.as_str()),
+                            RString::from(args_json_for_timer.as_str()),
+                        );
+                        plugin_trace(format!(
+                            "ui_callback returned plugin={} name={}",
+                            plugin_id_for_timer, callback_name_for_timer
+                        ));
+                    });
                     slint_interpreter::Value::Void
                 })
                 .is_err()
@@ -2028,7 +2042,7 @@ fn build_plugin_component_factory(
                     "Could not wire {} callback '{}' for plugin '{}'",
                     kind.label(),
                     name,
-                    plugin_id
+                    plugin_id_for_log
                 );
             }
         }
