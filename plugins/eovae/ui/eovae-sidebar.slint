@@ -78,8 +78,8 @@ component HotRegionButton inherits Rectangle {
     }
 
     VerticalLayout {
-        width: parent.width - 16px;
-        padding: 8px;
+        width: parent.width - 8px;
+        padding: 4px;
         spacing: 2px;
         Text { text: root.label; color: Theme.text-primary; font-size: 11px; wrap: word-wrap; }
         Text { text: root.score; color: Theme.text-secondary; font-size: 10px; }
@@ -148,19 +148,19 @@ export component EovaeSidebar inherits Rectangle {
             interactive: sidebar-content.preferred-height > self.height;
 
             sidebar-content := VerticalLayout {
-                width: parent.width - 20px;
-                padding: 10px;
-                spacing: 10px;
+                width: parent.width - 6px;
+                padding: 3px;
+                spacing: 0px;
 
                 Text {
-                    text: "VAE Reconstruction";
+                    text: "VAE Analysis";
                     color: Theme.text-primary;
                     font-size: 16px;
                     font-weight: 600;
                 }
 
                 Rectangle {
-                    width: parent.width - 20px;
+                    width: parent.width - 6px;
                     border-color: Theme.border;
                     border-width: 1px;
                     border-radius: 6px;
@@ -168,8 +168,8 @@ export component EovaeSidebar inherits Rectangle {
                     min-height: 72px;
 
                     VerticalLayout {
-                        width: parent.width - 20px;
-                        padding: 10px;
+                        width: parent.width - 8px;
+                        padding: 4px;
                         spacing: 6px;
 
                         Text {
@@ -209,16 +209,18 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
+                Rectangle { height: 10px; background: transparent; }
+
                 Rectangle {
-                    width: parent.width - 20px;
+                    width: parent.width - 6px;
                     border-color: Theme.border;
                     border-width: 1px;
                     border-radius: 6px;
                     background: Theme.background;
 
                     VerticalLayout {
-                        width: parent.width - 20px;
-                        padding: 10px;
+                        width: parent.width - 8px;
+                        padding: 4px;
                         spacing: 8px;
 
                         Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
@@ -265,16 +267,18 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
+                Rectangle { height: 10px; background: transparent; }
+
                 Rectangle {
-                    width: parent.width - 20px;
+                    width: parent.width - 6px;
                     border-color: Theme.border;
                     border-width: 1px;
                     border-radius: 6px;
                     background: Theme.background;
 
                     VerticalLayout {
-                        width: parent.width - 20px;
-                        padding: 10px;
+                        width: parent.width - 8px;
+                        padding: 4px;
                         spacing: 8px;
 
                         Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
@@ -389,16 +393,18 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
+                Rectangle { height: 10px; background: transparent; }
+
                 Rectangle {
-                    width: parent.width - 20px;
+                    width: parent.width - 6px;
                     border-color: Theme.border;
                     border-width: 1px;
                     border-radius: 6px;
                     background: Theme.background;
 
                     VerticalLayout {
-                        width: parent.width - 20px;
-                        padding: 10px;
+                        width: parent.width - 8px;
+                        padding: 4px;
                         spacing: 8px;
 
                         Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
@@ -410,7 +416,7 @@ export component EovaeSidebar inherits Rectangle {
                         }
 
                         VerticalLayout {
-                            width: parent.width - 20px;
+                            width: parent.width - 8px;
                             spacing: 6px;
 
                             if root.hot-regions.length == 0: Text {

@@ -505,7 +505,14 @@ where
 }
 
 fn jump_to_region(args_json: &str) {
-    let region_id = serde_json::from_str::<String>(args_json).unwrap_or_default();
+    let region_id = serde_json::from_str::<String>(args_json)
+        .ok()
+        .or_else(|| {
+            serde_json::from_str::<Vec<String>>(args_json)
+                .ok()
+                .and_then(|args| args.into_iter().next())
+        })
+        .unwrap_or_default();
     let parts = region_id.split(':').collect::<Vec<_>>();
     if parts.len() != 4 {
         return;
@@ -520,7 +527,9 @@ fn jump_to_region(args_json: &str) {
         return;
     };
     if let Some(host) = host_api() {
-        let _ = (host.frame_active_rect)(host.context, x, y, width, height);
+        let center_x = x + width * 0.5;
+        let center_y = y + height * 0.5;
+        let _ = (host.set_active_viewport)(host.context, center_x, center_y, 1.0);
     }
 }
 
@@ -556,6 +565,15 @@ mod tests {
     fn ignores_noop_mip_change() {
         reset_sidebar_test_state();
         assert!(!update_mip_level("\"1x\""));
+    }
+
+    #[test]
+    fn jump_to_region_accepts_single_string_array_payload() {
+        let parsed = serde_json::from_str::<Vec<String>>("[\"10:20:30:40\"]")
+            .ok()
+            .and_then(|args| args.into_iter().next())
+            .unwrap();
+        assert_eq!(parsed, "10:20:30:40");
     }
 
     #[test]

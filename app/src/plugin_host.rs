@@ -1026,34 +1026,51 @@ pub(crate) fn frame_active_rect(x: f64, y: f64, width: f64, height: f64) -> Resu
 pub(crate) fn set_active_tool(plugin_id: &str, tool: HostToolModeFFI) -> Result<(), String> {
     let plugin_id = plugin_id.to_string();
     run_on_ui_thread(move |runtime| {
-        {
-            let mut state = runtime.state.write();
-            match tool {
-                HostToolModeFFI::Navigate => state.set_tool(crate::state::Tool::Navigate),
-                HostToolModeFFI::RegionOfInterest => {
-                    state.set_tool(crate::state::Tool::RegionOfInterest)
+        let state = Arc::clone(&runtime.state);
+        let tile_cache = Arc::clone(&runtime.tile_cache);
+        let render_timer = Rc::clone(&runtime.render_timer);
+        let ui_weak = runtime.ui_weak.clone();
+        let plugin_id_for_timer = plugin_id.clone();
+        slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
+            {
+                let mut state = state.write();
+                match tool {
+                    HostToolModeFFI::Navigate => state.set_tool(crate::state::Tool::Navigate),
+                    HostToolModeFFI::RegionOfInterest => {
+                        state.set_tool(crate::state::Tool::RegionOfInterest)
+                    }
+                    HostToolModeFFI::MeasureDistance => {
+                        state.set_tool(crate::state::Tool::MeasureDistance)
+                    }
+                    HostToolModeFFI::PointAnnotation => state.set_plugin_annotation_tool(
+                        crate::state::Tool::PointAnnotation,
+                        plugin_id_for_timer.clone(),
+                    ),
+                    HostToolModeFFI::PolygonAnnotation => state.set_plugin_annotation_tool(
+                        crate::state::Tool::PolygonAnnotation,
+                        plugin_id_for_timer.clone(),
+                    ),
                 }
-                HostToolModeFFI::MeasureDistance => {
-                    state.set_tool(crate::state::Tool::MeasureDistance)
-                }
-                HostToolModeFFI::PointAnnotation => state.set_plugin_annotation_tool(
-                    crate::state::Tool::PointAnnotation,
-                    plugin_id.clone(),
-                ),
-                HostToolModeFFI::PolygonAnnotation => state.set_plugin_annotation_tool(
-                    crate::state::Tool::PolygonAnnotation,
-                    plugin_id.clone(),
-                ),
+                sync_tool_button_states(&mut state);
             }
-            sync_tool_button_states(&mut state);
-        }
-        refresh_plugin_buttons_in_ui(runtime)?;
-        request_render_loop(
-            &runtime.render_timer,
-            &runtime.ui_weak,
-            &runtime.state,
-            &runtime.tile_cache,
-        );
+            let deferred_runtime = UiRuntime {
+                ui_weak,
+                state,
+                tile_cache,
+                render_timer,
+            };
+            if let Some(ui) = deferred_runtime.ui_weak.upgrade() {
+                let state = deferred_runtime.state.read();
+                crate::tools::update_tool_state(&ui, &state);
+            }
+            let _ = refresh_plugin_buttons_in_ui(&deferred_runtime);
+            request_render_loop(
+                &deferred_runtime.render_timer,
+                &deferred_runtime.ui_weak,
+                &deferred_runtime.state,
+                &deferred_runtime.tile_cache,
+            );
+        });
         Ok(())
     })
 }

@@ -620,13 +620,28 @@ fn setup_callbacks(
                 }
                 Ok(plugins::ActionOutcome::Handled) => {
                     plugin_trace(format!("toolbar deferred handled locally plugin={} action={}", plugin_id, action_id));
-                    let sidebar_toggle_is_active = {
+                    let (sidebar_toggle_is_active, handled_action_is_tool_button) = {
                         let state = rerender_state.read();
-                        state.active_sidebar_button() == Some((plugin_id.as_str(), action_id.as_str()))
+                        (
+                            state.active_sidebar_button()
+                                == Some((plugin_id.as_str(), action_id.as_str())),
+                            state.local_plugin_buttons.iter().any(|button| {
+                                button.plugin_id == plugin_id
+                                    && button.action_id == action_id
+                                    && button.tool_mode.is_some()
+                            }),
+                        )
                     };
                     if sidebar_toggle_was_active || sidebar_toggle_is_active {
                         plugin_trace(format!(
                             "toolbar deferred sidebar toggle complete plugin={} action={}",
+                            plugin_id, action_id
+                        ));
+                        return;
+                    }
+                    if handled_action_is_tool_button {
+                        plugin_trace(format!(
+                            "toolbar deferred tool activation complete plugin={} action={}",
                             plugin_id, action_id
                         ));
                         return;
