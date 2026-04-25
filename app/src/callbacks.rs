@@ -1188,6 +1188,10 @@ pub fn setup_callbacks(
                 return;
             };
 
+            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
+                tracing::debug!("Failed to dismiss active sidebar popups before viewport context menu: {err}");
+            }
+
             let pane = pane_from_index(pane);
             let point_delete_item = {
                 let state = state_handle.read();
@@ -2021,6 +2025,10 @@ pub fn setup_callbacks(
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
+            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
+                tracing::debug!("Failed to dismiss active sidebar popups on viewport mouse down: {err}");
+            }
+
             let polygon_vertex_drag_candidate = {
                 let state = state_handle.read();
                 if state.current_tool != state::Tool::PolygonAnnotation

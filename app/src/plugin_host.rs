@@ -2437,6 +2437,26 @@ pub(crate) fn active_sidebar_captures_hotkeys() -> bool {
     })
 }
 
+pub(crate) fn dismiss_active_sidebar_popups() -> Result<(), String> {
+    run_on_ui_thread(|_runtime| {
+        ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+            let Some(instance) = slot
+                .borrow()
+                .as_ref()
+                .and_then(|active| active.instance.upgrade())
+            else {
+                return Ok(());
+            };
+
+            let _ = instance.set_property(
+                "dismiss-popups",
+                slint_interpreter::Value::Bool(true),
+            );
+            Ok(())
+        })
+    })
+}
+
 pub(crate) fn active_modal_captures_hotkeys() -> bool {
     ACTIVE_MODAL_INSTANCE.with(|slot| {
         let Some(instance) = slot

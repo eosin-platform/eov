@@ -532,6 +532,9 @@ fn setup_callbacks(
         let rerender_cache = Arc::clone(&rerender_cache);
         Timer::single_shot(Duration::from_millis(0), move || {
             plugin_trace(format!("toolbar deferred start plugin={} action={}", plugin_id, action_id));
+            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
+                tracing::debug!("Failed to dismiss active sidebar popups before toolbar action: {err}");
+            }
             if let Some(ui) = rerender_ui.upgrade()
                 && deactivate_active_plugin_tool_if_matching(
                     &ui,

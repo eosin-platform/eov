@@ -92,6 +92,51 @@ component HotRegionButton inherits Rectangle {
     }
 }
 
+component SidebarSectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <bool> expanded: true;
+    callback toggled();
+
+    height: 30px;
+    border-radius: 4px;
+    background: section-touch.has-hover ? Theme.surface-hover : transparent;
+
+    section-touch := TouchArea {
+        clicked => { root.toggled(); }
+    }
+
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 12px;
+            height: parent.height;
+            background: transparent;
+
+            Text {
+                text: root.expanded ? "▾" : "▸";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Rectangle { horizontal-stretch: 1; background: transparent; }
+    }
+}
+
 export struct TensorRow {
     name: string,
     dtype: string,
@@ -134,6 +179,11 @@ export component EovaeSidebar inherits Rectangle {
     in property <int> error-histogram-max: 0;
     in property <[HotRegionRow]> hot-regions: [];
 
+    property <bool> model-section-expanded: true;
+    property <bool> model-io-section-expanded: true;
+    property <bool> analysis-section-expanded: true;
+    property <bool> results-section-expanded: true;
+
     callback load-model();
     callback clear-model();
     callback analyze-viewport();
@@ -174,17 +224,33 @@ export component EovaeSidebar inherits Rectangle {
                     font-weight: 600;
                 }
 
-                Rectangle {
+                Rectangle { height: 6px; background: transparent; }
+
+                SidebarSectionHeader {
                     width: parent.width - 6px;
-                    border-color: Theme.border;
-                    border-width: 1px;
-                    border-radius: 6px;
-                    background: Theme.background;
-                    min-height: 72px;
+                    title: "Model";
+                    expanded: root.model-section-expanded;
+                    toggled => { root.model-section-expanded = !root.model-section-expanded; }
+                }
+
+                if root.model-section-expanded: Rectangle {
+                    width: parent.width - 18px;
+                    x: 18px;
+                    background: transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 1px;
+                        height: parent.height;
+                        background: #ffffff12;
+                    }
 
                     VerticalLayout {
-                        width: parent.width - 8px;
-                        padding: 4px;
+                        width: parent.width - 12px;
+                        padding-left: 10px;
+                        padding-top: 2px;
+                        padding-bottom: 10px;
                         spacing: 6px;
 
                         Text {
@@ -224,21 +290,34 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
-                Rectangle { height: 10px; background: transparent; }
+                Rectangle { height: 2px; background: Theme.border; }
 
-                Rectangle {
+                SidebarSectionHeader {
                     width: parent.width - 6px;
-                    border-color: Theme.border;
-                    border-width: 1px;
-                    border-radius: 6px;
-                    background: Theme.background;
+                    title: "Model I/O";
+                    expanded: root.model-io-section-expanded;
+                    toggled => { root.model-io-section-expanded = !root.model-io-section-expanded; }
+                }
+
+                if root.model-io-section-expanded: Rectangle {
+                    width: parent.width - 18px;
+                    x: 18px;
+                    background: transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 1px;
+                        height: parent.height;
+                        background: #ffffff12;
+                    }
 
                     VerticalLayout {
-                        width: parent.width - 8px;
-                        padding: 4px;
+                        width: parent.width - 12px;
+                        padding-left: 10px;
+                        padding-top: 2px;
+                        padding-bottom: 10px;
                         spacing: 8px;
-
-                        Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
                         Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
                         if root.input-options.length > 0: ComboBox {
@@ -282,21 +361,34 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
-                Rectangle { height: 10px; background: transparent; }
+                Rectangle { height: 2px; background: Theme.border; }
 
-                Rectangle {
+                SidebarSectionHeader {
                     width: parent.width - 6px;
-                    border-color: Theme.border;
-                    border-width: 1px;
-                    border-radius: 6px;
-                    background: Theme.background;
+                    title: "Analysis";
+                    expanded: root.analysis-section-expanded;
+                    toggled => { root.analysis-section-expanded = !root.analysis-section-expanded; }
+                }
+
+                if root.analysis-section-expanded: Rectangle {
+                    width: parent.width - 18px;
+                    x: 18px;
+                    background: transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 1px;
+                        height: parent.height;
+                        background: #ffffff12;
+                    }
 
                     VerticalLayout {
-                        width: parent.width - 8px;
-                        padding: 4px;
+                        width: parent.width - 12px;
+                        padding-left: 10px;
+                        padding-top: 2px;
+                        padding-bottom: 10px;
                         spacing: 8px;
-
-                        Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
                         HorizontalLayout {
                             spacing: 8px;
@@ -409,21 +501,34 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
-                Rectangle { height: 10px; background: transparent; }
+                Rectangle { height: 2px; background: Theme.border; }
 
-                Rectangle {
+                SidebarSectionHeader {
                     width: parent.width - 6px;
-                    border-color: Theme.border;
-                    border-width: 1px;
-                    border-radius: 6px;
-                    background: Theme.background;
+                    title: "Results";
+                    expanded: root.results-section-expanded;
+                    toggled => { root.results-section-expanded = !root.results-section-expanded; }
+                }
+
+                if root.results-section-expanded: Rectangle {
+                    width: parent.width - 18px;
+                    x: 18px;
+                    background: transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 1px;
+                        height: parent.height;
+                        background: #ffffff12;
+                    }
 
                     VerticalLayout {
-                        width: parent.width - 8px;
-                        padding: 4px;
+                        width: parent.width - 12px;
+                        padding-left: 10px;
+                        padding-top: 2px;
+                        padding-bottom: 8px;
                         spacing: 8px;
-
-                        Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
                         Rectangle {
                             width: parent.width;
@@ -571,6 +676,8 @@ export component EovaeSidebar inherits Rectangle {
                         }
                     }
                 }
+
+                Rectangle { height: 2px; background: Theme.border; }
             }
         }
     }
