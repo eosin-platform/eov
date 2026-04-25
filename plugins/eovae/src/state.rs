@@ -3,10 +3,18 @@ use crate::model::LoadedModel;
 use crate::stats::{ErrorStats, summarize_errors};
 use abi_stable::std_types::RString;
 use plugin_api::ffi::{HostApiVTable, HostLogLevelFFI};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+#[derive(Default, Serialize, Deserialize)]
+struct PersistedConfig {
+    default_model_path: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VisualizationMode {
@@ -210,6 +218,44 @@ pub fn cancel_running_job() -> bool {
 
 fn host_api_cell() -> &'static Mutex<Option<HostApiVTable>> {
     HOST_API.get_or_init(|| Mutex::new(None))
+}
+
+pub fn load_persisted_model_path() -> Result<Option<String>, String> {
+    let path = persisted_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = fs::read_to_string(&path)
+        .map_err(|err| format!("failed to read eovae config '{}': {err}", path.display()))?;
+    let config = serde_json::from_str::<PersistedConfig>(&json)
+        .map_err(|err| format!("failed to parse eovae config '{}': {err}", path.display()))?;
+    Ok(config.default_model_path.filter(|path| !path.is_empty()))
+}
+
+pub fn save_persisted_model_path(model_path: Option<&str>) -> Result<(), String> {
+    let path = persisted_config_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create eovae config directory '{}': {err}",
+                parent.display()
+            )
+        })?;
+    }
+    let config = PersistedConfig {
+        default_model_path: model_path.map(str::to_string),
+    };
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|err| format!("failed to serialize eovae config: {err}"))?;
+    fs::write(&path, json)
+        .map_err(|err| format!("failed to write eovae config '{}': {err}", path.display()))
+}
+
+fn persisted_config_path() -> Result<PathBuf, String> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| "could not determine config directory for eovae".to_string())?
+        .join("eov");
+    Ok(config_dir.join("eovae.json"))
 }
 
 #[cfg(test)]

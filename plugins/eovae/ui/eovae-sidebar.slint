@@ -1,6 +1,91 @@
 import { ComboBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
+component SidebarActionButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <color> base-color: #3e444c;
+    in property <color> hover-color: #4a5460;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 4px;
+    background: root.enabled ? (touch.has-hover ? root.hover-color : root.base-color) : #3e444c;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        color: white;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component SidebarToggleRow inherits Rectangle {
+    in property <bool> checked: false;
+    in property <string> text;
+    callback toggled(bool);
+
+    height: 22px;
+    border-radius: 4px;
+    background: toggle-touch.has-hover ? Theme.surface-hover : transparent;
+
+    toggle-touch := TouchArea {
+        clicked => { root.toggled(!root.checked); }
+    }
+
+    HorizontalLayout {
+        padding-left: 2px;
+        padding-right: 2px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.border;
+            background: root.checked ? #2f6db5 : transparent;
+        }
+
+        Text {
+            text: root.text;
+            color: Theme.text-secondary;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component HotRegionButton inherits Rectangle {
+    in property <string> label;
+    in property <string> score;
+    callback clicked();
+
+    min-height: 44px;
+    border-width: 1px;
+    border-color: Theme.border;
+    border-radius: 4px;
+    background: region-touch.has-hover ? Theme.surface-hover : #ffffff08;
+
+    region-touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    VerticalLayout {
+        width: parent.width - 16px;
+        padding: 8px;
+        spacing: 2px;
+        Text { text: root.label; color: Theme.text-primary; font-size: 11px; wrap: word-wrap; }
+        Text { text: root.score; color: Theme.text-secondary; font-size: 10px; }
+    }
+}
+
 export struct TensorRow {
     name: string,
     dtype: string,
@@ -50,366 +135,294 @@ export component EovaeSidebar inherits Rectangle {
 
     background: Theme.surface;
 
-    VerticalLayout {
+    Rectangle {
         width: parent.width;
         height: parent.height;
-        padding: 10px;
-        spacing: 10px;
+        background: transparent;
+        clip: true;
 
-        Text {
-            text: "VAE Reconstruction";
-            color: Theme.text-primary;
-            font-size: 16px;
-            font-weight: 600;
-        }
+        Flickable {
+            width: parent.width;
+            height: parent.height;
+            viewport-height: sidebar-content.preferred-height;
+            interactive: sidebar-content.preferred-height > self.height;
 
-        Rectangle {
-            border-color: Theme.border;
-            border-width: 1px;
-            border-radius: 6px;
-            background: Theme.background;
-            min-height: 72px;
-
-            VerticalLayout {
-                width: parent.width;
+            sidebar-content := VerticalLayout {
+                width: parent.width - 20px;
                 padding: 10px;
-                spacing: 6px;
+                spacing: 10px;
 
                 Text {
-                    text: root.model-path == "" ? "Model" : root.model-path;
+                    text: "VAE Reconstruction";
                     color: Theme.text-primary;
-                    wrap: word-wrap;
-                    font-size: 12px;
+                    font-size: 16px;
+                    font-weight: 600;
                 }
 
-                Text {
-                    text: root.model-status;
-                    color: Theme.text-secondary;
-                    wrap: word-wrap;
-                    font-size: 11px;
-                }
+                Rectangle {
+                    width: parent.width - 20px;
+                    border-color: Theme.border;
+                    border-width: 1px;
+                    border-radius: 6px;
+                    background: Theme.background;
+                    min-height: 72px;
 
-                HorizontalLayout {
-                    spacing: 8px;
+                    VerticalLayout {
+                        width: parent.width - 20px;
+                        padding: 10px;
+                        spacing: 6px;
 
-                    Rectangle {
-                        min-width: 88px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: #2f6db5;
-                        TouchArea {
-                            clicked => { root.load-model(); }
-                        }
                         Text {
-                            text: "Load ONNX";
-                            color: white;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            width: parent.width;
-                            height: parent.height;
+                            text: root.model-path == "" ? "Model" : root.model-path;
+                            color: Theme.text-primary;
+                            wrap: word-wrap;
+                            font-size: 12px;
                         }
-                    }
 
-                    Rectangle {
-                        min-width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.model-loaded ? #5b6470 : #3e444c;
-                        TouchArea {
-                            enabled: root.model-loaded;
-                            clicked => { root.clear-model(); }
-                        }
                         Text {
-                            text: "Clear";
-                            color: white;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            width: parent.width;
-                            height: parent.height;
-                        }
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            border-color: Theme.border;
-            border-width: 1px;
-            border-radius: 6px;
-            background: Theme.background;
-
-            VerticalLayout {
-                width: parent.width;
-                padding: 10px;
-                spacing: 8px;
-
-                Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
-
-                Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
-                if root.input-options.length > 0: ComboBox {
-                    model: root.input-options;
-                    current-index: root.selected-input-index;
-                    selected(value) => { root.input-changed(value); }
-                }
-                if root.input-options.length == 0: Text {
-                    text: "No model loaded";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                }
-
-                for row in root.input-rows: Text {
-                    text: row.name + " • " + row.dtype + " • " + row.shape;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    wrap: word-wrap;
-                }
-
-                Rectangle { height: 1px; background: Theme.border; }
-
-                Text { text: "Output"; color: Theme.text-secondary; font-size: 11px; }
-                if root.output-options.length > 0: ComboBox {
-                    model: root.output-options;
-                    current-index: root.selected-output-index;
-                    selected(value) => { root.output-changed(value); }
-                }
-                if root.output-options.length == 0: Text {
-                    text: "No model loaded";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                }
-
-                for row in root.output-rows: Text {
-                    text: row.name + " • " + row.dtype + " • " + row.shape;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    wrap: word-wrap;
-                }
-            }
-        }
-
-        Rectangle {
-            border-color: Theme.border;
-            border-width: 1px;
-            border-radius: 6px;
-            background: Theme.background;
-
-            VerticalLayout {
-                width: parent.width;
-                padding: 10px;
-                spacing: 8px;
-
-                Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
-
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    ComboBox {
-                        horizontal-stretch: 1;
-                        model: root.mode-options;
-                        current-index: root.selected-mode-index;
-                        selected(value) => { root.mode-changed(value); }
-                    }
-
-                    Rectangle {
-                        min-width: 88px;
-                        background: transparent;
-
-                        tip-hover := TouchArea {}
-
-                        ComboBox {
-                            width: parent.width;
-                            model: root.mip-options;
-                            current-index: root.selected-mip-index;
-                            selected(value) => { root.mip-changed(value); }
+                            text: root.model-status;
+                            color: Theme.text-secondary;
+                            wrap: word-wrap;
+                            font-size: 11px;
                         }
 
-                        if tip-hover.has-hover: Rectangle {
-                            x: 0;
-                            y: parent.height + 4px;
-                            z: 10;
-                            border-radius: 4px;
-                            background: #20242a;
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            VerticalLayout {
-                                padding: 6px;
-                                Text {
-                                    text: "Mip Level";
-                                    color: Theme.text-primary;
-                                    font-size: 11px;
-                                }
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            SidebarActionButton {
+                                min-width: 88px;
+                                text: "Load ONNX";
+                                base-color: #2f6db5;
+                                hover-color: #3f82d1;
+                                clicked => { root.load-model(); }
+                            }
+
+                            SidebarActionButton {
+                                min-width: 72px;
+                                enabled: root.model-loaded;
+                                text: "Clear";
+                                base-color: #5b6470;
+                                hover-color: #737d8c;
+                                clicked => { root.clear-model(); }
                             }
                         }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    Rectangle {
-                        horizontal-stretch: 1;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.model-loaded ? #206a5d : #3e444c;
-                        tap-a := TouchArea {
-                            enabled: root.model-loaded && !root.job-running;
-                            clicked => { root.analyze-viewport(); }
-                        }
-                        Text {
-                            text: "Viewport";
-                            color: white;
-                            width: parent.width;
-                            height: parent.height;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    Rectangle {
-                        horizontal-stretch: 1;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.model-loaded ? #8a5a12 : #3e444c;
-                        tap-b := TouchArea {
-                            enabled: root.model-loaded && !root.job-running;
-                            clicked => { root.analyze-slide(); }
-                        }
-                        Text {
-                            text: "Whole Slide";
-                            color: white;
-                            width: parent.width;
-                            height: parent.height;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    Rectangle {
-                        min-width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.job-running ? #922f2f : #3e444c;
-                        tap-c := TouchArea {
-                            enabled: root.job-running;
-                            clicked => { root.cancel-job(); }
-                        }
-                        Text {
-                            text: "Cancel";
-                            color: white;
-                            width: parent.width;
-                            height: parent.height;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    gpu-toggle := TouchArea {
-                        clicked => { root.use-gpu-changed(!root.use-gpu); }
-                        Rectangle {
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 3px;
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            background: root.use-gpu ? #2f6db5 : transparent;
-                        }
-                    }
-                    Text { text: "Prefer GPU EP"; color: Theme.text-secondary; vertical-alignment: center; }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    auto-toggle := TouchArea {
-                        clicked => { root.auto-update-changed(!root.auto-update); }
-                        Rectangle {
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 3px;
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            background: root.auto-update ? #2f6db5 : transparent;
-                        }
-                    }
-                    Text { text: "Auto-update viewport"; color: Theme.text-secondary; vertical-alignment: center; }
-                }
-
-                Text {
-                    text: root.job-status;
-                    color: Theme.text-secondary;
-                    wrap: word-wrap;
-                    font-size: 11px;
-                }
-
                 Rectangle {
-                    height: 8px;
-                    border-radius: 4px;
-                    background: #23282f;
-                    Rectangle {
-                        width: parent.width * root.progress-value;
-                        height: parent.height;
-                        border-radius: 4px;
-                        background: #2f6db5;
-                    }
-                }
-            }
-        }
+                    width: parent.width - 20px;
+                    border-color: Theme.border;
+                    border-width: 1px;
+                    border-radius: 6px;
+                    background: Theme.background;
 
-        Rectangle {
-            vertical-stretch: 1;
-            border-color: Theme.border;
-            border-width: 1px;
-            border-radius: 6px;
-            background: Theme.background;
+                    VerticalLayout {
+                        width: parent.width - 20px;
+                        padding: 10px;
+                        spacing: 8px;
 
-            VerticalLayout {
-                width: parent.width;
-                padding: 10px;
-                spacing: 8px;
+                        Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
-                Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
-                Text {
-                    text: root.stats-summary;
-                    color: Theme.text-secondary;
-                    wrap: word-wrap;
-                    font-size: 11px;
-                }
-
-                Flickable {
-                    vertical-stretch: 1;
-                    viewport-height: hot-layout.preferred-height;
-
-                    hot-layout := VerticalLayout {
-                        width: parent.width;
-                        spacing: 6px;
-
-                        if root.hot-regions.length == 0: Text {
-                            text: "No high-error regions yet.";
+                        Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
+                        if root.input-options.length > 0: ComboBox {
+                            model: root.input-options;
+                            current-index: root.selected-input-index;
+                            selected(value) => { root.input-changed(value); }
+                        }
+                        if root.input-options.length == 0: Text {
+                            text: "No model loaded";
                             color: Theme.text-secondary;
                             font-size: 11px;
                         }
 
-                        for region in root.hot-regions: Rectangle {
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            border-radius: 4px;
-                            background: #ffffff08;
-                            min-height: 44px;
+                        for row in root.input-rows: Text {
+                            text: row.name + " • " + row.dtype + " • " + row.shape;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
 
-                            TouchArea {
-                                clicked => { root.jump-to-region(region.id); }
+                        Rectangle { height: 1px; background: Theme.border; }
+
+                        Text { text: "Output"; color: Theme.text-secondary; font-size: 11px; }
+                        if root.output-options.length > 0: ComboBox {
+                            model: root.output-options;
+                            current-index: root.selected-output-index;
+                            selected(value) => { root.output-changed(value); }
+                        }
+                        if root.output-options.length == 0: Text {
+                            text: "No model loaded";
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                        }
+
+                        for row in root.output-rows: Text {
+                            text: row.name + " • " + row.dtype + " • " + row.shape;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width - 20px;
+                    border-color: Theme.border;
+                    border-width: 1px;
+                    border-radius: 6px;
+                    background: Theme.background;
+
+                    VerticalLayout {
+                        width: parent.width - 20px;
+                        padding: 10px;
+                        spacing: 8px;
+
+                        Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            ComboBox {
+                                horizontal-stretch: 1;
+                                model: root.mode-options;
+                                current-index: root.selected-mode-index;
+                                selected(value) => { root.mode-changed(value); }
                             }
 
-                            VerticalLayout {
-                                width: parent.width;
-                                padding: 8px;
-                                spacing: 2px;
-                                Text { text: region.label; color: Theme.text-primary; font-size: 11px; wrap: word-wrap; }
-                                Text { text: region.score; color: Theme.text-secondary; font-size: 10px; }
+                            Rectangle {
+                                min-width: 88px;
+                                background: transparent;
+
+                                tip-hover := TouchArea {}
+
+                                ComboBox {
+                                    width: parent.width;
+                                    model: root.mip-options;
+                                    current-index: root.selected-mip-index;
+                                    selected(value) => { root.mip-changed(value); }
+                                }
+
+                                if tip-hover.has-hover: Rectangle {
+                                    x: 0;
+                                    y: parent.height + 4px;
+                                    z: 10;
+                                    border-radius: 4px;
+                                    background: #20242a;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+
+                                    VerticalLayout {
+                                        padding: 6px;
+
+                                        Text {
+                                            text: "Mip Level";
+                                            color: Theme.text-primary;
+                                            font-size: 11px;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            SidebarActionButton {
+                                horizontal-stretch: 1;
+                                enabled: root.model-loaded && !root.job-running;
+                                text: "Viewport";
+                                base-color: #206a5d;
+                                hover-color: #2b8777;
+                                clicked => { root.analyze-viewport(); }
+                            }
+
+                            SidebarActionButton {
+                                horizontal-stretch: 1;
+                                enabled: root.model-loaded && !root.job-running;
+                                text: "Whole Slide";
+                                base-color: #8a5a12;
+                                hover-color: #aa711d;
+                                clicked => { root.analyze-slide(); }
+                            }
+
+                            SidebarActionButton {
+                                min-width: 72px;
+                                enabled: root.job-running;
+                                text: "Cancel";
+                                base-color: #922f2f;
+                                hover-color: #b33d3d;
+                                clicked => { root.cancel-job(); }
+                            }
+                        }
+
+                        SidebarToggleRow {
+                            checked: root.use-gpu;
+                            text: "Prefer GPU EP";
+                            toggled(value) => { root.use-gpu-changed(value); }
+                        }
+
+                        SidebarToggleRow {
+                            checked: root.auto-update;
+                            text: "Auto-update viewport";
+                            toggled(value) => { root.auto-update-changed(value); }
+                        }
+
+                        Text {
+                            text: root.job-status;
+                            color: Theme.text-secondary;
+                            wrap: word-wrap;
+                            font-size: 11px;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                            border-radius: 4px;
+                            background: #23282f;
+
+                            Rectangle {
+                                width: parent.width * root.progress-value;
+                                height: parent.height;
+                                border-radius: 4px;
+                                background: #2f6db5;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width - 20px;
+                    border-color: Theme.border;
+                    border-width: 1px;
+                    border-radius: 6px;
+                    background: Theme.background;
+
+                    VerticalLayout {
+                        width: parent.width - 20px;
+                        padding: 10px;
+                        spacing: 8px;
+
+                        Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+                        Text {
+                            text: root.stats-summary;
+                            color: Theme.text-secondary;
+                            wrap: word-wrap;
+                            font-size: 11px;
+                        }
+
+                        VerticalLayout {
+                            width: parent.width - 20px;
+                            spacing: 6px;
+
+                            if root.hot-regions.length == 0: Text {
+                                text: "No high-error regions yet.";
+                                color: Theme.text-secondary;
+                                font-size: 11px;
+                            }
+
+                            for region in root.hot-regions: HotRegionButton {
+                                label: region.label;
+                                score: region.score;
+                                clicked => { root.jump-to-region(region.id); }
                             }
                         }
                     }

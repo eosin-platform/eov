@@ -1866,6 +1866,7 @@ version = "0.1.0"
 dependencies = [
  "abi_stable",
  "common",
+ "dirs",
  "ndarray",
  "onnx-extractor",
  "ort",

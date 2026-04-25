@@ -12,7 +12,7 @@ use plugin_api::ffi::{
     ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
     ViewportSnapshotFFI,
 };
-use sidebar::{get_sidebar_properties, on_sidebar_callback, show_sidebar};
+use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
 use state::{request_render_if_available, set_host_api};
 
 const BUTTON_ID: &str = "toggle_eovae";
@@ -27,6 +27,7 @@ fn plugin_trace(message: impl AsRef<str>) {
 
 extern "C" fn set_host_api_ffi(host_api: HostApiVTable) {
     set_host_api(host_api);
+    initialize_from_config();
 }
 
 extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {

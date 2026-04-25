@@ -270,11 +270,20 @@ fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32, mip_level: u32
     let top = viewport.bounds_top.max(0.0) as u64;
     let right = viewport.bounds_right.max(0.0) as u64;
     let bottom = viewport.bounds_bottom.max(0.0) as u64;
-    grid_tiles(left, top, right, bottom, tile_size, mip_level)
+    grid_tiles(
+        left,
+        top,
+        right,
+        bottom,
+        viewport.image_width.max(0.0) as u64,
+        viewport.image_height.max(0.0) as u64,
+        tile_size,
+        mip_level,
+    )
 }
 
 fn full_slide_tiles(image_width: u64, image_height: u64, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
-    grid_tiles(0, 0, image_width, image_height, tile_size, mip_level)
+    grid_tiles(0, 0, image_width, image_height, image_width, image_height, tile_size, mip_level)
 }
 
 fn grid_tiles(
@@ -282,27 +291,33 @@ fn grid_tiles(
     top: u64,
     right: u64,
     bottom: u64,
+    image_width: u64,
+    image_height: u64,
     tile_size: u32,
     mip_level: u32,
 ) -> Vec<TilePlan> {
     let mut tiles = Vec::new();
     let downsample = 1u64 << mip_level.min(3);
     let step = tile_size as u64 * downsample;
-    let mut y = top;
+    let mut y = (top / step) * step;
     while y < bottom {
-        let mut x = left;
+        let mut x = (left / step) * step;
         while x < right {
-            let width = (right - x).min(step) as u32;
-            let height = (bottom - y).min(step) as u32;
+            if x + step <= image_width && y + step <= image_height {
+                let world_width = step as u32;
+                let world_height = step as u32;
+                let read_width = tile_size;
+                let read_height = tile_size;
             tiles.push(TilePlan {
                 x,
                 y,
-                width,
-                height,
+                width: world_width,
+                height: world_height,
                 level: mip_level,
-                read_width: width.div_ceil(downsample as u32),
-                read_height: height.div_ceil(downsample as u32),
+                read_width,
+                read_height,
             });
+            }
             x += step;
         }
         y += step;
@@ -402,7 +417,7 @@ mod tests {
 
     #[test]
     fn grid_tiles_expand_world_coverage_for_selected_mip() {
-        let tiles = grid_tiles(0, 0, 700, 700, 256, 1);
+        let tiles = grid_tiles(0, 0, 700, 700, 700, 700, 256, 1);
 
         assert_eq!(tiles[0].width, 512);
         assert_eq!(tiles[0].height, 512);
@@ -411,9 +426,26 @@ mod tests {
         assert_eq!(tiles[0].level, 1);
 
         let edge = tiles.last().unwrap();
-        assert_eq!(edge.width, 188);
-        assert_eq!(edge.height, 188);
-        assert_eq!(edge.read_width, 94);
-        assert_eq!(edge.read_height, 94);
+        assert_eq!(edge.x, 0);
+        assert_eq!(edge.y, 0);
+        assert_eq!(edge.width, 512);
+        assert_eq!(edge.height, 512);
+        assert_eq!(edge.read_width, 256);
+        assert_eq!(edge.read_height, 256);
+    }
+
+    #[test]
+    fn grid_tiles_skip_partial_right_and_bottom_edges() {
+        let tiles = grid_tiles(300, 300, 900, 900, 900, 900, 256, 0);
+
+        assert_eq!(tiles.len(), 4);
+        assert_eq!(tiles[0].x, 256);
+        assert_eq!(tiles[0].y, 256);
+        assert_eq!(tiles[1].x, 512);
+        assert_eq!(tiles[1].y, 256);
+        assert_eq!(tiles[2].x, 256);
+        assert_eq!(tiles[2].y, 512);
+        assert_eq!(tiles[3].x, 512);
+        assert_eq!(tiles[3].y, 512);
     }
 }

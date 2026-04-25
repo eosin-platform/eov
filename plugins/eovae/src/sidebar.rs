@@ -1,8 +1,9 @@
 use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
 use crate::model::{LoadedModel, load_model};
 use crate::state::{
-    VisualizationMode, cancel_running_job, clear_cache_for_namespace, host_api, log_message,
-    plugin_state, refresh_sidebar_if_available, request_render_if_available,
+    VisualizationMode, cancel_running_job, clear_cache_for_namespace, host_api,
+    load_persisted_model_path, log_message, plugin_state, refresh_sidebar_if_available,
+    request_render_if_available, save_persisted_model_path,
 };
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
@@ -162,6 +163,27 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
     }
 }
 
+pub fn initialize_from_config() {
+    let saved_path = match load_persisted_model_path() {
+        Ok(path) => path,
+        Err(error) => {
+            log_message(HostLogLevelFFI::Error, error);
+            return;
+        }
+    };
+    let Some(saved_path) = saved_path else {
+        return;
+    };
+
+    let should_start = {
+        let state = plugin_state().lock().unwrap();
+        state.model.is_none() && !state.model_load_in_progress && state.model_path.is_empty()
+    };
+    if should_start {
+        start_model_load(saved_path, false);
+    }
+}
+
 fn load_model_from_dialog() {
     let Some(host) = host_api() else {
         log_message(HostLogLevelFFI::Error, "host API is not available");
@@ -190,29 +212,35 @@ fn load_model_from_dialog() {
             }
         };
 
-        let (load_generation, use_gpu) = {
-            let mut state = plugin_state().lock().unwrap();
-            state.model_load_generation = state.model_load_generation.wrapping_add(1);
-            state.model_load_in_progress = true;
-            state.model = None;
-            state.model_path = path.clone();
-            state.model_status = "Loading ONNX model...".to_string();
-            state.job_status = "Idle".to_string();
-            state.cache_namespace.clear();
-            state.cache.clear();
-            state.hot_regions.clear();
-            state.sidebar_regions.clear();
-            state.error_stats = crate::stats::ErrorStats::default();
-            state.progress_value = 0.0;
-            (state.model_load_generation, state.config.use_gpu)
-        };
-        refresh_sidebar_if_available();
-        request_render_if_available();
+        start_model_load(path, true);
+    });
+}
 
-        plugin_trace(format!(
-            "load_model spawn path={} generation={} use_gpu={}",
-            path, load_generation, use_gpu
-        ));
+fn start_model_load(path: String, persist_on_success: bool) {
+    let (load_generation, use_gpu) = {
+        let mut state = plugin_state().lock().unwrap();
+        state.model_load_generation = state.model_load_generation.wrapping_add(1);
+        state.model_load_in_progress = true;
+        state.model = None;
+        state.model_path = path.clone();
+        state.model_status = "Loading ONNX model...".to_string();
+        state.job_status = "Idle".to_string();
+        state.cache_namespace.clear();
+        state.cache.clear();
+        state.hot_regions.clear();
+        state.sidebar_regions.clear();
+        state.error_stats = crate::stats::ErrorStats::default();
+        state.progress_value = 0.0;
+        (state.model_load_generation, state.config.use_gpu)
+    };
+    refresh_sidebar_if_available();
+    request_render_if_available();
+
+    plugin_trace(format!(
+        "load_model spawn path={} generation={} use_gpu={}",
+        path, load_generation, use_gpu
+    ));
+    thread::spawn(move || {
         let result = load_model(&path, use_gpu);
         plugin_trace(format!(
             "load_model finished path={} generation={} success={}",
@@ -220,12 +248,18 @@ fn load_model_from_dialog() {
             load_generation,
             result.is_ok()
         ));
-        finish_model_load(load_generation, path, result);
+        finish_model_load(load_generation, path, result, persist_on_success);
     });
 }
 
-fn finish_model_load(load_generation: u64, path: String, result: Result<LoadedModel, String>) {
+fn finish_model_load(
+    load_generation: u64,
+    path: String,
+    result: Result<LoadedModel, String>,
+    persist_on_success: bool,
+) {
     let mut log_error = None;
+    let mut model_to_persist = None;
 
     {
         let mut state = plugin_state().lock().unwrap();
@@ -243,6 +277,7 @@ fn finish_model_load(load_generation: u64, path: String, result: Result<LoadedMo
         match result {
             Ok(model) => {
                 let namespace = analysis_namespace(&model.summary.identity(), state.config.mip_level);
+                model_to_persist = persist_on_success.then(|| model.summary.path.clone());
                 state.model_path = model.summary.path.clone();
                 state.model_status = if model.summary.warnings.is_empty() {
                     format!(
@@ -281,6 +316,11 @@ fn finish_model_load(load_generation: u64, path: String, result: Result<LoadedMo
     if let Some(error) = log_error {
         log_message(HostLogLevelFFI::Error, error);
     }
+    if let Some(model_path) = model_to_persist
+        && let Err(error) = save_persisted_model_path(Some(&model_path))
+    {
+        log_message(HostLogLevelFFI::Error, error);
+    }
     refresh_sidebar_if_available();
     request_render_if_available();
 }
@@ -297,6 +337,9 @@ fn clear_model() {
     state.cache.clear();
     state.sidebar_regions.clear();
     state.hot_regions.clear();
+    if let Err(error) = save_persisted_model_path(None) {
+        log_message(HostLogLevelFFI::Error, error);
+    }
 }
 
 fn analyze_viewport() {
