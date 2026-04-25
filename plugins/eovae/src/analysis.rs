@@ -131,7 +131,9 @@ where
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut state = plugin_state().lock().unwrap();
-        state.job = Some(RunningJob { cancel: cancel.clone() });
+        state.job = Some(RunningJob {
+            cancel: cancel.clone(),
+        });
         state.progress_value = 0.0;
         state.job_status = match kind {
             JobKind::Viewport => "Analyzing viewport".to_string(),
@@ -145,7 +147,11 @@ where
         let result = worker(cancel.clone());
         let mut state = plugin_state().lock().unwrap();
         state.job = None;
-        state.progress_value = if cancel.load(Ordering::Relaxed) { 0.0 } else { 1.0 };
+        state.progress_value = if cancel.load(Ordering::Relaxed) {
+            0.0
+        } else {
+            1.0
+        };
         state.job_status = if cancel.load(Ordering::Relaxed) {
             "Analysis cancelled".to_string()
         } else if let Err(error) = &result {
@@ -199,7 +205,10 @@ fn run_tile_plan_with_file(
     let host = host_api().ok_or_else(|| "host API is not available".to_string())?;
     let (skip_background, background_threshold) = {
         let state = plugin_state().lock().unwrap();
-        (state.config.skip_background, state.config.background_threshold)
+        (
+            state.config.skip_background,
+            state.config.background_threshold,
+        )
     };
 
     for (index, tile_plan) in tiles.iter().copied().enumerate() {
@@ -282,8 +291,22 @@ fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32, mip_level: u32
     )
 }
 
-fn full_slide_tiles(image_width: u64, image_height: u64, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
-    grid_tiles(0, 0, image_width, image_height, image_width, image_height, tile_size, mip_level)
+fn full_slide_tiles(
+    image_width: u64,
+    image_height: u64,
+    tile_size: u32,
+    mip_level: u32,
+) -> Vec<TilePlan> {
+    grid_tiles(
+        0,
+        0,
+        image_width,
+        image_height,
+        image_width,
+        image_height,
+        tile_size,
+        mip_level,
+    )
 }
 
 fn grid_tiles(
@@ -308,15 +331,15 @@ fn grid_tiles(
                 let world_height = step as u32;
                 let read_width = tile_size;
                 let read_height = tile_size;
-            tiles.push(TilePlan {
-                x,
-                y,
-                width: world_width,
-                height: world_height,
-                level: mip_level,
-                read_width,
-                read_height,
-            });
+                tiles.push(TilePlan {
+                    x,
+                    y,
+                    width: world_width,
+                    height: world_height,
+                    level: mip_level,
+                    read_width,
+                    read_height,
+                });
             }
             x += step;
         }

@@ -64,7 +64,10 @@ extern "C" fn on_hud_action_ffi(
 }
 
 extern "C" fn on_ui_callback_ffi(callback_name: RString, args_json: RString) {
-    plugin_trace(format!("ui_callback name={} args={}", callback_name, args_json));
+    plugin_trace(format!(
+        "ui_callback name={} args={}",
+        callback_name, args_json
+    ));
     on_sidebar_callback(callback_name.as_str(), args_json.as_str());
     plugin_trace(format!("ui_callback done name={}", callback_name));
 }

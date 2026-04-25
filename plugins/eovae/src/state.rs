@@ -167,7 +167,8 @@ pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
         .values()
         .filter(|entry| entry.namespace == state.cache_namespace)
         .collect::<Vec<_>>();
-    state.error_stats = summarize_errors(entries.iter().map(|entry| entry.tile.mean_absolute_error));
+    state.error_stats =
+        summarize_errors(entries.iter().map(|entry| entry.tile.mean_absolute_error));
     state.error_histogram = build_error_histogram(
         entries.iter().map(|entry| entry.tile.mean_absolute_error),
         12,
@@ -195,7 +196,10 @@ pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
         .iter()
         .map(|region| SidebarRegion {
             id: region.id.clone(),
-            label: format!("x={} y={} size={}x{}", region.x, region.y, region.width, region.height),
+            label: format!(
+                "x={} y={} size={}x{}",
+                region.x, region.y, region.width, region.height
+            ),
             score: format!("MAE {:.4}", region.mean_absolute_error),
         })
         .collect();
@@ -291,7 +295,9 @@ mod tests {
         );
 
         state.cache_namespace = "b".to_string();
-        state.cache.retain(|_, entry| entry.namespace == state.cache_namespace);
+        state
+            .cache
+            .retain(|_, entry| entry.namespace == state.cache_namespace);
         assert!(state.cache.is_empty());
     }
 }

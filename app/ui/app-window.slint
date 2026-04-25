@@ -148,6 +148,7 @@ export component AppWindow inherits Window {
     in-out property <bool> show-minimap: true;
     in-out property <bool> show-metadata: false;
     in-out property <bool> show-scale-bar: true;
+    in-out property <bool> viewport-lock-enabled: false;
     in-out property <bool> show-plugin-sidebar: false;
     in-out property <float> plugin-sidebar-width: 0;
     in-out property <component-factory> plugin-sidebar-factory;
@@ -164,6 +165,7 @@ export component AppWindow inherits Window {
     callback toggle-minimap-requested();
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
+    callback toggle-viewport-lock-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -404,6 +406,7 @@ export component AppWindow inherits Window {
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
+            viewport-lock-enabled: root.viewport-lock-enabled;
             use-native-window-controls: root.use-native-window-controls;
             plugin-undo-redo-visible: root.plugin-undo-redo-visible;
             plugin-undo-enabled: root.plugin-undo-enabled;
@@ -424,6 +427,9 @@ export component AppWindow inherits Window {
             }
             toggle-scale-bar-requested => {
                 root.toggle-scale-bar-requested();
+            }
+            toggle-viewport-lock-requested => {
+                root.toggle-viewport-lock-requested();
             }
             tool-selected(tool) => {
                 root.tool-selected(tool);

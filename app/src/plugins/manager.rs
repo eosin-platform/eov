@@ -624,9 +624,9 @@ fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppWindow;
     use crate::plugin_host::{build_host_api, init_ui_runtime};
     use crate::state::AppState;
-    use crate::AppWindow;
     use common::TileCache;
     use parking_lot::RwLock;
     use slint::Timer;
@@ -797,7 +797,10 @@ data = "<svg/>"
         assert!(matches!(result, ActionOutcome::Handled));
 
         let state = state.read();
-        let active_sidebar = state.active_sidebar.as_ref().expect("sidebar should be active");
+        let active_sidebar = state
+            .active_sidebar
+            .as_ref()
+            .expect("sidebar should be active");
         assert_eq!(active_sidebar.plugin_id, "eovae");
         assert_eq!(active_sidebar.component, "EovaeSidebar");
     }

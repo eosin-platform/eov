@@ -8,8 +8,8 @@ use crate::state::{
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const TOOLBAR_BUTTON_ID: &str = "toggle_eovae";
 
@@ -57,10 +57,22 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         })
         .unwrap_or_default();
     let input_options = summary
-        .map(|summary| summary.inputs.iter().map(|tensor| tensor.name.clone()).collect::<Vec<_>>())
+        .map(|summary| {
+            summary
+                .inputs
+                .iter()
+                .map(|tensor| tensor.name.clone())
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     let output_options = summary
-        .map(|summary| summary.outputs.iter().map(|tensor| tensor.name.clone()).collect::<Vec<_>>())
+        .map(|summary| {
+            summary
+                .outputs
+                .iter()
+                .map(|tensor| tensor.name.clone())
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     let hot_regions = state
         .sidebar_regions
@@ -107,13 +119,24 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("output-options", json!(output_options)),
         property(
             "selected-input-index",
-            json!(summary.map(|summary| summary.selected_input as i32).unwrap_or(0)),
+            json!(
+                summary
+                    .map(|summary| summary.selected_input as i32)
+                    .unwrap_or(0)
+            ),
         ),
         property(
             "selected-output-index",
-            json!(summary.map(|summary| summary.selected_output as i32).unwrap_or(0)),
+            json!(
+                summary
+                    .map(|summary| summary.selected_output as i32)
+                    .unwrap_or(0)
+            ),
         ),
-        property("selected-mode-index", json!(state.visualization_mode.to_index())),
+        property(
+            "selected-mode-index",
+            json!(state.visualization_mode.to_index()),
+        ),
         property("mip-options", json!(["1x", "2x", "4x", "8x"])),
         property("selected-mip-index", json!(state.config.mip_level as i32)),
         property("job-status", json!(state.job_status)),
@@ -174,7 +197,9 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
             (changed, false)
         }
         "auto-update-changed" => {
-            let changed = update_boolean(args_json, |state, value| state.config.auto_update_viewport = value);
+            let changed = update_boolean(args_json, |state, value| {
+                state.config.auto_update_viewport = value
+            });
             (changed, false)
         }
         _ => (false, false),
@@ -300,7 +325,8 @@ fn finish_model_load(
 
         match result {
             Ok(model) => {
-                let namespace = analysis_namespace(&model.summary.identity(), state.config.mip_level);
+                let namespace =
+                    analysis_namespace(&model.summary.identity(), state.config.mip_level);
                 model_to_persist = persist_on_success.then(|| model.summary.path.clone());
                 state.model_path = model.summary.path.clone();
                 state.model_status = if model.summary.warnings.is_empty() {
@@ -484,23 +510,33 @@ fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
         return false;
     };
     let changed = if is_input {
-        model.summary.inputs.iter().position(|tensor| tensor.name == value).is_some_and(|index| {
-            if model.summary.selected_input == index {
-                false
-            } else {
-                model.summary.selected_input = index;
-                true
-            }
-        })
+        model
+            .summary
+            .inputs
+            .iter()
+            .position(|tensor| tensor.name == value)
+            .is_some_and(|index| {
+                if model.summary.selected_input == index {
+                    false
+                } else {
+                    model.summary.selected_input = index;
+                    true
+                }
+            })
     } else {
-        model.summary.outputs.iter().position(|tensor| tensor.name == value).is_some_and(|index| {
-            if model.summary.selected_output == index {
-                false
-            } else {
-                model.summary.selected_output = index;
-                true
-            }
-        })
+        model
+            .summary
+            .outputs
+            .iter()
+            .position(|tensor| tensor.name == value)
+            .is_some_and(|index| {
+                if model.summary.selected_output == index {
+                    false
+                } else {
+                    model.summary.selected_output = index;
+                    true
+                }
+            })
     };
     if !changed {
         return false;
@@ -662,7 +698,10 @@ mod tests {
     fn hover_region_accepts_single_string_array_payload() {
         reset_sidebar_test_state();
         assert!(update_hovered_region("[\"10:20:30:40\"]"));
-        assert_eq!(plugin_state().lock().unwrap().hovered_region_id.as_deref(), Some("10:20:30:40"));
+        assert_eq!(
+            plugin_state().lock().unwrap().hovered_region_id.as_deref(),
+            Some("10:20:30:40")
+        );
     }
 
     #[test]
@@ -675,8 +714,14 @@ mod tests {
     #[test]
     fn ignores_noop_boolean_updates() {
         reset_sidebar_test_state();
-        assert!(!update_boolean("false", |state, value| state.config.use_gpu = value));
-        assert!(!update_boolean("false", |state, value| state.config.auto_update_viewport = value));
+        assert!(!update_boolean("false", |state, value| state
+            .config
+            .use_gpu =
+            value));
+        assert!(!update_boolean("false", |state, value| state
+            .config
+            .auto_update_viewport =
+            value));
     }
 }
 

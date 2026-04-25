@@ -522,7 +522,10 @@ fn setup_callbacks(
         let plugin_id = plugin_id.to_string();
         let action_id = action_id.to_string();
         info!("Plugin button clicked: {plugin_id}:{action_id}");
-        plugin_trace(format!("toolbar click plugin={} action={}", plugin_id, action_id));
+        plugin_trace(format!(
+            "toolbar click plugin={} action={}",
+            plugin_id, action_id
+        ));
 
         let pm = Rc::clone(&pm);
         let filter_state = Arc::clone(&filter_state);
@@ -531,9 +534,14 @@ fn setup_callbacks(
         let rerender_ui = rerender_ui.clone();
         let rerender_cache = Arc::clone(&rerender_cache);
         Timer::single_shot(Duration::from_millis(0), move || {
-            plugin_trace(format!("toolbar deferred start plugin={} action={}", plugin_id, action_id));
+            plugin_trace(format!(
+                "toolbar deferred start plugin={} action={}",
+                plugin_id, action_id
+            ));
             if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!("Failed to dismiss active sidebar popups before toolbar action: {err}");
+                tracing::debug!(
+                    "Failed to dismiss active sidebar popups before toolbar action: {err}"
+                );
             }
             if let Some(ui) = rerender_ui.upgrade()
                 && deactivate_active_plugin_tool_if_matching(
@@ -549,7 +557,10 @@ fn setup_callbacks(
                     &rerender_state,
                     &rerender_cache,
                 );
-                plugin_trace(format!("toolbar deferred handled as tool toggle plugin={} action={}", plugin_id, action_id));
+                plugin_trace(format!(
+                    "toolbar deferred handled as tool toggle plugin={} action={}",
+                    plugin_id, action_id
+                ));
                 return;
             }
 
@@ -568,13 +579,19 @@ fn setup_callbacks(
                     &action_id,
                 ) {
                     Ok(true) => {
-                        plugin_trace(format!("toolbar deferred handled remotely plugin={} action={}", plugin_id, action_id));
+                        plugin_trace(format!(
+                            "toolbar deferred handled remotely plugin={} action={}",
+                            plugin_id, action_id
+                        ));
                         return;
                     }
                     Ok(false) => {}
                     Err(err) => {
                         tracing::error!("Remote plugin action error: {err}");
-                        plugin_trace(format!("toolbar deferred remote error plugin={} action={} err={}", plugin_id, action_id, err));
+                        plugin_trace(format!(
+                            "toolbar deferred remote error plugin={} action={} err={}",
+                            plugin_id, action_id, err
+                        ));
                         return;
                     }
                 }
@@ -586,17 +603,26 @@ fn setup_callbacks(
             };
 
             let mut pm = pm.borrow_mut();
-            plugin_trace(format!("toolbar deferred calling handle_action plugin={} action={}", plugin_id, action_id));
+            plugin_trace(format!(
+                "toolbar deferred calling handle_action plugin={} action={}",
+                plugin_id, action_id
+            ));
             match pm.handle_action(&plugin_id, &action_id) {
                 Ok(plugins::ActionOutcome::RustPluginWindow { plugin_root }) => {
-                    plugin_trace(format!("toolbar deferred rust window plugin={} action={}", plugin_id, action_id));
+                    plugin_trace(format!(
+                        "toolbar deferred rust window plugin={} action={}",
+                        plugin_id, action_id
+                    ));
                     crate::plugins::spawn_rust_plugin_window(&plugin_root);
                 }
                 Ok(plugins::ActionOutcome::PythonSpawn {
                     script_path,
                     plugin_root,
                 }) => {
-                    plugin_trace(format!("toolbar deferred python spawn plugin={} action={}", plugin_id, action_id));
+                    plugin_trace(format!(
+                        "toolbar deferred python spawn plugin={} action={}",
+                        plugin_id, action_id
+                    ));
                     // If the Python plugin has been spawned before (and presumably
                     // registered remote filters), toggle those filters on/off rather
                     // than spawning a second instance.
@@ -622,7 +648,10 @@ fn setup_callbacks(
                     }
                 }
                 Ok(plugins::ActionOutcome::Handled) => {
-                    plugin_trace(format!("toolbar deferred handled locally plugin={} action={}", plugin_id, action_id));
+                    plugin_trace(format!(
+                        "toolbar deferred handled locally plugin={} action={}",
+                        plugin_id, action_id
+                    ));
                     let (sidebar_toggle_is_active, handled_action_is_tool_button) = {
                         let state = rerender_state.read();
                         (
@@ -664,11 +693,17 @@ fn setup_callbacks(
                         &rerender_state,
                         &rerender_cache,
                     );
-                    plugin_trace(format!("toolbar deferred finished plugin={} action={}", plugin_id, action_id));
+                    plugin_trace(format!(
+                        "toolbar deferred finished plugin={} action={}",
+                        plugin_id, action_id
+                    ));
                 }
                 Err(e) => {
                     tracing::error!("Plugin action error: {e}");
-                    plugin_trace(format!("toolbar deferred action error plugin={} action={} err={}", plugin_id, action_id, e));
+                    plugin_trace(format!(
+                        "toolbar deferred action error plugin={} action={} err={}",
+                        plugin_id, action_id, e
+                    ));
                 }
             }
         });

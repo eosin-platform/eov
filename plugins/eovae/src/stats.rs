@@ -15,7 +15,10 @@ pub struct ErrorHistogramBin {
 }
 
 pub fn summarize_errors(values: impl IntoIterator<Item = f64>) -> ErrorStats {
-    let mut values = values.into_iter().filter(|value| value.is_finite()).collect::<Vec<_>>();
+    let mut values = values
+        .into_iter()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
     if values.is_empty() {
         return ErrorStats::default();
     }

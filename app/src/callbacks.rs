@@ -402,6 +402,15 @@ fn toggle_scale_bar_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_show_scale_bar(show_scale_bar);
 }
 
+fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let viewport_lock_enabled = {
+        let mut state = state.write();
+        state.toggle_viewport_lock();
+        state.viewport_lock_enabled
+    };
+    ui.set_viewport_lock_enabled(viewport_lock_enabled);
+}
+
 /// Convert Slint export settings to common crate's `ExportSettings`.
 fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
     let filtering_mode = match s.filtering_mode {
@@ -963,6 +972,20 @@ pub fn setup_callbacks(
         });
     }
 
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_viewport_lock_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_viewport_lock(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
     let suppress_polygon_mouse_up = Rc::new(Cell::new(false));
 
     {
@@ -1189,7 +1212,9 @@ pub fn setup_callbacks(
             };
 
             if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!("Failed to dismiss active sidebar popups before viewport context menu: {err}");
+                tracing::debug!(
+                    "Failed to dismiss active sidebar popups before viewport context menu: {err}"
+                );
             }
 
             let pane = pane_from_index(pane);
@@ -1500,7 +1525,6 @@ pub fn setup_callbacks(
                 {
                     let mut state = state_handle.write();
                     let pane_id = pane_from_index(pane);
-                    state.set_focused_pane(pane_id);
                     state.activate_tab_in_pane(pane_id, id);
                 }
                 let state = state_handle.read();
@@ -1756,6 +1780,7 @@ pub fn setup_callbacks(
                     viewport.drag_to(x as f64, y as f64);
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -1781,6 +1806,7 @@ pub fn setup_callbacks(
                     viewport.start_drag(x as f64, y as f64);
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -1806,6 +1832,7 @@ pub fn setup_callbacks(
                     viewport.end_drag();
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -1831,6 +1858,7 @@ pub fn setup_callbacks(
                     viewport.zoom_at(factor as f64, x as f64, y as f64);
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -1851,7 +1879,9 @@ pub fn setup_callbacks(
         ui.on_viewport_fit_to_view(move || {
             {
                 let mut state = state_handle.write();
-                if frame_active_viewport(&mut state) {
+                let changed = frame_active_viewport(&mut state);
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
                     state.request_render();
                 }
             }
@@ -1889,6 +1919,7 @@ pub fn setup_callbacks(
                     vp.center.y = new_y;
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -2026,7 +2057,9 @@ pub fn setup_callbacks(
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!("Failed to dismiss active sidebar popups on viewport mouse down: {err}");
+                tracing::debug!(
+                    "Failed to dismiss active sidebar popups on viewport mouse down: {err}"
+                );
             }
 
             let polygon_vertex_drag_candidate = {
@@ -2927,6 +2960,7 @@ pub fn setup_callbacks(
                     viewport.zoom_to(slider_value_to_zoom(value));
                     changed = true;
                 }
+                changed |= state.mirror_locked_viewports_from_active();
                 if changed {
                     state.request_render();
                 }
@@ -3138,10 +3172,15 @@ pub fn setup_callbacks(
             {
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
+                let mut changed = false;
                 if let Some(viewport) = state.active_viewport_mut() {
                     viewport.zoom_to(value as f64);
+                    changed = true;
                 }
-                state.request_render();
+                changed |= state.mirror_locked_viewports_from_active();
+                if changed {
+                    state.request_render();
+                }
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -3159,7 +3198,9 @@ pub fn setup_callbacks(
             {
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
-                if zoom_active_viewport(&mut state, ACTION_ZOOM_FACTOR) {
+                let changed = zoom_active_viewport(&mut state, ACTION_ZOOM_FACTOR);
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
                     state.request_render();
                 }
             }
@@ -3179,7 +3220,9 @@ pub fn setup_callbacks(
             {
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
-                if zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR) {
+                let changed = zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR);
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
                     state.request_render();
                 }
             }

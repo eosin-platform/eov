@@ -567,6 +567,11 @@ impl ViewportState {
         self.target_zoom = self.viewport.zoom;
     }
 
+    /// Smoothly animate to an absolute center and zoom.
+    pub fn smooth_set_center_zoom(&mut self, center_x: f64, center_y: f64, zoom: f64) {
+        self.animate_to(DVec2::new(center_x, center_y), zoom);
+    }
+
     /// Zoom at screen position with smooth exponential chase.
     /// Ideal for scroll wheel input — each tick compounds onto the target
     /// while the viewport smoothly converges via exponential smoothing.

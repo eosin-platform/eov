@@ -57,7 +57,13 @@ fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
     Color::from_argb_u8(if hovered { 0x58 } else { 0x40 }, red, green, blue)
 }
 
-fn overlay_polygon_fill_color(plugin_id: &str, red: u8, green: u8, blue: u8, hovered: bool) -> Color {
+fn overlay_polygon_fill_color(
+    plugin_id: &str,
+    red: u8,
+    green: u8,
+    blue: u8,
+    hovered: bool,
+) -> Color {
     if plugin_id == "eovae" {
         Color::from_argb_u8(0x00, red, green, blue)
     } else {
@@ -999,10 +1005,13 @@ pub(crate) fn set_active_viewport(center_x: f64, center_y: f64, zoom: f64) -> Re
     run_on_ui_thread(move |runtime| {
         {
             let mut state = runtime.state.write();
-            let viewport = state
-                .active_viewport_mut()
-                .ok_or_else(|| "no active viewport".to_string())?;
-            viewport.set_center_zoom(center_x, center_y, zoom.clamp(MIN_ZOOM, MAX_ZOOM));
+            {
+                let viewport = state
+                    .active_viewport_mut()
+                    .ok_or_else(|| "no active viewport".to_string())?;
+                viewport.set_center_zoom(center_x, center_y, zoom.clamp(MIN_ZOOM, MAX_ZOOM));
+            }
+            state.mirror_locked_viewports_from_active();
         }
         request_render_loop(
             &runtime.render_timer,
@@ -1018,10 +1027,13 @@ pub(crate) fn fit_active_viewport() -> Result<(), String> {
     run_on_ui_thread(move |runtime| {
         {
             let mut state = runtime.state.write();
-            let viewport = state
-                .active_viewport_mut()
-                .ok_or_else(|| "no active viewport".to_string())?;
-            viewport.smooth_fit_to_view();
+            {
+                let viewport = state
+                    .active_viewport_mut()
+                    .ok_or_else(|| "no active viewport".to_string())?;
+                viewport.smooth_fit_to_view();
+            }
+            state.mirror_locked_viewports_from_active();
         }
         request_render_loop(
             &runtime.render_timer,
@@ -1037,10 +1049,13 @@ pub(crate) fn frame_active_rect(x: f64, y: f64, width: f64, height: f64) -> Resu
     run_on_ui_thread(move |runtime| {
         {
             let mut state = runtime.state.write();
-            let viewport = state
-                .active_viewport_mut()
-                .ok_or_else(|| "no active viewport".to_string())?;
-            viewport.smooth_frame_rect(x, y, width, height);
+            {
+                let viewport = state
+                    .active_viewport_mut()
+                    .ok_or_else(|| "no active viewport".to_string())?;
+                viewport.smooth_frame_rect(x, y, width, height);
+            }
+            state.mirror_locked_viewports_from_active();
         }
         request_render_loop(
             &runtime.render_timer,
@@ -1326,14 +1341,18 @@ pub(crate) fn show_sidebar(
         .get()
         .is_some_and(|thread_id| *thread_id == std::thread::current().id())
     {
-        plugin_trace(format!("show_sidebar ui-thread prebuild start plugin={plugin_id}"));
+        plugin_trace(format!(
+            "show_sidebar ui-thread prebuild start plugin={plugin_id}"
+        ));
         let factory = build_sidebar_factory(
             &plugin_id,
             &resolved_request.ui_path,
             &resolved_request.component,
             vtable,
         )?;
-        plugin_trace(format!("show_sidebar ui-thread prebuild done plugin={plugin_id}"));
+        plugin_trace(format!(
+            "show_sidebar ui-thread prebuild done plugin={plugin_id}"
+        ));
         return UI_RUNTIME.with(|slot| {
             let runtime = slot.borrow();
             let runtime = runtime
@@ -1386,14 +1405,20 @@ pub(crate) fn show_sidebar(
                 ui.set_show_plugin_sidebar(false);
                 ui.set_plugin_sidebar_width(0.0);
             } else {
-                plugin_trace(format!("show_sidebar ui-thread set factory plugin={plugin_id}"));
+                plugin_trace(format!(
+                    "show_sidebar ui-thread set factory plugin={plugin_id}"
+                ));
                 ui.set_plugin_sidebar_factory(factory);
-                plugin_trace(format!("show_sidebar ui-thread show sidebar plugin={plugin_id}"));
+                plugin_trace(format!(
+                    "show_sidebar ui-thread show sidebar plugin={plugin_id}"
+                ));
                 ui.set_show_plugin_sidebar(true);
                 ui.set_plugin_sidebar_width(sidebar_width);
             }
 
-            plugin_trace(format!("show_sidebar ui-thread refresh buttons plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar ui-thread refresh buttons plugin={plugin_id}"
+            ));
             refresh_plugin_buttons_in_ui(runtime)?;
             request_render_loop(
                 &runtime.render_timer,
@@ -1423,7 +1448,9 @@ pub(crate) fn show_sidebar(
         let factory = if should_hide {
             None
         } else {
-            plugin_trace(format!("show_sidebar cross-thread build start plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar cross-thread build start plugin={plugin_id}"
+            ));
             Some(build_sidebar_factory(
                 &plugin_id,
                 &resolved_request.ui_path,
@@ -1432,7 +1459,9 @@ pub(crate) fn show_sidebar(
             )?)
         };
         if !should_hide {
-            plugin_trace(format!("show_sidebar cross-thread build done plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar cross-thread build done plugin={plugin_id}"
+            ));
         }
 
         let sidebar_width = resolved_request.width_px as f32;
@@ -1463,19 +1492,27 @@ pub(crate) fn show_sidebar(
         }
 
         if should_hide {
-            plugin_trace(format!("show_sidebar cross-thread hide ui plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar cross-thread hide ui plugin={plugin_id}"
+            ));
             ui.set_plugin_sidebar_factory(ComponentFactory::default());
             ui.set_show_plugin_sidebar(false);
             ui.set_plugin_sidebar_width(0.0);
         } else {
-            plugin_trace(format!("show_sidebar cross-thread set factory plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar cross-thread set factory plugin={plugin_id}"
+            ));
             ui.set_plugin_sidebar_factory(factory.expect("sidebar factory missing"));
-            plugin_trace(format!("show_sidebar cross-thread show sidebar plugin={plugin_id}"));
+            plugin_trace(format!(
+                "show_sidebar cross-thread show sidebar plugin={plugin_id}"
+            ));
             ui.set_show_plugin_sidebar(true);
             ui.set_plugin_sidebar_width(sidebar_width);
         }
 
-        plugin_trace(format!("show_sidebar cross-thread refresh buttons plugin={plugin_id}"));
+        plugin_trace(format!(
+            "show_sidebar cross-thread refresh buttons plugin={plugin_id}"
+        ));
         refresh_plugin_buttons_in_ui(runtime)?;
         request_render_loop(
             &runtime.render_timer,
@@ -1931,7 +1968,10 @@ fn build_plugin_component_factory(
 ) -> Result<ComponentFactory, String> {
     plugin_trace(format!(
         "build_factory start kind={} plugin={} component={} ui_path={}",
-        kind.label(), plugin_id, component, ui_path
+        kind.label(),
+        plugin_id,
+        component,
+        ui_path
     ));
     let ui_path = PathBuf::from(ui_path);
     let source = std::fs::read_to_string(&ui_path).map_err(|err| {
@@ -1946,7 +1986,9 @@ fn build_plugin_component_factory(
     let result = spin_on(compiler.build_from_source(source, ui_path.clone()));
     plugin_trace(format!(
         "build_factory compiled kind={} plugin={} component={}",
-        kind.label(), plugin_id, component
+        kind.label(),
+        plugin_id,
+        component
     ));
     let mut has_errors = false;
     for diag in result.diagnostics() {
@@ -1982,7 +2024,8 @@ fn build_plugin_component_factory(
     Ok(ComponentFactory::new(move |ctx| {
         plugin_trace(format!(
             "factory create_embedded start kind={} plugin={}",
-            kind.label(), plugin_id
+            kind.label(),
+            plugin_id
         ));
         if matches!(kind, PluginComponentKind::Sidebar) {
             BUILDING_SIDEBAR_PLUGIN.with(|slot| {
@@ -2017,10 +2060,10 @@ fn build_plugin_component_factory(
             );
         }
 
-
         plugin_trace(format!(
             "factory create_embedded done kind={} plugin={}",
-            kind.label(), plugin_id
+            kind.label(),
+            plugin_id
         ));
 
         if matches!(kind, PluginComponentKind::Sidebar) {
@@ -2448,10 +2491,7 @@ pub(crate) fn dismiss_active_sidebar_popups() -> Result<(), String> {
                 return Ok(());
             };
 
-            let _ = instance.set_property(
-                "dismiss-popups",
-                slint_interpreter::Value::Bool(true),
-            );
+            let _ = instance.set_property("dismiss-popups", slint_interpreter::Value::Bool(true));
             Ok(())
         })
     })
@@ -2477,13 +2517,12 @@ pub(crate) fn active_modal_captures_hotkeys() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_api::ffi::{
-        ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI,
-        UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI,
-        ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
-        ViewportSnapshotFFI,
-    };
     use abi_stable::std_types::{RString, RVec};
+    use plugin_api::ffi::{
+        ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, UiPropertyFFI,
+        ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+        ViewportOverlayVertexFFI, ViewportSnapshotFFI,
+    };
 
     extern "C" fn noop_set_host_api(_host_api: HostApiVTable) {}
     extern "C" fn noop_get_toolbar_buttons() -> RVec<plugin_api::ffi::ToolbarButtonFFI> {
@@ -2504,29 +2543,74 @@ mod tests {
     extern "C" fn noop_on_ui_callback(_callback_name: RString, _args_json: RString) {}
     extern "C" fn fake_eovae_sidebar_properties() -> RVec<UiPropertyFFI> {
         RVec::from(vec![
-            UiPropertyFFI { name: "model-path".into(), json_value: "\"\"".into() },
+            UiPropertyFFI {
+                name: "model-path".into(),
+                json_value: "\"\"".into(),
+            },
             UiPropertyFFI {
                 name: "model-status".into(),
                 json_value: "\"No ONNX model loaded.\"".into(),
             },
-            UiPropertyFFI { name: "model-loaded".into(), json_value: "false".into() },
-            UiPropertyFFI { name: "input-rows".into(), json_value: "[]".into() },
-            UiPropertyFFI { name: "output-rows".into(), json_value: "[]".into() },
-            UiPropertyFFI { name: "input-options".into(), json_value: "[]".into() },
-            UiPropertyFFI { name: "output-options".into(), json_value: "[]".into() },
-            UiPropertyFFI { name: "selected-input-index".into(), json_value: "0".into() },
-            UiPropertyFFI { name: "selected-output-index".into(), json_value: "0".into() },
-            UiPropertyFFI { name: "selected-mode-index".into(), json_value: "0".into() },
-            UiPropertyFFI { name: "job-status".into(), json_value: "\"Idle\"".into() },
-            UiPropertyFFI { name: "progress-value".into(), json_value: "0.0".into() },
-            UiPropertyFFI { name: "job-running".into(), json_value: "false".into() },
-            UiPropertyFFI { name: "use-gpu".into(), json_value: "false".into() },
-            UiPropertyFFI { name: "auto-update".into(), json_value: "false".into() },
+            UiPropertyFFI {
+                name: "model-loaded".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "input-rows".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "output-rows".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "input-options".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "output-options".into(),
+                json_value: "[]".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-input-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-output-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "selected-mode-index".into(),
+                json_value: "0".into(),
+            },
+            UiPropertyFFI {
+                name: "job-status".into(),
+                json_value: "\"Idle\"".into(),
+            },
+            UiPropertyFFI {
+                name: "progress-value".into(),
+                json_value: "0.0".into(),
+            },
+            UiPropertyFFI {
+                name: "job-running".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "use-gpu".into(),
+                json_value: "false".into(),
+            },
+            UiPropertyFFI {
+                name: "auto-update".into(),
+                json_value: "false".into(),
+            },
             UiPropertyFFI {
                 name: "stats-summary".into(),
                 json_value: "\"No analysis yet.\"".into(),
             },
-            UiPropertyFFI { name: "hot-regions".into(), json_value: "[]".into() },
+            UiPropertyFFI {
+                name: "hot-regions".into(),
+                json_value: "[]".into(),
+            },
         ])
     }
     extern "C" fn noop_get_viewport_context_menu_items(
@@ -2628,15 +2712,11 @@ mod tests {
 
     #[test]
     fn eovae_embedded_sidebar_factory_attaches_to_app_window() {
-        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let factory = build_sidebar_factory(
-            "eovae",
-            ui_path.to_str().unwrap(),
-            "EovaeSidebar",
-            None,
-        )
-        .unwrap();
+        let ui_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let factory =
+            build_sidebar_factory("eovae", ui_path.to_str().unwrap(), "EovaeSidebar", None)
+                .unwrap();
 
         let ui = AppWindow::new().unwrap();
         ui.set_plugin_sidebar_factory(factory);
@@ -2646,8 +2726,8 @@ mod tests {
 
     #[test]
     fn eovae_embedded_sidebar_factory_applies_initial_properties() {
-        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let ui_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
         let factory = build_sidebar_factory(
             "eovae",
             ui_path.to_str().unwrap(),

@@ -200,8 +200,8 @@ mod tests {
 
     #[test]
     fn eovae_sidebar_runtime_compiles_and_creates() {
-        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let ui_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
         let source = std::fs::read_to_string(&ui_path).unwrap();
 
         let compiler = slint_interpreter::Compiler::default();

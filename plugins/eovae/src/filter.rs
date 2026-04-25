@@ -1,4 +1,4 @@
-use crate::analysis::{TileCacheEntry, start_viewport_analysis, should_render_overlay};
+use crate::analysis::{TileCacheEntry, should_render_overlay, start_viewport_analysis};
 use crate::state::{
     VisualizationMode, host_api, mark_auto_update, plugin_state, should_auto_update,
 };
@@ -69,7 +69,11 @@ fn maybe_schedule_auto_viewport_analysis() {
     }
     let (model, namespace, mip_level) = {
         let state = plugin_state().lock().unwrap();
-        (state.model.clone(), state.cache_namespace.clone(), state.config.mip_level)
+        (
+            state.model.clone(),
+            state.cache_namespace.clone(),
+            state.config.mip_level,
+        )
     };
     if let Some(model) = model {
         mark_auto_update(viewport_key);
@@ -77,7 +81,10 @@ fn maybe_schedule_auto_viewport_analysis() {
     }
 }
 
-fn intersects_viewport(entry: &TileCacheEntry, viewport: &plugin_api::ffi::ViewportSnapshotFFI) -> bool {
+fn intersects_viewport(
+    entry: &TileCacheEntry,
+    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
+) -> bool {
     let right = entry.tile.x as f64 + entry.tile.width as f64;
     let bottom = entry.tile.y as f64 + entry.tile.height as f64;
     !(right < viewport.bounds_left
@@ -97,10 +104,16 @@ fn composite_tile(
     let view_width = (viewport.bounds_right - viewport.bounds_left).max(1.0);
     let view_height = (viewport.bounds_bottom - viewport.bounds_top).max(1.0);
     let tile = &entry.tile;
-    let sx0 = (((tile.x as f64 - viewport.bounds_left) / view_width) * frame_width as f64).floor() as i32;
-    let sy0 = (((tile.y as f64 - viewport.bounds_top) / view_height) * frame_height as f64).floor() as i32;
-    let sx1 = ((((tile.x + tile.width as u64) as f64 - viewport.bounds_left) / view_width) * frame_width as f64).ceil() as i32;
-    let sy1 = ((((tile.y + tile.height as u64) as f64 - viewport.bounds_top) / view_height) * frame_height as f64).ceil() as i32;
+    let sx0 =
+        (((tile.x as f64 - viewport.bounds_left) / view_width) * frame_width as f64).floor() as i32;
+    let sy0 = (((tile.y as f64 - viewport.bounds_top) / view_height) * frame_height as f64).floor()
+        as i32;
+    let sx1 = ((((tile.x + tile.width as u64) as f64 - viewport.bounds_left) / view_width)
+        * frame_width as f64)
+        .ceil() as i32;
+    let sy1 = ((((tile.y + tile.height as u64) as f64 - viewport.bounds_top) / view_height)
+        * frame_height as f64)
+        .ceil() as i32;
     let sample_width = tile.sample_width.max(1);
     let sample_height = tile.sample_height.max(1);
 

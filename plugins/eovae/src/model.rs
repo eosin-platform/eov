@@ -8,8 +8,8 @@ use ort::{
 use serde::Serialize;
 use std::fmt;
 use std::path::Path;
-use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -45,7 +45,13 @@ impl TensorSummary {
         let dims = self
             .shape
             .iter()
-            .map(|dimension| if *dimension < 0 { "?".to_string() } else { dimension.to_string() })
+            .map(|dimension| {
+                if *dimension < 0 {
+                    "?".to_string()
+                } else {
+                    dimension.to_string()
+                }
+            })
             .collect::<Vec<_>>()
             .join(" x ");
         format!("[{dims}]")
@@ -68,11 +74,7 @@ impl ModelSummary {
     pub fn identity(&self) -> String {
         format!(
             "{}|{}|{}|{}|{}",
-            self.path,
-            self.selected_input,
-            self.selected_output,
-            self.layout,
-            self.tile_size
+            self.path, self.selected_input, self.selected_output, self.layout, self.tile_size
         )
     }
 }
@@ -155,7 +157,12 @@ fn build_inference_session_inner(path: &str, prefer_gpu: bool) -> Result<Session
     } else {
         CPU_SESSION_BUILD_TIMEOUT
     };
-    commit_session_with_timeout(builder, path, timeout, if prefer_gpu { "gpu" } else { "cpu" })
+    commit_session_with_timeout(
+        builder,
+        path,
+        timeout,
+        if prefer_gpu { "gpu" } else { "cpu" },
+    )
 }
 
 fn build_session_with_watchdog(path: &str, prefer_gpu: bool) -> Result<Session, String> {
@@ -173,12 +180,16 @@ fn build_session_with_watchdog(path: &str, prefer_gpu: bool) -> Result<Session, 
         let _ = sender.send(result);
     });
 
-    debug_timing(&format!("waiting up to {:?} for {label} session build thread", timeout));
+    debug_timing(&format!(
+        "waiting up to {:?} for {label} session build thread",
+        timeout
+    ));
     match receiver.recv_timeout(timeout) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            Err(format!("{label} session build timed out after {:?}", timeout))
-        }
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "{label} session build timed out after {:?}",
+            timeout
+        )),
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             Err(format!("{label} session build thread disconnected"))
         }
@@ -196,13 +207,21 @@ fn commit_session_with_timeout(
     let timeout_label = label.to_string();
     thread::spawn(move || {
         thread::sleep(timeout);
-        debug_timing(&format!("{timeout_label} session build exceeded {:?}; requesting cancellation", timeout));
+        debug_timing(&format!(
+            "{timeout_label} session build exceeded {:?}; requesting cancellation",
+            timeout
+        ));
         let _ = canceler.cancel();
     });
 
     debug_timing(&format!("starting {label} session build"));
-    let result = builder.commit_from_file(path).map_err(|error| error.to_string());
-    debug_timing(&format!("{label} session build finished in {:?}", start.elapsed()));
+    let result = builder
+        .commit_from_file(path)
+        .map_err(|error| error.to_string());
+    debug_timing(&format!(
+        "{label} session build finished in {:?}",
+        start.elapsed()
+    ));
     result.map_err(|error| format!("{label} session build failed: {error}"))
 }
 
@@ -261,7 +280,8 @@ pub fn infer_model_contract(
 
     let mut warnings = Vec::new();
     if input_candidates.len() > 1 {
-        warnings.push("multiple image-like inputs were found; the first one was selected".to_string());
+        warnings
+            .push("multiple image-like inputs were found; the first one was selected".to_string());
     }
     if output_candidates.len() > 1 {
         warnings.push("multiple image-like outputs were found; the current output can be changed from the sidebar".to_string());
@@ -348,7 +368,10 @@ pub fn run_reconstruction(
 
     let session_started = Instant::now();
     let mut session = ensure_inference_session(model)?;
-    debug_timing(&format!("ensure_inference_session completed in {:?}", session_started.elapsed()));
+    debug_timing(&format!(
+        "ensure_inference_session completed in {:?}",
+        session_started.elapsed()
+    ));
 
     let session = session
         .as_mut()
@@ -356,9 +379,14 @@ pub fn run_reconstruction(
 
     let run_started = Instant::now();
     let outputs = session
-        .run(ort::inputs![TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?])
+        .run(ort::inputs![
+            TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?
+        ])
         .map_err(|error| error.to_string())?;
-    debug_timing(&format!("session.run completed in {:?}", run_started.elapsed()));
+    debug_timing(&format!(
+        "session.run completed in {:?}",
+        run_started.elapsed()
+    ));
 
     let output_value = &outputs[model.summary.selected_output];
     let output = output_value
@@ -367,7 +395,9 @@ pub fn run_reconstruction(
     postprocess_reconstruction(output, model.summary.layout)
 }
 
-fn ensure_inference_session(model: &LoadedModel) -> Result<std::sync::MutexGuard<'_, Option<Session>>, String> {
+fn ensure_inference_session(
+    model: &LoadedModel,
+) -> Result<std::sync::MutexGuard<'_, Option<Session>>, String> {
     {
         let session = model
             .session
@@ -482,7 +512,9 @@ fn postprocess_reconstruction(
         return Err("reconstruction output must have at least 3 channels".to_string());
     }
 
-    let max_value = output.iter().fold(f32::MIN, |current, value| current.max(*value));
+    let max_value = output
+        .iter()
+        .fold(f32::MIN, |current, value| current.max(*value));
     let scale = if max_value <= 1.5 { 255.0 } else { 1.0 };
 
     let mut rgb = vec![0u8; width * height * 3];
@@ -565,13 +597,19 @@ mod tests {
             .max(1);
         let x = ((slide.properties().width - tile_size as u64) / 2) as i64;
         let y = ((slide.properties().height - tile_size as u64) / 2) as i64;
-        println!("reading tile at x={}, y={} with size {}x{}", x, y, tile_size, tile_size);
+        println!(
+            "reading tile at x={}, y={} with size {}x{}",
+            x, y, tile_size, tile_size
+        );
         let rgba = slide.read_region(x, y, 0, tile_size, tile_size).unwrap();
         println!("tile read, running reconstruction...");
         let reconstruction = run_reconstruction(&model, &rgba, tile_size, tile_size).unwrap();
         println!("reconstruction completed, validating output...");
         assert_eq!(rgba.len(), tile_size as usize * tile_size as usize * 4);
-        assert_eq!(reconstruction.rgb.len(), tile_size as usize * tile_size as usize * 3);
+        assert_eq!(
+            reconstruction.rgb.len(),
+            tile_size as usize * tile_size as usize * 3
+        );
         assert!(reconstruction.rgb.iter().any(|value| *value != 0));
     }
 

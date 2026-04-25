@@ -38,11 +38,10 @@ fn stage_vendored_ort_sidecars() -> Result<(), String> {
         println!("cargo:rerun-if-changed={}", source.display());
         for destination_dir in [&profile_dir, &profile_dir.join("deps")] {
             fs::create_dir_all(destination_dir).map_err(|error| error.to_string())?;
-            let destination = destination_dir.join(
-                source
-                    .file_name()
-                    .ok_or_else(|| format!("sidecar path has no file name: {}", source.display()))?,
-            );
+            let destination =
+                destination_dir.join(source.file_name().ok_or_else(|| {
+                    format!("sidecar path has no file name: {}", source.display())
+                })?);
             copy_if_needed(&source, &destination)?;
         }
     }
@@ -51,7 +50,10 @@ fn stage_vendored_ort_sidecars() -> Result<(), String> {
 }
 
 fn locate_ort_lib_dir(target: &str) -> Result<Option<PathBuf>, String> {
-    let cache_root = ort_cache_root()?.join("ort.pyke.io").join("dfbin").join(target);
+    let cache_root = ort_cache_root()?
+        .join("ort.pyke.io")
+        .join("dfbin")
+        .join(target);
     if !cache_root.is_dir() {
         return Ok(None);
     }
@@ -77,7 +79,9 @@ fn ort_cache_root() -> Result<PathBuf, String> {
 }
 
 fn has_sidecars(lib_dir: &Path) -> bool {
-    collect_sidecars(lib_dir).map(|entries| !entries.is_empty()).unwrap_or(false)
+    collect_sidecars(lib_dir)
+        .map(|entries| !entries.is_empty())
+        .unwrap_or(false)
 }
 
 fn collect_sidecars(lib_dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -90,7 +94,8 @@ fn collect_sidecars(lib_dir: &Path) -> Result<Vec<PathBuf>, String> {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                 return false;
             };
-            (name.starts_with("libonnxruntime") && (name.contains(".so") || name.ends_with(".dylib")))
+            (name.starts_with("libonnxruntime")
+                && (name.contains(".so") || name.ends_with(".dylib")))
                 || (name.starts_with("onnxruntime") && name.ends_with(".dll"))
         })
         .collect::<Vec<_>>();
@@ -100,7 +105,12 @@ fn collect_sidecars(lib_dir: &Path) -> Result<Vec<PathBuf>, String> {
 
 fn copy_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
     let should_copy = match fs::metadata(destination) {
-        Ok(metadata) => metadata.len() != fs::metadata(source).map_err(|error| error.to_string())?.len(),
+        Ok(metadata) => {
+            metadata.len()
+                != fs::metadata(source)
+                    .map_err(|error| error.to_string())?
+                    .len()
+        }
         Err(_) => true,
     };
     if should_copy {

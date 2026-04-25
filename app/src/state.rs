@@ -565,6 +565,8 @@ pub struct AppState {
     pub show_metadata: bool,
     /// Whether scale bars are shown in all viewports.
     pub show_scale_bar: bool,
+    /// Whether viewport navigation is mirrored across panes showing the same file.
+    pub viewport_lock_enabled: bool,
     /// Currently active plugin-provided sidebar, if any.
     pub active_sidebar: Option<plugin_api::ActiveSidebar>,
     /// Whether a new frame should be rendered as soon as possible
@@ -634,6 +636,7 @@ impl AppState {
             show_minimap: true,
             show_metadata: false,
             show_scale_bar: true,
+            viewport_lock_enabled: false,
             active_sidebar: None,
             needs_render: true,
             render_loop_running: false,
@@ -835,8 +838,19 @@ impl AppState {
         if pane.0 >= self.panes.len() {
             return;
         }
+
+        let previous_pane = self.active_viewport_pane();
+        let previous_file_id = self.active_file_id_for_pane(previous_pane);
         self.focused_pane = pane;
         self.sync_active_file_id();
+
+        if self.viewport_lock_enabled {
+            let active_pane = self.active_viewport_pane();
+            let active_file_id = self.active_file_id_for_pane(active_pane);
+            if active_pane != previous_pane || active_file_id != previous_file_id {
+                self.sync_locked_viewports_for_active_file(true);
+            }
+        }
     }
 
     fn ensure_file_pane_state(&mut self, id: i32, pane: PaneId, source_pane: PaneId) {
@@ -1092,6 +1106,9 @@ impl AppState {
         if still_open_elsewhere {
             self.needs_render = true;
             self.sync_active_file_id();
+            if self.viewport_lock_enabled {
+                self.sync_locked_viewports_for_active_file(true);
+            }
             return;
         }
 
@@ -1099,6 +1116,9 @@ impl AppState {
             self.home_tabs.retain(|&tab_id| tab_id != id);
             self.needs_render = true;
             self.sync_active_file_id();
+            if self.viewport_lock_enabled {
+                self.sync_locked_viewports_for_active_file(true);
+            }
             return;
         }
 
@@ -1343,6 +1363,9 @@ impl AppState {
 
             self.needs_render = true;
             self.sync_active_file_id();
+            if self.viewport_lock_enabled {
+                self.sync_locked_viewports_for_active_file(true);
+            }
         }
     }
 
@@ -1389,6 +1412,98 @@ impl AppState {
     pub fn toggle_scale_bar(&mut self) {
         self.show_scale_bar = !self.show_scale_bar;
         self.needs_render = true;
+    }
+
+    pub fn toggle_viewport_lock(&mut self) {
+        self.viewport_lock_enabled = !self.viewport_lock_enabled;
+        if self.viewport_lock_enabled {
+            self.sync_locked_viewports_for_active_file(true);
+        }
+        self.needs_render = true;
+    }
+
+    pub fn mirror_locked_viewports_from_active(&mut self) -> bool {
+        if !self.viewport_lock_enabled {
+            return false;
+        }
+        self.sync_locked_viewports_for_active_file(false)
+    }
+
+    fn active_viewport_pane(&self) -> PaneId {
+        if self.split_enabled {
+            self.focused_pane
+        } else {
+            PaneId::PRIMARY
+        }
+    }
+
+    fn sync_locked_viewports_for_active_file(&mut self, animated: bool) -> bool {
+        let source_pane = self.active_viewport_pane();
+        let Some(file_id) = self.active_file_id_for_pane(source_pane) else {
+            return false;
+        };
+        self.sync_viewports_for_file_from_pane(file_id, source_pane, animated)
+    }
+
+    fn sync_viewports_for_file_from_pane(
+        &mut self,
+        file_id: i32,
+        source_pane: PaneId,
+        animated: bool,
+    ) -> bool {
+        let Some(source_viewport) = self
+            .get_file(file_id)
+            .and_then(|file| file.pane_state(source_pane))
+            .map(|pane_state| pane_state.viewport.clone())
+        else {
+            return false;
+        };
+
+        let target_panes: Vec<_> = self
+            .panes
+            .iter()
+            .enumerate()
+            .filter_map(|(pane_index, _)| {
+                let pane = PaneId(pane_index);
+                (pane != source_pane && self.active_file_id_for_pane(pane) == Some(file_id))
+                    .then_some(pane)
+            })
+            .collect();
+
+        if target_panes.is_empty() {
+            return false;
+        }
+
+        let mut changed = false;
+        if let Some(file) = self.get_file_mut(file_id) {
+            for target_pane in target_panes {
+                file.ensure_pane_state_from(target_pane, source_pane);
+                if let Some(target_state) = file.pane_state_mut(target_pane) {
+                    if animated {
+                        let center = source_viewport.viewport.center;
+                        target_state.viewport.smooth_set_center_zoom(
+                            center.x,
+                            center.y,
+                            source_viewport.viewport.zoom,
+                        );
+                    } else {
+                        let width = target_state.viewport.viewport.width;
+                        let height = target_state.viewport.viewport.height;
+                        let mut synced_viewport = source_viewport.clone();
+                        synced_viewport.viewport.width = width;
+                        synced_viewport.viewport.height = height;
+                        target_state.viewport = synced_viewport;
+                    }
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            self.request_render();
+        }
+
+        changed
     }
 
     pub fn set_active_sidebar(&mut self, sidebar: plugin_api::ActiveSidebar) {
