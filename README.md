@@ -271,7 +271,7 @@ This first version extracts fixed-grid patches only. Annotation-driven labeling 
 
 eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
 
-An official companion plugin, [Annotations](https://github.com/eosin-platform/eov-annotations-plugin), adds local point and polygon annotations, slide-scoped annotation sets, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
+An official companion plugin, [Annotations](https://github.com/eosin-platform/eov-annotations-plugin), adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
 
 Plugins can be written in any language and need not use Slint for their GUIs. Example plugins written in Python are available in `example_plugins/`, which communicate with the host app via gRPC. Plugins can access underlying GPU resources via Vulkan DMA buf.
 
