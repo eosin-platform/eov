@@ -4031,16 +4031,10 @@ pub fn setup_callbacks(
 
                     let toolbar_height = 40.0;
                     let in_drag_area = if let Some(ui) = ui_weak.upgrade() {
-                        let left_drag_start = ui.get_toolbar_left_drag_area_x() as f64;
-                        let left_drag_end =
-                            left_drag_start + ui.get_toolbar_left_drag_area_width() as f64;
-                        let right_drag_start = ui.get_toolbar_right_drag_area_x() as f64;
-                        let right_drag_end =
-                            right_drag_start + ui.get_toolbar_right_drag_area_width() as f64;
+                        let drag_start = ui.get_toolbar_drag_area_x() as f64;
+                        let drag_end = drag_start + ui.get_toolbar_drag_area_width() as f64;
 
-                        ly < toolbar_height
-                            && ((lx >= left_drag_start && lx < left_drag_end)
-                                || (lx >= right_drag_start && lx < right_drag_end))
+                        ly < toolbar_height && lx >= drag_start && lx < drag_end
                     } else {
                         false
                     };
