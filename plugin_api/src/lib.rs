@@ -33,7 +33,7 @@ pub mod viewport_filter;
 
 pub use host::{
     ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, ModalDialogRequest, OpenFileInfo,
-    SidebarRequest, ViewportSnapshot,
+    PluginUndoRedoState, SidebarRequest, ViewportSnapshot,
 };
 pub use manifest::PluginManifest;
 pub use manifest::{ManifestToolbarButton, PluginLanguage};
@@ -146,6 +146,17 @@ pub trait HostContext {
             "host does not support sidebars for plugin '{plugin_id}'"
         )))
     }
+
+    /// Update plugin-owned undo/redo visibility and availability state.
+    fn set_undo_redo_state(
+        &mut self,
+        plugin_id: &str,
+        _state: PluginUndoRedoState,
+    ) -> PluginResult<()> {
+        Err(PluginError::Other(format!(
+            "host does not support undo/redo for plugin '{plugin_id}'"
+        )))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +182,16 @@ pub trait Plugin: Send + Sync {
         host: &mut dyn HostContext,
         plugin_root: &Path,
     ) -> PluginResult<()>;
+
+    /// Called when the host dispatches an undo request to this plugin.
+    fn on_undo(&self, _host: &mut dyn HostContext, _plugin_root: &Path) -> PluginResult<()> {
+        Ok(())
+    }
+
+    /// Called when the host dispatches a redo request to this plugin.
+    fn on_redo(&self, _host: &mut dyn HostContext, _plugin_root: &Path) -> PluginResult<()> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

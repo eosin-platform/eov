@@ -53,7 +53,7 @@ package_plugin() {
     tar -cf "$package_path" -C "$staging_dir" .
 }
 
-echo "Building eov and all example plugins..."
+echo "Building eov with annotation plugin..."
 
 cargo build -p app
 

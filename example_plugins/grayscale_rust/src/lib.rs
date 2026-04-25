@@ -460,6 +460,14 @@ extern "C" fn on_polygon_annotation_moved_ffi(
 ) {
 }
 
+extern "C" fn on_undo_ffi() -> ActionResponseFFI {
+    ActionResponseFFI { open_window: false }
+}
+
+extern "C" fn on_redo_ffi() -> ActionResponseFFI {
+    ActionResponseFFI { open_window: false }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
     PluginVTable {
@@ -476,6 +484,8 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         get_viewport_overlay_polygons: get_viewport_overlay_polygons_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
         on_polygon_annotation_placed: on_polygon_annotation_placed_ffi,
+        on_undo: on_undo_ffi,
+        on_redo: on_redo_ffi,
         on_point_annotation_moved: on_point_annotation_moved_ffi,
         on_polygon_annotation_moved: on_polygon_annotation_moved_ffi,
         get_viewport_filters: get_viewport_filters_ffi,

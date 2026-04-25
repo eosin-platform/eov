@@ -153,6 +153,10 @@ export component AppWindow inherits Window {
     in-out property <component-factory> plugin-sidebar-factory;
     in-out property <[PluginButtonData]> plugin-buttons: [];
     in-out property <[HudToolbarButtonData]> plugin-hud-buttons: [];
+    in-out property <bool> plugin-undo-redo-visible: false;
+    in-out property <bool> plugin-undo-enabled: false;
+    in-out property <bool> plugin-redo-enabled: false;
+    in-out property <string> plugin-undo-redo-plugin-id: "";
 
     callback open-file-requested();
     callback new-tab-requested(int);
@@ -189,6 +193,8 @@ export component AppWindow inherits Window {
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
     callback plugin-button-clicked(/* plugin-id */ string, /* action-id */ string);
+    callback plugin-undo-requested(/* plugin-id */ string);
+    callback plugin-redo-requested(/* plugin-id */ string);
     callback hud-plugin-button-clicked(int, /* plugin-id */ string, /* action-id */ string);
     callback plugin-tool-hotkey-pressed(string, bool) -> bool;
     callback plugin-tool-hotkey-released(string) -> bool;
@@ -341,6 +347,29 @@ export component AppWindow inherits Window {
             if !root.global-hotkeys-enabled() {
                 reject
             }
+            if root.plugin-undo-redo-visible && root.plugin-undo-redo-plugin-id != "" {
+                if root.plugin-undo-enabled
+                    && ((e.text == "z" || e.text == "Z")
+                        && ((root.use-native-window-controls && e.modifiers.meta)
+                            || (!root.use-native-window-controls && e.modifiers.control))
+                        && !e.modifiers.shift)
+                {
+                    root.plugin-undo-requested(root.plugin-undo-redo-plugin-id);
+                    accept
+                }
+                if root.plugin-redo-enabled
+                    && (((e.text == "z" || e.text == "Z")
+                            && ((root.use-native-window-controls && e.modifiers.meta)
+                                || (!root.use-native-window-controls && e.modifiers.control))
+                            && e.modifiers.shift)
+                        || ((e.text == "y" || e.text == "Y")
+                            && ((root.use-native-window-controls && e.modifiers.meta)
+                                || (!root.use-native-window-controls && e.modifiers.control))))
+                {
+                    root.plugin-redo-requested(root.plugin-undo-redo-plugin-id);
+                    accept
+                }
+            }
             if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
                 root.window-close();
                 accept
@@ -376,6 +405,10 @@ export component AppWindow inherits Window {
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
             use-native-window-controls: root.use-native-window-controls;
+            plugin-undo-redo-visible: root.plugin-undo-redo-visible;
+            plugin-undo-enabled: root.plugin-undo-enabled;
+            plugin-redo-enabled: root.plugin-redo-enabled;
+            plugin-undo-redo-plugin-id: root.plugin-undo-redo-plugin-id;
             plugin-buttons: root.plugin-buttons;
             open-file-requested => {
                 root.open-file-requested();
@@ -406,6 +439,12 @@ export component AppWindow inherits Window {
             }
             plugin-button-clicked(plugin-id, action-id) => {
                 root.plugin-button-clicked(plugin-id, action-id);
+            }
+            plugin-undo-requested(plugin-id) => {
+                root.plugin-undo-requested(plugin-id);
+            }
+            plugin-redo-requested(plugin-id) => {
+                root.plugin-redo-requested(plugin-id);
             }
             window-minimize => {
                 root.window-minimize();

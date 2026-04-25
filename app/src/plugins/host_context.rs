@@ -5,7 +5,10 @@
 //! to wire them into the real UI.
 
 use crate::plugins::toolbar::ToolbarManager;
-use plugin_api::{HostContext, PluginError, PluginResult, ToolbarButtonRegistration};
+use plugin_api::{
+    HostContext, PluginError, PluginResult, PluginUndoRedoState, ToolbarButtonRegistration,
+};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// A request from a plugin to open a window.
@@ -22,13 +25,21 @@ pub struct WindowOpenRequest {
 /// For action handling, this accumulates window-open requests.
 pub struct AppHostContext<'a> {
     pub toolbar: &'a mut ToolbarManager,
+    pub undo_redo_states: &'a mut HashMap<String, PluginUndoRedoState>,
+    pub undo_redo_order: &'a mut Vec<String>,
     pub window_requests: Vec<WindowOpenRequest>,
 }
 
 impl<'a> AppHostContext<'a> {
-    pub fn new(toolbar: &'a mut ToolbarManager) -> Self {
+    pub fn new(
+        toolbar: &'a mut ToolbarManager,
+        undo_redo_states: &'a mut HashMap<String, PluginUndoRedoState>,
+        undo_redo_order: &'a mut Vec<String>,
+    ) -> Self {
         Self {
             toolbar,
+            undo_redo_states,
+            undo_redo_order,
             window_requests: Vec::new(),
         }
     }
@@ -58,12 +69,26 @@ impl HostContext for AppHostContext<'_> {
         });
         Ok(())
     }
+
+    fn set_undo_redo_state(
+        &mut self,
+        plugin_id: &str,
+        state: PluginUndoRedoState,
+    ) -> PluginResult<()> {
+        if !self.undo_redo_order.iter().any(|id| id == plugin_id) {
+            self.undo_redo_order.push(plugin_id.to_string());
+        }
+        self.undo_redo_states.insert(plugin_id.to_string(), state);
+        Ok(())
+    }
 }
 
 /// A mock host context for testing plugins without a UI runtime.
 #[cfg(test)]
 pub struct MockHostContext {
     pub toolbar: ToolbarManager,
+    pub undo_redo_states: HashMap<String, PluginUndoRedoState>,
+    pub undo_redo_order: Vec<String>,
     pub window_requests: Vec<WindowOpenRequest>,
 }
 
@@ -72,6 +97,8 @@ impl MockHostContext {
     pub fn new() -> Self {
         Self {
             toolbar: ToolbarManager::new(),
+            undo_redo_states: HashMap::new(),
+            undo_redo_order: Vec::new(),
             window_requests: Vec::new(),
         }
     }

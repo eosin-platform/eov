@@ -21,7 +21,8 @@ use abi_stable::std_types::RString;
 use plugin_api::ffi::{self, PluginVTable};
 use plugin_api::manifest::PluginLanguage;
 use plugin_api::{
-    HostToolMode, IconDescriptor, PluginDescriptor, PluginResult, ToolbarButtonRegistration,
+    HostToolMode, IconDescriptor, PluginDescriptor, PluginResult, PluginUndoRedoState,
+    ToolbarButtonRegistration,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -79,6 +80,8 @@ pub struct PluginManager {
     pub registry: PluginRegistry,
     pub toolbar: ToolbarManager,
     pub hud_toolbar: ToolbarManager,
+    pub undo_redo_states: HashMap<String, PluginUndoRedoState>,
+    pub undo_redo_order: Vec<String>,
     /// Descriptors for all successfully discovered plugins on disk.
     pub descriptors: Vec<PluginDescriptor>,
     /// Older `.eop` files skipped because a newer version of the same plugin exists.
@@ -99,6 +102,8 @@ impl PluginManager {
             registry: PluginRegistry::new(),
             toolbar: ToolbarManager::new(),
             hud_toolbar: ToolbarManager::new(),
+            undo_redo_states: HashMap::new(),
+            undo_redo_order: Vec::new(),
             descriptors: Vec::new(),
             old_plugin_package_files: Vec::new(),
             plugin_dir,
@@ -177,7 +182,11 @@ impl PluginManager {
             }
 
             let plugin = plugin.clone();
-            let mut ctx = AppHostContext::new(&mut self.toolbar);
+            let mut ctx = AppHostContext::new(
+                &mut self.toolbar,
+                &mut self.undo_redo_states,
+                &mut self.undo_redo_order,
+            );
             match plugin.activate(&mut ctx, &desc.root) {
                 Ok(()) => {
                     info!("Activated plugin '{}' (static)", desc.manifest.id);
@@ -305,8 +314,76 @@ impl PluginManager {
             .map(|d| d.root.clone())
             .unwrap_or_default();
 
-        let mut ctx = AppHostContext::new(&mut self.toolbar);
+        let mut ctx = AppHostContext::new(
+            &mut self.toolbar,
+            &mut self.undo_redo_states,
+            &mut self.undo_redo_order,
+        );
         plugin.on_action(action_id, &mut ctx, &plugin_root)?;
+        Ok(ActionOutcome::Handled)
+    }
+
+    pub fn handle_undo(&mut self, plugin_id: &str) -> PluginResult<ActionOutcome> {
+        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
+            let vt = *vtable;
+            let response = (vt.on_undo)();
+            if response.open_window
+                && let Some(desc) = self.descriptor(plugin_id)
+            {
+                return Ok(ActionOutcome::RustPluginWindow {
+                    plugin_root: desc.root.clone(),
+                });
+            }
+            return Ok(ActionOutcome::Handled);
+        }
+
+        let plugin = self
+            .registry
+            .get(plugin_id)
+            .ok_or_else(|| plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'")))?
+            .clone();
+        let plugin_root = self
+            .descriptor(plugin_id)
+            .map(|d| d.root.clone())
+            .unwrap_or_default();
+        let mut ctx = AppHostContext::new(
+            &mut self.toolbar,
+            &mut self.undo_redo_states,
+            &mut self.undo_redo_order,
+        );
+        plugin.on_undo(&mut ctx, &plugin_root)?;
+        Ok(ActionOutcome::Handled)
+    }
+
+    pub fn handle_redo(&mut self, plugin_id: &str) -> PluginResult<ActionOutcome> {
+        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
+            let vt = *vtable;
+            let response = (vt.on_redo)();
+            if response.open_window
+                && let Some(desc) = self.descriptor(plugin_id)
+            {
+                return Ok(ActionOutcome::RustPluginWindow {
+                    plugin_root: desc.root.clone(),
+                });
+            }
+            return Ok(ActionOutcome::Handled);
+        }
+
+        let plugin = self
+            .registry
+            .get(plugin_id)
+            .ok_or_else(|| plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'")))?
+            .clone();
+        let plugin_root = self
+            .descriptor(plugin_id)
+            .map(|d| d.root.clone())
+            .unwrap_or_default();
+        let mut ctx = AppHostContext::new(
+            &mut self.toolbar,
+            &mut self.undo_redo_states,
+            &mut self.undo_redo_order,
+        );
+        plugin.on_redo(&mut ctx, &plugin_root)?;
         Ok(ActionOutcome::Handled)
     }
 

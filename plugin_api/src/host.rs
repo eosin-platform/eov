@@ -49,6 +49,13 @@ pub struct ModalDialogRequest {
     pub height_px: u32,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginUndoRedoState {
+    pub enabled: bool,
+    pub undo_available: bool,
+    pub redo_available: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OpenFileDialogRequest {
     pub filter_name: String,

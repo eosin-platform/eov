@@ -107,6 +107,14 @@ pub struct ModalDialogRequestFFI {
     pub height_px: u32,
 }
 
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug, Default)]
+pub struct PluginUndoRedoStateFFI {
+    pub enabled: bool,
+    pub undo_available: bool,
+    pub redo_available: bool,
+}
+
 /// FFI-safe response from a plugin action handler.
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
@@ -236,6 +244,8 @@ pub struct HostApiVTable {
     pub show_modal_dialog:
         extern "C" fn(context: u64, request: ModalDialogRequestFFI) -> RResult<(), RString>,
     pub hide_modal_dialog: extern "C" fn(context: u64) -> RResult<(), RString>,
+    pub set_undo_redo_state:
+        extern "C" fn(context: u64, state: PluginUndoRedoStateFFI) -> RResult<(), RString>,
     pub open_file_dialog: extern "C" fn(
         context: u64,
         filter_name: RString,
@@ -309,6 +319,12 @@ pub struct PluginVTable {
     /// Called when the host commits a polygon annotation for the active polygon tool.
     pub on_polygon_annotation_placed:
         extern "C" fn(viewport: ViewportSnapshotFFI, vertices: RVec<ViewportOverlayVertexFFI>),
+
+    /// Called when the host dispatches an undo request for this plugin.
+    pub on_undo: extern "C" fn() -> ActionResponseFFI,
+
+    /// Called when the host dispatches a redo request for this plugin.
+    pub on_redo: extern "C" fn() -> ActionResponseFFI,
 
     /// Called when the host moves an existing point annotation for the active point tool.
     pub on_point_annotation_moved: extern "C" fn(

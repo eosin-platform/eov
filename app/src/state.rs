@@ -7,7 +7,7 @@ use common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileManager, ViewportState,
     WsiFile,
 };
-use plugin_api::ToolbarButtonRegistration;
+use plugin_api::{PluginUndoRedoState, ToolbarButtonRegistration};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
@@ -575,6 +575,10 @@ pub struct AppState {
     pub local_plugin_buttons: Vec<ToolbarButtonRegistration>,
     /// Static/local viewport HUD toolbar buttons contributed by in-process plugins.
     pub local_hud_plugin_buttons: Vec<ToolbarButtonRegistration>,
+    /// Plugin-owned undo/redo visibility and availability state.
+    pub local_plugin_undo_redo_states: HashMap<String, PluginUndoRedoState>,
+    /// Stable plugin order for resolving the active undo/redo owner.
+    pub local_plugin_undo_redo_order: Vec<String>,
     /// In-process viewport filter chain (FFI plugins).
     pub filter_chain: SharedFilterChain,
     /// Shared extension host state (remote gRPC filters).
@@ -635,6 +639,8 @@ impl AppState {
             render_loop_running: false,
             local_plugin_buttons: Vec::new(),
             local_hud_plugin_buttons: Vec::new(),
+            local_plugin_undo_redo_states: HashMap::new(),
+            local_plugin_undo_redo_order: Vec::new(),
             filter_chain: crate::viewport_filter::new_shared_filter_chain(),
             extension_host_state: crate::extension_host::new_shared_state(),
             tokio_handle: None,

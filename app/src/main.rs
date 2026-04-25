@@ -346,6 +346,8 @@ fn main() -> Result<()> {
 
         state.write().local_plugin_buttons = pm.toolbar.buttons().to_vec();
         state.write().local_hud_plugin_buttons = pm.hud_toolbar.buttons().to_vec();
+        state.write().local_plugin_undo_redo_states = pm.undo_redo_states.clone();
+        state.write().local_plugin_undo_redo_order = pm.undo_redo_order.clone();
     }
     let old_plugin_package_files = plugin_manager.borrow().old_plugin_package_files().to_vec();
 
@@ -612,6 +614,62 @@ fn setup_callbacks(
             Err(e) => {
                 tracing::error!("Plugin action error: {e}");
             }
+        }
+    });
+
+    let pm = Rc::clone(&plugin_manager);
+    let rerender_state = Arc::clone(&state);
+    let rerender_timer = Rc::clone(&render_timer);
+    let rerender_ui = ui.as_weak();
+    let rerender_cache = Arc::clone(&tile_cache);
+    ui.on_plugin_undo_requested(move |plugin_id| {
+        let plugin_id = plugin_id.to_string();
+        let mut pm = pm.borrow_mut();
+        match pm.handle_undo(&plugin_id) {
+            Ok(plugins::ActionOutcome::Handled)
+            | Ok(plugins::ActionOutcome::RustPluginWindow { .. })
+            | Ok(plugins::ActionOutcome::PythonSpawn { .. }) => {
+                if let Some(ui) = rerender_ui.upgrade() {
+                    let state = rerender_state.read();
+                    update_tool_state(&ui, &state);
+                    let _ = plugin_host::refresh_plugin_buttons();
+                }
+                request_render_loop(
+                    &rerender_timer,
+                    &rerender_ui,
+                    &rerender_state,
+                    &rerender_cache,
+                );
+            }
+            Err(err) => tracing::error!("Plugin undo error: {err}"),
+        }
+    });
+
+    let pm = Rc::clone(&plugin_manager);
+    let rerender_state = Arc::clone(&state);
+    let rerender_timer = Rc::clone(&render_timer);
+    let rerender_ui = ui.as_weak();
+    let rerender_cache = Arc::clone(&tile_cache);
+    ui.on_plugin_redo_requested(move |plugin_id| {
+        let plugin_id = plugin_id.to_string();
+        let mut pm = pm.borrow_mut();
+        match pm.handle_redo(&plugin_id) {
+            Ok(plugins::ActionOutcome::Handled)
+            | Ok(plugins::ActionOutcome::RustPluginWindow { .. })
+            | Ok(plugins::ActionOutcome::PythonSpawn { .. }) => {
+                if let Some(ui) = rerender_ui.upgrade() {
+                    let state = rerender_state.read();
+                    update_tool_state(&ui, &state);
+                    let _ = plugin_host::refresh_plugin_buttons();
+                }
+                request_render_loop(
+                    &rerender_timer,
+                    &rerender_ui,
+                    &rerender_state,
+                    &rerender_cache,
+                );
+            }
+            Err(err) => tracing::error!("Plugin redo error: {err}"),
         }
     });
 

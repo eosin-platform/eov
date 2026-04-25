@@ -5,11 +5,12 @@ use common::{FilteringMode, RenderBackend, TileCache};
 use parking_lot::RwLock;
 use plugin_api::HostToolMode;
 use plugin_api::IconDescriptor;
+use plugin_api::PluginUndoRedoState;
 use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
-    HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI, PluginVTable,
-    UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
-    ViewportSnapshotFFI,
+    HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI,
+    PluginUndoRedoStateFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -258,6 +259,7 @@ pub(crate) fn build_host_api(
         show_confirmation_dialog: ffi_show_confirmation_dialog,
         show_modal_dialog: ffi_show_modal_dialog,
         hide_modal_dialog: ffi_hide_modal_dialog,
+        set_undo_redo_state: ffi_set_undo_redo_state,
         open_file_dialog: ffi_open_file_dialog,
         save_file_dialog: ffi_save_file_dialog,
         log_message: ffi_log_message,
@@ -1062,6 +1064,29 @@ pub(crate) fn request_render() -> Result<(), String> {
     })
 }
 
+pub(crate) fn set_local_undo_redo_state(
+    plugin_id: &str,
+    undo_redo_state: PluginUndoRedoState,
+) -> Result<(), String> {
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        {
+            let mut state = runtime.state.write();
+            if !state
+                .local_plugin_undo_redo_order
+                .iter()
+                .any(|existing| existing == &plugin_id)
+            {
+                state.local_plugin_undo_redo_order.push(plugin_id.clone());
+            }
+            state
+                .local_plugin_undo_redo_states
+                .insert(plugin_id.clone(), undo_redo_state);
+        }
+        refresh_plugin_buttons_in_ui(runtime)
+    })
+}
+
 pub(crate) fn save_file_dialog(
     default_file_name: String,
     filter_name: String,
@@ -1614,9 +1639,45 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
                 }),
         )
         .collect();
+    let active_undo_redo = state
+        .local_plugin_undo_redo_order
+        .iter()
+        .find_map(|plugin_id| {
+            state
+                .local_plugin_undo_redo_states
+                .get(plugin_id)
+                .filter(|undo_redo_state| undo_redo_state.enabled)
+                .map(|undo_redo_state| (plugin_id.clone(), undo_redo_state.clone()))
+        });
+    let (undo_plugin_id, undo_redo_state) =
+        active_undo_redo.unwrap_or_else(|| (String::new(), PluginUndoRedoState::default()));
     ui.set_plugin_buttons(ModelRc::from(std::rc::Rc::new(VecModel::from(buttons))));
     ui.set_plugin_hud_buttons(ModelRc::from(std::rc::Rc::new(VecModel::from(hud_buttons))));
+    ui.set_plugin_undo_redo_visible(undo_redo_state.enabled);
+    ui.set_plugin_undo_enabled(undo_redo_state.undo_available);
+    ui.set_plugin_redo_enabled(undo_redo_state.redo_available);
+    ui.set_plugin_undo_redo_plugin_id(undo_plugin_id.into());
     Ok(())
+}
+
+extern "C" fn ffi_set_undo_redo_state(
+    context: u64,
+    state: PluginUndoRedoStateFFI,
+) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    match set_local_undo_redo_state(
+        &plugin_id,
+        PluginUndoRedoState {
+            enabled: state.enabled,
+            undo_available: state.undo_available,
+            redo_available: state.redo_available,
+        },
+    ) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
 }
 
 fn resolve_sidebar_request(
