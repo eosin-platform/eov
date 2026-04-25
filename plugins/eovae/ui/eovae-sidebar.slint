@@ -66,6 +66,8 @@ component HotRegionButton inherits Rectangle {
     in property <string> label;
     in property <string> score;
     callback clicked();
+    callback hover-changed(bool);
+    out property <bool> hovered: region-touch.has-hover;
 
     min-height: 44px;
     border-width: 1px;
@@ -75,6 +77,10 @@ component HotRegionButton inherits Rectangle {
 
     region-touch := TouchArea {
         clicked => { root.clicked(); }
+    }
+
+    changed hovered => {
+        root.hover-changed(self.hovered);
     }
 
     VerticalLayout {
@@ -126,6 +132,7 @@ export component EovaeSidebar inherits Rectangle {
     callback analyze-slide();
     callback cancel-job();
     callback jump-to-region(string);
+    callback hover-region(string);
     callback mode-changed(string);
     callback mip-changed(string);
     callback input-changed(string);
@@ -384,6 +391,7 @@ export component EovaeSidebar inherits Rectangle {
                             background: #23282f;
 
                             Rectangle {
+                                x: 0;
                                 width: parent.width * root.progress-value;
                                 height: parent.height;
                                 border-radius: 4px;
@@ -429,6 +437,9 @@ export component EovaeSidebar inherits Rectangle {
                                 label: region.label;
                                 score: region.score;
                                 clicked => { root.jump-to-region(region.id); }
+                                hover-changed(hovered) => {
+                                    root.hover-region(hovered ? region.id : "");
+                                }
                             }
                         }
                     }

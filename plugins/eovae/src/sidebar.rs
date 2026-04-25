@@ -8,6 +8,7 @@ use crate::state::{
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
+use std::time::{Duration, Instant};
 use std::thread;
 
 const TOOLBAR_BUTTON_ID: &str = "toggle_eovae";
@@ -131,6 +132,10 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
         "jump-to-region" => {
             jump_to_region(args_json);
             (false, false)
+        }
+        "hover-region" => {
+            let changed = update_hovered_region(args_json);
+            (false, changed)
         }
         "mode-changed" => (false, update_mode(args_json)),
         "mip-changed" => {
@@ -337,6 +342,9 @@ fn clear_model() {
     state.cache.clear();
     state.sidebar_regions.clear();
     state.hot_regions.clear();
+    state.hovered_region_id = None;
+    state.pulsing_region_id = None;
+    state.pulsing_region_started_at = None;
     if let Err(error) = save_persisted_model_path(None) {
         log_message(HostLogLevelFFI::Error, error);
     }
@@ -526,11 +534,66 @@ fn jump_to_region(args_json: &str) {
     let (Ok(x), Ok(y), Ok(width), Ok(height)) = parsed else {
         return;
     };
+    {
+        let mut state = plugin_state().lock().unwrap();
+        state.pulsing_region_id = Some(region_id.clone());
+        state.pulsing_region_started_at = Some(Instant::now());
+    }
+    start_region_pulse_render_loop();
+    request_render_if_available();
     if let Some(host) = host_api() {
         let center_x = x + width * 0.5;
         let center_y = y + height * 0.5;
         let _ = (host.set_active_viewport)(host.context, center_x, center_y, 1.0);
     }
+}
+
+fn update_hovered_region(args_json: &str) -> bool {
+    let region_id = serde_json::from_str::<String>(args_json)
+        .ok()
+        .or_else(|| {
+            serde_json::from_str::<Vec<String>>(args_json)
+                .ok()
+                .and_then(|args| args.into_iter().next())
+        })
+        .unwrap_or_default();
+    let new_value = (!region_id.is_empty()).then_some(region_id);
+    let mut state = plugin_state().lock().unwrap();
+    if state.hovered_region_id == new_value {
+        return false;
+    }
+    state.hovered_region_id = new_value;
+    true
+}
+
+fn start_region_pulse_render_loop() {
+    thread::spawn(|| {
+        for _ in 0..12 {
+            thread::sleep(Duration::from_millis(110));
+            let still_active = {
+                let mut state = plugin_state().lock().unwrap();
+                let Some(started_at) = state.pulsing_region_started_at else {
+                    return;
+                };
+                if started_at.elapsed() >= Duration::from_millis(1300) {
+                    state.pulsing_region_id = None;
+                    state.pulsing_region_started_at = None;
+                    false
+                } else {
+                    true
+                }
+            };
+            request_render_if_available();
+            if !still_active {
+                return;
+            }
+        }
+        let mut state = plugin_state().lock().unwrap();
+        state.pulsing_region_id = None;
+        state.pulsing_region_started_at = None;
+        drop(state);
+        request_render_if_available();
+    });
 }
 
 pub fn show_sidebar() {
@@ -574,6 +637,13 @@ mod tests {
             .and_then(|args| args.into_iter().next())
             .unwrap();
         assert_eq!(parsed, "10:20:30:40");
+    }
+
+    #[test]
+    fn hover_region_accepts_single_string_array_payload() {
+        reset_sidebar_test_state();
+        assert!(update_hovered_region("[\"10:20:30:40\"]"));
+        assert_eq!(plugin_state().lock().unwrap().hovered_region_id.as_deref(), Some("10:20:30:40"));
     }
 
     #[test]

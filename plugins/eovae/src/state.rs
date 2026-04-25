@@ -78,6 +78,9 @@ pub struct PluginState {
     pub progress_value: f32,
     pub job_status: String,
     pub job: Option<RunningJob>,
+    pub hovered_region_id: Option<String>,
+    pub pulsing_region_id: Option<String>,
+    pub pulsing_region_started_at: Option<Instant>,
     pub last_auto_update: Option<Instant>,
     pub last_auto_viewport_key: Option<String>,
 }
@@ -100,6 +103,9 @@ impl Default for PluginState {
             progress_value: 0.0,
             job_status: "Idle".to_string(),
             job: None,
+            hovered_region_id: None,
+            pulsing_region_id: None,
+            pulsing_region_started_at: None,
             last_auto_update: None,
             last_auto_viewport_key: None,
         }
@@ -147,6 +153,9 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.sidebar_regions.clear();
     state.error_stats = ErrorStats::default();
     state.progress_value = 0.0;
+    state.hovered_region_id = None;
+    state.pulsing_region_id = None;
+    state.pulsing_region_started_at = None;
 }
 
 pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
