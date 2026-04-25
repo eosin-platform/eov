@@ -618,7 +618,9 @@ fn setup_callbacks(
     let hotkey_state = Arc::clone(&state);
     let hotkey_ui = ui.as_weak();
     ui.on_plugin_tool_hotkey_pressed(move |text, repeat| {
-        if plugin_host::active_sidebar_captures_hotkeys() {
+        if plugin_host::active_sidebar_captures_hotkeys()
+            || plugin_host::active_modal_captures_hotkeys()
+        {
             return false;
         }
 
@@ -680,7 +682,9 @@ fn setup_callbacks(
     let hotkey_render_cache = Arc::clone(&tile_cache);
     let hotkey_plugin_manager = Rc::clone(&plugin_manager);
     ui.on_plugin_tool_hotkey_released(move |text| {
-        if plugin_host::active_sidebar_captures_hotkeys() {
+        if plugin_host::active_sidebar_captures_hotkeys()
+            || plugin_host::active_modal_captures_hotkeys()
+        {
             return false;
         }
 
@@ -747,7 +751,20 @@ fn setup_callbacks(
         true
     });
 
-    ui.on_global_hotkeys_enabled(|| !plugin_host::active_sidebar_captures_hotkeys());
+    ui.on_global_hotkeys_enabled(|| {
+        !plugin_host::active_sidebar_captures_hotkeys()
+            && !plugin_host::active_modal_captures_hotkeys()
+    });
+
+    let modal_dismiss_ui = ui.as_weak();
+    ui.on_plugin_modal_dismiss_requested(move || {
+        if let Err(err) = plugin_host::dismiss_active_modal_dialog() {
+            tracing::error!("Failed to dismiss plugin modal: {err}");
+        }
+        if let Some(ui) = modal_dismiss_ui.upgrade() {
+            ui.invoke_focus_keyboard();
+        }
+    });
 
     let pm = Rc::clone(&plugin_manager);
     let filter_state = Arc::clone(&state);

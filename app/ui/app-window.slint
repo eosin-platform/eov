@@ -106,6 +106,7 @@ export component AppWindow inherits Window {
     callback lanczos-confirm-use-trilinear();
     callback plugin-confirm-accepted();
     callback plugin-confirm-cancelled();
+    callback plugin-modal-dismiss-requested();
 
     // Export dialog
     in-out property <bool> export-dialog-visible: false;
@@ -331,6 +332,10 @@ export component AppWindow inherits Window {
             if e.text == Key.Escape && root.plugin-confirm-visible {
                 root.plugin-confirm-visible = false;
                 root.plugin-confirm-cancelled();
+                accept
+            }
+            if e.text == Key.Escape && root.show-plugin-modal {
+                root.plugin-modal-dismiss-requested();
                 accept
             }
             if !root.global-hotkeys-enabled() {

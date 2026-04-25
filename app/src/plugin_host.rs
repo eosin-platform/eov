@@ -166,6 +166,7 @@ struct ActiveSidebarInstance {
 
 struct ActiveModalInstance {
     plugin_id: String,
+    instance: slint_interpreter::Weak<slint_interpreter::ComponentInstance>,
 }
 
 struct PendingPluginConfirmation {
@@ -1768,6 +1769,7 @@ fn build_plugin_component_factory(
                 ACTIVE_MODAL_INSTANCE.with(|slot| {
                     *slot.borrow_mut() = Some(ActiveModalInstance {
                         plugin_id: plugin_id.clone(),
+                        instance: instance.as_weak(),
                     });
                 });
             }
@@ -2136,6 +2138,37 @@ pub(crate) fn active_sidebar_captures_hotkeys() -> bool {
             Ok(slint_interpreter::Value::Bool(true))
         )
     })
+}
+
+pub(crate) fn active_modal_captures_hotkeys() -> bool {
+    ACTIVE_MODAL_INSTANCE.with(|slot| {
+        let Some(instance) = slot
+            .borrow()
+            .as_ref()
+            .and_then(|active| active.instance.upgrade())
+        else {
+            return false;
+        };
+
+        matches!(
+            instance.get_property("capture-hotkeys"),
+            Ok(slint_interpreter::Value::Bool(true))
+        )
+    })
+}
+
+pub(crate) fn dismiss_active_modal_dialog() -> Result<(), String> {
+    let plugin_id = ACTIVE_MODAL_INSTANCE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|active| active.plugin_id.clone())
+    });
+
+    let Some(plugin_id) = plugin_id else {
+        return Ok(());
+    };
+
+    hide_modal_dialog(&plugin_id)
 }
 
 extern "C" fn ffi_get_snapshot(context: u64) -> HostSnapshotFFI {
