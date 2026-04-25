@@ -7,9 +7,9 @@ use plugin_api::HostToolMode;
 use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
-    HostSnapshotFFI, HostToolModeFFI, OpenFileInfoFFI, PluginVTable, UiPropertyFFI,
-    ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
-    ViewportSnapshotFFI,
+    HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI, PluginVTable,
+    UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI,
+    ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -164,6 +164,10 @@ struct ActiveSidebarInstance {
     instance: slint_interpreter::Weak<slint_interpreter::ComponentInstance>,
 }
 
+struct ActiveModalInstance {
+    plugin_id: String,
+}
+
 struct PendingPluginConfirmation {
     action: PendingPluginConfirmationAction,
 }
@@ -190,6 +194,7 @@ static PENDING_PLUGIN_CONFIRMATION: OnceLock<Mutex<Option<PendingPluginConfirmat
 thread_local! {
     static UI_RUNTIME: RefCell<Option<UiRuntime>> = const { RefCell::new(None) };
     static ACTIVE_SIDEBAR_INSTANCE: RefCell<Option<ActiveSidebarInstance>> = const { RefCell::new(None) };
+    static ACTIVE_MODAL_INSTANCE: RefCell<Option<ActiveModalInstance>> = const { RefCell::new(None) };
 }
 
 fn host_contexts() -> &'static Mutex<HashMap<u64, HostApiContext>> {
@@ -250,6 +255,9 @@ pub(crate) fn build_host_api(
         refresh_sidebar: ffi_refresh_sidebar,
         hide_sidebar: ffi_hide_sidebar,
         show_confirmation_dialog: ffi_show_confirmation_dialog,
+        show_modal_dialog: ffi_show_modal_dialog,
+        hide_modal_dialog: ffi_hide_modal_dialog,
+        open_file_dialog: ffi_open_file_dialog,
         save_file_dialog: ffi_save_file_dialog,
         log_message: ffi_log_message,
     }
@@ -1069,6 +1077,16 @@ pub(crate) fn save_file_dialog(
     })
 }
 
+pub(crate) fn open_file_dialog(filter_name: String, extension: String) -> Result<String, String> {
+    run_on_ui_thread(move |_runtime| {
+        let dialog = rfd::FileDialog::new().add_filter(&filter_name, &[extension.as_str()]);
+        dialog
+            .pick_file()
+            .map(|path| path.to_string_lossy().into_owned())
+            .ok_or_else(|| "open dialog was cancelled".to_string())
+    })
+}
+
 pub(crate) fn show_confirmation_dialog(
     vtable: PluginVTable,
     request: ConfirmationDialogRequestFFI,
@@ -1323,6 +1341,67 @@ pub(crate) fn hide_sidebar(plugin_id: &str) -> Result<(), String> {
     })
 }
 
+pub(crate) fn show_modal_dialog(
+    plugin_id: &str,
+    plugin_root: Option<&Path>,
+    vtable: Option<PluginVTable>,
+    request: plugin_api::ModalDialogRequest,
+) -> Result<(), String> {
+    let resolved_request = resolve_modal_request(plugin_root, request)?;
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+
+        let factory = build_plugin_component_factory(
+            &plugin_id,
+            &resolved_request.ui_path,
+            &resolved_request.component,
+            vtable,
+            PluginComponentKind::Modal,
+        )?;
+
+        ACTIVE_MODAL_INSTANCE.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
+        ui.set_plugin_modal_factory(factory);
+        ui.set_plugin_modal_width(resolved_request.width_px as f32);
+        ui.set_plugin_modal_height(resolved_request.height_px as f32);
+        ui.set_show_plugin_modal(true);
+        Ok(())
+    })
+}
+
+pub(crate) fn hide_modal_dialog(plugin_id: &str) -> Result<(), String> {
+    let plugin_id = plugin_id.to_string();
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+
+        let owns_modal = ACTIVE_MODAL_INSTANCE.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .is_some_and(|active| active.plugin_id == plugin_id)
+        });
+        if !owns_modal {
+            return Ok(());
+        }
+
+        ACTIVE_MODAL_INSTANCE.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
+        ui.set_show_plugin_modal(false);
+        ui.set_plugin_modal_width(0.0);
+        ui.set_plugin_modal_height(0.0);
+        ui.set_plugin_modal_factory(ComponentFactory::default());
+        Ok(())
+    })
+}
+
 fn run_on_ui_thread<R: Send + 'static>(
     f: impl FnOnce(&UiRuntime) -> Result<R, String> + Send + 'static,
 ) -> Result<R, String> {
@@ -1564,15 +1643,65 @@ fn resolve_sidebar_request(
     Ok(request)
 }
 
+fn resolve_modal_request(
+    plugin_root: Option<&Path>,
+    mut request: plugin_api::ModalDialogRequest,
+) -> Result<plugin_api::ModalDialogRequest, String> {
+    if request.width_px == 0 || request.height_px == 0 {
+        return Err("modal width and height must be greater than zero".to_string());
+    }
+
+    let ui_path = PathBuf::from(&request.ui_path);
+    let resolved_path = if ui_path.is_absolute() {
+        ui_path
+    } else {
+        let root = plugin_root.ok_or_else(|| {
+            format!(
+                "modal ui path '{}' is relative but no plugin root is available",
+                request.ui_path
+            )
+        })?;
+        root.join(ui_path)
+    };
+
+    request.ui_path = resolved_path.to_string_lossy().into_owned();
+    Ok(request)
+}
+
+#[derive(Clone, Copy)]
+enum PluginComponentKind {
+    Sidebar,
+    Modal,
+}
+
+impl PluginComponentKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Sidebar => "sidebar",
+            Self::Modal => "modal",
+        }
+    }
+}
+
 fn build_sidebar_factory(
     plugin_id: &str,
     ui_path: &str,
     component: &str,
     vtable: Option<PluginVTable>,
 ) -> Result<ComponentFactory, String> {
+    build_plugin_component_factory(plugin_id, ui_path, component, vtable, PluginComponentKind::Sidebar)
+}
+
+fn build_plugin_component_factory(
+    plugin_id: &str,
+    ui_path: &str,
+    component: &str,
+    vtable: Option<PluginVTable>,
+    kind: PluginComponentKind,
+) -> Result<ComponentFactory, String> {
     let ui_path = PathBuf::from(ui_path);
     let source = std::fs::read_to_string(&ui_path)
-        .map_err(|err| format!("failed to read sidebar UI {}: {err}", ui_path.display()))?;
+        .map_err(|err| format!("failed to read {} UI {}: {err}", kind.label(), ui_path.display()))?;
 
     let compiler = slint_interpreter::Compiler::default();
     let result = spin_on(compiler.build_from_source(source, ui_path.clone()));
@@ -1580,12 +1709,13 @@ fn build_sidebar_factory(
     for diag in result.diagnostics() {
         if diag.level() == slint_interpreter::DiagnosticLevel::Error {
             has_errors = true;
-            tracing::error!("Sidebar Slint compile error for '{}': {diag}", plugin_id);
+            tracing::error!("{} Slint compile error for '{}': {diag}", kind.label(), plugin_id);
         }
     }
     if has_errors {
         return Err(format!(
-            "failed to compile sidebar UI '{}' for plugin '{}'",
+            "failed to compile {} UI '{}' for plugin '{}'",
+            kind.label(),
             ui_path.display(),
             plugin_id
         ));
@@ -1593,8 +1723,9 @@ fn build_sidebar_factory(
 
     let definition = result.component(component).ok_or_else(|| {
         format!(
-            "component '{}' not found in sidebar UI '{}' for plugin '{}'",
+            "component '{}' not found in {} UI '{}' for plugin '{}'",
             component,
+            kind.label(),
             ui_path.display(),
             plugin_id
         )
@@ -1606,7 +1737,8 @@ fn build_sidebar_factory(
             Ok(instance) => instance,
             Err(err) => {
                 tracing::error!(
-                    "Failed to create embedded sidebar component for '{}': {err}",
+                    "Failed to create embedded {} component for '{}': {err}",
+                    kind.label(),
                     plugin_id
                 );
                 return None;
@@ -1617,17 +1749,29 @@ fn build_sidebar_factory(
             && let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance)
         {
             tracing::error!(
-                "Failed to apply sidebar properties for '{}': {err}",
+                "Failed to apply {} properties for '{}': {err}",
+                kind.label(),
                 plugin_id
             );
         }
 
-        ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
-            *slot.borrow_mut() = Some(ActiveSidebarInstance {
-                plugin_id: plugin_id.clone(),
-                instance: instance.as_weak(),
-            });
-        });
+        match kind {
+            PluginComponentKind::Sidebar => {
+                ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+                    *slot.borrow_mut() = Some(ActiveSidebarInstance {
+                        plugin_id: plugin_id.clone(),
+                        instance: instance.as_weak(),
+                    });
+                });
+            }
+            PluginComponentKind::Modal => {
+                ACTIVE_MODAL_INSTANCE.with(|slot| {
+                    *slot.borrow_mut() = Some(ActiveModalInstance {
+                        plugin_id: plugin_id.clone(),
+                    });
+                });
+            }
+        }
 
         for name in definition.callbacks() {
             let callback_name = name.to_string();
@@ -1653,7 +1797,8 @@ fn build_sidebar_factory(
                 .is_err()
             {
                 tracing::info!(
-                    "Could not wire sidebar callback '{}' for plugin '{}'",
+                    "Could not wire {} callback '{}' for plugin '{}'",
+                    kind.label(),
                     name,
                     plugin_id
                 );
@@ -2190,6 +2335,40 @@ extern "C" fn ffi_show_confirmation_dialog(
     }
 }
 
+extern "C" fn ffi_show_modal_dialog(
+    context: u64,
+    request: ModalDialogRequestFFI,
+) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    let request = plugin_api::ModalDialogRequest {
+        ui_path: request.ui_path.to_string(),
+        component: request.component.to_string(),
+        width_px: request.width_px,
+        height_px: request.height_px,
+    };
+    match show_modal_dialog(
+        &plugin_id,
+        context_plugin_root(context).as_deref(),
+        context_vtable(context),
+        request,
+    ) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_hide_modal_dialog(context: u64) -> RResult<(), RString> {
+    let Some(plugin_id) = context_plugin_id(context) else {
+        return RResult::RErr(RString::from("invalid host API context"));
+    };
+    match hide_modal_dialog(&plugin_id) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
 extern "C" fn ffi_save_file_dialog(
     context: u64,
     default_file_name: RString,
@@ -2204,6 +2383,20 @@ extern "C" fn ffi_save_file_dialog(
         filter_name.to_string(),
         extension.to_string(),
     ) {
+        Ok(path) => RResult::ROk(RString::from(path)),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_open_file_dialog(
+    context: u64,
+    filter_name: RString,
+    extension: RString,
+) -> RResult<RString, RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match open_file_dialog(filter_name.to_string(), extension.to_string()) {
         Ok(path) => RResult::ROk(RString::from(path)),
         Err(err) => RResult::RErr(RString::from(err)),
     }

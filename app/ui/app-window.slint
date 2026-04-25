@@ -96,6 +96,10 @@ export component AppWindow inherits Window {
     in-out property <string> plugin-confirm-message: "";
     in-out property <string> plugin-confirm-confirm-label: "Confirm";
     in-out property <string> plugin-confirm-cancel-label: "Cancel";
+    in-out property <bool> show-plugin-modal: false;
+    in-out property <float> plugin-modal-width: 0;
+    in-out property <float> plugin-modal-height: 0;
+    in-out property <component-factory> plugin-modal-factory;
 
     callback lanczos-confirm-accepted();
     callback lanczos-confirm-cancelled();
@@ -1181,6 +1185,32 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if root.show-plugin-modal: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #00000088;
+
+        TouchArea { }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: root.plugin-modal-width * 1px;
+            height: root.plugin-modal-height * 1px;
+            background: transparent;
+
+            TouchArea { }
+
+            ComponentContainer {
+                width: parent.width;
+                height: parent.height;
+                component-factory: root.plugin-modal-factory;
             }
         }
     }

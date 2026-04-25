@@ -41,6 +41,20 @@ pub struct ConfirmationDialogRequest {
     pub cancel_args_json: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModalDialogRequest {
+    pub ui_path: String,
+    pub component: String,
+    pub width_px: u32,
+    pub height_px: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OpenFileDialogRequest {
+    pub filter_name: String,
+    pub extension: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HostSnapshot {
     pub app_name: String,

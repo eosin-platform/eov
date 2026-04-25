@@ -98,6 +98,15 @@ pub struct ConfirmationDialogRequestFFI {
     pub cancel_args_json: ROption<RString>,
 }
 
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ModalDialogRequestFFI {
+    pub ui_path: RString,
+    pub component: RString,
+    pub width_px: u32,
+    pub height_px: u32,
+}
+
 /// FFI-safe response from a plugin action handler.
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
@@ -224,6 +233,14 @@ pub struct HostApiVTable {
     pub hide_sidebar: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub show_confirmation_dialog:
         extern "C" fn(context: u64, request: ConfirmationDialogRequestFFI) -> RResult<(), RString>,
+    pub show_modal_dialog:
+        extern "C" fn(context: u64, request: ModalDialogRequestFFI) -> RResult<(), RString>,
+    pub hide_modal_dialog: extern "C" fn(context: u64) -> RResult<(), RString>,
+    pub open_file_dialog: extern "C" fn(
+        context: u64,
+        filter_name: RString,
+        extension: RString,
+    ) -> RResult<RString, RString>,
     pub save_file_dialog: extern "C" fn(
         context: u64,
         default_file_name: RString,
