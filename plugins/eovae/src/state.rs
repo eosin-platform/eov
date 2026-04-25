@@ -50,6 +50,16 @@ pub enum JobKind {
     WholeSlide,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AnalysisPhase {
+    #[default]
+    Idle,
+    Running,
+    Completed,
+    Error,
+    Cancelled,
+}
+
 #[derive(Clone, Debug)]
 pub struct RunningJob {
     pub cancel: Arc<AtomicBool>,
@@ -79,6 +89,10 @@ pub struct PluginState {
     pub progress_value: f32,
     pub job_status: String,
     pub job: Option<RunningJob>,
+    pub analysis_phase: AnalysisPhase,
+    pub analysis_started_at: Option<Instant>,
+    pub analysis_elapsed: Option<Duration>,
+    pub analysis_error_message: Option<String>,
     pub hovered_region_id: Option<String>,
     pub pulsing_region_id: Option<String>,
     pub pulsing_region_started_at: Option<Instant>,
@@ -105,6 +119,10 @@ impl Default for PluginState {
             progress_value: 0.0,
             job_status: "Idle".to_string(),
             job: None,
+            analysis_phase: AnalysisPhase::Idle,
+            analysis_started_at: None,
+            analysis_elapsed: None,
+            analysis_error_message: None,
             hovered_region_id: None,
             pulsing_region_id: None,
             pulsing_region_started_at: None,
@@ -156,6 +174,11 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.error_stats = ErrorStats::default();
     state.error_histogram.clear();
     state.progress_value = 0.0;
+    state.job_status = "Idle".to_string();
+    state.analysis_phase = AnalysisPhase::Idle;
+    state.analysis_started_at = None;
+    state.analysis_elapsed = None;
+    state.analysis_error_message = None;
     state.hovered_region_id = None;
     state.pulsing_region_id = None;
     state.pulsing_region_started_at = None;

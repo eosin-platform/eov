@@ -1,6 +1,6 @@
 use crate::model::{LoadedModel, run_reconstruction};
 use crate::state::{
-    JobKind, RunningJob, VisualizationMode, host_api, log_message, plugin_state,
+    AnalysisPhase, JobKind, RunningJob, VisualizationMode, host_api, log_message, plugin_state,
     rebuild_sidebar_statistics, refresh_sidebar_if_available, request_render_if_available,
 };
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
@@ -144,10 +145,14 @@ where
         state.job = Some(RunningJob {
             cancel: cancel.clone(),
         });
+        state.analysis_phase = AnalysisPhase::Running;
+        state.analysis_started_at = Some(Instant::now());
+        state.analysis_elapsed = None;
+        state.analysis_error_message = None;
         state.progress_value = 0.0;
         state.job_status = match kind {
-            JobKind::Viewport => "Analyzing viewport".to_string(),
-            JobKind::WholeSlide => "Analyzing whole slide".to_string(),
+            JobKind::Viewport => "Preparing viewport analysis".to_string(),
+            JobKind::WholeSlide => "Preparing whole-slide analysis".to_string(),
         };
         state.cache_namespace = namespace;
     }
@@ -156,17 +161,26 @@ where
     thread::spawn(move || {
         let result = worker(cancel.clone());
         let mut state = plugin_state().lock().unwrap();
+        let elapsed = state.analysis_started_at.map(|started_at| started_at.elapsed());
         state.job = None;
+        state.analysis_started_at = None;
+        state.analysis_elapsed = elapsed;
         state.progress_value = if cancel.load(Ordering::Relaxed) {
             0.0
         } else {
             1.0
         };
         state.job_status = if cancel.load(Ordering::Relaxed) {
+            state.analysis_phase = AnalysisPhase::Cancelled;
+            state.analysis_error_message = None;
             "Analysis cancelled".to_string()
         } else if let Err(error) = &result {
+            state.analysis_phase = AnalysisPhase::Error;
+            state.analysis_error_message = Some(error.clone());
             error.clone()
         } else {
+            state.analysis_phase = AnalysisPhase::Completed;
+            state.analysis_error_message = None;
             "Analysis complete".to_string()
         };
         rebuild_sidebar_statistics(&mut state);
@@ -259,7 +273,7 @@ fn run_tile_plan_with_file(
                 },
             );
             state.progress_value = (index + 1) as f32 / tiles.len().max(1) as f32;
-            state.job_status = format!("Processed {} / {} tiles", index + 1, tiles.len());
+            state.job_status = format!("Processing {}/{} tiles", index + 1, tiles.len());
             rebuild_sidebar_statistics(&mut state);
         }
         refresh_sidebar_if_available();

@@ -1,7 +1,7 @@
 use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
 use crate::model::{LoadedModel, load_model};
 use crate::state::{
-    VisualizationMode, cancel_running_job, clear_cache_for_namespace, host_api,
+    AnalysisPhase, VisualizationMode, cancel_running_job, clear_cache_for_namespace, host_api,
     load_persisted_model_path, log_message, plugin_state, refresh_sidebar_if_available,
     request_render_if_available, save_persisted_model_path,
 };
@@ -24,8 +24,33 @@ fn analysis_namespace(base_namespace: &str, mip_level: u32) -> String {
     format!("{base_namespace}|mip{mip_level}")
 }
 
+fn format_elapsed(duration: Duration) -> String {
+    let mut seconds = duration.as_secs();
+    let days = seconds / 86_400;
+    seconds %= 86_400;
+    let hours = seconds / 3_600;
+    seconds %= 3_600;
+    let minutes = seconds / 60;
+    let secs = seconds % 60;
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    if minutes > 0 {
+        parts.push(format!("{minutes}m"));
+    }
+    if secs > 0 || parts.is_empty() {
+        parts.push(format!("{secs}s"));
+    }
+    parts.join(" ")
+}
+
 pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
     let state = plugin_state().lock().unwrap();
+    let now = Instant::now();
     let summary = state.model.as_ref().map(|model| &model.summary);
     let model_summary = if state.model_path.is_empty() {
         String::new()
@@ -135,6 +160,47 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             state.error_stats.max,
         )
     };
+    let analysis_elapsed = match state.analysis_phase {
+        AnalysisPhase::Running => state
+            .analysis_started_at
+            .map(|started_at| now.saturating_duration_since(started_at)),
+        AnalysisPhase::Completed | AnalysisPhase::Error | AnalysisPhase::Cancelled => {
+            state.analysis_elapsed
+        }
+        AnalysisPhase::Idle => None,
+    };
+    let analysis_elapsed_text = analysis_elapsed.map(format_elapsed).unwrap_or_default();
+    let analysis_summary_text = match state.analysis_phase {
+        AnalysisPhase::Running => state.job_status.clone(),
+        AnalysisPhase::Completed => {
+            if analysis_elapsed_text.is_empty() {
+                "Completed".to_string()
+            } else {
+                format!("Completed in {}", analysis_elapsed_text)
+            }
+        }
+        AnalysisPhase::Error => state
+            .analysis_error_message
+            .clone()
+            .filter(|message| !message.is_empty())
+            .unwrap_or_else(|| state.job_status.clone()),
+        AnalysisPhase::Cancelled => {
+            if analysis_elapsed_text.is_empty() {
+                "Analysis cancelled".to_string()
+            } else {
+                format!("Cancelled after {}", analysis_elapsed_text)
+            }
+        }
+        AnalysisPhase::Idle => String::new(),
+    };
+    let analysis_completed = state.analysis_phase == AnalysisPhase::Completed;
+    let analysis_summary_is_error = state.analysis_phase == AnalysisPhase::Error;
+    let analysis_show_leading_status = state.analysis_phase != AnalysisPhase::Idle;
+    let analysis_indicator_value = if analysis_completed {
+        1.0
+    } else {
+        state.progress_value.clamp(0.0, 1.0)
+    };
 
     let properties = vec![
         property("model-path", json!(state.model_path)),
@@ -172,6 +238,12 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("job-status", json!(state.job_status)),
         property("progress-value", json!(state.progress_value)),
         property("job-running", json!(state.job.is_some())),
+        property("analysis-elapsed-text", json!(analysis_elapsed_text)),
+        property("analysis-summary-text", json!(analysis_summary_text)),
+        property("analysis-summary-is-error", json!(analysis_summary_is_error)),
+        property("analysis-show-leading-status", json!(analysis_show_leading_status)),
+        property("analysis-indicator-value", json!(analysis_indicator_value)),
+        property("analysis-completed", json!(analysis_completed)),
         property("use-gpu", json!(state.config.use_gpu)),
         property("auto-update", json!(state.config.auto_update_viewport)),
         property("stats-summary", json!(stats_summary)),
@@ -304,6 +376,10 @@ fn start_model_load(path: String, persist_on_success: bool) {
         state.model_path = path.clone();
         state.model_status = "Loading ONNX model...".to_string();
         state.job_status = "Idle".to_string();
+        state.analysis_phase = AnalysisPhase::Idle;
+        state.analysis_started_at = None;
+        state.analysis_elapsed = None;
+        state.analysis_error_message = None;
         state.cache_namespace.clear();
         state.cache.clear();
         state.hot_regions.clear();
@@ -352,6 +428,10 @@ fn finish_model_load(
 
         state.model_load_in_progress = false;
         state.job_status = "Idle".to_string();
+        state.analysis_phase = AnalysisPhase::Idle;
+        state.analysis_started_at = None;
+        state.analysis_elapsed = None;
+        state.analysis_error_message = None;
 
         match result {
             Ok(model) => {
@@ -413,6 +493,10 @@ fn clear_model() {
     state.model_path.clear();
     state.model_status = "No ONNX model loaded.".to_string();
     state.job_status = "Idle".to_string();
+    state.analysis_phase = AnalysisPhase::Idle;
+    state.analysis_started_at = None;
+    state.analysis_elapsed = None;
+    state.analysis_error_message = None;
     state.cache_namespace.clear();
     state.cache.clear();
     state.sidebar_regions.clear();

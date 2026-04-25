@@ -1,6 +1,28 @@
 import { ComboBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
+component CircularProgressDots inherits Rectangle {
+    in property <float> value: 0;
+    in property <bool> completed: false;
+    in property <bool> error: false;
+
+    width: 16px;
+    height: 16px;
+    background: transparent;
+
+    property <color> active-color: root.error ? #d66e6e : root.completed ? #57b373 : #2f6db5;
+    property <color> inactive-color: #ffffff20;
+
+    Rectangle { x: 6.5px; y: 0px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.125 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 11px; y: 2px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.25 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 13px; y: 6.5px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.375 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 11px; y: 11px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.5 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 6.5px; y: 13px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.625 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 2px; y: 11px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.75 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 0px; y: 6.5px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.875 ? root.active-color : root.inactive-color; }
+    Rectangle { x: 2px; y: 2px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 1.0 ? root.active-color : root.inactive-color; }
+}
+
 component SidebarActionButton inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
@@ -96,9 +118,15 @@ component SidebarSectionHeader inherits Rectangle {
     in property <string> title;
     in property <bool> expanded: true;
     in property <string> summary-text: "";
+    in property <color> summary-color: Theme.text-secondary;
     in property <bool> split-summary: false;
     in property <string> summary-start-text: "";
     in property <string> summary-end-text: "";
+    in property <bool> show-leading-status: false;
+    in property <float> leading-progress-value: 0;
+    in property <bool> leading-progress-completed: false;
+    in property <bool> leading-progress-error: false;
+    in property <string> leading-text: "";
     callback toggled();
 
     height: 30px;
@@ -137,43 +165,76 @@ component SidebarSectionHeader inherits Rectangle {
             vertical-alignment: center;
         }
 
+        if root.show-leading-status: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Rectangle {
+                width: 16px;
+                height: parent.height;
+                background: transparent;
+
+                CircularProgressDots {
+                    y: (parent.height - self.height) / 2;
+                    value: root.leading-progress-value;
+                    completed: root.leading-progress-completed;
+                    error: root.leading-progress-error;
+                }
+            }
+
+            Text {
+                text: root.leading-text;
+                color: root.leading-progress-error ? #d66e6e : Theme.text-secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
         Rectangle {
             horizontal-stretch: 1;
             height: parent.height;
             background: transparent;
 
-            if !root.split-summary && root.summary-text != "": Text {
+            if !root.split-summary && root.summary-text != "": Rectangle {
                 width: parent.width;
                 height: parent.height;
-                text: root.summary-text;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                vertical-alignment: center;
-                horizontal-alignment: right;
-                overflow: elide;
-            }
-
-            if root.split-summary && (root.summary-start-text != "" || root.summary-end-text != ""): HorizontalLayout {
-                width: parent.width;
-                height: parent.height;
-                spacing: 6px;
-
-                Rectangle {
-                    horizontal-stretch: 1;
-                    background: transparent;
-                }
+                background: transparent;
 
                 Text {
-                    text: root.summary-start-text;
+                    x: max(0px, parent.width - self.width);
+                    y: 0px;
+                    width: min(self.preferred-width, parent.width);
+                    height: parent.height;
+                    text: root.summary-text;
+                    color: root.summary-color;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+            }
+
+            if root.split-summary && (root.summary-start-text != "" || root.summary-end-text != ""): Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: transparent;
+
+                summary-end := Text {
+                    x: max(0px, parent.width - self.width);
+                    y: 0px;
+                    width: min(self.preferred-width, max(0px, parent.width - 20px));
+                    height: parent.height;
+                    text: root.summary-end-text;
                     color: Theme.text-secondary;
                     font-size: 11px;
                     vertical-alignment: center;
                     horizontal-alignment: right;
-                    horizontal-stretch: 1;
                     overflow: elide;
                 }
 
-                Image {
+                summary-icon := Image {
+                    x: max(0px, summary-end.x - self.width - 6px);
+                    y: (parent.height - self.height) / 2;
                     width: 14px;
                     height: 14px;
                     source: @image-url("icons/transforms.svg");
@@ -182,12 +243,15 @@ component SidebarSectionHeader inherits Rectangle {
                 }
 
                 Text {
-                    text: root.summary-end-text;
+                    x: 0px;
+                    y: 0px;
+                    width: max(0px, summary-icon.x - 6px);
+                    height: parent.height;
+                    text: root.summary-start-text;
                     color: Theme.text-secondary;
                     font-size: 11px;
                     vertical-alignment: center;
                     horizontal-alignment: right;
-                    horizontal-stretch: 1;
                     overflow: elide;
                 }
             }
@@ -233,6 +297,12 @@ export component EovaeSidebar inherits Rectangle {
     in property <string> job-status: "Idle";
     in property <float> progress-value: 0;
     in property <bool> job-running: false;
+    in property <string> analysis-elapsed-text: "";
+    in property <string> analysis-summary-text: "";
+    in property <bool> analysis-summary-is-error: false;
+    in property <bool> analysis-show-leading-status: false;
+    in property <float> analysis-indicator-value: 0;
+    in property <bool> analysis-completed: false;
     in property <bool> use-gpu: false;
     in property <bool> auto-update: false;
     in property <string> stats-summary: "No analysis yet.";
@@ -432,6 +502,13 @@ export component EovaeSidebar inherits Rectangle {
                     width: parent.width - 6px;
                     title: "Analysis";
                     expanded: root.analysis-section-expanded;
+                    show-leading-status: !root.analysis-section-expanded && root.analysis-show-leading-status;
+                    leading-progress-value: root.analysis-indicator-value;
+                    leading-progress-completed: root.analysis-completed;
+                    leading-progress-error: root.analysis-summary-is-error;
+                    leading-text: root.analysis-section-expanded ? "" : root.analysis-elapsed-text;
+                    summary-text: root.analysis-section-expanded ? "" : root.analysis-summary-text;
+                    summary-color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
                     toggled => { root.analysis-section-expanded = !root.analysis-section-expanded; }
                 }
 
@@ -545,7 +622,7 @@ export component EovaeSidebar inherits Rectangle {
 
                         Text {
                             text: root.job-status;
-                            color: Theme.text-secondary;
+                            color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
                             wrap: word-wrap;
                             font-size: 11px;
                         }
@@ -562,6 +639,12 @@ export component EovaeSidebar inherits Rectangle {
                                 border-radius: 4px;
                                 background: #2f6db5;
                             }
+                        }
+
+                        if root.analysis-elapsed-text != "": Text {
+                            text: "Elapsed: " + root.analysis-elapsed-text;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
                         }
                     }
                 }
