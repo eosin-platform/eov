@@ -665,8 +665,25 @@ enum Section {
     Results,
 }
 
+fn parse_callback_arg<T>(args_json: &str) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_str::<T>(args_json).ok().or_else(|| {
+        serde_json::from_str::<Vec<T>>(args_json)
+            .ok()
+            .and_then(|mut values| {
+                if values.len() == 1 {
+                    values.pop()
+                } else {
+                    None
+                }
+            })
+    })
+}
+
 fn update_section_expanded(args_json: &str, section: Section) -> bool {
-    let expanded = serde_json::from_str::<bool>(args_json).unwrap_or(true);
+    let expanded = parse_callback_arg::<bool>(args_json).unwrap_or(true);
     let mut state = plugin_state().lock().unwrap();
     let target = match section {
         Section::Model => &mut state.model_section_expanded,
@@ -684,8 +701,7 @@ fn update_section_expanded(args_json: &str, section: Section) -> bool {
 }
 
 fn update_analysis_threads(args_json: &str) -> bool {
-    let value = serde_json::from_str::<String>(args_json)
-        .ok()
+    let value = parse_callback_arg::<String>(args_json)
         .and_then(|value| value.trim().parse::<usize>().ok())
         .unwrap_or(1);
     let analysis_threads = clamp_analysis_threads(value);
@@ -700,7 +716,7 @@ fn update_analysis_threads(args_json: &str) -> bool {
 }
 
 fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
-    let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
+    let value = parse_callback_arg::<String>(args_json).unwrap_or_default();
     let mut state = plugin_state().lock().unwrap();
     let Some(model) = state.model.as_mut() else {
         return false;
@@ -898,6 +914,20 @@ mod tests {
     fn ignores_noop_section_toggle() {
         reset_sidebar_test_state();
         assert!(!update_section_expanded("true", Section::Model));
+    }
+
+    #[test]
+    fn section_toggle_accepts_single_bool_array_payload() {
+        reset_sidebar_test_state();
+        assert!(update_section_expanded("[false]", Section::Model));
+        assert!(!plugin_state().lock().unwrap().model_section_expanded);
+    }
+
+    #[test]
+    fn analysis_threads_accepts_single_string_array_payload() {
+        reset_sidebar_test_state();
+        assert!(update_analysis_threads("[\"2\"]"));
+        assert_eq!(plugin_state().lock().unwrap().config.analysis_threads, 2);
     }
 
     #[test]

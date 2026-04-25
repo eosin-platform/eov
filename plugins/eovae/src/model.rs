@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const GPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(3);
+const GPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(20);
 const CPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -97,6 +97,12 @@ pub struct ReconstructionResult {
     pub rgb: Vec<u8>,
 }
 
+pub struct BatchReconstructionInput<'a> {
+    pub rgba: &'a [u8],
+    pub width: u32,
+    pub height: u32,
+}
+
 pub fn load_model(path: &str, prefer_gpu: bool) -> Result<LoadedModel, String> {
     if !path.ends_with(".onnx") {
         return Err("only .onnx models are supported".to_string());
@@ -148,18 +154,20 @@ fn build_inference_session(
     path: &str,
     prefer_gpu: bool,
     analysis_threads: usize,
+    layout: Layout,
 ) -> Result<Session, String> {
-    build_session_with_watchdog(path, prefer_gpu, analysis_threads)
+    build_session_with_watchdog(path, prefer_gpu, analysis_threads, layout)
 }
 
 fn build_inference_session_inner(
     path: &str,
     prefer_gpu: bool,
     analysis_threads: usize,
+    layout: Layout,
 ) -> Result<Session, String> {
     let mut builder = Session::builder()
         .map_err(|error| error.to_string())?
-        .with_optimization_level(GraphOptimizationLevel::Disable)
+        .with_optimization_level(GraphOptimizationLevel::Level3)
         .map_err(|error| error.to_string())?
         .with_parallel_execution(analysis_threads > 1)
         .map_err(|error| error.to_string())?
@@ -168,9 +176,11 @@ fn build_inference_session_inner(
     if prefer_gpu {
         debug_timing("configuring gpu session options");
         let cuda = ep::CUDA::default()
-            .with_conv_algorithm_search(ep::cuda::ConvAlgorithmSearch::Heuristic)
-            .with_conv_max_workspace(false)
+            .with_conv_algorithm_search(ep::cuda::ConvAlgorithmSearch::Exhaustive)
+            .with_conv_max_workspace(true)
             .with_cuda_graph(false)
+            .with_tf32(true)
+            .with_prefer_nhwc(matches!(layout, Layout::Nhwc))
             .build();
         builder = builder
             .with_execution_providers([cuda])
@@ -194,6 +204,7 @@ fn build_session_with_watchdog(
     path: &str,
     prefer_gpu: bool,
     analysis_threads: usize,
+    layout: Layout,
 ) -> Result<Session, String> {
     let timeout = if prefer_gpu {
         GPU_SESSION_BUILD_TIMEOUT
@@ -205,7 +216,7 @@ fn build_session_with_watchdog(
     let path = path.to_string();
 
     thread::spawn(move || {
-        let result = build_inference_session_inner(&path, prefer_gpu, analysis_threads);
+        let result = build_inference_session_inner(&path, prefer_gpu, analysis_threads, layout);
         let _ = sender.send(result);
     });
 
@@ -425,6 +436,57 @@ pub fn run_reconstruction(
     postprocess_reconstruction(output, model.summary.layout)
 }
 
+pub fn run_reconstruction_batch(
+    model: &LoadedModel,
+    inputs: &[BatchReconstructionInput<'_>],
+) -> Result<Vec<ReconstructionResult>, String> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let width = inputs[0].width;
+    let height = inputs[0].height;
+    if inputs
+        .iter()
+        .any(|input| input.width != width || input.height != height)
+    {
+        return Err("batched reconstruction requires all tiles to have the same dimensions".to_string());
+    }
+
+    let started = Instant::now();
+    let input = preprocess_rgba_batch(inputs, model.summary.layout)?;
+    debug_timing(&format!("batch preprocess completed in {:?}", started.elapsed()));
+
+    let session_started = Instant::now();
+    let mut session = ensure_inference_session(model)?;
+    debug_timing(&format!(
+        "batch ensure_inference_session completed in {:?}",
+        session_started.elapsed()
+    ));
+
+    let session = session
+        .as_mut()
+        .ok_or_else(|| "inference session is unavailable".to_string())?;
+
+    let run_started = Instant::now();
+    let outputs = session
+        .session
+        .run(ort::inputs![
+            TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?
+        ])
+        .map_err(|error| error.to_string())?;
+    debug_timing(&format!(
+        "batch session.run completed in {:?}",
+        run_started.elapsed()
+    ));
+
+    let output_value = &outputs[model.summary.selected_output];
+    let output = output_value
+        .try_extract_array::<f32>()
+        .map_err(|error| error.to_string())?;
+    postprocess_reconstruction_batch(output, model.summary.layout)
+}
+
 fn ensure_inference_session(
     model: &LoadedModel,
 ) -> Result<std::sync::MutexGuard<'_, Option<CachedSession>>, String> {
@@ -447,13 +509,23 @@ fn ensure_inference_session(
         if prefer_gpu { "gpu" } else { "cpu" },
         analysis_threads
     ));
-    let session = match build_inference_session(&model.summary.path, prefer_gpu, analysis_threads) {
+    let session = match build_inference_session(
+        &model.summary.path,
+        prefer_gpu,
+        analysis_threads,
+        model.summary.layout,
+    ) {
         Ok(session) => session,
         Err(error) if prefer_gpu => {
             debug_timing(&format!(
                 "gpu inference session unavailable; falling back to cpu: {error}"
             ));
-            build_inference_session(&model.summary.path, false, analysis_threads)?
+            build_inference_session(
+                &model.summary.path,
+                false,
+                analysis_threads,
+                model.summary.layout,
+            )?
         }
         Err(error) => return Err(error),
     };
@@ -525,43 +597,101 @@ fn preprocess_rgba(
     Ok(array)
 }
 
+fn preprocess_rgba_batch(
+    inputs: &[BatchReconstructionInput<'_>],
+    layout: Layout,
+) -> Result<Array4<f32>, String> {
+    let width = inputs[0].width as usize;
+    let height = inputs[0].height as usize;
+    let batch = inputs.len();
+    let mut array = match layout {
+        Layout::Nchw => Array4::<f32>::zeros((batch, 3, height, width)),
+        Layout::Nhwc => Array4::<f32>::zeros((batch, height, width, 3)),
+    };
+
+    for (batch_index, input) in inputs.iter().enumerate() {
+        if input.rgba.len() != width * height * 4 {
+            return Err("tile byte size does not match RGBA dimensions".to_string());
+        }
+        for y in 0..height {
+            for x in 0..width {
+                let offset = (y * width + x) * 4;
+                let r = input.rgba[offset] as f32 / 255.0;
+                let g = input.rgba[offset + 1] as f32 / 255.0;
+                let b = input.rgba[offset + 2] as f32 / 255.0;
+                match layout {
+                    Layout::Nchw => {
+                        array[[batch_index, 0, y, x]] = r;
+                        array[[batch_index, 1, y, x]] = g;
+                        array[[batch_index, 2, y, x]] = b;
+                    }
+                    Layout::Nhwc => {
+                        array[[batch_index, y, x, 0]] = r;
+                        array[[batch_index, y, x, 1]] = g;
+                        array[[batch_index, y, x, 2]] = b;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(array)
+}
+
 fn postprocess_reconstruction(
     output: ArrayViewD<'_, f32>,
     layout: Layout,
 ) -> Result<ReconstructionResult, String> {
+    postprocess_reconstruction_batch(output, layout)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "reconstruction batch output was empty".to_string())
+}
+
+fn postprocess_reconstruction_batch(
+    output: ArrayViewD<'_, f32>,
+    layout: Layout,
+) -> Result<Vec<ReconstructionResult>, String> {
     let output = output
         .into_dimensionality::<Ix4>()
         .map_err(|_| "expected a 4D reconstruction tensor".to_string())?;
-    let output = output.index_axis(Axis(0), 0);
 
-    let (height, width, channels) = match layout {
-        Layout::Nchw => (output.shape()[1], output.shape()[2], output.shape()[0]),
-        Layout::Nhwc => (output.shape()[0], output.shape()[1], output.shape()[2]),
-    };
-    if channels < 3 {
-        return Err("reconstruction output must have at least 3 channels".to_string());
-    }
+    let batch_size = output.shape()[0];
+    let mut reconstructions = Vec::with_capacity(batch_size);
+    for batch_index in 0..batch_size {
+        let output = output.index_axis(Axis(0), batch_index);
 
-    let max_value = output
-        .iter()
-        .fold(f32::MIN, |current, value| current.max(*value));
-    let scale = if max_value <= 1.5 { 255.0 } else { 1.0 };
-
-    let mut rgb = vec![0u8; width * height * 3];
-    for y in 0..height {
-        for x in 0..width {
-            let (r, g, b) = match layout {
-                Layout::Nchw => (output[[0, y, x]], output[[1, y, x]], output[[2, y, x]]),
-                Layout::Nhwc => (output[[y, x, 0]], output[[y, x, 1]], output[[y, x, 2]]),
-            };
-            let offset = (y * width + x) * 3;
-            rgb[offset] = (r * scale).clamp(0.0, 255.0) as u8;
-            rgb[offset + 1] = (g * scale).clamp(0.0, 255.0) as u8;
-            rgb[offset + 2] = (b * scale).clamp(0.0, 255.0) as u8;
+        let (height, width, channels) = match layout {
+            Layout::Nchw => (output.shape()[1], output.shape()[2], output.shape()[0]),
+            Layout::Nhwc => (output.shape()[0], output.shape()[1], output.shape()[2]),
+        };
+        if channels < 3 {
+            return Err("reconstruction output must have at least 3 channels".to_string());
         }
+
+        let max_value = output
+            .iter()
+            .fold(f32::MIN, |current, value| current.max(*value));
+        let scale = if max_value <= 1.5 { 255.0 } else { 1.0 };
+
+        let mut rgb = vec![0u8; width * height * 3];
+        for y in 0..height {
+            for x in 0..width {
+                let (r, g, b) = match layout {
+                    Layout::Nchw => (output[[0, y, x]], output[[1, y, x]], output[[2, y, x]]),
+                    Layout::Nhwc => (output[[y, x, 0]], output[[y, x, 1]], output[[y, x, 2]]),
+                };
+                let offset = (y * width + x) * 3;
+                rgb[offset] = (r * scale).clamp(0.0, 255.0) as u8;
+                rgb[offset + 1] = (g * scale).clamp(0.0, 255.0) as u8;
+                rgb[offset + 2] = (b * scale).clamp(0.0, 255.0) as u8;
+            }
+        }
+
+        reconstructions.push(ReconstructionResult { rgb });
     }
 
-    Ok(ReconstructionResult { rgb })
+    Ok(reconstructions)
 }
 
 #[cfg(test)]
