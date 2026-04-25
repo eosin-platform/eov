@@ -1,6 +1,6 @@
 use crate::analysis::{AnalysisConfig, HotRegion, TileCacheEntry};
 use crate::model::LoadedModel;
-use crate::stats::{ErrorStats, summarize_errors};
+use crate::stats::{ErrorHistogramBin, ErrorStats, build_error_histogram, summarize_errors};
 use abi_stable::std_types::RString;
 use plugin_api::ffi::{HostApiVTable, HostLogLevelFFI};
 use serde::{Deserialize, Serialize};
@@ -75,6 +75,7 @@ pub struct PluginState {
     pub hot_regions: Vec<HotRegion>,
     pub sidebar_regions: Vec<SidebarRegion>,
     pub error_stats: ErrorStats,
+    pub error_histogram: Vec<ErrorHistogramBin>,
     pub progress_value: f32,
     pub job_status: String,
     pub job: Option<RunningJob>,
@@ -100,6 +101,7 @@ impl Default for PluginState {
             hot_regions: Vec::new(),
             sidebar_regions: Vec::new(),
             error_stats: ErrorStats::default(),
+            error_histogram: Vec::new(),
             progress_value: 0.0,
             job_status: "Idle".to_string(),
             job: None,
@@ -152,6 +154,7 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.hot_regions.clear();
     state.sidebar_regions.clear();
     state.error_stats = ErrorStats::default();
+    state.error_histogram.clear();
     state.progress_value = 0.0;
     state.hovered_region_id = None;
     state.pulsing_region_id = None;
@@ -165,6 +168,10 @@ pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
         .filter(|entry| entry.namespace == state.cache_namespace)
         .collect::<Vec<_>>();
     state.error_stats = summarize_errors(entries.iter().map(|entry| entry.tile.mean_absolute_error));
+    state.error_histogram = build_error_histogram(
+        entries.iter().map(|entry| entry.tile.mean_absolute_error),
+        12,
+    );
     state.hot_regions = entries
         .iter()
         .map(|entry| HotRegion {

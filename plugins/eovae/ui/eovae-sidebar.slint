@@ -104,6 +104,12 @@ export struct HotRegionRow {
     score: string,
 }
 
+export struct ErrorHistogramBin {
+    label: string,
+    count: int,
+    normalized: float,
+}
+
 export component EovaeSidebar inherits Rectangle {
     in property <string> model-path: "";
     in property <string> model-status: "No ONNX model loaded.";
@@ -124,6 +130,8 @@ export component EovaeSidebar inherits Rectangle {
     in property <bool> use-gpu: false;
     in property <bool> auto-update: false;
     in property <string> stats-summary: "No analysis yet.";
+    in property <[ErrorHistogramBin]> error-histogram: [];
+    in property <int> error-histogram-max: 0;
     in property <[HotRegionRow]> hot-regions: [];
 
     callback load-model();
@@ -416,6 +424,125 @@ export component EovaeSidebar inherits Rectangle {
                         spacing: 8px;
 
                         Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+
+                        Rectangle {
+                            width: parent.width;
+                            min-height: 122px;
+                            border-radius: 5px;
+                            border-width: 1px;
+                            border-color: #ffffff10;
+                            background: #13181f;
+                            clip: true;
+
+                            for guide in [0, 1, 2]: Rectangle {
+                                y: 20px + guide * 26px;
+                                x: 10px;
+                                width: parent.width - 20px;
+                                height: 1px;
+                                background: #ffffff10;
+                            }
+
+                            VerticalLayout {
+                                width: parent.width - 16px;
+                                height: parent.height - 14px;
+                                x: 8px;
+                                y: 7px;
+                                spacing: 6px;
+
+                                HorizontalLayout {
+                                    spacing: 0px;
+
+                                    Text {
+                                        text: "Reconstruction error distribution";
+                                        color: Theme.text-primary;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                    }
+
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                    Text {
+                                        text: root.error-histogram-max > 0 ? "peak " + root.error-histogram-max : "awaiting data";
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: parent.width;
+                                    height: 72px;
+                                    background: transparent;
+
+                                    if root.error-histogram.length == 0: HorizontalLayout {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        spacing: 6px;
+                                        padding-top: 10px;
+                                        padding-bottom: 8px;
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 16px; border-radius: 3px; background: #ffffff12; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 28px; border-radius: 3px; background: #ffffff14; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 22px; border-radius: 3px; background: #ffffff10; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 38px; border-radius: 3px; background: #ffffff16; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 30px; border-radius: 3px; background: #ffffff12; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 18px; border-radius: 3px; background: #ffffff10; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 34px; border-radius: 3px; background: #ffffff14; }
+                                        Rectangle { width: 12px; vertical-stretch: 1; height: 24px; border-radius: 3px; background: #ffffff12; }
+                                    }
+
+                                    if root.error-histogram.length > 0: HorizontalLayout {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        spacing: 4px;
+                                        padding-top: 4px;
+                                        padding-bottom: 2px;
+
+                                        for bin in root.error-histogram: Rectangle {
+                                            vertical-stretch: 1;
+                                            background: transparent;
+
+                                            Rectangle {
+                                                x: 0;
+                                                y: parent.height - (bin.normalized * 60px) - 2px;
+                                                width: parent.width;
+                                                height: (bin.normalized * 60px) + 2px;
+                                                border-radius: 3px;
+                                                background: #d4aa33;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 0px;
+
+                                    Text {
+                                        text: root.error-histogram.length > 0 ? root.error-histogram[0].label : "lower error";
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                    }
+
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                    Text {
+                                        text: root.error-histogram.length > 0 ? root.error-histogram[root.error-histogram.length - 1].label : "analyze a viewport or whole slide";
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                        horizontal-alignment: right;
+                                    }
+                                }
+
+                                if root.error-histogram.length == 0: Text {
+                                    text: "Run an analysis to populate the error histogram and ranked regions.";
+                                    color: Theme.text-secondary;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
                         Text {
                             text: root.stats-summary;
                             color: Theme.text-secondary;

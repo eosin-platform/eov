@@ -67,6 +67,23 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         .iter()
         .map(|region| json!({ "id": region.id, "label": region.label, "score": region.score }))
         .collect::<Vec<_>>();
+    let histogram_bins = state
+        .error_histogram
+        .iter()
+        .map(|bin| {
+            json!({
+                "label": bin.label,
+                "count": bin.count as i32,
+                "normalized": bin.normalized,
+            })
+        })
+        .collect::<Vec<_>>();
+    let histogram_max = state
+        .error_histogram
+        .iter()
+        .map(|bin| bin.count)
+        .max()
+        .unwrap_or(0) as i32;
     let stats_summary = if state.error_stats.count == 0 {
         "No analysis yet.".to_string()
     } else {
@@ -105,6 +122,8 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("use-gpu", json!(state.config.use_gpu)),
         property("auto-update", json!(state.config.auto_update_viewport)),
         property("stats-summary", json!(stats_summary)),
+        property("error-histogram", json!(histogram_bins)),
+        property("error-histogram-max", json!(histogram_max)),
         property("hot-regions", json!(hot_regions)),
     ];
     RVec::from(properties)
