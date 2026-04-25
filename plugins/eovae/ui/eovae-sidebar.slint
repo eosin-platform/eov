@@ -25,6 +25,8 @@ export component EovaeSidebar inherits Rectangle {
     in property <int> selected-output-index: 0;
     in property <[string]> mode-options: ["Original", "Reconstruction", "Error Map", "Difference"];
     in property <int> selected-mode-index: 0;
+    in property <[string]> mip-options: ["1x", "2x", "4x", "8x"];
+    in property <int> selected-mip-index: 0;
     in property <string> job-status: "Idle";
     in property <float> progress-value: 0;
     in property <bool> job-running: false;
@@ -40,6 +42,7 @@ export component EovaeSidebar inherits Rectangle {
     callback cancel-job();
     callback jump-to-region(string);
     callback mode-changed(string);
+    callback mip-changed(string);
     callback input-changed(string);
     callback output-changed(string);
     callback use-gpu-changed(bool);
@@ -197,10 +200,47 @@ export component EovaeSidebar inherits Rectangle {
 
                 Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
-                ComboBox {
-                    model: root.mode-options;
-                    current-index: root.selected-mode-index;
-                    selected(value) => { root.mode-changed(value); }
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    ComboBox {
+                        horizontal-stretch: 1;
+                        model: root.mode-options;
+                        current-index: root.selected-mode-index;
+                        selected(value) => { root.mode-changed(value); }
+                    }
+
+                    Rectangle {
+                        min-width: 88px;
+                        background: transparent;
+
+                        tip-hover := TouchArea {}
+
+                        ComboBox {
+                            width: parent.width;
+                            model: root.mip-options;
+                            current-index: root.selected-mip-index;
+                            selected(value) => { root.mip-changed(value); }
+                        }
+
+                        if tip-hover.has-hover: Rectangle {
+                            x: 0;
+                            y: parent.height + 4px;
+                            z: 10;
+                            border-radius: 4px;
+                            background: #20242a;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            VerticalLayout {
+                                padding: 6px;
+                                Text {
+                                    text: "Mip Level";
+                                    color: Theme.text-primary;
+                                    font-size: 11px;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 HorizontalLayout {

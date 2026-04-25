@@ -51,22 +51,26 @@ fn maybe_schedule_auto_viewport_analysis() {
         None => return,
     };
     let viewport_key = format!(
-        "{:.3}:{:.3}:{:.3}:{:.3}",
+        "{:.3}:{:.3}:{:.3}:{:.3}:mip{}",
         viewport.bounds_left,
         viewport.bounds_top,
         viewport.bounds_right,
         viewport.bounds_bottom,
+        {
+            let state = plugin_state().lock().unwrap();
+            state.config.mip_level
+        },
     );
     if !should_auto_update(&viewport_key) {
         return;
     }
-    let (model, namespace) = {
+    let (model, namespace, mip_level) = {
         let state = plugin_state().lock().unwrap();
-        (state.model.clone(), state.cache_namespace.clone())
+        (state.model.clone(), state.cache_namespace.clone(), state.config.mip_level)
     };
     if let Some(model) = model {
         mark_auto_update(viewport_key);
-        start_viewport_analysis(model, viewport, namespace);
+        start_viewport_analysis(model, viewport, namespace, mip_level);
     }
 }
 
@@ -94,18 +98,20 @@ fn composite_tile(
     let sy0 = (((tile.y as f64 - viewport.bounds_top) / view_height) * frame_height as f64).floor() as i32;
     let sx1 = ((((tile.x + tile.width as u64) as f64 - viewport.bounds_left) / view_width) * frame_width as f64).ceil() as i32;
     let sy1 = ((((tile.y + tile.height as u64) as f64 - viewport.bounds_top) / view_height) * frame_height as f64).ceil() as i32;
+    let sample_width = tile.sample_width.max(1);
+    let sample_height = tile.sample_height.max(1);
 
     for sy in sy0.max(0)..sy1.min(frame_height as i32) {
         for sx in sx0.max(0)..sx1.min(frame_width as i32) {
-            let tx = (((sx - sx0).max(0) as f64 / (sx1 - sx0).max(1) as f64) * tile.width as f64)
+            let tx = (((sx - sx0).max(0) as f64 / (sx1 - sx0).max(1) as f64) * sample_width as f64)
                 .floor()
-                .clamp(0.0, (tile.width.saturating_sub(1)) as f64) as usize;
-            let ty = (((sy - sy0).max(0) as f64 / (sy1 - sy0).max(1) as f64) * tile.height as f64)
+                .clamp(0.0, (sample_width.saturating_sub(1)) as f64) as usize;
+            let ty = (((sy - sy0).max(0) as f64 / (sy1 - sy0).max(1) as f64) * sample_height as f64)
                 .floor()
-                .clamp(0.0, (tile.height.saturating_sub(1)) as f64) as usize;
+                .clamp(0.0, (sample_height.saturating_sub(1)) as f64) as usize;
             let frame_index = (sy as usize * frame_width as usize + sx as usize) * 4;
-            let tile_rgb_index = (ty * tile.width as usize + tx) * 3;
-            let tile_luma_index = ty * tile.width as usize + tx;
+            let tile_rgb_index = (ty * sample_width as usize + tx) * 3;
+            let tile_luma_index = ty * sample_width as usize + tx;
 
             match mode {
                 VisualizationMode::Original => {}

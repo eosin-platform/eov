@@ -17,6 +17,10 @@ fn plugin_trace(message: impl AsRef<str>) {
     }
 }
 
+fn analysis_namespace(base_namespace: &str, mip_level: u32) -> String {
+    format!("{base_namespace}|mip{mip_level}")
+}
+
 pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
     let state = plugin_state().lock().unwrap();
     let summary = state.model.as_ref().map(|model| &model.summary);
@@ -91,6 +95,8 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             json!(summary.map(|summary| summary.selected_output as i32).unwrap_or(0)),
         ),
         property("selected-mode-index", json!(state.visualization_mode.to_index())),
+        property("mip-options", json!(["1x", "2x", "4x", "8x"])),
+        property("selected-mip-index", json!(state.config.mip_level as i32)),
         property("job-status", json!(state.job_status)),
         property("progress-value", json!(state.progress_value)),
         property("job-running", json!(state.job.is_some())),
@@ -126,6 +132,10 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
             (false, false)
         }
         "mode-changed" => (false, update_mode(args_json)),
+        "mip-changed" => {
+            let changed = update_mip_level(args_json);
+            (changed, changed)
+        }
         "input-changed" => {
             let changed = update_selected_tensor(args_json, true);
             (changed, changed)
@@ -232,7 +242,7 @@ fn finish_model_load(load_generation: u64, path: String, result: Result<LoadedMo
 
         match result {
             Ok(model) => {
-                let namespace = model.summary.identity();
+                let namespace = analysis_namespace(&model.summary.identity(), state.config.mip_level);
                 state.model_path = model.summary.path.clone();
                 state.model_status = if model.summary.warnings.is_empty() {
                     format!(
@@ -302,12 +312,17 @@ fn analyze_viewport() {
             return;
         }
     };
-    let (model, namespace) = {
+    let (model, namespace, mip_level) = {
         let state = plugin_state().lock().unwrap();
-        (state.model.clone(), state.cache_namespace.clone())
+        let model = state.model.clone();
+        let namespace = model
+            .as_ref()
+            .map(|model| analysis_namespace(&model.summary.identity(), state.config.mip_level))
+            .unwrap_or_default();
+        (model, namespace, state.config.mip_level)
     };
     if let Some(model) = model {
-        start_viewport_analysis(model, viewport, namespace);
+        start_viewport_analysis(model, viewport, namespace, mip_level);
     }
 }
 
@@ -324,9 +339,14 @@ fn analyze_whole_slide() {
             return;
         }
     };
-    let (model, namespace) = {
+    let (model, namespace, mip_level) = {
         let state = plugin_state().lock().unwrap();
-        (state.model.clone(), state.cache_namespace.clone())
+        let model = state.model.clone();
+        let namespace = model
+            .as_ref()
+            .map(|model| analysis_namespace(&model.summary.identity(), state.config.mip_level))
+            .unwrap_or_default();
+        (model, namespace, state.config.mip_level)
     };
     if let Some(model) = model {
         start_whole_slide_analysis(
@@ -336,6 +356,7 @@ fn analyze_whole_slide() {
             active_file.width,
             active_file.height,
             namespace,
+            mip_level,
         );
     }
 }
@@ -354,6 +375,35 @@ fn update_mode(args_json: &str) -> bool {
         return false;
     }
     state.visualization_mode = new_mode;
+    true
+}
+
+fn update_mip_level(args_json: &str) -> bool {
+    let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
+    let mip_level = match value.as_str() {
+        "2x" => 1,
+        "4x" => 2,
+        "8x" => 3,
+        _ => 0,
+    };
+    let namespace = {
+        let mut state = plugin_state().lock().unwrap();
+        if state.config.mip_level == mip_level {
+            return false;
+        }
+        state.config.mip_level = mip_level;
+        let Some(model) = state.model.as_ref() else {
+            state.cache_namespace.clear();
+            state.cache.clear();
+            state.hot_regions.clear();
+            state.sidebar_regions.clear();
+            state.error_stats = crate::stats::ErrorStats::default();
+            state.progress_value = 0.0;
+            return true;
+        };
+        analysis_namespace(&model.summary.identity(), mip_level)
+    };
+    clear_cache_for_namespace(namespace);
     true
 }
 
@@ -385,7 +435,7 @@ fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
     if !changed {
         return false;
     }
-    let namespace = model.summary.identity();
+    let namespace = analysis_namespace(&model.summary.identity(), state.config.mip_level);
     drop(state);
     clear_cache_for_namespace(namespace);
     true
@@ -457,6 +507,12 @@ mod tests {
     fn ignores_noop_mode_change() {
         reset_sidebar_test_state();
         assert!(!update_mode("\"Original\""));
+    }
+
+    #[test]
+    fn ignores_noop_mip_change() {
+        reset_sidebar_test_state();
+        assert!(!update_mip_level("\"1x\""));
     }
 
     #[test]

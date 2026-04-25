@@ -15,6 +15,7 @@ pub struct AnalysisConfig {
     pub auto_update_viewport: bool,
     pub skip_background: bool,
     pub background_threshold: u8,
+    pub mip_level: u32,
 }
 
 impl Default for AnalysisConfig {
@@ -24,6 +25,7 @@ impl Default for AnalysisConfig {
             auto_update_viewport: false,
             skip_background: true,
             background_threshold: 242,
+            mip_level: 0,
         }
     }
 }
@@ -34,6 +36,8 @@ pub struct AnalyzedTile {
     pub y: u64,
     pub width: u32,
     pub height: u32,
+    pub sample_width: u32,
+    pub sample_height: u32,
     pub reconstruction_rgb: Vec<u8>,
     pub difference_rgb: Vec<u8>,
     pub error_map_luma: Vec<u8>,
@@ -53,6 +57,8 @@ impl AnalyzedTile {
             y,
             width,
             height,
+            sample_width: width,
+            sample_height: height,
             reconstruction_rgb: vec![0; width as usize * height as usize * 3],
             difference_rgb: vec![0; width as usize * height as usize * 3],
             error_map_luma: vec![0; width as usize * height as usize],
@@ -68,6 +74,17 @@ pub struct TileCacheEntry {
     pub tile: AnalyzedTile,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TilePlan {
+    x: u64,
+    y: u64,
+    width: u32,
+    height: u32,
+    level: u32,
+    read_width: u32,
+    read_height: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct HotRegion {
     pub id: String,
@@ -78,10 +95,15 @@ pub struct HotRegion {
     pub mean_absolute_error: f64,
 }
 
-pub fn start_viewport_analysis(model: LoadedModel, viewport: ViewportSnapshotFFI, namespace: String) {
+pub fn start_viewport_analysis(
+    model: LoadedModel,
+    viewport: ViewportSnapshotFFI,
+    namespace: String,
+    mip_level: u32,
+) {
     let tile_size = model.summary.tile_size;
     start_job(JobKind::Viewport, namespace.clone(), move |cancel| {
-        let tiles = viewport_tiles(&viewport, tile_size);
+        let tiles = viewport_tiles(&viewport, tile_size, mip_level);
         run_tile_plan(model, namespace, tiles, cancel)
     });
 }
@@ -93,10 +115,11 @@ pub fn start_whole_slide_analysis(
     image_width: u64,
     image_height: u64,
     namespace: String,
+    mip_level: u32,
 ) {
     let tile_size = model.summary.tile_size;
     start_job(JobKind::WholeSlide, namespace.clone(), move |cancel| {
-        let tiles = full_slide_tiles(image_width, image_height, tile_size);
+        let tiles = full_slide_tiles(image_width, image_height, tile_size, mip_level);
         run_tile_plan_with_file(model, namespace, tiles, cancel, file_id, file_path)
     });
 }
@@ -143,7 +166,7 @@ where
 fn run_tile_plan(
     model: LoadedModel,
     namespace: String,
-    tiles: Vec<(u64, u64, u32, u32)>,
+    tiles: Vec<TilePlan>,
     cancel: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let snapshot = host_api()
@@ -168,7 +191,7 @@ fn run_tile_plan(
 fn run_tile_plan_with_file(
     model: LoadedModel,
     namespace: String,
-    tiles: Vec<(u64, u64, u32, u32)>,
+    tiles: Vec<TilePlan>,
     cancel: Arc<AtomicBool>,
     file_id: i32,
     _file_path: String,
@@ -179,21 +202,43 @@ fn run_tile_plan_with_file(
         (state.config.skip_background, state.config.background_threshold)
     };
 
-    for (index, (x, y, width, height)) in tiles.iter().copied().enumerate() {
+    for (index, tile_plan) in tiles.iter().copied().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             return Ok(());
         }
 
-        let bytes = (host.read_region)(host.context, file_id, 0, x as i64, y as i64, width, height)
-            .into_result()
-            .map_err(|error| error.to_string())?;
+        let bytes = (host.read_region)(
+            host.context,
+            file_id,
+            tile_plan.level,
+            tile_plan.x as i64,
+            tile_plan.y as i64,
+            tile_plan.read_width,
+            tile_plan.read_height,
+        )
+        .into_result()
+        .map_err(|error| error.to_string())?;
         if skip_background && should_skip_background(bytes.as_slice(), background_threshold) {
             update_progress(index + 1, tiles.len(), "Skipping background tile");
             continue;
         }
 
-        let reconstruction = run_reconstruction(&model, bytes.as_slice(), width, height)?;
-        let tile = build_analyzed_tile(x, y, width, height, bytes.as_slice(), &reconstruction.rgb);
+        let reconstruction = run_reconstruction(
+            &model,
+            bytes.as_slice(),
+            tile_plan.read_width,
+            tile_plan.read_height,
+        )?;
+        let tile = build_analyzed_tile(
+            tile_plan.x,
+            tile_plan.y,
+            tile_plan.width,
+            tile_plan.height,
+            tile_plan.read_width,
+            tile_plan.read_height,
+            bytes.as_slice(),
+            &reconstruction.rgb,
+        );
         {
             let mut state = plugin_state().lock().unwrap();
             state.cache.insert(
@@ -220,28 +265,44 @@ fn update_progress(done: usize, total: usize, label: &str) {
     state.job_status = format!("{label} ({done}/{total})");
 }
 
-fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32) -> Vec<(u64, u64, u32, u32)> {
+fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
     let left = viewport.bounds_left.max(0.0) as u64;
     let top = viewport.bounds_top.max(0.0) as u64;
     let right = viewport.bounds_right.max(0.0) as u64;
     let bottom = viewport.bounds_bottom.max(0.0) as u64;
-    grid_tiles(left, top, right, bottom, tile_size)
+    grid_tiles(left, top, right, bottom, tile_size, mip_level)
 }
 
-fn full_slide_tiles(image_width: u64, image_height: u64, tile_size: u32) -> Vec<(u64, u64, u32, u32)> {
-    grid_tiles(0, 0, image_width, image_height, tile_size)
+fn full_slide_tiles(image_width: u64, image_height: u64, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {
+    grid_tiles(0, 0, image_width, image_height, tile_size, mip_level)
 }
 
-fn grid_tiles(left: u64, top: u64, right: u64, bottom: u64, tile_size: u32) -> Vec<(u64, u64, u32, u32)> {
+fn grid_tiles(
+    left: u64,
+    top: u64,
+    right: u64,
+    bottom: u64,
+    tile_size: u32,
+    mip_level: u32,
+) -> Vec<TilePlan> {
     let mut tiles = Vec::new();
-    let step = tile_size as u64;
+    let downsample = 1u64 << mip_level.min(3);
+    let step = tile_size as u64 * downsample;
     let mut y = top;
     while y < bottom {
         let mut x = left;
         while x < right {
             let width = (right - x).min(step) as u32;
             let height = (bottom - y).min(step) as u32;
-            tiles.push((x, y, width, height));
+            tiles.push(TilePlan {
+                x,
+                y,
+                width,
+                height,
+                level: mip_level,
+                read_width: width.div_ceil(downsample as u32),
+                read_height: height.div_ceil(downsample as u32),
+            });
             x += step;
         }
         y += step;
@@ -269,15 +330,17 @@ fn build_analyzed_tile(
     y: u64,
     width: u32,
     height: u32,
+    sample_width: u32,
+    sample_height: u32,
     rgba: &[u8],
     reconstruction_rgb: &[u8],
 ) -> AnalyzedTile {
-    let mut difference_rgb = vec![0u8; width as usize * height as usize * 3];
-    let mut error_map_luma = vec![0u8; width as usize * height as usize];
+    let mut difference_rgb = vec![0u8; sample_width as usize * sample_height as usize * 3];
+    let mut error_map_luma = vec![0u8; sample_width as usize * sample_height as usize];
     let mut error_sum = 0f64;
     let mut max_error = 0u8;
 
-    for index in 0..(width as usize * height as usize) {
+    for index in 0..(sample_width as usize * sample_height as usize) {
         let src = index * 4;
         let dst = index * 3;
         let dr = rgba[src].abs_diff(reconstruction_rgb[dst]);
@@ -297,10 +360,12 @@ fn build_analyzed_tile(
         y,
         width,
         height,
+        sample_width,
+        sample_height,
         reconstruction_rgb: reconstruction_rgb.to_vec(),
         difference_rgb,
         error_map_luma,
-        mean_absolute_error: error_sum / (width as f64 * height as f64).max(1.0),
+        mean_absolute_error: error_sum / (sample_width as f64 * sample_height as f64).max(1.0),
         max_error,
     }
 }
@@ -333,5 +398,22 @@ mod tests {
         );
         crate::state::rebuild_sidebar_statistics(&mut state);
         assert_eq!(state.hot_regions.first().unwrap().x, 64);
+    }
+
+    #[test]
+    fn grid_tiles_expand_world_coverage_for_selected_mip() {
+        let tiles = grid_tiles(0, 0, 700, 700, 256, 1);
+
+        assert_eq!(tiles[0].width, 512);
+        assert_eq!(tiles[0].height, 512);
+        assert_eq!(tiles[0].read_width, 256);
+        assert_eq!(tiles[0].read_height, 256);
+        assert_eq!(tiles[0].level, 1);
+
+        let edge = tiles.last().unwrap();
+        assert_eq!(edge.width, 188);
+        assert_eq!(edge.height, 188);
+        assert_eq!(edge.read_width, 94);
+        assert_eq!(edge.read_height, 94);
     }
 }
