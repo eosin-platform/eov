@@ -8,8 +8,8 @@ use plugin_api::IconDescriptor;
 use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI, PluginVTable,
-    UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI,
-    ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
+    UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+    ViewportSnapshotFFI,
 };
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -1690,7 +1690,13 @@ fn build_sidebar_factory(
     component: &str,
     vtable: Option<PluginVTable>,
 ) -> Result<ComponentFactory, String> {
-    build_plugin_component_factory(plugin_id, ui_path, component, vtable, PluginComponentKind::Sidebar)
+    build_plugin_component_factory(
+        plugin_id,
+        ui_path,
+        component,
+        vtable,
+        PluginComponentKind::Sidebar,
+    )
 }
 
 fn build_plugin_component_factory(
@@ -1701,8 +1707,13 @@ fn build_plugin_component_factory(
     kind: PluginComponentKind,
 ) -> Result<ComponentFactory, String> {
     let ui_path = PathBuf::from(ui_path);
-    let source = std::fs::read_to_string(&ui_path)
-        .map_err(|err| format!("failed to read {} UI {}: {err}", kind.label(), ui_path.display()))?;
+    let source = std::fs::read_to_string(&ui_path).map_err(|err| {
+        format!(
+            "failed to read {} UI {}: {err}",
+            kind.label(),
+            ui_path.display()
+        )
+    })?;
 
     let compiler = slint_interpreter::Compiler::default();
     let result = spin_on(compiler.build_from_source(source, ui_path.clone()));
@@ -1710,7 +1721,11 @@ fn build_plugin_component_factory(
     for diag in result.diagnostics() {
         if diag.level() == slint_interpreter::DiagnosticLevel::Error {
             has_errors = true;
-            tracing::error!("{} Slint compile error for '{}': {diag}", kind.label(), plugin_id);
+            tracing::error!(
+                "{} Slint compile error for '{}': {diag}",
+                kind.label(),
+                plugin_id
+            );
         }
     }
     if has_errors {
