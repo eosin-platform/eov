@@ -1,0 +1,373 @@
+import { ComboBox } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct TensorRow {
+    name: string,
+    dtype: string,
+    shape: string,
+}
+
+export struct HotRegionRow {
+    id: string,
+    label: string,
+    score: string,
+}
+
+export component EovaeSidebar inherits Rectangle {
+    in property <string> model-path: "";
+    in property <string> model-status: "No ONNX model loaded.";
+    in property <bool> model-loaded: false;
+    in property <[TensorRow]> input-rows: [];
+    in property <[TensorRow]> output-rows: [];
+    in property <[string]> input-options: [];
+    in property <[string]> output-options: [];
+    in property <int> selected-input-index: 0;
+    in property <int> selected-output-index: 0;
+    in property <[string]> mode-options: ["Original", "Reconstruction", "Error Map", "Difference"];
+    in property <int> selected-mode-index: 0;
+    in property <string> job-status: "Idle";
+    in property <float> progress-value: 0;
+    in property <bool> job-running: false;
+    in property <bool> use-gpu: false;
+    in property <bool> auto-update: false;
+    in property <string> stats-summary: "No analysis yet.";
+    in property <[HotRegionRow]> hot-regions: [];
+
+    callback load-model();
+    callback clear-model();
+    callback analyze-viewport();
+    callback analyze-slide();
+    callback cancel-job();
+    callback jump-to-region(string);
+    callback mode-changed(string);
+    callback input-changed(string);
+    callback output-changed(string);
+    callback use-gpu-changed(bool);
+    callback auto-update-changed(bool);
+
+    background: Theme.surface;
+
+    VerticalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding: 10px;
+        spacing: 10px;
+
+        Text {
+            text: "VAE Reconstruction";
+            color: Theme.text-primary;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        Rectangle {
+            border-color: Theme.border;
+            border-width: 1px;
+            border-radius: 6px;
+            background: Theme.background;
+            min-height: 72px;
+
+            VerticalLayout {
+                width: parent.width;
+                padding: 10px;
+                spacing: 6px;
+
+                Text {
+                    text: root.model-path == "" ? "Model" : root.model-path;
+                    color: Theme.text-primary;
+                    wrap: word-wrap;
+                    font-size: 12px;
+                }
+
+                Text {
+                    text: root.model-status;
+                    color: Theme.text-secondary;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        min-width: 88px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: #2f6db5;
+                        TouchArea {
+                            clicked => { root.load-model(); }
+                        }
+                        Text {
+                            text: "Load ONNX";
+                            color: white;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: parent.width;
+                            height: parent.height;
+                        }
+                    }
+
+                    Rectangle {
+                        min-width: 72px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: root.model-loaded ? #5b6470 : #3e444c;
+                        TouchArea {
+                            enabled: root.model-loaded;
+                            clicked => { root.clear-model(); }
+                        }
+                        Text {
+                            text: "Clear";
+                            color: white;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: parent.width;
+                            height: parent.height;
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            border-color: Theme.border;
+            border-width: 1px;
+            border-radius: 6px;
+            background: Theme.background;
+
+            VerticalLayout {
+                width: parent.width;
+                padding: 10px;
+                spacing: 8px;
+
+                Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+
+                Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
+                ComboBox {
+                    model: root.input-options;
+                    current-index: root.selected-input-index;
+                    enabled: root.input-options.length > 0;
+                    selected(value) => { root.input-changed(value); }
+                }
+
+                for row in root.input-rows: Text {
+                    text: row.name + " • " + row.dtype + " • " + row.shape;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                Text { text: "Output"; color: Theme.text-secondary; font-size: 11px; }
+                ComboBox {
+                    model: root.output-options;
+                    current-index: root.selected-output-index;
+                    enabled: root.output-options.length > 0;
+                    selected(value) => { root.output-changed(value); }
+                }
+
+                for row in root.output-rows: Text {
+                    text: row.name + " • " + row.dtype + " • " + row.shape;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        Rectangle {
+            border-color: Theme.border;
+            border-width: 1px;
+            border-radius: 6px;
+            background: Theme.background;
+
+            VerticalLayout {
+                width: parent.width;
+                padding: 10px;
+                spacing: 8px;
+
+                Text { text: "Analysis"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+
+                ComboBox {
+                    model: root.mode-options;
+                    current-index: root.selected-mode-index;
+                    selected(value) => { root.mode-changed(value); }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: root.model-loaded ? #206a5d : #3e444c;
+                        tap-a := TouchArea {
+                            enabled: root.model-loaded && !root.job-running;
+                            clicked => { root.analyze-viewport(); }
+                        }
+                        Text {
+                            text: "Viewport";
+                            color: white;
+                            width: parent.width;
+                            height: parent.height;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: root.model-loaded ? #8a5a12 : #3e444c;
+                        tap-b := TouchArea {
+                            enabled: root.model-loaded && !root.job-running;
+                            clicked => { root.analyze-slide(); }
+                        }
+                        Text {
+                            text: "Whole Slide";
+                            color: white;
+                            width: parent.width;
+                            height: parent.height;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        min-width: 72px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: root.job-running ? #922f2f : #3e444c;
+                        tap-c := TouchArea {
+                            enabled: root.job-running;
+                            clicked => { root.cancel-job(); }
+                        }
+                        Text {
+                            text: "Cancel";
+                            color: white;
+                            width: parent.width;
+                            height: parent.height;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    gpu-toggle := TouchArea {
+                        clicked => { root.use-gpu-changed(!root.use-gpu); }
+                        Rectangle {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 3px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            background: root.use-gpu ? #2f6db5 : transparent;
+                        }
+                    }
+                    Text { text: "Prefer GPU EP"; color: Theme.text-secondary; vertical-alignment: center; }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    auto-toggle := TouchArea {
+                        clicked => { root.auto-update-changed(!root.auto-update); }
+                        Rectangle {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 3px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            background: root.auto-update ? #2f6db5 : transparent;
+                        }
+                    }
+                    Text { text: "Auto-update viewport"; color: Theme.text-secondary; vertical-alignment: center; }
+                }
+
+                Text {
+                    text: root.job-status;
+                    color: Theme.text-secondary;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                }
+
+                Rectangle {
+                    height: 8px;
+                    border-radius: 4px;
+                    background: #23282f;
+                    Rectangle {
+                        width: parent.width * root.progress-value;
+                        height: parent.height;
+                        border-radius: 4px;
+                        background: #2f6db5;
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            border-color: Theme.border;
+            border-width: 1px;
+            border-radius: 6px;
+            background: Theme.background;
+
+            VerticalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding: 10px;
+                spacing: 8px;
+
+                Text { text: "Results"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
+                Text {
+                    text: root.stats-summary;
+                    color: Theme.text-secondary;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                }
+
+                Flickable {
+                    height: parent.height - 52px;
+                    viewport-height: hot-layout.preferred-height;
+
+                    hot-layout := VerticalLayout {
+                        width: parent.width;
+                        spacing: 6px;
+
+                        if root.hot-regions.length == 0: Text {
+                            text: "No high-error regions yet.";
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                        }
+
+                        for region in root.hot-regions: Rectangle {
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            border-radius: 4px;
+                            background: #ffffff08;
+                            min-height: 44px;
+
+                            TouchArea {
+                                clicked => { root.jump-to-region(region.id); }
+                            }
+
+                            VerticalLayout {
+                                width: parent.width;
+                                padding: 8px;
+                                spacing: 2px;
+                                Text { text: region.label; color: Theme.text-primary; font-size: 11px; wrap: word-wrap; }
+                                Text { text: region.score; color: Theme.text-secondary; font-size: 10px; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

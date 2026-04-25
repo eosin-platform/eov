@@ -1,0 +1,12 @@
+id = "eovae"
+name = "EOV VAE"
+version = "0.1.0"
+
+[icon]
+kind = "svg"
+data = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 6h6l2 3 2-3h6\"/><path d=\"M5 7.5l2.5 9h9L19 7.5\"/><path d=\"M8.5 12h7\"/></svg>"""
+
+[[toolbar_buttons]]
+button_id = "toggle_eovae"
+tooltip = "VAE"
+action_id = "toggle_eovae"

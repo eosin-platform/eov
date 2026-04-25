@@ -57,7 +57,7 @@ echo "Building eov with annotation plugin..."
 
 cargo build -p app
 
-PLUGINS=(annotations) # only build these plugins
+PLUGINS=(annotations eovae) # only build these plugins
 
 for plugin_name in "${PLUGINS[@]}"; do
     plugin_src="$PLUGINS_DIR/$plugin_name"
