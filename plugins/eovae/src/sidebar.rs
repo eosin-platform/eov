@@ -96,24 +96,53 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
 }
 
 pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
-    match callback_name {
-        "load-model" => load_model_from_dialog(),
-        "clear-model" => clear_model(),
-        "analyze-viewport" => analyze_viewport(),
-        "analyze-slide" => analyze_whole_slide(),
-        "cancel-job" => {
-            cancel_running_job();
+    let (refresh_sidebar, request_render) = match callback_name {
+        "load-model" => {
+            load_model_from_dialog();
+            (true, true)
         }
-        "jump-to-region" => jump_to_region(args_json),
-        "mode-changed" => update_mode(args_json),
-        "input-changed" => update_selected_tensor(args_json, true),
-        "output-changed" => update_selected_tensor(args_json, false),
-        "use-gpu-changed" => update_boolean(args_json, |state, value| state.config.use_gpu = value),
-        "auto-update-changed" => update_boolean(args_json, |state, value| state.config.auto_update_viewport = value),
-        _ => {}
+        "clear-model" => {
+            clear_model();
+            (true, true)
+        }
+        "analyze-viewport" => {
+            analyze_viewport();
+            (true, true)
+        }
+        "analyze-slide" => {
+            analyze_whole_slide();
+            (true, true)
+        }
+        "cancel-job" => (cancel_running_job(), false),
+        "jump-to-region" => {
+            jump_to_region(args_json);
+            (false, false)
+        }
+        "mode-changed" => (false, update_mode(args_json)),
+        "input-changed" => {
+            let changed = update_selected_tensor(args_json, true);
+            (changed, changed)
+        }
+        "output-changed" => {
+            let changed = update_selected_tensor(args_json, false);
+            (changed, changed)
+        }
+        "use-gpu-changed" => {
+            let changed = update_boolean(args_json, |state, value| state.config.use_gpu = value);
+            (changed, false)
+        }
+        "auto-update-changed" => {
+            let changed = update_boolean(args_json, |state, value| state.config.auto_update_viewport = value);
+            (changed, false)
+        }
+        _ => (false, false),
+    };
+    if refresh_sidebar {
+        refresh_sidebar_if_available();
     }
-    refresh_sidebar_if_available();
-    request_render_if_available();
+    if request_render {
+        request_render_if_available();
+    }
 }
 
 fn load_model_from_dialog() {
@@ -226,7 +255,7 @@ fn analyze_whole_slide() {
     }
 }
 
-fn update_mode(args_json: &str) {
+fn update_mode(args_json: &str) -> bool {
     let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
     let index = match value.as_str() {
         "Reconstruction" => 1,
@@ -235,36 +264,66 @@ fn update_mode(args_json: &str) {
         _ => 0,
     };
     let mut state = plugin_state().lock().unwrap();
-    state.visualization_mode = VisualizationMode::from_index(index);
+    let new_mode = VisualizationMode::from_index(index);
+    if state.visualization_mode == new_mode {
+        return false;
+    }
+    state.visualization_mode = new_mode;
+    true
 }
 
-fn update_selected_tensor(args_json: &str, is_input: bool) {
+fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
     let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
     let mut state = plugin_state().lock().unwrap();
     let Some(model) = state.model.as_mut() else {
-        return;
+        return false;
     };
-    if is_input {
-        if let Some(index) = model.summary.inputs.iter().position(|tensor| tensor.name == value) {
-            model.summary.selected_input = index;
-        }
+    let changed = if is_input {
+        model.summary.inputs.iter().position(|tensor| tensor.name == value).is_some_and(|index| {
+            if model.summary.selected_input == index {
+                false
+            } else {
+                model.summary.selected_input = index;
+                true
+            }
+        })
     } else {
-        if let Some(index) = model.summary.outputs.iter().position(|tensor| tensor.name == value) {
-            model.summary.selected_output = index;
-        }
+        model.summary.outputs.iter().position(|tensor| tensor.name == value).is_some_and(|index| {
+            if model.summary.selected_output == index {
+                false
+            } else {
+                model.summary.selected_output = index;
+                true
+            }
+        })
+    };
+    if !changed {
+        return false;
     }
     let namespace = model.summary.identity();
     drop(state);
     clear_cache_for_namespace(namespace);
+    true
 }
 
-fn update_boolean<F>(args_json: &str, update: F)
+fn update_boolean<F>(args_json: &str, update: F) -> bool
 where
     F: FnOnce(&mut crate::state::PluginState, bool),
 {
     let value = serde_json::from_str::<bool>(args_json).unwrap_or(false);
     let mut state = plugin_state().lock().unwrap();
+    let previous = serde_json::to_value(json!({
+        "use_gpu": state.config.use_gpu,
+        "auto_update_viewport": state.config.auto_update_viewport,
+    }))
+    .ok();
     update(&mut state, value);
+    let current = serde_json::to_value(json!({
+        "use_gpu": state.config.use_gpu,
+        "auto_update_viewport": state.config.auto_update_viewport,
+    }))
+    .ok();
+    previous != current
 }
 
 fn jump_to_region(args_json: &str) {
@@ -298,6 +357,36 @@ pub fn show_sidebar() {
         RString::from("ui/eovae-sidebar.slint"),
         RString::from("EovaeSidebar"),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reset_sidebar_test_state() {
+        let mut state = plugin_state().lock().unwrap();
+        *state = crate::state::PluginState::default();
+    }
+
+    #[test]
+    fn ignores_noop_mode_change() {
+        reset_sidebar_test_state();
+        assert!(!update_mode("\"Original\""));
+    }
+
+    #[test]
+    fn ignores_noop_tensor_selection_during_initialization() {
+        reset_sidebar_test_state();
+        assert!(!update_selected_tensor("\"input\"", true));
+        assert!(!update_selected_tensor("\"reconstruction\"", false));
+    }
+
+    #[test]
+    fn ignores_noop_boolean_updates() {
+        reset_sidebar_test_state();
+        assert!(!update_boolean("false", |state, value| state.config.use_gpu = value));
+        assert!(!update_boolean("false", |state, value| state.config.auto_update_viewport = value));
+    }
 }
 
 fn property(name: &str, value: serde_json::Value) -> UiPropertyFFI {

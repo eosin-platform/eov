@@ -192,8 +192,14 @@ mod tests {
     #[test]
     fn app_host_context_collects_toolbar_and_windows() {
         let mut toolbar = ToolbarManager::new();
+        let mut undo_redo_states = HashMap::new();
+        let mut undo_redo_order = Vec::new();
         {
-            let mut ctx = AppHostContext::new(&mut toolbar);
+            let mut ctx = AppHostContext::new(
+                &mut toolbar,
+                &mut undo_redo_states,
+                &mut undo_redo_order,
+            );
 
             ctx.add_toolbar_button(ToolbarButtonRegistration {
                 plugin_id: "p".into(),

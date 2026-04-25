@@ -114,3 +114,4 @@ tonic-build = "0.13"
 [dev-dependencies]
 tempfile = "3"
 example_plugin = { path = "../example_plugins/example_rust" }
+eovae = { path = "../plugins/eovae", default-features = false }

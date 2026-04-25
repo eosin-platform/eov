@@ -74,6 +74,12 @@ const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
 const MOMENTARY_TOOL_HOLD_THRESHOLD: Duration = Duration::from_millis(120);
 
+fn plugin_trace(message: impl AsRef<str>) {
+    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
+        eprintln!("[main] {}", message.as_ref());
+    }
+}
+
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
     reset_pane_ui_state();
     update_tabs(ui, state);
@@ -516,105 +522,138 @@ fn setup_callbacks(
         let plugin_id = plugin_id.to_string();
         let action_id = action_id.to_string();
         info!("Plugin button clicked: {plugin_id}:{action_id}");
+        plugin_trace(format!("toolbar click plugin={} action={}", plugin_id, action_id));
 
-        if let Some(ui) = rerender_ui.upgrade()
-            && deactivate_active_plugin_tool_if_matching(
-                &ui,
-                &rerender_state,
-                &plugin_id,
-                &action_id,
-            )
-        {
-            request_render_loop(
-                &rerender_timer,
-                &rerender_ui,
-                &rerender_state,
-                &rerender_cache,
-            );
-            return;
-        }
-
-        let extension_host_state = {
-            let state = filter_state.read();
-            Arc::clone(&state.extension_host_state)
-        };
-        if crate::extension_host::has_remote_toolbar_action(
-            &extension_host_state,
-            &plugin_id,
-            &action_id,
-        ) {
-            match crate::extension_host::dispatch_remote_toolbar_action(
-                &extension_host_state,
-                &plugin_id,
-                &action_id,
-            ) {
-                Ok(true) => return,
-                Ok(false) => {}
-                Err(err) => {
-                    tracing::error!("Remote plugin action error: {err}");
-                    return;
-                }
-            }
-        }
-
-        let mut pm = pm.borrow_mut();
-        match pm.handle_action(&plugin_id, &action_id) {
-            Ok(plugins::ActionOutcome::RustPluginWindow { plugin_root }) => {
-                crate::plugins::spawn_rust_plugin_window(&plugin_root);
-            }
-            Ok(plugins::ActionOutcome::PythonSpawn {
-                script_path,
-                plugin_root,
-            }) => {
-                // If the Python plugin has been spawned before (and presumably
-                // registered remote filters), toggle those filters on/off rather
-                // than spawning a second instance.
-                if pm.spawned_python_plugins.contains(&plugin_id) {
-                    {
-                        let mut s = filter_state.write();
-                        s.extension_host_state.write().toggle_all_filters();
-                        s.bump_filter_revision();
-                    }
-                    // Request a re-render so the viewport reflects the toggled filter.
-                    request_render_loop(
-                        &rerender_timer,
-                        &rerender_ui,
-                        &rerender_state,
-                        &rerender_cache,
-                    );
-                } else {
-                    pm.spawned_python_plugins.insert(plugin_id.clone());
-                    crate::plugins::spawn_python_plugin(
-                        &script_path,
-                        &plugin_root,
-                        Some(&action_id),
-                    );
-                }
-            }
-            Ok(plugins::ActionOutcome::Handled) => {
-                // Sync filter enabled states from plugins into the filter chain.
-                {
-                    let mut s = filter_state.write();
-                    pm.sync_filter_states(&s.filter_chain);
-                    s.bump_filter_revision();
-                }
-                if let Some(ui) = rerender_ui.upgrade() {
-                    let state = rerender_state.read();
-                    update_tool_state(&ui, &state);
-                    let _ = plugin_host::refresh_plugin_buttons();
-                }
-                // Request a re-render so the viewport reflects the toggled filter.
+        let pm = Rc::clone(&pm);
+        let filter_state = Arc::clone(&filter_state);
+        let rerender_state = Arc::clone(&rerender_state);
+        let rerender_timer = Rc::clone(&rerender_timer);
+        let rerender_ui = rerender_ui.clone();
+        let rerender_cache = Arc::clone(&rerender_cache);
+        Timer::single_shot(Duration::from_millis(0), move || {
+            plugin_trace(format!("toolbar deferred start plugin={} action={}", plugin_id, action_id));
+            if let Some(ui) = rerender_ui.upgrade()
+                && deactivate_active_plugin_tool_if_matching(
+                    &ui,
+                    &rerender_state,
+                    &plugin_id,
+                    &action_id,
+                )
+            {
                 request_render_loop(
                     &rerender_timer,
                     &rerender_ui,
                     &rerender_state,
                     &rerender_cache,
                 );
+                plugin_trace(format!("toolbar deferred handled as tool toggle plugin={} action={}", plugin_id, action_id));
+                return;
             }
-            Err(e) => {
-                tracing::error!("Plugin action error: {e}");
+
+            let extension_host_state = {
+                let state = filter_state.read();
+                Arc::clone(&state.extension_host_state)
+            };
+            if crate::extension_host::has_remote_toolbar_action(
+                &extension_host_state,
+                &plugin_id,
+                &action_id,
+            ) {
+                match crate::extension_host::dispatch_remote_toolbar_action(
+                    &extension_host_state,
+                    &plugin_id,
+                    &action_id,
+                ) {
+                    Ok(true) => {
+                        plugin_trace(format!("toolbar deferred handled remotely plugin={} action={}", plugin_id, action_id));
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(err) => {
+                        tracing::error!("Remote plugin action error: {err}");
+                        plugin_trace(format!("toolbar deferred remote error plugin={} action={} err={}", plugin_id, action_id, err));
+                        return;
+                    }
+                }
             }
-        }
+
+            let sidebar_toggle_was_active = {
+                let state = rerender_state.read();
+                state.active_sidebar_button() == Some((plugin_id.as_str(), action_id.as_str()))
+            };
+
+            let mut pm = pm.borrow_mut();
+            plugin_trace(format!("toolbar deferred calling handle_action plugin={} action={}", plugin_id, action_id));
+            match pm.handle_action(&plugin_id, &action_id) {
+                Ok(plugins::ActionOutcome::RustPluginWindow { plugin_root }) => {
+                    plugin_trace(format!("toolbar deferred rust window plugin={} action={}", plugin_id, action_id));
+                    crate::plugins::spawn_rust_plugin_window(&plugin_root);
+                }
+                Ok(plugins::ActionOutcome::PythonSpawn {
+                    script_path,
+                    plugin_root,
+                }) => {
+                    plugin_trace(format!("toolbar deferred python spawn plugin={} action={}", plugin_id, action_id));
+                    // If the Python plugin has been spawned before (and presumably
+                    // registered remote filters), toggle those filters on/off rather
+                    // than spawning a second instance.
+                    if pm.spawned_python_plugins.contains(&plugin_id) {
+                        {
+                            let mut s = filter_state.write();
+                            s.extension_host_state.write().toggle_all_filters();
+                            s.bump_filter_revision();
+                        }
+                        request_render_loop(
+                            &rerender_timer,
+                            &rerender_ui,
+                            &rerender_state,
+                            &rerender_cache,
+                        );
+                    } else {
+                        pm.spawned_python_plugins.insert(plugin_id.clone());
+                        crate::plugins::spawn_python_plugin(
+                            &script_path,
+                            &plugin_root,
+                            Some(&action_id),
+                        );
+                    }
+                }
+                Ok(plugins::ActionOutcome::Handled) => {
+                    plugin_trace(format!("toolbar deferred handled locally plugin={} action={}", plugin_id, action_id));
+                    let sidebar_toggle_is_active = {
+                        let state = rerender_state.read();
+                        state.active_sidebar_button() == Some((plugin_id.as_str(), action_id.as_str()))
+                    };
+                    if sidebar_toggle_was_active || sidebar_toggle_is_active {
+                        plugin_trace(format!(
+                            "toolbar deferred sidebar toggle complete plugin={} action={}",
+                            plugin_id, action_id
+                        ));
+                        return;
+                    }
+                    {
+                        let mut s = filter_state.write();
+                        pm.sync_filter_states(&s.filter_chain);
+                        s.bump_filter_revision();
+                    }
+                    if let Some(ui) = rerender_ui.upgrade() {
+                        let state = rerender_state.read();
+                        update_tool_state(&ui, &state);
+                    }
+                    request_render_loop(
+                        &rerender_timer,
+                        &rerender_ui,
+                        &rerender_state,
+                        &rerender_cache,
+                    );
+                    plugin_trace(format!("toolbar deferred finished plugin={} action={}", plugin_id, action_id));
+                }
+                Err(e) => {
+                    tracing::error!("Plugin action error: {e}");
+                    plugin_trace(format!("toolbar deferred action error plugin={} action={} err={}", plugin_id, action_id, e));
+                }
+            }
+        });
     });
 
     let pm = Rc::clone(&plugin_manager);

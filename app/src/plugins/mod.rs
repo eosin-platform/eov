@@ -169,6 +169,36 @@ pub fn spawn_python_plugin(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spin_on_for_test<T>(future: impl std::future::Future<Output = T>) -> T {
+        spin_on(future)
+    }
+
+    #[test]
+    fn eovae_sidebar_runtime_compiles_and_creates() {
+        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let source = std::fs::read_to_string(&ui_path).unwrap();
+
+        let compiler = slint_interpreter::Compiler::default();
+        let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
+
+        let diagnostics = result.diagnostics().collect::<Vec<_>>();
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.level() != slint_interpreter::DiagnosticLevel::Error),
+            "runtime compile diagnostics: {diagnostics:?}"
+        );
+
+        let definition = result.component("EovaeSidebar").unwrap();
+        let _instance = definition.create().unwrap();
+    }
+}
+
 /// Spawn the Rust plugin window in a child process.
 ///
 /// Instead of opening a second Slint window in the same process (which

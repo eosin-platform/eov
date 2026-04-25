@@ -352,6 +352,7 @@ dependencies = [
  "ctrlc",
  "dashmap",
  "dirs",
+ "eovae",
  "example_plugin",
  "futures-core",
  "image 0.25.10",

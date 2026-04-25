@@ -19,6 +19,12 @@ const BUTTON_ID: &str = "toggle_eovae";
 const FILTER_ID: &str = "eovae_overlay";
 const TOOL_ICON: &str = include_str!("../ui/icons/tool.svg");
 
+fn plugin_trace(message: impl AsRef<str>) {
+    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
+        eprintln!("[eovae] {}", message.as_ref());
+    }
+}
+
 extern "C" fn set_host_api_ffi(host_api: HostApiVTable) {
     set_host_api(host_api);
 }
@@ -39,8 +45,11 @@ extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
 }
 
 extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
+    plugin_trace(format!("on_action action_id={}", action_id));
     if action_id.as_str() == BUTTON_ID {
+        plugin_trace("show_sidebar begin");
         show_sidebar();
+        plugin_trace("show_sidebar returned");
     }
     ActionResponseFFI { open_window: false }
 }
@@ -53,7 +62,9 @@ extern "C" fn on_hud_action_ffi(
 }
 
 extern "C" fn on_ui_callback_ffi(callback_name: RString, args_json: RString) {
+    plugin_trace(format!("ui_callback name={} args={}", callback_name, args_json));
     on_sidebar_callback(callback_name.as_str(), args_json.as_str());
+    plugin_trace(format!("ui_callback done name={}", callback_name));
 }
 
 extern "C" fn get_sidebar_properties_ffi() -> RVec<UiPropertyFFI> {
@@ -153,7 +164,7 @@ extern "C" fn set_filter_enabled_ffi(_filter_id: RString, _enabled: bool) {
     request_render_if_available();
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(feature = "export-vtable-symbol", unsafe(no_mangle))]
 pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
     PluginVTable {
         set_host_api: set_host_api_ffi,

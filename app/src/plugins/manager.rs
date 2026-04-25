@@ -624,8 +624,16 @@ fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin_host::{build_host_api, init_ui_runtime};
+    use crate::state::AppState;
+    use crate::AppWindow;
+    use common::TileCache;
+    use parking_lot::RwLock;
+    use slint::Timer;
+    use std::cell::RefCell;
     use std::fs;
     use std::fs::File;
+    use std::rc::Rc;
     use std::sync::Arc;
 
     fn append_tree(builder: &mut tar::Builder<File>, source_root: &Path, current: &Path) {
@@ -748,5 +756,49 @@ data = "<svg/>"
 
         assert!(mgr.descriptor("example_plugin").is_some());
         assert!(mgr.descriptor("nonexistent").is_none());
+    }
+
+    #[test]
+    fn manager_handle_action_opens_eovae_sidebar_with_real_vtable() {
+        let ui = AppWindow::new().unwrap();
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let tile_cache = Arc::new(TileCache::new());
+        let render_timer = Rc::new(Timer::default());
+        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+
+        let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+        let vtable = eovae::eov_get_plugin_vtable();
+        let host_api = build_host_api("eovae", &plugin_root, &state, vtable);
+        (vtable.set_host_api)(host_api);
+
+        state.write().local_plugin_buttons = vec![ToolbarButtonRegistration {
+            plugin_id: "eovae".to_string(),
+            button_id: "toggle_eovae".to_string(),
+            tooltip: "VAE".to_string(),
+            icon: IconDescriptor::Svg {
+                data: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_string(),
+            },
+            action_id: "toggle_eovae".to_string(),
+            tool_mode: None,
+            hotkey: None,
+            active: false,
+        }];
+
+        let manager = RefCell::new(PluginManager::new(PathBuf::new()));
+        manager
+            .borrow_mut()
+            .loaded_vtables
+            .insert("eovae".to_string(), vtable);
+
+        let result = manager
+            .borrow_mut()
+            .handle_action("eovae", "toggle_eovae")
+            .unwrap();
+        assert!(matches!(result, ActionOutcome::Handled));
+
+        let state = state.read();
+        let active_sidebar = state.active_sidebar.as_ref().expect("sidebar should be active");
+        assert_eq!(active_sidebar.plugin_id, "eovae");
+        assert_eq!(active_sidebar.component, "EovaeSidebar");
     }
 }

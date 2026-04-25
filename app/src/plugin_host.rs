@@ -197,10 +197,17 @@ thread_local! {
     static UI_RUNTIME: RefCell<Option<UiRuntime>> = const { RefCell::new(None) };
     static ACTIVE_SIDEBAR_INSTANCE: RefCell<Option<ActiveSidebarInstance>> = const { RefCell::new(None) };
     static ACTIVE_MODAL_INSTANCE: RefCell<Option<ActiveModalInstance>> = const { RefCell::new(None) };
+    static BUILDING_SIDEBAR_PLUGIN: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 fn host_contexts() -> &'static Mutex<HashMap<u64, HostApiContext>> {
     HOST_CONTEXTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn plugin_trace(message: impl AsRef<str>) {
+    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
+        eprintln!("[plugin_host] {}", message.as_ref());
+    }
 }
 
 fn pending_plugin_confirmation() -> &'static Mutex<Option<PendingPluginConfirmation>> {
@@ -1265,6 +1272,93 @@ pub(crate) fn show_sidebar(
 ) -> Result<(), String> {
     let resolved_request = resolve_sidebar_request(plugin_root, request)?;
     let plugin_id = plugin_id.to_string();
+    plugin_trace(format!(
+        "show_sidebar start plugin={} component={} ui_path={}",
+        plugin_id, resolved_request.component, resolved_request.ui_path
+    ));
+    if UI_THREAD_ID
+        .get()
+        .is_some_and(|thread_id| *thread_id == std::thread::current().id())
+    {
+        plugin_trace(format!("show_sidebar ui-thread prebuild start plugin={plugin_id}"));
+        let factory = build_sidebar_factory(
+            &plugin_id,
+            &resolved_request.ui_path,
+            &resolved_request.component,
+            vtable,
+        )?;
+        plugin_trace(format!("show_sidebar ui-thread prebuild done plugin={plugin_id}"));
+        return UI_RUNTIME.with(|slot| {
+            let runtime = slot.borrow();
+            let runtime = runtime
+                .as_ref()
+                .ok_or_else(|| "UI runtime is not initialized".to_string())?;
+            let ui = runtime
+                .ui_weak
+                .upgrade()
+                .ok_or_else(|| "application window is no longer available".to_string())?;
+
+            let should_hide = {
+                let state = runtime.state.read();
+                state.has_matching_sidebar_request(&plugin_id, &resolved_request)
+            };
+            plugin_trace(format!(
+                "show_sidebar ui-thread state ready plugin={} should_hide={}",
+                plugin_id, should_hide
+            ));
+
+            let sidebar_width = resolved_request.width_px as f32;
+
+            {
+                let mut state = runtime.state.write();
+                let previous_button = state
+                    .active_sidebar_button()
+                    .map(|(owner, button)| (owner.to_string(), button.to_string()));
+
+                if should_hide {
+                    state.clear_active_sidebar();
+                    if let Some((owner, button)) = previous_button {
+                        set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
+                    }
+                    ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+                        *slot.borrow_mut() = None;
+                    });
+                } else {
+                    if let Some((owner, button)) = previous_button {
+                        set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
+                    }
+                    if let Some(button_id) = resolved_request.button_id.as_deref() {
+                        set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
+                    }
+                    state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
+                }
+            }
+
+            if should_hide {
+                plugin_trace(format!("show_sidebar ui-thread hide ui plugin={plugin_id}"));
+                ui.set_plugin_sidebar_factory(ComponentFactory::default());
+                ui.set_show_plugin_sidebar(false);
+                ui.set_plugin_sidebar_width(0.0);
+            } else {
+                plugin_trace(format!("show_sidebar ui-thread set factory plugin={plugin_id}"));
+                ui.set_plugin_sidebar_factory(factory);
+                plugin_trace(format!("show_sidebar ui-thread show sidebar plugin={plugin_id}"));
+                ui.set_show_plugin_sidebar(true);
+                ui.set_plugin_sidebar_width(sidebar_width);
+            }
+
+            plugin_trace(format!("show_sidebar ui-thread refresh buttons plugin={plugin_id}"));
+            refresh_plugin_buttons_in_ui(runtime)?;
+            request_render_loop(
+                &runtime.render_timer,
+                &runtime.ui_weak,
+                &runtime.state,
+                &runtime.tile_cache,
+            );
+            plugin_trace(format!("show_sidebar ui-thread done plugin={plugin_id}"));
+            Ok(())
+        });
+    }
     run_on_ui_thread(move |runtime| {
         let ui = runtime
             .ui_weak
@@ -1275,10 +1369,15 @@ pub(crate) fn show_sidebar(
             let state = runtime.state.read();
             state.has_matching_sidebar_request(&plugin_id, &resolved_request)
         };
+        plugin_trace(format!(
+            "show_sidebar cross-thread state ready plugin={} should_hide={}",
+            plugin_id, should_hide
+        ));
 
         let factory = if should_hide {
             None
         } else {
+            plugin_trace(format!("show_sidebar cross-thread build start plugin={plugin_id}"));
             Some(build_sidebar_factory(
                 &plugin_id,
                 &resolved_request.ui_path,
@@ -1286,6 +1385,11 @@ pub(crate) fn show_sidebar(
                 vtable,
             )?)
         };
+        if !should_hide {
+            plugin_trace(format!("show_sidebar cross-thread build done plugin={plugin_id}"));
+        }
+
+        let sidebar_width = resolved_request.width_px as f32;
 
         {
             let mut state = runtime.state.write();
@@ -1301,9 +1405,6 @@ pub(crate) fn show_sidebar(
                 ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
                     *slot.borrow_mut() = None;
                 });
-                ui.set_plugin_sidebar_factory(ComponentFactory::default());
-                ui.set_show_plugin_sidebar(false);
-                ui.set_plugin_sidebar_width(0.0);
             } else {
                 if let Some((owner, button)) = previous_button {
                     set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
@@ -1312,12 +1413,23 @@ pub(crate) fn show_sidebar(
                     set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
                 }
                 state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
-                ui.set_plugin_sidebar_factory(factory.expect("sidebar factory missing"));
-                ui.set_show_plugin_sidebar(true);
-                ui.set_plugin_sidebar_width(resolved_request.width_px as f32);
             }
         }
 
+        if should_hide {
+            plugin_trace(format!("show_sidebar cross-thread hide ui plugin={plugin_id}"));
+            ui.set_plugin_sidebar_factory(ComponentFactory::default());
+            ui.set_show_plugin_sidebar(false);
+            ui.set_plugin_sidebar_width(0.0);
+        } else {
+            plugin_trace(format!("show_sidebar cross-thread set factory plugin={plugin_id}"));
+            ui.set_plugin_sidebar_factory(factory.expect("sidebar factory missing"));
+            plugin_trace(format!("show_sidebar cross-thread show sidebar plugin={plugin_id}"));
+            ui.set_show_plugin_sidebar(true);
+            ui.set_plugin_sidebar_width(sidebar_width);
+        }
+
+        plugin_trace(format!("show_sidebar cross-thread refresh buttons plugin={plugin_id}"));
         refresh_plugin_buttons_in_ui(runtime)?;
         request_render_loop(
             &runtime.render_timer,
@@ -1325,6 +1437,7 @@ pub(crate) fn show_sidebar(
             &runtime.state,
             &runtime.tile_cache,
         );
+        plugin_trace(format!("show_sidebar cross-thread done plugin={plugin_id}"));
         Ok(())
     })
 }
@@ -1336,22 +1449,25 @@ pub(crate) fn hide_sidebar(plugin_id: &str) -> Result<(), String> {
             .ui_weak
             .upgrade()
             .ok_or_else(|| "application window is no longer available".to_string())?;
-        let mut state = runtime.state.write();
-        let Some((owner, button_id)) = state
-            .active_sidebar_button()
-            .map(|(owner, button)| (owner.to_string(), button.to_string()))
-        else {
-            return Ok(());
-        };
-        if owner != plugin_id {
-            return Ok(());
+        {
+            let mut state = runtime.state.write();
+            let Some((owner, button_id)) = state
+                .active_sidebar_button()
+                .map(|(owner, button)| (owner.to_string(), button.to_string()))
+            else {
+                return Ok(());
+            };
+            if owner != plugin_id {
+                return Ok(());
+            }
+
+            state.clear_active_sidebar();
+            set_toolbar_button_active_in_state(&mut state, &owner, &button_id, false);
+            ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+                *slot.borrow_mut() = None;
+            });
         }
 
-        state.clear_active_sidebar();
-        set_toolbar_button_active_in_state(&mut state, &owner, &button_id, false);
-        ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
-            *slot.borrow_mut() = None;
-        });
         ui.set_plugin_sidebar_factory(ComponentFactory::default());
         ui.set_show_plugin_sidebar(false);
         ui.set_plugin_sidebar_width(0.0);
@@ -1767,6 +1883,10 @@ fn build_plugin_component_factory(
     vtable: Option<PluginVTable>,
     kind: PluginComponentKind,
 ) -> Result<ComponentFactory, String> {
+    plugin_trace(format!(
+        "build_factory start kind={} plugin={} component={} ui_path={}",
+        kind.label(), plugin_id, component, ui_path
+    ));
     let ui_path = PathBuf::from(ui_path);
     let source = std::fs::read_to_string(&ui_path).map_err(|err| {
         format!(
@@ -1778,6 +1898,10 @@ fn build_plugin_component_factory(
 
     let compiler = slint_interpreter::Compiler::default();
     let result = spin_on(compiler.build_from_source(source, ui_path.clone()));
+    plugin_trace(format!(
+        "build_factory compiled kind={} plugin={} component={}",
+        kind.label(), plugin_id, component
+    ));
     let mut has_errors = false;
     for diag in result.diagnostics() {
         if diag.level() == slint_interpreter::DiagnosticLevel::Error {
@@ -1810,9 +1934,24 @@ fn build_plugin_component_factory(
     let plugin_id = plugin_id.to_string();
 
     Ok(ComponentFactory::new(move |ctx| {
+        plugin_trace(format!(
+            "factory create_embedded start kind={} plugin={}",
+            kind.label(), plugin_id
+        ));
+        if matches!(kind, PluginComponentKind::Sidebar) {
+            BUILDING_SIDEBAR_PLUGIN.with(|slot| {
+                *slot.borrow_mut() = Some(plugin_id.clone());
+            });
+        }
+
         let instance: slint_interpreter::ComponentInstance = match definition.create_embedded(ctx) {
             Ok(instance) => instance,
             Err(err) => {
+                if matches!(kind, PluginComponentKind::Sidebar) {
+                    BUILDING_SIDEBAR_PLUGIN.with(|slot| {
+                        *slot.borrow_mut() = None;
+                    });
+                }
                 tracing::error!(
                     "Failed to create embedded {} component for '{}': {err}",
                     kind.label(),
@@ -1832,6 +1971,17 @@ fn build_plugin_component_factory(
             );
         }
 
+
+        plugin_trace(format!(
+            "factory create_embedded done kind={} plugin={}",
+            kind.label(), plugin_id
+        ));
+
+        if matches!(kind, PluginComponentKind::Sidebar) {
+            BUILDING_SIDEBAR_PLUGIN.with(|slot| {
+                *slot.borrow_mut() = None;
+            });
+        }
         match kind {
             PluginComponentKind::Sidebar => {
                 ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
@@ -2140,6 +2290,17 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
             });
             return Ok(());
         };
+        if BUILDING_SIDEBAR_PLUGIN.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .is_some_and(|plugin_id| plugin_id == &sidebar.plugin_id)
+        }) {
+            plugin_trace(format!(
+                "refresh_active_sidebar skipped during build plugin={}",
+                sidebar.plugin_id
+            ));
+            return Ok(());
+        }
         let Some((_, vtable)) = local_plugin_vtables()
             .into_iter()
             .find(|(candidate, _)| candidate == &sidebar.plugin_id)
@@ -2231,6 +2392,241 @@ pub(crate) fn active_modal_captures_hotkeys() -> bool {
             Ok(slint_interpreter::Value::Bool(true))
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plugin_api::ffi::{
+        ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI,
+        UiPropertyFFI, ViewportContextMenuItemFFI, ViewportOverlayPointFFI,
+        ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
+        ViewportSnapshotFFI,
+    };
+    use abi_stable::std_types::{RString, RVec};
+
+    extern "C" fn noop_set_host_api(_host_api: HostApiVTable) {}
+    extern "C" fn noop_get_toolbar_buttons() -> RVec<plugin_api::ffi::ToolbarButtonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_get_hud_toolbar_buttons() -> RVec<HudToolbarButtonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_action(_action_id: RString) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_hud_action(
+        _action_id: RString,
+        _viewport: ViewportSnapshotFFI,
+    ) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_ui_callback(_callback_name: RString, _args_json: RString) {}
+    extern "C" fn fake_eovae_sidebar_properties() -> RVec<UiPropertyFFI> {
+        RVec::from(vec![
+            UiPropertyFFI { name: "model-path".into(), json_value: "\"\"".into() },
+            UiPropertyFFI {
+                name: "model-status".into(),
+                json_value: "\"No ONNX model loaded.\"".into(),
+            },
+            UiPropertyFFI { name: "model-loaded".into(), json_value: "false".into() },
+            UiPropertyFFI { name: "input-rows".into(), json_value: "[]".into() },
+            UiPropertyFFI { name: "output-rows".into(), json_value: "[]".into() },
+            UiPropertyFFI { name: "input-options".into(), json_value: "[]".into() },
+            UiPropertyFFI { name: "output-options".into(), json_value: "[]".into() },
+            UiPropertyFFI { name: "selected-input-index".into(), json_value: "0".into() },
+            UiPropertyFFI { name: "selected-output-index".into(), json_value: "0".into() },
+            UiPropertyFFI { name: "selected-mode-index".into(), json_value: "0".into() },
+            UiPropertyFFI { name: "job-status".into(), json_value: "\"Idle\"".into() },
+            UiPropertyFFI { name: "progress-value".into(), json_value: "0.0".into() },
+            UiPropertyFFI { name: "job-running".into(), json_value: "false".into() },
+            UiPropertyFFI { name: "use-gpu".into(), json_value: "false".into() },
+            UiPropertyFFI { name: "auto-update".into(), json_value: "false".into() },
+            UiPropertyFFI {
+                name: "stats-summary".into(),
+                json_value: "\"No analysis yet.\"".into(),
+            },
+            UiPropertyFFI { name: "hot-regions".into(), json_value: "[]".into() },
+        ])
+    }
+    extern "C" fn noop_get_viewport_context_menu_items(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportContextMenuItemFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_viewport_context_menu_action(
+        _item_id: RString,
+        _viewport: ViewportSnapshotFFI,
+    ) -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_get_viewport_overlay_points(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportOverlayPointFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_get_viewport_overlay_polygons(
+        _viewport: ViewportSnapshotFFI,
+    ) -> RVec<ViewportOverlayPolygonFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_on_point_annotation_placed(
+        _viewport: ViewportSnapshotFFI,
+        _x_level0: f64,
+        _y_level0: f64,
+    ) {
+    }
+    extern "C" fn noop_on_polygon_annotation_placed(
+        _viewport: ViewportSnapshotFFI,
+        _vertices: RVec<ViewportOverlayVertexFFI>,
+    ) {
+    }
+    extern "C" fn noop_on_undo() -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_redo() -> ActionResponseFFI {
+        ActionResponseFFI { open_window: false }
+    }
+    extern "C" fn noop_on_point_annotation_moved(
+        _viewport: ViewportSnapshotFFI,
+        _annotation_id: RString,
+        _x_level0: f64,
+        _y_level0: f64,
+    ) {
+    }
+    extern "C" fn noop_on_polygon_annotation_moved(
+        _viewport: ViewportSnapshotFFI,
+        _annotation_id: RString,
+        _vertices: RVec<ViewportOverlayVertexFFI>,
+    ) {
+    }
+    extern "C" fn noop_get_viewport_filters() -> RVec<plugin_api::ffi::ViewportFilterFFI> {
+        RVec::new()
+    }
+    extern "C" fn noop_apply_filter_cpu(
+        _filter_id: RString,
+        _rgba_data: *mut u8,
+        _len: u32,
+        _width: u32,
+        _height: u32,
+    ) -> bool {
+        false
+    }
+    extern "C" fn noop_apply_filter_gpu(
+        _filter_id: RString,
+        _ctx: *const GpuFilterContextFFI,
+    ) -> bool {
+        false
+    }
+    extern "C" fn noop_set_filter_enabled(_filter_id: RString, _enabled: bool) {}
+
+    fn fake_eovae_vtable() -> PluginVTable {
+        PluginVTable {
+            set_host_api: noop_set_host_api,
+            get_toolbar_buttons: noop_get_toolbar_buttons,
+            get_hud_toolbar_buttons: noop_get_hud_toolbar_buttons,
+            on_action: noop_on_action,
+            on_hud_action: noop_on_hud_action,
+            on_ui_callback: noop_on_ui_callback,
+            get_sidebar_properties: fake_eovae_sidebar_properties,
+            get_viewport_context_menu_items: noop_get_viewport_context_menu_items,
+            on_viewport_context_menu_action: noop_on_viewport_context_menu_action,
+            get_viewport_overlay_points: noop_get_viewport_overlay_points,
+            get_viewport_overlay_polygons: noop_get_viewport_overlay_polygons,
+            on_point_annotation_placed: noop_on_point_annotation_placed,
+            on_polygon_annotation_placed: noop_on_polygon_annotation_placed,
+            on_undo: noop_on_undo,
+            on_redo: noop_on_redo,
+            on_point_annotation_moved: noop_on_point_annotation_moved,
+            on_polygon_annotation_moved: noop_on_polygon_annotation_moved,
+            get_viewport_filters: noop_get_viewport_filters,
+            apply_filter_cpu: noop_apply_filter_cpu,
+            apply_filter_gpu: noop_apply_filter_gpu,
+            set_filter_enabled: noop_set_filter_enabled,
+        }
+    }
+
+    #[test]
+    fn eovae_embedded_sidebar_factory_attaches_to_app_window() {
+        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let factory = build_sidebar_factory(
+            "eovae",
+            ui_path.to_str().unwrap(),
+            "EovaeSidebar",
+            None,
+        )
+        .unwrap();
+
+        let ui = AppWindow::new().unwrap();
+        ui.set_plugin_sidebar_factory(factory);
+        ui.set_show_plugin_sidebar(true);
+        ui.set_plugin_sidebar_width(340.0);
+    }
+
+    #[test]
+    fn eovae_embedded_sidebar_factory_applies_initial_properties() {
+        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../plugins/eovae/ui/eovae-sidebar.slint");
+        let factory = build_sidebar_factory(
+            "eovae",
+            ui_path.to_str().unwrap(),
+            "EovaeSidebar",
+            Some(fake_eovae_vtable()),
+        )
+        .unwrap();
+
+        let ui = AppWindow::new().unwrap();
+        ui.set_plugin_sidebar_factory(factory);
+        ui.set_show_plugin_sidebar(true);
+        ui.set_plugin_sidebar_width(340.0);
+    }
+
+    #[test]
+    fn eovae_show_sidebar_host_path_completes() {
+        let ui = AppWindow::new().unwrap();
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let tile_cache = Arc::new(TileCache::new());
+        let render_timer = Rc::new(Timer::default());
+        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+        show_sidebar(
+            "eovae",
+            Some(&plugin_root),
+            Some(fake_eovae_vtable()),
+            plugin_api::SidebarRequest {
+                button_id: Some("toggle_eovae".to_string()),
+                width_px: 340,
+                ui_path: "ui/eovae-sidebar.slint".to_string(),
+                component: "EovaeSidebar".to_string(),
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn eovae_show_sidebar_host_path_completes_with_real_vtable() {
+        let ui = AppWindow::new().unwrap();
+        let state = Arc::new(RwLock::new(AppState::new()));
+        let tile_cache = Arc::new(TileCache::new());
+        let render_timer = Rc::new(Timer::default());
+        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+        show_sidebar(
+            "eovae",
+            Some(&plugin_root),
+            Some(eovae::eov_get_plugin_vtable()),
+            plugin_api::SidebarRequest {
+                button_id: Some("toggle_eovae".to_string()),
+                width_px: 340,
+                ui_path: "ui/eovae-sidebar.slint".to_string(),
+                component: "EovaeSidebar".to_string(),
+            },
+        )
+        .unwrap();
+    }
 }
 
 pub(crate) fn dismiss_active_modal_dialog() -> Result<(), String> {

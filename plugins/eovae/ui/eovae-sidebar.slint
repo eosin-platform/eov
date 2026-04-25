@@ -143,11 +143,15 @@ export component EovaeSidebar inherits Rectangle {
                 Text { text: "Model I/O"; color: Theme.text-primary; font-size: 13px; font-weight: 600; }
 
                 Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
-                ComboBox {
+                if root.input-options.length > 0: ComboBox {
                     model: root.input-options;
                     current-index: root.selected-input-index;
-                    enabled: root.input-options.length > 0;
                     selected(value) => { root.input-changed(value); }
+                }
+                if root.input-options.length == 0: Text {
+                    text: "No model loaded";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
                 }
 
                 for row in root.input-rows: Text {
@@ -160,11 +164,15 @@ export component EovaeSidebar inherits Rectangle {
                 Rectangle { height: 1px; background: Theme.border; }
 
                 Text { text: "Output"; color: Theme.text-secondary; font-size: 11px; }
-                ComboBox {
+                if root.output-options.length > 0: ComboBox {
                     model: root.output-options;
                     current-index: root.selected-output-index;
-                    enabled: root.output-options.length > 0;
                     selected(value) => { root.output-changed(value); }
+                }
+                if root.output-options.length == 0: Text {
+                    text: "No model loaded";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
                 }
 
                 for row in root.output-rows: Text {
@@ -320,7 +328,6 @@ export component EovaeSidebar inherits Rectangle {
 
             VerticalLayout {
                 width: parent.width;
-                height: parent.height;
                 padding: 10px;
                 spacing: 8px;
 
@@ -333,7 +340,7 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 Flickable {
-                    height: parent.height - 52px;
+                    vertical-stretch: 1;
                     viewport-height: hot-layout.preferred-height;
 
                     hot-layout := VerticalLayout {

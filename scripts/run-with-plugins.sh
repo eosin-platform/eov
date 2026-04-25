@@ -53,11 +53,28 @@ package_plugin() {
     tar -cf "$package_path" -C "$staging_dir" .
 }
 
+package_eovae() {
+    local plugin_src="$1"
+    local package_path="$2"
+    local lib_path="$REPO_ROOT/target/debug/libeovae.so"
+
+    if [ ! -f "$lib_path" ]; then
+        echo "  ERROR: $lib_path not found. Build the eovae plugin first."
+        return 1
+    fi
+
+    python3 "$plugin_src/scripts/package_eop.py" \
+        --plugin-root "$plugin_src" \
+        --library "$lib_path" \
+        --native-lib-dir "$REPO_ROOT/target/debug" \
+        --output "$package_path"
+}
+
 echo "Building eov with annotation plugin..."
 
 cargo build -p app
 
-PLUGINS=(annotations eovae) # only build these plugins
+PLUGINS=(annotations) # only build these plugins
 
 for plugin_name in "${PLUGINS[@]}"; do
     plugin_src="$PLUGINS_DIR/$plugin_name"
@@ -81,8 +98,12 @@ for plugin_name in "${PLUGINS[@]}"; do
     staging_dir="$HOME/.cache/eov/example-plugin-packaging/$plugin_id"
 
     echo "Packaging plugin '$plugin_id' ($language) to $package_path..."
-    rm -rf "$staging_dir"
-    package_plugin "$plugin_src" "$plugin_id" "$language" "$staging_dir" "$package_path"
+    if [ "$plugin_id" = "eovae" ]; then
+        package_eovae "$plugin_src" "$package_path"
+    else
+        rm -rf "$staging_dir"
+        package_plugin "$plugin_src" "$plugin_id" "$language" "$staging_dir" "$package_path"
+    fi
 done
 
 echo "Launching eov..."
