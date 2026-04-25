@@ -165,28 +165,42 @@ component SidebarSectionHeader inherits Rectangle {
             vertical-alignment: center;
         }
 
-        if root.show-leading-status: HorizontalLayout {
-            spacing: 6px;
-            alignment: start;
+        if root.show-leading-status: Rectangle {
+            width: leading-status-row.preferred-width;
+            height: parent.height;
+            background: transparent;
 
-            Rectangle {
-                width: 16px;
+            leading-status-row := HorizontalLayout {
+                width: parent.width;
                 height: parent.height;
-                background: transparent;
+                spacing: 6px;
+                alignment: start;
 
-                CircularProgressDots {
-                    y: (parent.height - self.height) / 2;
-                    value: root.leading-progress-value;
-                    completed: root.leading-progress-completed;
-                    error: root.leading-progress-error;
+                Rectangle {
+                    width: 16px;
+                    height: parent.height;
+                    background: transparent;
+
+                    CircularProgressDots {
+                        y: (parent.height - self.height) / 2;
+                        value: root.leading-progress-value;
+                        completed: root.leading-progress-completed;
+                        error: root.leading-progress-error;
+                    }
                 }
-            }
 
-            Text {
-                text: root.leading-text;
-                color: root.leading-progress-error ? #d66e6e : Theme.text-secondary;
-                font-size: 11px;
-                vertical-alignment: center;
+                Text {
+                    text: root.leading-text;
+                    color: root.leading-progress-error ? #d66e6e : Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 8px;
+                    height: parent.height;
+                    background: transparent;
+                }
             }
         }
 
@@ -201,15 +215,15 @@ component SidebarSectionHeader inherits Rectangle {
                 background: transparent;
 
                 Text {
-                    x: max(0px, parent.width - self.width);
+                    x: 0px;
                     y: 0px;
-                    width: min(self.preferred-width, parent.width);
+                    width: parent.width;
                     height: parent.height;
                     text: root.summary-text;
                     color: root.summary-color;
                     font-size: 11px;
                     vertical-alignment: center;
-                    horizontal-alignment: left;
+                    horizontal-alignment: right;
                     overflow: elide;
                 }
             }
@@ -502,11 +516,11 @@ export component EovaeSidebar inherits Rectangle {
                     width: parent.width - 6px;
                     title: "Analysis";
                     expanded: root.analysis-section-expanded;
-                    show-leading-status: !root.analysis-section-expanded && root.analysis-show-leading-status;
+                    show-leading-status: !root.analysis-section-expanded && root.job-running;
                     leading-progress-value: root.analysis-indicator-value;
                     leading-progress-completed: root.analysis-completed;
                     leading-progress-error: root.analysis-summary-is-error;
-                    leading-text: root.analysis-section-expanded ? "" : root.analysis-elapsed-text;
+                    leading-text: !root.analysis-section-expanded && root.job-running ? root.analysis-elapsed-text : "";
                     summary-text: root.analysis-section-expanded ? "" : root.analysis-summary-text;
                     summary-color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
                     toggled => { root.analysis-section-expanded = !root.analysis-section-expanded; }
