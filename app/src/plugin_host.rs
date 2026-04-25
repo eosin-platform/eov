@@ -1,4 +1,4 @@
-use crate::{AppWindow, open_file, request_render_loop};
+use crate::{AppWindow, config, open_file, request_render_loop};
 use abi_stable::std_types::{ROption, RResult, RString, RVec};
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use common::{FilteringMode, RenderBackend, TileCache};
@@ -1382,6 +1382,9 @@ pub(crate) fn show_sidebar(
 
                 if should_hide {
                     state.clear_active_sidebar();
+                    if let Err(err) = config::save_active_sidebar(None) {
+                        tracing::warn!("Failed to save active sidebar config: {err}");
+                    }
                     if let Some((owner, button)) = previous_button {
                         set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
                     }
@@ -1396,6 +1399,11 @@ pub(crate) fn show_sidebar(
                         set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
                     }
                     state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
+                    if let Some(active_sidebar) = state.active_sidebar() {
+                        if let Err(err) = config::save_active_sidebar(Some(active_sidebar)) {
+                            tracing::warn!("Failed to save active sidebar config: {err}");
+                        }
+                    }
                 }
             }
 
@@ -1474,6 +1482,9 @@ pub(crate) fn show_sidebar(
 
             if should_hide {
                 state.clear_active_sidebar();
+                if let Err(err) = config::save_active_sidebar(None) {
+                    tracing::warn!("Failed to save active sidebar config: {err}");
+                }
                 if let Some((owner, button)) = previous_button {
                     set_toolbar_button_active_in_state(&mut state, &owner, &button, false);
                 }
@@ -1488,6 +1499,11 @@ pub(crate) fn show_sidebar(
                     set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
                 }
                 state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
+                if let Some(active_sidebar) = state.active_sidebar() {
+                    if let Err(err) = config::save_active_sidebar(Some(active_sidebar)) {
+                        tracing::warn!("Failed to save active sidebar config: {err}");
+                    }
+                }
             }
         }
 
@@ -1545,6 +1561,9 @@ pub(crate) fn hide_sidebar(plugin_id: &str) -> Result<(), String> {
             }
 
             state.clear_active_sidebar();
+            if let Err(err) = config::save_active_sidebar(None) {
+                tracing::warn!("Failed to save active sidebar config: {err}");
+            }
             set_toolbar_button_active_in_state(&mut state, &owner, &button_id, false);
             ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
                 *slot.borrow_mut() = None;

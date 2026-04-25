@@ -311,23 +311,22 @@ export component EovaeSidebar inherits Rectangle {
     in property <string> job-status: "Idle";
     in property <float> progress-value: 0;
     in property <bool> job-running: false;
+    in property <bool> model-section-expanded: true;
+    in property <bool> model-io-section-expanded: true;
+    in property <bool> analysis-section-expanded: true;
+    in property <bool> results-section-expanded: true;
     in property <string> analysis-elapsed-text: "";
     in property <string> analysis-summary-text: "";
     in property <bool> analysis-summary-is-error: false;
     in property <bool> analysis-show-leading-status: false;
     in property <float> analysis-indicator-value: 0;
     in property <bool> analysis-completed: false;
-    in property <bool> use-gpu: false;
-    in property <bool> auto-update: false;
+    in property <string> analysis-threads: "1";
+    in property <int> max-analysis-threads: 1;
     in property <string> stats-summary: "No analysis yet.";
     in property <[ErrorHistogramBin]> error-histogram: [];
     in property <int> error-histogram-max: 0;
     in property <[HotRegionRow]> hot-regions: [];
-
-    property <bool> model-section-expanded: true;
-    property <bool> model-io-section-expanded: true;
-    property <bool> analysis-section-expanded: true;
-    property <bool> results-section-expanded: true;
 
     callback load-model();
     callback clear-model();
@@ -338,10 +337,13 @@ export component EovaeSidebar inherits Rectangle {
     callback hover-region(string);
     callback mode-changed(string);
     callback mip-changed(string);
+    callback model-section-expanded-changed(bool);
+    callback model-io-section-expanded-changed(bool);
+    callback analysis-section-expanded-changed(bool);
+    callback results-section-expanded-changed(bool);
+    callback analysis-threads-changed(string);
     callback input-changed(string);
     callback output-changed(string);
-    callback use-gpu-changed(bool);
-    callback auto-update-changed(bool);
 
     background: Theme.surface;
 
@@ -376,7 +378,7 @@ export component EovaeSidebar inherits Rectangle {
                     title: "Model";
                     expanded: root.model-section-expanded;
                     summary-text: root.model-section-expanded ? "" : root.model-summary;
-                    toggled => { root.model-section-expanded = !root.model-section-expanded; }
+                    toggled => { root.model-section-expanded-changed(!root.model-section-expanded); }
                 }
 
                 if root.model-section-expanded: Rectangle {
@@ -445,7 +447,7 @@ export component EovaeSidebar inherits Rectangle {
                     split-summary: !root.model-io-section-expanded;
                     summary-start-text: root.model-io-section-expanded ? "" : root.selected-input-name;
                     summary-end-text: root.model-io-section-expanded ? "" : root.selected-output-name;
-                    toggled => { root.model-io-section-expanded = !root.model-io-section-expanded; }
+                    toggled => { root.model-io-section-expanded-changed(!root.model-io-section-expanded); }
                 }
 
                 if root.model-io-section-expanded: Rectangle {
@@ -523,7 +525,7 @@ export component EovaeSidebar inherits Rectangle {
                     leading-text: !root.analysis-section-expanded && root.job-running ? root.analysis-elapsed-text : "";
                     summary-text: root.analysis-section-expanded ? "" : root.analysis-summary-text;
                     summary-color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
-                    toggled => { root.analysis-section-expanded = !root.analysis-section-expanded; }
+                    toggled => { root.analysis-section-expanded-changed(!root.analysis-section-expanded); }
                 }
 
                 if root.analysis-section-expanded: Rectangle {
@@ -594,6 +596,59 @@ export component EovaeSidebar inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
 
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+
+                                Text {
+                                    text: "Threads";
+                                    color: Theme.text-secondary;
+                                    font-size: 11px;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    Rectangle {
+                                        width: 72px;
+                                        height: 28px;
+                                        background: #0a0c10;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        border-color: threads-input.has-focus ? #4da3d9 : Theme.border;
+
+                                        threads-input := TextInput {
+                                            x: 8px;
+                                            width: parent.width - 16px;
+                                            color: white;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                            input-type: InputType.number;
+                                            text: root.analysis-threads;
+
+                                            accepted => {
+                                                root.analysis-threads-changed(self.text);
+                                            }
+
+                                            edited => {
+                                                root.analysis-threads-changed(self.text);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "(max " + root.max-analysis-threads + ")";
+                                        color: Theme.text-secondary;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
                             SidebarActionButton {
                                 horizontal-stretch: 1;
                                 enabled: root.model-loaded && !root.job-running;
@@ -620,18 +675,6 @@ export component EovaeSidebar inherits Rectangle {
                                 hover-color: #b33d3d;
                                 clicked => { root.cancel-job(); }
                             }
-                        }
-
-                        SidebarToggleRow {
-                            checked: root.use-gpu;
-                            text: "Prefer GPU EP";
-                            toggled(value) => { root.use-gpu-changed(value); }
-                        }
-
-                        SidebarToggleRow {
-                            checked: root.auto-update;
-                            text: "Auto-update viewport";
-                            toggled(value) => { root.auto-update-changed(value); }
                         }
 
                         Text {
@@ -669,7 +712,7 @@ export component EovaeSidebar inherits Rectangle {
                     width: parent.width - 6px;
                     title: "Results";
                     expanded: root.results-section-expanded;
-                    toggled => { root.results-section-expanded = !root.results-section-expanded; }
+                    toggled => { root.results-section-expanded-changed(!root.results-section-expanded); }
                 }
 
                 if root.results-section-expanded: Rectangle {

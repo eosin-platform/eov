@@ -1,7 +1,5 @@
-use crate::analysis::{TileCacheEntry, should_render_overlay, start_viewport_analysis};
-use crate::state::{
-    VisualizationMode, host_api, mark_auto_update, plugin_state, should_auto_update,
-};
+use crate::analysis::{TileCacheEntry, should_render_overlay};
+use crate::state::{VisualizationMode, host_api, plugin_state};
 
 pub fn apply_overlay(rgba_data: &mut [u8], width: u32, height: u32) -> bool {
     let (mode, entries) = {
@@ -17,7 +15,6 @@ pub fn apply_overlay(rgba_data: &mut [u8], width: u32, height: u32) -> bool {
     };
 
     if !should_render_overlay(mode) || entries.is_empty() {
-        maybe_schedule_auto_viewport_analysis();
         return false;
     }
 
@@ -42,45 +39,6 @@ pub fn apply_overlay(rgba_data: &mut [u8], width: u32, height: u32) -> bool {
 
     true
 }
-
-fn maybe_schedule_auto_viewport_analysis() {
-    let host = match host_api() {
-        Some(host) => host,
-        None => return,
-    };
-    let snapshot = (host.get_snapshot)(host.context);
-    let viewport = match snapshot.active_viewport.into_option() {
-        Some(viewport) => viewport,
-        None => return,
-    };
-    let viewport_key = format!(
-        "{:.3}:{:.3}:{:.3}:{:.3}:mip{}",
-        viewport.bounds_left,
-        viewport.bounds_top,
-        viewport.bounds_right,
-        viewport.bounds_bottom,
-        {
-            let state = plugin_state().lock().unwrap();
-            state.config.mip_level
-        },
-    );
-    if !should_auto_update(&viewport_key) {
-        return;
-    }
-    let (model, namespace, mip_level) = {
-        let state = plugin_state().lock().unwrap();
-        (
-            state.model.clone(),
-            state.cache_namespace.clone(),
-            state.config.mip_level,
-        )
-    };
-    if let Some(model) = model {
-        mark_auto_update(viewport_key);
-        start_viewport_analysis(model, viewport, namespace, mip_level);
-    }
-}
-
 fn intersects_viewport(
     entry: &TileCacheEntry,
     viewport: &plugin_api::ffi::ViewportSnapshotFFI,

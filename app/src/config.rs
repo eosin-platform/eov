@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use common::{FilteringMode, RenderBackend};
+use plugin_api::ActiveSidebar;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -66,6 +67,7 @@ struct AppConfig {
     render_backend: Option<ConfigRenderBackend>,
     filtering_mode: Option<ConfigFilteringMode>,
     extension_host_port: Option<u16>,
+    active_sidebar: Option<ActiveSidebar>,
 }
 
 pub fn set_config_path_override(path: PathBuf) -> Result<()> {
@@ -148,6 +150,25 @@ pub fn load_extension_host_port() -> Result<Option<u16>> {
     let config: AppConfig = toml::from_str(&contents)
         .with_context(|| format!("failed to parse config file at {}", path.display()))?;
     Ok(config.extension_host_port)
+}
+
+pub fn load_active_sidebar() -> Result<Option<ActiveSidebar>> {
+    let path = resolve_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read config file at {}", path.display()))?;
+    let config: AppConfig = toml::from_str(&contents)
+        .with_context(|| format!("failed to parse config file at {}", path.display()))?;
+    Ok(config.active_sidebar)
+}
+
+pub fn save_active_sidebar(sidebar: Option<&ActiveSidebar>) -> Result<()> {
+    save_config_field(|config| {
+        config.active_sidebar = sidebar.cloned();
+    })
 }
 
 fn save_config_field(update: impl FnOnce(&mut AppConfig)) -> Result<()> {

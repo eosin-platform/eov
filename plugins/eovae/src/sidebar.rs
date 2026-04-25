@@ -1,9 +1,10 @@
 use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
 use crate::model::{LoadedModel, load_model};
 use crate::state::{
-    AnalysisPhase, VisualizationMode, cancel_running_job, clear_cache_for_namespace, host_api,
-    load_persisted_model_path, log_message, plugin_state, refresh_sidebar_if_available,
-    request_render_if_available, save_persisted_model_path,
+    AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
+    clear_cache_for_namespace, host_api, load_persisted_config,
+    log_message, max_analysis_threads, plugin_state, refresh_sidebar_if_available,
+    request_render_if_available, save_persisted_config_field, save_persisted_model_path,
 };
 use abi_stable::std_types::{RString, RVec};
 use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
@@ -46,6 +47,26 @@ fn format_elapsed(duration: Duration) -> String {
         parts.push(format!("{secs}s"));
     }
     parts.join(" ")
+}
+
+fn current_render_backend_is_gpu() -> bool {
+    host_api()
+        .map(|host| (host.get_snapshot)(host.context))
+        .map(|snapshot| snapshot.render_backend.to_ascii_lowercase() == "gpu")
+        .unwrap_or(false)
+}
+
+fn persist_sidebar_preferences() {
+    let state = plugin_state().lock().unwrap();
+    if let Err(error) = save_persisted_config_field(|config| {
+        config.model_section_expanded = state.model_section_expanded;
+        config.model_io_section_expanded = state.model_io_section_expanded;
+        config.analysis_section_expanded = state.analysis_section_expanded;
+        config.results_section_expanded = state.results_section_expanded;
+        config.analysis_threads = Some(state.config.analysis_threads);
+    }) {
+        log_message(HostLogLevelFFI::Error, error);
+    }
 }
 
 pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
@@ -238,14 +259,18 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("job-status", json!(state.job_status)),
         property("progress-value", json!(state.progress_value)),
         property("job-running", json!(state.job.is_some())),
+        property("model-section-expanded", json!(state.model_section_expanded)),
+        property("model-io-section-expanded", json!(state.model_io_section_expanded)),
+        property("analysis-section-expanded", json!(state.analysis_section_expanded)),
+        property("results-section-expanded", json!(state.results_section_expanded)),
         property("analysis-elapsed-text", json!(analysis_elapsed_text)),
         property("analysis-summary-text", json!(analysis_summary_text)),
         property("analysis-summary-is-error", json!(analysis_summary_is_error)),
         property("analysis-show-leading-status", json!(analysis_show_leading_status)),
         property("analysis-indicator-value", json!(analysis_indicator_value)),
         property("analysis-completed", json!(analysis_completed)),
-        property("use-gpu", json!(state.config.use_gpu)),
-        property("auto-update", json!(state.config.auto_update_viewport)),
+        property("analysis-threads", json!(state.config.analysis_threads.to_string())),
+        property("max-analysis-threads", json!(max_analysis_threads() as i32)),
         property("stats-summary", json!(stats_summary)),
         property("error-histogram", json!(histogram_bins)),
         property("error-histogram-max", json!(histogram_max)),
@@ -286,6 +311,17 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
             let changed = update_mip_level(args_json);
             (changed, changed)
         }
+        "model-section-expanded-changed" => (update_section_expanded(args_json, Section::Model), false),
+        "model-io-section-expanded-changed" => {
+            (update_section_expanded(args_json, Section::ModelIo), false)
+        }
+        "analysis-section-expanded-changed" => {
+            (update_section_expanded(args_json, Section::Analysis), false)
+        }
+        "results-section-expanded-changed" => {
+            (update_section_expanded(args_json, Section::Results), false)
+        }
+        "analysis-threads-changed" => (update_analysis_threads(args_json), false),
         "input-changed" => {
             let changed = update_selected_tensor(args_json, true);
             (changed, changed)
@@ -293,16 +329,6 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
         "output-changed" => {
             let changed = update_selected_tensor(args_json, false);
             (changed, changed)
-        }
-        "use-gpu-changed" => {
-            let changed = update_boolean(args_json, |state, value| state.config.use_gpu = value);
-            (changed, false)
-        }
-        "auto-update-changed" => {
-            let changed = update_boolean(args_json, |state, value| {
-                state.config.auto_update_viewport = value
-            });
-            (changed, false)
         }
         _ => (false, false),
     };
@@ -315,14 +341,28 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
 }
 
 pub fn initialize_from_config() {
-    let saved_path = match load_persisted_model_path() {
-        Ok(path) => path,
+    let persisted_config = match load_persisted_config() {
+        Ok(config) => config,
         Err(error) => {
             log_message(HostLogLevelFFI::Error, error);
             return;
         }
     };
-    let Some(saved_path) = saved_path else {
+
+    {
+        let mut state = plugin_state().lock().unwrap();
+        state.model_section_expanded = persisted_config.model_section_expanded;
+        state.model_io_section_expanded = persisted_config.model_io_section_expanded;
+        state.analysis_section_expanded = persisted_config.analysis_section_expanded;
+        state.results_section_expanded = persisted_config.results_section_expanded;
+        state.config.analysis_threads = clamp_analysis_threads(
+            persisted_config
+                .analysis_threads
+                .unwrap_or(state.config.analysis_threads),
+        );
+    }
+
+    let Some(saved_path) = persisted_config.default_model_path.filter(|path| !path.is_empty()) else {
         return;
     };
 
@@ -386,7 +426,7 @@ fn start_model_load(path: String, persist_on_success: bool) {
         state.sidebar_regions.clear();
         state.error_stats = crate::stats::ErrorStats::default();
         state.progress_value = 0.0;
-        (state.model_load_generation, state.config.use_gpu)
+        (state.model_load_generation, current_render_backend_is_gpu())
     };
     refresh_sidebar_if_available();
     request_render_if_available();
@@ -617,6 +657,48 @@ fn update_mip_level(args_json: &str) -> bool {
     true
 }
 
+#[derive(Clone, Copy)]
+enum Section {
+    Model,
+    ModelIo,
+    Analysis,
+    Results,
+}
+
+fn update_section_expanded(args_json: &str, section: Section) -> bool {
+    let expanded = serde_json::from_str::<bool>(args_json).unwrap_or(true);
+    let mut state = plugin_state().lock().unwrap();
+    let target = match section {
+        Section::Model => &mut state.model_section_expanded,
+        Section::ModelIo => &mut state.model_io_section_expanded,
+        Section::Analysis => &mut state.analysis_section_expanded,
+        Section::Results => &mut state.results_section_expanded,
+    };
+    if *target == expanded {
+        return false;
+    }
+    *target = expanded;
+    drop(state);
+    persist_sidebar_preferences();
+    true
+}
+
+fn update_analysis_threads(args_json: &str) -> bool {
+    let value = serde_json::from_str::<String>(args_json)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(1);
+    let analysis_threads = clamp_analysis_threads(value);
+    let mut state = plugin_state().lock().unwrap();
+    if state.config.analysis_threads == analysis_threads {
+        return false;
+    }
+    state.config.analysis_threads = analysis_threads;
+    drop(state);
+    persist_sidebar_preferences();
+    true
+}
+
 fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
     let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
     let mut state = plugin_state().lock().unwrap();
@@ -659,26 +741,6 @@ fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
     drop(state);
     clear_cache_for_namespace(namespace);
     true
-}
-
-fn update_boolean<F>(args_json: &str, update: F) -> bool
-where
-    F: FnOnce(&mut crate::state::PluginState, bool),
-{
-    let value = serde_json::from_str::<bool>(args_json).unwrap_or(false);
-    let mut state = plugin_state().lock().unwrap();
-    let previous = serde_json::to_value(json!({
-        "use_gpu": state.config.use_gpu,
-        "auto_update_viewport": state.config.auto_update_viewport,
-    }))
-    .ok();
-    update(&mut state, value);
-    let current = serde_json::to_value(json!({
-        "use_gpu": state.config.use_gpu,
-        "auto_update_viewport": state.config.auto_update_viewport,
-    }))
-    .ok();
-    previous != current
 }
 
 fn jump_to_region(args_json: &str) {
@@ -833,15 +895,16 @@ mod tests {
     }
 
     #[test]
-    fn ignores_noop_boolean_updates() {
+    fn ignores_noop_section_toggle() {
         reset_sidebar_test_state();
-        assert!(!update_boolean("false", |state, value| state
-            .config
-            .use_gpu =
-            value));
-        assert!(!update_boolean("false", |state, value| state
-            .config
-            .auto_update_viewport =
-            value));
+        assert!(!update_section_expanded("true", Section::Model));
+    }
+
+    #[test]
+    fn clamps_analysis_threads_to_max() {
+        reset_sidebar_test_state();
+        plugin_state().lock().unwrap().config.analysis_threads = 1;
+        let _ = update_analysis_threads("\"9999\"");
+        assert_eq!(plugin_state().lock().unwrap().config.analysis_threads, max_analysis_threads());
     }
 }

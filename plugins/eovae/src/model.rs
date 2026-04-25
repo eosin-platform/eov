@@ -1,3 +1,4 @@
+use crate::state::{clamp_analysis_threads, host_api, plugin_state};
 use ndarray::{Array4, ArrayViewD, Axis, Ix4};
 use onnx_extractor::{DataType as OnnxDataType, OnnxModel, OnnxTensor};
 use ort::{
@@ -8,7 +9,6 @@ use ort::{
 use serde::Serialize;
 use std::fmt;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -82,9 +82,15 @@ impl ModelSummary {
 #[derive(Clone)]
 pub struct LoadedModel {
     pub summary: ModelSummary,
-    pub session: Arc<Mutex<Option<Session>>>,
+    pub session: Arc<Mutex<Option<CachedSession>>>,
     prefer_gpu: bool,
-    gpu_upgrade_started: Arc<AtomicBool>,
+    session_threads_override: Option<usize>,
+}
+
+pub struct CachedSession {
+    session: Session,
+    prefer_gpu: bool,
+    analysis_threads: usize,
 }
 
 pub struct ReconstructionResult {
@@ -123,22 +129,41 @@ pub fn load_model(path: &str, prefer_gpu: bool) -> Result<LoadedModel, String> {
         summary: inferred,
         session: Arc::new(Mutex::new(None)),
         prefer_gpu,
-        gpu_upgrade_started: Arc::new(AtomicBool::new(false)),
+        session_threads_override: None,
     })
 }
 
-fn build_inference_session(path: &str, prefer_gpu: bool) -> Result<Session, String> {
-    build_session_with_watchdog(path, prefer_gpu)
+impl LoadedModel {
+    pub fn clone_for_analysis_worker(&self, session_threads: usize) -> Self {
+        Self {
+            summary: self.summary.clone(),
+            session: Arc::new(Mutex::new(None)),
+            prefer_gpu: self.prefer_gpu,
+            session_threads_override: Some(session_threads.max(1)),
+        }
+    }
 }
 
-fn build_inference_session_inner(path: &str, prefer_gpu: bool) -> Result<Session, String> {
+fn build_inference_session(
+    path: &str,
+    prefer_gpu: bool,
+    analysis_threads: usize,
+) -> Result<Session, String> {
+    build_session_with_watchdog(path, prefer_gpu, analysis_threads)
+}
+
+fn build_inference_session_inner(
+    path: &str,
+    prefer_gpu: bool,
+    analysis_threads: usize,
+) -> Result<Session, String> {
     let mut builder = Session::builder()
         .map_err(|error| error.to_string())?
         .with_optimization_level(GraphOptimizationLevel::Disable)
         .map_err(|error| error.to_string())?
-        .with_parallel_execution(false)
+        .with_parallel_execution(analysis_threads > 1)
         .map_err(|error| error.to_string())?
-        .with_intra_threads(1)
+        .with_intra_threads(analysis_threads)
         .map_err(|error| error.to_string())?;
     if prefer_gpu {
         debug_timing("configuring gpu session options");
@@ -165,7 +190,11 @@ fn build_inference_session_inner(path: &str, prefer_gpu: bool) -> Result<Session
     )
 }
 
-fn build_session_with_watchdog(path: &str, prefer_gpu: bool) -> Result<Session, String> {
+fn build_session_with_watchdog(
+    path: &str,
+    prefer_gpu: bool,
+    analysis_threads: usize,
+) -> Result<Session, String> {
     let timeout = if prefer_gpu {
         GPU_SESSION_BUILD_TIMEOUT
     } else {
@@ -176,7 +205,7 @@ fn build_session_with_watchdog(path: &str, prefer_gpu: bool) -> Result<Session, 
     let path = path.to_string();
 
     thread::spawn(move || {
-        let result = build_inference_session_inner(&path, prefer_gpu);
+        let result = build_inference_session_inner(&path, prefer_gpu, analysis_threads);
         let _ = sender.send(result);
     });
 
@@ -379,6 +408,7 @@ pub fn run_reconstruction(
 
     let run_started = Instant::now();
     let outputs = session
+        .session
         .run(ort::inputs![
             TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?
         ])
@@ -397,58 +427,58 @@ pub fn run_reconstruction(
 
 fn ensure_inference_session(
     model: &LoadedModel,
-) -> Result<std::sync::MutexGuard<'_, Option<Session>>, String> {
+) -> Result<std::sync::MutexGuard<'_, Option<CachedSession>>, String> {
+    let (prefer_gpu, analysis_threads) = desired_execution_settings(model);
     {
         let session = model
             .session
             .lock()
             .map_err(|_| "model session lock is poisoned".to_string())?;
-        if session.is_some() {
+        if session.as_ref().is_some_and(|session| {
+            session.prefer_gpu == prefer_gpu && session.analysis_threads == analysis_threads
+        }) {
             debug_timing("reusing cached inference session");
             return Ok(session);
         }
     }
 
-    debug_timing("creating new cpu inference session");
-    let session = build_inference_session(&model.summary.path, false)?;
+    debug_timing(&format!(
+        "creating new {} inference session with {} thread(s)",
+        if prefer_gpu { "gpu" } else { "cpu" },
+        analysis_threads
+    ));
+    let session = match build_inference_session(&model.summary.path, prefer_gpu, analysis_threads) {
+        Ok(session) => session,
+        Err(error) if prefer_gpu => {
+            debug_timing(&format!(
+                "gpu inference session unavailable; falling back to cpu: {error}"
+            ));
+            build_inference_session(&model.summary.path, false, analysis_threads)?
+        }
+        Err(error) => return Err(error),
+    };
 
     let mut guard = model
         .session
         .lock()
         .map_err(|_| "model session lock is poisoned".to_string())?;
-    if guard.is_none() {
-        *guard = Some(session);
-    }
-    maybe_start_gpu_upgrade(model);
+    *guard = Some(CachedSession {
+        session,
+        prefer_gpu,
+        analysis_threads,
+    });
     Ok(guard)
 }
 
-fn maybe_start_gpu_upgrade(model: &LoadedModel) {
-    if !model.prefer_gpu {
-        return;
-    }
-    if model.gpu_upgrade_started.swap(true, Ordering::AcqRel) {
-        return;
-    }
-
-    let path = model.summary.path.clone();
-    let session_slot = Arc::clone(&model.session);
-    let upgrade_flag = Arc::clone(&model.gpu_upgrade_started);
-    thread::spawn(move || {
-        debug_timing("starting background gpu upgrade attempt");
-        match build_inference_session(&path, true) {
-            Ok(session) => {
-                debug_timing("background gpu upgrade succeeded; swapping in gpu session");
-                if let Ok(mut guard) = session_slot.lock() {
-                    *guard = Some(session);
-                }
-            }
-            Err(error) => {
-                debug_timing(&format!("background gpu upgrade failed: {error}"));
-                upgrade_flag.store(false, Ordering::Release);
-            }
-        }
+fn desired_execution_settings(model: &LoadedModel) -> (bool, usize) {
+    let prefer_gpu = host_api()
+        .map(|host| (host.get_snapshot)(host.context))
+        .map(|snapshot| snapshot.render_backend.to_ascii_lowercase() == "gpu")
+        .unwrap_or(model.prefer_gpu);
+    let analysis_threads = model.session_threads_override.unwrap_or_else(|| {
+        clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads)
     });
+    (prefer_gpu, analysis_threads)
 }
 
 fn debug_timing(message: &str) {

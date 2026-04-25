@@ -6,14 +6,14 @@ use crate::state::{
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
-    pub use_gpu: bool,
-    pub auto_update_viewport: bool,
+    pub analysis_threads: usize,
     pub skip_background: bool,
     pub background_threshold: u8,
     pub mip_level: u32,
@@ -22,8 +22,7 @@ pub struct AnalysisConfig {
 impl Default for AnalysisConfig {
     fn default() -> Self {
         Self {
-            use_gpu: false,
-            auto_update_viewport: false,
+            analysis_threads: crate::state::max_analysis_threads(),
             skip_background: true,
             background_threshold: 242,
             mip_level: 0,
@@ -227,66 +226,140 @@ fn run_tile_plan_with_file(
     _file_path: String,
 ) -> Result<(), String> {
     let host = host_api().ok_or_else(|| "host API is not available".to_string())?;
-    let (skip_background, background_threshold) = {
+    let (skip_background, background_threshold, analysis_threads) = {
         let state = plugin_state().lock().unwrap();
         (
             state.config.skip_background,
             state.config.background_threshold,
+            state.config.analysis_threads.max(1),
         )
     };
 
-    for (index, tile_plan) in tiles.iter().copied().enumerate() {
-        if cancel.load(Ordering::Relaxed) {
-            return Ok(());
-        }
+    if tiles.is_empty() {
+        return Ok(());
+    }
 
-        let bytes = (host.read_region)(
-            host.context,
-            file_id,
-            tile_plan.level,
-            tile_plan.x as i64,
-            tile_plan.y as i64,
-            tile_plan.read_width,
-            tile_plan.read_height,
-        )
-        .into_result()
-        .map_err(|error| error.to_string())?;
-        if skip_background && should_skip_background(bytes.as_slice(), background_threshold) {
-            update_progress(index + 1, tiles.len(), "Skipping background tile");
-            continue;
-        }
+    let total_tiles = tiles.len();
+    let worker_count = analysis_threads.min(total_tiles).max(1);
+    let tiles = Arc::new(tiles);
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let processed = Arc::new(AtomicUsize::new(0));
+    let first_error = Arc::new(Mutex::new(None::<String>));
+    let mut handles = Vec::with_capacity(worker_count);
 
-        let reconstruction = run_reconstruction(
-            &model,
-            bytes.as_slice(),
-            tile_plan.read_width,
-            tile_plan.read_height,
-        )?;
-        let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
-        {
-            let mut state = plugin_state().lock().unwrap();
-            state.cache.insert(
-                tile.id(),
-                TileCacheEntry {
-                    namespace: namespace.clone(),
-                    tile,
-                },
-            );
-            state.progress_value = (index + 1) as f32 / tiles.len().max(1) as f32;
-            state.job_status = format!("Processing {}/{} tiles", index + 1, tiles.len());
-            rebuild_sidebar_statistics(&mut state);
-        }
+    for _ in 0..worker_count {
+        let worker_model = model.clone_for_analysis_worker(1);
+        let worker_tiles = Arc::clone(&tiles);
+        let worker_next_index = Arc::clone(&next_index);
+        let worker_processed = Arc::clone(&processed);
+        let worker_cancel = Arc::clone(&cancel);
+        let worker_error = Arc::clone(&first_error);
+        let worker_namespace = namespace.clone();
+        let worker_host = host;
+
+        handles.push(thread::spawn(move || {
+            loop {
+                if worker_cancel.load(Ordering::Relaxed) {
+                    return;
+                }
+                if worker_error.lock().unwrap().is_some() {
+                    return;
+                }
+
+                let index = worker_next_index.fetch_add(1, Ordering::Relaxed);
+                if index >= worker_tiles.len() {
+                    return;
+                }
+
+                let tile_plan = worker_tiles[index];
+                let result = (|| -> Result<(), String> {
+                    let bytes = (worker_host.read_region)(
+                        worker_host.context,
+                        file_id,
+                        tile_plan.level,
+                        tile_plan.x as i64,
+                        tile_plan.y as i64,
+                        tile_plan.read_width,
+                        tile_plan.read_height,
+                    )
+                    .into_result()
+                    .map_err(|error| error.to_string())?;
+
+                    if skip_background
+                        && should_skip_background(bytes.as_slice(), background_threshold)
+                    {
+                        let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
+                        report_progress(done, total_tiles, "Skipping background tile", false);
+                        return Ok(());
+                    }
+
+                    let reconstruction = run_reconstruction(
+                        &worker_model,
+                        bytes.as_slice(),
+                        tile_plan.read_width,
+                        tile_plan.read_height,
+                    )?;
+                    let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
+                    {
+                        let mut state = plugin_state().lock().unwrap();
+                        state.cache.insert(
+                            tile.id(),
+                            TileCacheEntry {
+                                namespace: worker_namespace.clone(),
+                                tile,
+                            },
+                        );
+                    }
+
+                    let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
+                    let refresh_stats = done == total_tiles || done % 16 == 0;
+                    report_progress(done, total_tiles, "Processing", refresh_stats);
+                    Ok(())
+                })();
+
+                if let Err(error) = result {
+                    worker_cancel.store(true, Ordering::Relaxed);
+                    let mut slot = worker_error.lock().unwrap();
+                    if slot.is_none() {
+                        *slot = Some(error);
+                    }
+                    return;
+                }
+            }
+        }));
+    }
+
+    for handle in handles {
+        handle
+            .join()
+            .map_err(|_| "analysis worker thread panicked".to_string())?;
+    }
+
+    if let Some(error) = first_error.lock().unwrap().clone() {
+        return Err(error);
+    }
+
+    {
+        let mut state = plugin_state().lock().unwrap();
+        rebuild_sidebar_statistics(&mut state);
+    }
+    refresh_sidebar_if_available();
+    request_render_if_available();
+    return Ok(());
+}
+
+fn report_progress(done: usize, total: usize, label: &str, refresh_stats: bool) {
+    let mut state = plugin_state().lock().unwrap();
+    state.progress_value = done as f32 / total.max(1) as f32;
+    state.job_status = format!("{label} {done}/{total} tiles");
+    if refresh_stats {
+        rebuild_sidebar_statistics(&mut state);
+    }
+    drop(state);
+    if done == total || done % 8 == 0 {
         refresh_sidebar_if_available();
         request_render_if_available();
     }
-
-    Ok(())
-}
-
-fn update_progress(done: usize, total: usize, label: &str) {
-    let mut state = plugin_state().lock().unwrap();
-    state.progress_value = done as f32 / total.max(1) as f32;
-    state.job_status = format!("{label} ({done}/{total})");
 }
 
 fn viewport_tiles(viewport: &ViewportSnapshotFFI, tile_size: u32, mip_level: u32) -> Vec<TilePlan> {

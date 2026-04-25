@@ -38,6 +38,39 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+
+fn restore_persisted_sidebar(plugin_manager: &plugins::PluginManager) {
+    let Ok(Some(sidebar)) = config::load_active_sidebar() else {
+        return;
+    };
+    let Some(vtable) = plugin_manager
+        .loaded_vtables()
+        .find(|(plugin_id, _)| *plugin_id == sidebar.plugin_id)
+        .map(|(_, vtable)| *vtable)
+    else {
+        return;
+    };
+    let Some(descriptor) = plugin_manager.descriptor(&sidebar.plugin_id) else {
+        return;
+    };
+
+    if let Err(err) = plugin_host::show_sidebar(
+        &sidebar.plugin_id,
+        Some(&descriptor.root),
+        Some(vtable),
+        plugin_api::SidebarRequest {
+            button_id: sidebar.button_id.clone(),
+            width_px: sidebar.width_px,
+            ui_path: sidebar.ui_path.clone(),
+            component: sidebar.component.clone(),
+        },
+    ) {
+        tracing::warn!(
+            "Failed to restore persisted sidebar '{}' on startup: {err}",
+            sidebar.plugin_id
+        );
+    }
+}
 use std::time::{Duration, Instant};
 use tracing::info;
 
@@ -406,6 +439,7 @@ fn main() -> Result<()> {
                 *vtable,
             ));
         }
+        restore_persisted_sidebar(&pm);
     }
 
     setup_callbacks(

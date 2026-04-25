@@ -11,9 +11,32 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-#[derive(Default, Serialize, Deserialize)]
-struct PersistedConfig {
-    default_model_path: Option<String>,
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+pub struct PersistedConfig {
+    pub default_model_path: Option<String>,
+    pub model_section_expanded: bool,
+    pub model_io_section_expanded: bool,
+    pub analysis_section_expanded: bool,
+    pub results_section_expanded: bool,
+    pub analysis_threads: Option<usize>,
+}
+
+impl Default for PersistedConfig {
+    fn default() -> Self {
+        Self {
+            default_model_path: None,
+            model_section_expanded: default_true(),
+            model_io_section_expanded: default_true(),
+            analysis_section_expanded: default_true(),
+            results_section_expanded: default_true(),
+            analysis_threads: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,11 +116,13 @@ pub struct PluginState {
     pub analysis_started_at: Option<Instant>,
     pub analysis_elapsed: Option<Duration>,
     pub analysis_error_message: Option<String>,
+    pub model_section_expanded: bool,
+    pub model_io_section_expanded: bool,
+    pub analysis_section_expanded: bool,
+    pub results_section_expanded: bool,
     pub hovered_region_id: Option<String>,
     pub pulsing_region_id: Option<String>,
     pub pulsing_region_started_at: Option<Instant>,
-    pub last_auto_update: Option<Instant>,
-    pub last_auto_viewport_key: Option<String>,
 }
 
 impl Default for PluginState {
@@ -123,11 +148,13 @@ impl Default for PluginState {
             analysis_started_at: None,
             analysis_elapsed: None,
             analysis_error_message: None,
+            model_section_expanded: true,
+            model_io_section_expanded: true,
+            analysis_section_expanded: true,
+            results_section_expanded: true,
             hovered_region_id: None,
             pulsing_region_id: None,
             pulsing_region_started_at: None,
-            last_auto_update: None,
-            last_auto_viewport_key: None,
         }
     }
 }
@@ -184,6 +211,17 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.pulsing_region_started_at = None;
 }
 
+pub fn max_analysis_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .max(1)
+}
+
+pub fn clamp_analysis_threads(value: usize) -> usize {
+    value.clamp(1, max_analysis_threads())
+}
+
 pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
     let entries = state
         .cache
@@ -228,28 +266,6 @@ pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
         .collect();
 }
 
-pub fn should_auto_update(viewport_key: &str) -> bool {
-    let state = plugin_state().lock().unwrap();
-    if !state.config.auto_update_viewport || state.job.is_some() || state.model.is_none() {
-        return false;
-    }
-    let now = Instant::now();
-    if state.last_auto_viewport_key.as_deref() == Some(viewport_key)
-        && state
-            .last_auto_update
-            .is_some_and(|last| now.duration_since(last) < Duration::from_millis(350))
-    {
-        return false;
-    }
-    true
-}
-
-pub fn mark_auto_update(viewport_key: String) {
-    let mut state = plugin_state().lock().unwrap();
-    state.last_auto_viewport_key = Some(viewport_key);
-    state.last_auto_update = Some(Instant::now());
-}
-
 pub fn cancel_running_job() -> bool {
     let state = plugin_state().lock().unwrap();
     if let Some(job) = &state.job {
@@ -263,19 +279,18 @@ fn host_api_cell() -> &'static Mutex<Option<HostApiVTable>> {
     HOST_API.get_or_init(|| Mutex::new(None))
 }
 
-pub fn load_persisted_model_path() -> Result<Option<String>, String> {
+pub fn load_persisted_config() -> Result<PersistedConfig, String> {
     let path = persisted_config_path()?;
     if !path.exists() {
-        return Ok(None);
+        return Ok(PersistedConfig::default());
     }
     let json = fs::read_to_string(&path)
         .map_err(|err| format!("failed to read eovae config '{}': {err}", path.display()))?;
-    let config = serde_json::from_str::<PersistedConfig>(&json)
-        .map_err(|err| format!("failed to parse eovae config '{}': {err}", path.display()))?;
-    Ok(config.default_model_path.filter(|path| !path.is_empty()))
+    serde_json::from_str::<PersistedConfig>(&json)
+        .map_err(|err| format!("failed to parse eovae config '{}': {err}", path.display()))
 }
 
-pub fn save_persisted_model_path(model_path: Option<&str>) -> Result<(), String> {
+pub fn save_persisted_config_field(update: impl FnOnce(&mut PersistedConfig)) -> Result<(), String> {
     let path = persisted_config_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| {
@@ -285,13 +300,20 @@ pub fn save_persisted_model_path(model_path: Option<&str>) -> Result<(), String>
             )
         })?;
     }
-    let config = PersistedConfig {
-        default_model_path: model_path.map(str::to_string),
-    };
+
+    let mut config = load_persisted_config()?;
+    update(&mut config);
+
     let json = serde_json::to_string_pretty(&config)
         .map_err(|err| format!("failed to serialize eovae config: {err}"))?;
     fs::write(&path, json)
         .map_err(|err| format!("failed to write eovae config '{}': {err}", path.display()))
+}
+
+pub fn save_persisted_model_path(model_path: Option<&str>) -> Result<(), String> {
+    save_persisted_config_field(|config| {
+        config.default_model_path = model_path.map(str::to_string);
+    })
 }
 
 fn persisted_config_path() -> Result<PathBuf, String> {
