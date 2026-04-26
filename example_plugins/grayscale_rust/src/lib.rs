@@ -8,14 +8,14 @@
 //! compiled to SPIR-V. The shader operates in-place on the filter image via
 //! `imageLoad`/`imageStore`.
 
-use abi_stable::std_types::{RString, RVec};
+use abi_stable::std_types::{ROption, RString, RVec};
 use ash::vk;
 use ash::vk::Handle;
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI,
-    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
-    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
-    ViewportSnapshotFFI,
+    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportFilterFFI, ViewportOverlayComponentRequestFFI, ViewportOverlayPointFFI,
+    ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI, ViewportSnapshotFFI,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -116,6 +116,17 @@ extern "C" fn get_viewport_overlay_points_ffi(
 extern "C" fn get_viewport_overlay_polygons_ffi(
     _viewport: ViewportSnapshotFFI,
 ) -> RVec<ViewportOverlayPolygonFFI> {
+    RVec::new()
+}
+
+extern "C" fn get_viewport_overlay_component_ffi(
+) -> ROption<ViewportOverlayComponentRequestFFI> {
+    ROption::RNone
+}
+
+extern "C" fn get_viewport_overlay_properties_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<UiPropertyFFI> {
     RVec::new()
 }
 
@@ -482,6 +493,8 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
         get_viewport_overlay_polygons: get_viewport_overlay_polygons_ffi,
+        get_viewport_overlay_component: get_viewport_overlay_component_ffi,
+        get_viewport_overlay_properties: get_viewport_overlay_properties_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
         on_polygon_annotation_placed: on_polygon_annotation_placed_ffi,
         on_undo: on_undo_ffi,

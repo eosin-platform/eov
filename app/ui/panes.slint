@@ -21,6 +21,8 @@ component PaneView inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
+    in property <component-factory> plugin-viewport-underlay-factory;
+    in property <component-factory> plugin-viewport-overlay-factory;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     in property <int> focused-pane: 0;
     in property <int> dragging-tab-id: -1;
@@ -153,6 +155,8 @@ component PaneView inherits Rectangle {
                 candidate-measurement: root.pane-data.candidate-measurement;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
+                plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
+                plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
                 zoom-slider-position: root.pane-data.zoom-slider-position;
                 hud: root.pane-data.hud;
                 plugin-hud-buttons: root.plugin-hud-buttons;
@@ -403,6 +407,8 @@ export component SplitPaneContainer inherits Rectangle {
     in property <int> os-file-hover-pane: -1;
     in property <int> os-file-hover-side: -1;
     in property <ToolType> current-tool: ToolType.navigate;
+    in property <component-factory> plugin-viewport-underlay-factory;
+    in property <component-factory> plugin-viewport-overlay-factory;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     property <length> pane-gap: 6px;
     property <int> pane-count: max(1, panes.length);
@@ -479,6 +485,8 @@ export component SplitPaneContainer inherits Rectangle {
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
             current-tool: root.current-tool;
+            plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
+            plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
             plugin-hud-buttons: root.plugin-hud-buttons;
             debug-mode: root.debug-mode;
             fps: root.fps;

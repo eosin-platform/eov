@@ -173,21 +173,21 @@ export component HudToolbar inherits Rectangle {
                 }
             }
 
-            adjust-btn := HudButton {
-                icon-source: @image-url("icons/settings.svg");
-                tooltip-text: "Adjustments";
-                active: root.dropdown-open || root.has-adjustments;
-                clicked => {
-                    root.toggle-dropdown();
-                }
-            }
-
             for btn[idx] in root.plugin-buttons: HudButton {
                 icon-source: btn.icon;
                 tooltip-text: btn.tooltip;
                 active: btn.active;
                 clicked => {
                     root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+                }
+            }
+
+            adjust-btn := HudButton {
+                icon-source: @image-url("icons/settings.svg");
+                tooltip-text: "Adjustments";
+                active: root.dropdown-open || root.has-adjustments;
+                clicked => {
+                    root.toggle-dropdown();
                 }
             }
         }

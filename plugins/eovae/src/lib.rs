@@ -9,17 +9,20 @@ mod stats;
 use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, PluginVTable,
-    ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
-    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
-    ViewportSnapshotFFI,
+    ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
+    ViewportOverlayComponentRequestFFI, ViewportFilterFFI, ViewportOverlayPointFFI,
+    ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI, ViewportSnapshotFFI,
 };
 use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
+use serde_json::json;
 use state::{plugin_state, request_render_if_available, set_host_api};
 use std::time::Duration;
 
 const BUTTON_ID: &str = "toggle_eovae";
+const GRID_BUTTON_ID: &str = "toggle_grid";
 const FILTER_ID: &str = "eovae_overlay";
 const TOOL_ICON: &str = include_str!("../ui/icons/tool.svg");
+const GRID_ICON: &str = include_str!("../ui/icons/grid.svg");
 
 fn plugin_trace(message: impl AsRef<str>) {
     if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
@@ -44,7 +47,12 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
 }
 
 extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
-    RVec::new()
+    RVec::from(vec![HudToolbarButtonFFI {
+        button_id: GRID_BUTTON_ID.into(),
+        tooltip: "Toggle tile grid".into(),
+        icon_svg: GRID_ICON.into(),
+        action_id: GRID_BUTTON_ID.into(),
+    }])
 }
 
 extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
@@ -58,9 +66,17 @@ extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
 }
 
 extern "C" fn on_hud_action_ffi(
-    _action_id: RString,
+    action_id: RString,
     _viewport: ViewportSnapshotFFI,
 ) -> ActionResponseFFI {
+    if action_id.as_str() == GRID_BUTTON_ID {
+        let mut state = plugin_state().lock().unwrap();
+        state.grid_enabled = !state.grid_enabled;
+        let active = state.grid_enabled;
+        drop(state);
+        state::set_hud_toolbar_button_active_if_available(GRID_BUTTON_ID, active);
+        request_render_if_available();
+    }
     ActionResponseFFI { open_window: false }
 }
 
@@ -97,7 +113,7 @@ extern "C" fn get_viewport_overlay_points_ffi(
 }
 
 extern "C" fn get_viewport_overlay_polygons_ffi(
-    _viewport: ViewportSnapshotFFI,
+    viewport: ViewportSnapshotFFI,
 ) -> RVec<ViewportOverlayPolygonFFI> {
     let mut polygons = Vec::new();
     let mut clear_pulse = false;
@@ -144,6 +160,16 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
         }
     }
 
+    if state.grid_enabled {
+        let mip_level = state.config.mip_level;
+        let tile_size = state
+            .model
+            .as_ref()
+            .map(|model| model.summary.tile_size as f64)
+            .unwrap_or(256.0);
+        polygons.extend(grid_overlay_polygons(&viewport, tile_size, mip_level));
+    }
+
     drop(state);
 
     if clear_pulse {
@@ -153,6 +179,39 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
     }
 
     RVec::from(polygons)
+}
+
+extern "C" fn get_viewport_overlay_component_ffi(
+) -> ROption<ViewportOverlayComponentRequestFFI> {
+    ROption::RNone
+}
+
+extern "C" fn get_viewport_overlay_properties_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<UiPropertyFFI> {
+    let state = plugin_state().lock().unwrap();
+    let grid_visible = state.grid_enabled;
+    let mip_level = state.config.mip_level;
+    let tile_size = state
+        .model
+        .as_ref()
+        .map(|model| model.summary.tile_size)
+        .unwrap_or(256);
+
+    RVec::from(vec![
+        UiPropertyFFI {
+            name: "grid-visible".into(),
+            json_value: json!(grid_visible).to_string().into(),
+        },
+        UiPropertyFFI {
+            name: "tile-size".into(),
+            json_value: json!(tile_size as f64).to_string().into(),
+        },
+        UiPropertyFFI {
+            name: "mip-level".into(),
+            json_value: json!(mip_level as f64).to_string().into(),
+        },
+    ])
 }
 
 fn region_polygon(
@@ -187,6 +246,93 @@ fn region_polygon(
         fill_green: green,
         fill_blue: blue,
     }
+}
+
+fn grid_overlay_polygons(
+    viewport: &ViewportSnapshotFFI,
+    tile_size: f64,
+    mip_level: u32,
+) -> Vec<ViewportOverlayPolygonFFI> {
+    let step = (tile_size * (1u64 << mip_level) as f64).max(1.0);
+    let pixel_world_x = ((viewport.bounds_right - viewport.bounds_left)
+        / viewport.width.max(1.0))
+    .abs()
+    .max(1e-6);
+    let pixel_world_y = ((viewport.bounds_bottom - viewport.bounds_top)
+        / viewport.height.max(1.0))
+    .abs()
+    .max(1e-6);
+    let half_thickness_x = pixel_world_x * 0.5;
+    let half_thickness_y = pixel_world_y * 0.5;
+    let mut polygons = Vec::new();
+
+    let first_x = (viewport.bounds_left / step).floor() * step;
+    let mut x = first_x;
+    let mut vertical_index = 0usize;
+    while x <= viewport.bounds_right + step && vertical_index < 512 {
+        polygons.push(ViewportOverlayPolygonFFI {
+            annotation_id: format!("grid-v-{vertical_index}").into(),
+            vertices: vec![
+                ViewportOverlayVertexFFI {
+                    x_level0: x - half_thickness_x,
+                    y_level0: viewport.bounds_top,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: x + half_thickness_x,
+                    y_level0: viewport.bounds_top,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: x + half_thickness_x,
+                    y_level0: viewport.bounds_bottom,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: x - half_thickness_x,
+                    y_level0: viewport.bounds_bottom,
+                },
+            ]
+            .into(),
+            fill_red: 0xFF,
+            fill_green: 0xFF,
+            fill_blue: 0xFF,
+        });
+        x += step;
+        vertical_index += 1;
+    }
+
+    let first_y = (viewport.bounds_top / step).floor() * step;
+    let mut y = first_y;
+    let mut horizontal_index = 0usize;
+    while y <= viewport.bounds_bottom + step && horizontal_index < 512 {
+        polygons.push(ViewportOverlayPolygonFFI {
+            annotation_id: format!("grid-h-{horizontal_index}").into(),
+            vertices: vec![
+                ViewportOverlayVertexFFI {
+                    x_level0: viewport.bounds_left,
+                    y_level0: y - half_thickness_y,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: viewport.bounds_right,
+                    y_level0: y - half_thickness_y,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: viewport.bounds_right,
+                    y_level0: y + half_thickness_y,
+                },
+                ViewportOverlayVertexFFI {
+                    x_level0: viewport.bounds_left,
+                    y_level0: y + half_thickness_y,
+                },
+            ]
+            .into(),
+            fill_red: 0xFF,
+            fill_green: 0xFF,
+            fill_blue: 0xFF,
+        });
+        y += step;
+        horizontal_index += 1;
+    }
+
+    polygons
 }
 
 extern "C" fn on_point_annotation_placed_ffi(
@@ -271,6 +417,8 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
         get_viewport_overlay_polygons: get_viewport_overlay_polygons_ffi,
+        get_viewport_overlay_component: get_viewport_overlay_component_ffi,
+        get_viewport_overlay_properties: get_viewport_overlay_properties_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
         on_polygon_annotation_placed: on_polygon_annotation_placed_ffi,
         on_undo: on_undo_ffi,

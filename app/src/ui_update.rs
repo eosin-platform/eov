@@ -360,6 +360,7 @@ pub fn update_tabs(
     ui.set_show_scale_bar(state.show_scale_bar);
     ui.set_show_plugin_sidebar(state.has_active_sidebar());
     ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
+    let _ = crate::plugin_host::refresh_viewport_overlay_factories(ui, state);
 }
 
 /// Update the recent files list in the UI

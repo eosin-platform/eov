@@ -184,6 +184,7 @@ impl PluginManager {
             let plugin = plugin.clone();
             let mut ctx = AppHostContext::new(
                 &mut self.toolbar,
+                &mut self.hud_toolbar,
                 &mut self.undo_redo_states,
                 &mut self.undo_redo_order,
             );
@@ -316,6 +317,7 @@ impl PluginManager {
 
         let mut ctx = AppHostContext::new(
             &mut self.toolbar,
+            &mut self.hud_toolbar,
             &mut self.undo_redo_states,
             &mut self.undo_redo_order,
         );
@@ -348,6 +350,7 @@ impl PluginManager {
             .unwrap_or_default();
         let mut ctx = AppHostContext::new(
             &mut self.toolbar,
+            &mut self.hud_toolbar,
             &mut self.undo_redo_states,
             &mut self.undo_redo_order,
         );
@@ -380,6 +383,7 @@ impl PluginManager {
             .unwrap_or_default();
         let mut ctx = AppHostContext::new(
             &mut self.toolbar,
+            &mut self.hud_toolbar,
             &mut self.undo_redo_states,
             &mut self.undo_redo_order,
         );

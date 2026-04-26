@@ -33,7 +33,7 @@ pub mod viewport_filter;
 
 pub use host::{
     ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, ModalDialogRequest, OpenFileInfo,
-    PluginUndoRedoState, SidebarRequest, ViewportSnapshot,
+    PluginUndoRedoState, SidebarRequest, ViewportOverlayComponentRequest, ViewportSnapshot,
 };
 pub use manifest::PluginManifest;
 pub use manifest::{ManifestToolbarButton, PluginLanguage};
@@ -109,6 +109,26 @@ pub struct ToolbarButtonRegistration {
     pub active: bool,
 }
 
+/// Registration data for a plugin HUD toolbar button.
+///
+/// The host renders these inside each viewport HUD toolbar. They are icon-only
+/// actions and do not participate in host tool-mode or hotkey ownership.
+#[derive(Debug, Clone)]
+pub struct HudToolbarButtonRegistration {
+    /// Owning plugin id.
+    pub plugin_id: String,
+    /// Unique identifier for this button (scoped to the plugin).
+    pub button_id: String,
+    /// Tooltip / accessible label shown on hover.
+    pub tooltip: String,
+    /// Icon to display.
+    pub icon: IconDescriptor,
+    /// Opaque action identifier dispatched back to the plugin on click.
+    pub action_id: String,
+    /// Whether the host should render this button in its active state.
+    pub active: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Host context — the API surface a plugin can call during activation
 // ---------------------------------------------------------------------------
@@ -121,6 +141,13 @@ pub trait HostContext {
     /// Register a toolbar button. The button is appended after all built-in
     /// toolbar items.
     fn add_toolbar_button(&mut self, button: ToolbarButtonRegistration) -> PluginResult<()>;
+
+    /// Register an icon button in the viewport HUD toolbar.
+    fn add_hud_toolbar_button(&mut self, _button: HudToolbarButtonRegistration) -> PluginResult<()> {
+        Err(PluginError::Other(
+            "host does not support HUD toolbar buttons".to_string(),
+        ))
+    }
 
     /// Request the host to open a plugin window.
     ///

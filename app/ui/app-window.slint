@@ -152,6 +152,8 @@ export component AppWindow inherits Window {
     in-out property <bool> show-plugin-sidebar: false;
     in-out property <float> plugin-sidebar-width: 0;
     in-out property <component-factory> plugin-sidebar-factory;
+    in-out property <component-factory> plugin-viewport-underlay-factory;
+    in-out property <component-factory> plugin-viewport-overlay-factory;
     in-out property <[PluginButtonData]> plugin-buttons: [];
     in-out property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     in-out property <bool> plugin-undo-redo-visible: false;
@@ -508,6 +510,8 @@ export component AppWindow inherits Window {
                     split-enabled: root.split-enabled;
                     focused-pane: root.focused-pane;
                     current-tool: root.current-tool;
+                    plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
+                    plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
                     plugin-hud-buttons: root.plugin-hud-buttons;
                     debug-mode: root.debug-mode;
                     fps: root.fps;

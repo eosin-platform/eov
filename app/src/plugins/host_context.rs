@@ -6,7 +6,8 @@
 
 use crate::plugins::toolbar::ToolbarManager;
 use plugin_api::{
-    HostContext, PluginError, PluginResult, PluginUndoRedoState, ToolbarButtonRegistration,
+    HostContext, HudToolbarButtonRegistration, PluginError, PluginResult, PluginUndoRedoState,
+    ToolbarButtonRegistration,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,7 @@ pub struct WindowOpenRequest {
 /// For action handling, this accumulates window-open requests.
 pub struct AppHostContext<'a> {
     pub toolbar: &'a mut ToolbarManager,
+    pub hud_toolbar: &'a mut ToolbarManager,
     pub undo_redo_states: &'a mut HashMap<String, PluginUndoRedoState>,
     pub undo_redo_order: &'a mut Vec<String>,
     pub window_requests: Vec<WindowOpenRequest>,
@@ -33,11 +35,13 @@ pub struct AppHostContext<'a> {
 impl<'a> AppHostContext<'a> {
     pub fn new(
         toolbar: &'a mut ToolbarManager,
+        hud_toolbar: &'a mut ToolbarManager,
         undo_redo_states: &'a mut HashMap<String, PluginUndoRedoState>,
         undo_redo_order: &'a mut Vec<String>,
     ) -> Self {
         Self {
             toolbar,
+            hud_toolbar,
             undo_redo_states,
             undo_redo_order,
             window_requests: Vec::new(),
@@ -48,6 +52,19 @@ impl<'a> AppHostContext<'a> {
 impl HostContext for AppHostContext<'_> {
     fn add_toolbar_button(&mut self, button: ToolbarButtonRegistration) -> PluginResult<()> {
         self.toolbar.register(button)
+    }
+
+    fn add_hud_toolbar_button(&mut self, button: HudToolbarButtonRegistration) -> PluginResult<()> {
+        self.hud_toolbar.register(ToolbarButtonRegistration {
+            plugin_id: button.plugin_id,
+            button_id: button.button_id,
+            tooltip: button.tooltip,
+            icon: button.icon,
+            action_id: button.action_id,
+            tool_mode: None,
+            hotkey: None,
+            active: button.active,
+        })
     }
 
     fn open_plugin_window(
@@ -87,6 +104,7 @@ impl HostContext for AppHostContext<'_> {
 #[cfg(test)]
 pub struct MockHostContext {
     pub toolbar: ToolbarManager,
+    pub hud_toolbar: ToolbarManager,
     _undo_redo_states: HashMap<String, PluginUndoRedoState>,
     _undo_redo_order: Vec<String>,
     pub window_requests: Vec<WindowOpenRequest>,
@@ -97,6 +115,7 @@ impl MockHostContext {
     pub fn new() -> Self {
         Self {
             toolbar: ToolbarManager::new(),
+            hud_toolbar: ToolbarManager::new(),
             _undo_redo_states: HashMap::new(),
             _undo_redo_order: Vec::new(),
             window_requests: Vec::new(),
@@ -108,6 +127,19 @@ impl MockHostContext {
 impl HostContext for MockHostContext {
     fn add_toolbar_button(&mut self, button: ToolbarButtonRegistration) -> PluginResult<()> {
         self.toolbar.register(button)
+    }
+
+    fn add_hud_toolbar_button(&mut self, button: HudToolbarButtonRegistration) -> PluginResult<()> {
+        self.hud_toolbar.register(ToolbarButtonRegistration {
+            plugin_id: button.plugin_id,
+            button_id: button.button_id,
+            tooltip: button.tooltip,
+            icon: button.icon,
+            action_id: button.action_id,
+            tool_mode: None,
+            hotkey: None,
+            active: button.active,
+        })
     }
 
     fn open_plugin_window(
@@ -192,11 +224,16 @@ mod tests {
     #[test]
     fn app_host_context_collects_toolbar_and_windows() {
         let mut toolbar = ToolbarManager::new();
+        let mut hud_toolbar = ToolbarManager::new();
         let mut undo_redo_states = HashMap::new();
         let mut undo_redo_order = Vec::new();
         {
-            let mut ctx =
-                AppHostContext::new(&mut toolbar, &mut undo_redo_states, &mut undo_redo_order);
+            let mut ctx = AppHostContext::new(
+                &mut toolbar,
+                &mut hud_toolbar,
+                &mut undo_redo_states,
+                &mut undo_redo_order,
+            );
 
             ctx.add_toolbar_button(ToolbarButtonRegistration {
                 plugin_id: "p".into(),

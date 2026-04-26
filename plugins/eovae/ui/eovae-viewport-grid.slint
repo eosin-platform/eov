@@ -1,0 +1,60 @@
+export component EovaeViewportGrid inherits Rectangle {
+    in property <bool> grid-visible: false;
+    in property <float> tile-size: 256;
+    in property <float> mip-level: 0;
+    in property <int> pane-index: -1;
+    in property <float> viewport-center-x: 0;
+    in property <float> viewport-center-y: 0;
+    in property <float> viewport-zoom: 1;
+    in property <float> viewport-width: 1;
+    in property <float> viewport-height: 1;
+    in property <float> image-width: 1;
+    in property <float> image-height: 1;
+    in property <float> bounds-left: 0;
+    in property <float> bounds-top: 0;
+    in property <float> bounds-right: 1;
+    in property <float> bounds-bottom: 1;
+
+    width: root.viewport-width * 1px;
+    height: root.viewport-height * 1px;
+    background: #00000000;
+    clip: true;
+
+    property <float> world-width: max(1.0, root.bounds-right - root.bounds-left);
+    property <float> world-height: max(1.0, root.bounds-bottom - root.bounds-top);
+    property <float> scale-factor: Math.pow(2, root.mip-level);
+    property <float> world-step: max(1.0, root.tile-size * root.scale-factor);
+    property <float> screen-step-x: root.world-step / root.world-width * (root.width / 1px);
+    property <float> screen-step-y: root.world-step / root.world-height * (root.height / 1px);
+    property <float> first-world-x: Math.floor(root.bounds-left / root.world-step) * root.world-step;
+    property <float> first-world-y: Math.floor(root.bounds-top / root.world-step) * root.world-step;
+    property <length> first-screen-x: (root.first-world-x - root.bounds-left) / root.world-width * root.width;
+    property <length> first-screen-y: (root.first-world-y - root.bounds-top) / root.world-height * root.height;
+    property <int> vertical-line-count: Math.min(512, Math.ceil((root.bounds-right - root.first-world-x) / root.world-step) + 2);
+    property <int> horizontal-line-count: Math.min(512, Math.ceil((root.bounds-bottom - root.first-world-y) / root.world-step) + 2);
+    property <bool> show-grid: root.grid-visible && root.width > 0px && root.height > 0px;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000000;
+
+        for i in 512: Rectangle {
+            visible: root.show-grid && i < root.vertical-line-count;
+            x: Math.round(root.first-screen-x / 1px + i * root.screen-step-x) * 1px;
+            y: 0px;
+            width: 1px;
+            height: parent.height;
+            background: #ffffff66;
+        }
+
+        for i in 512: Rectangle {
+            visible: root.show-grid && i < root.horizontal-line-count;
+            x: 0px;
+            y: Math.round(root.first-screen-y / 1px + i * root.screen-step-y) * 1px;
+            width: parent.width;
+            height: 1px;
+            background: #ffffff66;
+        }
+    }
+}

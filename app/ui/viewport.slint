@@ -36,6 +36,8 @@ export component Viewport inherits Rectangle {
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
     in property <float> zoom-slider-position: 0.5;
+    in property <component-factory> plugin-viewport-underlay-factory;
+    in property <component-factory> plugin-viewport-overlay-factory;
     in property <ToolType> current-tool: ToolType.navigate;
     in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
     in property <[MeasurementLine]> measurements: [];
@@ -97,6 +99,12 @@ export component Viewport inherits Rectangle {
             height: 100%;
             source: content;
             image-fit: fill;
+        }
+
+        ComponentContainer {
+            width: parent.width;
+            height: parent.height;
+            component-factory: root.plugin-viewport-underlay-factory;
         }
 
         if root.roi-rect.visible: Rectangle {
@@ -662,6 +670,12 @@ export component Viewport inherits Rectangle {
         mpp-x: root.hud.mpp-x;
         mpp-y: root.hud.mpp-y;
         unit: root.hud.measurement-unit;
+    }
+
+    ComponentContainer {
+        width: parent.width;
+        height: parent.height;
+        component-factory: root.plugin-viewport-overlay-factory;
     }
 
     focus-scope := FocusScope {

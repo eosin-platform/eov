@@ -126,6 +126,10 @@ pub struct PluginState {
     pub hovered_region_id: Option<String>,
     pub pulsing_region_id: Option<String>,
     pub pulsing_region_started_at: Option<Instant>,
+    pub grid_enabled: bool,
+    pub mip_combo_hovered: bool,
+    pub mip_dropdown_open: bool,
+    pub mip_preview_mip_level: Option<u32>,
 }
 
 impl Default for PluginState {
@@ -159,6 +163,10 @@ impl Default for PluginState {
             hovered_region_id: None,
             pulsing_region_id: None,
             pulsing_region_started_at: None,
+            grid_enabled: false,
+            mip_combo_hovered: false,
+            mip_dropdown_open: false,
+            mip_preview_mip_level: None,
         }
     }
 }
@@ -190,6 +198,12 @@ pub fn request_render_if_available() {
     }
 }
 
+pub fn set_hud_toolbar_button_active_if_available(button_id: &str, active: bool) {
+    if let Some(host_api) = host_api() {
+        let _ = (host_api.set_hud_toolbar_button_active)(host_api.context, button_id.into(), active);
+    }
+}
+
 pub fn refresh_sidebar_if_available() {
     if let Some(host_api) = host_api() {
         let _ = (host_api.refresh_sidebar)(host_api.context);
@@ -198,6 +212,7 @@ pub fn refresh_sidebar_if_available() {
 
 pub fn clear_cache_for_namespace(namespace: String) {
     let mut state = plugin_state().lock().unwrap();
+    let had_grid_enabled = state.grid_enabled;
     state.cache_namespace = namespace;
     state.cache.clear();
     state.hot_regions.clear();
@@ -213,6 +228,15 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.hovered_region_id = None;
     state.pulsing_region_id = None;
     state.pulsing_region_started_at = None;
+    state.grid_enabled = false;
+    state.mip_combo_hovered = false;
+    state.mip_dropdown_open = false;
+    state.mip_preview_mip_level = None;
+    drop(state);
+
+    if had_grid_enabled {
+        set_hud_toolbar_button_active_if_available("toggle_grid", false);
+    }
 }
 
 pub fn max_analysis_threads() -> usize {

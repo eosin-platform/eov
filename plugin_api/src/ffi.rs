@@ -108,6 +108,14 @@ pub struct ModalDialogRequestFFI {
 }
 
 #[repr(C)]
+#[derive(StableAbi, Clone, Debug)]
+pub struct ViewportOverlayComponentRequestFFI {
+    pub ui_path: RString,
+    pub component: RString,
+    pub z_index: i32,
+}
+
+#[repr(C)]
 #[derive(StableAbi, Clone, Debug, Default)]
 pub struct PluginUndoRedoStateFFI {
     pub enabled: bool,
@@ -311,6 +319,14 @@ pub struct PluginVTable {
     /// Returns polygon overlay data that should be rendered over the given viewport.
     pub get_viewport_overlay_polygons:
         extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<ViewportOverlayPolygonFFI>,
+
+    /// Returns a viewport-scoped Slint component request for this plugin, if any.
+    pub get_viewport_overlay_component:
+        extern "C" fn() -> ROption<ViewportOverlayComponentRequestFFI>,
+
+    /// Returns the current public properties for the plugin viewport overlay component.
+    pub get_viewport_overlay_properties:
+        extern "C" fn(viewport: ViewportSnapshotFFI) -> RVec<UiPropertyFFI>,
 
     /// Called when the host commits a point annotation click for the active point tool.
     pub on_point_annotation_placed:

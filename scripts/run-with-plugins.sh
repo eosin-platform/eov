@@ -13,7 +13,7 @@ export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 export EOVAE_DIAG_ALLOW_CPU_FALLBACK=1
 export EOVAE_ORT_PROFILE=1
 export EOVAE_DEBUG_TIMING=1
-#export EOV_PLUGIN_TRACE=1
+export EOV_PLUGIN_TRACE=1
 
 package_plugin() {
     local plugin_src="$1"

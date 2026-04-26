@@ -49,6 +49,13 @@ pub struct ModalDialogRequest {
     pub height_px: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ViewportOverlayComponentRequest {
+    pub ui_path: String,
+    pub component: String,
+    pub z_index: i32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginUndoRedoState {
     pub enabled: bool,

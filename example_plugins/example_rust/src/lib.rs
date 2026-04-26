@@ -107,12 +107,12 @@ impl Plugin for ExamplePlugin {
 // Dynamic library FFI exports (loaded by the host via abi_stable RawLibrary)
 // ---------------------------------------------------------------------------
 
-use abi_stable::std_types::{RString, RVec};
+use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{
     ActionResponseFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI, PluginVTable,
     ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
-    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI,
-    ViewportSnapshotFFI,
+    ViewportOverlayComponentRequestFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+    ViewportOverlayVertexFFI, ViewportSnapshotFFI,
 };
 
 static HOST_API: Mutex<Option<HostApiVTable>> = Mutex::new(None);
@@ -205,6 +205,17 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
     RVec::new()
 }
 
+extern "C" fn get_viewport_overlay_component_ffi(
+) -> ROption<ViewportOverlayComponentRequestFFI> {
+    ROption::RNone
+}
+
+extern "C" fn get_viewport_overlay_properties_ffi(
+    _viewport: ViewportSnapshotFFI,
+) -> RVec<UiPropertyFFI> {
+    RVec::new()
+}
+
 extern "C" fn on_point_annotation_placed_ffi(
     _viewport: ViewportSnapshotFFI,
     _x_level0: f64,
@@ -279,6 +290,8 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_viewport_context_menu_action: on_viewport_context_menu_action_ffi,
         get_viewport_overlay_points: get_viewport_overlay_points_ffi,
         get_viewport_overlay_polygons: get_viewport_overlay_polygons_ffi,
+        get_viewport_overlay_component: get_viewport_overlay_component_ffi,
+        get_viewport_overlay_properties: get_viewport_overlay_properties_ffi,
         on_point_annotation_placed: on_point_annotation_placed_ffi,
         on_polygon_annotation_placed: on_polygon_annotation_placed_ffi,
         on_undo: on_undo_ffi,

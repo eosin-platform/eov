@@ -49,41 +49,6 @@ component SidebarActionButton inherits Rectangle {
     }
 }
 
-component SidebarToggleRow inherits Rectangle {
-    in property <bool> checked: false;
-    in property <string> text;
-    callback toggled(bool);
-
-    height: 22px;
-    border-radius: 4px;
-    background: toggle-touch.has-hover ? Theme.surface-hover : transparent;
-
-    toggle-touch := TouchArea {
-        clicked => { root.toggled(!root.checked); }
-    }
-
-    HorizontalLayout {
-        padding-left: 2px;
-        padding-right: 2px;
-        spacing: 8px;
-
-        Rectangle {
-            width: 18px;
-            height: 18px;
-            border-radius: 3px;
-            border-width: 1px;
-            border-color: Theme.border;
-            background: root.checked ? #2f6db5 : transparent;
-        }
-
-        Text {
-            text: root.text;
-            color: Theme.text-secondary;
-            vertical-alignment: center;
-        }
-    }
-}
-
 component HotRegionButton inherits Rectangle {
     in property <string> label;
     in property <string> score;
@@ -308,6 +273,7 @@ export component EovaeSidebar inherits Rectangle {
     in property <int> selected-mode-index: 0;
     in property <[string]> mip-options: ["1x", "2x", "4x", "8x"];
     in property <int> selected-mip-index: 0;
+    out property <bool> capture-hotkeys: false;
     in property <string> job-status: "Idle";
     in property <float> progress-value: 0;
     in property <bool> job-running: false;
@@ -565,33 +531,11 @@ export component EovaeSidebar inherits Rectangle {
                                 min-width: 88px;
                                 background: transparent;
 
-                                tip-hover := TouchArea {}
-
                                 ComboBox {
                                     width: parent.width;
                                     model: root.mip-options;
                                     current-index: root.selected-mip-index;
                                     selected(value) => { root.mip-changed(value); }
-                                }
-
-                                if tip-hover.has-hover: Rectangle {
-                                    x: 0;
-                                    y: parent.height + 4px;
-                                    z: 10;
-                                    border-radius: 4px;
-                                    background: #20242a;
-                                    border-width: 1px;
-                                    border-color: Theme.border;
-
-                                    VerticalLayout {
-                                        padding: 6px;
-
-                                        Text {
-                                            text: "Mip Level";
-                                            color: Theme.text-primary;
-                                            font-size: 11px;
-                                        }
-                                    }
                                 }
                             }
                         }
