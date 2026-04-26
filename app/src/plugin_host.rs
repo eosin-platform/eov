@@ -3009,7 +3009,9 @@ fn apply_sidebar_properties(
             && plugin_id == "eovae"
             && matches!(
                 property_name.as_str(),
-                "job-status" | "progress-value" | "analysis-summary-text"
+                "job-status"
+                    | "progress-value"
+                    | "analysis-summary-text"
             )
         {
             plugin_trace(format!(
@@ -3074,18 +3076,24 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
             return Ok(());
         };
 
+        let plugin_id = sidebar.plugin_id.clone();
         let refreshed = ACTIVE_SIDEBAR_INSTANCE.with(|slot| -> Result<bool, String> {
             let active = slot.borrow();
             let Some(active) = active.as_ref() else {
                 return Ok::<bool, String>(false);
             };
-            if active.plugin_id != sidebar.plugin_id {
+            if active.plugin_id != plugin_id {
                 return Ok::<bool, String>(false);
             }
             let Some(instance) = active.instance.upgrade() else {
                 return Ok::<bool, String>(false);
             };
-            apply_sidebar_properties(&sidebar.plugin_id, vtable, &instance)?;
+            let plugin_id = plugin_id.clone();
+            slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
+                if let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance) {
+                    tracing::error!("Failed to refresh sidebar properties for '{}': {err}", plugin_id);
+                }
+            });
             Ok::<bool, String>(true)
         })?;
 

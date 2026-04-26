@@ -336,7 +336,7 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
         "mode-changed" => (false, update_mode(args_json)),
         "mip-changed" => {
             let changed = update_mip_level(args_json);
-            (changed, changed)
+            (false, changed)
         }
         "model-section-expanded-changed" => {
             (update_section_expanded(args_json, Section::Model), false)

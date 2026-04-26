@@ -49,6 +49,106 @@ component SidebarActionButton inherits Rectangle {
     }
 }
 
+component MipSelectorOption inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 26px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : root.selected ? #2f6db522 : transparent;
+
+    touch := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        text: root.text;
+        color: Theme.text-primary;
+        vertical-alignment: center;
+    }
+}
+
+component MipLevelSelector inherits Rectangle {
+    in property <[string]> model: [];
+    in property <int> current-index: 0;
+    in-out property <bool> popup-open: false;
+    callback selected(string);
+    private property <int> visual-index: 0;
+
+    height: 28px;
+    border-radius: 4px;
+    background: #0a0c10;
+    border-width: 1px;
+    border-color: root.popup-open || touch.has-hover ? #4da3d9 : Theme.border;
+
+    property <string> current-label:
+        root.visual-index >= 0 && root.visual-index < root.model.length ? root.model[root.visual-index] : "";
+
+    changed current-index => {
+        root.visual-index = root.current-index;
+    }
+
+    touch := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.popup-open = !root.popup-open; }
+    }
+
+    Text {
+        x: 8px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.current-label;
+        color: Theme.text-primary;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: parent.width - self.width - 8px;
+        width: 10px;
+        height: parent.height;
+        text: root.popup-open ? "▴" : "▾";
+        color: Theme.text-secondary;
+        vertical-alignment: center;
+    }
+
+    if root.popup-open: Rectangle {
+        x: 0px;
+        y: parent.height + 4px;
+        z: 10;
+        width: parent.width;
+        border-radius: 6px;
+        background: #20242a;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        VerticalLayout {
+            width: parent.width;
+            padding: 4px;
+            spacing: 2px;
+
+            for option[index] in root.model: MipSelectorOption {
+                width: parent.width - 8px;
+                text: option;
+                selected: index == root.visual-index;
+                clicked => {
+                    root.visual-index = index;
+                    root.popup-open = false;
+                    root.selected(option);
+                }
+            }
+        }
+    }
+}
+
 component HotRegionButton inherits Rectangle {
     in property <string> label;
     in property <string> score;
@@ -531,7 +631,7 @@ export component EovaeSidebar inherits Rectangle {
                                 min-width: 88px;
                                 background: transparent;
 
-                                ComboBox {
+                                MipLevelSelector {
                                     width: parent.width;
                                     model: root.mip-options;
                                     current-index: root.selected-mip-index;
