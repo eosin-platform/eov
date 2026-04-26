@@ -71,21 +71,24 @@ pub fn load_tiles_for_positions(
     let mut tiles = Vec::with_capacity(positions.len());
     for (x_level0, y_level0) in positions {
         let tile = statement
-            .query_row(params![cache_id, *x_level0 as i64, *y_level0 as i64], |row| {
-                Ok(AnalyzedTile {
-                    x: row.get::<_, i64>(0)? as u64,
-                    y: row.get::<_, i64>(1)? as u64,
-                    width: key.stride,
-                    height: key.stride,
-                    sample_width: key.tile_size,
-                    sample_height: key.tile_size,
-                    reconstruction_rgb: Vec::new(),
-                    difference_rgb: Vec::new(),
-                    error_map_luma: Vec::new(),
-                    mean_absolute_error: row.get(2)?,
-                    max_error: row.get::<_, i64>(3)? as u8,
-                })
-            })
+            .query_row(
+                params![cache_id, *x_level0 as i64, *y_level0 as i64],
+                |row| {
+                    Ok(AnalyzedTile {
+                        x: row.get::<_, i64>(0)? as u64,
+                        y: row.get::<_, i64>(1)? as u64,
+                        width: key.stride,
+                        height: key.stride,
+                        sample_width: key.tile_size,
+                        sample_height: key.tile_size,
+                        reconstruction_rgb: Vec::new(),
+                        difference_rgb: Vec::new(),
+                        error_map_luma: Vec::new(),
+                        mean_absolute_error: row.get(2)?,
+                        max_error: row.get::<_, i64>(3)? as u8,
+                    })
+                },
+            )
             .optional()
             .map_err(|err| format!("failed to load latent cache tile: {err}"))?;
         if let Some(tile) = tile {
@@ -161,7 +164,9 @@ impl LatentCacheWriter {
                         tile.max_error as i64,
                     ],
                 )
-                .map_err(|err| format!("failed to store latent cache tile with embedding: {err}"))?;
+                .map_err(|err| {
+                    format!("failed to store latent cache tile with embedding: {err}")
+                })?;
         } else {
             self.connection
                 .execute(

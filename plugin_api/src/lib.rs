@@ -143,7 +143,10 @@ pub trait HostContext {
     fn add_toolbar_button(&mut self, button: ToolbarButtonRegistration) -> PluginResult<()>;
 
     /// Register an icon button in the viewport HUD toolbar.
-    fn add_hud_toolbar_button(&mut self, _button: HudToolbarButtonRegistration) -> PluginResult<()> {
+    fn add_hud_toolbar_button(
+        &mut self,
+        _button: HudToolbarButtonRegistration,
+    ) -> PluginResult<()> {
         Err(PluginError::Other(
             "host does not support HUD toolbar buttons".to_string(),
         ))

@@ -13,9 +13,9 @@ use ash::vk;
 use ash::vk::Handle;
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HostLogLevelFFI, HudToolbarButtonFFI,
-    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
-    ViewportFilterFFI, ViewportOverlayComponentRequestFFI, ViewportOverlayPointFFI,
-    ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI, ViewportSnapshotFFI,
+    PluginVTable, ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
+    ViewportOverlayComponentRequestFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+    ViewportOverlayVertexFFI, ViewportSnapshotFFI,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -119,8 +119,7 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
     RVec::new()
 }
 
-extern "C" fn get_viewport_overlay_component_ffi(
-) -> ROption<ViewportOverlayComponentRequestFFI> {
+extern "C" fn get_viewport_overlay_component_ffi() -> ROption<ViewportOverlayComponentRequestFFI> {
     ROption::RNone
 }
 

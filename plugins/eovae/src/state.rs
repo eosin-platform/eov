@@ -200,7 +200,8 @@ pub fn request_render_if_available() {
 
 pub fn set_hud_toolbar_button_active_if_available(button_id: &str, active: bool) {
     if let Some(host_api) = host_api() {
-        let _ = (host_api.set_hud_toolbar_button_active)(host_api.context, button_id.into(), active);
+        let _ =
+            (host_api.set_hud_toolbar_button_active)(host_api.context, button_id.into(), active);
     }
 }
 

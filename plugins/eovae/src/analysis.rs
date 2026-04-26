@@ -378,7 +378,8 @@ fn run_tile_plan_with_file(
     }
 
     let total_tiles = tiles.len();
-    let (cache_key, cached_tiles, tiles) = prepare_cached_tiles(&model, &namespace, &file_path, tiles);
+    let (cache_key, cached_tiles, tiles) =
+        prepare_cached_tiles(&model, &namespace, &file_path, tiles);
     let cached_count = cached_tiles.len();
 
     if !cached_tiles.is_empty() {
@@ -420,9 +421,11 @@ fn run_tile_plan_with_file(
     let processed = Arc::new(AtomicUsize::new(cached_count));
     let loaded = Arc::new(AtomicUsize::new(cached_count));
     let first_error = Arc::new(Mutex::new(None::<String>));
-    let mut persistent_cache = cache_key
-        .clone()
-        .and_then(|key| AsyncLatentCacheWriter::open(key).map_err(log_persistent_cache_error).ok());
+    let mut persistent_cache = cache_key.clone().and_then(|key| {
+        AsyncLatentCacheWriter::open(key)
+            .map_err(log_persistent_cache_error)
+            .ok()
+    });
 
     if loader_workers == 0 {
         let worker_model = model.clone_for_analysis_worker(worker_session_threads);
@@ -493,8 +496,7 @@ fn run_tile_plan_with_file(
             report_progress(done, total_tiles, "Processing", refresh_stats);
         }
     } else {
-        let prefetch_capacity =
-            cpu_prefetch_capacity(analysis_threads, work_tiles, loader_workers);
+        let prefetch_capacity = cpu_prefetch_capacity(analysis_threads, work_tiles, loader_workers);
         let (sender, receiver) = mpsc::sync_channel::<LoadedCpuTile>(prefetch_capacity);
         let mut handles = Vec::with_capacity(loader_workers);
 
@@ -884,8 +886,11 @@ fn run_tile_plan_with_file_gpu_batched(
     let postprocess_namespace = namespace.clone();
     let postprocess_cache_key = cache_key.clone();
     let postprocess_handle = thread::spawn(move || -> Result<(), String> {
-        let mut persistent_cache = postprocess_cache_key
-            .and_then(|key| AsyncLatentCacheWriter::open(key).map_err(log_persistent_cache_error).ok());
+        let mut persistent_cache = postprocess_cache_key.and_then(|key| {
+            AsyncLatentCacheWriter::open(key)
+                .map_err(log_persistent_cache_error)
+                .ok()
+        });
         while let Ok(completed_batch) = completed_receiver.recv() {
             if postprocess_cancel.load(Ordering::Relaxed) {
                 return Ok(());

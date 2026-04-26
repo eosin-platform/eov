@@ -205,8 +205,7 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
     RVec::new()
 }
 
-extern "C" fn get_viewport_overlay_component_ffi(
-) -> ROption<ViewportOverlayComponentRequestFFI> {
+extern "C" fn get_viewport_overlay_component_ffi() -> ROption<ViewportOverlayComponentRequestFFI> {
     ROption::RNone
 }
 

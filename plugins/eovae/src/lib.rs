@@ -9,12 +9,12 @@ mod stats;
 use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{
     ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, PluginVTable,
-    ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI,
-    ViewportOverlayComponentRequestFFI, ViewportFilterFFI, ViewportOverlayPointFFI,
-    ViewportOverlayPolygonFFI, ViewportOverlayVertexFFI, ViewportSnapshotFFI,
+    ToolbarButtonFFI, UiPropertyFFI, ViewportContextMenuItemFFI, ViewportFilterFFI,
+    ViewportOverlayComponentRequestFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
+    ViewportOverlayVertexFFI, ViewportSnapshotFFI,
 };
-use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
 use serde_json::json;
+use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
 use state::{plugin_state, request_render_if_available, set_host_api};
 use std::time::Duration;
 
@@ -181,8 +181,7 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
     RVec::from(polygons)
 }
 
-extern "C" fn get_viewport_overlay_component_ffi(
-) -> ROption<ViewportOverlayComponentRequestFFI> {
+extern "C" fn get_viewport_overlay_component_ffi() -> ROption<ViewportOverlayComponentRequestFFI> {
     ROption::RNone
 }
 
@@ -254,14 +253,12 @@ fn grid_overlay_polygons(
     mip_level: u32,
 ) -> Vec<ViewportOverlayPolygonFFI> {
     let step = (tile_size * (1u64 << mip_level) as f64).max(1.0);
-    let pixel_world_x = ((viewport.bounds_right - viewport.bounds_left)
-        / viewport.width.max(1.0))
-    .abs()
-    .max(1e-6);
-    let pixel_world_y = ((viewport.bounds_bottom - viewport.bounds_top)
-        / viewport.height.max(1.0))
-    .abs()
-    .max(1e-6);
+    let pixel_world_x = ((viewport.bounds_right - viewport.bounds_left) / viewport.width.max(1.0))
+        .abs()
+        .max(1e-6);
+    let pixel_world_y = ((viewport.bounds_bottom - viewport.bounds_top) / viewport.height.max(1.0))
+        .abs()
+        .max(1e-6);
     let half_thickness_x = pixel_world_x * 0.5;
     let half_thickness_y = pixel_world_y * 0.5;
     let mut polygons = Vec::new();

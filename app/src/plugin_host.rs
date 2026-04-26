@@ -10,8 +10,7 @@ use plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI,
     PluginUndoRedoStateFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
-    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
-    ViewportSnapshotFFI,
+    ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -1914,23 +1913,26 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
                 button.active,
             )
         }))
-        .scan(None::<String>, |previous_plugin_id, (plugin_id, button_id, tooltip, icon, action_id, active)| {
-            let show_left_separator = previous_plugin_id
-                .as_ref()
-                .map(|previous| previous != &plugin_id)
-                .unwrap_or(true);
-            *previous_plugin_id = Some(plugin_id.clone());
+        .scan(
+            None::<String>,
+            |previous_plugin_id, (plugin_id, button_id, tooltip, icon, action_id, active)| {
+                let show_left_separator = previous_plugin_id
+                    .as_ref()
+                    .map(|previous| previous != &plugin_id)
+                    .unwrap_or(true);
+                *previous_plugin_id = Some(plugin_id.clone());
 
-            Some(crate::PluginButtonData {
-                plugin_id: plugin_id.into(),
-                button_id: button_id.into(),
-                tooltip: tooltip.into(),
-                icon,
-                action_id: action_id.into(),
-                active,
-                show_left_separator,
-            })
-        })
+                Some(crate::PluginButtonData {
+                    plugin_id: plugin_id.into(),
+                    button_id: button_id.into(),
+                    tooltip: tooltip.into(),
+                    icon,
+                    action_id: action_id.into(),
+                    active,
+                    show_left_separator,
+                })
+            },
+        )
         .collect();
     let hud_buttons: Vec<crate::HudToolbarButtonData> = state
         .local_hud_plugin_buttons
@@ -2231,7 +2233,10 @@ fn build_viewport_overlay_layer_factory(
     });
 
     let signature = ViewportOverlayFactorySignature {
-        visible_panes: snapshots.iter().map(|snapshot| snapshot.pane_index as i32).collect(),
+        visible_panes: snapshots
+            .iter()
+            .map(|snapshot| snapshot.pane_index as i32)
+            .collect(),
         contributions: sorted_requests
             .iter()
             .map(|request| ViewportOverlayContributionSignature {
@@ -2336,9 +2341,9 @@ fn build_viewport_overlay_layer_factory(
                 .map_err(|err| format!("failed to quote viewport overlay path: {err}"))?
         ));
 
-        let overlay_props = (request.vtable.get_viewport_overlay_properties)(to_viewport_snapshot_ffi(
-            binding_snapshot.clone(),
-        ));
+        let overlay_props = (request.vtable.get_viewport_overlay_properties)(
+            to_viewport_snapshot_ffi(binding_snapshot.clone()),
+        );
         let mut property_bindings = Vec::new();
         for UiPropertyFFI { name, .. } in overlay_props.into_iter() {
             let property_name = name.to_string();
@@ -2372,7 +2377,10 @@ fn build_viewport_overlay_layer_factory(
             alias, request.z_index
         ));
         for (child_property, root_property) in STANDARD_BINDINGS {
-            if property_types.iter().any(|(candidate, _)| candidate == child_property) {
+            if property_types
+                .iter()
+                .any(|(candidate, _)| candidate == child_property)
+            {
                 children.push_str(&format!(
                     "        {}: root.{};\n",
                     child_property, root_property
@@ -2418,9 +2426,14 @@ fn build_viewport_overlay_layer_factory(
             layer.label()
         ));
     }
-    let definition = result.component("PluginViewportOverlayLayer").ok_or_else(|| {
-        format!("viewport {} overlay composite component missing", layer.label())
-    })?;
+    let definition = result
+        .component("PluginViewportOverlayLayer")
+        .ok_or_else(|| {
+            format!(
+                "viewport {} overlay composite component missing",
+                layer.label()
+            )
+        })?;
 
     let factory = ComponentFactory::new(move |ctx| {
         let instance = match definition.create_embedded(ctx) {
@@ -2456,18 +2469,54 @@ fn apply_viewport_overlay_properties(
     contributions: &[ViewportOverlayContribution],
 ) -> Result<(), String> {
     let standard_values = [
-        ("pane_index", slint_interpreter::Value::Number(snapshot.pane_index as f64)),
-        ("viewport_center_x", slint_interpreter::Value::Number(snapshot.center_x)),
-        ("viewport_center_y", slint_interpreter::Value::Number(snapshot.center_y)),
-        ("viewport_zoom", slint_interpreter::Value::Number(snapshot.zoom)),
-        ("viewport_width", slint_interpreter::Value::Number(snapshot.width)),
-        ("viewport_height", slint_interpreter::Value::Number(snapshot.height)),
-        ("image_width", slint_interpreter::Value::Number(snapshot.image_width)),
-        ("image_height", slint_interpreter::Value::Number(snapshot.image_height)),
-        ("bounds_left", slint_interpreter::Value::Number(snapshot.bounds_left)),
-        ("bounds_top", slint_interpreter::Value::Number(snapshot.bounds_top)),
-        ("bounds_right", slint_interpreter::Value::Number(snapshot.bounds_right)),
-        ("bounds_bottom", slint_interpreter::Value::Number(snapshot.bounds_bottom)),
+        (
+            "pane_index",
+            slint_interpreter::Value::Number(snapshot.pane_index as f64),
+        ),
+        (
+            "viewport_center_x",
+            slint_interpreter::Value::Number(snapshot.center_x),
+        ),
+        (
+            "viewport_center_y",
+            slint_interpreter::Value::Number(snapshot.center_y),
+        ),
+        (
+            "viewport_zoom",
+            slint_interpreter::Value::Number(snapshot.zoom),
+        ),
+        (
+            "viewport_width",
+            slint_interpreter::Value::Number(snapshot.width),
+        ),
+        (
+            "viewport_height",
+            slint_interpreter::Value::Number(snapshot.height),
+        ),
+        (
+            "image_width",
+            slint_interpreter::Value::Number(snapshot.image_width),
+        ),
+        (
+            "image_height",
+            slint_interpreter::Value::Number(snapshot.image_height),
+        ),
+        (
+            "bounds_left",
+            slint_interpreter::Value::Number(snapshot.bounds_left),
+        ),
+        (
+            "bounds_top",
+            slint_interpreter::Value::Number(snapshot.bounds_top),
+        ),
+        (
+            "bounds_right",
+            slint_interpreter::Value::Number(snapshot.bounds_right),
+        ),
+        (
+            "bounds_bottom",
+            slint_interpreter::Value::Number(snapshot.bounds_bottom),
+        ),
     ];
     for (name, value) in standard_values {
         instance
@@ -2499,12 +2548,14 @@ fn apply_viewport_overlay_properties(
                     )
                 },
             )?;
-            instance.set_property(&binding.root_property, value).map_err(|err| {
-                format!(
-                    "failed to set viewport overlay property '{}:{}': {err}",
-                    contribution.plugin_id, property_name
-                )
-            })?;
+            instance
+                .set_property(&binding.root_property, value)
+                .map_err(|err| {
+                    format!(
+                        "failed to set viewport overlay property '{}:{}': {err}",
+                        contribution.plugin_id, property_name
+                    )
+                })?;
         }
     }
 
@@ -2543,7 +2594,10 @@ fn ensure_viewport_overlay_layer(
     }
 
     let signature = ViewportOverlayFactorySignature {
-        visible_panes: snapshots.iter().map(|snapshot| snapshot.pane_index as i32).collect(),
+        visible_panes: snapshots
+            .iter()
+            .map(|snapshot| snapshot.pane_index as i32)
+            .collect(),
         contributions: requests
             .iter()
             .map(|request| ViewportOverlayContributionSignature {
@@ -2561,7 +2615,8 @@ fn ensure_viewport_overlay_layer(
     });
 
     if needs_rebuild {
-        let (factory, layer_state) = build_viewport_overlay_layer_factory(layer, requests, snapshots)?;
+        let (factory, layer_state) =
+            build_viewport_overlay_layer_factory(layer, requests, snapshots)?;
         viewport_overlay_instances(layer).with(|slot| slot.borrow_mut().clear());
         viewport_overlay_state(layer).with(|slot| {
             *slot.borrow_mut() = Some(layer_state);
@@ -3025,9 +3080,7 @@ fn apply_sidebar_properties(
             && plugin_id == "eovae"
             && matches!(
                 property_name.as_str(),
-                "job-status"
-                    | "progress-value"
-                    | "analysis-summary-text"
+                "job-status" | "progress-value" | "analysis-summary-text"
             )
         {
             plugin_trace(format!(
@@ -3107,7 +3160,10 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
             let plugin_id = plugin_id.clone();
             slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
                 if let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance) {
-                    tracing::error!("Failed to refresh sidebar properties for '{}': {err}", plugin_id);
+                    tracing::error!(
+                        "Failed to refresh sidebar properties for '{}': {err}",
+                        plugin_id
+                    );
                 }
             });
             Ok::<bool, String>(true)
@@ -3605,8 +3661,8 @@ mod tests {
     ) -> RVec<ViewportOverlayPolygonFFI> {
         RVec::new()
     }
-    extern "C" fn noop_get_viewport_overlay_component(
-    ) -> ROption<plugin_api::ffi::ViewportOverlayComponentRequestFFI> {
+    extern "C" fn noop_get_viewport_overlay_component()
+    -> ROption<plugin_api::ffi::ViewportOverlayComponentRequestFFI> {
         ROption::RNone
     }
     extern "C" fn noop_get_viewport_overlay_properties(

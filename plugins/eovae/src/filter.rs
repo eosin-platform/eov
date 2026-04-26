@@ -69,8 +69,10 @@ fn composite_tile(
     let has_luma_payload =
         tile.error_map_luma.len() >= tile.sample_width as usize * tile.sample_height as usize;
 
-    if matches!(mode, VisualizationMode::Reconstruction | VisualizationMode::Difference)
-        && !has_rgb_payload
+    if matches!(
+        mode,
+        VisualizationMode::Reconstruction | VisualizationMode::Difference
+    ) && !has_rgb_payload
     {
         return;
     }
