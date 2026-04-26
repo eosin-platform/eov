@@ -128,6 +128,7 @@ struct SessionSettings {
     prefer_gpu: bool,
     analysis_threads: usize,
     allow_cpu_fallback: bool,
+    enable_cuda_graph: bool,
     opt_level: GraphOptimizationLevel,
     opt_level_name: String,
     profile_path: Option<PathBuf>,
@@ -212,12 +213,10 @@ impl LoadedModel {
 
 fn build_inference_session(
     path: &str,
-    prefer_gpu: bool,
-    analysis_threads: usize,
+    settings: &SessionSettings,
     layout: Layout,
 ) -> Result<Session, String> {
-    let settings = session_settings(prefer_gpu, analysis_threads);
-    build_session_with_watchdog(path, &settings, layout)
+    build_session_with_watchdog(path, settings, layout)
 }
 
 fn build_inference_session_inner(
@@ -294,10 +293,13 @@ fn build_inference_session_inner(
     };
     if settings.prefer_gpu {
         debug_timing("configuring gpu session options");
+        if settings.enable_cuda_graph {
+            debug_timing("enabling CUDA graph capture for fixed-shape GPU inference");
+        }
         let cuda = ep::CUDA::default()
             .with_conv_algorithm_search(ep::cuda::ConvAlgorithmSearch::Exhaustive)
             .with_conv_max_workspace(true)
-            .with_cuda_graph(false)
+            .with_cuda_graph(settings.enable_cuda_graph)
             .with_tf32(true)
             .with_prefer_nhwc(matches!(layout, Layout::Nhwc))
             .build()
@@ -718,8 +720,7 @@ fn ensure_inference_session(
     ));
     let session = match build_inference_session(
         &model.summary.path,
-        settings.prefer_gpu,
-        settings.analysis_threads,
+        &settings,
         model.summary.layout,
     ) {
         Ok(session) => session,
@@ -746,16 +747,24 @@ fn desired_execution_settings(model: &LoadedModel) -> SessionSettings {
     let analysis_threads = model.session_threads_override.unwrap_or_else(|| {
         clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads)
     });
-    session_settings(prefer_gpu, analysis_threads)
+    session_settings(prefer_gpu, analysis_threads, model.fixed_batch_size().is_some())
 }
 
-fn session_settings(prefer_gpu: bool, analysis_threads: usize) -> SessionSettings {
+fn session_settings(
+    prefer_gpu: bool,
+    analysis_threads: usize,
+    model_has_fixed_batch: bool,
+) -> SessionSettings {
     let allow_cpu_fallback = prefer_gpu && env_flag_enabled("EOVAE_DIAG_ALLOW_CPU_FALLBACK");
+    let enable_cuda_graph = prefer_gpu
+        && model_has_fixed_batch
+        && env_flag_enabled("EOVAE_ENABLE_CUDA_GRAPH");
     let (opt_level, opt_level_name) = graph_optimization_level_from_env();
     SessionSettings {
         prefer_gpu,
         analysis_threads,
         allow_cpu_fallback,
+        enable_cuda_graph,
         opt_level,
         opt_level_name,
         profile_path: ort_profile_path(),
@@ -1463,6 +1472,7 @@ mod tests {
             prefer_gpu: true,
             analysis_threads: 8,
             allow_cpu_fallback: true,
+            enable_cuda_graph: false,
             opt_level: GraphOptimizationLevel::Level3,
             opt_level_name: "level3(default)".to_string(),
             profile_path: None,
@@ -1482,6 +1492,7 @@ mod tests {
             prefer_gpu: true,
             analysis_threads: 8,
             allow_cpu_fallback: true,
+            enable_cuda_graph: false,
             opt_level: GraphOptimizationLevel::Level3,
             opt_level_name: "level3(default)".to_string(),
             profile_path: None,
@@ -1592,14 +1603,14 @@ mod tests {
     fn fixture_model_gpu_session_build_reproduces_cpu_ep_assignment_failure() {
         let model_path = fixture_path("HistoVAE_converted.onnx");
         let model = load_model(model_path.to_str().unwrap(), true).unwrap();
-
-        let error = build_inference_session(
-            model.summary.path.as_str(),
+        let settings = session_settings(
             true,
             crate::state::clamp_analysis_threads(32),
-            model.summary.layout,
-        )
-        .unwrap_err();
+            model.fixed_batch_size().is_some(),
+        );
+
+        let error = build_inference_session(model.summary.path.as_str(), &settings, model.summary.layout)
+            .unwrap_err();
 
         assert!(
             error.contains("assigned to the default CPU EP"),
