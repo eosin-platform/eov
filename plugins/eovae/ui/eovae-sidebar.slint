@@ -669,7 +669,8 @@ export component EovaeSidebar inherits Rectangle {
                         }
 
                         HorizontalLayout {
-                            spacing: 8px;
+                            width: parent.width;
+                            spacing: 6px;
 
                             SidebarActionButton {
                                 horizontal-stretch: 1;
@@ -690,7 +691,7 @@ export component EovaeSidebar inherits Rectangle {
                             }
 
                             SidebarActionButton {
-                                min-width: 72px;
+                                horizontal-stretch: 1;
                                 enabled: root.job-running;
                                 text: "Cancel";
                                 base-color: #922f2f;
