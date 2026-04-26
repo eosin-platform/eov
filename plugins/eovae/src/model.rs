@@ -1369,38 +1369,98 @@ fn preprocess_rgba_batch(
     let width = inputs[0].width as usize;
     let height = inputs[0].height as usize;
     let batch = target_batch_size.max(inputs.len());
-    let mut array = match layout {
-        Layout::Nchw => Array4::<f32>::zeros((batch, 3, height, width)),
-        Layout::Nhwc => Array4::<f32>::zeros((batch, height, width, 3)),
-    };
+    let elements_per_batch = width * height * 3;
+    let mut data = vec![0.0f32; batch * elements_per_batch];
 
-    for (batch_index, input) in inputs.iter().enumerate() {
-        if input.rgba.len() != width * height * 4 {
-            return Err("tile byte size does not match RGBA dimensions".to_string());
+    let parallelism = reconstruction_preprocess_parallelism(inputs.len());
+    if parallelism <= 1 || inputs.len() <= 1 {
+        for (batch_index, input) in inputs.iter().enumerate() {
+            let start = batch_index * elements_per_batch;
+            let end = start + elements_per_batch;
+            preprocess_rgba_into_chunk(
+                &mut data[start..end],
+                input.rgba,
+                width,
+                height,
+                layout,
+            )?;
         }
-        for y in 0..height {
-            for x in 0..width {
-                let offset = (y * width + x) * 4;
-                let r = input.rgba[offset] as f32 / 255.0;
-                let g = input.rgba[offset + 1] as f32 / 255.0;
-                let b = input.rgba[offset + 2] as f32 / 255.0;
-                match layout {
-                    Layout::Nchw => {
-                        array[[batch_index, 0, y, x]] = r;
-                        array[[batch_index, 1, y, x]] = g;
-                        array[[batch_index, 2, y, x]] = b;
-                    }
-                    Layout::Nhwc => {
-                        array[[batch_index, y, x, 0]] = r;
-                        array[[batch_index, y, x, 1]] = g;
-                        array[[batch_index, y, x, 2]] = b;
-                    }
+    } else {
+        thread::scope(|scope| -> Result<(), String> {
+            let mut handles = Vec::with_capacity(inputs.len());
+            let mut chunks = data.chunks_exact_mut(elements_per_batch);
+            for input in inputs {
+                let chunk = chunks
+                    .next()
+                    .ok_or_else(|| "failed to allocate reconstruction preprocess chunk".to_string())?;
+                handles.push(scope.spawn(move || {
+                    preprocess_rgba_into_chunk(chunk, input.rgba, width, height, layout)
+                }));
+            }
+
+            for handle in handles {
+                handle
+                    .join()
+                    .map_err(|_| "reconstruction preprocess worker thread panicked".to_string())??;
+            }
+            Ok(())
+        })?;
+    }
+
+    let shape = match layout {
+        Layout::Nchw => (batch, 3, height, width),
+        Layout::Nhwc => (batch, height, width, 3),
+    };
+    Array4::from_shape_vec(shape, data)
+        .map_err(|_| "failed to build reconstruction input batch".to_string())
+}
+
+fn preprocess_rgba_into_chunk(
+    chunk: &mut [f32],
+    rgba: &[u8],
+    width: usize,
+    height: usize,
+    layout: Layout,
+) -> Result<(), String> {
+    if rgba.len() != width * height * 4 {
+        return Err("tile byte size does not match RGBA dimensions".to_string());
+    }
+
+    match layout {
+        Layout::Nchw => {
+            let plane = width * height;
+            for y in 0..height {
+                for x in 0..width {
+                    let src = (y * width + x) * 4;
+                    let dst = y * width + x;
+                    chunk[dst] = rgba[src] as f32 / 255.0;
+                    chunk[plane + dst] = rgba[src + 1] as f32 / 255.0;
+                    chunk[plane * 2 + dst] = rgba[src + 2] as f32 / 255.0;
+                }
+            }
+        }
+        Layout::Nhwc => {
+            for y in 0..height {
+                for x in 0..width {
+                    let src = (y * width + x) * 4;
+                    let dst = (y * width + x) * 3;
+                    chunk[dst] = rgba[src] as f32 / 255.0;
+                    chunk[dst + 1] = rgba[src + 1] as f32 / 255.0;
+                    chunk[dst + 2] = rgba[src + 2] as f32 / 255.0;
                 }
             }
         }
     }
 
-    Ok(array)
+    Ok(())
+}
+
+fn reconstruction_preprocess_parallelism(batch_size: usize) -> usize {
+    thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .min(batch_size.max(1))
+        .clamp(1, 4)
 }
 
 fn postprocess_reconstruction_batch(
