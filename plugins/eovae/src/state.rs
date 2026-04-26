@@ -275,9 +275,12 @@ pub fn rebuild_sidebar_statistics(state: &mut PluginState) {
 }
 
 pub fn cancel_running_job() -> bool {
-    let state = plugin_state().lock().unwrap();
+    let mut state = plugin_state().lock().unwrap();
     if let Some(job) = &state.job {
         job.cancel.store(true, Ordering::Relaxed);
+        if state.analysis_phase == AnalysisPhase::Running {
+            state.job_status = "Cancelling analysis...".to_string();
+        }
         return true;
     }
     false

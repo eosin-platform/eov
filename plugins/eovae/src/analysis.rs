@@ -39,6 +39,14 @@ fn cpu_prefetch_capacity(
     requested_threads.max(loader_workers * 4).clamp(8, 32).min(total_tiles)
 }
 
+fn gpu_prefetch_capacity(total_tiles: usize, loader_workers: usize, batch_size: usize) -> usize {
+    loader_workers
+        .saturating_mul(4)
+        .max(batch_size.saturating_mul(2))
+        .clamp(8, 256)
+        .min(total_tiles.max(1))
+}
+
 fn cpu_read_status_message(scheduled: usize, loaded: usize, done: usize, total: usize) -> String {
     format!(
         "Reading tiles {scheduled}/{total} scheduled, {} queued, {done}/{total} completed",
@@ -554,6 +562,8 @@ fn run_tile_plan_with_file(
             report_progress(done, total_tiles, "Processing", refresh_stats);
         }
 
+        drop(receiver);
+
         for handle in handles {
             handle
                 .join()
@@ -696,6 +706,7 @@ fn run_tile_plan_with_file_gpu_batched(
         .unwrap_or(requested_batch_size)
         .min(total_tiles)
         .max(1);
+    let queue_capacity = gpu_prefetch_capacity(total_tiles, worker_count, batch_size);
     debug_timing(&format!(
         "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} model_fixed_batch_size={} batch_size={} queue_capacity={}",
         total_tiles,
@@ -705,7 +716,7 @@ fn run_tile_plan_with_file_gpu_batched(
             .map(|value| value.to_string())
             .unwrap_or_else(|| "dynamic".to_string()),
         batch_size,
-        worker_count * 2
+        queue_capacity
     ));
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
@@ -714,7 +725,7 @@ fn run_tile_plan_with_file_gpu_batched(
     let filtered = Arc::new(AtomicUsize::new(0));
     let queued = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
-    let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(worker_count * 2);
+    let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(queue_capacity);
     let mut handles = Vec::with_capacity(worker_count);
     let inference_running = Arc::new(AtomicBool::new(false));
 
@@ -924,6 +935,8 @@ fn run_tile_plan_with_file_gpu_batched(
         }
     }
 
+    drop(receiver);
+
     for handle in handles {
         handle
             .join()
@@ -1083,6 +1096,14 @@ mod tests {
         assert_eq!(cpu_prefetch_capacity(4, 100, 2), 8);
         assert_eq!(cpu_prefetch_capacity(8, 100, 2), 8);
         assert_eq!(cpu_prefetch_capacity(32, 100, 2), 32);
+    }
+
+    #[test]
+    fn gpu_prefetch_capacity_scales_with_batch_size() {
+        assert_eq!(gpu_prefetch_capacity(1, 1, 1), 1);
+        assert_eq!(gpu_prefetch_capacity(64, 4, 8), 16);
+        assert_eq!(gpu_prefetch_capacity(256, 8, 64), 128);
+        assert_eq!(gpu_prefetch_capacity(1000, 32, 256), 256);
     }
 
     #[test]
