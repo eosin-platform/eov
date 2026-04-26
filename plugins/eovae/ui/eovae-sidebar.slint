@@ -620,11 +620,16 @@ export component EovaeSidebar inherits Rectangle {
                         padding-bottom: 10px;
                         spacing: 8px;
 
-                        HorizontalLayout {
-                            spacing: 8px;
+                        analysis-controls-row := HorizontalLayout {
+                            width: parent.width;
+                            spacing: 6px;
+
+                            property <length> available-width: max(0px, self.width - self.spacing * 2);
+                            property <length> mip-width: self.available-width * 0.4;
+                            property <length> numeric-width: self.available-width * 0.3;
 
                             InlineLabeledSelectField {
-                                width: 122px;
+                                width: analysis-controls-row.mip-width;
                                 label: "Mip Level";
                                 model: root.mip-options;
                                 current-index: root.selected-mip-index;
@@ -638,7 +643,7 @@ export component EovaeSidebar inherits Rectangle {
                             }
 
                             InlineLabeledNumberField {
-                                horizontal-stretch: 1;
+                                width: analysis-controls-row.numeric-width;
                                 label: "Threads";
                                 value: root.analysis-threads;
                                 accepted(value) => {
@@ -650,7 +655,7 @@ export component EovaeSidebar inherits Rectangle {
                             }
 
                             InlineLabeledNumberField {
-                                width: 98px;
+                                width: analysis-controls-row.numeric-width;
                                 label: "Batch";
                                 value: root.analysis-batch-size;
                                 enabled: root.gpu-backend-active;
@@ -661,12 +666,6 @@ export component EovaeSidebar inherits Rectangle {
                                     root.analysis-batch-size-changed(value);
                                 }
                             }
-                        }
-
-                        Text {
-                            text: "Threads max " + root.max-analysis-threads;
-                            color: Theme.text-secondary;
-                            font-size: 10px;
                         }
 
                         HorizontalLayout {
