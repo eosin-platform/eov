@@ -4,17 +4,20 @@ use onnx_extractor::{DataType as OnnxDataType, OnnxModel, OnnxOperation, OnnxTen
 use ort::{
     ep,
     logging::LogLevel,
-    session::{OutputSelector, RunOptions, Session, builder::GraphOptimizationLevel},
+    session::{RunOptions, Session, builder::GraphOptimizationLevel},
     value::TensorRef,
 };
 use serde::Serialize;
 use serde_json::Value;
 use std::fs;
 use std::env;
+use std::ffi::CStr;
 use std::fmt;
 use std::collections::{HashMap, HashSet};
+use std::ptr;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -22,6 +25,7 @@ use std::time::{Duration, Instant};
 
 const GPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(20);
 const CPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(5);
+const CUDA_RUNTIME_UNAVAILABLE_MESSAGE: &str = "CUDAExecutionProvider is unavailable in the active ONNX Runtime. GPU analysis cannot start because the required CUDA runtime libraries are not available. On Linux this is commonly caused by missing CUDA/cuDNN libraries such as libcublasLt.so.12, libcublas.so.12, libcufft.so.11, libcudart.so.12, or libcudnn.so.9.";
 const PLACEMENT_SENSITIVE_OPS: &[&str] = &[
     "Shape",
     "Gather",
@@ -92,6 +96,16 @@ impl ModelSummary {
             "{}|{}|{}|{}|{}",
             self.path, self.selected_input, self.selected_output, self.layout, self.tile_size
         )
+    }
+
+    pub fn fixed_batch_size(&self) -> Option<usize> {
+        let batch = self
+            .inputs
+            .get(self.selected_input)
+            .and_then(|tensor| tensor.shape.first())
+            .copied()
+            .unwrap_or(-1);
+        (batch > 0).then_some(batch as usize)
     }
 }
 
@@ -177,6 +191,10 @@ impl LoadedModel {
             session_threads_override: Some(session_threads.max(1)),
         }
     }
+
+    pub fn fixed_batch_size(&self) -> Option<usize> {
+        self.summary.fixed_batch_size()
+    }
 }
 
 fn build_inference_session(
@@ -194,6 +212,16 @@ fn build_inference_session_inner(
     settings: &SessionSettings,
     layout: Layout,
 ) -> Result<Session, String> {
+    if settings.prefer_gpu {
+        log_available_execution_providers()?;
+        if !cuda_execution_provider_available()? {
+            if settings.allow_cpu_fallback {
+                debug_timing(CUDA_RUNTIME_UNAVAILABLE_MESSAGE);
+            } else {
+                return Err(CUDA_RUNTIME_UNAVAILABLE_MESSAGE.to_string());
+            }
+        }
+    }
     let builder = Session::builder()
         .map_err(|error| error.to_string())?
         .with_optimization_level(settings.opt_level)
@@ -508,52 +536,16 @@ pub fn run_reconstruction(
     width: u32,
     height: u32,
 ) -> Result<ReconstructionResult, String> {
-    let started = Instant::now();
-    let input = preprocess_rgba(rgba, width, height, model.summary.layout)?;
-    debug_timing(&format!("preprocess completed in {:?}", started.elapsed()));
-
-    let session_started = Instant::now();
-    let mut session = ensure_inference_session(model)?;
-    debug_timing(&format!(
-        "ensure_inference_session completed in {:?}",
-        session_started.elapsed()
-    ));
-
-    let session = session
-        .as_mut()
-        .ok_or_else(|| "inference session is unavailable".to_string())?;
-    let selected_output_name = model
-        .summary
-        .outputs
-        .get(model.summary.selected_output)
-        .map(|tensor| tensor.name.as_str())
-        .ok_or_else(|| "selected output index is out of bounds".to_string())?;
-    let run_options = RunOptions::new()
-        .map_err(|error| error.to_string())?
-        .with_outputs(OutputSelector::no_default().with(selected_output_name));
-
-    let run_started = Instant::now();
-    let reconstruction = {
-        let outputs = session
-            .session
-            .run_with_options(
-                ort::inputs![TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?],
-                &run_options,
-            )
-            .map_err(|error| error.to_string())?;
-        debug_timing(&format!(
-            "session.run completed in {:?}",
-            run_started.elapsed()
-        ));
-
-        let output_value = &outputs[selected_output_name];
-        let output = output_value
-            .try_extract_array::<f32>()
-            .map_err(|error| error.to_string())?;
-        postprocess_reconstruction(output, model.summary.layout)
-    };
-    maybe_finalize_ort_profile(session);
-    reconstruction
+    let input_batch = [BatchReconstructionInput {
+        rgba,
+        width,
+        height,
+    }];
+    let mut reconstructions = run_reconstruction_batch(model, &input_batch)?;
+    reconstructions
+        .drain(..)
+        .next()
+        .ok_or_else(|| "reconstruction batch output was empty".to_string())
 }
 
 pub fn run_reconstruction_batch(
@@ -566,9 +558,12 @@ pub fn run_reconstruction_batch(
 
     let width = inputs[0].width;
     let height = inputs[0].height;
+    let model_batch_size = input_tensor_batch_size(model, inputs.len())?;
+    let started = Instant::now();
     debug_timing(&format!(
-        "run_reconstruction_batch batch_size={} tile={}x{} layout={}",
+        "run_reconstruction_batch batch_size={} model_batch_size={} tile={}x{} layout={}",
         inputs.len(),
+        model_batch_size,
         width,
         height,
         model.summary.layout
@@ -580,8 +575,7 @@ pub fn run_reconstruction_batch(
         return Err("batched reconstruction requires all tiles to have the same dimensions".to_string());
     }
 
-    let started = Instant::now();
-    let input = preprocess_rgba_batch(inputs, model.summary.layout)?;
+    let input = preprocess_rgba_batch(inputs, model.summary.layout, model_batch_size)?;
     debug_timing(&format!("batch preprocess completed in {:?}", started.elapsed()));
 
     let session_started = Instant::now();
@@ -600,12 +594,11 @@ pub fn run_reconstruction_batch(
         .get(model.summary.selected_output)
         .map(|tensor| tensor.name.as_str())
         .ok_or_else(|| "selected output index is out of bounds".to_string())?;
-    let run_options = RunOptions::new()
-        .map_err(|error| error.to_string())?
-        .with_outputs(OutputSelector::no_default().with(selected_output_name));
+    let run_options = Arc::new(RunOptions::new().map_err(|error| error.to_string())?);
+    let run_canceler = spawn_run_canceler(current_analysis_cancel_token(), Arc::clone(&run_options));
 
     let run_started = Instant::now();
-    let reconstruction = {
+    let reconstruction = (|| {
         let outputs = session
             .session
             .run_with_options(
@@ -622,10 +615,64 @@ pub fn run_reconstruction_batch(
         let output = output_value
             .try_extract_array::<f32>()
             .map_err(|error| error.to_string())?;
-        postprocess_reconstruction_batch(output, model.summary.layout)
-    };
+        postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())
+    })();
+    finish_run_canceler(run_canceler);
     maybe_finalize_ort_profile(session);
     reconstruction
+}
+
+fn current_analysis_cancel_token() -> Option<Arc<AtomicBool>> {
+    plugin_state()
+        .lock()
+        .ok()
+        .and_then(|state| state.job.as_ref().map(|job| Arc::clone(&job.cancel)))
+}
+
+fn spawn_run_canceler(
+    cancel: Option<Arc<AtomicBool>>,
+    run_options: Arc<RunOptions>,
+) -> Option<(mpsc::Sender<()>, thread::JoinHandle<()>)> {
+    let cancel = cancel?;
+    let (done_tx, done_rx) = mpsc::channel();
+    let handle = thread::spawn(move || loop {
+        if cancel.load(Ordering::Relaxed) {
+            debug_timing("terminating session.run due to analysis cancellation");
+            let _ = run_options.terminate();
+            return;
+        }
+        match done_rx.recv_timeout(Duration::from_millis(25)) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    });
+    Some((done_tx, handle))
+}
+
+fn finish_run_canceler(run_canceler: Option<(mpsc::Sender<()>, thread::JoinHandle<()>)>) {
+    if let Some((done_tx, handle)) = run_canceler {
+        let _ = done_tx.send(());
+        let _ = handle.join();
+    }
+}
+
+fn input_tensor_batch_size(model: &LoadedModel, actual_batch_size: usize) -> Result<usize, String> {
+    match model.fixed_batch_size() {
+        Some(expected_batch_size) if actual_batch_size > expected_batch_size => Err(format!(
+            "model input requires batch size {} but got {}",
+            expected_batch_size, actual_batch_size
+        )),
+        Some(expected_batch_size) => {
+            if actual_batch_size < expected_batch_size {
+                debug_timing(&format!(
+                    "padding reconstruction batch from {} to static model batch size {}",
+                    actual_batch_size, expected_batch_size
+                ));
+            }
+            Ok(expected_batch_size)
+        }
+        None => Ok(actual_batch_size),
+    }
 }
 
 fn ensure_inference_session(
@@ -697,6 +744,82 @@ fn session_settings(prefer_gpu: bool, analysis_threads: usize) -> SessionSetting
         opt_level_name,
         profile_path: ort_profile_path(),
     }
+}
+
+pub fn gpu_analysis_preflight_error(model: &LoadedModel) -> Result<Option<String>, String> {
+    let settings = desired_execution_settings(model);
+    if !settings.prefer_gpu {
+        return Ok(None);
+    }
+    let strict_settings = SessionSettings {
+        allow_cpu_fallback: false,
+        profile_path: None,
+        ..settings.clone()
+    };
+    match build_session_with_watchdog(&model.summary.path, &strict_settings, model.summary.layout) {
+        Ok(_session) => Ok(None),
+        Err(error) => Ok(Some(format!(
+            "GPU analysis is unavailable because ONNX Runtime could not create a strict CUDA session for this model. {error}"
+        ))),
+    }
+}
+
+fn available_execution_providers() -> Result<Vec<String>, String> {
+    let mut providers = ptr::null_mut();
+    let mut provider_count = 0;
+    unsafe {
+        ort::Error::result_from_status((ort::api().GetAvailableProviders)(
+            &mut providers,
+            &mut provider_count,
+        ))
+        .map_err(|error| error.to_string())?;
+    }
+
+    if providers.is_null() || provider_count <= 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut available = Vec::with_capacity(provider_count as usize);
+    for index in 0..provider_count {
+        let provider_ptr = unsafe { *providers.add(index as usize) };
+        if provider_ptr.is_null() {
+            continue;
+        }
+        available.push(
+            unsafe { CStr::from_ptr(provider_ptr) }
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+
+    unsafe {
+        ort::Error::result_from_status((ort::api().ReleaseAvailableProviders)(
+            providers,
+            provider_count,
+        ))
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(available)
+}
+
+fn log_available_execution_providers() -> Result<(), String> {
+    let available = available_execution_providers()?;
+    debug_timing(&format!(
+        "ORT available execution providers: {}",
+        if available.is_empty() {
+            "<none>".to_string()
+        } else {
+            available.join(", ")
+        }
+    ));
+    Ok(())
+}
+
+fn cuda_execution_provider_available() -> Result<bool, String> {
+    Ok(available_execution_providers()?
+        .iter()
+        .any(|provider| provider == "CUDAExecutionProvider"))
 }
 
 fn debug_timing(message: &str) {
@@ -1038,51 +1161,14 @@ fn summarize_ort_profile(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn preprocess_rgba(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-    layout: Layout,
-) -> Result<Array4<f32>, String> {
-    if rgba.len() != (width as usize) * (height as usize) * 4 {
-        return Err("tile byte size does not match RGBA dimensions".to_string());
-    }
-    let mut array = match layout {
-        Layout::Nchw => Array4::<f32>::zeros((1, 3, height as usize, width as usize)),
-        Layout::Nhwc => Array4::<f32>::zeros((1, height as usize, width as usize, 3)),
-    };
-
-    for y in 0..height as usize {
-        for x in 0..width as usize {
-            let offset = (y * width as usize + x) * 4;
-            let r = rgba[offset] as f32 / 255.0;
-            let g = rgba[offset + 1] as f32 / 255.0;
-            let b = rgba[offset + 2] as f32 / 255.0;
-            match layout {
-                Layout::Nchw => {
-                    array[[0, 0, y, x]] = r;
-                    array[[0, 1, y, x]] = g;
-                    array[[0, 2, y, x]] = b;
-                }
-                Layout::Nhwc => {
-                    array[[0, y, x, 0]] = r;
-                    array[[0, y, x, 1]] = g;
-                    array[[0, y, x, 2]] = b;
-                }
-            }
-        }
-    }
-
-    Ok(array)
-}
-
 fn preprocess_rgba_batch(
     inputs: &[BatchReconstructionInput<'_>],
     layout: Layout,
+    target_batch_size: usize,
 ) -> Result<Array4<f32>, String> {
     let width = inputs[0].width as usize;
     let height = inputs[0].height as usize;
-    let batch = inputs.len();
+    let batch = target_batch_size.max(inputs.len());
     let mut array = match layout {
         Layout::Nchw => Array4::<f32>::zeros((batch, 3, height, width)),
         Layout::Nhwc => Array4::<f32>::zeros((batch, height, width, 3)),
@@ -1117,25 +1203,22 @@ fn preprocess_rgba_batch(
     Ok(array)
 }
 
-fn postprocess_reconstruction(
-    output: ArrayViewD<'_, f32>,
-    layout: Layout,
-) -> Result<ReconstructionResult, String> {
-    postprocess_reconstruction_batch(output, layout)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| "reconstruction batch output was empty".to_string())
-}
-
 fn postprocess_reconstruction_batch(
     output: ArrayViewD<'_, f32>,
     layout: Layout,
+    requested_batch_size: usize,
 ) -> Result<Vec<ReconstructionResult>, String> {
     let output = output
         .into_dimensionality::<Ix4>()
         .map_err(|_| "expected a 4D reconstruction tensor".to_string())?;
 
     let batch_size = output.shape()[0];
+    if batch_size < requested_batch_size {
+        return Err(format!(
+            "reconstruction output batch size {} is smaller than requested batch size {}",
+            batch_size, requested_batch_size
+        ));
+    }
     let mut reconstructions = Vec::with_capacity(batch_size);
     for batch_index in 0..batch_size {
         let output = output.index_axis(Axis(0), batch_index);
@@ -1170,6 +1253,7 @@ fn postprocess_reconstruction_batch(
         reconstructions.push(ReconstructionResult { rgb });
     }
 
+    reconstructions.truncate(requested_batch_size);
     Ok(reconstructions)
 }
 
@@ -1215,6 +1299,37 @@ mod tests {
         ];
         let summary = infer_model_contract("model.onnx", &inputs, &outputs).unwrap();
         assert_eq!(summary.selected_output, 1);
+    }
+
+    #[test]
+    fn detects_dynamic_batch_models() {
+        let inputs = vec![tensor("input", &[-1, 3, 256, 256])];
+        let outputs = vec![tensor("reconstruction", &[-1, 3, 256, 256])];
+        let summary = infer_model_contract("model.onnx", &inputs, &outputs).unwrap();
+        assert_eq!(summary.fixed_batch_size(), None);
+    }
+
+    #[test]
+    fn detects_static_batch_models() {
+        let inputs = vec![tensor("input", &[64, 3, 256, 256])];
+        let outputs = vec![tensor("reconstruction", &[64, 3, 256, 256])];
+        let summary = infer_model_contract("model.onnx", &inputs, &outputs).unwrap();
+        assert_eq!(summary.fixed_batch_size(), Some(64));
+    }
+
+    #[test]
+    fn preprocess_batch_pads_static_batch_inputs() {
+        let rgba = vec![255u8; 2 * 2 * 4];
+        let inputs = [BatchReconstructionInput {
+            rgba: rgba.as_slice(),
+            width: 2,
+            height: 2,
+        }];
+
+        let batch = preprocess_rgba_batch(&inputs, Layout::Nchw, 4).unwrap();
+        assert_eq!(batch.shape(), &[4, 3, 2, 2]);
+        assert_eq!(batch[[0, 0, 0, 0]], 1.0);
+        assert_eq!(batch[[3, 0, 0, 0]], 0.0);
     }
 
     #[test]

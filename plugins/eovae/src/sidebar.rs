@@ -1,5 +1,5 @@
 use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
-use crate::model::{LoadedModel, load_model};
+use crate::model::{LoadedModel, gpu_analysis_preflight_error, load_model};
 use crate::state::{
     AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
     clamp_gpu_batch_size,
@@ -7,8 +7,8 @@ use crate::state::{
     log_message, max_analysis_threads, plugin_state, refresh_sidebar_if_available,
     request_render_if_available, save_persisted_config_field, save_persisted_model_path,
 };
-use abi_stable::std_types::{RString, RVec};
-use plugin_api::ffi::{HostLogLevelFFI, UiPropertyFFI};
+use abi_stable::std_types::{ROption, RString, RVec};
+use plugin_api::ffi::{ConfirmationDialogRequestFFI, HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
 use std::path::Path;
 use std::thread;
@@ -582,6 +582,9 @@ fn analyze_viewport() {
         (model, namespace, state.config.mip_level)
     };
     if let Some(model) = model {
+        if !preflight_gpu_analysis_or_show_error(&model) {
+            return;
+        }
         start_viewport_analysis(model, viewport, namespace, mip_level);
     }
 }
@@ -609,6 +612,9 @@ fn analyze_whole_slide() {
         (model, namespace, state.config.mip_level)
     };
     if let Some(model) = model {
+        if !preflight_gpu_analysis_or_show_error(&model) {
+            return;
+        }
         start_whole_slide_analysis(
             model,
             active_file.file_id,
@@ -619,6 +625,47 @@ fn analyze_whole_slide() {
             mip_level,
         );
     }
+}
+
+fn preflight_gpu_analysis_or_show_error(model: &LoadedModel) -> bool {
+    match gpu_analysis_preflight_error(model) {
+        Ok(None) => true,
+        Ok(Some(message)) => {
+            log_message(HostLogLevelFFI::Error, &message);
+            if let Err(error) = show_gpu_analysis_unavailable_dialog(&message) {
+                log_message(HostLogLevelFFI::Error, error);
+            }
+            false
+        }
+        Err(error) => {
+            log_message(HostLogLevelFFI::Error, &error);
+            if let Err(dialog_error) = show_gpu_analysis_unavailable_dialog(&error) {
+                log_message(HostLogLevelFFI::Error, dialog_error);
+            }
+            false
+        }
+    }
+}
+
+fn show_gpu_analysis_unavailable_dialog(message: &str) -> Result<(), String> {
+    let Some(host) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    (host.show_confirmation_dialog)(
+        host.context,
+        ConfirmationDialogRequestFFI {
+            title: "GPU Analysis Unavailable".into(),
+            message: message.into(),
+            confirm_label: "OK".into(),
+            cancel_label: "Dismiss".into(),
+            confirm_callback: ROption::RNone,
+            confirm_args_json: ROption::RNone,
+            cancel_callback: ROption::RNone,
+            cancel_args_json: ROption::RNone,
+        },
+    )
+    .into_result()
+    .map_err(|error| format!("failed to show GPU analysis error dialog: {error}"))
 }
 
 fn update_mode(args_json: &str) -> bool {
@@ -952,7 +999,10 @@ mod tests {
     fn analysis_threads_accepts_single_string_array_payload() {
         reset_sidebar_test_state();
         assert!(update_analysis_threads("[\"2\"]"));
-        assert_eq!(plugin_state().lock().unwrap().config.analysis_threads, 2);
+        assert_eq!(
+            plugin_state().lock().unwrap().config.analysis_threads,
+            clamp_analysis_threads(2)
+        );
     }
 
     #[test]

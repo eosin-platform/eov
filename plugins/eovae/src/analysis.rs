@@ -14,6 +14,9 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
+const GPU_BATCH_FILL_WAIT: Duration = Duration::from_millis(3);
+const BACKGROUND_SAMPLE_STRIDE: usize = 8;
+
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     pub analysis_threads: usize,
@@ -207,6 +210,11 @@ where
         rebuild_sidebar_statistics(&mut state);
         drop(state);
         if let Err(error) = result {
+            if cancel.load(Ordering::Relaxed) {
+                refresh_sidebar_if_available();
+                request_render_if_available();
+                return;
+            }
             log_message(HostLogLevelFFI::Error, error);
         }
         refresh_sidebar_if_available();
@@ -298,11 +306,7 @@ fn run_tile_plan_with_file(
     }
 
     let total_tiles = tiles.len();
-    let worker_count = if prefer_gpu {
-        analysis_threads.min(2).min(total_tiles).max(1)
-    } else {
-        analysis_threads.min(total_tiles).max(1)
-    };
+    let worker_count = if prefer_gpu { 1 } else { 1 };
     let tiles = Arc::new(tiles);
     let next_index = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
@@ -310,7 +314,7 @@ fn run_tile_plan_with_file(
     let mut handles = Vec::with_capacity(worker_count);
 
     for _ in 0..worker_count {
-        let worker_model = model.clone_for_analysis_worker(1);
+        let worker_model = model.clone_for_analysis_worker(analysis_threads);
         let worker_tiles = Arc::clone(&tiles);
         let worker_next_index = Arc::clone(&next_index);
         let worker_processed = Arc::clone(&processed);
@@ -411,16 +415,52 @@ fn run_tile_plan_with_file(
 }
 
 fn report_progress(done: usize, total: usize, label: &str, refresh_stats: bool) {
+    report_progress_message(
+        done,
+        total,
+        format!("{label} {done}/{total} tiles"),
+        refresh_stats,
+        false,
+    );
+}
+
+fn report_progress_message(
+    done: usize,
+    total: usize,
+    message: String,
+    refresh_stats: bool,
+    force_refresh: bool,
+) {
+    if force_refresh {
+        debug_timing(&format!("progress force refresh: {message}"));
+    }
     let mut state = plugin_state().lock().unwrap();
     state.progress_value = done as f32 / total.max(1) as f32;
-    state.job_status = format!("{label} {done}/{total} tiles");
+    state.job_status = message;
     if refresh_stats {
         rebuild_sidebar_statistics(&mut state);
     }
     drop(state);
-    if done == total || done % 8 == 0 {
+    if force_refresh || done == total || done % 8 == 0 {
         refresh_sidebar_if_available();
         request_render_if_available();
+    }
+}
+
+struct InferenceRunningGuard {
+    flag: Arc<AtomicBool>,
+}
+
+impl InferenceRunningGuard {
+    fn new(flag: Arc<AtomicBool>) -> Self {
+        flag.store(true, Ordering::Relaxed);
+        Self { flag }
+    }
+}
+
+impl Drop for InferenceRunningGuard {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::Relaxed);
     }
 }
 
@@ -439,28 +479,42 @@ fn run_tile_plan_with_file_gpu_batched(
 ) -> Result<(), String> {
     let total_tiles = tiles.len();
     let worker_count = analysis_threads.min(total_tiles).max(1);
-    let batch_size = crate::state::clamp_gpu_batch_size(gpu_batch_size)
+    let model_fixed_batch_size = model.fixed_batch_size();
+    let requested_batch_size = crate::state::clamp_gpu_batch_size(gpu_batch_size);
+    let batch_size = model_fixed_batch_size
+        .unwrap_or(requested_batch_size)
         .min(total_tiles)
         .max(1);
     debug_timing(&format!(
-        "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} batch_size={} queue_capacity={}",
+        "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} model_fixed_batch_size={} batch_size={} queue_capacity={}",
         total_tiles,
         worker_count,
         gpu_batch_size,
+        model_fixed_batch_size
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "dynamic".to_string()),
         batch_size,
         worker_count * 2
     ));
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
+    let scanned = Arc::new(AtomicUsize::new(0));
+    let filtered = Arc::new(AtomicUsize::new(0));
+    let queued = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
     let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(worker_count * 2);
     let mut handles = Vec::with_capacity(worker_count);
+    let inference_running = Arc::new(AtomicBool::new(false));
 
     for _ in 0..worker_count {
         let worker_tiles = Arc::clone(&tiles);
         let worker_next_index = Arc::clone(&next_index);
         let worker_processed = Arc::clone(&processed);
+        let worker_scanned = Arc::clone(&scanned);
+        let worker_filtered = Arc::clone(&filtered);
+        let worker_queued = Arc::clone(&queued);
+        let worker_inference_running = Arc::clone(&inference_running);
         let worker_cancel = Arc::clone(&cancel);
         let worker_error = Arc::clone(&first_error);
         let worker_host = host;
@@ -498,12 +552,27 @@ fn run_tile_plan_with_file_gpu_batched(
                         )
                         .into_result()
                         .map_err(|error| error.to_string())?;
+                        let scanned_count = worker_scanned.fetch_add(1, Ordering::Relaxed) + 1;
 
                         if skip_background
                             && should_skip_background(bytes.as_slice(), background_threshold)
                         {
+                            let filtered_count = worker_filtered.fetch_add(1, Ordering::Relaxed) + 1;
                             let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
-                            report_progress(done, total_tiles, "Skipping background tile", false);
+                            if !worker_inference_running.load(Ordering::Relaxed)
+                                && (done == total_tiles || done % 8 == 0)
+                            {
+                                report_progress_message(
+                                    done,
+                                    total_tiles,
+                                    format!(
+                                        "Filtering background {scanned_count}/{total_tiles} scanned, {filtered_count} skipped, {} queued",
+                                        worker_queued.load(Ordering::Relaxed)
+                                    ),
+                                    false,
+                                    false,
+                                );
+                            }
                             continue;
                         }
 
@@ -513,6 +582,21 @@ fn run_tile_plan_with_file_gpu_batched(
                                 bytes: bytes.to_vec(),
                             })
                             .map_err(|_| "gpu batch receiver disconnected".to_string())?;
+                        let queued_count = worker_queued.fetch_add(1, Ordering::Relaxed) + 1;
+                        if !worker_inference_running.load(Ordering::Relaxed)
+                            && (scanned_count == total_tiles || scanned_count % 8 == 0)
+                        {
+                            report_progress_message(
+                                worker_processed.load(Ordering::Relaxed),
+                                total_tiles,
+                                format!(
+                                    "Preparing inference batches {scanned_count}/{total_tiles} scanned, {} skipped, {queued_count} queued",
+                                    worker_filtered.load(Ordering::Relaxed)
+                                ),
+                                false,
+                                false,
+                            );
+                        }
                     }
 
                     Ok(())
@@ -535,6 +619,8 @@ fn run_tile_plan_with_file_gpu_batched(
     let worker_model = model.clone_for_analysis_worker(analysis_threads);
     let mut pending_tiles = Vec::with_capacity(batch_size);
     let mut pending_bytes = Vec::with_capacity(batch_size);
+    let mut sender_disconnected = false;
+    let require_full_batch = model_fixed_batch_size.is_some() && total_tiles >= batch_size;
 
     while !cancel.load(Ordering::Relaxed) {
         let loaded = match receiver.recv() {
@@ -545,13 +631,21 @@ fn run_tile_plan_with_file_gpu_batched(
         pending_bytes.push(loaded.bytes);
 
         while pending_tiles.len() < batch_size {
-            match receiver.try_recv() {
+            let recv_result = if require_full_batch {
+                receiver.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+            } else {
+                receiver.recv_timeout(GPU_BATCH_FILL_WAIT)
+            };
+            match recv_result {
                 Ok(loaded) => {
                     pending_tiles.push(loaded.tile_plan);
                     pending_bytes.push(loaded.bytes);
                 }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => break,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    sender_disconnected = true;
+                    break;
+                }
             }
         }
 
@@ -565,13 +659,36 @@ fn run_tile_plan_with_file_gpu_batched(
                 height: target_height,
             })
             .collect::<Vec<_>>();
+        let partial_reason = if batch_inputs.len() == batch_size {
+            None
+        } else if sender_disconnected {
+            Some("channel drained")
+        } else if require_full_batch {
+            Some("awaiting static batch fill")
+        } else {
+            Some("fill wait expired")
+        };
+        let scanned_count = scanned.load(Ordering::Relaxed);
+        let filtered_count = filtered.load(Ordering::Relaxed);
         debug_timing(&format!(
-            "dispatching gpu inference batch actual_batch_size={} configured_batch_size={} tile={}x{}",
+            "dispatching gpu inference batch actual_batch_size={} configured_batch_size={} tile={}x{} reason={}",
             batch_inputs.len(),
             batch_size,
             target_width,
-            target_height
+            target_height,
+            partial_reason.unwrap_or("full")
         ));
+        report_progress_message(
+            processed.load(Ordering::Relaxed),
+            total_tiles,
+            format!(
+                "Running inference batch={} scanned {scanned_count}/{total_tiles}, skipped {filtered_count}",
+                batch_inputs.len()
+            ),
+            false,
+            true,
+        );
+        let _inference_running = InferenceRunningGuard::new(Arc::clone(&inference_running));
         let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
 
         for ((tile_plan, bytes), reconstruction) in pending_tiles
@@ -686,7 +803,7 @@ fn should_skip_background(rgba: &[u8], threshold: u8) -> bool {
     }
     let mut bright_pixels = 0usize;
     let mut total_pixels = 0usize;
-    for pixel in rgba.chunks_exact(4) {
+    for pixel in rgba.chunks_exact(4).step_by(BACKGROUND_SAMPLE_STRIDE) {
         total_pixels += 1;
         if pixel[0] >= threshold && pixel[1] >= threshold && pixel[2] >= threshold {
             bright_pixels += 1;
@@ -819,5 +936,17 @@ mod tests {
         assert_eq!(tiles[2].y, 512);
         assert_eq!(tiles[3].x, 512);
         assert_eq!(tiles[3].y, 512);
+    }
+
+    #[test]
+    fn background_filter_detects_bright_tiles_with_sampling() {
+        let rgba = vec![255u8; 256 * 256 * 4];
+        assert!(should_skip_background(&rgba, 242));
+    }
+
+    #[test]
+    fn background_filter_keeps_dark_tiles_with_sampling() {
+        let rgba = vec![0u8; 256 * 256 * 4];
+        assert!(!should_skip_background(&rgba, 242));
     }
 }

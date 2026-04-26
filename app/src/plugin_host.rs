@@ -2373,6 +2373,18 @@ fn apply_sidebar_properties(
 
     for UiPropertyFFI { name, json_value } in (vtable.get_sidebar_properties)().into_iter() {
         let property_name = name.to_string();
+        if std::env::var_os("EOV_PLUGIN_TRACE").is_some()
+            && plugin_id == "eovae"
+            && matches!(
+                property_name.as_str(),
+                "job-status" | "progress-value" | "analysis-summary-text"
+            )
+        {
+            plugin_trace(format!(
+                "apply_sidebar_property plugin={} {}={}",
+                plugin_id, property_name, json_value
+            ));
+        }
         let Some((_, property_type)) = property_types
             .iter()
             .find(|(candidate, _)| candidate == &property_name)

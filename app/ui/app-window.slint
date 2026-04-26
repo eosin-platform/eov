@@ -1153,30 +1153,19 @@ export component AppWindow inherits Window {
                     horizontal-alignment: left;
                 }
 
-                Rectangle {
+                Flickable {
                     height: 180px;
-                    background: #0a0c10;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    viewport-height: plugin-confirm-scroll-content.preferred-height;
 
-                    Flickable {
-                        x: 0px;
-                        y: 0px;
-                        width: parent.width;
-                        height: parent.height;
-                        viewport-height: plugin-confirm-scroll-content.preferred-height;
+                    plugin-confirm-scroll-content := VerticalLayout {
+                        padding: 8px;
 
-                        plugin-confirm-scroll-content := VerticalLayout {
-                            padding: 8px;
-
-                            Text {
-                                text: root.plugin-confirm-message;
-                                color: Theme.text-secondary;
-                                font-size: 12px;
-                                wrap: word-wrap;
-                                horizontal-alignment: left;
-                            }
+                        Text {
+                            text: root.plugin-confirm-message;
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-alignment: left;
                         }
                     }
                 }
