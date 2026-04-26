@@ -9,7 +9,7 @@ use std::env;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -685,6 +685,68 @@ impl Drop for InferenceRunningGuard {
     }
 }
 
+#[derive(Default)]
+struct GpuPipelineStats {
+    read_ns: AtomicU64,
+    read_tiles: AtomicUsize,
+    batch_fill_wait_ns: AtomicU64,
+    inference_ns: AtomicU64,
+    batches: AtomicUsize,
+    inferred_tiles: AtomicUsize,
+}
+
+struct GpuPipelineSnapshot {
+    read_ns: u64,
+    read_tiles: usize,
+    batch_fill_wait_ns: u64,
+    inference_ns: u64,
+    batches: usize,
+    inferred_tiles: usize,
+}
+
+impl GpuPipelineStats {
+    fn record_read(&self, duration: Duration) {
+        self.read_ns
+            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.read_tiles.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_batch_fill_wait(&self, duration: Duration) {
+        self.batch_fill_wait_ns
+            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+    }
+
+    fn record_inference(&self, duration: Duration, batch_tiles: usize) {
+        self.inference_ns
+            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.batches.fetch_add(1, Ordering::Relaxed);
+        self.inferred_tiles.fetch_add(batch_tiles, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> GpuPipelineSnapshot {
+        GpuPipelineSnapshot {
+            read_ns: self.read_ns.load(Ordering::Relaxed),
+            read_tiles: self.read_tiles.load(Ordering::Relaxed),
+            batch_fill_wait_ns: self.batch_fill_wait_ns.load(Ordering::Relaxed),
+            inference_ns: self.inference_ns.load(Ordering::Relaxed),
+            batches: self.batches.load(Ordering::Relaxed),
+            inferred_tiles: self.inferred_tiles.load(Ordering::Relaxed),
+        }
+    }
+}
+
+fn format_duration_from_ns(total_ns: u64) -> Duration {
+    Duration::from_nanos(total_ns)
+}
+
+fn format_avg_ms(total_ns: u64, count: usize) -> f64 {
+    if count == 0 {
+        0.0
+    } else {
+        total_ns as f64 / count as f64 / 1_000_000.0
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_tile_plan_with_file_gpu_batched(
     model: LoadedModel,
@@ -725,9 +787,11 @@ fn run_tile_plan_with_file_gpu_batched(
     let filtered = Arc::new(AtomicUsize::new(0));
     let queued = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
+    let pipeline_stats = Arc::new(GpuPipelineStats::default());
     let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(queue_capacity);
     let mut handles = Vec::with_capacity(worker_count);
     let inference_running = Arc::new(AtomicBool::new(false));
+    let gpu_started = Instant::now();
 
     for _ in 0..worker_count {
         let worker_tiles = Arc::clone(&tiles);
@@ -739,6 +803,7 @@ fn run_tile_plan_with_file_gpu_batched(
         let worker_inference_running = Arc::clone(&inference_running);
         let worker_cancel = Arc::clone(&cancel);
         let worker_error = Arc::clone(&first_error);
+        let worker_stats = Arc::clone(&pipeline_stats);
         let worker_host = host;
         let worker_sender = sender.clone();
 
@@ -763,6 +828,7 @@ fn run_tile_plan_with_file_gpu_batched(
                             return Ok(());
                         }
                         let tile_plan = worker_tiles[index];
+                        let read_started = Instant::now();
                         let bytes = (worker_host.read_region)(
                             worker_host.context,
                             file_id,
@@ -774,6 +840,7 @@ fn run_tile_plan_with_file_gpu_batched(
                         )
                         .into_result()
                         .map_err(|error| error.to_string())?;
+                        worker_stats.record_read(read_started.elapsed());
                         let scanned_count = worker_scanned.fetch_add(1, Ordering::Relaxed) + 1;
 
                         if skip_background
@@ -851,6 +918,7 @@ fn run_tile_plan_with_file_gpu_batched(
         };
         pending_tiles.push(loaded.tile_plan);
         pending_bytes.push(loaded.bytes);
+        let batch_fill_started = Instant::now();
 
         while pending_tiles.len() < batch_size {
             let recv_result = if require_full_batch {
@@ -870,6 +938,7 @@ fn run_tile_plan_with_file_gpu_batched(
                 }
             }
         }
+        pipeline_stats.record_batch_fill_wait(batch_fill_started.elapsed());
 
         let target_width = pending_tiles[0].read_width;
         let target_height = pending_tiles[0].read_height;
@@ -911,7 +980,9 @@ fn run_tile_plan_with_file_gpu_batched(
             true,
         );
         let _inference_running = InferenceRunningGuard::new(Arc::clone(&inference_running));
+        let inference_started = Instant::now();
         let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
+        pipeline_stats.record_inference(inference_started.elapsed(), batch_inputs.len());
 
         for ((tile_plan, bytes), reconstruction) in pending_tiles
             .drain(..)
@@ -946,6 +1017,28 @@ fn run_tile_plan_with_file_gpu_batched(
     if let Some(error) = first_error.lock().unwrap().clone() {
         return Err(error);
     }
+
+    let stats = pipeline_stats.snapshot();
+    let elapsed = gpu_started.elapsed();
+    debug_timing(&format!(
+        "gpu pipeline summary elapsed={elapsed:?} batches={} inferred_tiles={} avg_batch_size={:.2} avg_read_ms_per_tile={:.2} avg_infer_ms_per_batch={:.2} total_fill_wait={:?} total_infer={:?} throughput_tiles_per_sec={:.2}",
+        stats.batches,
+        stats.inferred_tiles,
+        if stats.batches == 0 {
+            0.0
+        } else {
+            stats.inferred_tiles as f64 / stats.batches as f64
+        },
+        format_avg_ms(stats.read_ns, stats.read_tiles),
+        format_avg_ms(stats.inference_ns, stats.batches),
+        format_duration_from_ns(stats.batch_fill_wait_ns),
+        format_duration_from_ns(stats.inference_ns),
+        if elapsed.as_secs_f64() == 0.0 {
+            0.0
+        } else {
+            stats.inferred_tiles as f64 / elapsed.as_secs_f64()
+        }
+    ));
 
     {
         let mut state = plugin_state().lock().unwrap();
