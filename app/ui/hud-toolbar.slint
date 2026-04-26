@@ -41,6 +41,20 @@ component HudButton inherits Rectangle {
     }
 }
 
+component HudSeparator inherits Rectangle {
+    width: 1px;
+    height: 38px;
+    background: transparent;
+
+    Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 1px;
+        height: 26px;
+        background: #ffffff20;
+    }
+}
+
 export component HudToolbar inherits Rectangle {
     in property <float> zoom-level: 1.0;
     in property <bool> dropdown-open: false;
@@ -55,14 +69,16 @@ export component HudToolbar inherits Rectangle {
     callback plugin-button-clicked(string, string);
 
     property <string> zoom-text: zoom-level >= 1.0 ? Math.round(zoom-level * 100) + "%" : Math.round(zoom-level * 1000) / 10 + "%";
+    property <string> zoom-input-text: zoom-level >= 1.0 ? "" + Math.round(zoom-level * 100) : "" + (Math.round(zoom-level * 1000) / 10);
     property <bool> editing-zoom: false;
+    property <bool> cancel-zoom-edit: false;
 
     property <string> active-tooltip:
         fit-btn.hovered ? fit-btn.tooltip-text : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
     property <length> tooltip-center-x:
         fit-btn.hovered ? fit-btn.x + fit-btn.width / 2 : zoom-in-btn.hovered ? zoom-in-btn.x + zoom-in-btn.width / 2 : zoom-out-btn.hovered ? zoom-out-btn.x + zoom-out-btn.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
 
-    width: 72px + 1px + (4 + root.plugin-buttons.length) * 38px;
+    width: bar.preferred-width;
     height: 38px;
     background: transparent;
 
@@ -115,12 +131,36 @@ export component HudToolbar inherits Rectangle {
                         font-size: 14px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
-                        text: root.zoom-text;
+                        text: root.zoom-input-text;
                         input-type: InputType.decimal;
 
                         accepted => {
+                            root.cancel-zoom-edit = false;
                             root.editing-zoom = false;
                             root.zoom-input(self.text.to-float() / 100.0);
+                        }
+
+                        changed has-focus => {
+                            if !self.has-focus && root.editing-zoom {
+                                if root.cancel-zoom-edit {
+                                    root.cancel-zoom-edit = false;
+                                    root.editing-zoom = false;
+                                    self.text = root.zoom-input-text;
+                                } else {
+                                    root.editing-zoom = false;
+                                    root.zoom-input(self.text.to-float() / 100.0);
+                                }
+                            }
+                        }
+
+                        key-pressed(e) => {
+                            if e.text == Key.Escape {
+                                root.cancel-zoom-edit = true;
+                                root.editing-zoom = false;
+                                self.text = root.zoom-input-text;
+                                accept
+                            }
+                            reject
                         }
                     }
                 }
@@ -128,6 +168,8 @@ export component HudToolbar inherits Rectangle {
                 zoom-touch := TouchArea {
                     enabled: !root.editing-zoom;
                     clicked => {
+                        root.cancel-zoom-edit = false;
+                        zoom-text-input.text = root.zoom-input-text;
                         root.editing-zoom = true;
                         zoom-text-input.focus();
                         zoom-text-input.select-all();
@@ -136,18 +178,7 @@ export component HudToolbar inherits Rectangle {
             }
 
             // Separator
-            Rectangle {
-                width: 1px;
-                height: 38px;
-
-                Rectangle {
-                    x: 0px;
-                    y: (parent.height - self.height) / 2;
-                    width: 1px;
-                    height: 26px;
-                    background: #ffffff20;
-                }
-            }
+            HudSeparator {}
 
             fit-btn := HudButton {
                 icon-source: @image-url("icons/fit-view.svg");
@@ -173,14 +204,22 @@ export component HudToolbar inherits Rectangle {
                 }
             }
 
-            for btn[idx] in root.plugin-buttons: HudButton {
-                icon-source: btn.icon;
-                tooltip-text: btn.tooltip;
-                active: btn.active;
-                clicked => {
-                    root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+            for btn[idx] in root.plugin-buttons: HorizontalLayout {
+                spacing: 0px;
+
+                if idx == 0 || root.plugin-buttons[idx - 1].plugin-id != btn.plugin-id: HudSeparator {}
+
+                HudButton {
+                    icon-source: btn.icon;
+                    tooltip-text: btn.tooltip;
+                    active: btn.active;
+                    clicked => {
+                        root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+                    }
                 }
             }
+
+            if root.plugin-buttons.length > 0: HudSeparator {}
 
             adjust-btn := HudButton {
                 icon-source: @image-url("icons/settings.svg");
