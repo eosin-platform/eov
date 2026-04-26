@@ -62,6 +62,22 @@ fn composite_tile(
     let view_width = (viewport.bounds_right - viewport.bounds_left).max(1.0);
     let view_height = (viewport.bounds_bottom - viewport.bounds_top).max(1.0);
     let tile = &entry.tile;
+    let has_rgb_payload = tile.reconstruction_rgb.len()
+        >= tile.sample_width as usize * tile.sample_height as usize * 3
+        && tile.difference_rgb.len()
+            >= tile.sample_width as usize * tile.sample_height as usize * 3;
+    let has_luma_payload =
+        tile.error_map_luma.len() >= tile.sample_width as usize * tile.sample_height as usize;
+
+    if matches!(mode, VisualizationMode::Reconstruction | VisualizationMode::Difference)
+        && !has_rgb_payload
+    {
+        return;
+    }
+    if mode == VisualizationMode::ErrorMap && !has_luma_payload {
+        return;
+    }
+
     let sx0 =
         (((tile.x as f64 - viewport.bounds_left) / view_width) * frame_width as f64).floor() as i32;
     let sy0 = (((tile.y as f64 - viewport.bounds_top) / view_height) * frame_height as f64).floor()

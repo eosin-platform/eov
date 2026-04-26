@@ -104,6 +104,17 @@ impl ModelSummary {
         )
     }
 
+    pub fn latent_output_index(&self) -> Option<usize> {
+        select_latent_output(&self.outputs, self.selected_output)
+    }
+
+    pub fn embedding_dim(&self) -> usize {
+        self.latent_output_index()
+            .and_then(|index| self.outputs.get(index))
+            .and_then(tensor_embedding_dim)
+            .unwrap_or(0)
+    }
+
     pub fn fixed_batch_size(&self) -> Option<usize> {
         let batch = self
             .inputs
@@ -149,6 +160,7 @@ pub enum GpuAnalysisPreflight {
 
 pub struct ReconstructionResult {
     pub rgb: Vec<u8>,
+    pub embedding: Option<Vec<f32>>,
 }
 
 pub struct BatchReconstructionInput<'a> {
@@ -518,6 +530,50 @@ fn select_output(
     named_match.ok_or_else(|| "no plausible reconstruction output tensor was found".to_string())
 }
 
+fn select_latent_output(outputs: &[TensorSummary], selected_output: usize) -> Option<usize> {
+    outputs
+        .iter()
+        .enumerate()
+        .filter(|(index, tensor)| *index != selected_output && is_embedding_candidate(tensor))
+        .max_by_key(|(_, tensor)| latent_output_priority(tensor))
+        .map(|(index, _)| index)
+}
+
+fn latent_output_priority(tensor: &TensorSummary) -> (u8, usize) {
+    let lowered = tensor.name.to_ascii_lowercase();
+    let name_score = if lowered.contains("mu") {
+        4
+    } else if lowered.contains("latent") {
+        3
+    } else if lowered.contains("embed") {
+        2
+    } else if lowered.contains("logvar") {
+        1
+    } else {
+        0
+    };
+    (name_score, tensor_embedding_dim(tensor).unwrap_or(0))
+}
+
+fn is_embedding_candidate(tensor: &TensorSummary) -> bool {
+    tensor.dtype.to_ascii_lowercase().contains("float")
+        && !tensor.is_image_candidate
+        && tensor_embedding_dim(tensor).is_some()
+}
+
+fn tensor_embedding_dim(tensor: &TensorSummary) -> Option<usize> {
+    let mut dimension = 1usize;
+    let mut has_axes = false;
+    for axis in tensor.shape.iter().skip(1) {
+        if *axis <= 0 {
+            return None;
+        }
+        has_axes = true;
+        dimension = dimension.checked_mul(*axis as usize)?;
+    }
+    has_axes.then_some(dimension)
+}
+
 fn infer_layout(input: &TensorSummary, output: &TensorSummary) -> Layout {
     for tensor in [input, output] {
         if tensor.shape.len() == 4 {
@@ -617,6 +673,11 @@ pub fn run_reconstruction_batch(
         .get(model.summary.selected_output)
         .map(|tensor| tensor.name.as_str())
         .ok_or_else(|| "selected output index is out of bounds".to_string())?;
+    let latent_output_name = model
+        .summary
+        .latent_output_index()
+        .and_then(|index| model.summary.outputs.get(index))
+        .map(|tensor| tensor.name.as_str());
     let run_options = Arc::new(RunOptions::new().map_err(|error| error.to_string())?);
     let run_canceler =
         spawn_run_canceler(current_analysis_cancel_token(), Arc::clone(&run_options));
@@ -642,8 +703,18 @@ pub fn run_reconstruction_batch(
             .try_extract_array::<f32>()
             .map_err(|error| error.to_string())?;
         let postprocess_started = Instant::now();
-        let reconstructions =
+        let mut reconstructions =
             postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())?;
+        if let Some(latent_output_name) = latent_output_name {
+            let latent_output_value = &outputs[latent_output_name];
+            let latent_output = latent_output_value
+                .try_extract_array::<f32>()
+                .map_err(|error| error.to_string())?;
+            let embeddings = extract_embedding_batch(latent_output, inputs.len())?;
+            for (reconstruction, embedding) in reconstructions.iter_mut().zip(embeddings) {
+                reconstruction.embedding = Some(embedding);
+            }
+        }
         debug_timing(&format!(
             "batch postprocess completed in {:?}",
             postprocess_started.elapsed()
@@ -708,6 +779,31 @@ fn input_tensor_batch_size(model: &LoadedModel, actual_batch_size: usize) -> Res
         }
         None => Ok(actual_batch_size),
     }
+}
+
+fn extract_embedding_batch(
+    output: ArrayViewD<'_, f32>,
+    requested_batch_size: usize,
+) -> Result<Vec<Vec<f32>>, String> {
+    let batch_size = output.shape().first().copied().unwrap_or(0);
+    if batch_size < requested_batch_size {
+        return Err(format!(
+            "latent output batch size {} is smaller than requested batch size {}",
+            batch_size, requested_batch_size
+        ));
+    }
+
+    let mut embeddings = Vec::with_capacity(requested_batch_size);
+    for batch_index in 0..requested_batch_size {
+        embeddings.push(
+            output
+                .index_axis(Axis(0), batch_index)
+                .iter()
+                .copied()
+                .collect(),
+        );
+    }
+    Ok(embeddings)
 }
 
 fn ensure_inference_session(
@@ -1594,7 +1690,10 @@ fn postprocess_reconstruction_item(
         }
     }
 
-    Ok(ReconstructionResult { rgb })
+    Ok(ReconstructionResult {
+        rgb,
+        embedding: None,
+    })
 }
 
 fn reconstruction_postprocess_parallelism(batch_size: usize) -> usize {

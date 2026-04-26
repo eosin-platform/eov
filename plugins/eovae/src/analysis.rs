@@ -1,3 +1,4 @@
+use crate::db::{AsyncLatentCacheWriter, LatentCacheKey, load_tiles_for_positions};
 use crate::model::{
     BatchReconstructionInput, LoadedModel, ReconstructionResult, run_reconstruction,
     run_reconstruction_batch,
@@ -6,9 +7,12 @@ use crate::state::{
     AnalysisPhase, JobKind, RunningJob, VisualizationMode, host_api, log_message, plugin_state,
     rebuild_sidebar_statistics, refresh_sidebar_if_available, request_render_if_available,
 };
+use common::file_id::{cached_sha256, hex_digest};
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::env;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -351,7 +355,7 @@ fn run_tile_plan_with_file(
     tiles: Vec<TilePlan>,
     cancel: Arc<AtomicBool>,
     file_id: i32,
-    _file_path: String,
+    file_path: String,
 ) -> Result<(), String> {
     let host = host_api().ok_or_else(|| "host API is not available".to_string())?;
     let (skip_background, background_threshold, analysis_threads, gpu_batch_size, prefer_gpu) = {
@@ -373,6 +377,24 @@ fn run_tile_plan_with_file(
         return Ok(());
     }
 
+    let total_tiles = tiles.len();
+    let (cache_key, cached_tiles, tiles) = prepare_cached_tiles(&model, &namespace, &file_path, tiles);
+    let cached_count = cached_tiles.len();
+
+    if !cached_tiles.is_empty() {
+        report_progress_message(
+            cached_count,
+            total_tiles,
+            format!("Loaded {cached_count}/{total_tiles} cached tiles from persistent cache"),
+            true,
+            true,
+        );
+    }
+
+    if tiles.is_empty() {
+        return Ok(());
+    }
+
     if prefer_gpu {
         return run_tile_plan_with_file_gpu_batched(
             model,
@@ -385,16 +407,22 @@ fn run_tile_plan_with_file(
             background_threshold,
             analysis_threads,
             gpu_batch_size,
+            total_tiles,
+            cached_count,
+            cache_key,
         );
     }
 
-    let total_tiles = tiles.len();
-    let (loader_workers, worker_session_threads) = cpu_worker_layout(analysis_threads, total_tiles);
+    let work_tiles = tiles.len();
+    let (loader_workers, worker_session_threads) = cpu_worker_layout(analysis_threads, work_tiles);
     let tiles = Arc::new(tiles);
     let next_index = Arc::new(AtomicUsize::new(0));
-    let processed = Arc::new(AtomicUsize::new(0));
-    let loaded = Arc::new(AtomicUsize::new(0));
+    let processed = Arc::new(AtomicUsize::new(cached_count));
+    let loaded = Arc::new(AtomicUsize::new(cached_count));
     let first_error = Arc::new(Mutex::new(None::<String>));
+    let mut persistent_cache = cache_key
+        .clone()
+        .and_then(|key| AsyncLatentCacheWriter::open(key).map_err(log_persistent_cache_error).ok());
 
     if loader_workers == 0 {
         let worker_model = model.clone_for_analysis_worker(worker_session_threads);
@@ -442,6 +470,13 @@ fn run_tile_plan_with_file(
                 tile_plan.read_height,
             )?;
             let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
+            if let Some(cache) = persistent_cache.as_ref()
+                && let Err(error) =
+                    cache.enqueue_tile(tile.clone(), reconstruction.embedding.clone())
+            {
+                log_persistent_cache_error(error);
+                persistent_cache = None;
+            }
             {
                 let mut state = plugin_state().lock().unwrap();
                 state.cache.insert(
@@ -459,7 +494,7 @@ fn run_tile_plan_with_file(
         }
     } else {
         let prefetch_capacity =
-            cpu_prefetch_capacity(analysis_threads, total_tiles, loader_workers);
+            cpu_prefetch_capacity(analysis_threads, work_tiles, loader_workers);
         let (sender, receiver) = mpsc::sync_channel::<LoadedCpuTile>(prefetch_capacity);
         let mut handles = Vec::with_capacity(loader_workers);
 
@@ -572,6 +607,13 @@ fn run_tile_plan_with_file(
                 loaded_tile.bytes.as_slice(),
                 &reconstruction.rgb,
             );
+            if let Some(cache) = persistent_cache.as_ref()
+                && let Err(error) =
+                    cache.enqueue_tile(tile.clone(), reconstruction.embedding.clone())
+            {
+                log_persistent_cache_error(error);
+                persistent_cache = None;
+            }
             {
                 let mut state = plugin_state().lock().unwrap();
                 state.cache.insert(
@@ -599,6 +641,10 @@ fn run_tile_plan_with_file(
         if let Some(error) = first_error.lock().unwrap().clone() {
             return Err(error);
         }
+    }
+
+    if let Some(cache) = persistent_cache.take() {
+        cache.finish().map_err(log_persistent_cache_error)?;
     }
 
     {
@@ -792,17 +838,20 @@ fn run_tile_plan_with_file_gpu_batched(
     background_threshold: u8,
     analysis_threads: usize,
     gpu_batch_size: usize,
+    total_tiles: usize,
+    cached_count: usize,
+    cache_key: Option<LatentCacheKey>,
 ) -> Result<(), String> {
-    let total_tiles = tiles.len();
-    let worker_count = analysis_threads.min(total_tiles).max(1);
+    let work_tiles = tiles.len();
+    let worker_count = analysis_threads.min(work_tiles).max(1);
     let model_fixed_batch_size = model.fixed_batch_size();
     let requested_batch_size = crate::state::clamp_gpu_batch_size(gpu_batch_size);
     let batch_size = model_fixed_batch_size
         .unwrap_or(requested_batch_size)
-        .min(total_tiles)
+        .min(work_tiles)
         .max(1);
-    let queue_capacity = gpu_prefetch_capacity(total_tiles, worker_count, batch_size);
-    let completed_queue_capacity = gpu_completed_batch_capacity(total_tiles, batch_size);
+    let queue_capacity = gpu_prefetch_capacity(work_tiles, worker_count, batch_size);
+    let completed_queue_capacity = gpu_completed_batch_capacity(work_tiles, batch_size);
     debug_timing(&format!(
         "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} model_fixed_batch_size={} batch_size={} queue_capacity={} completed_queue_capacity={}",
         total_tiles,
@@ -817,8 +866,8 @@ fn run_tile_plan_with_file_gpu_batched(
     ));
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
-    let processed = Arc::new(AtomicUsize::new(0));
-    let scanned = Arc::new(AtomicUsize::new(0));
+    let processed = Arc::new(AtomicUsize::new(cached_count));
+    let scanned = Arc::new(AtomicUsize::new(cached_count));
     let filtered = Arc::new(AtomicUsize::new(0));
     let queued = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
@@ -833,22 +882,41 @@ fn run_tile_plan_with_file_gpu_batched(
     let postprocess_cancel = Arc::clone(&cancel);
     let postprocess_processed = Arc::clone(&processed);
     let postprocess_namespace = namespace.clone();
+    let postprocess_cache_key = cache_key.clone();
     let postprocess_handle = thread::spawn(move || -> Result<(), String> {
+        let mut persistent_cache = postprocess_cache_key
+            .and_then(|key| AsyncLatentCacheWriter::open(key).map_err(log_persistent_cache_error).ok());
         while let Ok(completed_batch) = completed_receiver.recv() {
             if postprocess_cancel.load(Ordering::Relaxed) {
                 return Ok(());
             }
 
             let analysis_postprocess_started = Instant::now();
-            let analyzed_tiles = build_analyzed_tiles_batch(
-                completed_batch.tile_plans,
-                completed_batch.rgba_tiles,
-                completed_batch.reconstructions,
-            );
+            let CompletedGpuBatch {
+                tile_plans,
+                rgba_tiles,
+                reconstructions,
+            } = completed_batch;
+            let embeddings = reconstructions
+                .iter()
+                .map(|reconstruction| reconstruction.embedding.clone())
+                .collect::<Vec<_>>();
+            let analyzed_tiles =
+                build_analyzed_tiles_batch(tile_plans, rgba_tiles, reconstructions);
             debug_timing(&format!(
                 "batch analyzed-tile construction completed in {:?}",
                 analysis_postprocess_started.elapsed()
             ));
+
+            if let Some(cache) = persistent_cache.as_ref() {
+                for (tile, embedding) in analyzed_tiles.iter().zip(embeddings.into_iter()) {
+                    if let Err(error) = cache.enqueue_tile(tile.clone(), embedding) {
+                        log_persistent_cache_error(error);
+                        persistent_cache = None;
+                        break;
+                    }
+                }
+            }
 
             {
                 let mut state = plugin_state()
@@ -871,6 +939,9 @@ fn run_tile_plan_with_file_gpu_batched(
             let done = previous_done + completed_batch_size;
             let refresh_stats = done == total_tiles || done / 16 != previous_done / 16;
             report_progress(done, total_tiles, "Processing", refresh_stats);
+        }
+        if let Some(cache) = persistent_cache.take() {
+            cache.finish().map_err(log_persistent_cache_error)?;
         }
         Ok(())
     });
@@ -1324,6 +1395,93 @@ fn build_analyzed_tiles_batch(
         }
     });
     analyzed_tiles
+}
+
+fn prepare_cached_tiles(
+    model: &LoadedModel,
+    namespace: &str,
+    file_path: &str,
+    tiles: Vec<TilePlan>,
+) -> (Option<LatentCacheKey>, Vec<AnalyzedTile>, Vec<TilePlan>) {
+    let Some(cache_key) = build_latent_cache_key(model, file_path, tiles.first()) else {
+        return (None, Vec::new(), tiles);
+    };
+
+    let positions = tiles
+        .iter()
+        .map(|tile| (tile.x, tile.y))
+        .collect::<Vec<_>>();
+    let cached_tiles = match load_tiles_for_positions(&cache_key, &positions) {
+        Ok(cached_tiles) => cached_tiles,
+        Err(error) => {
+            log_persistent_cache_error(error);
+            return (None, Vec::new(), tiles);
+        }
+    };
+    let cached_positions = cached_tiles
+        .iter()
+        .map(|tile| (tile.x, tile.y))
+        .collect::<HashSet<_>>();
+    let missing_tiles = tiles
+        .into_iter()
+        .filter(|tile| !cached_positions.contains(&(tile.x, tile.y)))
+        .collect::<Vec<_>>();
+
+    if !cached_tiles.is_empty() {
+        insert_tiles_into_state(namespace, &cached_tiles);
+    }
+
+    (Some(cache_key), cached_tiles, missing_tiles)
+}
+
+fn build_latent_cache_key(
+    model: &LoadedModel,
+    file_path: &str,
+    first_tile: Option<&TilePlan>,
+) -> Option<LatentCacheKey> {
+    let first_tile = first_tile?;
+    let model_sha256 = cached_sha256(Path::new(&model.summary.path))
+        .map(|digest| hex_digest(&digest))
+        .map_err(log_persistent_cache_error)
+        .ok()?;
+    let file_sha256 = cached_sha256(Path::new(file_path))
+        .map(|digest| hex_digest(&digest))
+        .map_err(log_persistent_cache_error)
+        .ok()?;
+
+    Some(LatentCacheKey {
+        model_sha256,
+        model_path: model.summary.path.clone(),
+        file_sha256,
+        file_path: file_path.to_string(),
+        level: first_tile.level,
+        tile_size: first_tile.read_width,
+        stride: first_tile.width,
+        embedding_dim: model.summary.embedding_dim(),
+    })
+}
+
+fn insert_tiles_into_state(namespace: &str, tiles: &[AnalyzedTile]) {
+    let mut state = plugin_state().lock().unwrap();
+    for tile in tiles {
+        state.cache.insert(
+            tile.id(),
+            TileCacheEntry {
+                namespace: namespace.to_string(),
+                tile: tile.clone(),
+            },
+        );
+    }
+    rebuild_sidebar_statistics(&mut state);
+}
+
+fn log_persistent_cache_error(error: impl ToString) -> String {
+    let error = error.to_string();
+    log_message(
+        HostLogLevelFFI::Error,
+        format!("persistent latent cache disabled for this run: {error}"),
+    );
+    error
 }
 
 fn analyzed_tile_parallelism(batch_size: usize) -> usize {

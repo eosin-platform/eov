@@ -1872,6 +1872,7 @@ dependencies = [
  "onnx-extractor",
  "ort",
  "plugin_api",
+ "rusqlite",
  "serde",
  "serde_json",
  "sqlite-vec",

@@ -1,4 +1,5 @@
 mod analysis;
+mod db;
 mod filter;
 mod model;
 mod sidebar;
