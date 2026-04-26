@@ -191,29 +191,6 @@ export component WindowToolbar inherits Rectangle {
                     }
                 }
 
-                cpu-button := ToolButton {
-                    width: 40px;
-                    icon: "CPU";
-                    tooltip-text: "Use CPU renderer";
-                    is-active: root.render-mode == RenderMode.cpu;
-                    clicked => {
-                        root.render-backend-selected(RenderMode.cpu);
-                    }
-                }
-
-                gpu-button := ToolButton {
-                    width: 40px;
-                    icon: "GPU";
-                    tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
-                    enabled: root.gpu-rendering-available;
-                    is-active: root.render-mode == RenderMode.gpu;
-                    clicked => {
-                        if root.gpu-rendering-available {
-                            root.render-backend-selected(RenderMode.gpu);
-                        }
-                    }
-                }
-
                 metadata-button := MetadataToolButton {
                     tooltip-text: "Toggle metadata HUD";
                     is-active: root.show-metadata;
@@ -245,6 +222,29 @@ export component WindowToolbar inherits Rectangle {
                         width: 1px;
                         height: 24px;
                         background: Theme.border;
+                    }
+                }
+
+                cpu-button := ToolButton {
+                    width: 40px;
+                    icon: "CPU";
+                    tooltip-text: "Use CPU renderer";
+                    is-active: root.render-mode == RenderMode.cpu;
+                    clicked => {
+                        root.render-backend-selected(RenderMode.cpu);
+                    }
+                }
+
+                gpu-button := ToolButton {
+                    width: 40px;
+                    icon: "GPU";
+                    tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
+                    enabled: root.gpu-rendering-available;
+                    is-active: root.render-mode == RenderMode.gpu;
+                    clicked => {
+                        if root.gpu-rendering-available {
+                            root.render-backend-selected(RenderMode.gpu);
+                        }
                     }
                 }
 

@@ -44,15 +44,7 @@ component HudButton inherits Rectangle {
 component HudSeparator inherits Rectangle {
     width: 1px;
     height: 38px;
-    background: transparent;
-
-    Rectangle {
-        x: 0px;
-        y: (parent.height - self.height) / 2;
-        width: 1px;
-        height: 26px;
-        background: #ffffff20;
-    }
+    background: #ffffff20;
 }
 
 export component HudToolbar inherits Rectangle {
