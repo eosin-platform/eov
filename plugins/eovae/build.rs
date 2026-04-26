@@ -24,7 +24,8 @@ fn stage_histovae_runtime_libraries() -> Result<(), String> {
         .nth(3)
         .ok_or_else(|| format!("unexpected OUT_DIR layout: {}", out_dir.display()))?
         .to_path_buf();
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|error| error.to_string())?);
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|error| error.to_string())?);
 
     let Some(runtime_dirs) = locate_histovae_runtime_dirs(&manifest_dir)? else {
         return Ok(());
@@ -81,15 +82,16 @@ fn locate_histovae_runtime_dirs(manifest_dir: &Path) -> Result<Option<RuntimeDir
         let cuda_dir = [
             site_packages_dir.join("nvidia").join("cu12").join("lib"),
             site_packages_dir.join("nvidia").join("cu13").join("lib"),
-            site_packages_dir.join("nvidia").join("cuda_runtime").join("lib"),
+            site_packages_dir
+                .join("nvidia")
+                .join("cuda_runtime")
+                .join("lib"),
         ]
         .into_iter()
         .find(|path| path.is_dir());
-        let cudnn_dir = [
-            site_packages_dir.join("nvidia").join("cudnn").join("lib"),
-        ]
-        .into_iter()
-        .find(|path| path.is_dir());
+        let cudnn_dir = [site_packages_dir.join("nvidia").join("cudnn").join("lib")]
+            .into_iter()
+            .find(|path| path.is_dir());
 
         return Ok(Some(RuntimeDirs {
             ort_capi_dir,
@@ -115,10 +117,14 @@ fn locate_cuda_toolkit_dir() -> Option<PathBuf> {
 
 fn collect_runtime_libraries(runtime_dirs: &RuntimeDirs) -> Result<Vec<PathBuf>, String> {
     let mut entries = Vec::new();
-    entries.extend(collect_matching_files(&runtime_dirs.ort_capi_dir, |name| {
-        (name.starts_with("libonnxruntime") && (name.contains(".so") || name.ends_with(".dylib")))
-            || (name.starts_with("onnxruntime") && name.ends_with(".dll"))
-    })?);
+    entries.extend(collect_matching_files(
+        &runtime_dirs.ort_capi_dir,
+        |name| {
+            (name.starts_with("libonnxruntime")
+                && (name.contains(".so") || name.ends_with(".dylib")))
+                || (name.starts_with("onnxruntime") && name.ends_with(".dll"))
+        },
+    )?);
 
     if let Some(cuda_toolkit_dir) = &runtime_dirs.cuda_toolkit_dir {
         entries.extend(collect_matching_files(cuda_toolkit_dir, |name| {

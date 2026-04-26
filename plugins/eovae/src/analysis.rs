@@ -9,10 +9,10 @@ use crate::state::{
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
 use std::env;
-use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -39,7 +39,10 @@ fn cpu_prefetch_capacity(
     if loader_workers == 0 {
         return 0;
     }
-    requested_threads.max(loader_workers * 4).clamp(8, 32).min(total_tiles)
+    requested_threads
+        .max(loader_workers * 4)
+        .clamp(8, 32)
+        .min(total_tiles)
 }
 
 fn gpu_prefetch_capacity(total_tiles: usize, loader_workers: usize, batch_size: usize) -> usize {
@@ -61,7 +64,12 @@ fn cpu_read_status_message(scheduled: usize, loaded: usize, done: usize, total: 
     )
 }
 
-fn cpu_inference_status_message(done: usize, loaded: usize, total: usize, elapsed_secs: Option<u64>) -> String {
+fn cpu_inference_status_message(
+    done: usize,
+    loaded: usize,
+    total: usize,
+    elapsed_secs: Option<u64>,
+) -> String {
     let current_tile = if loaded > done {
         (done + 1).min(total)
     } else {
@@ -256,7 +264,9 @@ where
     thread::spawn(move || {
         let result = worker(cancel.clone());
         let mut state = plugin_state().lock().unwrap();
-        let elapsed = state.analysis_started_at.map(|started_at| started_at.elapsed());
+        let elapsed = state
+            .analysis_started_at
+            .map(|started_at| started_at.elapsed());
         state.job = None;
         state.analysis_started_at = None;
         state.analysis_elapsed = elapsed;
@@ -294,17 +304,19 @@ where
 }
 
 fn start_analysis_elapsed_refresh_loop(analysis_run_generation: u64) {
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(1));
-        let should_refresh = {
-            let state = plugin_state().lock().unwrap();
-            state.analysis_run_generation == analysis_run_generation
-                && state.analysis_phase == AnalysisPhase::Running
-        };
-        if !should_refresh {
-            return;
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(1));
+            let should_refresh = {
+                let state = plugin_state().lock().unwrap();
+                state.analysis_run_generation == analysis_run_generation
+                    && state.analysis_phase == AnalysisPhase::Running
+            };
+            if !should_refresh {
+                return;
+            }
+            refresh_sidebar_if_available();
         }
-        refresh_sidebar_if_available();
     });
 }
 
@@ -446,7 +458,8 @@ fn run_tile_plan_with_file(
             report_progress(done, total_tiles, "Processing", refresh_stats);
         }
     } else {
-        let prefetch_capacity = cpu_prefetch_capacity(analysis_threads, total_tiles, loader_workers);
+        let prefetch_capacity =
+            cpu_prefetch_capacity(analysis_threads, total_tiles, loader_workers);
         let (sender, receiver) = mpsc::sync_channel::<LoadedCpuTile>(prefetch_capacity);
         let mut handles = Vec::with_capacity(loader_workers);
 
@@ -719,21 +732,28 @@ struct GpuPipelineSnapshot {
 
 impl GpuPipelineStats {
     fn record_read(&self, duration: Duration) {
-        self.read_ns
-            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.read_ns.fetch_add(
+            duration.as_nanos().min(u64::MAX as u128) as u64,
+            Ordering::Relaxed,
+        );
         self.read_tiles.fetch_add(1, Ordering::Relaxed);
     }
 
     fn record_batch_fill_wait(&self, duration: Duration) {
-        self.batch_fill_wait_ns
-            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.batch_fill_wait_ns.fetch_add(
+            duration.as_nanos().min(u64::MAX as u128) as u64,
+            Ordering::Relaxed,
+        );
     }
 
     fn record_inference(&self, duration: Duration, batch_tiles: usize) {
-        self.inference_ns
-            .fetch_add(duration.as_nanos().min(u64::MAX as u128) as u64, Ordering::Relaxed);
+        self.inference_ns.fetch_add(
+            duration.as_nanos().min(u64::MAX as u128) as u64,
+            Ordering::Relaxed,
+        );
         self.batches.fetch_add(1, Ordering::Relaxed);
-        self.inferred_tiles.fetch_add(batch_tiles, Ordering::Relaxed);
+        self.inferred_tiles
+            .fetch_add(batch_tiles, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> GpuPipelineSnapshot {
@@ -846,7 +866,8 @@ fn run_tile_plan_with_file_gpu_batched(
             }
 
             let completed_batch_size = analyzed_tiles.len();
-            let previous_done = postprocess_processed.fetch_add(completed_batch_size, Ordering::Relaxed);
+            let previous_done =
+                postprocess_processed.fetch_add(completed_batch_size, Ordering::Relaxed);
             let done = previous_done + completed_batch_size;
             let refresh_stats = done == total_tiles || done / 16 != previous_done / 16;
             report_progress(done, total_tiles, "Processing", refresh_stats);
@@ -984,7 +1005,9 @@ fn run_tile_plan_with_file_gpu_batched(
 
         while pending_tiles.len() < batch_size {
             let recv_result = if require_full_batch {
-                receiver.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+                receiver
+                    .recv()
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
             } else {
                 receiver.recv_timeout(GPU_BATCH_FILL_WAIT)
             };
@@ -1043,7 +1066,8 @@ fn run_tile_plan_with_file_gpu_batched(
         );
         let _inference_running = InferenceRunningGuard::new(Arc::clone(&inference_running));
         let inference_started = Instant::now();
-        let reconstructions = match run_reconstruction_batch(&worker_model, batch_inputs.as_slice()) {
+        let reconstructions = match run_reconstruction_batch(&worker_model, batch_inputs.as_slice())
+        {
             Ok(reconstructions) => reconstructions,
             Err(error) => {
                 cancel.store(true, Ordering::Relaxed);
@@ -1204,7 +1228,11 @@ fn should_skip_background(rgba: &[u8], threshold: u8) -> bool {
     bright_pixels * 100 / total_pixels.max(1) > 92
 }
 
-fn build_analyzed_tile(tile_plan: TilePlan, rgba: &[u8], reconstruction_rgb: &[u8]) -> AnalyzedTile {
+fn build_analyzed_tile(
+    tile_plan: TilePlan,
+    rgba: &[u8],
+    reconstruction_rgb: &[u8],
+) -> AnalyzedTile {
     let sample_width = tile_plan.read_width;
     let sample_height = tile_plan.read_height;
     let mut difference_rgb = vec![0u8; sample_width as usize * sample_height as usize * 3];
@@ -1258,9 +1286,11 @@ fn build_analyzed_tiles_batch(
     if parallelism <= 1 || batch_items.len() <= 1 {
         return batch_items
             .into_iter()
-            .map(|(tile_plan, bytes, reconstruction): (TilePlan, Vec<u8>, ReconstructionResult)| {
-                build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
-            })
+            .map(
+                |(tile_plan, bytes, reconstruction): (TilePlan, Vec<u8>, ReconstructionResult)| {
+                    build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
+                },
+            )
             .collect();
     }
 
@@ -1274,17 +1304,22 @@ fn build_analyzed_tiles_batch(
             handles.push(scope.spawn(move || {
                 chunk
                     .into_iter()
-                    .map(|(tile_plan, bytes, reconstruction): (TilePlan, Vec<u8>, ReconstructionResult)| {
-                        build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
-                    })
+                    .map(
+                        |(tile_plan, bytes, reconstruction): (
+                            TilePlan,
+                            Vec<u8>,
+                            ReconstructionResult,
+                        )| {
+                            build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
+                        },
+                    )
                     .collect::<Vec<_>>()
             }));
         }
 
         for handle in handles {
-            let chunk_tiles: Vec<AnalyzedTile> = handle
-                .join()
-                .expect("analyzed-tile worker thread panicked");
+            let chunk_tiles: Vec<AnalyzedTile> =
+                handle.join().expect("analyzed-tile worker thread panicked");
             analyzed_tiles.extend(chunk_tiles);
         }
     });

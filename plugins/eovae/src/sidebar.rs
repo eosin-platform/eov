@@ -2,10 +2,9 @@ use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
 use crate::model::{GpuAnalysisPreflight, LoadedModel, gpu_analysis_preflight, load_model};
 use crate::state::{
     AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
-    clamp_gpu_batch_size,
-    clear_cache_for_namespace, host_api, load_persisted_config,
-    log_message, max_analysis_threads, plugin_state, refresh_sidebar_if_available,
-    request_render_if_available, save_persisted_config_field, save_persisted_model_path,
+    clamp_gpu_batch_size, clear_cache_for_namespace, host_api, load_persisted_config, log_message,
+    max_analysis_threads, plugin_state, refresh_sidebar_if_available, request_render_if_available,
+    save_persisted_config_field, save_persisted_model_path,
 };
 use abi_stable::std_types::{ROption, RString, RVec};
 use plugin_api::ffi::{ConfirmationDialogRequestFFI, HostLogLevelFFI, UiPropertyFFI};
@@ -261,18 +260,42 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("job-status", json!(state.job_status)),
         property("progress-value", json!(state.progress_value)),
         property("job-running", json!(state.job.is_some())),
-        property("model-section-expanded", json!(state.model_section_expanded)),
-        property("model-io-section-expanded", json!(state.model_io_section_expanded)),
-        property("analysis-section-expanded", json!(state.analysis_section_expanded)),
-        property("results-section-expanded", json!(state.results_section_expanded)),
+        property(
+            "model-section-expanded",
+            json!(state.model_section_expanded),
+        ),
+        property(
+            "model-io-section-expanded",
+            json!(state.model_io_section_expanded),
+        ),
+        property(
+            "analysis-section-expanded",
+            json!(state.analysis_section_expanded),
+        ),
+        property(
+            "results-section-expanded",
+            json!(state.results_section_expanded),
+        ),
         property("analysis-elapsed-text", json!(analysis_elapsed_text)),
         property("analysis-summary-text", json!(analysis_summary_text)),
-        property("analysis-summary-is-error", json!(analysis_summary_is_error)),
-        property("analysis-show-leading-status", json!(analysis_show_leading_status)),
+        property(
+            "analysis-summary-is-error",
+            json!(analysis_summary_is_error),
+        ),
+        property(
+            "analysis-show-leading-status",
+            json!(analysis_show_leading_status),
+        ),
         property("analysis-indicator-value", json!(analysis_indicator_value)),
         property("analysis-completed", json!(analysis_completed)),
-        property("analysis-threads", json!(state.config.analysis_threads.to_string())),
-        property("analysis-batch-size", json!(state.config.gpu_batch_size.to_string())),
+        property(
+            "analysis-threads",
+            json!(state.config.analysis_threads.to_string()),
+        ),
+        property(
+            "analysis-batch-size",
+            json!(state.config.gpu_batch_size.to_string()),
+        ),
         property("max-analysis-threads", json!(max_analysis_threads() as i32)),
         property("gpu-backend-active", json!(current_render_backend_is_gpu())),
         property("stats-summary", json!(stats_summary)),
@@ -315,7 +338,9 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
             let changed = update_mip_level(args_json);
             (changed, changed)
         }
-        "model-section-expanded-changed" => (update_section_expanded(args_json, Section::Model), false),
+        "model-section-expanded-changed" => {
+            (update_section_expanded(args_json, Section::Model), false)
+        }
         "model-io-section-expanded-changed" => {
             (update_section_expanded(args_json, Section::ModelIo), false)
         }
@@ -372,7 +397,10 @@ pub fn initialize_from_config() {
         );
     }
 
-    let Some(saved_path) = persisted_config.default_model_path.filter(|path| !path.is_empty()) else {
+    let Some(saved_path) = persisted_config
+        .default_model_path
+        .filter(|path| !path.is_empty())
+    else {
         return;
     };
 
@@ -1045,7 +1073,10 @@ mod tests {
         reset_sidebar_test_state();
         plugin_state().lock().unwrap().config.analysis_threads = 1;
         let _ = update_analysis_threads("\"9999\"");
-        assert_eq!(plugin_state().lock().unwrap().config.analysis_threads, max_analysis_threads());
+        assert_eq!(
+            plugin_state().lock().unwrap().config.analysis_threads,
+            max_analysis_threads()
+        );
     }
 
     #[test]

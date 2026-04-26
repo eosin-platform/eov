@@ -301,7 +301,9 @@ pub fn load_persisted_config() -> Result<PersistedConfig, String> {
         .map_err(|err| format!("failed to parse eovae config '{}': {err}", path.display()))
 }
 
-pub fn save_persisted_config_field(update: impl FnOnce(&mut PersistedConfig)) -> Result<(), String> {
+pub fn save_persisted_config_field(
+    update: impl FnOnce(&mut PersistedConfig),
+) -> Result<(), String> {
     let path = persisted_config_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| {

@@ -9,14 +9,14 @@ use ort::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use std::fs;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::CStr;
 use std::fmt;
-use std::collections::{HashMap, HashSet};
-use std::ptr;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -271,7 +271,10 @@ fn build_inference_session_inner(
         );
     }
     if let Some(profile_path) = &settings.profile_path {
-        debug_timing(&format!("enabling ORT profiling at {}", profile_path.display()));
+        debug_timing(&format!(
+            "enabling ORT profiling at {}",
+            profile_path.display()
+        ));
         builder = builder
             .with_profiling(profile_path)
             .map_err(|error| error.to_string())?;
@@ -386,16 +389,14 @@ fn commit_session_with_timeout(
     let start = Instant::now();
     let timeout_label = label.to_string();
     let (watchdog_tx, watchdog_rx) = mpsc::channel();
-    thread::spawn(move || {
-        match watchdog_rx.recv_timeout(timeout) {
-            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {}
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                debug_timing(&format!(
-                    "{timeout_label} session build exceeded {:?}; requesting cancellation",
-                    timeout
-                ));
-                let _ = canceler.cancel();
-            }
+    thread::spawn(move || match watchdog_rx.recv_timeout(timeout) {
+        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {}
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            debug_timing(&format!(
+                "{timeout_label} session build exceeded {:?}; requesting cancellation",
+                timeout
+            ));
+            let _ = canceler.cancel();
         }
     });
 
@@ -589,11 +590,16 @@ pub fn run_reconstruction_batch(
         .iter()
         .any(|input| input.width != width || input.height != height)
     {
-        return Err("batched reconstruction requires all tiles to have the same dimensions".to_string());
+        return Err(
+            "batched reconstruction requires all tiles to have the same dimensions".to_string(),
+        );
     }
 
     let input = preprocess_rgba_batch(inputs, model.summary.layout, model_batch_size)?;
-    debug_timing(&format!("batch preprocess completed in {:?}", started.elapsed()));
+    debug_timing(&format!(
+        "batch preprocess completed in {:?}",
+        started.elapsed()
+    ));
 
     let session_started = Instant::now();
     let mut session = ensure_inference_session(model)?;
@@ -612,14 +618,17 @@ pub fn run_reconstruction_batch(
         .map(|tensor| tensor.name.as_str())
         .ok_or_else(|| "selected output index is out of bounds".to_string())?;
     let run_options = Arc::new(RunOptions::new().map_err(|error| error.to_string())?);
-    let run_canceler = spawn_run_canceler(current_analysis_cancel_token(), Arc::clone(&run_options));
+    let run_canceler =
+        spawn_run_canceler(current_analysis_cancel_token(), Arc::clone(&run_options));
 
     let run_started = Instant::now();
     let reconstruction = (|| {
         let outputs = session
             .session
             .run_with_options(
-                ort::inputs![TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?],
+                ort::inputs![
+                    TensorRef::from_array_view(input.view()).map_err(|error| error.to_string())?
+                ],
                 &run_options,
             )
             .map_err(|error| error.to_string())?;
@@ -633,7 +642,8 @@ pub fn run_reconstruction_batch(
             .try_extract_array::<f32>()
             .map_err(|error| error.to_string())?;
         let postprocess_started = Instant::now();
-        let reconstructions = postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())?;
+        let reconstructions =
+            postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())?;
         debug_timing(&format!(
             "batch postprocess completed in {:?}",
             postprocess_started.elapsed()
@@ -658,15 +668,17 @@ fn spawn_run_canceler(
 ) -> Option<(mpsc::Sender<()>, thread::JoinHandle<()>)> {
     let cancel = cancel?;
     let (done_tx, done_rx) = mpsc::channel();
-    let handle = thread::spawn(move || loop {
-        if cancel.load(Ordering::Relaxed) {
-            debug_timing("terminating session.run due to analysis cancellation");
-            let _ = run_options.terminate();
-            return;
-        }
-        match done_rx.recv_timeout(Duration::from_millis(25)) {
-            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+    let handle = thread::spawn(move || {
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                debug_timing("terminating session.run due to analysis cancellation");
+                let _ = run_options.terminate();
+                return;
+            }
+            match done_rx.recv_timeout(Duration::from_millis(25)) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
         }
     });
     Some((done_tx, handle))
@@ -724,14 +736,11 @@ fn ensure_inference_session(
         settings.allow_cpu_fallback,
         settings.profile_path.is_some()
     ));
-    let session = match build_inference_session(
-        &model.summary.path,
-        &settings,
-        model.summary.layout,
-    ) {
-        Ok(session) => session,
-        Err(error) => return Err(error),
-    };
+    let session =
+        match build_inference_session(&model.summary.path, &settings, model.summary.layout) {
+            Ok(session) => session,
+            Err(error) => return Err(error),
+        };
 
     let mut guard = model
         .session
@@ -753,7 +762,11 @@ fn desired_execution_settings(model: &LoadedModel) -> SessionSettings {
     let analysis_threads = model.session_threads_override.unwrap_or_else(|| {
         clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads)
     });
-    session_settings(prefer_gpu, analysis_threads, model.fixed_batch_size().is_some())
+    session_settings(
+        prefer_gpu,
+        analysis_threads,
+        model.fixed_batch_size().is_some(),
+    )
 }
 
 fn session_settings(
@@ -762,9 +775,8 @@ fn session_settings(
     model_has_fixed_batch: bool,
 ) -> SessionSettings {
     let allow_cpu_fallback = prefer_gpu && env_flag_enabled("EOVAE_DIAG_ALLOW_CPU_FALLBACK");
-    let enable_cuda_graph = prefer_gpu
-        && model_has_fixed_batch
-        && env_flag_enabled("EOVAE_ENABLE_CUDA_GRAPH");
+    let enable_cuda_graph =
+        prefer_gpu && model_has_fixed_batch && env_flag_enabled("EOVAE_ENABLE_CUDA_GRAPH");
     let (opt_level, opt_level_name) = graph_optimization_level_from_env();
     SessionSettings {
         prefer_gpu,
@@ -884,9 +896,9 @@ fn preload_cuda_runtime_sidecars() -> Result<(), String> {
             }
             Ok(libraries)
         })
-            .as_ref()
-            .map(|_| ())
-            .map_err(Clone::clone)
+        .as_ref()
+        .map(|_| ())
+        .map_err(Clone::clone)
 }
 
 fn resolve_cuda_runtime_sidecar_paths() -> Result<Vec<PathBuf>, String> {
@@ -1040,11 +1052,12 @@ fn graph_optimization_level_from_env() -> (GraphOptimizationLevel, String) {
     parse_graph_optimization_level_value(env::var("EOVAE_ORT_OPT_LEVEL").ok().as_deref())
 }
 
-fn parse_graph_optimization_level_value(
-    value: Option<&str>,
-) -> (GraphOptimizationLevel, String) {
+fn parse_graph_optimization_level_value(value: Option<&str>) -> (GraphOptimizationLevel, String) {
     match value.map(str::trim).filter(|value| !value.is_empty()) {
-        None => (GraphOptimizationLevel::Level3, "level3(default)".to_string()),
+        None => (
+            GraphOptimizationLevel::Level3,
+            "level3(default)".to_string(),
+        ),
         Some(raw) => match raw.to_ascii_lowercase().as_str() {
             "disable" => (GraphOptimizationLevel::Disable, "disable".to_string()),
             "basic" => (GraphOptimizationLevel::Level1, "basic".to_string()),
@@ -1054,7 +1067,10 @@ fn parse_graph_optimization_level_value(
                 debug_timing(&format!(
                     "invalid EOVAE_ORT_OPT_LEVEL={other}; using level3(default)"
                 ));
-                (GraphOptimizationLevel::Level3, format!("invalid({other}) -> level3(default)"))
+                (
+                    GraphOptimizationLevel::Level3,
+                    format!("invalid({other}) -> level3(default)"),
+                )
             }
         },
     }
@@ -1079,7 +1095,10 @@ fn log_model_operation_summary(onnx_model: &OnnxModel) {
         return;
     }
 
-    let mut counts = onnx_model.count_operations_by_type().into_iter().collect::<Vec<_>>();
+    let mut counts = onnx_model
+        .count_operations_by_type()
+        .into_iter()
+        .collect::<Vec<_>>();
     counts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
     let summary = counts
         .iter()
@@ -1148,10 +1167,13 @@ fn log_selected_output_subgraph(onnx_model: &OnnxModel, summary: &ModelSummary) 
 
     let mut counts = branch_operations
         .iter()
-        .fold(HashMap::<String, usize>::new(), |mut counts, (_, operation)| {
-            *counts.entry(operation.op_type.clone()).or_insert(0) += 1;
-            counts
-        })
+        .fold(
+            HashMap::<String, usize>::new(),
+            |mut counts, (_, operation)| {
+                *counts.entry(operation.op_type.clone()).or_insert(0) += 1;
+                counts
+            },
+        )
         .into_iter()
         .collect::<Vec<_>>();
     counts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
@@ -1249,7 +1271,13 @@ fn display_node_name(operation: &OnnxOperation) -> &str {
 fn format_tensor_names(values: &[String]) -> String {
     values
         .iter()
-        .map(|value| if value.is_empty() { "<empty>" } else { value.as_str() })
+        .map(|value| {
+            if value.is_empty() {
+                "<empty>"
+            } else {
+                value.as_str()
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -1288,8 +1316,7 @@ fn maybe_finalize_ort_profile(cached_session: &mut CachedSession) {
 }
 
 fn summarize_ort_profile(path: &Path) -> Result<(), String> {
-    let profile_text = fs::read_to_string(path)
-        .map_err(|error| format!("read failed: {error}"))?;
+    let profile_text = fs::read_to_string(path).map_err(|error| format!("read failed: {error}"))?;
     let profile_json: Value =
         serde_json::from_str(&profile_text).map_err(|error| format!("parse failed: {error}"))?;
     let events = match &profile_json {
@@ -1334,7 +1361,10 @@ fn summarize_ort_profile(path: &Path) -> Result<(), String> {
             let op_name = args
                 .and_then(|args| args.get("op_name"))
                 .and_then(Value::as_str)
-                .or_else(|| args.and_then(|args| args.get("op_type")).and_then(Value::as_str))
+                .or_else(|| {
+                    args.and_then(|args| args.get("op_type"))
+                        .and_then(Value::as_str)
+                })
                 .unwrap_or("<unknown>");
             cpu_nodes.insert((node_name.to_string(), op_name.to_string()));
         }
@@ -1377,31 +1407,25 @@ fn preprocess_rgba_batch(
         for (batch_index, input) in inputs.iter().enumerate() {
             let start = batch_index * elements_per_batch;
             let end = start + elements_per_batch;
-            preprocess_rgba_into_chunk(
-                &mut data[start..end],
-                input.rgba,
-                width,
-                height,
-                layout,
-            )?;
+            preprocess_rgba_into_chunk(&mut data[start..end], input.rgba, width, height, layout)?;
         }
     } else {
         thread::scope(|scope| -> Result<(), String> {
             let mut handles = Vec::with_capacity(inputs.len());
             let mut chunks = data.chunks_exact_mut(elements_per_batch);
             for input in inputs {
-                let chunk = chunks
-                    .next()
-                    .ok_or_else(|| "failed to allocate reconstruction preprocess chunk".to_string())?;
+                let chunk = chunks.next().ok_or_else(|| {
+                    "failed to allocate reconstruction preprocess chunk".to_string()
+                })?;
                 handles.push(scope.spawn(move || {
                     preprocess_rgba_into_chunk(chunk, input.rgba, width, height, layout)
                 }));
             }
 
             for handle in handles {
-                handle
-                    .join()
-                    .map_err(|_| "reconstruction preprocess worker thread panicked".to_string())??;
+                handle.join().map_err(|_| {
+                    "reconstruction preprocess worker thread panicked".to_string()
+                })??;
             }
             Ok(())
         })?;
@@ -1456,7 +1480,8 @@ fn preprocess_rgba_into_chunk(
 }
 
 fn reconstruction_preprocess_parallelism(batch_size: usize) -> usize {
-    let configured_threads = clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
+    let configured_threads =
+        clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
@@ -1500,22 +1525,27 @@ fn postprocess_reconstruction_batch(
             for start in (0..batch_size).step_by(chunk_size) {
                 let end = (start + chunk_size).min(batch_size);
                 let output = output;
-                handles.push(scope.spawn(move || -> Result<Vec<(usize, ReconstructionResult)>, String> {
-                    let mut local = Vec::with_capacity(end - start);
-                    for batch_index in start..end {
-                        local.push((
-                            batch_index,
-                            postprocess_reconstruction_item(output.index_axis(Axis(0), batch_index), layout)?,
-                        ));
-                    }
-                    Ok(local)
-                }));
+                handles.push(scope.spawn(
+                    move || -> Result<Vec<(usize, ReconstructionResult)>, String> {
+                        let mut local = Vec::with_capacity(end - start);
+                        for batch_index in start..end {
+                            local.push((
+                                batch_index,
+                                postprocess_reconstruction_item(
+                                    output.index_axis(Axis(0), batch_index),
+                                    layout,
+                                )?,
+                            ));
+                        }
+                        Ok(local)
+                    },
+                ));
             }
 
             for handle in handles {
-                let local = handle
-                    .join()
-                    .map_err(|_| "reconstruction postprocess worker thread panicked".to_string())??;
+                let local = handle.join().map_err(|_| {
+                    "reconstruction postprocess worker thread panicked".to_string()
+                })??;
                 for (batch_index, reconstruction) in local {
                     reconstructions[batch_index] = Some(reconstruction);
                 }
@@ -1568,7 +1598,8 @@ fn postprocess_reconstruction_item(
 }
 
 fn reconstruction_postprocess_parallelism(batch_size: usize) -> usize {
-    let configured_threads = clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
+    let configured_threads =
+        clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
@@ -1735,8 +1766,9 @@ mod tests {
             model.fixed_batch_size().is_some(),
         );
 
-        let error = build_inference_session(model.summary.path.as_str(), &settings, model.summary.layout)
-            .unwrap_err();
+        let error =
+            build_inference_session(model.summary.path.as_str(), &settings, model.summary.layout)
+                .unwrap_err();
 
         assert!(
             error.contains("assigned to the default CPU EP"),
