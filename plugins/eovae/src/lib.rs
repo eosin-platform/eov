@@ -132,6 +132,16 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
         .filter(|entry| entry.namespace == state.cache_namespace)
         .map(|entry| entry.tile.clone());
 
+    if state.grid_enabled {
+        let mip_level = state.config.mip_level;
+        let tile_size = state
+            .model
+            .as_ref()
+            .map(|model| model.summary.tile_size as f64)
+            .unwrap_or(256.0);
+        polygons.extend(grid_overlay_polygons(&viewport, tile_size, mip_level));
+    }
+
     if let Some(tile) = hovered_region.as_ref().filter(|tile| {
         pulsing_region
             .as_ref()
@@ -148,26 +158,14 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
         if elapsed >= Duration::from_millis(1300) {
             clear_pulse = true;
         } else {
-            let pulse = ((elapsed.as_secs_f32() / 1.3) * std::f32::consts::TAU).sin();
-            let intensity = ((pulse + 1.0) * 0.5).clamp(0.0, 1.0);
             polygons.push(region_polygon(
                 &format!("pulse:{}", tile.id()),
                 &tile,
-                (0xF1 as f32 * intensity).round() as u8,
-                (0xC4 as f32 * intensity).round() as u8,
-                (0x0F as f32 * intensity).round() as u8,
+                0xF1,
+                0xC4,
+                0x0F,
             ));
         }
-    }
-
-    if state.grid_enabled {
-        let mip_level = state.config.mip_level;
-        let tile_size = state
-            .model
-            .as_ref()
-            .map(|model| model.summary.tile_size as f64)
-            .unwrap_or(256.0);
-        polygons.extend(grid_overlay_polygons(&viewport, tile_size, mip_level));
     }
 
     drop(state);
@@ -288,9 +286,9 @@ fn grid_overlay_polygons(
                 },
             ]
             .into(),
-            fill_red: 0xFF,
-            fill_green: 0xFF,
-            fill_blue: 0xFF,
+            fill_red: 0x00,
+            fill_green: 0x00,
+            fill_blue: 0x00,
         });
         x += step;
         vertical_index += 1;
@@ -321,9 +319,9 @@ fn grid_overlay_polygons(
                 },
             ]
             .into(),
-            fill_red: 0xFF,
-            fill_green: 0xFF,
-            fill_blue: 0xFF,
+            fill_red: 0x00,
+            fill_green: 0x00,
+            fill_blue: 0x00,
         });
         y += step;
         horizontal_index += 1;
