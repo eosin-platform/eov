@@ -50,6 +50,10 @@ fn gpu_prefetch_capacity(total_tiles: usize, loader_workers: usize, batch_size: 
         .min(total_tiles.max(1))
 }
 
+fn gpu_completed_batch_capacity(total_tiles: usize, batch_size: usize) -> usize {
+    total_tiles.div_ceil(batch_size.max(1)).clamp(1, 4)
+}
+
 fn cpu_read_status_message(scheduled: usize, loaded: usize, done: usize, total: usize) -> String {
     format!(
         "Reading tiles {scheduled}/{total} scheduled, {} queued, {done}/{total} completed",
@@ -152,6 +156,12 @@ struct TilePlan {
 struct LoadedGpuTile {
     tile_plan: TilePlan,
     bytes: Vec<u8>,
+}
+
+struct CompletedGpuBatch {
+    tile_plans: Vec<TilePlan>,
+    rgba_tiles: Vec<Vec<u8>>,
+    reconstructions: Vec<ReconstructionResult>,
 }
 
 struct LoadedCpuTile {
@@ -772,8 +782,9 @@ fn run_tile_plan_with_file_gpu_batched(
         .min(total_tiles)
         .max(1);
     let queue_capacity = gpu_prefetch_capacity(total_tiles, worker_count, batch_size);
+    let completed_queue_capacity = gpu_completed_batch_capacity(total_tiles, batch_size);
     debug_timing(&format!(
-        "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} model_fixed_batch_size={} batch_size={} queue_capacity={}",
+        "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} model_fixed_batch_size={} batch_size={} queue_capacity={} completed_queue_capacity={}",
         total_tiles,
         worker_count,
         gpu_batch_size,
@@ -781,7 +792,8 @@ fn run_tile_plan_with_file_gpu_batched(
             .map(|value| value.to_string())
             .unwrap_or_else(|| "dynamic".to_string()),
         batch_size,
-        queue_capacity
+        queue_capacity,
+        completed_queue_capacity
     ));
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
@@ -792,9 +804,55 @@ fn run_tile_plan_with_file_gpu_batched(
     let first_error = Arc::new(Mutex::new(None::<String>));
     let pipeline_stats = Arc::new(GpuPipelineStats::default());
     let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(queue_capacity);
+    let (completed_sender, completed_receiver) =
+        mpsc::sync_channel::<CompletedGpuBatch>(completed_queue_capacity);
     let mut handles = Vec::with_capacity(worker_count);
     let inference_running = Arc::new(AtomicBool::new(false));
     let gpu_started = Instant::now();
+
+    let postprocess_cancel = Arc::clone(&cancel);
+    let postprocess_processed = Arc::clone(&processed);
+    let postprocess_namespace = namespace.clone();
+    let postprocess_handle = thread::spawn(move || -> Result<(), String> {
+        while let Ok(completed_batch) = completed_receiver.recv() {
+            if postprocess_cancel.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+
+            let analysis_postprocess_started = Instant::now();
+            let analyzed_tiles = build_analyzed_tiles_batch(
+                completed_batch.tile_plans,
+                completed_batch.rgba_tiles,
+                completed_batch.reconstructions,
+            );
+            debug_timing(&format!(
+                "batch analyzed-tile construction completed in {:?}",
+                analysis_postprocess_started.elapsed()
+            ));
+
+            {
+                let mut state = plugin_state()
+                    .lock()
+                    .map_err(|_| "plugin state lock is poisoned".to_string())?;
+                for tile in analyzed_tiles.iter() {
+                    state.cache.insert(
+                        tile.id(),
+                        TileCacheEntry {
+                            namespace: postprocess_namespace.clone(),
+                            tile: tile.clone(),
+                        },
+                    );
+                }
+            }
+
+            let completed_batch_size = analyzed_tiles.len();
+            let previous_done = postprocess_processed.fetch_add(completed_batch_size, Ordering::Relaxed);
+            let done = previous_done + completed_batch_size;
+            let refresh_stats = done == total_tiles || done / 16 != previous_done / 16;
+            report_progress(done, total_tiles, "Processing", refresh_stats);
+        }
+        Ok(())
+    });
 
     for _ in 0..worker_count {
         let worker_tiles = Arc::clone(&tiles);
@@ -913,6 +971,7 @@ fn run_tile_plan_with_file_gpu_batched(
     let mut pending_bytes = Vec::with_capacity(batch_size);
     let mut sender_disconnected = false;
     let require_full_batch = model_fixed_batch_size.is_some() && total_tiles >= batch_size;
+    let mut inference_error = None::<String>;
 
     while !cancel.load(Ordering::Relaxed) {
         let loaded = match receiver.recv() {
@@ -984,41 +1043,37 @@ fn run_tile_plan_with_file_gpu_batched(
         );
         let _inference_running = InferenceRunningGuard::new(Arc::clone(&inference_running));
         let inference_started = Instant::now();
-        let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
+        let reconstructions = match run_reconstruction_batch(&worker_model, batch_inputs.as_slice()) {
+            Ok(reconstructions) => reconstructions,
+            Err(error) => {
+                cancel.store(true, Ordering::Relaxed);
+                inference_error = Some(error);
+                break;
+            }
+        };
         pipeline_stats.record_inference(inference_started.elapsed(), batch_inputs.len());
 
-        let analysis_postprocess_started = Instant::now();
-        let analyzed_tiles = build_analyzed_tiles_batch(
-            &mut pending_tiles,
-            &mut pending_bytes,
-            reconstructions,
-        );
-        debug_timing(&format!(
-            "batch analyzed-tile construction completed in {:?}",
-            analysis_postprocess_started.elapsed()
-        ));
-
-        {
-            let mut state = plugin_state().lock().unwrap();
-            for tile in analyzed_tiles.iter() {
-                state.cache.insert(
-                    tile.id(),
-                    TileCacheEntry {
-                        namespace: namespace.clone(),
-                        tile: tile.clone(),
-                    },
-                );
-            }
+        if cancel.load(Ordering::Relaxed) {
+            break;
         }
 
-        let completed_batch = analyzed_tiles.len();
-        let previous_done = processed.fetch_add(completed_batch, Ordering::Relaxed);
-        let done = previous_done + completed_batch;
-        let refresh_stats = done == total_tiles || done / 16 != previous_done / 16;
-        report_progress(done, total_tiles, "Processing", refresh_stats);
+        let completed_batch = CompletedGpuBatch {
+            tile_plans: pending_tiles.drain(..).collect(),
+            rgba_tiles: pending_bytes.drain(..).collect(),
+            reconstructions,
+        };
+        if completed_sender.send(completed_batch).is_err() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            inference_error = Some("gpu completed batch receiver disconnected".to_string());
+            cancel.store(true, Ordering::Relaxed);
+            break;
+        }
     }
 
     drop(receiver);
+    drop(completed_sender);
 
     for handle in handles {
         handle
@@ -1026,9 +1081,17 @@ fn run_tile_plan_with_file_gpu_batched(
             .map_err(|_| "analysis worker thread panicked".to_string())?;
     }
 
+    let postprocess_result = postprocess_handle
+        .join()
+        .map_err(|_| "gpu postprocess thread panicked".to_string())?;
+
     if let Some(error) = first_error.lock().unwrap().clone() {
         return Err(error);
     }
+    if let Some(error) = inference_error {
+        return Err(error);
+    }
+    postprocess_result?;
 
     let stats = pipeline_stats.snapshot();
     let elapsed = gpu_started.elapsed();
@@ -1180,13 +1243,13 @@ fn build_analyzed_tile(tile_plan: TilePlan, rgba: &[u8], reconstruction_rgb: &[u
 }
 
 fn build_analyzed_tiles_batch(
-    pending_tiles: &mut Vec<TilePlan>,
-    pending_bytes: &mut Vec<Vec<u8>>,
+    pending_tiles: Vec<TilePlan>,
+    pending_bytes: Vec<Vec<u8>>,
     reconstructions: Vec<ReconstructionResult>,
 ) -> Vec<AnalyzedTile> {
     let mut batch_items = pending_tiles
-        .drain(..)
-        .zip(pending_bytes.drain(..))
+        .into_iter()
+        .zip(pending_bytes)
         .zip(reconstructions)
         .map(|((tile_plan, bytes), reconstruction)| (tile_plan, bytes, reconstruction))
         .collect::<Vec<_>>();
