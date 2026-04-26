@@ -414,6 +414,7 @@ export component EovaeSidebar inherits Rectangle {
     in property <bool> analysis-section-expanded: true;
     in property <bool> results-section-expanded: true;
     in property <string> analysis-elapsed-text: "";
+    in property <string> analysis-started-text: "";
     in property <string> analysis-summary-text: "";
     in property <bool> analysis-summary-is-error: false;
     in property <bool> analysis-show-leading-status: false;
@@ -427,6 +428,9 @@ export component EovaeSidebar inherits Rectangle {
     private property <length> mip-menu-x: 0px;
     private property <length> mip-menu-y: 0px;
     private property <length> mip-menu-width: 122px;
+    private property <string> analysis-tooltip-text: "";
+    private property <length> analysis-tooltip-center-x: 0px;
+    private property <length> analysis-tooltip-top-y: 0px;
     in property <string> stats-summary: "No analysis yet.";
     in property <[ErrorHistogramBin]> error-histogram: [];
     in property <int> error-histogram-max: 0;
@@ -700,11 +704,21 @@ export component EovaeSidebar inherits Rectangle {
                             }
                         }
 
-                        Text {
-                            text: root.job-status;
-                            color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
-                            wrap: word-wrap;
-                            font-size: 11px;
+                        Rectangle {
+                            width: parent.width;
+                            height: 18px;
+                            background: transparent;
+
+                            Text {
+                                width: parent.width;
+                                height: parent.height;
+                                text: root.job-status;
+                                color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
                         }
 
                         Rectangle {
@@ -721,10 +735,34 @@ export component EovaeSidebar inherits Rectangle {
                             }
                         }
 
-                        if root.analysis-elapsed-text != "": Text {
-                            text: "Elapsed: " + root.analysis-elapsed-text;
-                            color: Theme.text-secondary;
-                            font-size: 11px;
+                        if root.analysis-elapsed-text != "": Rectangle {
+                            width: parent.width;
+                            height: 18px;
+                            background: transparent;
+
+                            HorizontalLayout {
+                                width: parent.width;
+                                height: parent.height;
+                                spacing: 8px;
+
+                                Text {
+                                    text: "Elapsed: " + root.analysis-elapsed-text;
+                                    color: Theme.text-secondary;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
+
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                if root.analysis-started-text != "": Text {
+                                    text: "Started: " + root.analysis-started-text;
+                                    color: Theme.text-secondary;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                    overflow: elide;
+                                }
+                            }
                         }
                     }
                 }
@@ -935,7 +973,7 @@ export component EovaeSidebar inherits Rectangle {
                     max(0px, root.height - self.height - 8px)
                 );
                 width: root.mip-menu-width;
-                height: mip-menu-layout.preferred-height + 8px;
+                height: mip-menu-layout.preferred-height;
                 background: #181d24;
                 border-radius: 6px;
                 border-width: 1px;
@@ -978,6 +1016,28 @@ export component EovaeSidebar inherits Rectangle {
                         }
                     }
                 }
+            }
+        }
+
+        if root.analysis-tooltip-text != "": Rectangle {
+            x: max(4px, min(root.width - self.width - 4px, root.analysis-tooltip-center-x - self.width / 2));
+            y: root.analysis-tooltip-top-y;
+            width: root.width - 8px;
+            height: analysis-tooltip-label.preferred-height + 10px;
+            background: #101419f2;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            z: 30;
+
+            analysis-tooltip-label := Text {
+                x: 6px;
+                y: 5px;
+                width: parent.width - 12px;
+                text: root.analysis-tooltip-text;
+                color: Theme.text-primary;
+                font-size: 11px;
+                wrap: word-wrap;
             }
         }
     }

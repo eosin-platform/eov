@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 fn default_true() -> bool {
     true
@@ -115,6 +115,7 @@ pub struct PluginState {
     pub job: Option<RunningJob>,
     pub analysis_phase: AnalysisPhase,
     pub analysis_started_at: Option<Instant>,
+    pub analysis_started_wallclock: Option<SystemTime>,
     pub analysis_elapsed: Option<Duration>,
     pub analysis_error_message: Option<String>,
     pub model_section_expanded: bool,
@@ -151,6 +152,7 @@ impl Default for PluginState {
             job: None,
             analysis_phase: AnalysisPhase::Idle,
             analysis_started_at: None,
+            analysis_started_wallclock: None,
             analysis_elapsed: None,
             analysis_error_message: None,
             model_section_expanded: true,
@@ -219,6 +221,7 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.job_status = "Idle".to_string();
     state.analysis_phase = AnalysisPhase::Idle;
     state.analysis_started_at = None;
+    state.analysis_started_wallclock = None;
     state.analysis_elapsed = None;
     state.analysis_error_message = None;
     state.hovered_region_id = None;

@@ -20,6 +20,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
+use std::time::SystemTime;
 
 const GPU_BATCH_FILL_WAIT: Duration = Duration::from_millis(3);
 const BACKGROUND_SAMPLE_STRIDE: usize = 8;
@@ -63,7 +64,7 @@ fn gpu_completed_batch_capacity(total_tiles: usize, batch_size: usize) -> usize 
 
 fn cpu_read_status_message(scheduled: usize, loaded: usize, done: usize, total: usize) -> String {
     format!(
-        "Reading tiles {scheduled}/{total} scheduled, {} queued, {done}/{total} completed",
+        "Reading {scheduled}/{total} | queued {} | done {done}/{total}",
         loaded.saturating_sub(done)
     )
 }
@@ -80,11 +81,10 @@ fn cpu_inference_status_message(
         done.min(total)
     };
     let queued = loaded.saturating_sub(done);
-    let mut message = format!(
-        "Running inference tile {current_tile}/{total}, {done}/{total} completed, {queued} queued"
-    );
+    let mut message =
+        format!("Infer {current_tile}/{total} | done {done}/{total} | queued {queued}");
     if let Some(elapsed_secs) = elapsed_secs {
-        message.push_str(&format!(" ({elapsed_secs}s)"));
+        message.push_str(&format!(" | {elapsed_secs}s"));
     }
     message
 }
@@ -253,6 +253,7 @@ where
         });
         state.analysis_phase = AnalysisPhase::Running;
         state.analysis_started_at = Some(Instant::now());
+        state.analysis_started_wallclock = Some(SystemTime::now());
         state.analysis_elapsed = None;
         state.analysis_error_message = None;
         state.progress_value = 0.0;
@@ -386,7 +387,7 @@ fn run_tile_plan_with_file(
         report_progress_message(
             cached_count,
             total_tiles,
-            format!("Loaded {cached_count}/{total_tiles} cached tiles from persistent cache"),
+            format!("Cache {cached_count}/{total_tiles} ready"),
             true,
             true,
         );
@@ -1013,7 +1014,7 @@ fn run_tile_plan_with_file_gpu_batched(
                                     done,
                                     total_tiles,
                                     format!(
-                                        "Filtering background {scanned_count}/{total_tiles} scanned, {filtered_count} skipped, {} queued",
+                                        "Filter {scanned_count}/{total_tiles} | skipped {filtered_count} | queued {}",
                                         worker_queued.load(Ordering::Relaxed)
                                     ),
                                     false,
@@ -1038,7 +1039,7 @@ fn run_tile_plan_with_file_gpu_batched(
                                 worker_processed.load(Ordering::Relaxed),
                                 total_tiles,
                                 format!(
-                                    "Preparing inference batches {scanned_count}/{total_tiles} scanned, {} skipped, {queued_count} queued",
+                                    "Queue {scanned_count}/{total_tiles} | skipped {} | ready {queued_count}",
                                     worker_filtered.load(Ordering::Relaxed)
                                 ),
                                 false,
@@ -1135,7 +1136,7 @@ fn run_tile_plan_with_file_gpu_batched(
             processed.load(Ordering::Relaxed),
             total_tiles,
             format!(
-                "Running inference batch={} scanned {scanned_count}/{total_tiles}, skipped {filtered_count}",
+                "Batch {} | scanned {scanned_count}/{total_tiles} | skipped {filtered_count}",
                 batch_inputs.len()
             ),
             false,

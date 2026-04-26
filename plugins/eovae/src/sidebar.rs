@@ -21,8 +21,15 @@ fn plugin_trace(message: impl AsRef<str>) {
     }
 }
 
+use chrono::{DateTime, Local};
+
 fn analysis_namespace(base_namespace: &str, mip_level: u32) -> String {
     format!("{base_namespace}|mip{mip_level}")
+}
+
+fn format_analysis_started(started_at: std::time::SystemTime) -> String {
+    let started_at: DateTime<Local> = started_at.into();
+    started_at.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 fn format_elapsed(duration: Duration) -> String {
@@ -190,6 +197,10 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         }
         AnalysisPhase::Idle => None,
     };
+    let analysis_started_text = state
+        .analysis_started_wallclock
+        .map(format_analysis_started)
+        .unwrap_or_default();
     let analysis_elapsed_text = analysis_elapsed.map(format_elapsed).unwrap_or_default();
     let analysis_summary_text = match state.analysis_phase {
         AnalysisPhase::Running => state.job_status.clone(),
@@ -272,6 +283,7 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             json!(state.results_section_expanded),
         ),
         property("analysis-elapsed-text", json!(analysis_elapsed_text)),
+        property("analysis-started-text", json!(analysis_started_text)),
         property("analysis-summary-text", json!(analysis_summary_text)),
         property(
             "analysis-summary-is-error",
@@ -447,6 +459,7 @@ fn start_model_load(path: String, persist_on_success: bool) {
         state.job_status = "Idle".to_string();
         state.analysis_phase = AnalysisPhase::Idle;
         state.analysis_started_at = None;
+        state.analysis_started_wallclock = None;
         state.analysis_elapsed = None;
         state.analysis_error_message = None;
         state.cache_namespace.clear();
@@ -499,6 +512,7 @@ fn finish_model_load(
         state.job_status = "Idle".to_string();
         state.analysis_phase = AnalysisPhase::Idle;
         state.analysis_started_at = None;
+        state.analysis_started_wallclock = None;
         state.analysis_elapsed = None;
         state.analysis_error_message = None;
 
@@ -564,6 +578,7 @@ fn clear_model() {
     state.job_status = "Idle".to_string();
     state.analysis_phase = AnalysisPhase::Idle;
     state.analysis_started_at = None;
+    state.analysis_started_wallclock = None;
     state.analysis_elapsed = None;
     state.analysis_error_message = None;
     state.cache_namespace.clear();

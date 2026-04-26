@@ -1865,6 +1865,7 @@ name = "eovae"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
+ "chrono",
  "common",
  "dirs",
  "libloading 0.8.9",

@@ -25,3 +25,4 @@ dirs = "6"
 libloading = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sqlite-vec = "0.1.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
