@@ -49,101 +49,57 @@ component SidebarActionButton inherits Rectangle {
     }
 }
 
-component MipSelectorOption inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected: false;
-    callback clicked();
-
-    height: 26px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : root.selected ? #2f6db522 : transparent;
-
-    touch := TouchArea {
-        width: parent.width;
-        height: parent.height;
-        mouse-cursor: MouseCursor.pointer;
-        clicked => { root.clicked(); }
-    }
-
-    Text {
-        x: 8px;
-        width: parent.width - 16px;
-        height: parent.height;
-        text: root.text;
-        color: Theme.text-primary;
-        vertical-alignment: center;
-    }
-}
-
-component MipLevelSelector inherits Rectangle {
-    in property <[string]> model: [];
-    in property <int> current-index: 0;
-    in-out property <bool> popup-open: false;
-    callback selected(string);
-    private property <int> visual-index: 0;
+component InlineLabeledNumberField inherits Rectangle {
+    in property <string> label: "";
+    in-out property <string> value: "";
+    in property <bool> enabled: true;
+    callback accepted(string);
+    callback edited(string);
 
     height: 28px;
     border-radius: 4px;
-    background: #0a0c10;
+    background: root.enabled ? #0a0c10 : #0a0c1055;
     border-width: 1px;
-    border-color: root.popup-open || touch.has-hover ? #4da3d9 : Theme.border;
+    border-color: field.has-focus && root.enabled ? #4da3d9 : Theme.border;
 
-    property <string> current-label:
-        root.visual-index >= 0 && root.visual-index < root.model.length ? root.model[root.visual-index] : "";
-
-    changed current-index => {
-        root.visual-index = root.current-index;
-    }
-
-    touch := TouchArea {
+    HorizontalLayout {
         width: parent.width;
         height: parent.height;
-        mouse-cursor: MouseCursor.pointer;
-        clicked => { root.popup-open = !root.popup-open; }
-    }
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
 
-    Text {
-        x: 8px;
-        width: parent.width - 24px;
-        height: parent.height;
-        text: root.current-label;
-        color: Theme.text-primary;
-        vertical-alignment: center;
-    }
+        Text {
+            text: root.label;
+            color: root.enabled ? Theme.text-secondary : #ffffff55;
+            font-size: 10px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
 
-    Text {
-        x: parent.width - self.width - 8px;
-        width: 10px;
-        height: parent.height;
-        text: root.popup-open ? "▴" : "▾";
-        color: Theme.text-secondary;
-        vertical-alignment: center;
-    }
+        Rectangle {
+            width: 1px;
+            height: 14px;
+            y: (parent.height - self.height) / 2;
+            background: root.enabled ? #ffffff12 : #ffffff08;
+        }
 
-    if root.popup-open: Rectangle {
-        x: 0px;
-        y: parent.height + 4px;
-        z: 10;
-        width: parent.width;
-        border-radius: 6px;
-        background: #20242a;
-        border-width: 1px;
-        border-color: Theme.border;
+        field := TextInput {
+            horizontal-stretch: 1;
+            text <=> root.value;
+            color: root.enabled ? white : #ffffff70;
+            font-size: 11px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            input-type: InputType.number;
+            enabled: root.enabled;
 
-        VerticalLayout {
-            width: parent.width;
-            padding: 4px;
-            spacing: 2px;
+            accepted => {
+                root.accepted(self.text);
+            }
 
-            for option[index] in root.model: MipSelectorOption {
-                width: parent.width - 8px;
-                text: option;
-                selected: index == root.visual-index;
-                clicked => {
-                    root.visual-index = index;
-                    root.popup-open = false;
-                    root.selected(option);
-                }
+            edited => {
+                root.edited(self.text);
             }
         }
     }
@@ -378,7 +334,6 @@ export component EovaeSidebar inherits Rectangle {
     in property <float> progress-value: 0;
     in property <bool> job-running: false;
     in property <bool> model-section-expanded: true;
-    in property <bool> model-io-section-expanded: true;
     in property <bool> analysis-section-expanded: true;
     in property <bool> results-section-expanded: true;
     in property <string> analysis-elapsed-text: "";
@@ -406,7 +361,6 @@ export component EovaeSidebar inherits Rectangle {
     callback mode-changed(string);
     callback mip-changed(string);
     callback model-section-expanded-changed(bool);
-    callback model-io-section-expanded-changed(bool);
     callback analysis-section-expanded-changed(bool);
     callback results-section-expanded-changed(bool);
     callback analysis-threads-changed(string);
@@ -504,40 +458,8 @@ export component EovaeSidebar inherits Rectangle {
                                 clicked => { root.clear-model(); }
                             }
                         }
-                    }
-                }
 
-                Rectangle { height: 2px; background: Theme.border; }
-
-                SidebarSectionHeader {
-                    width: parent.width - 6px;
-                    title: "Model I/O";
-                    expanded: root.model-io-section-expanded;
-                    split-summary: !root.model-io-section-expanded;
-                    summary-start-text: root.model-io-section-expanded ? "" : root.selected-input-name;
-                    summary-end-text: root.model-io-section-expanded ? "" : root.selected-output-name;
-                    toggled => { root.model-io-section-expanded-changed(!root.model-io-section-expanded); }
-                }
-
-                if root.model-io-section-expanded: Rectangle {
-                    width: parent.width - 18px;
-                    x: 18px;
-                    background: transparent;
-
-                    Rectangle {
-                        x: 0;
-                        y: 0;
-                        width: 1px;
-                        height: parent.height;
-                        background: #ffffff12;
-                    }
-
-                    VerticalLayout {
-                        width: parent.width - 12px;
-                        padding-left: 10px;
-                        padding-top: 2px;
-                        padding-bottom: 10px;
-                        spacing: 8px;
+                        Rectangle { height: 1px; background: Theme.border; }
 
                         Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
                         if root.input-options.length > 0: ComboBox {
@@ -621,114 +543,42 @@ export component EovaeSidebar inherits Rectangle {
                             spacing: 8px;
 
                             ComboBox {
-                                horizontal-stretch: 1;
-                                model: root.mode-options;
-                                current-index: root.selected-mode-index;
-                                selected(value) => { root.mode-changed(value); }
+                                width: 84px;
+                                model: root.mip-options;
+                                current-index: root.selected-mip-index;
+                                selected(value) => { root.mip-changed(value); }
                             }
 
-                            Rectangle {
-                                min-width: 88px;
-                                background: transparent;
+                            InlineLabeledNumberField {
+                                horizontal-stretch: 1;
+                                label: "Threads";
+                                value: root.analysis-threads;
+                                accepted(value) => {
+                                    root.analysis-threads-changed(value);
+                                }
+                                edited(value) => {
+                                    root.analysis-threads-changed(value);
+                                }
+                            }
 
-                                MipLevelSelector {
-                                    width: parent.width;
-                                    model: root.mip-options;
-                                    current-index: root.selected-mip-index;
-                                    selected(value) => { root.mip-changed(value); }
+                            InlineLabeledNumberField {
+                                width: 98px;
+                                label: "Batch";
+                                value: root.analysis-batch-size;
+                                enabled: root.gpu-backend-active;
+                                accepted(value) => {
+                                    root.analysis-batch-size-changed(value);
+                                }
+                                edited(value) => {
+                                    root.analysis-batch-size-changed(value);
                                 }
                             }
                         }
 
-                        HorizontalLayout {
-                            spacing: 8px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                horizontal-stretch: 1;
-
-                                Text {
-                                    text: "Threads";
-                                    color: Theme.text-secondary;
-                                    font-size: 11px;
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-
-                                    Rectangle {
-                                        width: 72px;
-                                        height: 28px;
-                                        background: #0a0c10;
-                                        border-radius: 4px;
-                                        border-width: 1px;
-                                        border-color: threads-input.has-focus ? #4da3d9 : Theme.border;
-
-                                        threads-input := TextInput {
-                                            x: 8px;
-                                            width: parent.width - 16px;
-                                            color: white;
-                                            font-size: 11px;
-                                            vertical-alignment: center;
-                                            input-type: InputType.number;
-                                            text: root.analysis-threads;
-
-                                            accepted => {
-                                                root.analysis-threads-changed(self.text);
-                                            }
-
-                                            edited => {
-                                                root.analysis-threads-changed(self.text);
-                                            }
-                                        }
-                                    }
-
-                                    Text {
-                                        text: "(max " + root.max-analysis-threads + ")";
-                                        color: Theme.text-secondary;
-                                        font-size: 11px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-
-                            VerticalLayout {
-                                spacing: 4px;
-
-                                Text {
-                                    text: "Batch Size";
-                                    color: root.gpu-backend-active ? Theme.text-secondary : #ffffff55;
-                                    font-size: 11px;
-                                }
-
-                                Rectangle {
-                                    width: 72px;
-                                    height: 28px;
-                                    background: root.gpu-backend-active ? #0a0c10 : #0a0c1055;
-                                    border-radius: 4px;
-                                    border-width: 1px;
-                                    border-color: batch-size-input.has-focus && root.gpu-backend-active ? #4da3d9 : Theme.border;
-
-                                    batch-size-input := TextInput {
-                                        x: 8px;
-                                        width: parent.width - 16px;
-                                        color: root.gpu-backend-active ? white : #ffffff70;
-                                        font-size: 11px;
-                                        vertical-alignment: center;
-                                        input-type: InputType.number;
-                                        enabled: root.gpu-backend-active;
-                                        text: root.analysis-batch-size;
-
-                                        accepted => {
-                                            root.analysis-batch-size-changed(self.text);
-                                        }
-
-                                        edited => {
-                                            root.analysis-batch-size-changed(self.text);
-                                        }
-                                    }
-                                }
-                            }
+                        Text {
+                            text: "Threads max " + root.max-analysis-threads;
+                            color: Theme.text-secondary;
+                            font-size: 10px;
                         }
 
                         HorizontalLayout {

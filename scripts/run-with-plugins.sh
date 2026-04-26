@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGINS_DIR="$REPO_ROOT/plugins"
 DEST_DIR="$HOME/.eov/plugins"
 
+rm -rf ~/.cache/eov/plugin-packages
+
 export CUDA_HOME=/usr/local/cuda-12.9
 export PATH="$CUDA_HOME/bin:$PATH"
 export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"

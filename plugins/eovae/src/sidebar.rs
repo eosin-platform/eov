@@ -60,7 +60,6 @@ fn persist_sidebar_preferences() {
     let state = plugin_state().lock().unwrap();
     if let Err(error) = save_persisted_config_field(|config| {
         config.model_section_expanded = state.model_section_expanded;
-        config.model_io_section_expanded = state.model_io_section_expanded;
         config.analysis_section_expanded = state.analysis_section_expanded;
         config.results_section_expanded = state.results_section_expanded;
         config.analysis_threads = Some(state.config.analysis_threads);
@@ -265,10 +264,6 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             json!(state.model_section_expanded),
         ),
         property(
-            "model-io-section-expanded",
-            json!(state.model_io_section_expanded),
-        ),
-        property(
             "analysis-section-expanded",
             json!(state.analysis_section_expanded),
         ),
@@ -341,9 +336,6 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
         "model-section-expanded-changed" => {
             (update_section_expanded(args_json, Section::Model), false)
         }
-        "model-io-section-expanded-changed" => {
-            (update_section_expanded(args_json, Section::ModelIo), false)
-        }
         "analysis-section-expanded-changed" => {
             (update_section_expanded(args_json, Section::Analysis), false)
         }
@@ -382,7 +374,6 @@ pub fn initialize_from_config() {
     {
         let mut state = plugin_state().lock().unwrap();
         state.model_section_expanded = persisted_config.model_section_expanded;
-        state.model_io_section_expanded = persisted_config.model_io_section_expanded;
         state.analysis_section_expanded = persisted_config.analysis_section_expanded;
         state.results_section_expanded = persisted_config.results_section_expanded;
         state.config.analysis_threads = clamp_analysis_threads(
@@ -773,7 +764,6 @@ fn update_mip_level(args_json: &str) -> bool {
 #[derive(Clone, Copy)]
 enum Section {
     Model,
-    ModelIo,
     Analysis,
     Results,
 }
@@ -800,7 +790,6 @@ fn update_section_expanded(args_json: &str, section: Section) -> bool {
     let mut state = plugin_state().lock().unwrap();
     let target = match section {
         Section::Model => &mut state.model_section_expanded,
-        Section::ModelIo => &mut state.model_io_section_expanded,
         Section::Analysis => &mut state.analysis_section_expanded,
         Section::Results => &mut state.results_section_expanded,
     };

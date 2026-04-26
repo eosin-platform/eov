@@ -20,7 +20,6 @@ fn default_true() -> bool {
 pub struct PersistedConfig {
     pub default_model_path: Option<String>,
     pub model_section_expanded: bool,
-    pub model_io_section_expanded: bool,
     pub analysis_section_expanded: bool,
     pub results_section_expanded: bool,
     pub analysis_threads: Option<usize>,
@@ -32,7 +31,6 @@ impl Default for PersistedConfig {
         Self {
             default_model_path: None,
             model_section_expanded: default_true(),
-            model_io_section_expanded: default_true(),
             analysis_section_expanded: default_true(),
             results_section_expanded: default_true(),
             analysis_threads: None,
@@ -120,7 +118,6 @@ pub struct PluginState {
     pub analysis_elapsed: Option<Duration>,
     pub analysis_error_message: Option<String>,
     pub model_section_expanded: bool,
-    pub model_io_section_expanded: bool,
     pub analysis_section_expanded: bool,
     pub results_section_expanded: bool,
     pub hovered_region_id: Option<String>,
@@ -157,7 +154,6 @@ impl Default for PluginState {
             analysis_elapsed: None,
             analysis_error_message: None,
             model_section_expanded: true,
-            model_io_section_expanded: true,
             analysis_section_expanded: true,
             results_section_expanded: true,
             hovered_region_id: None,
