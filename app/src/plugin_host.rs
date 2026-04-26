@@ -1894,27 +1894,43 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
         .filter(|button| {
             !remote_toolbar_keys.contains(&(button.plugin_id.clone(), button.button_id.clone()))
         })
-        .map(|button| crate::PluginButtonData {
-            plugin_id: button.plugin_id.clone().into(),
-            button_id: button.button_id.clone().into(),
-            tooltip: button.tooltip.clone().into(),
-            icon: image_from_icon_descriptor(&button.icon),
-            action_id: button.action_id.clone().into(),
-            active: button.active,
+        .map(|button| {
+            (
+                button.plugin_id.clone(),
+                button.button_id.clone(),
+                button.tooltip.clone(),
+                image_from_icon_descriptor(&button.icon),
+                button.action_id.clone(),
+                button.active,
+            )
         })
-        .chain(
-            remote_buttons
-                .0
-                .into_iter()
-                .map(|button| crate::PluginButtonData {
-                    plugin_id: button.plugin_id.into(),
-                    button_id: button.button_id.into(),
-                    tooltip: button.tooltip.into(),
-                    icon: image_from_svg(&button.icon_svg),
-                    action_id: button.action_id.into(),
-                    active: button.active,
-                }),
-        )
+        .chain(remote_buttons.0.into_iter().map(|button| {
+            (
+                button.plugin_id,
+                button.button_id,
+                button.tooltip,
+                image_from_svg(&button.icon_svg),
+                button.action_id,
+                button.active,
+            )
+        }))
+        .scan(None::<String>, |previous_plugin_id, (plugin_id, button_id, tooltip, icon, action_id, active)| {
+            let show_left_separator = previous_plugin_id
+                .as_ref()
+                .map(|previous| previous != &plugin_id)
+                .unwrap_or(true);
+            *previous_plugin_id = Some(plugin_id.clone());
+
+            Some(crate::PluginButtonData {
+                plugin_id: plugin_id.into(),
+                button_id: button_id.into(),
+                tooltip: tooltip.into(),
+                icon,
+                action_id: action_id.into(),
+                active,
+                show_left_separator,
+            })
+        })
         .collect();
     let hud_buttons: Vec<crate::HudToolbarButtonData> = state
         .local_hud_plugin_buttons

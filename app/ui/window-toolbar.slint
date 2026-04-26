@@ -289,24 +289,37 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            for btn[idx] in root.plugin-buttons: SvgToolButton {
-                width: 32px;
-                icon-source: btn.icon;
-                tooltip-text: btn.tooltip;
-                is-active: btn.active;
-                changed hovered => {
-                    if self.hovered {
-                        root.plugin-hovered-tooltip-text = btn.tooltip;
-                        root.plugin-hovered-tooltip-center-x = self.absolute-position.x + self.width / 2;
-                        root.plugin-hovered-tooltip-top-y = self.absolute-position.y + self.height + 6px;
-                    } else if root.plugin-hovered-tooltip-text == btn.tooltip {
-                        root.plugin-hovered-tooltip-text = "";
-                        root.plugin-hovered-tooltip-center-x = 0px;
-                        root.plugin-hovered-tooltip-top-y = 0px;
+            for btn[idx] in root.plugin-buttons: HorizontalLayout {
+                spacing: 4px;
+
+                if btn.show-left-separator : VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 1px;
+                        height: 24px;
+                        background: Theme.border;
                     }
                 }
-                clicked => {
-                    root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+
+                SvgToolButton {
+                    width: 32px;
+                    icon-source: btn.icon;
+                    tooltip-text: btn.tooltip;
+                    is-active: btn.active;
+                    changed hovered => {
+                        if self.hovered {
+                            root.plugin-hovered-tooltip-text = btn.tooltip;
+                            root.plugin-hovered-tooltip-center-x = self.absolute-position.x + self.width / 2;
+                            root.plugin-hovered-tooltip-top-y = self.absolute-position.y + self.height + 6px;
+                        } else if root.plugin-hovered-tooltip-text == btn.tooltip {
+                            root.plugin-hovered-tooltip-text = "";
+                            root.plugin-hovered-tooltip-center-x = 0px;
+                            root.plugin-hovered-tooltip-top-y = 0px;
+                        }
+                    }
+                    clicked => {
+                        root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+                    }
                 }
             }
 
