@@ -1,5 +1,5 @@
 use crate::state::{clamp_analysis_threads, host_api, plugin_state};
-use ndarray::{Array4, ArrayViewD, Axis, Ix4};
+use ndarray::{Array4, ArrayView3, ArrayViewD, Axis, Ix4};
 use onnx_extractor::{DataType as OnnxDataType, OnnxModel, OnnxOperation, OnnxTensor};
 use ort::{
     ep,
@@ -632,7 +632,13 @@ pub fn run_reconstruction_batch(
         let output = output_value
             .try_extract_array::<f32>()
             .map_err(|error| error.to_string())?;
-        postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())
+        let postprocess_started = Instant::now();
+        let reconstructions = postprocess_reconstruction_batch(output, model.summary.layout, inputs.len())?;
+        debug_timing(&format!(
+            "batch postprocess completed in {:?}",
+            postprocess_started.elapsed()
+        ));
+        Ok(reconstructions)
     })();
     finish_run_canceler(run_canceler);
     maybe_finalize_ort_profile(session);
@@ -1413,42 +1419,98 @@ fn postprocess_reconstruction_batch(
             batch_size, requested_batch_size
         ));
     }
-    let mut reconstructions = Vec::with_capacity(batch_size);
-    for batch_index in 0..batch_size {
-        let output = output.index_axis(Axis(0), batch_index);
+    let parallelism = reconstruction_postprocess_parallelism(batch_size);
+    let mut reconstructions = (0..batch_size)
+        .map(|_| None)
+        .collect::<Vec<Option<ReconstructionResult>>>();
 
-        let (height, width, channels) = match layout {
-            Layout::Nchw => (output.shape()[1], output.shape()[2], output.shape()[0]),
-            Layout::Nhwc => (output.shape()[0], output.shape()[1], output.shape()[2]),
-        };
-        if channels < 3 {
-            return Err("reconstruction output must have at least 3 channels".to_string());
+    if parallelism <= 1 || batch_size <= 1 {
+        for batch_index in 0..batch_size {
+            reconstructions[batch_index] = Some(postprocess_reconstruction_item(
+                output.index_axis(Axis(0), batch_index),
+                layout,
+            )?);
         }
-
-        let max_value = output
-            .iter()
-            .fold(f32::MIN, |current, value| current.max(*value));
-        let scale = if max_value <= 1.5 { 255.0 } else { 1.0 };
-
-        let mut rgb = vec![0u8; width * height * 3];
-        for y in 0..height {
-            for x in 0..width {
-                let (r, g, b) = match layout {
-                    Layout::Nchw => (output[[0, y, x]], output[[1, y, x]], output[[2, y, x]]),
-                    Layout::Nhwc => (output[[y, x, 0]], output[[y, x, 1]], output[[y, x, 2]]),
-                };
-                let offset = (y * width + x) * 3;
-                rgb[offset] = (r * scale).clamp(0.0, 255.0) as u8;
-                rgb[offset + 1] = (g * scale).clamp(0.0, 255.0) as u8;
-                rgb[offset + 2] = (b * scale).clamp(0.0, 255.0) as u8;
+    } else {
+        let chunk_size = batch_size.div_ceil(parallelism);
+        thread::scope(|scope| -> Result<(), String> {
+            let mut handles = Vec::new();
+            for start in (0..batch_size).step_by(chunk_size) {
+                let end = (start + chunk_size).min(batch_size);
+                let output = output;
+                handles.push(scope.spawn(move || -> Result<Vec<(usize, ReconstructionResult)>, String> {
+                    let mut local = Vec::with_capacity(end - start);
+                    for batch_index in start..end {
+                        local.push((
+                            batch_index,
+                            postprocess_reconstruction_item(output.index_axis(Axis(0), batch_index), layout)?,
+                        ));
+                    }
+                    Ok(local)
+                }));
             }
-        }
 
-        reconstructions.push(ReconstructionResult { rgb });
+            for handle in handles {
+                let local = handle
+                    .join()
+                    .map_err(|_| "reconstruction postprocess worker thread panicked".to_string())??;
+                for (batch_index, reconstruction) in local {
+                    reconstructions[batch_index] = Some(reconstruction);
+                }
+            }
+            Ok(())
+        })?;
     }
 
-    reconstructions.truncate(requested_batch_size);
-    Ok(reconstructions)
+    reconstructions
+        .into_iter()
+        .take(requested_batch_size)
+        .map(|reconstruction| {
+            reconstruction.ok_or_else(|| "missing reconstruction output for batch item".to_string())
+        })
+        .collect()
+}
+
+fn postprocess_reconstruction_item(
+    output: ArrayView3<'_, f32>,
+    layout: Layout,
+) -> Result<ReconstructionResult, String> {
+    let (height, width, channels) = match layout {
+        Layout::Nchw => (output.shape()[1], output.shape()[2], output.shape()[0]),
+        Layout::Nhwc => (output.shape()[0], output.shape()[1], output.shape()[2]),
+    };
+    if channels < 3 {
+        return Err("reconstruction output must have at least 3 channels".to_string());
+    }
+
+    let max_value = output
+        .iter()
+        .fold(f32::MIN, |current, value| current.max(*value));
+    let scale = if max_value <= 1.5 { 255.0 } else { 1.0 };
+
+    let mut rgb = vec![0u8; width * height * 3];
+    for y in 0..height {
+        for x in 0..width {
+            let (r, g, b) = match layout {
+                Layout::Nchw => (output[[0, y, x]], output[[1, y, x]], output[[2, y, x]]),
+                Layout::Nhwc => (output[[y, x, 0]], output[[y, x, 1]], output[[y, x, 2]]),
+            };
+            let offset = (y * width + x) * 3;
+            rgb[offset] = (r * scale).clamp(0.0, 255.0) as u8;
+            rgb[offset + 1] = (g * scale).clamp(0.0, 255.0) as u8;
+            rgb[offset + 2] = (b * scale).clamp(0.0, 255.0) as u8;
+        }
+    }
+
+    Ok(ReconstructionResult { rgb })
+}
+
+fn reconstruction_postprocess_parallelism(batch_size: usize) -> usize {
+    thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .min(batch_size.max(1))
+        .clamp(1, 4)
 }
 
 #[cfg(test)]

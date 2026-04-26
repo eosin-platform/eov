@@ -984,26 +984,33 @@ fn run_tile_plan_with_file_gpu_batched(
         let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
         pipeline_stats.record_inference(inference_started.elapsed(), batch_inputs.len());
 
-        for ((tile_plan, bytes), reconstruction) in pending_tiles
+        let analyzed_tiles = pending_tiles
             .drain(..)
             .zip(pending_bytes.drain(..))
             .zip(reconstructions.into_iter())
+            .map(|((tile_plan, bytes), reconstruction)| {
+                build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
+            })
+            .collect::<Vec<_>>();
+
         {
-            let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
-            {
-                let mut state = plugin_state().lock().unwrap();
+            let mut state = plugin_state().lock().unwrap();
+            for tile in analyzed_tiles.iter() {
                 state.cache.insert(
                     tile.id(),
                     TileCacheEntry {
                         namespace: namespace.clone(),
-                        tile,
+                        tile: tile.clone(),
                     },
                 );
             }
-            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
-            let refresh_stats = done == total_tiles || done % 16 == 0;
-            report_progress(done, total_tiles, "Processing", refresh_stats);
         }
+
+        let completed_batch = analyzed_tiles.len();
+        let previous_done = processed.fetch_add(completed_batch, Ordering::Relaxed);
+        let done = previous_done + completed_batch;
+        let refresh_stats = done == total_tiles || done / 16 != previous_done / 16;
+        report_progress(done, total_tiles, "Processing", refresh_stats);
     }
 
     drop(receiver);
