@@ -105,6 +105,83 @@ component InlineLabeledNumberField inherits Rectangle {
     }
 }
 
+component InlineLabeledSelectField inherits Rectangle {
+    in property <string> label: "";
+    in property <[string]> model: [];
+    in property <int> current-index: 0;
+    in property <bool> enabled: true;
+    in property <bool> popup-open: false;
+    callback clicked(length, length, length);
+
+    private property <int> visual-index: 0;
+    private property <string> current-label:
+        root.visual-index >= 0 && root.visual-index < root.model.length ? root.model[root.visual-index] : "";
+
+    height: 28px;
+    border-radius: 4px;
+    background: root.enabled ? #0a0c10 : #0a0c1055;
+    border-width: 1px;
+    border-color: (root.popup-open || touch.has-hover) && root.enabled ? #4da3d9 : Theme.border;
+
+    changed current-index => {
+        root.visual-index = root.current-index;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        width: parent.width;
+        height: parent.height;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.clicked(
+                root.absolute-position.x,
+                root.absolute-position.y + root.height + 4px,
+                root.width,
+            );
+        }
+    }
+
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+
+        Text {
+            text: root.label;
+            color: root.enabled ? Theme.text-secondary : #ffffff55;
+            font-size: 10px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 14px;
+            y: (parent.height - self.height) / 2;
+            background: root.enabled ? #ffffff12 : #ffffff08;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.current-label;
+            color: root.enabled ? white : #ffffff70;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            overflow: elide;
+        }
+
+        Text {
+            text: root.popup-open ? "▴" : "▾";
+            color: root.enabled ? Theme.text-secondary : #ffffff55;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+}
+
 component HotRegionButton inherits Rectangle {
     in property <string> label;
     in property <string> score;
@@ -346,6 +423,10 @@ export component EovaeSidebar inherits Rectangle {
     in property <string> analysis-batch-size: "64";
     in property <int> max-analysis-threads: 1;
     in property <bool> gpu-backend-active: false;
+    private property <bool> mip-menu-visible: false;
+    private property <length> mip-menu-x: 0px;
+    private property <length> mip-menu-y: 0px;
+    private property <length> mip-menu-width: 122px;
     in property <string> stats-summary: "No analysis yet.";
     in property <[ErrorHistogramBin]> error-histogram: [];
     in property <int> error-histogram-max: 0;
@@ -542,11 +623,18 @@ export component EovaeSidebar inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
 
-                            ComboBox {
-                                width: 84px;
+                            InlineLabeledSelectField {
+                                width: 122px;
+                                label: "Mip Level";
                                 model: root.mip-options;
                                 current-index: root.selected-mip-index;
-                                selected(value) => { root.mip-changed(value); }
+                                popup-open: root.mip-menu-visible;
+                                clicked(menu-x, menu-y, menu-width) => {
+                                    root.mip-menu-x = menu-x - root.absolute-position.x;
+                                    root.mip-menu-y = menu-y - root.absolute-position.y;
+                                    root.mip-menu-width = menu-width;
+                                    root.mip-menu-visible = !root.mip-menu-visible;
+                                }
                             }
 
                             InlineLabeledNumberField {
@@ -818,6 +906,78 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 Rectangle { height: 2px; background: Theme.border; }
+            }
+        }
+
+        if root.mip-menu-visible: Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+            z: 20;
+
+            TouchArea {
+                width: parent.width;
+                height: parent.height;
+                clicked => {
+                    root.mip-menu-visible = false;
+                }
+            }
+
+            Rectangle {
+                x: min(
+                    root.mip-menu-x,
+                    max(0px, root.width - self.width - 8px)
+                );
+                y: min(
+                    root.mip-menu-y,
+                    max(0px, root.height - self.height - 8px)
+                );
+                width: root.mip-menu-width;
+                height: mip-menu-layout.preferred-height + 8px;
+                background: #181d24;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: Theme.border;
+                drop-shadow-blur: 14px;
+                drop-shadow-color: #00000070;
+                clip: true;
+                z: 21;
+
+                mip-menu-layout := VerticalLayout {
+                    width: parent.width;
+                    padding: 4px;
+                    spacing: 2px;
+
+                    for option[index] in root.mip-options: Rectangle {
+                        width: parent.width - 8px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: option-touch.has-hover ? Theme.surface-hover : index == root.selected-mip-index ? #2f6db522 : transparent;
+
+                        option-touch := TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            mouse-cursor: MouseCursor.pointer;
+                            clicked => {
+                                root.mip-menu-visible = false;
+                                root.mip-changed(option);
+                            }
+                        }
+
+                        Text {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            text: option;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
             }
         }
     }
