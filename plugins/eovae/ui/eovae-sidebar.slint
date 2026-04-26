@@ -322,7 +322,9 @@ export component EovaeSidebar inherits Rectangle {
     in property <float> analysis-indicator-value: 0;
     in property <bool> analysis-completed: false;
     in property <string> analysis-threads: "1";
+    in property <string> analysis-batch-size: "64";
     in property <int> max-analysis-threads: 1;
+    in property <bool> gpu-backend-active: false;
     in property <string> stats-summary: "No analysis yet.";
     in property <[ErrorHistogramBin]> error-histogram: [];
     in property <int> error-histogram-max: 0;
@@ -342,6 +344,7 @@ export component EovaeSidebar inherits Rectangle {
     callback analysis-section-expanded-changed(bool);
     callback results-section-expanded-changed(bool);
     callback analysis-threads-changed(string);
+    callback analysis-batch-size-changed(string);
     callback input-changed(string);
     callback output-changed(string);
 
@@ -641,6 +644,44 @@ export component EovaeSidebar inherits Rectangle {
                                         color: Theme.text-secondary;
                                         font-size: 11px;
                                         vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+
+                                Text {
+                                    text: "Batch Size";
+                                    color: root.gpu-backend-active ? Theme.text-secondary : #ffffff55;
+                                    font-size: 11px;
+                                }
+
+                                Rectangle {
+                                    width: 72px;
+                                    height: 28px;
+                                    background: root.gpu-backend-active ? #0a0c10 : #0a0c1055;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: batch-size-input.has-focus && root.gpu-backend-active ? #4da3d9 : Theme.border;
+
+                                    batch-size-input := TextInput {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        color: root.gpu-backend-active ? white : #ffffff70;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        input-type: InputType.number;
+                                        enabled: root.gpu-backend-active;
+                                        text: root.analysis-batch-size;
+
+                                        accepted => {
+                                            root.analysis-batch-size-changed(self.text);
+                                        }
+
+                                        edited => {
+                                            root.analysis-batch-size-changed(self.text);
+                                        }
                                     }
                                 }
                             }

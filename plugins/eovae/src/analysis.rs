@@ -5,6 +5,7 @@ use crate::state::{
 };
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -15,6 +16,7 @@ use std::time::Instant;
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     pub analysis_threads: usize,
+    pub gpu_batch_size: usize,
     pub skip_background: bool,
     pub background_threshold: u8,
     pub mip_level: u32,
@@ -24,6 +26,7 @@ impl Default for AnalysisConfig {
     fn default() -> Self {
         Self {
             analysis_threads: crate::state::max_analysis_threads(),
+            gpu_batch_size: crate::state::clamp_gpu_batch_size(64),
             skip_background: true,
             background_threshold: 242,
             mip_level: 0,
@@ -84,6 +87,11 @@ struct TilePlan {
     level: u32,
     read_width: u32,
     read_height: u32,
+}
+
+struct LoadedGpuTile {
+    tile_plan: TilePlan,
+    bytes: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -248,7 +256,7 @@ fn run_tile_plan_with_file(
     _file_path: String,
 ) -> Result<(), String> {
     let host = host_api().ok_or_else(|| "host API is not available".to_string())?;
-    let (skip_background, background_threshold, analysis_threads, prefer_gpu) = {
+    let (skip_background, background_threshold, analysis_threads, gpu_batch_size, prefer_gpu) = {
         let state = plugin_state().lock().unwrap();
         let prefer_gpu = host_api()
             .map(|host| (host.get_snapshot)(host.context))
@@ -258,6 +266,7 @@ fn run_tile_plan_with_file(
             state.config.skip_background,
             state.config.background_threshold,
             state.config.analysis_threads.max(1),
+            state.config.gpu_batch_size.max(1),
             prefer_gpu,
         )
     };
@@ -277,6 +286,7 @@ fn run_tile_plan_with_file(
             skip_background,
             background_threshold,
             analysis_threads,
+            gpu_batch_size,
         );
     }
 
@@ -330,7 +340,7 @@ fn run_tile_plan_with_file(
                     .into_result()
                     .map_err(|error| error.to_string())?;
 
-                    if skip_background
+                    if false && skip_background
                         && should_skip_background(bytes.as_slice(), background_threshold)
                     {
                         let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
@@ -418,25 +428,28 @@ fn run_tile_plan_with_file_gpu_batched(
     skip_background: bool,
     background_threshold: u8,
     analysis_threads: usize,
+    gpu_batch_size: usize,
 ) -> Result<(), String> {
     let total_tiles = tiles.len();
-    let worker_count = analysis_threads.min(2).min(total_tiles).max(1);
-    let batch_size = analysis_threads.clamp(2, 8).min(total_tiles).max(1);
+    let worker_count = analysis_threads.min(total_tiles).max(1);
+    let batch_size = crate::state::clamp_gpu_batch_size(gpu_batch_size)
+        .min(total_tiles)
+        .max(1);
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
+    let (sender, receiver) = mpsc::sync_channel::<LoadedGpuTile>(worker_count * 2);
     let mut handles = Vec::with_capacity(worker_count);
 
     for _ in 0..worker_count {
-        let worker_model = model.clone_for_analysis_worker(1);
         let worker_tiles = Arc::clone(&tiles);
         let worker_next_index = Arc::clone(&next_index);
         let worker_processed = Arc::clone(&processed);
         let worker_cancel = Arc::clone(&cancel);
         let worker_error = Arc::clone(&first_error);
-        let worker_namespace = namespace.clone();
         let worker_host = host;
+        let worker_sender = sender.clone();
 
         handles.push(thread::spawn(move || {
             loop {
@@ -453,11 +466,11 @@ fn run_tile_plan_with_file_gpu_batched(
                 }
 
                 let end = (start + batch_size).min(worker_tiles.len());
-                let mut batch_tiles = Vec::with_capacity(end - start);
-                let mut batch_bytes = Vec::with_capacity(end - start);
-
                 let result = (|| -> Result<(), String> {
                     for index in start..end {
+                        if worker_cancel.load(Ordering::Relaxed) {
+                            return Ok(());
+                        }
                         let tile_plan = worker_tiles[index];
                         let bytes = (worker_host.read_region)(
                             worker_host.context,
@@ -479,47 +492,12 @@ fn run_tile_plan_with_file_gpu_batched(
                             continue;
                         }
 
-                        batch_tiles.push(tile_plan);
-                        batch_bytes.push(bytes);
-                    }
-
-                    if batch_tiles.is_empty() {
-                        return Ok(());
-                    }
-
-                    let target_width = batch_tiles[0].read_width;
-                    let target_height = batch_tiles[0].read_height;
-                    let batch_inputs = batch_bytes
-                        .iter()
-                        .map(|bytes| BatchReconstructionInput {
-                            rgba: bytes.as_slice(),
-                            width: target_width,
-                            height: target_height,
-                        })
-                        .collect::<Vec<_>>();
-                    let reconstructions =
-                        run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
-
-                    for ((tile_plan, bytes), reconstruction) in batch_tiles
-                        .into_iter()
-                        .zip(batch_bytes.into_iter())
-                        .zip(reconstructions.into_iter())
-                    {
-                        let tile =
-                            build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
-                        {
-                            let mut state = plugin_state().lock().unwrap();
-                            state.cache.insert(
-                                tile.id(),
-                                TileCacheEntry {
-                                    namespace: worker_namespace.clone(),
-                                    tile,
-                                },
-                            );
-                        }
-                        let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
-                        let refresh_stats = done == total_tiles || done % 16 == 0;
-                        report_progress(done, total_tiles, "Processing", refresh_stats);
+                        worker_sender
+                            .send(LoadedGpuTile {
+                                tile_plan,
+                                bytes: bytes.to_vec(),
+                            })
+                            .map_err(|_| "gpu batch receiver disconnected".to_string())?;
                     }
 
                     Ok(())
@@ -535,6 +513,65 @@ fn run_tile_plan_with_file_gpu_batched(
                 }
             }
         }));
+    }
+
+    drop(sender);
+
+    let worker_model = model.clone_for_analysis_worker(analysis_threads);
+    let mut pending_tiles = Vec::with_capacity(batch_size);
+    let mut pending_bytes = Vec::with_capacity(batch_size);
+
+    while !cancel.load(Ordering::Relaxed) {
+        let loaded = match receiver.recv() {
+            Ok(loaded) => loaded,
+            Err(_) => break,
+        };
+        pending_tiles.push(loaded.tile_plan);
+        pending_bytes.push(loaded.bytes);
+
+        while pending_tiles.len() < batch_size {
+            match receiver.try_recv() {
+                Ok(loaded) => {
+                    pending_tiles.push(loaded.tile_plan);
+                    pending_bytes.push(loaded.bytes);
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => break,
+            }
+        }
+
+        let target_width = pending_tiles[0].read_width;
+        let target_height = pending_tiles[0].read_height;
+        let batch_inputs = pending_bytes
+            .iter()
+            .map(|bytes| BatchReconstructionInput {
+                rgba: bytes.as_slice(),
+                width: target_width,
+                height: target_height,
+            })
+            .collect::<Vec<_>>();
+        let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
+
+        for ((tile_plan, bytes), reconstruction) in pending_tiles
+            .drain(..)
+            .zip(pending_bytes.drain(..))
+            .zip(reconstructions.into_iter())
+        {
+            let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
+            {
+                let mut state = plugin_state().lock().unwrap();
+                state.cache.insert(
+                    tile.id(),
+                    TileCacheEntry {
+                        namespace: namespace.clone(),
+                        tile,
+                    },
+                );
+            }
+            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            let refresh_stats = done == total_tiles || done % 16 == 0;
+            report_progress(done, total_tiles, "Processing", refresh_stats);
+        }
     }
 
     for handle in handles {

@@ -24,6 +24,7 @@ pub struct PersistedConfig {
     pub analysis_section_expanded: bool,
     pub results_section_expanded: bool,
     pub analysis_threads: Option<usize>,
+    pub gpu_batch_size: Option<usize>,
 }
 
 impl Default for PersistedConfig {
@@ -35,6 +36,7 @@ impl Default for PersistedConfig {
             analysis_section_expanded: default_true(),
             results_section_expanded: default_true(),
             analysis_threads: None,
+            gpu_batch_size: None,
         }
     }
 }
@@ -222,6 +224,10 @@ pub fn max_analysis_threads() -> usize {
 
 pub fn clamp_analysis_threads(value: usize) -> usize {
     value.clamp(1, max_analysis_threads())
+}
+
+pub fn clamp_gpu_batch_size(value: usize) -> usize {
+    value.clamp(1, 1024)
 }
 
 pub fn rebuild_sidebar_statistics(state: &mut PluginState) {

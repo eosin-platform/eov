@@ -165,7 +165,7 @@ fn build_inference_session_inner(
     analysis_threads: usize,
     layout: Layout,
 ) -> Result<Session, String> {
-    let mut builder = Session::builder()
+    let builder = Session::builder()
         .map_err(|error| error.to_string())?
         .with_optimization_level(GraphOptimizationLevel::Level3)
         .map_err(|error| error.to_string())?
@@ -173,6 +173,16 @@ fn build_inference_session_inner(
         .map_err(|error| error.to_string())?
         .with_intra_threads(analysis_threads)
         .map_err(|error| error.to_string())?;
+    let mut builder = if prefer_gpu {
+        // GPU analysis uses variable batch sizes; memory pattern caching can work against that.
+        builder
+            .with_memory_pattern(false)
+            .map_err(|error| error.to_string())?
+            .with_disable_cpu_fallback()
+            .map_err(|error| error.to_string())?
+    } else {
+        builder
+    };
     if prefer_gpu {
         debug_timing("configuring gpu session options");
         let cuda = ep::CUDA::default()
@@ -245,19 +255,25 @@ fn commit_session_with_timeout(
     let canceler = builder.canceler();
     let start = Instant::now();
     let timeout_label = label.to_string();
+    let (watchdog_tx, watchdog_rx) = mpsc::channel();
     thread::spawn(move || {
-        thread::sleep(timeout);
-        debug_timing(&format!(
-            "{timeout_label} session build exceeded {:?}; requesting cancellation",
-            timeout
-        ));
-        let _ = canceler.cancel();
+        match watchdog_rx.recv_timeout(timeout) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                debug_timing(&format!(
+                    "{timeout_label} session build exceeded {:?}; requesting cancellation",
+                    timeout
+                ));
+                let _ = canceler.cancel();
+            }
+        }
     });
 
     debug_timing(&format!("starting {label} session build"));
     let result = builder
         .commit_from_file(path)
         .map_err(|error| error.to_string());
+    let _ = watchdog_tx.send(());
     debug_timing(&format!(
         "{label} session build finished in {:?}",
         start.elapsed()
@@ -516,17 +532,6 @@ fn ensure_inference_session(
         model.summary.layout,
     ) {
         Ok(session) => session,
-        Err(error) if prefer_gpu => {
-            debug_timing(&format!(
-                "gpu inference session unavailable; falling back to cpu: {error}"
-            ));
-            build_inference_session(
-                &model.summary.path,
-                false,
-                analysis_threads,
-                model.summary.layout,
-            )?
-        }
         Err(error) => return Err(error),
     };
 

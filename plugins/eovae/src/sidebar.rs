@@ -2,6 +2,7 @@ use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
 use crate::model::{LoadedModel, load_model};
 use crate::state::{
     AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
+    clamp_gpu_batch_size,
     clear_cache_for_namespace, host_api, load_persisted_config,
     log_message, max_analysis_threads, plugin_state, refresh_sidebar_if_available,
     request_render_if_available, save_persisted_config_field, save_persisted_model_path,
@@ -64,6 +65,7 @@ fn persist_sidebar_preferences() {
         config.analysis_section_expanded = state.analysis_section_expanded;
         config.results_section_expanded = state.results_section_expanded;
         config.analysis_threads = Some(state.config.analysis_threads);
+        config.gpu_batch_size = Some(state.config.gpu_batch_size);
     }) {
         log_message(HostLogLevelFFI::Error, error);
     }
@@ -270,7 +272,9 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         property("analysis-indicator-value", json!(analysis_indicator_value)),
         property("analysis-completed", json!(analysis_completed)),
         property("analysis-threads", json!(state.config.analysis_threads.to_string())),
+        property("analysis-batch-size", json!(state.config.gpu_batch_size.to_string())),
         property("max-analysis-threads", json!(max_analysis_threads() as i32)),
+        property("gpu-backend-active", json!(current_render_backend_is_gpu())),
         property("stats-summary", json!(stats_summary)),
         property("error-histogram", json!(histogram_bins)),
         property("error-histogram-max", json!(histogram_max)),
@@ -322,6 +326,7 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
             (update_section_expanded(args_json, Section::Results), false)
         }
         "analysis-threads-changed" => (update_analysis_threads(args_json), false),
+        "analysis-batch-size-changed" => (update_analysis_batch_size(args_json), false),
         "input-changed" => {
             let changed = update_selected_tensor(args_json, true);
             (changed, changed)
@@ -359,6 +364,11 @@ pub fn initialize_from_config() {
             persisted_config
                 .analysis_threads
                 .unwrap_or(state.config.analysis_threads),
+        );
+        state.config.gpu_batch_size = clamp_gpu_batch_size(
+            persisted_config
+                .gpu_batch_size
+                .unwrap_or(state.config.gpu_batch_size),
         );
     }
 
@@ -715,6 +725,21 @@ fn update_analysis_threads(args_json: &str) -> bool {
     true
 }
 
+fn update_analysis_batch_size(args_json: &str) -> bool {
+    let value = parse_callback_arg::<String>(args_json)
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(64);
+    let gpu_batch_size = clamp_gpu_batch_size(value);
+    let mut state = plugin_state().lock().unwrap();
+    if state.config.gpu_batch_size == gpu_batch_size {
+        return false;
+    }
+    state.config.gpu_batch_size = gpu_batch_size;
+    drop(state);
+    persist_sidebar_preferences();
+    true
+}
+
 fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
     let value = parse_callback_arg::<String>(args_json).unwrap_or_default();
     let mut state = plugin_state().lock().unwrap();
@@ -931,10 +956,25 @@ mod tests {
     }
 
     #[test]
+    fn analysis_batch_size_accepts_single_string_array_payload() {
+        reset_sidebar_test_state();
+        assert!(update_analysis_batch_size("[\"65\"]"));
+        assert_eq!(plugin_state().lock().unwrap().config.gpu_batch_size, 65);
+    }
+
+    #[test]
     fn clamps_analysis_threads_to_max() {
         reset_sidebar_test_state();
         plugin_state().lock().unwrap().config.analysis_threads = 1;
         let _ = update_analysis_threads("\"9999\"");
         assert_eq!(plugin_state().lock().unwrap().config.analysis_threads, max_analysis_threads());
+    }
+
+    #[test]
+    fn clamps_analysis_batch_size() {
+        reset_sidebar_test_state();
+        plugin_state().lock().unwrap().config.gpu_batch_size = 64;
+        let _ = update_analysis_batch_size("\"99999\"");
+        assert_eq!(plugin_state().lock().unwrap().config.gpu_batch_size, 1024);
     }
 }
