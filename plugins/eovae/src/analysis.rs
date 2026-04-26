@@ -1229,11 +1229,15 @@ fn build_analyzed_tiles_batch(
 }
 
 fn analyzed_tile_parallelism(batch_size: usize) -> usize {
+    let configured_threads = crate::state::clamp_analysis_threads(
+        plugin_state().lock().unwrap().config.analysis_threads,
+    );
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
         .min(batch_size.max(1))
-        .clamp(1, 4)
+        .min(configured_threads.max(1))
+        .max(1)
 }
 
 pub fn should_render_overlay(mode: VisualizationMode) -> bool {

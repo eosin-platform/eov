@@ -1456,11 +1456,13 @@ fn preprocess_rgba_into_chunk(
 }
 
 fn reconstruction_preprocess_parallelism(batch_size: usize) -> usize {
+    let configured_threads = clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
         .min(batch_size.max(1))
-        .clamp(1, 4)
+        .min(configured_threads.max(1))
+        .max(1)
 }
 
 fn postprocess_reconstruction_batch(
@@ -1566,11 +1568,13 @@ fn postprocess_reconstruction_item(
 }
 
 fn reconstruction_postprocess_parallelism(batch_size: usize) -> usize {
+    let configured_threads = clamp_analysis_threads(plugin_state().lock().unwrap().config.analysis_threads);
     thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
         .min(batch_size.max(1))
-        .clamp(1, 4)
+        .min(configured_threads.max(1))
+        .max(1)
 }
 
 #[cfg(test)]
