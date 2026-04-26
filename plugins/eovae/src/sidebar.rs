@@ -1,5 +1,5 @@
 use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
-use crate::model::{LoadedModel, gpu_analysis_preflight_error, load_model};
+use crate::model::{GpuAnalysisPreflight, LoadedModel, gpu_analysis_preflight, load_model};
 use crate::state::{
     AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
     clamp_gpu_batch_size,
@@ -628,9 +628,16 @@ fn analyze_whole_slide() {
 }
 
 fn preflight_gpu_analysis_or_show_error(model: &LoadedModel) -> bool {
-    match gpu_analysis_preflight_error(model) {
-        Ok(None) => true,
-        Ok(Some(message)) => {
+    match gpu_analysis_preflight(model) {
+        Ok(GpuAnalysisPreflight::Ready) => true,
+        Ok(GpuAnalysisPreflight::Warn(message)) => {
+            log_message(HostLogLevelFFI::Error, &message);
+            if let Err(error) = show_gpu_analysis_warning_dialog(&message) {
+                log_message(HostLogLevelFFI::Error, error);
+            }
+            true
+        }
+        Ok(GpuAnalysisPreflight::Block(message)) => {
             log_message(HostLogLevelFFI::Error, &message);
             if let Err(error) = show_gpu_analysis_unavailable_dialog(&message) {
                 log_message(HostLogLevelFFI::Error, error);
@@ -645,6 +652,27 @@ fn preflight_gpu_analysis_or_show_error(model: &LoadedModel) -> bool {
             false
         }
     }
+}
+
+fn show_gpu_analysis_warning_dialog(message: &str) -> Result<(), String> {
+    let Some(host) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    (host.show_confirmation_dialog)(
+        host.context,
+        ConfirmationDialogRequestFFI {
+            title: "GPU Analysis Warning".into(),
+            message: message.into(),
+            confirm_label: "Continue".into(),
+            cancel_label: "Dismiss".into(),
+            confirm_callback: ROption::RNone,
+            confirm_args_json: ROption::RNone,
+            cancel_callback: ROption::RNone,
+            cancel_args_json: ROption::RNone,
+        },
+    )
+    .into_result()
+    .map_err(|error| format!("failed to show GPU analysis warning dialog: {error}"))
 }
 
 fn show_gpu_analysis_unavailable_dialog(message: &str) -> Result<(), String> {

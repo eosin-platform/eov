@@ -19,13 +19,15 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const GPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(20);
 const CPU_SESSION_BUILD_TIMEOUT: Duration = Duration::from_secs(5);
 const CUDA_RUNTIME_UNAVAILABLE_MESSAGE: &str = "CUDAExecutionProvider is unavailable in the active ONNX Runtime. GPU analysis cannot start because the required CUDA runtime libraries are not available. On Linux this is commonly caused by missing CUDA/cuDNN libraries such as libcublasLt.so.12, libcublas.so.12, libcufft.so.11, libcudart.so.12, or libcudnn.so.9.";
+const CPU_EP_ASSIGNMENT_ERROR_SNIPPET: &str = "assigned to the default CPU EP";
+const BUNDLED_ORT_LIB_BASENAME: &str = "libonnxruntime.so";
 const PLACEMENT_SENSITIVE_OPS: &[&str] = &[
     "Shape",
     "Gather",
@@ -36,6 +38,10 @@ const PLACEMENT_SENSITIVE_OPS: &[&str] = &[
     "Reshape",
     "Constant",
 ];
+
+static ORT_RUNTIME_INIT: OnceLock<Result<(), String>> = OnceLock::new();
+static PRELOADED_CUDA_LIBRARIES: OnceLock<Result<Vec<libloading::Library>, String>> =
+    OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Layout {
@@ -133,6 +139,13 @@ pub struct CachedSession {
     profile_finished: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GpuAnalysisPreflight {
+    Ready,
+    Warn(String),
+    Block(String),
+}
+
 pub struct ReconstructionResult {
     pub rgb: Vec<u8>,
 }
@@ -212,6 +225,7 @@ fn build_inference_session_inner(
     settings: &SessionSettings,
     layout: Layout,
 ) -> Result<Session, String> {
+    ensure_ort_runtime_initialized()?;
     if settings.prefer_gpu {
         log_available_execution_providers()?;
         if !cuda_execution_provider_available()? {
@@ -286,7 +300,8 @@ fn build_inference_session_inner(
             .with_cuda_graph(false)
             .with_tf32(true)
             .with_prefer_nhwc(matches!(layout, Layout::Nhwc))
-            .build();
+            .build()
+            .error_on_failure();
         builder = builder
             .with_execution_providers([cuda])
             .map_err(|error| error.to_string())?;
@@ -735,21 +750,34 @@ fn desired_execution_settings(model: &LoadedModel) -> SessionSettings {
 }
 
 fn session_settings(prefer_gpu: bool, analysis_threads: usize) -> SessionSettings {
+    let allow_cpu_fallback = prefer_gpu && env_flag_enabled("EOVAE_DIAG_ALLOW_CPU_FALLBACK");
     let (opt_level, opt_level_name) = graph_optimization_level_from_env();
     SessionSettings {
         prefer_gpu,
         analysis_threads,
-        allow_cpu_fallback: prefer_gpu && env_flag_enabled("EOVAE_DIAG_ALLOW_CPU_FALLBACK"),
+        allow_cpu_fallback,
         opt_level,
         opt_level_name,
         profile_path: ort_profile_path(),
     }
 }
 
-pub fn gpu_analysis_preflight_error(model: &LoadedModel) -> Result<Option<String>, String> {
+fn classify_gpu_preflight_error(settings: &SessionSettings, error: &str) -> GpuAnalysisPreflight {
+    if settings.allow_cpu_fallback && error.contains(CPU_EP_ASSIGNMENT_ERROR_SNIPPET) {
+        return GpuAnalysisPreflight::Warn(format!(
+            "GPU analysis will continue with mixed CUDA and CPU execution because ONNX Runtime can use CUDAExecutionProvider, but this model does not fully place on CUDA when CPU fallback is disabled. CUDA-eligible layers such as convolutions may still run on the GPU while unsupported nodes remain on CPU. Original ONNX Runtime error: {error}"
+        ));
+    }
+
+    GpuAnalysisPreflight::Block(format!(
+        "GPU analysis is unavailable because ONNX Runtime could not create a strict CUDA session for this model. {error}"
+    ))
+}
+
+pub fn gpu_analysis_preflight(model: &LoadedModel) -> Result<GpuAnalysisPreflight, String> {
     let settings = desired_execution_settings(model);
     if !settings.prefer_gpu {
-        return Ok(None);
+        return Ok(GpuAnalysisPreflight::Ready);
     }
     let strict_settings = SessionSettings {
         allow_cpu_fallback: false,
@@ -757,14 +785,13 @@ pub fn gpu_analysis_preflight_error(model: &LoadedModel) -> Result<Option<String
         ..settings.clone()
     };
     match build_session_with_watchdog(&model.summary.path, &strict_settings, model.summary.layout) {
-        Ok(_session) => Ok(None),
-        Err(error) => Ok(Some(format!(
-            "GPU analysis is unavailable because ONNX Runtime could not create a strict CUDA session for this model. {error}"
-        ))),
+        Ok(_session) => Ok(GpuAnalysisPreflight::Ready),
+        Err(error) => Ok(classify_gpu_preflight_error(&settings, &error)),
     }
 }
 
 fn available_execution_providers() -> Result<Vec<String>, String> {
+    ensure_ort_runtime_initialized()?;
     let mut providers = ptr::null_mut();
     let mut provider_count = 0;
     unsafe {
@@ -801,6 +828,164 @@ fn available_execution_providers() -> Result<Vec<String>, String> {
     }
 
     Ok(available)
+}
+
+fn ensure_ort_runtime_initialized() -> Result<(), String> {
+    match ORT_RUNTIME_INIT.get_or_init(initialize_ort_runtime) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn initialize_ort_runtime() -> Result<(), String> {
+    let runtime_path = resolve_bundled_ort_library_path()?;
+    preload_cuda_runtime_sidecars()?;
+    debug_timing(&format!(
+        "initializing ONNX Runtime from {}",
+        runtime_path.display()
+    ));
+    let _committed = ort::init_from(&runtime_path)
+        .map_err(|error| error.to_string())?
+        .commit();
+    Ok(())
+}
+
+fn preload_cuda_runtime_sidecars() -> Result<(), String> {
+    PRELOADED_CUDA_LIBRARIES
+        .get_or_init(|| {
+            let candidates = resolve_cuda_runtime_sidecar_paths()?;
+            let mut libraries = Vec::new();
+            for path in candidates {
+                debug_timing(&format!("preloading CUDA sidecar {}", path.display()));
+                let library = unsafe {
+                    libloading::os::unix::Library::open(
+                        Some(&path),
+                        libloading::os::unix::RTLD_NOW | libloading::os::unix::RTLD_GLOBAL,
+                    )
+                }
+                .map(libloading::Library::from)
+                .map_err(|error| format!("failed to preload {}: {error}", path.display()))?;
+                libraries.push(library);
+            }
+            Ok(libraries)
+        })
+            .as_ref()
+            .map(|_| ())
+            .map_err(Clone::clone)
+}
+
+fn resolve_cuda_runtime_sidecar_paths() -> Result<Vec<PathBuf>, String> {
+    let search_dirs = ort_runtime_search_dirs();
+    let mut selected = Vec::new();
+
+    for prefix in [
+        "libcublasLt.so.12",
+        "libcublas.so.12",
+        "libcurand.so.10",
+        "libcufft.so.11",
+        "libcudart.so.12",
+    ] {
+        if let Some(path) = find_library_with_prefix(&search_dirs, prefix) {
+            selected.push(path);
+        }
+    }
+
+    selected.extend(find_libraries_with_prefix(&search_dirs, "libcudnn"));
+    selected.sort();
+    selected.dedup();
+    Ok(selected)
+}
+
+fn find_library_with_prefix(search_dirs: &[PathBuf], prefix: &str) -> Option<PathBuf> {
+    let mut matches = find_libraries_with_prefix(search_dirs, prefix);
+    matches.sort();
+    matches.pop()
+}
+
+fn find_libraries_with_prefix(search_dirs: &[PathBuf], prefix: &str) -> Vec<PathBuf> {
+    let mut matches = search_dirs
+        .iter()
+        .filter_map(|directory| fs::read_dir(directory).ok())
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(prefix) && name.contains(".so"))
+        })
+        .collect::<Vec<_>>();
+    matches.sort();
+    matches.dedup();
+    matches
+}
+
+fn resolve_bundled_ort_library_path() -> Result<PathBuf, String> {
+    if let Ok(path) = env::var("EOVAE_ORT_SHARED_LIB") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "EOVAE_ORT_SHARED_LIB does not point to a file: {}",
+            path.display()
+        ));
+    }
+
+    for directory in ort_runtime_search_dirs() {
+        if let Some(path) = find_ort_library_in_dir(&directory) {
+            return Ok(path);
+        }
+    }
+
+    Err("could not locate a bundled ONNX Runtime shared library for eovae".to_string())
+}
+
+fn ort_runtime_search_dirs() -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    if let Some(dir) = current_shared_object_dir() {
+        directories.push(dir);
+    }
+    if let Ok(exe) = env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        directories.push(parent.to_path_buf());
+        directories.push(parent.join("deps"));
+    }
+    directories.sort();
+    directories.dedup();
+    directories
+}
+
+fn current_shared_object_dir() -> Option<PathBuf> {
+    let maps = fs::read_to_string("/proc/self/maps").ok()?;
+    maps.lines().find_map(|line| {
+        let path = line.rsplit_once(' ')?.1.trim();
+        if path.ends_with("/libeovae.so") {
+            Path::new(path).parent().map(Path::to_path_buf)
+        } else {
+            None
+        }
+    })
+}
+
+fn find_ort_library_in_dir(directory: &Path) -> Option<PathBuf> {
+    let mut candidates = fs::read_dir(directory)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                return false;
+            };
+            name.starts_with(BUNDLED_ORT_LIB_BASENAME)
+                && name.contains(".so")
+                && !name.contains("providers")
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.pop()
 }
 
 fn log_available_execution_providers() -> Result<(), String> {
@@ -1270,6 +1455,41 @@ mod tests {
             shape: shape.to_vec(),
             is_image_candidate: true,
         }
+    }
+
+    #[test]
+    fn classifies_cpu_ep_assignment_as_warning_when_fallback_is_allowed() {
+        let settings = SessionSettings {
+            prefer_gpu: true,
+            analysis_threads: 8,
+            allow_cpu_fallback: true,
+            opt_level: GraphOptimizationLevel::Level3,
+            opt_level_name: "level3(default)".to_string(),
+            profile_path: None,
+        };
+
+        let outcome = classify_gpu_preflight_error(
+            &settings,
+            "This session contains graph nodes that are assigned to the default CPU EP, but fallback to CPU EP has been explicitly disabled by the user.",
+        );
+
+        assert!(matches!(outcome, GpuAnalysisPreflight::Warn(_)));
+    }
+
+    #[test]
+    fn classifies_gpu_runtime_failure_as_blocking() {
+        let settings = SessionSettings {
+            prefer_gpu: true,
+            analysis_threads: 8,
+            allow_cpu_fallback: true,
+            opt_level: GraphOptimizationLevel::Level3,
+            opt_level_name: "level3(default)".to_string(),
+            profile_path: None,
+        };
+
+        let outcome = classify_gpu_preflight_error(&settings, CUDA_RUNTIME_UNAVAILABLE_MESSAGE);
+
+        assert!(matches!(outcome, GpuAnalysisPreflight::Block(_)));
     }
 
     #[test]

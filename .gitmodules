@@ -4,3 +4,6 @@
 [submodule "plugins/annotations"]
 	path = plugins/annotations
 	url = https://github.com/eosin-platform/eov-annotations-plugin.git
+[submodule "plugins/eovae/HistoVAE"]
+	path = plugins/eovae/HistoVAE
+	url = git@github.com:sablecrestlabs/HistoVAE.git

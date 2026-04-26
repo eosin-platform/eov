@@ -11,6 +11,11 @@ RUNTIME_PATTERNS = (
     "libonnxruntime*.so*",
     "libonnxruntime*.dylib",
     "onnxruntime*.dll",
+    "libcublas*.so*",
+    "libcudart*.so*",
+    "libcudnn*.so*",
+    "libcufft*.so*",
+    "libcurand*.so*",
 )
 
 
