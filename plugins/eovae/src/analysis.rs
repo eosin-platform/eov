@@ -1,4 +1,7 @@
-use crate::model::{BatchReconstructionInput, LoadedModel, run_reconstruction, run_reconstruction_batch};
+use crate::model::{
+    BatchReconstructionInput, LoadedModel, ReconstructionResult, run_reconstruction,
+    run_reconstruction_batch,
+};
 use crate::state::{
     AnalysisPhase, JobKind, RunningJob, VisualizationMode, host_api, log_message, plugin_state,
     rebuild_sidebar_statistics, refresh_sidebar_if_available, request_render_if_available,
@@ -984,14 +987,16 @@ fn run_tile_plan_with_file_gpu_batched(
         let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
         pipeline_stats.record_inference(inference_started.elapsed(), batch_inputs.len());
 
-        let analyzed_tiles = pending_tiles
-            .drain(..)
-            .zip(pending_bytes.drain(..))
-            .zip(reconstructions.into_iter())
-            .map(|((tile_plan, bytes), reconstruction)| {
-                build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
-            })
-            .collect::<Vec<_>>();
+        let analysis_postprocess_started = Instant::now();
+        let analyzed_tiles = build_analyzed_tiles_batch(
+            &mut pending_tiles,
+            &mut pending_bytes,
+            reconstructions,
+        );
+        debug_timing(&format!(
+            "batch analyzed-tile construction completed in {:?}",
+            analysis_postprocess_started.elapsed()
+        ));
 
         {
             let mut state = plugin_state().lock().unwrap();
@@ -1172,6 +1177,63 @@ fn build_analyzed_tile(tile_plan: TilePlan, rgba: &[u8], reconstruction_rgb: &[u
         mean_absolute_error: error_sum / (sample_width as f64 * sample_height as f64).max(1.0),
         max_error,
     }
+}
+
+fn build_analyzed_tiles_batch(
+    pending_tiles: &mut Vec<TilePlan>,
+    pending_bytes: &mut Vec<Vec<u8>>,
+    reconstructions: Vec<ReconstructionResult>,
+) -> Vec<AnalyzedTile> {
+    let mut batch_items = pending_tiles
+        .drain(..)
+        .zip(pending_bytes.drain(..))
+        .zip(reconstructions)
+        .map(|((tile_plan, bytes), reconstruction)| (tile_plan, bytes, reconstruction))
+        .collect::<Vec<_>>();
+
+    let parallelism = analyzed_tile_parallelism(batch_items.len());
+    if parallelism <= 1 || batch_items.len() <= 1 {
+        return batch_items
+            .into_iter()
+            .map(|(tile_plan, bytes, reconstruction): (TilePlan, Vec<u8>, ReconstructionResult)| {
+                build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
+            })
+            .collect();
+    }
+
+    let chunk_size = batch_items.len().div_ceil(parallelism);
+    let mut analyzed_tiles = Vec::with_capacity(batch_items.len());
+    thread::scope(|scope| {
+        let mut handles = Vec::new();
+        while !batch_items.is_empty() {
+            let split_at = batch_items.len().saturating_sub(chunk_size);
+            let chunk = batch_items.split_off(split_at);
+            handles.push(scope.spawn(move || {
+                chunk
+                    .into_iter()
+                    .map(|(tile_plan, bytes, reconstruction): (TilePlan, Vec<u8>, ReconstructionResult)| {
+                        build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb)
+                    })
+                    .collect::<Vec<_>>()
+            }));
+        }
+
+        for handle in handles {
+            let chunk_tiles: Vec<AnalyzedTile> = handle
+                .join()
+                .expect("analyzed-tile worker thread panicked");
+            analyzed_tiles.extend(chunk_tiles);
+        }
+    });
+    analyzed_tiles
+}
+
+fn analyzed_tile_parallelism(batch_size: usize) -> usize {
+    thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .min(batch_size.max(1))
+        .clamp(1, 4)
 }
 
 pub fn should_render_overlay(mode: VisualizationMode) -> bool {
