@@ -832,11 +832,7 @@ fn ensure_inference_session(
         settings.allow_cpu_fallback,
         settings.profile_path.is_some()
     ));
-    let session =
-        match build_inference_session(&model.summary.path, &settings, model.summary.layout) {
-            Ok(session) => session,
-            Err(error) => return Err(error),
-        };
+    let session = build_inference_session(&model.summary.path, &settings, model.summary.layout)?;
 
     let mut guard = model
         .session
@@ -1608,8 +1604,8 @@ fn postprocess_reconstruction_batch(
         .collect::<Vec<Option<ReconstructionResult>>>();
 
     if parallelism <= 1 || batch_size <= 1 {
-        for batch_index in 0..batch_size {
-            reconstructions[batch_index] = Some(postprocess_reconstruction_item(
+        for (batch_index, reconstruction) in reconstructions.iter_mut().enumerate() {
+            *reconstruction = Some(postprocess_reconstruction_item(
                 output.index_axis(Axis(0), batch_index),
                 layout,
             )?);
@@ -1620,7 +1616,6 @@ fn postprocess_reconstruction_batch(
             let mut handles = Vec::new();
             for start in (0..batch_size).step_by(chunk_size) {
                 let end = (start + chunk_size).min(batch_size);
-                let output = output;
                 handles.push(scope.spawn(
                     move || -> Result<Vec<(usize, ReconstructionResult)>, String> {
                         let mut local = Vec::with_capacity(end - start);

@@ -1485,10 +1485,10 @@ pub(crate) fn show_sidebar(
                         set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
                     }
                     state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
-                    if let Some(active_sidebar) = state.active_sidebar() {
-                        if let Err(err) = config::save_active_sidebar(Some(active_sidebar)) {
-                            tracing::warn!("Failed to save active sidebar config: {err}");
-                        }
+                    if let Some(active_sidebar) = state.active_sidebar()
+                        && let Err(err) = config::save_active_sidebar(Some(active_sidebar))
+                    {
+                        tracing::warn!("Failed to save active sidebar config: {err}");
                     }
                 }
             }
@@ -1585,10 +1585,10 @@ pub(crate) fn show_sidebar(
                     set_toolbar_button_active_in_state(&mut state, &plugin_id, button_id, true);
                 }
                 state.set_sidebar_from_request(plugin_id.clone(), resolved_request.clone());
-                if let Some(active_sidebar) = state.active_sidebar() {
-                    if let Err(err) = config::save_active_sidebar(Some(active_sidebar)) {
-                        tracing::warn!("Failed to save active sidebar config: {err}");
-                    }
+                if let Some(active_sidebar) = state.active_sidebar()
+                    && let Err(err) = config::save_active_sidebar(Some(active_sidebar))
+                {
+                    tracing::warn!("Failed to save active sidebar config: {err}");
                 }
             }
         }

@@ -492,7 +492,7 @@ fn run_tile_plan_with_file(
             }
 
             let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
-            let refresh_stats = done == total_tiles || done % 16 == 0;
+            let refresh_stats = done == total_tiles || done.is_multiple_of(16);
             report_progress(done, total_tiles, "Processing", refresh_stats);
         }
     } else {
@@ -628,7 +628,7 @@ fn run_tile_plan_with_file(
             }
 
             let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
-            let refresh_stats = done == total_tiles || done % 16 == 0;
+            let refresh_stats = done == total_tiles || done.is_multiple_of(16);
             report_progress(done, total_tiles, "Processing", refresh_stats);
         }
 
@@ -655,7 +655,7 @@ fn run_tile_plan_with_file(
     }
     refresh_sidebar_if_available();
     request_render_if_available();
-    return Ok(());
+    Ok(())
 }
 
 fn report_progress(done: usize, total: usize, label: &str, refresh_stats: bool) {
@@ -685,7 +685,7 @@ fn report_progress_message(
         rebuild_sidebar_statistics(&mut state);
     }
     drop(state);
-    if force_refresh || done == total || done % 8 == 0 {
+    if force_refresh || done == total || done.is_multiple_of(8) {
         refresh_sidebar_if_available();
         request_render_if_available();
     }
@@ -1007,7 +1007,7 @@ fn run_tile_plan_with_file_gpu_batched(
                             let filtered_count = worker_filtered.fetch_add(1, Ordering::Relaxed) + 1;
                             let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
                             if !worker_inference_running.load(Ordering::Relaxed)
-                                && (done == total_tiles || done % 8 == 0)
+                                && (done == total_tiles || done.is_multiple_of(8))
                             {
                                 report_progress_message(
                                     done,
@@ -1031,7 +1031,8 @@ fn run_tile_plan_with_file_gpu_batched(
                             .map_err(|_| "gpu batch receiver disconnected".to_string())?;
                         let queued_count = worker_queued.fetch_add(1, Ordering::Relaxed) + 1;
                         if !worker_inference_running.load(Ordering::Relaxed)
-                            && (scanned_count == total_tiles || scanned_count % 8 == 0)
+                            && (scanned_count == total_tiles
+                                || scanned_count.is_multiple_of(8))
                         {
                             report_progress_message(
                                 worker_processed.load(Ordering::Relaxed),
@@ -1158,8 +1159,8 @@ fn run_tile_plan_with_file_gpu_batched(
         }
 
         let completed_batch = CompletedGpuBatch {
-            tile_plans: pending_tiles.drain(..).collect(),
-            rgba_tiles: pending_bytes.drain(..).collect(),
+            tile_plans: std::mem::take(&mut pending_tiles),
+            rgba_tiles: std::mem::take(&mut pending_bytes),
             reconstructions,
         };
         if completed_sender.send(completed_batch).is_err() {
