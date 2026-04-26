@@ -6,6 +6,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGINS_DIR="$REPO_ROOT/plugins"
 DEST_DIR="$HOME/.eov/plugins"
 
+export CUDA_HOME=/usr/local/cuda-12.9
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+export EOVAE_ORT_OPT_LEVEL=disable
+export EOVAE_DIAG_ALLOW_CPU_FALLBACK=1
+export EOVAE_ORT_PROFILE=1
+export EOVAE_DEBUG_TIMING=1
+export EOV_PLUGIN_TRACE=1
+
 package_plugin() {
     local plugin_src="$1"
     local plugin_id="$2"

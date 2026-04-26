@@ -17,6 +17,51 @@ use std::time::Instant;
 const GPU_BATCH_FILL_WAIT: Duration = Duration::from_millis(3);
 const BACKGROUND_SAMPLE_STRIDE: usize = 8;
 
+fn cpu_worker_layout(requested_threads: usize, total_tiles: usize) -> (usize, usize) {
+    let requested_threads = requested_threads.max(1);
+    let total_tiles = total_tiles.max(1);
+    if requested_threads == 1 || total_tiles == 1 {
+        return (0, requested_threads);
+    }
+    let loader_workers = requested_threads.saturating_sub(1).min(2).min(total_tiles);
+    let session_threads = requested_threads.saturating_sub(loader_workers).max(1);
+    (loader_workers, session_threads)
+}
+
+fn cpu_prefetch_capacity(
+    requested_threads: usize,
+    total_tiles: usize,
+    loader_workers: usize,
+) -> usize {
+    if loader_workers == 0 {
+        return 0;
+    }
+    requested_threads.max(loader_workers * 4).clamp(8, 32).min(total_tiles)
+}
+
+fn cpu_read_status_message(scheduled: usize, loaded: usize, done: usize, total: usize) -> String {
+    format!(
+        "Reading tiles {scheduled}/{total} scheduled, {} queued, {done}/{total} completed",
+        loaded.saturating_sub(done)
+    )
+}
+
+fn cpu_inference_status_message(done: usize, loaded: usize, total: usize, elapsed_secs: Option<u64>) -> String {
+    let current_tile = if loaded > done {
+        (done + 1).min(total)
+    } else {
+        done.min(total)
+    };
+    let queued = loaded.saturating_sub(done);
+    let mut message = format!(
+        "Running inference tile {current_tile}/{total}, {done}/{total} completed, {queued} queued"
+    );
+    if let Some(elapsed_secs) = elapsed_secs {
+        message.push_str(&format!(" ({elapsed_secs}s)"));
+    }
+    message
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     pub analysis_threads: usize,
@@ -94,6 +139,11 @@ struct TilePlan {
 }
 
 struct LoadedGpuTile {
+    tile_plan: TilePlan,
+    bytes: Vec<u8>,
+}
+
+struct LoadedCpuTile {
     tile_plan: TilePlan,
     bytes: Vec<u8>,
 }
@@ -306,103 +356,213 @@ fn run_tile_plan_with_file(
     }
 
     let total_tiles = tiles.len();
-    let worker_count = if prefer_gpu { 1 } else { 1 };
+    let (loader_workers, worker_session_threads) = cpu_worker_layout(analysis_threads, total_tiles);
     let tiles = Arc::new(tiles);
     let next_index = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
+    let loaded = Arc::new(AtomicUsize::new(0));
     let first_error = Arc::new(Mutex::new(None::<String>));
-    let mut handles = Vec::with_capacity(worker_count);
 
-    for _ in 0..worker_count {
-        let worker_model = model.clone_for_analysis_worker(analysis_threads);
-        let worker_tiles = Arc::clone(&tiles);
-        let worker_next_index = Arc::clone(&next_index);
-        let worker_processed = Arc::clone(&processed);
-        let worker_cancel = Arc::clone(&cancel);
-        let worker_error = Arc::clone(&first_error);
-        let worker_namespace = namespace.clone();
-        let worker_host = host;
-
-        handles.push(thread::spawn(move || {
-            loop {
-                if worker_cancel.load(Ordering::Relaxed) {
-                    return;
-                }
-                if worker_error.lock().unwrap().is_some() {
-                    return;
-                }
-
-                let index = worker_next_index.fetch_add(1, Ordering::Relaxed);
-                if index >= worker_tiles.len() {
-                    return;
-                }
-
-                let tile_plan = worker_tiles[index];
-                let result = (|| -> Result<(), String> {
-                    let bytes = (worker_host.read_region)(
-                        worker_host.context,
-                        file_id,
-                        tile_plan.level,
-                        tile_plan.x as i64,
-                        tile_plan.y as i64,
-                        tile_plan.read_width,
-                        tile_plan.read_height,
-                    )
-                    .into_result()
-                    .map_err(|error| error.to_string())?;
-
-                    if false && skip_background
-                        && should_skip_background(bytes.as_slice(), background_threshold)
-                    {
-                        let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
-                        report_progress(done, total_tiles, "Skipping background tile", false);
-                        return Ok(());
-                    }
-
-                    let reconstruction = run_reconstruction(
-                        &worker_model,
-                        bytes.as_slice(),
-                        tile_plan.read_width,
-                        tile_plan.read_height,
-                    )?;
-                    let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
-                    {
-                        let mut state = plugin_state().lock().unwrap();
-                        state.cache.insert(
-                            tile.id(),
-                            TileCacheEntry {
-                                namespace: worker_namespace.clone(),
-                                tile,
-                            },
-                        );
-                    }
-
-                    let done = worker_processed.fetch_add(1, Ordering::Relaxed) + 1;
-                    let refresh_stats = done == total_tiles || done % 16 == 0;
-                    report_progress(done, total_tiles, "Processing", refresh_stats);
-                    Ok(())
-                })();
-
-                if let Err(error) = result {
-                    worker_cancel.store(true, Ordering::Relaxed);
-                    let mut slot = worker_error.lock().unwrap();
-                    if slot.is_none() {
-                        *slot = Some(error);
-                    }
-                    return;
-                }
+    if loader_workers == 0 {
+        let worker_model = model.clone_for_analysis_worker(worker_session_threads);
+        for tile_plan in tiles.iter().copied() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
             }
-        }));
-    }
+            let scheduled = processed.load(Ordering::Relaxed) + 1;
+            let done = processed.load(Ordering::Relaxed);
+            report_progress_message(
+                done,
+                total_tiles,
+                cpu_read_status_message(scheduled, done, done, total_tiles),
+                false,
+                true,
+            );
+            let bytes = (host.read_region)(
+                host.context,
+                file_id,
+                tile_plan.level,
+                tile_plan.x as i64,
+                tile_plan.y as i64,
+                tile_plan.read_width,
+                tile_plan.read_height,
+            )
+            .into_result()
+            .map_err(|error| error.to_string())?;
+            let loaded_count = loaded.fetch_add(1, Ordering::Relaxed) + 1;
+            report_progress_message(
+                done,
+                total_tiles,
+                cpu_inference_status_message(done, loaded_count, total_tiles, None),
+                false,
+                true,
+            );
+            let _status_pulse = BlockingStatusPulse::start(
+                total_tiles,
+                Arc::clone(&processed),
+                Arc::clone(&loaded),
+            );
+            let reconstruction = run_reconstruction(
+                &worker_model,
+                bytes.as_slice(),
+                tile_plan.read_width,
+                tile_plan.read_height,
+            )?;
+            let tile = build_analyzed_tile(tile_plan, bytes.as_slice(), &reconstruction.rgb);
+            {
+                let mut state = plugin_state().lock().unwrap();
+                state.cache.insert(
+                    tile.id(),
+                    TileCacheEntry {
+                        namespace: namespace.clone(),
+                        tile,
+                    },
+                );
+            }
 
-    for handle in handles {
-        handle
-            .join()
-            .map_err(|_| "analysis worker thread panicked".to_string())?;
-    }
+            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            let refresh_stats = done == total_tiles || done % 16 == 0;
+            report_progress(done, total_tiles, "Processing", refresh_stats);
+        }
+    } else {
+        let prefetch_capacity = cpu_prefetch_capacity(analysis_threads, total_tiles, loader_workers);
+        let (sender, receiver) = mpsc::sync_channel::<LoadedCpuTile>(prefetch_capacity);
+        let mut handles = Vec::with_capacity(loader_workers);
 
-    if let Some(error) = first_error.lock().unwrap().clone() {
-        return Err(error);
+        for _ in 0..loader_workers {
+            let worker_tiles = Arc::clone(&tiles);
+            let worker_next_index = Arc::clone(&next_index);
+            let worker_processed = Arc::clone(&processed);
+            let worker_loaded = Arc::clone(&loaded);
+            let worker_cancel = Arc::clone(&cancel);
+            let worker_error = Arc::clone(&first_error);
+            let worker_host = host;
+            let worker_sender = sender.clone();
+
+            handles.push(thread::spawn(move || {
+                loop {
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    if worker_error.lock().unwrap().is_some() {
+                        return;
+                    }
+
+                    let index = worker_next_index.fetch_add(1, Ordering::Relaxed);
+                    if index >= worker_tiles.len() {
+                        return;
+                    }
+
+                    let tile_plan = worker_tiles[index];
+                    let result = (|| -> Result<(), String> {
+                        let scheduled = worker_next_index.load(Ordering::Relaxed).min(total_tiles);
+                        let done = worker_processed.load(Ordering::Relaxed);
+                        let loaded_count = worker_loaded.load(Ordering::Relaxed);
+                        report_progress_message(
+                            done,
+                            total_tiles,
+                            cpu_read_status_message(scheduled, loaded_count, done, total_tiles),
+                            false,
+                            true,
+                        );
+                        let bytes = (worker_host.read_region)(
+                            worker_host.context,
+                            file_id,
+                            tile_plan.level,
+                            tile_plan.x as i64,
+                            tile_plan.y as i64,
+                            tile_plan.read_width,
+                            tile_plan.read_height,
+                        )
+                        .into_result()
+                        .map_err(|error| error.to_string())?;
+                        worker_sender
+                            .send(LoadedCpuTile {
+                                tile_plan,
+                                bytes: bytes.to_vec(),
+                            })
+                            .map_err(|_| "cpu tile receiver disconnected".to_string())?;
+                        let loaded_count = worker_loaded.fetch_add(1, Ordering::Relaxed) + 1;
+                        report_progress_message(
+                            done,
+                            total_tiles,
+                            cpu_read_status_message(scheduled, loaded_count, done, total_tiles),
+                            false,
+                            true,
+                        );
+                        Ok(())
+                    })();
+
+                    if let Err(error) = result {
+                        worker_cancel.store(true, Ordering::Relaxed);
+                        let mut slot = worker_error.lock().unwrap();
+                        if slot.is_none() {
+                            *slot = Some(error);
+                        }
+                        return;
+                    }
+                }
+            }));
+        }
+
+        drop(sender);
+
+        let worker_model = model.clone_for_analysis_worker(worker_session_threads);
+        while !cancel.load(Ordering::Relaxed) {
+            let loaded_tile = match receiver.recv() {
+                Ok(loaded_tile) => loaded_tile,
+                Err(_) => break,
+            };
+            let done = processed.load(Ordering::Relaxed);
+            let loaded_count = loaded.load(Ordering::Relaxed);
+            report_progress_message(
+                done,
+                total_tiles,
+                cpu_inference_status_message(done, loaded_count, total_tiles, None),
+                false,
+                true,
+            );
+            let _status_pulse = BlockingStatusPulse::start(
+                total_tiles,
+                Arc::clone(&processed),
+                Arc::clone(&loaded),
+            );
+            let reconstruction = run_reconstruction(
+                &worker_model,
+                loaded_tile.bytes.as_slice(),
+                loaded_tile.tile_plan.read_width,
+                loaded_tile.tile_plan.read_height,
+            )?;
+            let tile = build_analyzed_tile(
+                loaded_tile.tile_plan,
+                loaded_tile.bytes.as_slice(),
+                &reconstruction.rgb,
+            );
+            {
+                let mut state = plugin_state().lock().unwrap();
+                state.cache.insert(
+                    tile.id(),
+                    TileCacheEntry {
+                        namespace: namespace.clone(),
+                        tile,
+                    },
+                );
+            }
+
+            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            let refresh_stats = done == total_tiles || done % 16 == 0;
+            report_progress(done, total_tiles, "Processing", refresh_stats);
+        }
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|_| "analysis worker thread panicked".to_string())?;
+        }
+
+        if let Some(error) = first_error.lock().unwrap().clone() {
+            return Err(error);
+        }
     }
 
     {
@@ -444,6 +604,57 @@ fn report_progress_message(
     if force_refresh || done == total || done % 8 == 0 {
         refresh_sidebar_if_available();
         request_render_if_available();
+    }
+}
+
+struct BlockingStatusPulse {
+    done_tx: mpsc::Sender<()>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl BlockingStatusPulse {
+    fn start(total: usize, done: Arc<AtomicUsize>, loaded: Arc<AtomicUsize>) -> Self {
+        let (done_tx, done_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let started = Instant::now();
+            loop {
+                match done_rx.recv_timeout(Duration::from_secs(1)) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        let done_count = done.load(Ordering::Relaxed);
+                        let loaded_count = loaded.load(Ordering::Relaxed);
+                        if loaded_count <= done_count {
+                            return;
+                        }
+                        report_progress_message(
+                            done_count,
+                            total,
+                            cpu_inference_status_message(
+                                done_count,
+                                loaded_count,
+                                total,
+                                Some(started.elapsed().as_secs()),
+                            ),
+                            false,
+                            true,
+                        );
+                    }
+                }
+            }
+        });
+        Self {
+            done_tx,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for BlockingStatusPulse {
+    fn drop(&mut self) {
+        let _ = self.done_tx.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -857,6 +1068,34 @@ pub fn should_render_overlay(mode: VisualizationMode) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_worker_layout_scales_with_requested_threads() {
+        assert_eq!(cpu_worker_layout(1, 100), (0, 1));
+        assert_eq!(cpu_worker_layout(4, 100), (2, 2));
+        assert_eq!(cpu_worker_layout(8, 100), (2, 6));
+        assert_eq!(cpu_worker_layout(32, 100), (2, 30));
+    }
+
+    #[test]
+    fn cpu_prefetch_capacity_scales_with_requested_threads() {
+        assert_eq!(cpu_prefetch_capacity(1, 100, 0), 0);
+        assert_eq!(cpu_prefetch_capacity(4, 100, 2), 8);
+        assert_eq!(cpu_prefetch_capacity(8, 100, 2), 8);
+        assert_eq!(cpu_prefetch_capacity(32, 100, 2), 32);
+    }
+
+    #[test]
+    fn cpu_inference_status_message_uses_global_completion() {
+        assert_eq!(
+            cpu_inference_status_message(12, 3, 100, Some(5)),
+            "Running inference tile 12/100, 12/100 completed, 0 queued (5s)"
+        );
+        assert_eq!(
+            cpu_inference_status_message(0, 5, 100, Some(5)),
+            "Running inference tile 1/100, 0/100 completed, 5 queued (5s)"
+        );
+    }
 
     #[test]
     fn sorts_hot_regions_by_error() {
