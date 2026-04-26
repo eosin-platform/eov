@@ -742,7 +742,7 @@ fn update_mode(args_json: &str) -> bool {
 }
 
 fn update_mip_level(args_json: &str) -> bool {
-    let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
+    let value = parse_callback_arg::<String>(args_json).unwrap_or_default();
     let mip_level = match value.as_str() {
         "2x" => 1,
         "4x" => 2,
