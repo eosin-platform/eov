@@ -5,6 +5,7 @@ use crate::state::{
 };
 use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
+use std::env;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -102,6 +103,12 @@ struct TileGridBounds {
     bottom: u64,
     image_width: u64,
     image_height: u64,
+}
+
+fn debug_timing(message: &str) {
+    if env::var_os("EOVAE_DEBUG_TIMING").is_some() {
+        eprintln!("[eovae] {message}");
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -435,6 +442,14 @@ fn run_tile_plan_with_file_gpu_batched(
     let batch_size = crate::state::clamp_gpu_batch_size(gpu_batch_size)
         .min(total_tiles)
         .max(1);
+    debug_timing(&format!(
+        "starting gpu batched analysis tiles={} loader_workers={} configured_batch_size={} batch_size={} queue_capacity={}",
+        total_tiles,
+        worker_count,
+        gpu_batch_size,
+        batch_size,
+        worker_count * 2
+    ));
     let tiles = Arc::new(tiles.to_vec());
     let next_index = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
@@ -550,6 +565,13 @@ fn run_tile_plan_with_file_gpu_batched(
                 height: target_height,
             })
             .collect::<Vec<_>>();
+        debug_timing(&format!(
+            "dispatching gpu inference batch actual_batch_size={} configured_batch_size={} tile={}x{}",
+            batch_inputs.len(),
+            batch_size,
+            target_width,
+            target_height
+        ));
         let reconstructions = run_reconstruction_batch(&worker_model, batch_inputs.as_slice())?;
 
         for ((tile_plan, bytes), reconstruction) in pending_tiles

@@ -442,7 +442,7 @@ fn start_model_load(path: String, persist_on_success: bool) {
     request_render_if_available();
 
     plugin_trace(format!(
-        "load_model spawn path={} generation={} use_gpu={}",
+        "load_model spawn path={} generation={} backend_snapshot_gpu={}",
         path, load_generation, use_gpu
     ));
     thread::spawn(move || {
