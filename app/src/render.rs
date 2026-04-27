@@ -66,6 +66,8 @@ struct RenderPaneRequest<'a> {
 struct CpuPaneSnapshot {
     pane: PaneId,
     file_id: i32,
+    file_path: String,
+    filename: String,
     file_switched: bool,
     content_missing: bool,
     minimap_missing: bool,
@@ -156,6 +158,33 @@ struct CpuPaneExecution {
     content_missing: bool,
     outcome: PaneRenderOutcome,
     commit: CpuRenderCommit,
+}
+
+fn viewport_snapshot_ffi_for_render(
+    file_id: i32,
+    file_path: &str,
+    filename: &str,
+    viewport: &common::ViewportState,
+    pane: PaneId,
+) -> plugin_api::ffi::ViewportSnapshotFFI {
+    let bounds = viewport.viewport.bounds();
+    plugin_api::ffi::ViewportSnapshotFFI {
+        pane_index: pane.0 as u32,
+        file_id,
+        file_path: file_path.to_string().into(),
+        filename: filename.to_string().into(),
+        center_x: viewport.viewport.center.x,
+        center_y: viewport.viewport.center.y,
+        zoom: viewport.viewport.zoom,
+        width: viewport.viewport.width,
+        height: viewport.viewport.height,
+        image_width: viewport.viewport.image_width,
+        image_height: viewport.viewport.image_height,
+        bounds_left: bounds.left,
+        bounds_top: bounds.top,
+        bounds_right: bounds.right,
+        bounds_bottom: bounds.bottom,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -850,6 +879,8 @@ fn collect_cpu_frame_snapshot(
         panes.push(Some(CpuPaneSnapshot {
             pane,
             file_id,
+            file_path: file.path.to_string_lossy().into_owned(),
+            filename: file.filename.clone(),
             file_switched,
             content_missing,
             minimap_missing,
@@ -974,6 +1005,8 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             pool.recycle_buffer(result.pixels);
             continue;
         };
+        let file_path = file.path.to_string_lossy().into_owned();
+        let filename = file.filename.clone();
         let Some(pane_state) = file.pane_state_mut(pane) else {
             pool.recycle_buffer(result.pixels);
             continue;
@@ -992,11 +1025,24 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             continue;
         }
 
+        let filter_viewport = viewport_snapshot_ffi_for_render(
+            result.file_id,
+            &file_path,
+            &filename,
+            &pane_state.viewport,
+            pane,
+        );
+
         // Apply in-process viewport filters (e.g. grayscale from FFI plugins).
         {
             let chain = state.filter_chain.read();
             if chain.has_enabled_cpu_filters() {
-                chain.apply_cpu(&mut result.pixels, result.width, result.height);
+                chain.apply_cpu(
+                    &mut result.pixels,
+                    result.width,
+                    result.height,
+                    Some(&filter_viewport),
+                );
             }
         }
 
@@ -1430,6 +1476,8 @@ fn render_cpu_pane_from_snapshot(
         render_cached_preview(RenderCachedPreview {
             pane: snapshot.pane,
             file_id: snapshot.file_id,
+            file_path: &snapshot.file_path,
+            filename: &snapshot.filename,
             viewport: vp,
             render_width,
             render_height,
@@ -2102,6 +2150,8 @@ fn render_pane_to_image(
         render_cached_preview(RenderCachedPreview {
             pane,
             file_id: file.id,
+            file_path: &file.path.to_string_lossy(),
+            filename: &file.filename,
             viewport: vp,
             render_width,
             render_height,
@@ -2162,6 +2212,8 @@ fn render_pane_to_image(
 struct RenderCachedPreview<'a> {
     pane: PaneId,
     file_id: i32,
+    file_path: &'a str,
+    filename: &'a str,
     viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
@@ -2177,6 +2229,8 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
     let RenderCachedPreview {
         pane,
         file_id,
+        file_path,
+        filename,
         viewport,
         render_width,
         render_height,
@@ -2247,7 +2301,21 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         {
             let chain = filter_chain.read();
             if chain.has_enabled_cpu_filters() {
-                chain.apply_cpu(preview, render_width, render_height);
+                let mut viewport_state = common::ViewportState::new(
+                    viewport.width,
+                    viewport.height,
+                    viewport.image_width,
+                    viewport.image_height,
+                );
+                viewport_state.viewport = viewport.clone();
+                let filter_viewport = viewport_snapshot_ffi_for_render(
+                    file_id,
+                    file_path,
+                    filename,
+                    &viewport_state,
+                    pane,
+                );
+                chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
             }
         }
 

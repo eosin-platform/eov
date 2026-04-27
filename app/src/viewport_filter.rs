@@ -4,7 +4,7 @@
 //! filters and applies them sequentially to rendered frames.
 
 use parking_lot::RwLock;
-use plugin_api::ffi::{PluginVTable, ViewportFilterFFI};
+use plugin_api::ffi::{PluginVTable, ViewportFilterFFI, ViewportSnapshotFFI};
 use plugin_api::viewport_filter::{CpuFrameBuffer, ViewportFilter};
 use std::sync::Arc;
 
@@ -46,11 +46,18 @@ impl ViewportFilterChain {
     }
 
     /// Apply all enabled CPU filters to a frame buffer in-place.
-    pub fn apply_cpu(&self, data: &mut [u8], width: u32, height: u32) {
+    pub fn apply_cpu(
+        &self,
+        data: &mut [u8],
+        width: u32,
+        height: u32,
+        viewport: Option<&ViewportSnapshotFFI>,
+    ) {
         let mut frame = CpuFrameBuffer {
             data,
             width,
             height,
+            viewport: viewport.cloned(),
         };
         for entry in &self.filters {
             if entry.filter.enabled() && entry.filter.supports_cpu() {
@@ -118,14 +125,6 @@ impl FfiViewportFilter {
             supports_gpu: desc.supports_gpu,
         }
     }
-
-    fn polled_enabled_state(&self) -> bool {
-        (self.vtable.get_viewport_filters)()
-            .into_iter()
-            .find(|filter| filter.filter_id.to_string() == self.filter_id)
-            .map(|filter| filter.enabled)
-            .unwrap_or(self.enabled)
-    }
 }
 
 // SAFETY: PluginVTable contains only extern "C" fn pointers which are Send+Sync.
@@ -138,7 +137,7 @@ impl ViewportFilter for FfiViewportFilter {
     }
 
     fn enabled(&self) -> bool {
-        self.polled_enabled_state()
+        self.enabled
     }
 
     fn set_enabled(&mut self, enabled: bool) {
@@ -156,12 +155,18 @@ impl ViewportFilter for FfiViewportFilter {
 
     fn apply_cpu(&self, frame: &mut CpuFrameBuffer<'_>) {
         let len = frame.width * frame.height * 4;
+        let viewport = frame
+            .viewport
+            .as_ref()
+            .map(|viewport| viewport as *const ViewportSnapshotFFI)
+            .unwrap_or(std::ptr::null());
         (self.vtable.apply_filter_cpu)(
             RString::from(&*self.filter_id),
             frame.data.as_mut_ptr(),
             len,
             frame.width,
             frame.height,
+            viewport,
         );
     }
 }

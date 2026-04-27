@@ -1425,20 +1425,31 @@ fn prepare_cached_tiles(
             return (None, Vec::new(), tiles);
         }
     };
-    let cached_positions = cached_tiles
+    let (renderable_cached_tiles, incomplete_cached_tiles): (Vec<_>, Vec<_>) = cached_tiles
+        .into_iter()
+        .partition(|tile| {
+            let rgb_len = tile.sample_width as usize * tile.sample_height as usize * 3;
+            tile.reconstruction_rgb.len() >= rgb_len && tile.difference_rgb.len() >= rgb_len
+        });
+    let cached_positions = renderable_cached_tiles
         .iter()
         .map(|tile| (tile.x, tile.y))
         .collect::<HashSet<_>>();
     let missing_tiles = tiles
         .into_iter()
-        .filter(|tile| !cached_positions.contains(&(tile.x, tile.y)))
+        .filter(|tile| {
+            !cached_positions.contains(&(tile.x, tile.y))
+                || incomplete_cached_tiles
+                    .iter()
+                    .any(|cached| cached.x == tile.x && cached.y == tile.y)
+        })
         .collect::<Vec<_>>();
 
-    if !cached_tiles.is_empty() {
-        insert_tiles_into_state(namespace, &cached_tiles);
+    if !renderable_cached_tiles.is_empty() {
+        insert_tiles_into_state(namespace, &renderable_cached_tiles);
     }
 
-    (Some(cache_key), cached_tiles, missing_tiles)
+    (Some(cache_key), renderable_cached_tiles, missing_tiles)
 }
 
 fn build_latent_cache_key(

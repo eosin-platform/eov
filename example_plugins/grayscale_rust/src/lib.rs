@@ -158,6 +158,7 @@ extern "C" fn apply_filter_cpu_ffi(
     len: u32,
     _width: u32,
     _height: u32,
+    _viewport: *const plugin_api::ffi::ViewportSnapshotFFI,
 ) -> bool {
     if !ENABLED.load(Ordering::Relaxed) || rgba_data.is_null() {
         return false;
@@ -515,12 +516,26 @@ mod tests {
     fn grayscale_conversion() {
         // RGBA pixel: red
         let mut buf = vec![255u8, 0, 0, 255];
-        apply_filter_cpu_ffi(RString::from(FILTER_ID), buf.as_mut_ptr(), 4, 1, 1);
+        apply_filter_cpu_ffi(
+            RString::from(FILTER_ID),
+            buf.as_mut_ptr(),
+            4,
+            1,
+            1,
+            std::ptr::null(),
+        );
         // Grayscale not applied because ENABLED is false by default
         assert_eq!(buf, [255, 0, 0, 255]);
 
         ENABLED.store(true, Ordering::Relaxed);
-        apply_filter_cpu_ffi(RString::from(FILTER_ID), buf.as_mut_ptr(), 4, 1, 1);
+        apply_filter_cpu_ffi(
+            RString::from(FILTER_ID),
+            buf.as_mut_ptr(),
+            4,
+            1,
+            1,
+            std::ptr::null(),
+        );
         // lum = 0.299 * 255 ≈ 76
         let lum = (0.299 * 255.0) as u8;
         assert_eq!(buf[0], lum);

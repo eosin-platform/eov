@@ -31,6 +31,8 @@ pub struct CpuFrameBuffer<'a> {
     pub width: u32,
     /// Image height in pixels.
     pub height: u32,
+    /// Snapshot of the pane currently being filtered, when available.
+    pub viewport: Option<crate::ffi::ViewportSnapshotFFI>,
 }
 
 /// Raw Vulkan handles for GPU filter execution (in-process FFI path).

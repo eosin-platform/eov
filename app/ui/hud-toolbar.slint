@@ -59,12 +59,13 @@ export component HudToolbar inherits Rectangle {
     callback toggle-dropdown();
     callback zoom-input(float);
     callback plugin-button-clicked(string, string);
+    callback dismiss-plugin-menu();
 
     property <string> zoom-text: zoom-level >= 1.0 ? Math.round(zoom-level * 100) + "%" : Math.round(zoom-level * 1000) / 10 + "%";
     property <string> zoom-input-text: zoom-level >= 1.0 ? "" + Math.round(zoom-level * 100) : "" + (Math.round(zoom-level * 1000) / 10);
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
-    property <bool> plugin-menu-open: false;
+    in-out property <bool> plugin-menu-open: false;
     property <string> plugin-menu-plugin-id: "";
     property <string> plugin-menu-button-id: "";
     property <length> plugin-menu-x: 0px;
@@ -86,6 +87,10 @@ export component HudToolbar inherits Rectangle {
     width: bar.preferred-width;
     height: 38px;
     background: transparent;
+
+    dismiss-plugin-menu => {
+        root.plugin-menu-open = false;
+    }
 
     // Clipped bar container for rounded corners
     bar := Rectangle {
@@ -272,14 +277,17 @@ export component HudToolbar inherits Rectangle {
     if root.plugin-menu-open && root.plugin-menu-button-id == root.eovae-visualization-button-id: Rectangle {
         x: root.plugin-menu-x;
         y: root.plugin-menu-y;
-        width: 168px;
+        width: 136px;
+        height: root.eovae-visualization-labels.length * 30px + (root.eovae-visualization-labels.length - 1) * 2px + 12px;
         background: #11151cee;
         border-radius: 8px;
         border-width: 1px;
         border-color: #ffffff24;
+        clip: true;
 
         VerticalLayout {
             width: parent.width;
+            height: parent.height;
             padding: 6px;
             spacing: 2px;
 

@@ -261,6 +261,7 @@ extern "C" fn apply_filter_cpu_ffi(
     _len: u32,
     _width: u32,
     _height: u32,
+    _viewport: *const plugin_api::ffi::ViewportSnapshotFFI,
 ) -> bool {
     false
 }

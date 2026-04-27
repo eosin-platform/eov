@@ -371,6 +371,7 @@ pub struct PluginVTable {
         len: u32,
         width: u32,
         height: u32,
+        viewport: *const ViewportSnapshotFFI,
     ) -> bool,
 
     /// Apply a GPU viewport filter using raw Vulkan handles.

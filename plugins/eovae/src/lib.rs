@@ -107,25 +107,34 @@ fn visualization_mode_for_action(action_id: &str) -> Option<VisualizationMode> {
 }
 
 fn set_visualization_mode(mode: VisualizationMode, viewport: ViewportSnapshotFFI) {
-    let (changed, active) = {
+    let active = {
         let mut state = plugin_state().lock().unwrap();
-        if state.visualization_mode == mode {
-            let active = state.visualization_mode != VisualizationMode::Original;
-            (false, active)
-        } else {
-            state.visualization_mode = mode;
-            if mode == VisualizationMode::Original {
-                state.auto_viewport_request_key = None;
-            }
-            let active = mode != VisualizationMode::Original;
-            (true, active)
+        state
+            .pane_visualization_modes
+            .insert(viewport.pane_index, mode);
+        if mode == VisualizationMode::Original {
+            state
+                .pane_auto_viewport_request_keys
+                .remove(&viewport.pane_index);
         }
+        state.visualization_mode != VisualizationMode::Original
+            || state
+                .pane_visualization_modes
+                .values()
+                .any(|pane_mode| *pane_mode != VisualizationMode::Original)
     };
 
     state::set_hud_toolbar_button_active_if_available(VISUALIZATION_BUTTON_ID, active);
-    let _ = viewport;
-    let _ = changed;
     request_render_if_available();
+}
+
+fn any_visualization_enabled(state: &state::PluginState) -> bool {
+    state.model.is_some()
+        && (state.visualization_mode != VisualizationMode::Original
+            || state
+                .pane_visualization_modes
+                .values()
+                .any(|mode| *mode != VisualizationMode::Original))
 }
 
 extern "C" fn on_ui_callback_ffi(callback_name: RString, args_json: RString) {
@@ -416,7 +425,7 @@ extern "C" fn on_polygon_annotation_moved_ffi(
 
 extern "C" fn get_viewport_filters_ffi() -> RVec<ViewportFilterFFI> {
     let state = plugin_state().lock().unwrap();
-    let enabled = state.visualization_mode != VisualizationMode::Original && state.model.is_some();
+    let enabled = any_visualization_enabled(&state);
     RVec::from(vec![ViewportFilterFFI {
         filter_id: FILTER_ID.into(),
         name: "VAE Overlay".into(),
@@ -432,12 +441,14 @@ extern "C" fn apply_filter_cpu_ffi(
     len: u32,
     width: u32,
     height: u32,
+    viewport: *const ViewportSnapshotFFI,
 ) -> bool {
-    if rgba_data.is_null() {
+    if rgba_data.is_null() || viewport.is_null() {
         return false;
     }
     let data = unsafe { std::slice::from_raw_parts_mut(rgba_data, len as usize) };
-    filter::apply_overlay(data, width, height)
+    let viewport = unsafe { &*viewport };
+    filter::apply_overlay(data, width, height, viewport)
 }
 
 extern "C" fn apply_filter_gpu_ffi(_filter_id: RString, _ctx: *const GpuFilterContextFFI) -> bool {

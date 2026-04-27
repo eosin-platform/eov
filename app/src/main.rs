@@ -952,6 +952,7 @@ fn setup_callbacks(
 
     let pm = Rc::clone(&plugin_manager);
     let filter_state = Arc::clone(&state);
+    let hud_plugin_ui = ui.as_weak();
     ui.on_hud_plugin_button_clicked(move |pane, plugin_id, action_id| {
         let pane = PaneId(pane.max(0) as usize);
         let plugin_id = plugin_id.to_string();
@@ -999,7 +1000,21 @@ fn setup_callbacks(
         let mut pm = pm.borrow_mut();
         if let Err(err) = pm.handle_hud_action(&plugin_id, &action_id, &viewport) {
             tracing::error!("Local HUD plugin action error: {err}");
+            return;
         }
+
+        if plugin_id == "eovae" {
+            let filter_chain = {
+                let state = filter_state.read();
+                state.filter_chain.clone()
+            };
+            pm.sync_filter_states(&filter_chain);
+
+            let mut state = filter_state.write();
+            state.bump_filter_revision();
+        }
+
+        request_render_loop(&render_timer, &hud_plugin_ui, &filter_state, &tile_cache);
     });
 }
 

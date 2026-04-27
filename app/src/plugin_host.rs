@@ -3709,6 +3709,7 @@ mod tests {
         _len: u32,
         _width: u32,
         _height: u32,
+        _viewport: *const ViewportSnapshotFFI,
     ) -> bool {
         false
     }

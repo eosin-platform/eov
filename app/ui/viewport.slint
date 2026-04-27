@@ -48,6 +48,7 @@ export component Viewport inherits Rectangle {
     in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     in property <HudSettings> hud;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
+    property <bool> hud-plugin-menu-open: false;
 
     callback pan(float, float);
     callback zoom(float, float, float);
@@ -427,6 +428,7 @@ export component Viewport inherits Rectangle {
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
+                root.hud-plugin-menu-open = false;
                 focus-scope.focus();
             }
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
@@ -578,9 +580,10 @@ export component Viewport inherits Rectangle {
     }
 
     // HUD toolbar (top-left)
-    if root.hud.show-hud-toolbar: HudToolbar {
+    if root.hud.show-hud-toolbar: hud_toolbar := HudToolbar {
         x: 16px;
         y: 16px;
+        plugin-menu-open <=> root.hud-plugin-menu-open;
         zoom-level: root.viewport-info.zoom;
         dropdown-open: root.hud.hud-dropdown-open;
         has-adjustments: root.hud.sharpness > 0.01 || (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;

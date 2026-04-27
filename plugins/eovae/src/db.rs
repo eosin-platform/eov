@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::thread;
 
 static SQLITE_VEC_INIT: Once = Once::new();
-const CACHE_WRITE_QUEUE_CAPACITY: usize = 4096;
+const CACHE_WRITE_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Clone, Debug)]
 pub struct LatentCacheKey {
@@ -60,6 +60,11 @@ pub fn load_tiles_for_positions(
             SELECT
                 x_level0,
                 y_level0,
+                sample_width,
+                sample_height,
+                reconstruction_rgb,
+                difference_rgb,
+                error_map_luma,
                 mean_absolute_error,
                 max_error
             FROM latent_cache_tile
@@ -74,18 +79,20 @@ pub fn load_tiles_for_positions(
             .query_row(
                 params![cache_id, *x_level0 as i64, *y_level0 as i64],
                 |row| {
+                    let sample_width = row.get::<_, i64>(2)? as u32;
+                    let sample_height = row.get::<_, i64>(3)? as u32;
                     Ok(AnalyzedTile {
                         x: row.get::<_, i64>(0)? as u64,
                         y: row.get::<_, i64>(1)? as u64,
                         width: key.stride,
                         height: key.stride,
-                        sample_width: key.tile_size,
-                        sample_height: key.tile_size,
-                        reconstruction_rgb: Vec::new(),
-                        difference_rgb: Vec::new(),
-                        error_map_luma: Vec::new(),
-                        mean_absolute_error: row.get(2)?,
-                        max_error: row.get::<_, i64>(3)? as u8,
+                        sample_width: sample_width.max(key.tile_size),
+                        sample_height: sample_height.max(key.tile_size),
+                        reconstruction_rgb: row.get::<_, Option<Vec<u8>>>(4)?.unwrap_or_default(),
+                        difference_rgb: row.get::<_, Option<Vec<u8>>>(5)?.unwrap_or_default(),
+                        error_map_luma: row.get::<_, Option<Vec<u8>>>(6)?.unwrap_or_default(),
+                        mean_absolute_error: row.get(7)?,
+                        max_error: row.get::<_, i64>(8)? as u8,
                     })
                 },
             )
@@ -118,15 +125,25 @@ impl LatentCacheWriter {
                 cache_id,
                 x_level0,
                 y_level0,
+                sample_width,
+                sample_height,
                 embedding,
+                reconstruction_rgb,
+                difference_rgb,
+                error_map_luma,
                 mean_absolute_error,
                 max_error,
                 updated_at
             ) VALUES (
-                ?1, ?2, ?3, vec_f32(?4), ?5, ?6, unixepoch()
+                ?1, ?2, ?3, ?4, ?5, vec_f32(?6), ?7, ?8, ?9, ?10, ?11, unixepoch()
             )
             ON CONFLICT(cache_id, x_level0, y_level0) DO UPDATE SET
+                sample_width = excluded.sample_width,
+                sample_height = excluded.sample_height,
                 embedding = excluded.embedding,
+                reconstruction_rgb = excluded.reconstruction_rgb,
+                difference_rgb = excluded.difference_rgb,
+                error_map_luma = excluded.error_map_luma,
                 mean_absolute_error = excluded.mean_absolute_error,
                 max_error = excluded.max_error,
                 updated_at = unixepoch()
@@ -136,15 +153,25 @@ impl LatentCacheWriter {
                 cache_id,
                 x_level0,
                 y_level0,
+                sample_width,
+                sample_height,
                 embedding,
+                reconstruction_rgb,
+                difference_rgb,
+                error_map_luma,
                 mean_absolute_error,
                 max_error,
                 updated_at
             ) VALUES (
-                ?1, ?2, ?3, NULL, ?4, ?5, unixepoch()
+                ?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, unixepoch()
             )
             ON CONFLICT(cache_id, x_level0, y_level0) DO UPDATE SET
+                sample_width = excluded.sample_width,
+                sample_height = excluded.sample_height,
                 embedding = excluded.embedding,
+                reconstruction_rgb = excluded.reconstruction_rgb,
+                difference_rgb = excluded.difference_rgb,
+                error_map_luma = excluded.error_map_luma,
                 mean_absolute_error = excluded.mean_absolute_error,
                 max_error = excluded.max_error,
                 updated_at = unixepoch()
@@ -159,7 +186,12 @@ impl LatentCacheWriter {
                         cache_id,
                         tile.x as i64,
                         tile.y as i64,
+                        tile.sample_width as i64,
+                        tile.sample_height as i64,
                         embedding_blob,
+                        &tile.reconstruction_rgb,
+                        &tile.difference_rgb,
+                        &tile.error_map_luma,
                         tile.mean_absolute_error,
                         tile.max_error as i64,
                     ],
@@ -175,6 +207,11 @@ impl LatentCacheWriter {
                         cache_id,
                         tile.x as i64,
                         tile.y as i64,
+                        tile.sample_width as i64,
+                        tile.sample_height as i64,
+                        &tile.reconstruction_rgb,
+                        &tile.difference_rgb,
+                        &tile.error_map_luma,
                         tile.mean_absolute_error,
                         tile.max_error as i64,
                     ],
@@ -374,7 +411,55 @@ fn open_database() -> Result<Connection, String> {
             "#,
         )
         .map_err(|err| format!("failed to initialize latent cache schema: {err}"))?;
+    ensure_tile_payload_columns(&connection)?;
     Ok(connection)
+}
+
+fn ensure_tile_payload_columns(connection: &Connection) -> Result<(), String> {
+    ensure_column(
+        connection,
+        "latent_cache_tile",
+        "sample_width",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        connection,
+        "latent_cache_tile",
+        "sample_height",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(connection, "latent_cache_tile", "reconstruction_rgb", "BLOB")?;
+    ensure_column(connection, "latent_cache_tile", "difference_rgb", "BLOB")?;
+    ensure_column(connection, "latent_cache_tile", "error_map_luma", "BLOB")?;
+    Ok(())
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut statement = connection
+        .prepare(&pragma)
+        .map_err(|err| format!("failed to inspect schema for table '{table}': {err}"))?;
+    let existing_columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|err| format!("failed to inspect columns for table '{table}': {err}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("failed to read columns for table '{table}': {err}"))?;
+    if existing_columns.iter().any(|existing| existing == column) {
+        return Ok(());
+    }
+
+    connection
+        .execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+            [],
+        )
+        .map_err(|err| format!("failed to add column '{column}' to table '{table}': {err}"))?;
+    Ok(())
 }
 
 fn ensure_sqlite_vec_registered() {
