@@ -430,11 +430,11 @@ fn run_tile_plan_with_file(
     }
 
     if prefer_gpu {
-        return run_tile_plan_with_file_gpu_batched(
-            model,
-            namespace,
-            tiles.as_slice(),
-            cancel,
+        return run_tile_plan_with_file_gpu_batched(RunTilePlanWithFileGpuBatchedContext {
+            model: &model,
+            namespace: &namespace,
+            tiles: tiles.as_slice(),
+            cancel: &cancel,
             file_id,
             host,
             skip_background,
@@ -444,7 +444,7 @@ fn run_tile_plan_with_file(
             total_tiles,
             cached_count,
             cache_key,
-        );
+        });
     }
 
     let work_tiles = tiles.len();
@@ -861,12 +861,11 @@ fn format_avg_ms(total_ns: u64, count: usize) -> f64 {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_tile_plan_with_file_gpu_batched(
-    model: LoadedModel,
-    namespace: String,
-    tiles: &[TilePlan],
-    cancel: Arc<AtomicBool>,
+struct RunTilePlanWithFileGpuBatchedContext<'a> {
+    model: &'a LoadedModel,
+    namespace: &'a str,
+    tiles: &'a [TilePlan],
+    cancel: &'a Arc<AtomicBool>,
     file_id: i32,
     host: plugin_api::ffi::HostApiVTable,
     skip_background: bool,
@@ -876,7 +875,27 @@ fn run_tile_plan_with_file_gpu_batched(
     total_tiles: usize,
     cached_count: usize,
     cache_key: Option<LatentCacheKey>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_tile_plan_with_file_gpu_batched(
+    ctx: RunTilePlanWithFileGpuBatchedContext,
 ) -> Result<(), String> {
+    let RunTilePlanWithFileGpuBatchedContext {
+        model,
+        namespace,
+        tiles,
+        cancel,
+        file_id,
+        host,
+        skip_background,
+        background_threshold,
+        analysis_threads,
+        gpu_batch_size,
+        total_tiles,
+        cached_count,
+        cache_key,
+    } = ctx;
     let work_tiles = tiles.len();
     let worker_count = analysis_threads.min(work_tiles).max(1);
     let model_fixed_batch_size = model.fixed_batch_size();
@@ -914,9 +933,9 @@ fn run_tile_plan_with_file_gpu_batched(
     let inference_running = Arc::new(AtomicBool::new(false));
     let gpu_started = Instant::now();
 
-    let postprocess_cancel = Arc::clone(&cancel);
+    let postprocess_cancel = Arc::clone(cancel);
     let postprocess_processed = Arc::clone(&processed);
-    let postprocess_namespace = namespace.clone();
+    let postprocess_namespace = namespace.to_string();
     let postprocess_cache_key = cache_key.clone();
     let postprocess_handle = thread::spawn(move || -> Result<(), String> {
         let mut persistent_cache = postprocess_cache_key.and_then(|key| {
@@ -947,7 +966,7 @@ fn run_tile_plan_with_file_gpu_batched(
             ));
 
             if let Some(cache) = persistent_cache.as_ref() {
-                for (tile, embedding) in analyzed_tiles.iter().zip(embeddings.into_iter()) {
+                for (tile, embedding) in analyzed_tiles.iter().zip(embeddings) {
                     if let Err(error) = cache.enqueue_tile(tile.clone(), embedding) {
                         log_persistent_cache_error(error);
                         persistent_cache = None;
@@ -992,7 +1011,7 @@ fn run_tile_plan_with_file_gpu_batched(
         let worker_filtered = Arc::clone(&filtered);
         let worker_queued = Arc::clone(&queued);
         let worker_inference_running = Arc::clone(&inference_running);
-        let worker_cancel = Arc::clone(&cancel);
+        let worker_cancel = Arc::clone(cancel);
         let worker_error = Arc::clone(&first_error);
         let worker_stats = Arc::clone(&pipeline_stats);
         let worker_host = host;
