@@ -220,6 +220,37 @@ pub fn start_viewport_analysis(
     });
 }
 
+pub fn start_visible_tile_analysis(
+    model: LoadedModel,
+    positions: Vec<(u64, u64)>,
+    namespace: String,
+    mip_level: u32,
+) {
+    if positions.is_empty() {
+        return;
+    }
+
+    let tile_size = model.summary.tile_size;
+    let downsample = 1u64 << mip_level.min(3);
+    let world_size = (tile_size as u64 * downsample) as u32;
+    start_job(JobKind::Viewport, namespace.clone(), move |cancel| {
+        let tiles = positions
+            .iter()
+            .copied()
+            .map(|(x, y)| TilePlan {
+                x,
+                y,
+                width: world_size,
+                height: world_size,
+                level: mip_level,
+                read_width: tile_size,
+                read_height: tile_size,
+            })
+            .collect::<Vec<_>>();
+        run_tile_plan(model, namespace, tiles, cancel)
+    });
+}
+
 pub fn start_whole_slide_analysis(
     model: LoadedModel,
     file_id: i32,

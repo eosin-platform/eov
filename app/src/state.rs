@@ -420,6 +420,8 @@ pub struct FilePaneState {
     pub needs_settled_cpu_render: bool,
     /// Filter revision last incorporated into a settled pane render.
     pub last_render_filter_revision: u64,
+    /// Whether the GPU surface still matches this pane's current viewport.
+    pub gpu_surface_valid: bool,
 }
 
 impl FilePaneState {
@@ -454,6 +456,7 @@ impl FilePaneState {
             pending_cpu_job_id: None,
             needs_settled_cpu_render: false,
             last_render_filter_revision: 0,
+            gpu_surface_valid: false,
         }
     }
 
@@ -471,6 +474,7 @@ impl FilePaneState {
         self.pending_cpu_job_id = None;
         self.needs_settled_cpu_render = false;
         self.last_render_filter_revision = 0;
+        self.gpu_surface_valid = false;
     }
 }
 

@@ -1,8 +1,8 @@
-use crate::analysis::{start_viewport_analysis, TileCacheEntry, should_render_overlay};
+use crate::analysis::{start_visible_tile_analysis, TileCacheEntry, should_render_overlay};
 use crate::state::{AnalysisPhase, VisualizationMode, plugin_state};
-use std::collections::HashSet;
 
 const MAX_PENDING_PLACEHOLDERS: usize = 512;
+const MAX_AUTO_ANALYSIS_TILES: usize = 64;
 
 pub fn apply_overlay(
     rgba_data: &mut [u8],
@@ -10,7 +10,7 @@ pub fn apply_overlay(
     height: u32,
     viewport: &plugin_api::ffi::ViewportSnapshotFFI,
 ) -> bool {
-    let (mode, entries, tile_size, mip_level, namespace, error_p05, error_p95) = {
+    let (mode, tile_size, mip_level, namespace, error_p05, error_p95) = {
         let state = plugin_state().lock().unwrap();
         let mode = state
             .pane_visualization_modes
@@ -27,15 +27,8 @@ pub fn apply_overlay(
             .as_ref()
             .map(|model| format!("{}|mip{}", model.summary.identity(), state.config.mip_level))
             .unwrap_or_else(|| state.cache_namespace.clone());
-        let entries = state
-            .cache
-            .values()
-            .filter(|entry| entry.namespace == namespace)
-            .cloned()
-            .collect::<Vec<_>>();
         (
             mode,
-            entries,
             tile_size,
             state.config.mip_level,
             namespace,
@@ -49,42 +42,41 @@ pub fn apply_overlay(
     }
 
     let grid = viewport_tile_grid(viewport, tile_size, mip_level);
-    let visible_tiles = visible_viewport_tiles(&grid, MAX_PENDING_PLACEHOLDERS);
-    let cached_tile_ids = entries
-        .iter()
-        .filter(|entry| tile_can_render(mode, &entry.tile))
-        .map(|entry| entry.tile.id())
-        .collect::<HashSet<_>>();
-    let visible_cached_count = entries
-        .iter()
-        .filter(|entry| intersects_viewport(entry, viewport) && tile_can_render(mode, &entry.tile))
-        .count();
-    let missing_tiles = visible_tiles
-        .into_iter()
-        .filter(|tile| !cached_tile_ids.contains(&tile.id))
-        .collect::<Vec<_>>();
-
-    let needs_analysis = visible_cached_count < grid.total_tiles;
-    maybe_start_viewport_analysis(viewport, needs_analysis, &grid, &namespace, mip_level);
-
+    let visible_tiles = collect_visible_tiles(&grid);
+    let mut missing_tiles = Vec::new();
     let mut applied = false;
 
-    for entry in entries {
-        if !intersects_viewport(&entry, viewport) {
-            continue;
+    {
+        let state = plugin_state().lock().unwrap();
+        for tile in &visible_tiles {
+            let Some(entry) = state.cache.get(&tile.id) else {
+                if missing_tiles.len() < MAX_PENDING_PLACEHOLDERS {
+                    missing_tiles.push(tile.clone());
+                }
+                continue;
+            };
+            if entry.namespace != namespace || !tile_can_render(mode, &entry.tile) {
+                if missing_tiles.len() < MAX_PENDING_PLACEHOLDERS {
+                    missing_tiles.push(tile.clone());
+                }
+                continue;
+            }
+
+            composite_tile(
+                rgba_data,
+                width,
+                height,
+                viewport,
+                entry,
+                mode,
+                error_p05,
+                error_p95,
+            );
+            applied = true;
         }
-        composite_tile(
-            rgba_data,
-            width,
-            height,
-            viewport,
-            &entry,
-            mode,
-            error_p05,
-            error_p95,
-        );
-        applied = true;
     }
+
+    maybe_start_viewport_analysis(viewport, &missing_tiles, &namespace, mip_level);
 
     for tile in &missing_tiles {
         paint_pending_tile(rgba_data, width, height, viewport, tile);
@@ -110,19 +102,6 @@ struct ViewportTileGrid {
     end_x: u64,
     end_y: u64,
     step: u64,
-    total_tiles: usize,
-}
-
-fn intersects_viewport(
-    entry: &TileCacheEntry,
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
-) -> bool {
-    let right = entry.tile.x as f64 + entry.tile.width as f64;
-    let bottom = entry.tile.y as f64 + entry.tile.height as f64;
-    !(right < viewport.bounds_left
-        || bottom < viewport.bounds_top
-        || entry.tile.x as f64 > viewport.bounds_right
-        || entry.tile.y as f64 > viewport.bounds_bottom)
 }
 
 fn composite_tile(
@@ -253,33 +232,21 @@ fn viewport_tile_grid(
     let start_y = ((viewport.bounds_top.max(0.0) as u64) / step) * step;
     let end_x = right.min(image_width);
     let end_y = bottom.min(image_height);
-    let columns = if end_x > start_x {
-        ((end_x - start_x) / step) as usize + usize::from((end_x - start_x) % step != 0)
-    } else {
-        0
-    };
-    let rows = if end_y > start_y {
-        ((end_y - start_y) / step) as usize + usize::from((end_y - start_y) % step != 0)
-    } else {
-        0
-    };
-
     ViewportTileGrid {
         start_x,
         start_y,
         end_x,
         end_y,
         step,
-        total_tiles: rows.saturating_mul(columns),
     }
 }
 
-fn visible_viewport_tiles(grid: &ViewportTileGrid, limit: usize) -> Vec<VisibleTile> {
+fn collect_visible_tiles(grid: &ViewportTileGrid) -> Vec<VisibleTile> {
     let mut tiles = Vec::new();
     let mut y = grid.start_y;
-    while y < grid.end_y && tiles.len() < limit {
+    while y < grid.end_y {
         let mut x = grid.start_x;
-        while x < grid.end_x && tiles.len() < limit {
+        while x < grid.end_x {
             let width = grid.step as u32;
             let height = grid.step as u32;
             tiles.push(VisibleTile {
@@ -298,17 +265,26 @@ fn visible_viewport_tiles(grid: &ViewportTileGrid, limit: usize) -> Vec<VisibleT
 
 fn maybe_start_viewport_analysis(
     viewport: &plugin_api::ffi::ViewportSnapshotFFI,
-    needs_analysis: bool,
-    grid: &ViewportTileGrid,
+    missing_tiles: &[VisibleTile],
     namespace: &str,
     mip_level: u32,
 ) {
-    let request_key = if !needs_analysis || grid.total_tiles == 0 {
+    let request_tiles = missing_tiles
+        .iter()
+        .take(MAX_AUTO_ANALYSIS_TILES)
+        .cloned()
+        .collect::<Vec<_>>();
+    let request_key = if request_tiles.is_empty() {
         None
     } else {
         Some(format!(
-            "{}:{}:{}:{}:{}:{}:{}",
-            namespace, grid.start_x, grid.start_y, grid.end_x, grid.end_y, grid.step, grid.total_tiles
+            "{}:{}",
+            namespace,
+            request_tiles
+                .iter()
+                .map(|tile| tile.id.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
         ))
     };
 
@@ -339,7 +315,12 @@ fn maybe_start_viewport_analysis(
     };
 
     if let Some(model) = maybe_request {
-        start_viewport_analysis(model, viewport.clone(), namespace.to_string(), mip_level);
+        let positions = request_tiles
+            .iter()
+            .map(|tile| (tile.x, tile.y))
+            .collect::<Vec<_>>();
+        let _ = viewport;
+        start_visible_tile_analysis(model, positions, namespace.to_string(), mip_level);
     }
 }
 

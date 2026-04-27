@@ -150,6 +150,7 @@ struct CpuFrameStateUpdate {
     last_render_deconv_e_visible: bool,
     last_render_deconv_isolated: crate::state::IsolatedChannel,
     last_render_filter_revision: u64,
+    gpu_surface_valid: bool,
 }
 
 struct CpuPaneExecution {
@@ -185,6 +186,144 @@ fn viewport_snapshot_ffi_for_render(
         bounds_right: bounds.right,
         bounds_bottom: bounds.bottom,
     }
+}
+
+fn cached_cpu_frame_matches(
+    cpu_frame: &CachedCpuFrame,
+    file_id: i32,
+    viewport: &Viewport,
+    render_width: u32,
+    render_height: u32,
+) -> bool {
+    cpu_frame.file_id == file_id
+        && cpu_frame.width == render_width
+        && cpu_frame.height == render_height
+        && (cpu_frame.viewport.center.x - viewport.center.x).abs() <= 1e-6
+        && (cpu_frame.viewport.center.y - viewport.center.y).abs() <= 1e-6
+        && (cpu_frame.viewport.zoom - viewport.zoom).abs() <= 1e-6
+        && (cpu_frame.viewport.width - viewport.width).abs() <= 1e-6
+        && (cpu_frame.viewport.height - viewport.height).abs() <= 1e-6
+        && (cpu_frame.viewport.image_width - viewport.image_width).abs() <= 1e-6
+        && (cpu_frame.viewport.image_height - viewport.image_height).abs() <= 1e-6
+}
+
+fn render_cached_cpu_frame_with_filters(
+    pane: PaneId,
+    file_id: i32,
+    file_path: &str,
+    filename: &str,
+    viewport: &Viewport,
+    render_width: u32,
+    render_height: u32,
+    filter_chain: &crate::viewport_filter::SharedFilterChain,
+    extension_host_state: &crate::extension_host::SharedExtensionHostState,
+    tokio_handle: Option<&tokio::runtime::Handle>,
+) -> Option<Image> {
+    crate::with_pane_render_cache(pane.0 + 1, |cache| {
+        let entry = cache.get_mut(pane.0)?;
+        let cpu_frame = entry.cpu_frame.as_ref()?;
+        if !cached_cpu_frame_matches(cpu_frame, file_id, viewport, render_width, render_height) {
+            return None;
+        }
+
+        let needed = (render_width as usize) * (render_height as usize) * 4;
+        if entry.preview_buffer.len() < needed {
+            entry.preview_buffer.resize(needed, 0);
+        }
+        let preview = &mut entry.preview_buffer[..needed];
+        preview.copy_from_slice(&cpu_frame.pixels[..needed]);
+
+        {
+            let chain = filter_chain.read();
+            if chain.has_enabled_cpu_filters() {
+                let mut viewport_state = common::ViewportState::new(
+                    viewport.width,
+                    viewport.height,
+                    viewport.image_width,
+                    viewport.image_height,
+                );
+                viewport_state.viewport = viewport.clone();
+                let filter_viewport = viewport_snapshot_ffi_for_render(
+                    file_id,
+                    file_path,
+                    filename,
+                    &viewport_state,
+                    pane,
+                );
+                chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
+            }
+        }
+
+        if let Some(handle) = tokio_handle {
+            crate::extension_host::apply_remote_cpu_filters(
+                extension_host_state,
+                preview,
+                render_width,
+                render_height,
+                handle,
+            );
+        }
+
+        blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
+    })
+}
+
+fn render_gpu_surface_with_filters(
+    pane: PaneId,
+    file_id: i32,
+    file_path: &str,
+    filename: &str,
+    viewport: &Viewport,
+    render_width: u32,
+    render_height: u32,
+    filter_chain: &crate::viewport_filter::SharedFilterChain,
+    extension_host_state: &crate::extension_host::SharedExtensionHostState,
+    tokio_handle: Option<&tokio::runtime::Handle>,
+) -> Option<Image> {
+    let slot = match pane {
+        PaneId::PRIMARY => SurfaceSlot::PRIMARY,
+        PaneId::SECONDARY => SurfaceSlot::SECONDARY,
+        _ => SurfaceSlot(pane.0),
+    };
+    let (width, height, mut pixels) =
+        crate::with_gpu_renderer(|renderer| renderer.borrow_mut().read_surface_rgba(slot))
+            .flatten()?;
+    if width != render_width || height != render_height {
+        return None;
+    }
+
+    {
+        let chain = filter_chain.read();
+        if chain.has_enabled_cpu_filters() {
+            let mut viewport_state = common::ViewportState::new(
+                viewport.width,
+                viewport.height,
+                viewport.image_width,
+                viewport.image_height,
+            );
+            viewport_state.viewport = viewport.clone();
+            let filter_viewport = viewport_snapshot_ffi_for_render(
+                file_id,
+                file_path,
+                filename,
+                &viewport_state,
+                pane,
+            );
+            chain.apply_cpu(&mut pixels, render_width, render_height, Some(&filter_viewport));
+        }
+    }
+
+    if let Some(handle) = tokio_handle {
+        crate::extension_host::apply_remote_cpu_filters(
+            extension_host_state,
+            &mut pixels,
+            render_width,
+            render_height,
+            handle,
+        );
+    }
+
+    blitter::create_image_buffer(&pixels, render_width, render_height).map(Image::from_rgba8)
 }
 
 #[derive(Clone, Copy)]
@@ -967,6 +1106,7 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_deconv_e_visible = frame_update.last_render_deconv_e_visible;
             pane_state.last_render_deconv_isolated = frame_update.last_render_deconv_isolated;
             pane_state.last_render_filter_revision = frame_update.last_render_filter_revision;
+            pane_state.gpu_surface_valid = frame_update.gpu_surface_valid;
         }
 
         if let Some(pending_cpu_job_id) = execution.commit.pending_cpu_job_id {
@@ -1032,6 +1172,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             &pane_state.viewport,
             pane,
         );
+        let cached_base_pixels = result.pixels.clone();
 
         // Apply in-process viewport filters (e.g. grayscale from FFI plugins).
         {
@@ -1072,7 +1213,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
                 width: result.width,
                 height: result.height,
                 viewport: result.viewport,
-                pixels: result.pixels,
+                pixels: cached_base_pixels,
             },
         );
         state.set_last_rendered_file_id(pane, Some(result.file_id));
@@ -1220,6 +1361,40 @@ fn render_cpu_pane_from_snapshot(
         };
     }
 
+    if filters_changed
+        && !snapshot.file_switched
+        && !snapshot.content_missing
+        && !viewport_changed
+        && !level_changed
+        && !new_tiles_loaded
+        && !adjustments_changed
+        && !snapshot.needs_settled_cpu_render
+        && let Some(image) = render_cached_cpu_frame_with_filters(
+            snapshot.pane,
+            snapshot.file_id,
+            &snapshot.file_path,
+            &snapshot.filename,
+            vp,
+            render_width,
+            render_height,
+            filter_chain,
+            extension_host_state,
+            tokio_handle,
+        )
+    {
+        return CpuPaneExecution {
+            pane: snapshot.pane,
+            file_id: snapshot.file_id,
+            content_missing: snapshot.content_missing,
+            outcome: PaneRenderOutcome {
+                image: Some(image),
+                keep_running: keep_running || snapshot.pending_cpu_job_id.is_some(),
+                rendered: true,
+            },
+            commit,
+        };
+    }
+
     commit.frame_update = Some(CpuFrameStateUpdate {
         frame_count: snapshot.frame_count + 1,
         last_render_time: std::time::Instant::now(),
@@ -1242,6 +1417,7 @@ fn render_cpu_pane_from_snapshot(
         last_render_deconv_e_visible: snapshot.hud_deconv_e_visible,
         last_render_deconv_isolated: snapshot.hud_deconv_isolated,
         last_render_filter_revision: snapshot.filter_revision,
+        gpu_surface_valid: false,
     });
 
     let Some(level_info) = snapshot.tile_manager.wsi().level(level).cloned() else {
@@ -1779,10 +1955,70 @@ fn render_pane_to_image(
         };
     }
 
-    let effective_render_backend = if render_backend == RenderBackend::Gpu
-        && (crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
-            || filter_chain.read().has_enabled_cpu_only_filters())
+    if force_render
+        && !is_first_frame
+        && !viewport_changed
+        && !level_changed
+        && !new_tiles_loaded
+        && !adjustments_changed
+        && !needs_settled_cpu_render
+        && let Some(image) = render_cached_cpu_frame_with_filters(
+            pane,
+            file.id,
+            &file.path.to_string_lossy(),
+            &file.filename,
+            vp,
+            render_width,
+            render_height,
+            filter_chain,
+            extension_host_state,
+            tokio_handle,
+        )
     {
+        return PaneRenderOutcome {
+            image: Some(image),
+            keep_running: keep_running || pending_cpu_job_id.is_some(),
+            rendered: true,
+        };
+    }
+
+    let has_cpu_only_filters = render_backend == RenderBackend::Gpu
+        && (crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
+            || filter_chain.read().has_enabled_cpu_only_filters());
+
+    if force_render
+        && has_cpu_only_filters
+        && !is_first_frame
+        && !viewport_changed
+        && !level_changed
+        && !new_tiles_loaded
+        && !adjustments_changed
+        && !needs_settled_cpu_render
+        && file
+            .pane_state(pane)
+            .map(|pane_state| pane_state.gpu_surface_valid)
+            .unwrap_or(false)
+        && let Some(image) = render_gpu_surface_with_filters(
+            pane,
+            file.id,
+            &file.path.to_string_lossy(),
+            &file.filename,
+            vp,
+            render_width,
+            render_height,
+            filter_chain,
+            extension_host_state,
+            tokio_handle,
+        )
+    {
+        return PaneRenderOutcome {
+            image: Some(image),
+            keep_running: keep_running || pending_cpu_job_id.is_some(),
+            rendered: true,
+        };
+    }
+
+    let effective_render_backend = if has_cpu_only_filters {
         RenderBackend::Cpu
     } else {
         render_backend
@@ -1887,11 +2123,15 @@ fn render_pane_to_image(
         .flatten();
 
         if image.is_some() {
+            if let Some(pane_state) = file.pane_state_mut(pane) {
+                pane_state.gpu_surface_valid = true;
+            }
             ui.window().request_redraw();
         } else if let Some(pane_state) = file.pane_state_mut(pane) {
             pane_state.frame_count = 0;
             pane_state.last_render_level = u32::MAX;
             pane_state.tiles_loaded_since_render = 0;
+            pane_state.gpu_surface_valid = false;
         }
         let rendered = image.is_some();
 
@@ -1900,6 +2140,10 @@ fn render_pane_to_image(
             keep_running: keep_running || !rendered,
             rendered,
         };
+    }
+
+    if let Some(pane_state) = file.pane_state_mut(pane) {
+        pane_state.gpu_surface_valid = false;
     }
 
     let level_info = match file.wsi.level(level) {
