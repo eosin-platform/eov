@@ -331,91 +331,6 @@ fn render_gpu_surface_with_filters(
     blitter::create_image_buffer(&pixels, render_width, render_height).map(Image::from_rgba8)
 }
 
-fn render_reprojected_cpu_preview_with_filters(
-    pane: PaneId,
-    file_id: i32,
-    file_path: &str,
-    filename: &str,
-    viewport: &Viewport,
-    render_width: u32,
-    render_height: u32,
-    filter_chain: &crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&tokio::runtime::Handle>,
-) -> Option<Image> {
-    crate::with_pane_render_cache(pane.0 + 1, |cache| {
-        let entry = cache.get_mut(pane.0)?;
-        let cpu_frame = entry.cpu_frame.as_ref()?;
-        if cpu_frame.file_id != file_id {
-            return None;
-        }
-
-        let src_bounds = cpu_frame.viewport.bounds();
-        let dest_bounds = viewport.bounds();
-        let overlap_left = src_bounds.left.max(dest_bounds.left);
-        let overlap_top = src_bounds.top.max(dest_bounds.top);
-        let overlap_right = src_bounds.right.min(dest_bounds.right);
-        let overlap_bottom = src_bounds.bottom.min(dest_bounds.bottom);
-        if overlap_right <= overlap_left || overlap_bottom <= overlap_top {
-            return None;
-        }
-
-        let needed = (render_width as usize) * (render_height as usize) * 4;
-        if entry.preview_buffer.len() < needed {
-            entry.preview_buffer.resize(needed, 0);
-        }
-        entry.preview_width = render_width;
-        entry.preview_height = render_height;
-        let preview = &mut entry.preview_buffer[..needed];
-        blitter::reproject_frame(
-            preview,
-            render_width,
-            render_height,
-            blitter::FrameSrc {
-                pixels: &cpu_frame.pixels,
-                width: cpu_frame.width,
-                height: cpu_frame.height,
-            },
-            cpu_frame,
-            viewport,
-            [30, 30, 30, 255],
-        );
-
-        {
-            let chain = filter_chain.read();
-            if chain.has_enabled_cpu_filters() {
-                let mut viewport_state = common::ViewportState::new(
-                    viewport.width,
-                    viewport.height,
-                    viewport.image_width,
-                    viewport.image_height,
-                );
-                viewport_state.viewport = viewport.clone();
-                let filter_viewport = viewport_snapshot_ffi_for_render(
-                    file_id,
-                    file_path,
-                    filename,
-                    &viewport_state,
-                    pane,
-                );
-                chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
-            }
-        }
-
-        if let Some(handle) = tokio_handle {
-            crate::extension_host::apply_remote_cpu_filters(
-                extension_host_state,
-                preview,
-                render_width,
-                render_height,
-                handle,
-            );
-        }
-
-        blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
-    })
-}
-
 #[derive(Clone, Copy)]
 struct TileProjection<'a> {
     viewport: &'a Viewport,
@@ -2078,28 +1993,6 @@ fn render_pane_to_image(
         && (crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
             || filter_chain.read().has_enabled_cpu_only_filters());
 
-    if has_cpu_only_filters
-        && is_moving
-        && let Some(image) = render_reprojected_cpu_preview_with_filters(
-            pane,
-            file.id,
-            &file.path.to_string_lossy(),
-            &file.filename,
-            vp,
-            render_width,
-            render_height,
-            filter_chain,
-            extension_host_state,
-            tokio_handle,
-        )
-    {
-        return PaneRenderOutcome {
-            image: Some(image),
-            keep_running: true,
-            rendered: true,
-        };
-    }
-
     if force_render
         && has_cpu_only_filters
         && !is_first_frame
@@ -2132,7 +2025,10 @@ fn render_pane_to_image(
         };
     }
 
-    let effective_render_backend = if has_cpu_only_filters && !is_moving {
+    // CPU-only filters need the live CPU preview path even while moving so
+    // newly visible tiles are composited into the frame instead of reprojecting
+    // the last settled image.
+    let effective_render_backend = if has_cpu_only_filters {
         RenderBackend::Cpu
     } else {
         render_backend
