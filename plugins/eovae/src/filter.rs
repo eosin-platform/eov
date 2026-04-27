@@ -62,9 +62,16 @@ pub fn apply_overlay(
                 continue;
             }
 
-            composite_tile(
-                rgba_data, width, height, viewport, entry, mode, error_p05, error_p95,
-            );
+            composite_tile(CompositeTileContext {
+                rgba_data,
+                frame_width: width,
+                frame_height: height,
+                viewport,
+                entry,
+                mode,
+                error_p05,
+                error_p95,
+            });
             applied = true;
         }
     }
@@ -97,16 +104,28 @@ struct ViewportTileGrid {
     step: u64,
 }
 
-fn composite_tile(
-    rgba_data: &mut [u8],
+struct CompositeTileContext<'a> {
+    rgba_data: &'a mut [u8],
     frame_width: u32,
     frame_height: u32,
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
-    entry: &TileCacheEntry,
+    viewport: &'a plugin_api::ffi::ViewportSnapshotFFI,
+    entry: &'a TileCacheEntry,
     mode: VisualizationMode,
     error_p05: f64,
     error_p95: f64,
-) {
+}
+
+fn composite_tile(ctx: CompositeTileContext) {
+    let CompositeTileContext {
+        rgba_data,
+        frame_width,
+        frame_height,
+        viewport,
+        entry,
+        mode,
+        error_p05,
+        error_p95,
+    } = ctx;
     let tile = &entry.tile;
     if !tile_can_render(mode, tile) {
         return;

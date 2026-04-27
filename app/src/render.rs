@@ -207,18 +207,34 @@ fn cached_cpu_frame_matches(
         && (cpu_frame.viewport.image_height - viewport.image_height).abs() <= 1e-6
 }
 
-fn render_cached_cpu_frame_with_filters(
+struct RenderCachedCpuFrameWithFiltersContext<'a> {
     pane: PaneId,
     file_id: i32,
-    file_path: &str,
-    filename: &str,
-    viewport: &Viewport,
+    file_path: &'a str,
+    filename: &'a str,
+    viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
-    filter_chain: &crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&tokio::runtime::Handle>,
+    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
+    tokio_handle: Option<&'a tokio::runtime::Handle>,
+}
+
+fn render_cached_cpu_frame_with_filters(
+    ctx: RenderCachedCpuFrameWithFiltersContext,
 ) -> Option<Image> {
+    let RenderCachedCpuFrameWithFiltersContext {
+        pane,
+        file_id,
+        file_path,
+        filename,
+        viewport,
+        render_width,
+        render_height,
+        filter_chain,
+        extension_host_state,
+        tokio_handle,
+    } = ctx;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
         let cpu_frame = entry.cpu_frame.as_ref()?;
@@ -268,18 +284,32 @@ fn render_cached_cpu_frame_with_filters(
     })
 }
 
-fn render_gpu_surface_with_filters(
+struct RenderGpuSurfaceWithFiltersContext<'a> {
     pane: PaneId,
     file_id: i32,
-    file_path: &str,
-    filename: &str,
-    viewport: &Viewport,
+    file_path: &'a str,
+    filename: &'a str,
+    viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
-    filter_chain: &crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&tokio::runtime::Handle>,
-) -> Option<Image> {
+    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
+    tokio_handle: Option<&'a tokio::runtime::Handle>,
+}
+
+fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> Option<Image> {
+    let RenderGpuSurfaceWithFiltersContext {
+        pane,
+        file_id,
+        file_path,
+        filename,
+        viewport,
+        render_width,
+        render_height,
+        filter_chain,
+        extension_host_state,
+        tokio_handle,
+    } = ctx;
     let slot = match pane {
         PaneId::PRIMARY => SurfaceSlot::PRIMARY,
         PaneId::SECONDARY => SurfaceSlot::SECONDARY,
@@ -1374,18 +1404,19 @@ fn render_cpu_pane_from_snapshot(
         && !new_tiles_loaded
         && !adjustments_changed
         && !snapshot.needs_settled_cpu_render
-        && let Some(image) = render_cached_cpu_frame_with_filters(
-            snapshot.pane,
-            snapshot.file_id,
-            &snapshot.file_path,
-            &snapshot.filename,
-            vp,
-            render_width,
-            render_height,
-            filter_chain,
-            extension_host_state,
-            tokio_handle,
-        )
+        && let Some(image) =
+            render_cached_cpu_frame_with_filters(RenderCachedCpuFrameWithFiltersContext {
+                pane: snapshot.pane,
+                file_id: snapshot.file_id,
+                file_path: &snapshot.file_path,
+                filename: &snapshot.filename,
+                viewport: vp,
+                render_width,
+                render_height,
+                filter_chain,
+                extension_host_state,
+                tokio_handle,
+            })
     {
         return CpuPaneExecution {
             pane: snapshot.pane,
@@ -1969,18 +2000,19 @@ fn render_pane_to_image(
         && !new_tiles_loaded
         && !adjustments_changed
         && !needs_settled_cpu_render
-        && let Some(image) = render_cached_cpu_frame_with_filters(
-            pane,
-            file.id,
-            &file.path.to_string_lossy(),
-            &file.filename,
-            vp,
-            render_width,
-            render_height,
-            filter_chain,
-            extension_host_state,
-            tokio_handle,
-        )
+        && let Some(image) =
+            render_cached_cpu_frame_with_filters(RenderCachedCpuFrameWithFiltersContext {
+                pane,
+                file_id: file.id,
+                file_path: &file.path.to_string_lossy(),
+                filename: &file.filename,
+                viewport: vp,
+                render_width,
+                render_height,
+                filter_chain,
+                extension_host_state,
+                tokio_handle,
+            })
     {
         return PaneRenderOutcome {
             image: Some(image),
@@ -2005,18 +2037,18 @@ fn render_pane_to_image(
             .pane_state(pane)
             .map(|pane_state| pane_state.gpu_surface_valid)
             .unwrap_or(false)
-        && let Some(image) = render_gpu_surface_with_filters(
+        && let Some(image) = render_gpu_surface_with_filters(RenderGpuSurfaceWithFiltersContext {
             pane,
-            file.id,
-            &file.path.to_string_lossy(),
-            &file.filename,
-            vp,
+            file_id: file.id,
+            file_path: &file.path.to_string_lossy(),
+            filename: &file.filename,
+            viewport: vp,
             render_width,
             render_height,
             filter_chain,
             extension_host_state,
             tokio_handle,
-        )
+        })
     {
         return PaneRenderOutcome {
             image: Some(image),
