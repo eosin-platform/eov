@@ -1010,6 +1010,15 @@ fn property(name: &str, value: serde_json::Value) -> UiPropertyFFI {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn sidebar_test_guard() -> MutexGuard<'static, ()> {
+        static SIDEBAR_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        SIDEBAR_TEST_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap()
+    }
 
     fn reset_sidebar_test_state() {
         let mut state = plugin_state().lock().unwrap();
@@ -1018,12 +1027,14 @@ mod tests {
 
     #[test]
     fn ignores_noop_mode_change() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(!update_mode("\"Original\""));
     }
 
     #[test]
     fn ignores_noop_mip_change() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(!update_mip_level("\"1x\""));
     }
@@ -1039,6 +1050,7 @@ mod tests {
 
     #[test]
     fn hover_region_accepts_single_string_array_payload() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(update_hovered_region("[\"10:20:30:40\"]"));
         assert_eq!(
@@ -1049,6 +1061,7 @@ mod tests {
 
     #[test]
     fn ignores_noop_tensor_selection_during_initialization() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(!update_selected_tensor("\"input\"", true));
         assert!(!update_selected_tensor("\"reconstruction\"", false));
@@ -1056,12 +1069,14 @@ mod tests {
 
     #[test]
     fn ignores_noop_section_toggle() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(!update_section_expanded("true", Section::Model));
     }
 
     #[test]
     fn section_toggle_accepts_single_bool_array_payload() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(update_section_expanded("[false]", Section::Model));
         assert!(!plugin_state().lock().unwrap().model_section_expanded);
@@ -1069,6 +1084,7 @@ mod tests {
 
     #[test]
     fn analysis_threads_accepts_single_string_array_payload() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(update_analysis_threads("[\"2\"]"));
         assert_eq!(
@@ -1079,6 +1095,7 @@ mod tests {
 
     #[test]
     fn analysis_batch_size_accepts_single_string_array_payload() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         assert!(update_analysis_batch_size("[\"65\"]"));
         assert_eq!(plugin_state().lock().unwrap().config.gpu_batch_size, 65);
@@ -1086,6 +1103,7 @@ mod tests {
 
     #[test]
     fn clamps_analysis_threads_to_max() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         plugin_state().lock().unwrap().config.analysis_threads = 1;
         let _ = update_analysis_threads("\"9999\"");
@@ -1097,6 +1115,7 @@ mod tests {
 
     #[test]
     fn clamps_analysis_batch_size() {
+        let _guard = sidebar_test_guard();
         reset_sidebar_test_state();
         plugin_state().lock().unwrap().config.gpu_batch_size = 64;
         let _ = update_analysis_batch_size("\"99999\"");

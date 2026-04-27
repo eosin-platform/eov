@@ -284,64 +284,70 @@ mod tests {
 
     #[test]
     fn annotations_sidebar_runtime_compiles_and_creates() {
-        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins/annotations/ui/annotations-sidebar.slint");
-        let source = std::fs::read_to_string(&ui_path).unwrap();
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/annotations/ui/annotations-sidebar.slint");
+            let source = std::fs::read_to_string(&ui_path).unwrap();
 
-        let compiler = slint_interpreter::Compiler::default();
-        let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
+            let compiler = slint_interpreter::Compiler::default();
+            let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
 
-        let diagnostics = result.diagnostics().collect::<Vec<_>>();
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.level() != slint_interpreter::DiagnosticLevel::Error),
-            "runtime compile diagnostics: {diagnostics:?}"
-        );
+            let diagnostics = result.diagnostics().collect::<Vec<_>>();
+            assert!(
+                diagnostics.iter().all(|diagnostic| {
+                    diagnostic.level() != slint_interpreter::DiagnosticLevel::Error
+                }),
+                "runtime compile diagnostics: {diagnostics:?}"
+            );
 
-        let definition = result.component("AnnotationsSidebar").unwrap();
-        let _instance = definition.create().unwrap();
+            let definition = result.component("AnnotationsSidebar").unwrap();
+            let _instance = definition.create().unwrap();
+        });
     }
 
     #[test]
     fn eovae_sidebar_runtime_compiles_and_creates() {
-        let ui_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let source = std::fs::read_to_string(&ui_path).unwrap();
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/eovae/ui/eovae-sidebar.slint");
+            let source = std::fs::read_to_string(&ui_path).unwrap();
 
-        let compiler = slint_interpreter::Compiler::default();
-        let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
+            let compiler = slint_interpreter::Compiler::default();
+            let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
 
-        let diagnostics = result.diagnostics().collect::<Vec<_>>();
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.level() != slint_interpreter::DiagnosticLevel::Error),
-            "runtime compile diagnostics: {diagnostics:?}"
-        );
+            let diagnostics = result.diagnostics().collect::<Vec<_>>();
+            assert!(
+                diagnostics.iter().all(|diagnostic| {
+                    diagnostic.level() != slint_interpreter::DiagnosticLevel::Error
+                }),
+                "runtime compile diagnostics: {diagnostics:?}"
+            );
 
-        let definition = result.component("EovaeSidebar").unwrap();
-        let _instance = definition.create().unwrap();
+            let definition = result.component("EovaeSidebar").unwrap();
+            let _instance = definition.create().unwrap();
+        });
     }
 
     #[test]
     fn eovae_viewport_grid_runtime_compiles_and_creates() {
-        let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins/eovae/ui/eovae-viewport-grid.slint");
-        let source = std::fs::read_to_string(&ui_path).unwrap();
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/eovae/ui/eovae-viewport-grid.slint");
+            let source = std::fs::read_to_string(&ui_path).unwrap();
 
-        let compiler = slint_interpreter::Compiler::default();
-        let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
+            let compiler = slint_interpreter::Compiler::default();
+            let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
 
-        let diagnostics = result.diagnostics().collect::<Vec<_>>();
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.level() != slint_interpreter::DiagnosticLevel::Error),
-            "runtime compile diagnostics: {diagnostics:?}"
-        );
+            let diagnostics = result.diagnostics().collect::<Vec<_>>();
+            assert!(
+                diagnostics.iter().all(|diagnostic| {
+                    diagnostic.level() != slint_interpreter::DiagnosticLevel::Error
+                }),
+                "runtime compile diagnostics: {diagnostics:?}"
+            );
 
-        let definition = result.component("EovaeViewportGrid").unwrap();
-        let _instance = definition.create().unwrap();
+            let definition = result.component("EovaeViewportGrid").unwrap();
+            let _instance = definition.create().unwrap();
+        });
     }
 }

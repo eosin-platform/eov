@@ -633,12 +633,88 @@ mod tests {
     use crate::state::AppState;
     use common::TileCache;
     use parking_lot::RwLock;
+    use plugin_api::{
+        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
+        ToolbarButtonRegistration,
+    };
     use slint::Timer;
     use std::cell::RefCell;
     use std::fs;
     use std::fs::File;
     use std::rc::Rc;
     use std::sync::Arc;
+
+    const ACTION_OPEN_PANEL: &str = "open_panel";
+
+    struct ExampleTestPlugin {
+        manifest: PluginManifest,
+    }
+
+    impl ExampleTestPlugin {
+        fn new(manifest: PluginManifest) -> Self {
+            Self { manifest }
+        }
+
+        fn default_manifest() -> PluginManifest {
+            PluginManifest {
+                id: "example_plugin".into(),
+                name: "Example Plugin".into(),
+                version: "0.1.0".into(),
+                entry_ui: Some("ui/my_panel.slint".into()),
+                entry_component: Some("MyPanel".into()),
+                icon: Some(IconDescriptor::Svg {
+                    data: "<svg/>".into(),
+                }),
+                language: Default::default(),
+                entry_script: None,
+                toolbar_buttons: Vec::new(),
+            }
+        }
+    }
+
+    impl Plugin for ExampleTestPlugin {
+        fn manifest(&self) -> &PluginManifest {
+            &self.manifest
+        }
+
+        fn activate(&self, host: &mut dyn HostContext, _plugin_root: &Path) -> PluginResult<()> {
+            host.add_toolbar_button(ToolbarButtonRegistration {
+                plugin_id: self.manifest.id.clone(),
+                button_id: "smiley".into(),
+                tooltip: "Example Plugin".into(),
+                icon: IconDescriptor::Svg {
+                    data: "<svg/>".into(),
+                },
+                action_id: ACTION_OPEN_PANEL.into(),
+                tool_mode: None,
+                hotkey: None,
+                active: false,
+            })
+        }
+
+        fn on_action(
+            &self,
+            action_id: &str,
+            host: &mut dyn HostContext,
+            plugin_root: &Path,
+        ) -> PluginResult<()> {
+            if action_id == ACTION_OPEN_PANEL {
+                let ui_path = self
+                    .manifest
+                    .resolve_entry_ui(plugin_root)
+                    .expect("example test plugin must have entry_ui");
+                host.open_plugin_window(
+                    &self.manifest.id,
+                    &ui_path,
+                    self.manifest
+                        .entry_component
+                        .as_deref()
+                        .expect("example test plugin must have entry_component"),
+                )?;
+            }
+            Ok(())
+        }
+    }
 
     fn append_tree(builder: &mut tar::Builder<File>, source_root: &Path, current: &Path) {
         for entry in fs::read_dir(current).unwrap() {
@@ -693,9 +769,7 @@ data = "<svg/>"
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
 
         // Register the example plugin implementation
-        let plugin = Arc::new(example_plugin::ExamplePlugin::new(
-            example_plugin::ExamplePlugin::default_manifest(),
-        ));
+        let plugin = Arc::new(ExampleTestPlugin::new(ExampleTestPlugin::default_manifest()));
         mgr.registry.register(plugin).unwrap();
 
         // Discover from the temp directory
@@ -715,9 +789,7 @@ data = "<svg/>"
         create_example_plugin_package(tmp.path());
 
         let mut mgr = PluginManager::new(tmp.path().to_path_buf());
-        let plugin = Arc::new(example_plugin::ExamplePlugin::new(
-            example_plugin::ExamplePlugin::default_manifest(),
-        ));
+        let plugin = Arc::new(ExampleTestPlugin::new(ExampleTestPlugin::default_manifest()));
         mgr.registry.register(plugin).unwrap();
         mgr.discover();
         mgr.activate_all().unwrap();
@@ -764,48 +836,50 @@ data = "<svg/>"
 
     #[test]
     fn manager_handle_action_opens_eovae_sidebar_with_real_vtable() {
-        let ui = AppWindow::new().unwrap();
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let tile_cache = Arc::new(TileCache::new());
-        let render_timer = Rc::new(Timer::default());
-        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::new());
+            let render_timer = Rc::new(Timer::default());
+            init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
 
-        let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
-        let vtable = eovae::eov_get_plugin_vtable();
-        let host_api = build_host_api("eovae", &plugin_root, &state, vtable);
-        (vtable.set_host_api)(host_api);
+            let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+            let vtable = eovae::eov_get_plugin_vtable();
+            let host_api = build_host_api("eovae", &plugin_root, &state, vtable);
+            (vtable.set_host_api)(host_api);
 
-        state.write().local_plugin_buttons = vec![ToolbarButtonRegistration {
-            plugin_id: "eovae".to_string(),
-            button_id: "toggle_eovae".to_string(),
-            tooltip: "VAE".to_string(),
-            icon: IconDescriptor::Svg {
-                data: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_string(),
-            },
-            action_id: "toggle_eovae".to_string(),
-            tool_mode: None,
-            hotkey: None,
-            active: false,
-        }];
+            state.write().local_plugin_buttons = vec![ToolbarButtonRegistration {
+                plugin_id: "eovae".to_string(),
+                button_id: "toggle_eovae".to_string(),
+                tooltip: "VAE".to_string(),
+                icon: IconDescriptor::Svg {
+                    data: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_string(),
+                },
+                action_id: "toggle_eovae".to_string(),
+                tool_mode: None,
+                hotkey: None,
+                active: false,
+            }];
 
-        let manager = RefCell::new(PluginManager::new(PathBuf::new()));
-        manager
-            .borrow_mut()
-            .loaded_vtables
-            .insert("eovae".to_string(), vtable);
+            let manager = RefCell::new(PluginManager::new(PathBuf::new()));
+            manager
+                .borrow_mut()
+                .loaded_vtables
+                .insert("eovae".to_string(), vtable);
 
-        let result = manager
-            .borrow_mut()
-            .handle_action("eovae", "toggle_eovae")
-            .unwrap();
-        assert!(matches!(result, ActionOutcome::Handled));
+            let result = manager
+                .borrow_mut()
+                .handle_action("eovae", "toggle_eovae")
+                .unwrap();
+            assert!(matches!(result, ActionOutcome::Handled));
 
-        let state = state.read();
-        let active_sidebar = state
-            .active_sidebar
-            .as_ref()
-            .expect("sidebar should be active");
-        assert_eq!(active_sidebar.plugin_id, "eovae");
-        assert_eq!(active_sidebar.component, "EovaeSidebar");
+            let state = state.read();
+            let active_sidebar = state
+                .active_sidebar
+                .as_ref()
+                .expect("sidebar should be active");
+            assert_eq!(active_sidebar.plugin_id, "eovae");
+            assert_eq!(active_sidebar.component, "EovaeSidebar");
+        });
     }
 }

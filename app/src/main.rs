@@ -18,6 +18,8 @@ mod render;
 mod render_pool;
 mod stain;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod tile_loader;
 mod tools;
 mod ui_update;

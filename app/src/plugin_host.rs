@@ -3751,79 +3751,87 @@ mod tests {
 
     #[test]
     fn eovae_embedded_sidebar_factory_attaches_to_app_window() {
-        let ui_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let factory =
-            build_sidebar_factory("eovae", ui_path.to_str().unwrap(), "EovaeSidebar", None)
-                .unwrap();
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/eovae/ui/eovae-sidebar.slint");
+            let factory =
+                build_sidebar_factory("eovae", ui_path.to_str().unwrap(), "EovaeSidebar", None)
+                    .unwrap();
 
-        let ui = AppWindow::new().unwrap();
-        ui.set_plugin_sidebar_factory(factory);
-        ui.set_show_plugin_sidebar(true);
-        ui.set_plugin_sidebar_width(340.0);
+            let ui = AppWindow::new().unwrap();
+            ui.set_plugin_sidebar_factory(factory);
+            ui.set_show_plugin_sidebar(true);
+            ui.set_plugin_sidebar_width(340.0);
+        });
     }
 
     #[test]
     fn eovae_embedded_sidebar_factory_applies_initial_properties() {
-        let ui_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae/ui/eovae-sidebar.slint");
-        let factory = build_sidebar_factory(
-            "eovae",
-            ui_path.to_str().unwrap(),
-            "EovaeSidebar",
-            Some(fake_eovae_vtable()),
-        )
-        .unwrap();
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/eovae/ui/eovae-sidebar.slint");
+            let factory = build_sidebar_factory(
+                "eovae",
+                ui_path.to_str().unwrap(),
+                "EovaeSidebar",
+                Some(fake_eovae_vtable()),
+            )
+            .unwrap();
 
-        let ui = AppWindow::new().unwrap();
-        ui.set_plugin_sidebar_factory(factory);
-        ui.set_show_plugin_sidebar(true);
-        ui.set_plugin_sidebar_width(340.0);
+            let ui = AppWindow::new().unwrap();
+            ui.set_plugin_sidebar_factory(factory);
+            ui.set_show_plugin_sidebar(true);
+            ui.set_plugin_sidebar_width(340.0);
+        });
     }
 
     #[test]
     fn eovae_show_sidebar_host_path_completes() {
-        let ui = AppWindow::new().unwrap();
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let tile_cache = Arc::new(TileCache::new());
-        let render_timer = Rc::new(Timer::default());
-        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::new());
+            let render_timer = Rc::new(Timer::default());
+            init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
 
-        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
-        show_sidebar(
-            "eovae",
-            Some(&plugin_root),
-            Some(fake_eovae_vtable()),
-            plugin_api::SidebarRequest {
-                button_id: Some("toggle_eovae".to_string()),
-                width_px: 340,
-                ui_path: "ui/eovae-sidebar.slint".to_string(),
-                component: "EovaeSidebar".to_string(),
-            },
-        )
-        .unwrap();
+            let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+            show_sidebar(
+                "eovae",
+                Some(&plugin_root),
+                Some(fake_eovae_vtable()),
+                plugin_api::SidebarRequest {
+                    button_id: Some("toggle_eovae".to_string()),
+                    width_px: 340,
+                    ui_path: "ui/eovae-sidebar.slint".to_string(),
+                    component: "EovaeSidebar".to_string(),
+                },
+            )
+            .unwrap();
+        });
     }
 
     #[test]
     fn eovae_show_sidebar_host_path_completes_with_real_vtable() {
-        let ui = AppWindow::new().unwrap();
-        let state = Arc::new(RwLock::new(AppState::new()));
-        let tile_cache = Arc::new(TileCache::new());
-        let render_timer = Rc::new(Timer::default());
-        init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::new());
+            let render_timer = Rc::new(Timer::default());
+            init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
 
-        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
-        show_sidebar(
-            "eovae",
-            Some(&plugin_root),
-            Some(eovae::eov_get_plugin_vtable()),
-            plugin_api::SidebarRequest {
-                button_id: Some("toggle_eovae".to_string()),
-                width_px: 340,
-                ui_path: "ui/eovae-sidebar.slint".to_string(),
-                component: "EovaeSidebar".to_string(),
-            },
-        )
-        .unwrap();
+            let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/eovae");
+            show_sidebar(
+                "eovae",
+                Some(&plugin_root),
+                Some(eovae::eov_get_plugin_vtable()),
+                plugin_api::SidebarRequest {
+                    button_id: Some("toggle_eovae".to_string()),
+                    width_px: 340,
+                    ui_path: "ui/eovae-sidebar.slint".to_string(),
+                    component: "EovaeSidebar".to_string(),
+                },
+            )
+            .unwrap();
+        });
     }
 }

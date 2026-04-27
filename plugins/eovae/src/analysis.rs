@@ -1600,11 +1600,11 @@ mod tests {
     fn cpu_inference_status_message_uses_global_completion() {
         assert_eq!(
             cpu_inference_status_message(12, 3, 100, Some(5)),
-            "Running inference tile 12/100, 12/100 completed, 0 queued (5s)"
+            "Infer 12/100 | done 12/100 | queued 0 | 5s"
         );
         assert_eq!(
             cpu_inference_status_message(0, 5, 100, Some(5)),
-            "Running inference tile 1/100, 0/100 completed, 5 queued (5s)"
+            "Infer 1/100 | done 0/100 | queued 5 | 5s"
         );
     }
 

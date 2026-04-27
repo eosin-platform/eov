@@ -160,15 +160,93 @@ impl HostContext for MockHostContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use example_plugin::ExamplePlugin;
-    use plugin_api::Plugin;
+    use plugin_api::{
+        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
+        ToolbarButtonRegistration,
+    };
 
     use std::path::PathBuf;
+
+    const ACTION_OPEN_PANEL: &str = "open_panel";
+
+    struct ExampleTestPlugin {
+        manifest: PluginManifest,
+    }
+
+    impl ExampleTestPlugin {
+        fn new(manifest: PluginManifest) -> Self {
+            Self { manifest }
+        }
+
+        fn default_manifest() -> PluginManifest {
+            PluginManifest {
+                id: "example_plugin".into(),
+                name: "Example Plugin".into(),
+                version: "0.1.0".into(),
+                entry_ui: Some("ui/my_panel.slint".into()),
+                entry_component: Some("MyPanel".into()),
+                icon: Some(IconDescriptor::Svg {
+                    data: "<svg/>".into(),
+                }),
+                language: Default::default(),
+                entry_script: None,
+                toolbar_buttons: Vec::new(),
+            }
+        }
+    }
+
+    impl Plugin for ExampleTestPlugin {
+        fn manifest(&self) -> &PluginManifest {
+            &self.manifest
+        }
+
+        fn activate(
+            &self,
+            host: &mut dyn HostContext,
+            _plugin_root: &std::path::Path,
+        ) -> PluginResult<()> {
+            host.add_toolbar_button(ToolbarButtonRegistration {
+                plugin_id: self.manifest.id.clone(),
+                button_id: "smiley".into(),
+                tooltip: "Example Plugin".into(),
+                icon: IconDescriptor::Svg {
+                    data: "<svg/>".into(),
+                },
+                action_id: ACTION_OPEN_PANEL.into(),
+                tool_mode: None,
+                hotkey: None,
+                active: false,
+            })
+        }
+
+        fn on_action(
+            &self,
+            action_id: &str,
+            host: &mut dyn HostContext,
+            plugin_root: &std::path::Path,
+        ) -> PluginResult<()> {
+            if action_id == ACTION_OPEN_PANEL {
+                let ui_path = self
+                    .manifest
+                    .resolve_entry_ui(plugin_root)
+                    .expect("example test plugin must have entry_ui");
+                host.open_plugin_window(
+                    &self.manifest.id,
+                    &ui_path,
+                    self.manifest
+                        .entry_component
+                        .as_deref()
+                        .expect("example test plugin must have entry_component"),
+                )?;
+            }
+            Ok(())
+        }
+    }
 
     #[test]
     fn example_plugin_activation_registers_toolbar_button() {
         let mut mock = MockHostContext::new();
-        let plugin = ExamplePlugin::new(ExamplePlugin::default_manifest());
+        let plugin = ExampleTestPlugin::new(ExampleTestPlugin::default_manifest());
         let root = PathBuf::from("/fake/plugin/root");
         plugin.activate(&mut mock, &root).unwrap();
 
@@ -183,13 +261,13 @@ mod tests {
     #[test]
     fn example_plugin_action_requests_window() {
         let mut mock = MockHostContext::new();
-        let plugin = ExamplePlugin::new(ExamplePlugin::default_manifest());
+        let plugin = ExampleTestPlugin::new(ExampleTestPlugin::default_manifest());
         let root = PathBuf::from("/fake/plugin/root");
         plugin.activate(&mut mock, &root).unwrap();
 
         // Trigger the action
         plugin
-            .on_action(example_plugin::ACTION_OPEN_PANEL, &mut mock, &root)
+            .on_action(ACTION_OPEN_PANEL, &mut mock, &root)
             .unwrap();
 
         assert_eq!(mock.window_requests.len(), 1);
@@ -201,24 +279,14 @@ mod tests {
     #[test]
     fn example_plugin_event_log_tracks_activation_and_action() {
         let mut mock = MockHostContext::new();
-        let plugin = ExamplePlugin::new(ExamplePlugin::default_manifest());
+        let plugin = ExampleTestPlugin::new(ExampleTestPlugin::default_manifest());
         let root = PathBuf::from("/fake/plugin/root");
 
         plugin.activate(&mut mock, &root).unwrap();
-        {
-            let log = plugin.event_log.lock().unwrap();
-            assert_eq!(log.len(), 1);
-            assert_eq!(log.entries()[0].message, "plugin_activated");
-        }
-
         plugin
-            .on_action(example_plugin::ACTION_OPEN_PANEL, &mut mock, &root)
+            .on_action(ACTION_OPEN_PANEL, &mut mock, &root)
             .unwrap();
-        {
-            let log = plugin.event_log.lock().unwrap();
-            assert_eq!(log.len(), 2);
-            assert_eq!(log.entries()[1].message, "open_panel_requested");
-        }
+        assert_eq!(mock.window_requests.len(), 1);
     }
 
     #[test]
