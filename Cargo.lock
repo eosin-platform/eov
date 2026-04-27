@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "annotations"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "abi_stable",
  "common",
@@ -339,7 +339,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "app"
-version = "0.2.21"
+version = "0.2.22"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -1236,7 +1236,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.2.21"
+version = "0.2.22"
 dependencies = [
  "ab_glyph",
  "anyhow",
