@@ -1732,7 +1732,8 @@ fn render_pane_to_image(
     }
 
     let effective_render_backend = if render_backend == RenderBackend::Gpu
-        && crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
+        && (crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
+            || filter_chain.read().has_enabled_cpu_only_filters())
     {
         RenderBackend::Cpu
     } else {

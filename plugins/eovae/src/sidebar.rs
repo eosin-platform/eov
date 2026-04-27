@@ -588,6 +588,7 @@ fn clear_model() {
     state.hovered_region_id = None;
     state.pulsing_region_id = None;
     state.pulsing_region_started_at = None;
+    state.auto_viewport_request_key = None;
     if let Err(error) = save_persisted_model_path(None) {
         log_message(HostLogLevelFFI::Error, error);
     }
@@ -744,6 +745,13 @@ fn update_mode(args_json: &str) -> bool {
         return false;
     }
     state.visualization_mode = new_mode;
+    if new_mode == VisualizationMode::Original {
+        state.auto_viewport_request_key = None;
+    }
+    crate::state::set_hud_toolbar_button_active_if_available(
+        "visualization_mode",
+        new_mode != VisualizationMode::Original,
+    );
     true
 }
 

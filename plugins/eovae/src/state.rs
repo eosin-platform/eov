@@ -128,6 +128,7 @@ pub struct PluginState {
     pub mip_combo_hovered: bool,
     pub mip_dropdown_open: bool,
     pub mip_preview_mip_level: Option<u32>,
+    pub auto_viewport_request_key: Option<String>,
 }
 
 impl Default for PluginState {
@@ -165,6 +166,7 @@ impl Default for PluginState {
             mip_combo_hovered: false,
             mip_dropdown_open: false,
             mip_preview_mip_level: None,
+            auto_viewport_request_key: None,
         }
     }
 }
@@ -230,6 +232,7 @@ pub fn clear_cache_for_namespace(namespace: String) {
     state.mip_combo_hovered = false;
     state.mip_dropdown_open = false;
     state.mip_preview_mip_level = None;
+    state.auto_viewport_request_key = None;
 }
 
 pub fn max_analysis_threads() -> usize {

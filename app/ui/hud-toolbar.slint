@@ -64,6 +64,19 @@ export component HudToolbar inherits Rectangle {
     property <string> zoom-input-text: zoom-level >= 1.0 ? "" + Math.round(zoom-level * 100) : "" + (Math.round(zoom-level * 1000) / 10);
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
+    property <bool> plugin-menu-open: false;
+    property <string> plugin-menu-plugin-id: "";
+    property <string> plugin-menu-button-id: "";
+    property <length> plugin-menu-x: 0px;
+    property <length> plugin-menu-y: root.height + 6px;
+    property <string> eovae-visualization-button-id: "visualization_mode";
+    property <[string]> eovae-visualization-labels: ["Original", "Reconstruction", "Difference", "Error Map"];
+    property <[string]> eovae-visualization-actions: [
+        "set_visualization_original",
+        "set_visualization_reconstruction",
+        "set_visualization_difference",
+        "set_visualization_error_map",
+    ];
 
     property <string> active-tooltip:
         fit-btn.hovered ? fit-btn.tooltip-text : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
@@ -204,9 +217,21 @@ export component HudToolbar inherits Rectangle {
                 HudButton {
                     icon-source: btn.icon;
                     tooltip-text: btn.tooltip;
-                    active: btn.active;
+                    active: btn.active || (root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id);
                     clicked => {
-                        root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+                        if btn.button-id == root.eovae-visualization-button-id {
+                            if root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id {
+                                root.plugin-menu-open = false;
+                            } else {
+                                root.plugin-menu-plugin-id = btn.plugin-id;
+                                root.plugin-menu-button-id = btn.button-id;
+                                root.plugin-menu-x = self.absolute-position.x - root.absolute-position.x;
+                                root.plugin-menu-open = true;
+                            }
+                        } else {
+                            root.plugin-menu-open = false;
+                            root.plugin-button-clicked(btn.plugin-id, btn.action-id);
+                        }
                     }
                 }
             }
@@ -241,6 +266,43 @@ export component HudToolbar inherits Rectangle {
             text: root.active-tooltip;
             color: white;
             font-size: 11px;
+        }
+    }
+
+    if root.plugin-menu-open && root.plugin-menu-button-id == root.eovae-visualization-button-id: Rectangle {
+        x: root.plugin-menu-x;
+        y: root.plugin-menu-y;
+        width: 168px;
+        background: #11151cee;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #ffffff24;
+
+        VerticalLayout {
+            width: parent.width;
+            padding: 6px;
+            spacing: 2px;
+
+            for label[idx] in root.eovae-visualization-labels: Rectangle {
+                height: 30px;
+                border-radius: 4px;
+                background: item-touch.has-hover ? #ffffff16 : transparent;
+
+                Text {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    text: label;
+                    color: white;
+                    font-size: 12px;
+                }
+
+                item-touch := TouchArea {
+                    clicked => {
+                        root.plugin-menu-open = false;
+                        root.plugin-button-clicked(root.plugin-menu-plugin-id, root.eovae-visualization-actions[idx]);
+                    }
+                }
+            }
         }
     }
 }

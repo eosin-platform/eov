@@ -15,14 +15,20 @@ use plugin_api::ffi::{
 };
 use serde_json::json;
 use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
-use state::{plugin_state, request_render_if_available, set_host_api};
+use state::{plugin_state, request_render_if_available, set_host_api, VisualizationMode};
 use std::time::Duration;
 
 const BUTTON_ID: &str = "toggle_eovae";
 const GRID_BUTTON_ID: &str = "toggle_grid";
+const VISUALIZATION_BUTTON_ID: &str = "visualization_mode";
+const VISUALIZATION_ORIGINAL_ACTION_ID: &str = "set_visualization_original";
+const VISUALIZATION_RECONSTRUCTION_ACTION_ID: &str = "set_visualization_reconstruction";
+const VISUALIZATION_DIFFERENCE_ACTION_ID: &str = "set_visualization_difference";
+const VISUALIZATION_ERROR_MAP_ACTION_ID: &str = "set_visualization_error_map";
 const FILTER_ID: &str = "eovae_overlay";
 const TOOL_ICON: &str = include_str!("../ui/icons/tool.svg");
 const GRID_ICON: &str = include_str!("../ui/icons/grid.svg");
+const VISUALIZE_TRANSFORM_ICON: &str = include_str!("../ui/icons/visualize-transform.svg");
 
 fn plugin_trace(message: impl AsRef<str>) {
     if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
@@ -47,12 +53,20 @@ extern "C" fn get_toolbar_buttons_ffi() -> RVec<ToolbarButtonFFI> {
 }
 
 extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
-    RVec::from(vec![HudToolbarButtonFFI {
-        button_id: GRID_BUTTON_ID.into(),
-        tooltip: "Toggle tile grid".into(),
-        icon_svg: GRID_ICON.into(),
-        action_id: GRID_BUTTON_ID.into(),
-    }])
+    RVec::from(vec![
+        HudToolbarButtonFFI {
+            button_id: GRID_BUTTON_ID.into(),
+            tooltip: "Toggle tile grid".into(),
+            icon_svg: GRID_ICON.into(),
+            action_id: GRID_BUTTON_ID.into(),
+        },
+        HudToolbarButtonFFI {
+            button_id: VISUALIZATION_BUTTON_ID.into(),
+            tooltip: "Visualize reconstruction".into(),
+            icon_svg: VISUALIZE_TRANSFORM_ICON.into(),
+            action_id: VISUALIZATION_BUTTON_ID.into(),
+        },
+    ])
 }
 
 extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
@@ -67,7 +81,7 @@ extern "C" fn on_action_ffi(action_id: RString) -> ActionResponseFFI {
 
 extern "C" fn on_hud_action_ffi(
     action_id: RString,
-    _viewport: ViewportSnapshotFFI,
+    viewport: ViewportSnapshotFFI,
 ) -> ActionResponseFFI {
     if action_id.as_str() == GRID_BUTTON_ID {
         let mut state = plugin_state().lock().unwrap();
@@ -76,8 +90,42 @@ extern "C" fn on_hud_action_ffi(
         drop(state);
         state::set_hud_toolbar_button_active_if_available(GRID_BUTTON_ID, active);
         request_render_if_available();
+    } else if let Some(mode) = visualization_mode_for_action(action_id.as_str()) {
+        set_visualization_mode(mode, viewport);
     }
     ActionResponseFFI { open_window: false }
+}
+
+fn visualization_mode_for_action(action_id: &str) -> Option<VisualizationMode> {
+    match action_id {
+        VISUALIZATION_ORIGINAL_ACTION_ID => Some(VisualizationMode::Original),
+        VISUALIZATION_RECONSTRUCTION_ACTION_ID => Some(VisualizationMode::Reconstruction),
+        VISUALIZATION_DIFFERENCE_ACTION_ID => Some(VisualizationMode::Difference),
+        VISUALIZATION_ERROR_MAP_ACTION_ID => Some(VisualizationMode::ErrorMap),
+        _ => None,
+    }
+}
+
+fn set_visualization_mode(mode: VisualizationMode, viewport: ViewportSnapshotFFI) {
+    let (changed, active) = {
+        let mut state = plugin_state().lock().unwrap();
+        if state.visualization_mode == mode {
+            let active = state.visualization_mode != VisualizationMode::Original;
+            (false, active)
+        } else {
+            state.visualization_mode = mode;
+            if mode == VisualizationMode::Original {
+                state.auto_viewport_request_key = None;
+            }
+            let active = mode != VisualizationMode::Original;
+            (true, active)
+        }
+    };
+
+    state::set_hud_toolbar_button_active_if_available(VISUALIZATION_BUTTON_ID, active);
+    let _ = viewport;
+    let _ = changed;
+    request_render_if_available();
 }
 
 extern "C" fn on_ui_callback_ffi(callback_name: RString, args_json: RString) {
@@ -367,12 +415,14 @@ extern "C" fn on_polygon_annotation_moved_ffi(
 }
 
 extern "C" fn get_viewport_filters_ffi() -> RVec<ViewportFilterFFI> {
+    let state = plugin_state().lock().unwrap();
+    let enabled = state.visualization_mode != VisualizationMode::Original && state.model.is_some();
     RVec::from(vec![ViewportFilterFFI {
         filter_id: FILTER_ID.into(),
         name: "VAE Overlay".into(),
         supports_cpu: true,
         supports_gpu: false,
-        enabled: true,
+        enabled,
     }])
 }
 

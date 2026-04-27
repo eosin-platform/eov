@@ -66,6 +66,13 @@ impl ViewportFilterChain {
             .any(|f| f.filter.enabled() && f.filter.supports_cpu())
     }
 
+    /// Check if any filters are enabled, support CPU, and require CPU fallback.
+    pub fn has_enabled_cpu_only_filters(&self) -> bool {
+        self.filters
+            .iter()
+            .any(|f| f.filter.enabled() && f.filter.supports_cpu() && !f.filter.supports_gpu())
+    }
+
     /// Check if any filters are enabled and support GPU.
     pub fn has_enabled_gpu_filters(&self) -> bool {
         self.filters
@@ -111,6 +118,14 @@ impl FfiViewportFilter {
             supports_gpu: desc.supports_gpu,
         }
     }
+
+    fn polled_enabled_state(&self) -> bool {
+        (self.vtable.get_viewport_filters)()
+            .into_iter()
+            .find(|filter| filter.filter_id.to_string() == self.filter_id)
+            .map(|filter| filter.enabled)
+            .unwrap_or(self.enabled)
+    }
 }
 
 // SAFETY: PluginVTable contains only extern "C" fn pointers which are Send+Sync.
@@ -123,7 +138,7 @@ impl ViewportFilter for FfiViewportFilter {
     }
 
     fn enabled(&self) -> bool {
-        self.enabled
+        self.polled_enabled_state()
     }
 
     fn set_enabled(&mut self, enabled: bool) {

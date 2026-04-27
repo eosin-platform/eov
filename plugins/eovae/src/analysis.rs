@@ -1325,9 +1325,9 @@ fn build_analyzed_tile(
         let dg = rgba[src + 1].abs_diff(reconstruction_rgb[dst + 1]);
         let db = rgba[src + 2].abs_diff(reconstruction_rgb[dst + 2]);
         let mean = ((dr as u16 + dg as u16 + db as u16) / 3) as u8;
-        difference_rgb[dst] = dr;
-        difference_rgb[dst + 1] = dg;
-        difference_rgb[dst + 2] = db;
+        difference_rgb[dst] = ((dr as u16 * dr as u16) / 255) as u8;
+        difference_rgb[dst + 1] = ((dg as u16 * dg as u16) / 255) as u8;
+        difference_rgb[dst + 2] = ((db as u16 * db as u16) / 255) as u8;
         *error_value = mean;
         error_sum += mean as f64 / 255.0;
         max_error = max_error.max(mean);

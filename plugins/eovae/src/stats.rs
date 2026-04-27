@@ -2,6 +2,7 @@
 pub struct ErrorStats {
     pub count: usize,
     pub mean: f64,
+    pub p05: f64,
     pub median: f64,
     pub p95: f64,
     pub max: f64,
@@ -26,6 +27,7 @@ pub fn summarize_errors(values: impl IntoIterator<Item = f64>) -> ErrorStats {
     values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
     let count = values.len();
     let mean = values.iter().sum::<f64>() / count as f64;
+    let p05 = percentile(&values, 0.05);
     let median = percentile(&values, 0.5);
     let p95 = percentile(&values, 0.95);
     let max = *values.last().unwrap_or(&0.0);
@@ -33,6 +35,7 @@ pub fn summarize_errors(values: impl IntoIterator<Item = f64>) -> ErrorStats {
     ErrorStats {
         count,
         mean,
+        p05,
         median,
         p95,
         max,
@@ -114,6 +117,7 @@ mod tests {
         let summary = summarize_errors([0.1, 0.4, 0.3, 0.2, 0.9]);
         assert_eq!(summary.count, 5);
         assert!((summary.mean - 0.38).abs() < 1e-6);
+        assert!((summary.p05 - 0.1).abs() < 1e-6);
         assert!((summary.median - 0.3).abs() < 1e-6);
         assert!((summary.p95 - 0.9).abs() < 1e-6);
         assert!((summary.max - 0.9).abs() < 1e-6);
