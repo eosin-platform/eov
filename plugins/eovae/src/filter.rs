@@ -176,13 +176,16 @@ fn composite_tile(
                     rgba_data[frame_index + 2] = tile.reconstruction_rgb[tile_rgb_index + 2];
                 }
                 VisualizationMode::Difference => {
-                    rgba_data[frame_index] = tile.difference_rgb[tile_rgb_index];
-                    rgba_data[frame_index + 1] = tile.difference_rgb[tile_rgb_index + 1];
-                    rgba_data[frame_index + 2] = tile.difference_rgb[tile_rgb_index + 2];
+                    let pixel_error = tile.error_map_luma[tile_luma_index] as f64 / 255.0;
+                    let (red, green, blue) = tile_error_color(pixel_error, error_p05, error_p95);
+                    rgba_data[frame_index] = red;
+                    rgba_data[frame_index + 1] = green;
+                    rgba_data[frame_index + 2] = blue;
                 }
                 VisualizationMode::ErrorMap => {
                     let _ = tile_luma_index;
-                    let (red, green, blue) = tile_error_color(tile.mean_absolute_error, error_p05, error_p95);
+                    let (red, green, blue) =
+                        tile_error_color(tile.mean_absolute_error, error_p05, error_p95);
                     rgba_data[frame_index] = blend(rgba_data[frame_index], red, 180);
                     rgba_data[frame_index + 1] = blend(rgba_data[frame_index + 1], green, 180);
                     rgba_data[frame_index + 2] = blend(rgba_data[frame_index + 2], blue, 180);
@@ -197,10 +200,11 @@ fn tile_can_render(mode: VisualizationMode, tile: &crate::analysis::AnalyzedTile
         return false;
     }
     let rgb_len = tile.sample_width as usize * tile.sample_height as usize * 3;
+    let luma_len = tile.sample_width as usize * tile.sample_height as usize;
     match mode {
         VisualizationMode::Original => false,
         VisualizationMode::Reconstruction => rgb_len > 0 && tile.reconstruction_rgb.len() >= rgb_len,
-        VisualizationMode::Difference => rgb_len > 0 && tile.difference_rgb.len() >= rgb_len,
+        VisualizationMode::Difference => luma_len > 0 && tile.error_map_luma.len() >= luma_len,
         VisualizationMode::ErrorMap => true,
     }
 }
