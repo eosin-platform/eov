@@ -276,7 +276,7 @@ extern "C" fn apply_filter_gpu_ffi(
 extern "C" fn set_filter_enabled_ffi(_filter_id: RString, _enabled: bool) {}
 
 /// The factory function exported by this plugin for dynamic loading by the host.
-#[unsafe(no_mangle)]
+#[cfg_attr(feature = "export-vtable-symbol", unsafe(no_mangle))]
 pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
     PluginVTable {
         set_host_api: set_host_api_ffi,
