@@ -294,10 +294,11 @@ where
         };
         state.cache_namespace = namespace;
     }
-    refresh_sidebar_if_available();
     start_analysis_elapsed_refresh_loop(analysis_run_generation);
 
     thread::spawn(move || {
+        refresh_sidebar_if_available();
+        request_render_if_available();
         let result = worker(cancel.clone());
         let mut state = plugin_state().lock().unwrap();
         let elapsed = state
@@ -1456,9 +1457,8 @@ fn prepare_cached_tiles(
             return (None, Vec::new(), tiles);
         }
     };
-    let (renderable_cached_tiles, incomplete_cached_tiles): (Vec<_>, Vec<_>) = cached_tiles
-        .into_iter()
-        .partition(|tile| {
+    let (renderable_cached_tiles, incomplete_cached_tiles): (Vec<_>, Vec<_>) =
+        cached_tiles.into_iter().partition(|tile| {
             let rgb_len = tile.sample_width as usize * tile.sample_height as usize * 3;
             tile.reconstruction_rgb.len() >= rgb_len && tile.difference_rgb.len() >= rgb_len
         });

@@ -15,7 +15,7 @@ use plugin_api::ffi::{
 };
 use serde_json::json;
 use sidebar::{get_sidebar_properties, initialize_from_config, on_sidebar_callback, show_sidebar};
-use state::{plugin_state, request_render_if_available, set_host_api, VisualizationMode};
+use state::{VisualizationMode, plugin_state, request_render_if_available, set_host_api};
 use std::time::Duration;
 
 const BUTTON_ID: &str = "toggle_eovae";

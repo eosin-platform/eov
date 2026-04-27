@@ -398,6 +398,34 @@ impl ViewportState {
         self.last_update = now;
     }
 
+    /// Start an external drag sequence, such as minimap scrubbing.
+    pub fn start_external_drag(&mut self) {
+        self.stop();
+        self.is_dragging = true;
+        self.drag_samples.clear();
+        self.last_update = Instant::now();
+    }
+
+    /// Update the viewport center directly while an external drag is active.
+    pub fn drag_center_to(&mut self, center_x: f64, center_y: f64) {
+        if !self.is_dragging {
+            self.start_external_drag();
+        }
+        self.viewport.center = DVec2::new(center_x, center_y);
+        self.viewport.clamp_position();
+        self.last_update = Instant::now();
+    }
+
+    /// End an external drag sequence without starting inertia.
+    pub fn end_external_drag(&mut self) {
+        if !self.is_dragging {
+            return;
+        }
+        self.is_dragging = false;
+        self.drag_samples.clear();
+        self.last_update = Instant::now();
+    }
+
     /// Update animations (call every frame). Returns true if still animating.
     pub fn update(&mut self) -> bool {
         if self.is_dragging {

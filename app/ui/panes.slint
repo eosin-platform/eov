@@ -47,6 +47,8 @@ component PaneView inherits Rectangle {
     callback viewport-end-pan();
     callback viewport-context-menu(int, length, length);
     callback minimap-navigate(float, float);
+    callback minimap-drag-start();
+    callback minimap-drag-end();
     callback file-dropped(string);
     callback pane-focused(int);
     callback tab-drag-started(int, int, string, int, length, length);
@@ -433,6 +435,8 @@ export component SplitPaneContainer inherits Rectangle {
     callback viewport-end-pan();
     callback viewport-context-menu(int, length, length);
     callback minimap-navigate(float, float);
+    callback minimap-drag-start();
+    callback minimap-drag-end();
     callback file-dropped(string);
     callback pane-focused(int);
     callback split-position-changed(float);
@@ -538,6 +542,12 @@ export component SplitPaneContainer inherits Rectangle {
             }
             minimap-navigate(nx, ny) => {
                 root.minimap-navigate(nx, ny);
+            }
+            minimap-drag-start => {
+                root.minimap-drag-start();
+            }
+            minimap-drag-end => {
+                root.minimap-drag-end();
             }
             file-dropped(path) => {
                 root.file-dropped(path);

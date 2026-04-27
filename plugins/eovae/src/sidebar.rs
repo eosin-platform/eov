@@ -325,11 +325,11 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
         }
         "analyze-viewport" => {
             analyze_viewport();
-            (true, true)
+            (false, false)
         }
         "analyze-slide" => {
             analyze_whole_slide();
-            (true, true)
+            (false, false)
         }
         "cancel-job" => (cancel_running_job(), false),
         "jump-to-region" => {

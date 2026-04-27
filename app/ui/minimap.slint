@@ -7,6 +7,8 @@ export component Minimap inherits Rectangle {
     in property <float> image-width: 1.0;
     in property <float> image-height: 1.0;
     callback navigate(float, float);
+    callback drag-start();
+    callback drag-end();
 
     property <bool> is-dragging: false;
     property <length> content-x: 5px;
@@ -53,11 +55,13 @@ export component Minimap inherits Rectangle {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 root.is-dragging = true;
+                root.drag-start();
                 let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
                 let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;
                 root.navigate(rel-x, rel-y);
             } else if e.kind == PointerEventKind.up {
                 root.is-dragging = false;
+                root.drag-end();
             } else if e.kind == PointerEventKind.move && root.is-dragging {
                 let rel-x = (self.mouse-x - root.img-display-x) / root.img-display-width;
                 let rel-y = (self.mouse-y - root.img-display-y) / root.img-display-height;

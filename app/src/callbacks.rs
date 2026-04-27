@@ -1898,6 +1898,27 @@ pub fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
 
+        ui.on_minimap_drag_start(move || {
+            {
+                let mut state = state_handle.write();
+                if let Some(vs) = state.active_viewport_mut() {
+                    vs.start_external_drag();
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
         ui.on_minimap_navigate(move |nx, ny| {
             info!("Minimap navigate called: nx={}, ny={}", nx, ny);
             {
@@ -1907,7 +1928,6 @@ pub fn setup_callbacks(
                 if let Some(vs) = state.active_viewport_mut() {
                     let nx = (nx as f64).clamp(0.0, 1.0);
                     let ny = (ny as f64).clamp(0.0, 1.0);
-                    vs.stop();
                     let vp = &mut vs.viewport;
                     let new_x = nx * vp.image_width;
                     let new_y = ny * vp.image_height;
@@ -1915,12 +1935,32 @@ pub fn setup_callbacks(
                         "Setting viewport center: ({}, {}) -> ({}, {})",
                         vp.center.x, vp.center.y, new_x, new_y
                     );
-                    vp.center.x = new_x;
-                    vp.center.y = new_y;
+                    vs.drag_center_to(new_x, new_y);
                     changed = true;
                 }
                 changed |= state.mirror_locked_viewports_from_active();
                 if changed {
+                    state.request_render();
+                }
+            }
+
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_minimap_drag_end(move || {
+            {
+                let mut state = state_handle.write();
+                if let Some(vs) = state.active_viewport_mut() {
+                    vs.end_external_drag();
                     state.request_render();
                 }
             }

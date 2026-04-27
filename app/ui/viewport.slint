@@ -56,6 +56,8 @@ export component Viewport inherits Rectangle {
     callback start-pan(float, float);
     callback end-pan();
     callback minimap-navigate(float, float);
+    callback minimap-drag-start();
+    callback minimap-drag-end();
     callback zoom-slider-changed(float);
     callback file-dropped(string);
     callback tool-mouse-down(float, float);
@@ -542,6 +544,12 @@ export component Viewport inherits Rectangle {
         image-height: viewport-info.image-height;
         navigate(nx, ny) => {
             root.minimap-navigate(nx, ny);
+        }
+        drag-start => {
+            root.minimap-drag-start();
+        }
+        drag-end => {
+            root.minimap-drag-end();
         }
     }
 

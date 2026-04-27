@@ -1,4 +1,4 @@
-use crate::analysis::{start_visible_tile_analysis, TileCacheEntry, should_render_overlay};
+use crate::analysis::{TileCacheEntry, should_render_overlay, start_visible_tile_analysis};
 use crate::state::{AnalysisPhase, VisualizationMode, plugin_state};
 
 const MAX_PENDING_PLACEHOLDERS: usize = 512;
@@ -63,14 +63,7 @@ pub fn apply_overlay(
             }
 
             composite_tile(
-                rgba_data,
-                width,
-                height,
-                viewport,
-                entry,
-                mode,
-                error_p05,
-                error_p95,
+                rgba_data, width, height, viewport, entry, mode, error_p05, error_p95,
             );
             applied = true;
         }
@@ -182,7 +175,9 @@ fn tile_can_render(mode: VisualizationMode, tile: &crate::analysis::AnalyzedTile
     let luma_len = tile.sample_width as usize * tile.sample_height as usize;
     match mode {
         VisualizationMode::Original => false,
-        VisualizationMode::Reconstruction => rgb_len > 0 && tile.reconstruction_rgb.len() >= rgb_len,
+        VisualizationMode::Reconstruction => {
+            rgb_len > 0 && tile.reconstruction_rgb.len() >= rgb_len
+        }
         VisualizationMode::Difference => luma_len > 0 && tile.error_map_luma.len() >= luma_len,
         VisualizationMode::ErrorMap => true,
     }
@@ -291,7 +286,9 @@ fn maybe_start_viewport_analysis(
     let maybe_request = {
         let mut state = plugin_state().lock().unwrap();
         if request_key.is_none() {
-            state.pane_auto_viewport_request_keys.remove(&viewport.pane_index);
+            state
+                .pane_auto_viewport_request_keys
+                .remove(&viewport.pane_index);
             return;
         }
         if state.analysis_phase == AnalysisPhase::Running
@@ -333,8 +330,8 @@ fn paint_pending_tile(
 ) {
     let view_width = (viewport.bounds_right - viewport.bounds_left).max(1.0);
     let view_height = (viewport.bounds_bottom - viewport.bounds_top).max(1.0);
-    let sx0 = (((tile.x as f64 - viewport.bounds_left) / view_width) * frame_width as f64).floor()
-        as i32;
+    let sx0 =
+        (((tile.x as f64 - viewport.bounds_left) / view_width) * frame_width as f64).floor() as i32;
     let sy0 = (((tile.y as f64 - viewport.bounds_top) / view_height) * frame_height as f64).floor()
         as i32;
     let sx1 = ((((tile.x + tile.width as u64) as f64 - viewport.bounds_left) / view_width)

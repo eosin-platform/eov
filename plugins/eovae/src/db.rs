@@ -428,7 +428,12 @@ fn ensure_tile_payload_columns(connection: &Connection) -> Result<(), String> {
         "sample_height",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
-    ensure_column(connection, "latent_cache_tile", "reconstruction_rgb", "BLOB")?;
+    ensure_column(
+        connection,
+        "latent_cache_tile",
+        "reconstruction_rgb",
+        "BLOB",
+    )?;
     ensure_column(connection, "latent_cache_tile", "difference_rgb", "BLOB")?;
     ensure_column(connection, "latent_cache_tile", "error_map_luma", "BLOB")?;
     Ok(())
