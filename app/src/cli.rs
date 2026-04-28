@@ -282,6 +282,9 @@ struct Cli {
     /// viewport filters and exchange pixel data.
     #[arg(long, value_name = "PORT", global = true)]
     extension_host_port: Option<u16>,
+
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    viewport_lock: bool,
 }
 
 enum CommandAction {
@@ -302,6 +305,7 @@ pub(crate) struct LaunchOptions {
     pub(crate) panes_to_open: Vec<PaneSpec>,
     pub(crate) render_backend_override: Option<RenderBackend>,
     pub(crate) filtering_mode_override: Option<FilteringMode>,
+    pub(crate) viewport_lock_enabled: bool,
     pub(crate) log_level: Option<CliLogLevel>,
     pub(crate) cache_size_bytes: usize,
     pub(crate) max_tiles: usize,
@@ -415,6 +419,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         panes_to_open,
         render_backend_override,
         filtering_mode_override: cli.filtering_mode.filtering_mode_override(),
+        viewport_lock_enabled: cli.viewport_lock,
         log_level: cli.log_level,
         cache_size_bytes,
         max_tiles,

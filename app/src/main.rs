@@ -303,7 +303,9 @@ fn main() -> Result<()> {
     select_backend(launch_options.window_geometry)?;
     slint::set_xdg_app_id(APP_XDG_ID)?;
 
-    let state = Arc::new(RwLock::new(AppState::new()));
+    let mut initial_state = AppState::new();
+    initial_state.viewport_lock_enabled = launch_options.viewport_lock_enabled;
+    let state = Arc::new(RwLock::new(initial_state));
     let tile_cache = Arc::new(TileCache::with_limits(
         launch_options.max_tiles,
         launch_options.cache_size_bytes,
@@ -497,7 +499,19 @@ fn main() -> Result<()> {
         ui.set_focused_pane(pane.as_index());
 
         for path in pane_spec.files {
-            open_file(&ui, &state, &tile_cache, &render_timer, path);
+            let existing_tab = {
+                let state = state.read();
+                state.find_tab_by_path(&path)
+            };
+
+            if let Some((source_pane, tab_id)) = existing_tab
+                && source_pane != pane
+            {
+                let mut state = state.write();
+                state.duplicate_tab_to_pane(tab_id, pane);
+            } else {
+                open_file(&ui, &state, &tile_cache, &render_timer, path);
+            }
         }
     }
 

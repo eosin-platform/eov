@@ -922,6 +922,26 @@ impl AppState {
         self.ensure_file_pane_state(id, pane, PaneId::PRIMARY);
     }
 
+    pub fn find_tab_by_path(&self, path: &std::path::Path) -> Option<(PaneId, i32)> {
+        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        self.panes
+            .iter()
+            .enumerate()
+            .find_map(|(pane_index, pane_state)| {
+                pane_state.tabs.iter().copied().find_map(|tab_id| {
+                    if self.is_home_tab(tab_id) {
+                        return None;
+                    }
+
+                    let file_id = self.resolve_tab_file_id(tab_id);
+                    let file = self.get_file(file_id)?;
+                    let file_path =
+                        fs::canonicalize(&file.path).unwrap_or_else(|_| file.path.clone());
+                    (file_path == normalized_path).then_some((PaneId(pane_index), tab_id))
+                })
+            })
+    }
+
     fn remove_tab_from_pane(&mut self, pane: PaneId, id: i32) {
         let removed_index = {
             let tabs = self.tab_ids_for_pane_mut(pane);
