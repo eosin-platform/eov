@@ -1061,6 +1061,7 @@ fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_coun
     ui.set_split_enabled(state.split_enabled);
     ui.set_focused_pane(state.focused_pane.as_index());
     update_tabs(ui, &state);
+    let _ = crate::plugin_host::refresh_plugin_buttons();
 }
 
 fn open_file(

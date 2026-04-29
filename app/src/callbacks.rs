@@ -1195,6 +1195,7 @@ pub fn setup_callbacks(
                     let state = state_handle.read();
                     ui.set_focused_pane(state.focused_pane.as_index());
                     update_tabs(&ui, &state);
+                    let _ = crate::plugin_host::refresh_plugin_buttons();
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 _ => {}
@@ -1704,6 +1705,7 @@ pub fn setup_callbacks(
                 ui.set_focused_pane(focused_pane.as_index());
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
+                let _ = crate::plugin_host::refresh_plugin_buttons();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -2048,6 +2050,7 @@ pub fn setup_callbacks(
                     ui.set_focused_pane(state.focused_pane.as_index());
                     update_tabs(&ui, &state);
                 }
+                let _ = crate::plugin_host::refresh_plugin_buttons();
                 open_file(&ui, &state_handle, &tile_cache, &render_timer, path);
             }
             request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);

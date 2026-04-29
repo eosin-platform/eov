@@ -81,9 +81,9 @@ export component HudToolbar inherits Rectangle {
     ];
 
     property <string> active-tooltip:
-        fit-btn.hovered ? fit-btn.tooltip-text : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
+        adjust-btn.hovered ? adjust-btn.tooltip-text : "";
     property <length> tooltip-center-x:
-        fit-btn.hovered ? fit-btn.x + fit-btn.width / 2 : zoom-in-btn.hovered ? zoom-in-btn.x + zoom-in-btn.width / 2 : zoom-out-btn.hovered ? zoom-out-btn.x + zoom-out-btn.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
+        adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
 
     width: bar.preferred-width;
     height: 38px;
@@ -185,33 +185,6 @@ export component HudToolbar inherits Rectangle {
                         zoom-text-input.focus();
                         zoom-text-input.select-all();
                     }
-                }
-            }
-
-            // Separator
-            HudSeparator {}
-
-            fit-btn := HudButton {
-                icon-source: @image-url("icons/fit-view.svg");
-                tooltip-text: "Fit to view";
-                clicked => {
-                    root.fit-to-view();
-                }
-            }
-
-            zoom-in-btn := HudButton {
-                icon-source: @image-url("icons/zoom-in.svg");
-                tooltip-text: "Zoom in";
-                clicked => {
-                    root.zoom-in();
-                }
-            }
-
-            zoom-out-btn := HudButton {
-                icon-source: @image-url("icons/zoom-out.svg");
-                tooltip-text: "Zoom out";
-                clicked => {
-                    root.zoom-out();
                 }
             }
 
