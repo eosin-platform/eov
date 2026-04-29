@@ -75,6 +75,7 @@ mod tests {
             icon: IconDescriptor::Svg {
                 data: "<svg/>".into(),
             },
+            toggled_icon: None,
             action_id: format!("{plugin_id}.{button_id}.action"),
             tool_mode: None,
             hotkey: None,
@@ -129,6 +130,7 @@ mod tests {
             icon: IconDescriptor::Svg {
                 data: "<svg>icon</svg>".into(),
             },
+            toggled_icon: None,
             action_id: "open_panel".into(),
             tool_mode: None,
             hotkey: None,

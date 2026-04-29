@@ -69,6 +69,7 @@ impl Plugin for ExamplePlugin {
             action_id: ACTION_OPEN_PANEL.into(),
             tool_mode: None,
             active: false,
+            toggled_icon: None,
         })?;
         self.event_log.lock().unwrap().record("plugin_activated");
         Ok(())

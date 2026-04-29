@@ -4,7 +4,7 @@ use crate::stats::{ErrorHistogramBin, ErrorStats, build_error_histogram, summari
 use abi_stable::std_types::RString;
 use plugin_api::ffi::{HostApiVTable, HostLogLevelFFI};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -124,7 +124,7 @@ pub struct PluginState {
     pub hovered_region_id: Option<String>,
     pub pulsing_region_id: Option<String>,
     pub pulsing_region_started_at: Option<Instant>,
-    pub grid_enabled: bool,
+    pub pane_grid_enabled: HashSet<u32>,
     pub mip_combo_hovered: bool,
     pub mip_dropdown_open: bool,
     pub mip_preview_mip_level: Option<u32>,
@@ -163,7 +163,7 @@ impl Default for PluginState {
             hovered_region_id: None,
             pulsing_region_id: None,
             pulsing_region_started_at: None,
-            grid_enabled: false,
+            pane_grid_enabled: HashSet::new(),
             mip_combo_hovered: false,
             mip_dropdown_open: false,
             mip_preview_mip_level: None,

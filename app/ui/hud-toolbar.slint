@@ -48,6 +48,7 @@ component HudSeparator inherits Rectangle {
 }
 
 export component HudToolbar inherits Rectangle {
+    in property <int> pane-id: 0;
     in property <float> zoom-level: 1.0;
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
@@ -214,28 +215,35 @@ export component HudToolbar inherits Rectangle {
                 }
             }
 
-            for btn[idx] in root.plugin-buttons: HorizontalLayout {
-                spacing: 0px;
+            for btn[idx] in root.plugin-buttons: Rectangle {
+                width: btn.pane-id == root.pane-id ? entry.preferred-width : 0px;
+                height: 38px;
+                background: transparent;
+                clip: true;
 
-                if idx == 0 || root.plugin-buttons[idx - 1].plugin-id != btn.plugin-id: HudSeparator {}
+                entry := HorizontalLayout {
+                    spacing: 0px;
 
-                HudButton {
-                    icon-source: btn.icon;
-                    tooltip-text: btn.tooltip;
-                    active: btn.active || (root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id);
-                    clicked => {
-                        if btn.button-id == root.eovae-visualization-button-id {
-                            if root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id {
-                                root.plugin-menu-open = false;
+                    if idx == 0 || root.plugin-buttons[idx - 1].pane-id != root.pane-id || root.plugin-buttons[idx - 1].plugin-id != btn.plugin-id: HudSeparator {}
+
+                    HudButton {
+                        icon-source: btn.icon;
+                        tooltip-text: btn.tooltip;
+                        active: btn.active || (root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id);
+                        clicked => {
+                            if btn.button-id == root.eovae-visualization-button-id {
+                                if root.plugin-menu-open && root.plugin-menu-plugin-id == btn.plugin-id && root.plugin-menu-button-id == btn.button-id {
+                                    root.plugin-menu-open = false;
+                                } else {
+                                    root.plugin-menu-plugin-id = btn.plugin-id;
+                                    root.plugin-menu-button-id = btn.button-id;
+                                    root.plugin-menu-x = self.absolute-position.x - root.absolute-position.x;
+                                    root.plugin-menu-open = true;
+                                }
                             } else {
-                                root.plugin-menu-plugin-id = btn.plugin-id;
-                                root.plugin-menu-button-id = btn.button-id;
-                                root.plugin-menu-x = self.absolute-position.x - root.absolute-position.x;
-                                root.plugin-menu-open = true;
+                                root.plugin-menu-open = false;
+                                root.plugin-button-clicked(btn.plugin-id, btn.action-id);
                             }
-                        } else {
-                            root.plugin-menu-open = false;
-                            root.plugin-button-clicked(btn.plugin-id, btn.action-id);
                         }
                     }
                 }

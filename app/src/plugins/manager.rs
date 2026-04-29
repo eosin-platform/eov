@@ -228,6 +228,7 @@ impl PluginManager {
                 icon: IconDescriptor::Svg {
                     data: btn.icon_svg.to_string(),
                 },
+                toggled_icon: None,
                 action_id: btn.action_id.to_string(),
                 tool_mode: btn.tool_mode.into_option().map(host_tool_mode_from_ffi),
                 hotkey: btn.hotkey.clone().into_option().map(|key| key.to_string()),
@@ -250,6 +251,11 @@ impl PluginManager {
                 icon: IconDescriptor::Svg {
                     data: btn.icon_svg.to_string(),
                 },
+                toggled_icon: btn.toggled_icon_svg.clone().into_option().map(|data| {
+                    IconDescriptor::Svg {
+                        data: data.to_string(),
+                    }
+                }),
                 action_id: btn.action_id.to_string(),
                 tool_mode: None,
                 hotkey: None,
@@ -570,6 +576,7 @@ impl PluginManager {
                 button_id: btn.button_id.clone(),
                 tooltip: btn.tooltip.clone(),
                 icon: IconDescriptor::Svg { data: svg },
+                toggled_icon: None,
                 action_id: btn.action_id.clone(),
                 tool_mode: None,
                 hotkey: None,
@@ -685,6 +692,7 @@ mod tests {
                 icon: IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 },
+                toggled_icon: None,
                 action_id: ACTION_OPEN_PANEL.into(),
                 tool_mode: None,
                 hotkey: None,
@@ -855,6 +863,7 @@ data = "<svg/>"
                 icon: IconDescriptor::Svg {
                     data: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_string(),
                 },
+                toggled_icon: None,
                 action_id: "toggle_eovae".to_string(),
                 tool_mode: None,
                 hotkey: None,

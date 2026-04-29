@@ -735,7 +735,7 @@ export component EovaeSidebar inherits Rectangle {
                             }
                         }
 
-                        if root.analysis-elapsed-text != "": Rectangle {
+                        Rectangle {
                             width: parent.width;
                             height: 18px;
                             background: transparent;
@@ -746,15 +746,17 @@ export component EovaeSidebar inherits Rectangle {
                                 spacing: 8px;
 
                                 Text {
-                                    text: "Elapsed: " + root.analysis-elapsed-text;
+                                    text: root.analysis-elapsed-text == "" ? "" : "Elapsed: " + root.analysis-elapsed-text;
                                     color: Theme.text-secondary;
                                     font-size: 11px;
                                     vertical-alignment: center;
+                                    overflow: elide;
                                 }
 
                                 Rectangle { horizontal-stretch: 1; background: transparent; }
 
-                                if root.analysis-started-text != "": Text {
+                                Text {
+                                    visible: root.analysis-started-text != "";
                                     text: "Started: " + root.analysis-started-text;
                                     color: Theme.text-secondary;
                                     font-size: 11px;

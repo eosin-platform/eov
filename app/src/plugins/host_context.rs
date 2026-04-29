@@ -60,6 +60,7 @@ impl HostContext for AppHostContext<'_> {
             button_id: button.button_id,
             tooltip: button.tooltip,
             icon: button.icon,
+            toggled_icon: button.toggled_icon,
             action_id: button.action_id,
             tool_mode: None,
             hotkey: None,
@@ -135,6 +136,7 @@ impl HostContext for MockHostContext {
             button_id: button.button_id,
             tooltip: button.tooltip,
             icon: button.icon,
+            toggled_icon: button.toggled_icon,
             action_id: button.action_id,
             tool_mode: None,
             hotkey: None,
@@ -212,6 +214,7 @@ mod tests {
                 icon: IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 },
+                toggled_icon: None,
                 action_id: ACTION_OPEN_PANEL.into(),
                 tool_mode: None,
                 hotkey: None,
@@ -310,6 +313,7 @@ mod tests {
                 icon: plugin_api::IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 },
+                toggled_icon: None,
                 action_id: "a".into(),
                 tool_mode: None,
                 hotkey: None,

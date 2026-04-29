@@ -1019,6 +1019,8 @@ fn setup_callbacks(
             return;
         }
 
+        let _ = crate::plugin_host::refresh_plugin_buttons();
+
         if plugin_id == "eovae" {
             let filter_chain = {
                 let state = filter_state.read();

@@ -48,6 +48,7 @@ export component Viewport inherits Rectangle {
     in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
     in property <HudSettings> hud;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
+    in property <int> pane-id: 0;
     property <bool> hud-plugin-menu-open: false;
 
     callback pan(float, float);
@@ -591,6 +592,7 @@ export component Viewport inherits Rectangle {
     if root.hud.show-hud-toolbar: hud_toolbar := HudToolbar {
         x: 16px;
         y: 16px;
+        pane-id: root.pane-id;
         plugin-menu-open <=> root.hud-plugin-menu-open;
         zoom-level: root.viewport-info.zoom;
         dropdown-open: root.hud.hud-dropdown-open;

@@ -37,6 +37,7 @@ pub struct HudToolbarButtonFFI {
     pub button_id: RString,
     pub tooltip: RString,
     pub icon_svg: RString,
+    pub toggled_icon_svg: ROption<RString>,
     pub action_id: RString,
 }
 

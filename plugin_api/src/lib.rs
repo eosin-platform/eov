@@ -99,6 +99,8 @@ pub struct ToolbarButtonRegistration {
     pub tooltip: String,
     /// Icon to display.
     pub icon: IconDescriptor,
+    /// Alternate icon used when a HUD toolbar button is active.
+    pub toggled_icon: Option<IconDescriptor>,
     /// Opaque action identifier dispatched back to the plugin on click.
     pub action_id: String,
     /// Optional host tool mode this button owns and toggles.
@@ -123,6 +125,8 @@ pub struct HudToolbarButtonRegistration {
     pub tooltip: String,
     /// Icon to display.
     pub icon: IconDescriptor,
+    /// Alternate icon used when the HUD button is active.
+    pub toggled_icon: Option<IconDescriptor>,
     /// Opaque action identifier dispatched back to the plugin on click.
     pub action_id: String,
     /// Whether the host should render this button in its active state.
@@ -259,6 +263,7 @@ mod tests {
             icon: IconDescriptor::Svg {
                 data: "<svg/>".into(),
             },
+            toggled_icon: None,
             action_id: "do_thing".into(),
             tool_mode: None,
             hotkey: None,

@@ -293,6 +293,11 @@ enum PendingPluginConfirmationAction {
     PrunePluginFiles { package_paths: Vec<PathBuf> },
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct HudButtonViewportState {
+    active: bool,
+}
+
 static HOST_CONTEXTS: OnceLock<Mutex<HashMap<u64, HostApiContext>>> = OnceLock::new();
 static NEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 static UI_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
@@ -1864,6 +1869,75 @@ fn image_from_icon_descriptor(icon: &IconDescriptor) -> Image {
     }
 }
 
+fn hud_button_state_property_name(button_id: &str) -> String {
+    format!("hud-button/{button_id}/active")
+}
+
+fn hud_button_state_for_viewport(
+    vtable: PluginVTable,
+    viewport: &plugin_api::ViewportSnapshot,
+    button_id: &str,
+) -> HudButtonViewportState {
+    let property_name = hud_button_state_property_name(button_id);
+    let properties =
+        (vtable.get_viewport_overlay_properties)(to_viewport_snapshot_ffi(viewport.clone()));
+    let active = properties.into_iter().find_map(|property| {
+        (property.name.as_str() == property_name)
+            .then(|| serde_json::from_str::<bool>(property.json_value.as_str()).unwrap_or(false))
+    });
+    HudButtonViewportState {
+        active: active.unwrap_or(false),
+    }
+}
+
+fn local_hud_buttons_for_panes(state: &AppState) -> Vec<crate::HudToolbarButtonData> {
+    let pane_viewports = viewport_snapshots_in_display_order(state)
+        .into_iter()
+        .map(|viewport| (viewport.pane_index as usize, viewport))
+        .collect::<HashMap<_, _>>();
+    let plugin_vtables = host_contexts()
+        .lock()
+        .unwrap()
+        .values()
+        .map(|ctx| (ctx.plugin_id.clone(), ctx.vtable))
+        .collect::<HashMap<_, _>>();
+    let pane_count = state.panes.len().max(1);
+    let mut hud_buttons = Vec::new();
+
+    for pane_index in 0..pane_count {
+        let viewport = pane_viewports.get(&pane_index);
+        for button in &state.local_hud_plugin_buttons {
+            let viewport_state = viewport
+                .and_then(|viewport| {
+                    plugin_vtables
+                        .get(&button.plugin_id)
+                        .copied()
+                        .map(|vtable| {
+                            hud_button_state_for_viewport(vtable, viewport, &button.button_id)
+                        })
+                })
+                .unwrap_or_default();
+            let active = button.active || viewport_state.active;
+            let icon = if viewport_state.active {
+                button.toggled_icon.as_ref().unwrap_or(&button.icon)
+            } else {
+                &button.icon
+            };
+            hud_buttons.push(crate::HudToolbarButtonData {
+                pane_id: pane_index as i32,
+                plugin_id: button.plugin_id.clone().into(),
+                button_id: button.button_id.clone().into(),
+                tooltip: button.tooltip.clone().into(),
+                icon: image_from_icon_descriptor(icon),
+                action_id: button.action_id.clone().into(),
+                active,
+            });
+        }
+    }
+
+    hud_buttons
+}
+
 fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
     let ui = runtime
         .ui_weak
@@ -1934,34 +2008,27 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
             },
         )
         .collect();
-    let hud_buttons: Vec<crate::HudToolbarButtonData> = state
-        .local_hud_plugin_buttons
-        .iter()
+    let mut hud_buttons: Vec<crate::HudToolbarButtonData> = local_hud_buttons_for_panes(&state)
+        .into_iter()
         .filter(|button| {
-            !remote_hud_toolbar_keys.contains(&(button.plugin_id.clone(), button.button_id.clone()))
+            !remote_hud_toolbar_keys
+                .contains(&(button.plugin_id.to_string(), button.button_id.to_string()))
         })
-        .map(|button| crate::HudToolbarButtonData {
-            plugin_id: button.plugin_id.clone().into(),
-            button_id: button.button_id.clone().into(),
-            tooltip: button.tooltip.clone().into(),
-            icon: image_from_icon_descriptor(&button.icon),
-            action_id: button.action_id.clone().into(),
-            active: button.active,
-        })
-        .chain(
-            remote_buttons
-                .1
-                .into_iter()
-                .map(|button| crate::HudToolbarButtonData {
-                    plugin_id: button.plugin_id.into(),
-                    button_id: button.button_id.into(),
-                    tooltip: button.tooltip.into(),
-                    icon: image_from_svg(&button.icon_svg),
-                    action_id: button.action_id.into(),
-                    active: button.active,
-                }),
-        )
         .collect();
+    let pane_count = state.panes.len().max(1);
+    for pane_index in 0..pane_count {
+        hud_buttons.extend(remote_buttons.1.iter().cloned().map(|button| {
+            crate::HudToolbarButtonData {
+                pane_id: pane_index as i32,
+                plugin_id: button.plugin_id.into(),
+                button_id: button.button_id.into(),
+                tooltip: button.tooltip.into(),
+                icon: image_from_svg(&button.icon_svg),
+                action_id: button.action_id.into(),
+                active: button.active,
+            }
+        }));
+    }
     let active_undo_redo = state
         .local_plugin_undo_redo_order
         .iter()

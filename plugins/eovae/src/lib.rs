@@ -58,12 +58,14 @@ extern "C" fn get_hud_toolbar_buttons_ffi() -> RVec<HudToolbarButtonFFI> {
             button_id: GRID_BUTTON_ID.into(),
             tooltip: "Toggle tile grid".into(),
             icon_svg: GRID_ICON.into(),
+            toggled_icon_svg: ROption::RNone,
             action_id: GRID_BUTTON_ID.into(),
         },
         HudToolbarButtonFFI {
             button_id: VISUALIZATION_BUTTON_ID.into(),
             tooltip: "Visualize reconstruction".into(),
             icon_svg: VISUALIZE_TRANSFORM_ICON.into(),
+            toggled_icon_svg: ROption::RNone,
             action_id: VISUALIZATION_BUTTON_ID.into(),
         },
     ])
@@ -85,10 +87,10 @@ extern "C" fn on_hud_action_ffi(
 ) -> ActionResponseFFI {
     if action_id.as_str() == GRID_BUTTON_ID {
         let mut state = plugin_state().lock().unwrap();
-        state.grid_enabled = !state.grid_enabled;
-        let active = state.grid_enabled;
+        if !state.pane_grid_enabled.insert(viewport.pane_index) {
+            state.pane_grid_enabled.remove(&viewport.pane_index);
+        }
         drop(state);
-        state::set_hud_toolbar_button_active_if_available(GRID_BUTTON_ID, active);
         request_render_if_available();
     } else if let Some(mode) = visualization_mode_for_action(action_id.as_str()) {
         set_visualization_mode(mode, viewport);
@@ -189,7 +191,7 @@ extern "C" fn get_viewport_overlay_polygons_ffi(
         .filter(|entry| entry.namespace == state.cache_namespace)
         .map(|entry| entry.tile.clone());
 
-    if state.grid_enabled {
+    if state.pane_grid_enabled.contains(&viewport.pane_index) {
         let mip_level = state.config.mip_level;
         let tile_size = state
             .model
@@ -241,10 +243,10 @@ extern "C" fn get_viewport_overlay_component_ffi() -> ROption<ViewportOverlayCom
 }
 
 extern "C" fn get_viewport_overlay_properties_ffi(
-    _viewport: ViewportSnapshotFFI,
+    viewport: ViewportSnapshotFFI,
 ) -> RVec<UiPropertyFFI> {
     let state = plugin_state().lock().unwrap();
-    let grid_visible = state.grid_enabled;
+    let grid_visible = state.pane_grid_enabled.contains(&viewport.pane_index);
     let mip_level = state.config.mip_level;
     let tile_size = state
         .model
@@ -255,6 +257,10 @@ extern "C" fn get_viewport_overlay_properties_ffi(
     RVec::from(vec![
         UiPropertyFFI {
             name: "grid-visible".into(),
+            json_value: json!(grid_visible).to_string().into(),
+        },
+        UiPropertyFFI {
+            name: format!("hud-button/{GRID_BUTTON_ID}/active").into(),
             json_value: json!(grid_visible).to_string().into(),
         },
         UiPropertyFFI {
