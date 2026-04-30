@@ -53,6 +53,10 @@ struct OverlayPolygonShape {
     stroke_color: Color,
 }
 
+fn annotation_hover_color() -> Color {
+    Color::from_rgb_u8(0xF8, 0xFA, 0xFC)
+}
+
 fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
     Color::from_argb_u8(if hovered { 0x58 } else { 0x40 }, red, green, blue)
 }
@@ -87,9 +91,9 @@ fn overlay_polygon_stroke_color(
     } else if plugin_id == "eovae" {
         Color::from_rgb_u8(red, green, blue)
     } else if hovered {
-        Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+        annotation_hover_color()
     } else {
-        Color::from_rgb_u8(0x00, 0x00, 0x00)
+        Color::from_rgb_u8(red, green, blue)
     }
 }
 
@@ -590,9 +594,6 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let hovered = state.hovered_plugin_annotation.as_ref();
     let dragged = state.dragged_plugin_point.as_ref();
     let dragged_position = state.dragged_plugin_point_position;
-    let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
-    let point_tool_active = state.current_tool == crate::state::Tool::PointAnnotation;
-    let navigate_hover_active = state.current_tool == crate::state::Tool::Navigate;
 
     local_plugin_vtables()
         .into_iter()
@@ -616,12 +617,9 @@ pub(crate) fn viewport_overlay_points_for_pane(
             let is_hovered = hovered.is_some_and(|handle| {
                 handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
             });
-            let hover_style_active = (point_tool_active
-                && active_tool_plugin_id == Some(plugin_id.as_str())
-                && is_hovered)
-                || (navigate_hover_active && is_hovered);
+            let hover_style_active = is_hovered;
             let ring_color = if hover_style_active {
-                Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
+                annotation_hover_color()
             } else {
                 Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
             };
@@ -683,9 +681,6 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
     let dragged_vertex = state.dragged_plugin_polygon_vertex.as_ref();
     let dragged_vertex_state = state.dragged_plugin_polygon_vertex_state.as_ref();
     let dragged_vertex_position = state.dragged_plugin_polygon_vertex_position;
-    let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
-    let polygon_tool_active = state.current_tool == crate::state::Tool::PolygonAnnotation;
-    let navigate_hover_active = state.current_tool == crate::state::Tool::Navigate;
 
     let mut polygons = local_plugin_vtables()
         .into_iter()
@@ -741,9 +736,7 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
                 };
                 let hovered = hovered.is_some_and(|handle| {
                     handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-                }) && ((polygon_tool_active
-                    && active_tool_plugin_id == Some(plugin_id.as_str()))
-                    || navigate_hover_active);
+                });
                 let fill_color = overlay_polygon_fill_color(
                     &plugin_id,
                     &annotation_id,
@@ -2978,7 +2971,10 @@ fn build_plugin_component_factory(
                             && callback_name_for_timer == "row-hovered"
                         {
                             let _ = run_on_ui_thread(move |runtime| {
-                                handle_annotations_sidebar_hover_callback(runtime, &args_json_for_hover)
+                                handle_annotations_sidebar_hover_callback(
+                                    runtime,
+                                    &args_json_for_hover,
+                                )
                             });
                         }
                         plugin_trace(format!(
