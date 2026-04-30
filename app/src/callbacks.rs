@@ -988,6 +988,33 @@ pub fn setup_callbacks(
 
     let suppress_polygon_mouse_up = Rc::new(Cell::new(false));
 
+    #[derive(Clone)]
+    enum PendingPolygonPress {
+        Vertex {
+            candidate: crate::plugin_host::PluginPolygonVertexDragCandidate,
+            start_screen_x: f32,
+            start_screen_y: f32,
+            start_pointer: crate::state::ImagePoint,
+        },
+        Edge {
+            candidate: crate::plugin_host::PluginPolygonEdgeInsertCandidate,
+            start_screen_x: f32,
+            start_screen_y: f32,
+        },
+        Shape {
+            candidate: crate::plugin_host::PluginPolygonDragCandidate,
+            start_screen_x: f32,
+            start_screen_y: f32,
+            start_pointer: crate::state::ImagePoint,
+        },
+    }
+
+    let pending_point_press: Rc<
+        RefCell<Option<(crate::state::PluginAnnotationHandle, PaneId, f32, f32)>>,
+    > = Rc::new(RefCell::new(None));
+    let pending_polygon_press: Rc<RefCell<Option<PendingPolygonPress>>> =
+        Rc::new(RefCell::new(None));
+
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
@@ -2100,6 +2127,8 @@ pub fn setup_callbacks(
         > = Rc::new(RefCell::new(None));
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
         let navigate_click_origin_down = Rc::clone(&navigate_click_origin);
+        let pending_point_press_down = Rc::clone(&pending_point_press);
+        let pending_polygon_press_down = Rc::clone(&pending_polygon_press);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
@@ -2107,6 +2136,9 @@ pub fn setup_callbacks(
                     "Failed to dismiss active sidebar popups on viewport mouse down: {err}"
                 );
             }
+
+            pending_point_press_down.borrow_mut().take();
+            pending_polygon_press_down.borrow_mut().take();
 
             let track_navigate_click = {
                 let state = state_handle.read();
@@ -2261,19 +2293,17 @@ pub fn setup_callbacks(
                 }
             };
 
-            let drag_handle = {
+            let existing_annotation_press = {
                 let mut state = state_handle.write();
                 if state.current_tool == state::Tool::PointAnnotation {
                     if let Some(handle) = point_drag_candidate.clone() {
                         state.hovered_plugin_annotation = Some(handle.clone());
-                        state.dragged_plugin_point = Some(handle);
-                        state.dragged_plugin_point_position =
-                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
-                                crate::state::PluginAnnotationPreviewPosition {
-                                    x_level0: point.x,
-                                    y_level0: point.y,
-                                }
-                            });
+                        pending_point_press_down.borrow_mut().replace((
+                            handle,
+                            state.focused_pane,
+                            x,
+                            y,
+                        ));
                         state.request_render();
                         Some(true)
                     } else {
@@ -2281,6 +2311,11 @@ pub fn setup_callbacks(
                     }
                 } else if state.current_tool == state::Tool::PolygonAnnotation {
                     if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
+                        let Some(start_pointer) =
+                            image_point_for_screen(&state, state.focused_pane, x, y)
+                        else {
+                            return;
+                        };
                         state.hovered_plugin_annotation =
                             Some(crate::state::PluginAnnotationHandle {
                                 plugin_id: candidate.handle.plugin_id.clone(),
@@ -2288,68 +2323,50 @@ pub fn setup_callbacks(
                             });
                         state.hovered_plugin_polygon_vertex = Some(candidate.handle.clone());
                         state.hovered_plugin_polygon_edge = None;
-                        state.dragged_plugin_polygon_vertex = Some(candidate.handle.clone());
-                        state.dragged_plugin_polygon_vertex_state =
-                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
-                                crate::state::PluginPolygonVertexDragState {
-                                    start_pointer: point,
-                                    vertices: candidate.vertices,
-                                    vertex_index: candidate.handle.vertex_index,
-                                }
+                        pending_polygon_press_down
+                            .borrow_mut()
+                            .replace(PendingPolygonPress::Vertex {
+                                candidate,
+                                start_screen_x: x,
+                                start_screen_y: y,
+                                start_pointer,
                             });
-                        state.dragged_plugin_polygon_vertex_position =
-                            image_point_for_screen(&state, state.focused_pane, x, y);
-                        state.dragged_plugin_polygon = None;
-                        state.dragged_plugin_polygon_state = None;
-                        state.dragged_plugin_polygon_position = None;
                         state.request_render();
                         Some(true)
                     } else if let Some(candidate) = polygon_edge_insert_candidate.clone() {
-                        let new_vertex_handle = crate::state::PluginPolygonVertexHandle {
-                            plugin_id: candidate.handle.plugin_id.clone(),
-                            annotation_id: candidate.handle.annotation_id.clone(),
-                            vertex_index: candidate.handle.insert_index,
-                        };
-                        let mut vertices = candidate.vertices;
-                        vertices.insert(candidate.handle.insert_index, candidate.handle.position);
                         state.hovered_plugin_annotation =
                             Some(crate::state::PluginAnnotationHandle {
-                                plugin_id: new_vertex_handle.plugin_id.clone(),
-                                annotation_id: new_vertex_handle.annotation_id.clone(),
+                                plugin_id: candidate.handle.plugin_id.clone(),
+                                annotation_id: candidate.handle.annotation_id.clone(),
                             });
-                        state.hovered_plugin_polygon_vertex = Some(new_vertex_handle.clone());
+                        state.hovered_plugin_polygon_vertex = None;
                         state.hovered_plugin_polygon_edge = None;
-                        state.dragged_plugin_polygon_vertex = Some(new_vertex_handle.clone());
-                        state.dragged_plugin_polygon_vertex_state =
-                            Some(crate::state::PluginPolygonVertexDragState {
-                                start_pointer: candidate.handle.position,
-                                vertices,
-                                vertex_index: new_vertex_handle.vertex_index,
+                        pending_polygon_press_down
+                            .borrow_mut()
+                            .replace(PendingPolygonPress::Edge {
+                                candidate,
+                                start_screen_x: x,
+                                start_screen_y: y,
                             });
-                        state.dragged_plugin_polygon_vertex_position =
-                            Some(candidate.handle.position);
-                        state.dragged_plugin_polygon = None;
-                        state.dragged_plugin_polygon_state = None;
-                        state.dragged_plugin_polygon_position = None;
                         state.request_render();
                         Some(true)
                     } else if let Some(candidate) = polygon_drag_candidate.clone() {
+                        let Some(start_pointer) =
+                            image_point_for_screen(&state, state.focused_pane, x, y)
+                        else {
+                            return;
+                        };
                         state.hovered_plugin_annotation = Some(candidate.handle.clone());
                         state.hovered_plugin_polygon_vertex = None;
                         state.hovered_plugin_polygon_edge = None;
-                        state.dragged_plugin_polygon = Some(candidate.handle);
-                        state.dragged_plugin_polygon_state =
-                            image_point_for_screen(&state, state.focused_pane, x, y).map(|point| {
-                                crate::state::PluginPolygonDragState {
-                                    start_pointer: point,
-                                    vertices: candidate.vertices,
-                                }
+                        pending_polygon_press_down
+                            .borrow_mut()
+                            .replace(PendingPolygonPress::Shape {
+                                candidate,
+                                start_screen_x: x,
+                                start_screen_y: y,
+                                start_pointer,
                             });
-                        state.dragged_plugin_polygon_position =
-                            image_point_for_screen(&state, state.focused_pane, x, y);
-                        state.dragged_plugin_polygon_vertex = None;
-                        state.dragged_plugin_polygon_vertex_state = None;
-                        state.dragged_plugin_polygon_vertex_position = None;
                         state.request_render();
                         Some(true)
                     } else {
@@ -2360,7 +2377,7 @@ pub fn setup_callbacks(
                 }
             };
 
-            if drag_handle.is_some() {
+            if existing_annotation_press.is_some() {
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
@@ -2386,6 +2403,8 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+        let pending_point_press_move = Rc::clone(&pending_point_press);
+        let pending_polygon_press_move = Rc::clone(&pending_polygon_press);
 
         ui.on_viewport_tool_mouse_move(move |x, y| {
             let polygon_vertex_hover_candidate = {
@@ -2513,6 +2532,7 @@ pub fn setup_callbacks(
                         state.hovered_plugin_annotation = None;
                         state.dragged_plugin_point = None;
                         state.dragged_plugin_point_position = None;
+                        pending_point_press_move.borrow_mut().take();
                         return;
                     };
 
@@ -2532,6 +2552,26 @@ pub fn setup_callbacks(
                         let _ = dragging;
                         true
                     } else {
+                        if let Some((pending_handle, pane, down_x, down_y)) =
+                            pending_point_press_move.borrow().clone()
+                        {
+                            let dx = x - down_x;
+                            let dy = y - down_y;
+                            if dx * dx + dy * dy > 16.0 {
+                                state.dragged_plugin_point = Some(pending_handle.clone());
+                                state.dragged_plugin_point_position = image_point_for_screen(
+                                    &state, pane, x, y,
+                                )
+                                .map(|point| crate::state::PluginAnnotationPreviewPosition {
+                                    x_level0: point.x,
+                                    y_level0: point.y,
+                                });
+                                state.hovered_plugin_annotation = Some(pending_handle);
+                                pending_point_press_move.borrow_mut().take();
+                                state.request_render();
+                                return;
+                            }
+                        }
                         let hovered =
                             point_hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
                         if state.hovered_plugin_annotation != hovered {
@@ -2555,6 +2595,7 @@ pub fn setup_callbacks(
                         state.dragged_plugin_polygon_vertex_state = None;
                         state.dragged_plugin_polygon_vertex_position = None;
                         state.polygon_candidate_hover = None;
+                        pending_polygon_press_move.borrow_mut().take();
                         return;
                     };
 
@@ -2585,6 +2626,115 @@ pub fn setup_callbacks(
                         let _ = dragging;
                         true
                     } else {
+                        if let Some(pending_press) = pending_polygon_press_move.borrow().clone() {
+                            let (down_x, down_y) = match &pending_press {
+                                PendingPolygonPress::Vertex {
+                                    start_screen_x,
+                                    start_screen_y,
+                                    ..
+                                }
+                                | PendingPolygonPress::Edge {
+                                    start_screen_x,
+                                    start_screen_y,
+                                    ..
+                                }
+                                | PendingPolygonPress::Shape {
+                                    start_screen_x,
+                                    start_screen_y,
+                                    ..
+                                } => (*start_screen_x, *start_screen_y),
+                            };
+                            let dx = x - down_x;
+                            let dy = y - down_y;
+                            if dx * dx + dy * dy > 16.0 {
+                                match pending_press {
+                                    PendingPolygonPress::Vertex {
+                                        candidate,
+                                        start_pointer,
+                                        ..
+                                    } => {
+                                        state.hovered_plugin_annotation = Some(
+                                            crate::state::PluginAnnotationHandle {
+                                                plugin_id: candidate.handle.plugin_id.clone(),
+                                                annotation_id: candidate.handle.annotation_id.clone(),
+                                            },
+                                        );
+                                        state.hovered_plugin_polygon_vertex =
+                                            Some(candidate.handle.clone());
+                                        state.hovered_plugin_polygon_edge = None;
+                                        state.dragged_plugin_polygon_vertex =
+                                            Some(candidate.handle.clone());
+                                        state.dragged_plugin_polygon_vertex_state = Some(
+                                            crate::state::PluginPolygonVertexDragState {
+                                                start_pointer,
+                                                vertices: candidate.vertices,
+                                                vertex_index: candidate.handle.vertex_index,
+                                            },
+                                        );
+                                        state.dragged_plugin_polygon_vertex_position =
+                                            image_point_for_screen(&state, state.focused_pane, x, y);
+                                    }
+                                    PendingPolygonPress::Edge { candidate, .. } => {
+                                        let new_vertex_handle =
+                                            crate::state::PluginPolygonVertexHandle {
+                                                plugin_id: candidate.handle.plugin_id.clone(),
+                                                annotation_id: candidate.handle.annotation_id.clone(),
+                                                vertex_index: candidate.handle.insert_index,
+                                            };
+                                        let mut vertices = candidate.vertices;
+                                        vertices.insert(
+                                            candidate.handle.insert_index,
+                                            candidate.handle.position,
+                                        );
+                                        state.hovered_plugin_annotation = Some(
+                                            crate::state::PluginAnnotationHandle {
+                                                plugin_id: new_vertex_handle.plugin_id.clone(),
+                                                annotation_id: new_vertex_handle.annotation_id.clone(),
+                                            },
+                                        );
+                                        state.hovered_plugin_polygon_vertex =
+                                            Some(new_vertex_handle.clone());
+                                        state.hovered_plugin_polygon_edge = None;
+                                        state.dragged_plugin_polygon_vertex =
+                                            Some(new_vertex_handle.clone());
+                                        state.dragged_plugin_polygon_vertex_state = Some(
+                                            crate::state::PluginPolygonVertexDragState {
+                                                start_pointer: candidate.handle.position,
+                                                vertices,
+                                                vertex_index: new_vertex_handle.vertex_index,
+                                            },
+                                        );
+                                        state.dragged_plugin_polygon_vertex_position =
+                                            Some(candidate.handle.position);
+                                    }
+                                    PendingPolygonPress::Shape {
+                                        candidate,
+                                        start_pointer,
+                                        ..
+                                    } => {
+                                        state.hovered_plugin_annotation =
+                                            Some(candidate.handle.clone());
+                                        state.hovered_plugin_polygon_vertex = None;
+                                        state.hovered_plugin_polygon_edge = None;
+                                        state.dragged_plugin_polygon = Some(candidate.handle);
+                                        state.dragged_plugin_polygon_state = Some(
+                                            crate::state::PluginPolygonDragState {
+                                                start_pointer,
+                                                vertices: candidate.vertices,
+                                            },
+                                        );
+                                        state.dragged_plugin_polygon_position =
+                                            image_point_for_screen(&state, state.focused_pane, x, y);
+                                        state.dragged_plugin_polygon_vertex = None;
+                                        state.dragged_plugin_polygon_vertex_state = None;
+                                        state.dragged_plugin_polygon_vertex_position = None;
+                                    }
+                                }
+                                pending_polygon_press_move.borrow_mut().take();
+                                state.request_render();
+                                return;
+                            }
+                        }
                         let vertex_hover = polygon_vertex_hover_candidate
                             .filter(|handle| handle.plugin_id == plugin_id);
                         let edge_hover = polygon_edge_hover_candidate
@@ -2676,6 +2826,8 @@ pub fn setup_callbacks(
         let plugin_manager = Rc::clone(&plugin_manager);
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
         let navigate_click_origin_up = Rc::clone(&navigate_click_origin);
+        let pending_point_press_up = Rc::clone(&pending_point_press);
+        let pending_polygon_press_up = Rc::clone(&pending_polygon_press);
 
         ui.on_viewport_tool_mouse_up(move |x, y| {
             if suppress_polygon_mouse_up.replace(false) {
@@ -2814,6 +2966,98 @@ pub fn setup_callbacks(
                     )
                 {
                     tracing::error!("Polygon annotation move error: {err}");
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
+            let point_click_selection = match pending_point_press_up.borrow_mut().take() {
+                Some((handle, pane, down_x, down_y)) => {
+                    let dx = x - down_x;
+                    let dy = y - down_y;
+                    (dx * dx + dy * dy <= 16.0).then_some((pane, handle))
+                }
+                None => None,
+            };
+
+            if let Some((pane, handle)) = point_click_selection {
+                if let Some(viewport) =
+                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                {
+                    if let Err(err) = plugin_manager.borrow_mut().handle_viewport_annotation_selected(
+                        &handle.plugin_id,
+                        &viewport,
+                        &handle.annotation_id,
+                    ) {
+                        tracing::error!("Point annotation selection error: {err}");
+                    }
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
+            let polygon_click_selection = match pending_polygon_press_up.borrow_mut().take() {
+                Some(pending) => {
+                    let (pane, down_x, down_y, handle) = {
+                        let pane = state_handle.read().focused_pane;
+                        match pending {
+                            PendingPolygonPress::Vertex {
+                                candidate,
+                                start_screen_x,
+                                start_screen_y,
+                                ..
+                            } => (
+                                pane,
+                                start_screen_x,
+                                start_screen_y,
+                                crate::state::PluginAnnotationHandle {
+                                    plugin_id: candidate.handle.plugin_id,
+                                    annotation_id: candidate.handle.annotation_id,
+                                },
+                            ),
+                            PendingPolygonPress::Edge {
+                                candidate,
+                                start_screen_x,
+                                start_screen_y,
+                            } => (
+                                pane,
+                                start_screen_x,
+                                start_screen_y,
+                                crate::state::PluginAnnotationHandle {
+                                    plugin_id: candidate.handle.plugin_id,
+                                    annotation_id: candidate.handle.annotation_id,
+                                },
+                            ),
+                            PendingPolygonPress::Shape {
+                                candidate,
+                                start_screen_x,
+                                start_screen_y,
+                                ..
+                            } => (pane, start_screen_x, start_screen_y, candidate.handle),
+                        }
+                    };
+                    let dx = x - down_x;
+                    let dy = y - down_y;
+                    (dx * dx + dy * dy <= 16.0).then_some((pane, handle))
+                }
+                None => None,
+            };
+
+            if let Some((pane, handle)) = polygon_click_selection {
+                if let Some(viewport) =
+                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
+                {
+                    if let Err(err) = plugin_manager.borrow_mut().handle_viewport_annotation_selected(
+                        &handle.plugin_id,
+                        &viewport,
+                        &handle.annotation_id,
+                    ) {
+                        tracing::error!("Polygon annotation selection error: {err}");
+                    }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
