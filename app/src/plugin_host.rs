@@ -206,6 +206,75 @@ struct ActiveModalInstance {
     instance: slint_interpreter::Weak<slint_interpreter::ComponentInstance>,
 }
 
+fn set_annotations_sidebar_hovered_row_id(annotation_id: Option<&str>) -> Result<(), String> {
+    ACTIVE_SIDEBAR_INSTANCE.with(|slot| {
+        let active = slot.borrow();
+        let Some(active) = active.as_ref() else {
+            return Ok(());
+        };
+        if active.plugin_id != "annotations" {
+            return Ok(());
+        }
+        let Some(instance) = active.instance.upgrade() else {
+            return Ok(());
+        };
+        instance
+            .set_property(
+                "hovered-row-id",
+                slint_interpreter::Value::String(annotation_id.unwrap_or_default().into()),
+            )
+            .map_err(|err| format!("failed to set annotations sidebar hovered row: {err}"))
+    })
+}
+
+pub(crate) fn sync_annotations_sidebar_hover_from_state(state: &AppState) {
+    let hovered = state
+        .hovered_plugin_annotation
+        .as_ref()
+        .filter(|handle| handle.plugin_id == "annotations")
+        .map(|handle| handle.annotation_id.as_str());
+    let _ = set_annotations_sidebar_hovered_row_id(hovered);
+}
+
+fn handle_annotations_sidebar_hover_callback(
+    runtime: &UiRuntime,
+    args_json: &str,
+) -> Result<(), String> {
+    let hovered_annotation_id = serde_json::from_str::<serde_json::Value>(args_json)
+        .ok()
+        .and_then(|value| value.as_array().cloned())
+        .and_then(|args| args.first().cloned())
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    {
+        let mut state = runtime.state.write();
+        if hovered_annotation_id.is_empty() {
+            if state
+                .hovered_plugin_annotation
+                .as_ref()
+                .is_some_and(|handle| handle.plugin_id == "annotations")
+            {
+                state.hovered_plugin_annotation = None;
+            }
+        } else {
+            state.hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
+                plugin_id: "annotations".to_string(),
+                annotation_id: hovered_annotation_id,
+            });
+        }
+        sync_annotations_sidebar_hover_from_state(&state);
+    }
+
+    request_render_loop(
+        &runtime.render_timer,
+        &runtime.ui_weak,
+        &runtime.state,
+        &runtime.tile_cache,
+    );
+    Ok(())
+}
+
 #[derive(Clone)]
 struct ActiveViewportOverlayInstance {
     instance: slint_interpreter::Weak<slint_interpreter::ComponentInstance>,
@@ -2902,8 +2971,16 @@ fn build_plugin_component_factory(
                     .to_string();
                     let callback_name_for_timer = callback_name.clone();
                     let args_json_for_timer = args_json.clone();
+                    let args_json_for_hover = args_json.clone();
                     let plugin_id_for_timer = plugin_id.clone();
                     slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
+                        if plugin_id_for_timer == "annotations"
+                            && callback_name_for_timer == "row-hovered"
+                        {
+                            let _ = run_on_ui_thread(move |runtime| {
+                                handle_annotations_sidebar_hover_callback(runtime, &args_json_for_hover)
+                            });
+                        }
                         plugin_trace(format!(
                             "dispatch ui_callback plugin={} name={} args={}",
                             plugin_id_for_timer, callback_name_for_timer, args_json_for_timer
@@ -3218,6 +3295,7 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
         };
 
         let plugin_id = sidebar.plugin_id.clone();
+        let state = Arc::clone(&runtime.state);
         let refreshed = ACTIVE_SIDEBAR_INSTANCE.with(|slot| -> Result<bool, String> {
             let active = slot.borrow();
             let Some(active) = active.as_ref() else {
@@ -3230,12 +3308,21 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
                 return Ok::<bool, String>(false);
             };
             let plugin_id = plugin_id.clone();
+            let state = Arc::clone(&state);
             slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
                 if let Err(err) = apply_sidebar_properties(&plugin_id, vtable, &instance) {
                     tracing::error!(
                         "Failed to refresh sidebar properties for '{}': {err}",
                         plugin_id
                     );
+                } else {
+                    let hovered = state
+                        .read()
+                        .hovered_plugin_annotation
+                        .as_ref()
+                        .filter(|handle| handle.plugin_id == "annotations")
+                        .map(|handle| handle.annotation_id.clone());
+                    let _ = set_annotations_sidebar_hovered_row_id(hovered.as_deref());
                 }
             });
             Ok::<bool, String>(true)

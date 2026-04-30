@@ -2798,6 +2798,7 @@ pub fn setup_callbacks(
             };
 
             if dragging_active {
+                crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
@@ -2810,6 +2811,7 @@ pub fn setup_callbacks(
                     handle_tool_mouse_move(&mut state, x as f64, y as f64);
                 }
                 let state = state_handle.read();
+                crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state);
                 update_tool_overlays(&ui, &state);
             }
             if let Some(ui) = ui_weak.upgrade() {
@@ -2878,6 +2880,7 @@ pub fn setup_callbacks(
                     tracing::error!("Point annotation move error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 return;
@@ -2968,6 +2971,7 @@ pub fn setup_callbacks(
                     tracing::error!("Polygon annotation move error: {err}");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 return;
@@ -2995,6 +2999,7 @@ pub fn setup_callbacks(
                     }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 return;
@@ -3060,6 +3065,7 @@ pub fn setup_callbacks(
                     }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 return;
@@ -3108,6 +3114,7 @@ pub fn setup_callbacks(
                     }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 return;

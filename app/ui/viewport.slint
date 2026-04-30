@@ -458,8 +458,12 @@ export component Viewport inherits Rectangle {
                 root.end-pan();
             } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                 if root.current-tool == ToolType.navigate {
-                    self.is-dragging = true;
-                    root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                    self.lmb-down = true;
+                    self.left-press-x = self.mouse-x;
+                    self.left-press-y = self.mouse-y;
+                    self.left-pan-armed = true;
+                    self.left-pan-mode = false;
+                    root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
                 } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
                     self.lmb-down = true;
                     self.left-press-x = self.mouse-x;
@@ -477,8 +481,17 @@ export component Viewport inherits Rectangle {
                 }
             } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
                 if root.current-tool == ToolType.navigate {
-                    self.is-dragging = false;
-                    root.end-pan();
+                    if self.left-pan-mode || self.is-dragging {
+                        self.is-dragging = false;
+                        self.left-pan-mode = false;
+                        self.left-pan-armed = false;
+                        self.lmb-down = false;
+                        root.end-pan();
+                    } else if self.left-pan-armed && self.lmb-down {
+                        self.left-pan-armed = false;
+                        self.lmb-down = false;
+                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
                     if self.point-dragging-existing {
                         self.is-tool-dragging = false;
@@ -508,6 +521,21 @@ export component Viewport inherits Rectangle {
                         self.secondary-dragged = true;
                     }
                     root.pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                } else if root.current-tool == ToolType.navigate {
+                    if self.lmb-down && self.left-pan-armed {
+                        let dx = self.mouse-x - self.left-press-x;
+                        let dy = self.mouse-y - self.left-press-y;
+                        if abs(dx) > 6px || abs(dy) > 6px {
+                            self.left-pan-armed = false;
+                            self.left-pan-mode = true;
+                            self.is-dragging = true;
+                            root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
+                        } else {
+                            root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                        }
+                    } else {
+                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
                 } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
                     if self.point-dragging-existing {
                         root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
