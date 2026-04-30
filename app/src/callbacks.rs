@@ -2087,6 +2087,8 @@ pub fn setup_callbacks(
         });
     }
 
+    let navigate_click_origin: Rc<RefCell<Option<(f32, f32)>>> = Rc::new(RefCell::new(None));
+
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
@@ -2097,6 +2099,7 @@ pub fn setup_callbacks(
             RefCell<Option<(std::time::Instant, crate::state::PluginPolygonVertexHandle)>>,
         > = Rc::new(RefCell::new(None));
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
+        let navigate_click_origin_down = Rc::clone(&navigate_click_origin);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
             if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
@@ -2104,6 +2107,13 @@ pub fn setup_callbacks(
                     "Failed to dismiss active sidebar popups on viewport mouse down: {err}"
                 );
             }
+
+            let track_navigate_click = {
+                let state = state_handle.read();
+                state.current_tool == state::Tool::Navigate
+            };
+            *navigate_click_origin_down.borrow_mut() =
+                track_navigate_click.then_some((x, y));
 
             let polygon_vertex_drag_candidate = {
                 let state = state_handle.read();
@@ -2611,6 +2621,27 @@ pub fn setup_callbacks(
                         }
                         false
                     }
+                } else if state.current_tool == state::Tool::Navigate {
+                    let pane = state.focused_pane;
+                    let hovered = crate::plugin_host::hit_test_overlay_point_for_pane(
+                        &state, pane, x, y, None,
+                    )
+                    .or_else(|| {
+                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
+                            &state, pane, x, y, None,
+                        )
+                        .map(|candidate| candidate.handle)
+                    });
+                    if state.hovered_plugin_annotation != hovered
+                        || state.hovered_plugin_polygon_vertex.is_some()
+                        || state.hovered_plugin_polygon_edge.is_some()
+                    {
+                        state.hovered_plugin_annotation = hovered;
+                        state.hovered_plugin_polygon_vertex = None;
+                        state.hovered_plugin_polygon_edge = None;
+                        state.request_render();
+                    }
+                    false
                 } else {
                     false
                 }
@@ -2644,6 +2675,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
         let plugin_manager = Rc::clone(&plugin_manager);
         let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
+        let navigate_click_origin_up = Rc::clone(&navigate_click_origin);
 
         ui.on_viewport_tool_mouse_up(move |x, y| {
             if suppress_polygon_mouse_up.replace(false) {
@@ -2782,6 +2814,54 @@ pub fn setup_callbacks(
                     )
                 {
                     tracing::error!("Polygon annotation move error: {err}");
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+                return;
+            }
+
+            let navigate_click_selection = match navigate_click_origin_up.borrow_mut().take() {
+                Some((down_x, down_y)) => {
+                    let dx = x - down_x;
+                    let dy = y - down_y;
+                    if dx * dx + dy * dy > 16.0 {
+                        None
+                    } else {
+                        let state = state_handle.read();
+                        if state.current_tool != state::Tool::Navigate {
+                            None
+                        } else {
+                            let pane = state.focused_pane;
+                            let hit = crate::plugin_host::hit_test_overlay_point_for_pane(
+                                &state, pane, x, y, None,
+                            )
+                            .or_else(|| {
+                                crate::plugin_host::hit_test_overlay_polygon_for_pane(
+                                    &state, pane, x, y, None,
+                                )
+                                .map(|candidate| candidate.handle)
+                            });
+                            Some((pane, hit))
+                        }
+                    }
+                }
+                None => None,
+            };
+
+            if let Some((pane, hit)) = navigate_click_selection {
+                if let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane) {
+                    let (plugin_id, annotation_id) = match hit {
+                        Some(handle) => (handle.plugin_id, handle.annotation_id),
+                        None => ("annotations".to_string(), String::new()),
+                    };
+                    if let Err(err) = plugin_manager.borrow_mut().handle_viewport_annotation_selected(
+                        &plugin_id,
+                        &viewport,
+                        &annotation_id,
+                    ) {
+                        tracing::error!("Viewport annotation selection error: {err}");
+                    }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);

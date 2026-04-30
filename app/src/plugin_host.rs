@@ -523,6 +523,7 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let dragged_position = state.dragged_plugin_point_position;
     let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
     let point_tool_active = state.current_tool == crate::state::Tool::PointAnnotation;
+    let navigate_hover_active = state.current_tool == crate::state::Tool::Navigate;
 
     local_plugin_vtables()
         .into_iter()
@@ -543,11 +544,14 @@ pub(crate) fn viewport_overlay_points_for_pane(
                 (point.x_level0, point.y_level0)
             };
             let screen = vp.image_to_screen(x_level0, y_level0);
-            let ring_color = if point_tool_active
+            let is_hovered = hovered.is_some_and(|handle| {
+                handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+            });
+            let hover_style_active = (point_tool_active
                 && active_tool_plugin_id == Some(plugin_id.as_str())
-                && hovered.is_some_and(|handle| {
-                    handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-                }) {
+                && is_hovered)
+                || (navigate_hover_active && is_hovered);
+            let ring_color = if hover_style_active {
                 Color::from_rgb_u8(0xF1, 0xC4, 0x0F)
             } else {
                 Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
@@ -612,6 +616,7 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
     let dragged_vertex_position = state.dragged_plugin_polygon_vertex_position;
     let active_tool_plugin_id = state.active_tool_plugin_id.as_deref();
     let polygon_tool_active = state.current_tool == crate::state::Tool::PolygonAnnotation;
+    let navigate_hover_active = state.current_tool == crate::state::Tool::Navigate;
 
     let mut polygons = local_plugin_vtables()
         .into_iter()
@@ -665,11 +670,11 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
                         })
                         .collect()
                 };
-                let hovered = polygon_tool_active
-                    && active_tool_plugin_id == Some(plugin_id.as_str())
-                    && hovered.is_some_and(|handle| {
-                        handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
-                    });
+                let hovered = hovered.is_some_and(|handle| {
+                    handle.plugin_id == plugin_id && handle.annotation_id == annotation_id
+                }) && ((polygon_tool_active
+                    && active_tool_plugin_id == Some(plugin_id.as_str()))
+                    || navigate_hover_active);
                 let fill_color = overlay_polygon_fill_color(
                     &plugin_id,
                     &annotation_id,
@@ -3751,6 +3756,11 @@ mod tests {
     extern "C" fn noop_on_undo() -> ActionResponseFFI {
         ActionResponseFFI { open_window: false }
     }
+    extern "C" fn noop_on_viewport_annotation_selected(
+        _viewport: ViewportSnapshotFFI,
+        _annotation_id: RString,
+    ) {
+    }
     extern "C" fn noop_on_redo() -> ActionResponseFFI {
         ActionResponseFFI { open_window: false }
     }
@@ -3809,6 +3819,7 @@ mod tests {
             on_redo: noop_on_redo,
             on_point_annotation_moved: noop_on_point_annotation_moved,
             on_polygon_annotation_moved: noop_on_polygon_annotation_moved,
+            on_viewport_annotation_selected: noop_on_viewport_annotation_selected,
             get_viewport_filters: noop_get_viewport_filters,
             apply_filter_cpu: noop_apply_filter_cpu,
             apply_filter_gpu: noop_apply_filter_gpu,

@@ -479,6 +479,12 @@ extern "C" fn on_redo_ffi() -> ActionResponseFFI {
     ActionResponseFFI { open_window: false }
 }
 
+extern "C" fn on_viewport_annotation_selected_ffi(
+    _viewport: ViewportSnapshotFFI,
+    _annotation_id: RString,
+) {
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
     PluginVTable {
@@ -501,6 +507,7 @@ pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
         on_redo: on_redo_ffi,
         on_point_annotation_moved: on_point_annotation_moved_ffi,
         on_polygon_annotation_moved: on_polygon_annotation_moved_ffi,
+        on_viewport_annotation_selected: on_viewport_annotation_selected_ffi,
         get_viewport_filters: get_viewport_filters_ffi,
         apply_filter_cpu: apply_filter_cpu_ffi,
         apply_filter_gpu: apply_filter_gpu_ffi,

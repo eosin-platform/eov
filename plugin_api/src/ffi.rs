@@ -358,6 +358,11 @@ pub struct PluginVTable {
         vertices: RVec<ViewportOverlayVertexFFI>,
     ),
 
+    /// Called when the host selects or deselects a plugin-owned overlay annotation.
+    /// An empty annotation id means the current selection should be cleared.
+    pub on_viewport_annotation_selected:
+        extern "C" fn(viewport: ViewportSnapshotFFI, annotation_id: RString),
+
     /// Returns viewport filter descriptors this plugin provides.
     /// May return an empty vec if the plugin has no viewport filters.
     pub get_viewport_filters: extern "C" fn() -> RVec<ViewportFilterFFI>,
