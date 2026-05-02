@@ -1,0 +1,277 @@
+import { Theme } from "theme.slint";
+import { SvgIconButton } from "tab-controls.slint";
+import { SeriesItemData } from "types.slint";
+
+component SeriesCard inherits Rectangle {
+    in property <SeriesItemData> item;
+    out property <bool> hovered: touch.has-hover;
+    callback activated(string);
+    callback context-menu(string, length, length);
+
+    width: 148px;
+    height: 150px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: item.is-selected ? Theme.accent : (touch.has-hover ? Theme.border : Theme.border-subtle);
+    background: item.is-selected ? #0e639c22 : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+
+    touch := TouchArea {
+        clicked => {
+            root.activated(root.item.path);
+        }
+
+        pointer-event(e) => {
+            if !root.item.is-directory
+                && e.kind == PointerEventKind.down
+                && e.button == PointerEventButton.right
+            {
+                root.context-menu(
+                    root.item.path,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                );
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+
+        Rectangle {
+            height: 112px;
+            border-radius: 6px;
+            background: #111318;
+            border-width: 1px;
+            border-color: item.is-selected ? Theme.accent : Theme.border-subtle;
+            clip: true;
+
+            if item.is-directory: Image {
+                x: parent.width / 2 - self.width / 2;
+                y: parent.height / 2 - self.height / 2;
+                width: 34px;
+                height: 34px;
+                source: @image-url("icons/open-file.svg");
+                image-fit: contain;
+                opacity: 0.92;
+            }
+
+            if !item.is-directory && !item.is-loading && item.has-thumbnail: Image {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                source: item.thumbnail;
+                image-fit: contain;
+            }
+
+            if !item.is-directory && item.is-loading: Rectangle {
+                x: 10px;
+                y: parent.height / 2 - self.height / 2;
+                width: parent.width - 20px;
+                height: 28px;
+                border-radius: 14px;
+                background: #ffffff10;
+                opacity: 0.55;
+
+                Text {
+                    text: "Loading thumbnail";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if !item.is-directory && !item.is-loading && !item.has-thumbnail: Text {
+                text: "No Preview";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: item.name;
+            color: item.is-selected ? white : Theme.text-primary;
+            font-size: 11px;
+            font-weight: item.is-selected ? 600 : 500;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            max-height: 28px;
+        }
+    }
+}
+
+export component SeriesBar inherits Rectangle {
+    in property <[SeriesItemData]> items: [];
+    in property <bool> can-go-back: false;
+    in property <bool> can-go-forward: false;
+    in property <bool> can-go-up: false;
+    callback open-folder-requested();
+    callback go-back();
+    callback go-forward();
+    callback go-up();
+    callback item-activated(string);
+    callback item-context-menu(string, length, length);
+
+    property <string> active-tooltip: "";
+    property <length> tooltip-x: 0px;
+    property <length> tooltip-y: 0px;
+
+    clip: true;
+    background: Theme.surface;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 30px;
+        background: Theme.toolbar-bg;
+
+        Rectangle {
+            y: parent.height - 1px;
+            width: parent.width;
+            height: 1px;
+            background: Theme.border-subtle;
+        }
+
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            alignment: start;
+            spacing: 4px;
+
+            SvgIconButton {
+                icon-source: @image-url("icons/back.svg");
+                tooltip-text: "Back";
+                enabled: root.can-go-back;
+                clicked => {
+                    root.go-back();
+                }
+            }
+
+            SvgIconButton {
+                icon-source: @image-url("icons/forward.svg");
+                tooltip-text: "Forward";
+                enabled: root.can-go-forward;
+                clicked => {
+                    root.go-forward();
+                }
+            }
+
+            SvgIconButton {
+                icon-source: @image-url("icons/up.svg");
+                tooltip-text: "Up";
+                enabled: root.can-go-up;
+                clicked => {
+                    root.go-up();
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 18px;
+                y: (parent.height - self.height) / 2;
+                background: Theme.border;
+            }
+
+            SvgIconButton {
+                icon-source: @image-url("icons/open-file.svg");
+                tooltip-text: "Open Folder";
+                clicked => {
+                    root.open-folder-requested();
+                }
+            }
+        }
+    }
+
+    if root.items.length == 0: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 42px + (parent.height - 42px - self.height) / 2;
+        width: 280px;
+        height: 92px;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: #111318;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+
+            Text {
+                text: "Empty folder";
+                color: Theme.text-primary;
+                font-size: 15px;
+                font-weight: 600;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: "No folders or supported WSI files are visible here.";
+                color: Theme.text-secondary;
+                font-size: 12px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    if root.items.length > 0: Flickable {
+        x: 0px;
+        y: 30px;
+        width: parent.width;
+        height: parent.height - 30px;
+        viewport-width: series-layout.preferred-width + 24px;
+        interactive: true;
+
+        series-layout := HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 12px;
+            padding-bottom: 12px;
+            spacing: 10px;
+
+            for item[i] in root.items: SeriesCard {
+                item: item;
+                activated(path) => {
+                    root.item-activated(path);
+                }
+                context-menu(path, x, y) => {
+                    root.item-context-menu(path, x, y);
+                }
+                changed hovered => {
+                    if self.hovered {
+                        root.active-tooltip = item.metadata-tooltip;
+                        root.tooltip-x = self.absolute-position.x + self.width / 2;
+                        root.tooltip-y = self.absolute-position.y - 8px;
+                    } else if root.active-tooltip == item.metadata-tooltip {
+                        root.active-tooltip = "";
+                    }
+                }
+            }
+        }
+    }
+
+    if root.active-tooltip != "": Rectangle {
+        x: max(8px, min(root.width - self.width - 8px, root.tooltip-x - self.width / 2));
+        y: max(8px, root.tooltip-y - self.height);
+        width: tooltip-text.preferred-width + 16px;
+        height: tooltip-text.preferred-height + 12px;
+        background: #101216f2;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        tooltip-text := Text {
+            x: 8px;
+            y: 6px;
+            width: parent.width - 16px;
+            text: root.active-tooltip;
+            color: white;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+}

@@ -1071,6 +1071,24 @@ fn open_file(
     render_timer: &Rc<Timer>,
     path: PathBuf,
 ) {
+    open_file_with_mode(
+        ui,
+        state,
+        tile_cache,
+        render_timer,
+        path,
+        file_ops::OpenFileMode::ReuseExistingTab,
+    );
+}
+
+fn open_file_with_mode(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+    mode: file_ops::OpenFileMode,
+) {
     let pane_count = state.read().panes.len().max(1);
     with_pane_render_cache(pane_count, |pane_render_cache| {
         with_pane_ui_models(pane_count, |pane_ui_models| {
@@ -1081,6 +1099,7 @@ fn open_file(
                     tile_cache,
                     render_timer,
                     path,
+                    mode,
                     file_ops::OpenFileUiContext {
                         pane_render_cache,
                         pane_ui_models,

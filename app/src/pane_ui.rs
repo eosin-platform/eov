@@ -1,7 +1,7 @@
 use crate::gpu::GpuRenderer;
 use crate::render_pool::CachedCpuFrame;
 use crate::state::PaneId;
-use crate::{MeasurementLine, PaneViewData, TabData};
+use crate::{MeasurementLine, PaneViewData, SeriesItemData, TabData};
 use slint::{Image, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -50,10 +50,15 @@ thread_local! {
     static PANE_RENDER_CACHE: RefCell<Vec<PaneRenderCacheEntry>> = const { RefCell::new(Vec::new()) };
     static PANE_VIEW_MODEL: RefCell<Rc<VecModel<PaneViewData>>> = RefCell::new(Rc::new(VecModel::default()));
     static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
+    static SERIES_ITEMS_MODEL: RefCell<Rc<VecModel<SeriesItemData>>> = RefCell::new(Rc::new(VecModel::default()));
 }
 
 pub(crate) fn pane_from_index(index: i32) -> PaneId {
     PaneId(index.max(0) as usize)
+}
+
+pub(crate) fn series_items_model() -> Rc<VecModel<SeriesItemData>> {
+    SERIES_ITEMS_MODEL.with(|model| model.borrow().clone())
 }
 
 pub(crate) fn with_pane_render_cache<T>(

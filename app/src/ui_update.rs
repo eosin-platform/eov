@@ -5,11 +5,14 @@
 
 use crate::state::{AppState, HudSettings, PaneId};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
+use crate::pane_ui::series_items_model;
 use crate::{
-    ContextMenuItem, FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
-    IsolatedChannel as SlintIsolatedChannel, MeasurementUnit as SlintMeasurementUnit, MetadataItem,
-    MinimapRect, PaneRenderCacheEntry, PaneUiModels, PaneViewData, RecentFileData, RenderMode,
-    StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
+    BottomPanelKind as SlintBottomPanelKind, ContextMenuItem,
+    FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
+    IsolatedChannel as SlintIsolatedChannel, MeasurementUnit as SlintMeasurementUnit,
+    MetadataItem, MinimapRect, PaneRenderCacheEntry, PaneUiModels, PaneViewData,
+    RecentFileData, RenderMode, SeriesItemData, StainNormalization as SlintStainNormalization,
+    TabData, ViewportInfo,
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use common::{
@@ -18,6 +21,70 @@ use common::{
 };
 use slint::{Image, Model, SharedString, VecModel};
 use std::{fs, rc::Rc};
+
+fn ui_bottom_panel_kind(kind: crate::state::BottomPanelKind) -> SlintBottomPanelKind {
+    match kind {
+        crate::state::BottomPanelKind::None => SlintBottomPanelKind::None,
+        crate::state::BottomPanelKind::Series => SlintBottomPanelKind::Series,
+    }
+}
+
+fn series_thumbnail_image(thumbnail: Option<&crate::state::SeriesThumbnail>) -> Image {
+    thumbnail
+        .and_then(|thumbnail| {
+            crate::blitter::create_image_buffer(&thumbnail.rgba, thumbnail.width, thumbnail.height)
+                .map(Image::from_rgba8)
+        })
+        .unwrap_or_default()
+}
+
+fn update_series_items_model(
+    state: &AppState,
+    series: &crate::state::OpenedSeries,
+) -> Rc<VecModel<SeriesItemData>> {
+    let model = series_items_model();
+    let selected_path = state
+        .active_file_id_for_pane(state.focused_pane)
+        .and_then(|file_id| state.get_file(file_id))
+        .map(|file| file.path.clone());
+
+    let mut row_count = model.row_count();
+    while row_count > series.entries.len() {
+        row_count -= 1;
+        model.remove(row_count);
+    }
+
+    for (index, entry) in series.entries.iter().enumerate() {
+        let entry_path = SharedString::from(entry.path.display().to_string());
+        let existing = model.row_data(index);
+        let thumbnail = existing
+            .as_ref()
+            .filter(|item| item.path == entry_path && item.has_thumbnail == entry.thumbnail.is_some())
+            .map(|item| item.thumbnail.clone())
+            .unwrap_or_else(|| series_thumbnail_image(entry.thumbnail.as_ref()));
+        let next = SeriesItemData {
+            path: entry_path,
+            name: SharedString::from(entry.filename.clone()),
+            is_directory: entry.is_directory,
+            metadata_tooltip: SharedString::from(entry.metadata_tooltip.clone()),
+            thumbnail,
+            has_thumbnail: entry.thumbnail.is_some(),
+            is_loading: entry.thumbnail_loading,
+            is_selected: selected_path.as_ref() == Some(&entry.path),
+        };
+
+        if index < row_count {
+            if existing.as_ref() != Some(&next) {
+                model.set_row_data(index, next);
+            }
+        } else {
+            model.push(next);
+            row_count += 1;
+        }
+    }
+
+    model
+}
 
 fn build_metadata_items(
     state: &AppState,
@@ -358,9 +425,33 @@ pub fn update_tabs(
     ui.set_show_minimap(state.show_minimap);
     ui.set_show_metadata(state.show_metadata);
     ui.set_show_scale_bar(state.show_scale_bar);
+    ui.set_show_series_bar(
+        state.bottom_panel_visible && state.bottom_panel_kind == crate::state::BottomPanelKind::Series,
+    );
+    ui.set_bottom_panel_kind(ui_bottom_panel_kind(state.bottom_panel_kind));
+    ui.set_bottom_panel_height(state.bottom_panel_height_px());
     ui.set_viewport_lock_enabled(state.viewport_lock_enabled);
     ui.set_show_plugin_sidebar(state.has_active_sidebar());
     ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
+    if let Some(series) = state.opened_series.as_ref() {
+        ui.set_series_items(update_series_items_model(state, series).into());
+        ui.set_series_can_go_back(state.series_can_go_back());
+        ui.set_series_can_go_forward(state.series_can_go_forward());
+        ui.set_series_can_go_up(state.series_can_go_up());
+        ui.set_bottom_panel_status_left(SharedString::from(series.current_path.display().to_string()));
+        ui.set_bottom_panel_status_right(SharedString::from(format!("{} items", series.entries.len())));
+    } else {
+        let model = series_items_model();
+        if model.row_count() > 0 {
+            model.set_vec(Vec::new());
+        }
+        ui.set_series_items(model.into());
+        ui.set_series_can_go_back(false);
+        ui.set_series_can_go_forward(false);
+        ui.set_series_can_go_up(false);
+        ui.set_bottom_panel_status_left(SharedString::new());
+        ui.set_bottom_panel_status_right(SharedString::new());
+    }
     let _ = crate::plugin_host::refresh_viewport_overlay_factories(ui, state);
 }
 
@@ -382,30 +473,36 @@ pub fn update_recent_files(ui: &crate::AppWindow, state: &AppState) {
 
 /// Build context menu items for recent files
 pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
+    let mut items = vec![ContextMenuItem {
+        id: SharedString::from("open-folder-dialog"),
+        label: SharedString::from("Open Folder..."),
+        icon: SharedString::new(),
+        shortcut: SharedString::new(),
+        enabled: true,
+        separator_after: !state.recent_files.is_empty(),
+    }];
+
     if state.recent_files.is_empty() {
-        return vec![ContextMenuItem {
+        items.push(ContextMenuItem {
             id: SharedString::from("recent-empty"),
             label: SharedString::from("No recent files"),
             icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: false,
             separator_after: false,
-        }];
+        });
+        return items;
     }
 
-    state
-        .recent_files
-        .iter()
-        .take(10)
-        .map(|file| ContextMenuItem {
+    items.extend(state.recent_files.iter().take(10).map(|file| ContextMenuItem {
             id: SharedString::from(format!("recent-file:{}", file.path.display())),
             label: SharedString::from(file.name.clone()),
             icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: true,
             separator_after: false,
-        })
-        .collect()
+        }));
+    items
 }
 
 /// Update the render backend UI state

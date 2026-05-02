@@ -1,0 +1,110 @@
+import { Theme } from "theme.slint";
+import { BottomPanelKind, SeriesItemData } from "types.slint";
+import { SeriesBar } from "series-bar.slint";
+
+export component BottomPanel inherits Rectangle {
+    in property <bool> visible-panel: false;
+    in property <length> panel-height: 0px;
+    in property <BottomPanelKind> panel-kind: BottomPanelKind.none;
+    in property <[SeriesItemData]> series-items: [];
+    in property <bool> series-can-go-back: false;
+    in property <bool> series-can-go-forward: false;
+    in property <bool> series-can-go-up: false;
+    in property <string> status-left: "";
+    in property <string> status-right: "";
+
+    callback open-folder-requested();
+    callback series-go-back();
+    callback series-go-forward();
+    callback series-go-up();
+    callback series-item-activated(string);
+    callback series-item-context-menu(string, length, length);
+
+    height: visible-panel ? panel-height : 0px;
+    clip: true;
+    background: Theme.surface;
+
+    Rectangle {
+        y: 0px;
+        width: parent.width;
+        height: 1px;
+        background: Theme.border;
+    }
+
+    if root.visible-panel: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        background: Theme.surface;
+
+        if root.panel-kind == BottomPanelKind.series: SeriesBar {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: max(0px, parent.height - 24px);
+            items: root.series-items;
+            can-go-back: root.series-can-go-back;
+            can-go-forward: root.series-can-go-forward;
+            can-go-up: root.series-can-go-up;
+            open-folder-requested => {
+                root.open-folder-requested();
+            }
+            go-back => {
+                root.series-go-back();
+            }
+            go-forward => {
+                root.series-go-forward();
+            }
+            go-up => {
+                root.series-go-up();
+            }
+            item-activated(path) => {
+                root.series-item-activated(path);
+            }
+            item-context-menu(path, x, y) => {
+                root.series-item-context-menu(path, x, y);
+            }
+        }
+
+        Rectangle {
+            y: parent.height - self.height;
+            width: parent.width;
+            height: 24px;
+            background: Theme.toolbar-bg;
+            border-width: 0px;
+
+            Rectangle {
+                y: 0px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.border-subtle;
+            }
+
+            Text {
+                x: 10px;
+                y: 0px;
+                width: parent.width / 2 - 16px;
+                height: parent.height;
+                text: root.status-left;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            Text {
+                x: parent.width / 2;
+                y: 0px;
+                width: parent.width / 2 - 10px;
+                height: parent.height;
+                text: root.status-right;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

@@ -2,6 +2,7 @@
 
 import { Theme } from "theme.slint";
 import {
+    BottomPanelKind,
     ContextMenuItem,
     DatasetExportProgress,
     DatasetExportSettings,
@@ -19,6 +20,7 @@ import {
     RecentFileData,
     RenderMode,
     ROIRect,
+    SeriesItemData,
     TabData,
     ToolType,
     ViewportInfo,
@@ -30,6 +32,7 @@ import {
 } from "dataset-export-dialog.slint";
 import { ExportDialog } from "export-dialog.slint";
 import { HomeScreen } from "home-screen.slint";
+import { BottomPanel } from "bottom-panel.slint";
 import { SplitPaneContainer } from "panes.slint";
 import { WindowToolbar } from "window-toolbar.slint";
 
@@ -85,6 +88,7 @@ export component AppWindow inherits Window {
     in-out property <length> context-menu-y: 0px;
     in-out property <[ContextMenuItem]> context-menu-items: [];
     in-out property <int> context-menu-tab-id: -1;
+    in-out property <string> context-menu-series-path: "";
     in-out property <bool> toast-visible: false;
     in-out property <string> toast-text: "";
 
@@ -146,9 +150,18 @@ export component AppWindow inherits Window {
     in-out property <bool> gpu-rendering-available: false;
     in-out property <FilteringMode> filtering-mode: FilteringMode.trilinear;
     in-out property <bool> show-minimap: true;
+    in-out property <bool> show-series-bar: false;
     in-out property <bool> show-metadata: false;
     in-out property <bool> show-scale-bar: true;
     in-out property <bool> viewport-lock-enabled: false;
+    in-out property <BottomPanelKind> bottom-panel-kind: BottomPanelKind.none;
+    in-out property <float> bottom-panel-height: 0;
+    in-out property <[SeriesItemData]> series-items: [];
+    in-out property <bool> series-can-go-back: false;
+    in-out property <bool> series-can-go-forward: false;
+    in-out property <bool> series-can-go-up: false;
+    in-out property <string> bottom-panel-status-left: "";
+    in-out property <string> bottom-panel-status-right: "";
     in-out property <bool> show-plugin-sidebar: false;
     in-out property <float> plugin-sidebar-width: 0;
     in-out property <component-factory> plugin-sidebar-factory;
@@ -162,8 +175,10 @@ export component AppWindow inherits Window {
     in-out property <string> plugin-undo-redo-plugin-id: "";
 
     callback open-file-requested();
+    callback open-folder-requested();
     callback new-tab-requested(int);
     callback open-recent-file(string);
+    callback toggle-series-bar-requested();
     callback toggle-minimap-requested();
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
@@ -215,6 +230,11 @@ export component AppWindow inherits Window {
     callback window-close();
     callback open-recent-menu-requested(length, length);
     callback context-menu-command(string);
+    callback series-go-back();
+    callback series-go-forward();
+    callback series-go-up();
+    callback series-item-activated(string);
+    callback series-item-open-in-new-tab(string);
     callback os-file-drop(/* pane */ int, /* side: -1=center, 0=left, 1=right */ int, /* path */ string);
     callback hud-toggle-dropdown(int);
     callback hud-sharpness-changed(int, float);
@@ -244,11 +264,11 @@ export component AppWindow inherits Window {
     property <length> pane-stride: pane-width + pane-gap;
 
     out property <float> content-area-width: pane-region-width / 1px;
-    out property <float> content-area-height: content-area.height / 1px;
+    out property <float> content-area-height: pane-region.height / 1px;
     out property <float> viewport-width: split-enabled ? (pane-region-width * split-position - 3px) / 1px : pane-region-width / 1px;
-    out property <float> viewport-height: (content-area.height - 35px) / 1px;
+    out property <float> viewport-height: (pane-region.height - 35px) / 1px;
     out property <float> secondary-viewport-width: (pane-region-width * (1 - split-position) - 3px) / 1px;
-    out property <float> secondary-viewport-height: (content-area.height - 35px) / 1px;
+    out property <float> secondary-viewport-height: (pane-region.height - 35px) / 1px;
 
     property <bool> tab-tooltip-visible: false;
     property <string> tab-tooltip-text: "";
@@ -408,6 +428,7 @@ export component AppWindow inherits Window {
             filtering-mode: root.filtering-mode;
             filter-popup-visible <=> root.filter-popup-visible;
             show-minimap: root.show-minimap;
+            show-series-bar: root.show-series-bar;
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
             viewport-lock-enabled: root.viewport-lock-enabled;
@@ -422,6 +443,9 @@ export component AppWindow inherits Window {
             }
             open-recent-menu-requested(x, y) => {
                 root.open-recent-menu-requested(x, y);
+            }
+            toggle-series-bar-requested => {
+                root.toggle-series-bar-requested();
             }
             toggle-minimap-requested => {
                 root.toggle-minimap-requested();
@@ -495,7 +519,7 @@ export component AppWindow inherits Window {
                 x: root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px;
                 y: 0px;
                 width: content-area.width - (root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px);
-                height: content-area.height;
+                height: content-area.height - root.bottom-panel-height * 1px;
                 background: Theme.background;
 
                 split-pane := SplitPaneContainer {
@@ -795,6 +819,53 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+
+            bottom-panel := BottomPanel {
+                x: root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px;
+                y: content-area.height - self.height;
+                width: content-area.width - (root.show-plugin-sidebar ? root.plugin-sidebar-width-length + root.content-panel-gap : 0px);
+                visible-panel: root.bottom-panel-height > 0;
+                panel-height: root.bottom-panel-height * 1px;
+                panel-kind: root.bottom-panel-kind;
+                series-items: root.series-items;
+                series-can-go-back: root.series-can-go-back;
+                series-can-go-forward: root.series-can-go-forward;
+                series-can-go-up: root.series-can-go-up;
+                status-left: root.bottom-panel-status-left;
+                status-right: root.bottom-panel-status-right;
+                open-folder-requested => {
+                    root.open-folder-requested();
+                }
+                series-go-back => {
+                    root.series-go-back();
+                }
+                series-go-forward => {
+                    root.series-go-forward();
+                }
+                series-go-up => {
+                    root.series-go-up();
+                }
+                series-item-activated(path) => {
+                    root.series-item-activated(path);
+                }
+                series-item-context-menu(path, x, y) => {
+                    root.context-menu-tab-id = -1;
+                    root.context-menu-series-path = path;
+                    root.context-menu-x = x;
+                    root.context-menu-y = y;
+                    root.context-menu-items = [
+                        {
+                            id: "series-open-new-tab",
+                            label: "Open in New Tab",
+                            icon: "",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                    ];
+                    root.context-menu-visible = true;
+                }
+            }
         }
     }
 
@@ -847,6 +918,7 @@ export component AppWindow inherits Window {
         item-clicked(id) => {
             root.context-menu-visible = false;
             if id == "dismiss" {
+                root.context-menu-series-path = "";
                 return;
             }
             if root.context-menu-tab-id != -1 {
@@ -865,9 +937,14 @@ export component AppWindow inherits Window {
                 } else if id == "split-right" {
                     root.split-right(root.drag-source-pane, root.context-menu-tab-id);
                 }
+            } else if root.context-menu-series-path != "" {
+                if id == "series-open-new-tab" {
+                    root.series-item-open-in-new-tab(root.context-menu-series-path);
+                }
             } else {
                 root.context-menu-command(id);
             }
+            root.context-menu-series-path = "";
         }
     }
 

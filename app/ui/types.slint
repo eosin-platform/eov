@@ -35,6 +35,22 @@ export struct RecentFileData {
     name: string,
 }
 
+export enum BottomPanelKind {
+    none,
+    series,
+}
+
+export struct SeriesItemData {
+    path: string,
+    name: string,
+    is-directory: bool,
+    metadata-tooltip: string,
+    thumbnail: image,
+    has-thumbnail: bool,
+    is-loading: bool,
+    is-selected: bool,
+}
+
 export struct ContextMenuItem {
     id: string,
     label: string,

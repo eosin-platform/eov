@@ -9,9 +9,10 @@ use crate::{
     StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
     capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
     crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
-    handle_tool_mouse_up, insert_pane_ui_state, open_file, pane_from_index, refresh_tab_ui,
-    request_render_loop, slider_value_to_zoom, update_filtering_mode, update_render_backend,
-    update_tabs, update_tool_overlays, update_tool_state,
+    handle_tool_mouse_up, insert_pane_ui_state, open_file_with_mode,
+    pane_from_index, refresh_tab_ui, request_render_loop, slider_value_to_zoom,
+    update_filtering_mode, update_render_backend, update_tabs, update_tool_overlays,
+    update_tool_state,
 };
 use common::viewport::ZOOM_FACTOR;
 use common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
@@ -384,6 +385,15 @@ fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_show_minimap(show_minimap);
 }
 
+fn toggle_series_bar_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let show_series_bar = {
+        let mut state = state.write();
+        state.toggle_series_bar();
+        state.bottom_panel_visible && state.bottom_panel_kind == state::BottomPanelKind::Series
+    };
+    ui.set_show_series_bar(show_series_bar);
+}
+
 fn toggle_metadata_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let show_metadata = {
         let mut state = state.write();
@@ -409,6 +419,83 @@ fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         state.viewport_lock_enabled
     };
     ui.set_viewport_lock_enabled(viewport_lock_enabled);
+}
+
+fn open_path_with_series(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+    mode: crate::file_ops::OpenFileMode,
+) {
+    crate::file_ops::set_series_from_file_parent(ui, state, &path);
+    open_file_with_mode(ui, state, tile_cache, render_timer, path, mode);
+}
+
+fn default_series_home() -> Option<PathBuf> {
+    dirs::home_dir().or_else(|| std::env::current_dir().ok())
+}
+
+fn navigate_series_to_folder(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    folder: PathBuf,
+    navigation: state::SeriesNavigationMode,
+) -> Vec<PathBuf> {
+    crate::file_ops::set_series_from_folder(ui, state, folder, navigation)
+}
+
+fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let should_initialize = state.read().current_series_path().is_none();
+    if should_initialize
+        && let Some(home) = default_series_home()
+    {
+        let home = std::fs::canonicalize(&home).unwrap_or(home);
+        let revision = {
+            let mut state = state.write();
+            state.set_opened_series(home.clone(), Vec::new(), state::SeriesNavigationMode::Initialize)
+        };
+
+        {
+            let state = state.read();
+            update_tabs(ui, &state);
+        }
+
+        crate::file_ops::load_series_entries_async(ui.as_weak(), Arc::clone(state), home, revision);
+    }
+}
+
+fn open_folder_as_series(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    folder: PathBuf,
+) {
+    {
+        let mut state = state.write();
+        state.set_bottom_panel_visible(true, state::BottomPanelKind::Series);
+    }
+
+    let navigation = if state.read().current_series_path().is_some() {
+        state::SeriesNavigationMode::Push
+    } else {
+        state::SeriesNavigationMode::Initialize
+    };
+    let paths = navigate_series_to_folder(ui, state, folder.clone(), navigation);
+    if let Some(first_path) = paths.first().cloned() {
+        open_file_with_mode(
+            ui,
+            state,
+            tile_cache,
+            render_timer,
+            first_path,
+            crate::file_ops::OpenFileMode::ReuseExistingTab,
+        );
+    } else {
+        ui.set_status_text(SharedString::from(format!("Browsing {}", folder.display())));
+    }
 }
 
 /// Convert Slint export settings to common crate's `ExportSettings`.
@@ -897,7 +984,31 @@ pub fn setup_callbacks(
                 .add_filter("All Files", &["*"]);
 
             if let Some(path) = dialog.pick_file() {
-                open_file(&ui, &state, &tile_cache, &render_timer, path);
+                open_path_with_series(
+                    &ui,
+                    &state,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ReuseExistingTab,
+                );
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_open_folder_requested(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+
+            if let Some(folder) = FileDialog::new().pick_folder() {
+                open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, folder);
             }
         });
     }
@@ -935,7 +1046,14 @@ pub fn setup_callbacks(
             if path.exists()
                 && let Some(ui) = ui_weak.upgrade()
             {
-                open_file(&ui, &state, &tile_cache, &render_timer, path);
+                open_path_with_series(
+                    &ui,
+                    &state,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ReuseExistingTab,
+                );
             }
         });
     }
@@ -1037,7 +1155,21 @@ pub fn setup_callbacks(
             if let Some(path_str) = command.strip_prefix("recent-file:") {
                 let path = PathBuf::from(path_str);
                 if path.exists() {
-                    open_file(&ui, &state_handle, &tile_cache, &render_timer, path);
+                    open_path_with_series(
+                        &ui,
+                        &state_handle,
+                        &tile_cache,
+                        &render_timer,
+                        path,
+                        crate::file_ops::OpenFileMode::ReuseExistingTab,
+                    );
+                }
+                return;
+            }
+
+            if command == "open-folder-dialog" {
+                if let Some(folder) = FileDialog::new().pick_folder() {
+                    open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, folder);
                 }
                 return;
             }
@@ -1498,6 +1630,85 @@ pub fn setup_callbacks(
             if let Err(err) = crate::plugin_host::handle_confirmation_dialog_response(false) {
                 error!("Plugin confirmation dialog cancel handling failed: {err}");
             }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_series_bar_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_series_bar_visibility(&ui, &state_handle);
+                if state_handle.read().bottom_panel_visible {
+                    ensure_series_home_if_needed(&ui, &state_handle);
+                }
+                let state = state_handle.read();
+                update_tabs(&ui, &state);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_go_back(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let Some(target) = state_handle.read().series_back_target() else {
+                return;
+            };
+            let _ = navigate_series_to_folder(
+                &ui,
+                &state_handle,
+                target,
+                state::SeriesNavigationMode::Back,
+            );
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_go_forward(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let Some(target) = state_handle.read().series_forward_target() else {
+                return;
+            };
+            let _ = navigate_series_to_folder(
+                &ui,
+                &state_handle,
+                target,
+                state::SeriesNavigationMode::Forward,
+            );
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_go_up(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let Some(target) = state_handle.read().series_up_target() else {
+                return;
+            };
+            let _ = navigate_series_to_folder(
+                &ui,
+                &state_handle,
+                target,
+                state::SeriesNavigationMode::Push,
+            );
         });
     }
 
@@ -2024,7 +2235,18 @@ pub fn setup_callbacks(
                 if path.exists()
                     && let Some(ui) = ui_weak.upgrade()
                 {
-                    open_file(&ui, &state, &tile_cache, &render_timer, path);
+                    if path.is_dir() {
+                        open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
+                    } else {
+                        open_path_with_series(
+                            &ui,
+                            &state,
+                            &tile_cache,
+                            &render_timer,
+                            path,
+                            crate::file_ops::OpenFileMode::ReuseExistingTab,
+                        );
+                    }
                 }
             }
         });
@@ -2045,6 +2267,12 @@ pub fn setup_callbacks(
                 return;
             };
 
+            if path.is_dir() {
+                open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, path);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                return;
+            }
+
             let target_pane = pane_from_index(pane);
 
             if side == -1 {
@@ -2054,7 +2282,14 @@ pub fn setup_callbacks(
                     state.set_focused_pane(target_pane);
                 }
                 ui.set_focused_pane(pane);
-                open_file(&ui, &state_handle, &tile_cache, &render_timer, path);
+                open_path_with_series(
+                    &ui,
+                    &state_handle,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ReuseExistingTab,
+                );
             } else {
                 // Drop on edge: create a new pane split
                 let insert_index = if side == 0 {
@@ -2078,9 +2313,73 @@ pub fn setup_callbacks(
                     update_tabs(&ui, &state);
                 }
                 let _ = crate::plugin_host::refresh_plugin_buttons();
-                open_file(&ui, &state_handle, &tile_cache, &render_timer, path);
+                open_path_with_series(
+                    &ui,
+                    &state_handle,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ReuseExistingTab,
+                );
             }
             request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_item_activated(move |path_str| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let path = PathBuf::from(path_str.as_str());
+            if path.exists() {
+                if path.is_dir() {
+                    let _ = navigate_series_to_folder(
+                        &ui,
+                        &state_handle,
+                        path,
+                        state::SeriesNavigationMode::Push,
+                    );
+                } else {
+                    open_path_with_series(
+                        &ui,
+                        &state_handle,
+                        &tile_cache,
+                        &render_timer,
+                        path,
+                        crate::file_ops::OpenFileMode::ReuseExistingTab,
+                    );
+                }
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_item_open_in_new_tab(move |path_str| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let path = PathBuf::from(path_str.as_str());
+            if path.exists() && path.is_file() {
+                open_path_with_series(
+                    &ui,
+                    &state_handle,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ForceNewTab,
+                );
+            }
         });
     }
 

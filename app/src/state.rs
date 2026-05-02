@@ -125,6 +125,7 @@ impl HudSettings {
 
 /// Maximum number of recently opened files to track
 const MAX_RECENT_FILES: usize = 10;
+pub const BOTTOM_PANEL_HEIGHT_PX: f32 = 232.0;
 
 /// Recently opened file entry
 #[derive(Debug, Clone)]
@@ -133,6 +134,47 @@ pub struct RecentFile {
     pub path: PathBuf,
     /// Display name (filename)
     pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BottomPanelKind {
+    #[default]
+    None,
+    Series,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SeriesThumbnail {
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SeriesEntry {
+    pub path: PathBuf,
+    pub filename: String,
+    pub is_directory: bool,
+    pub metadata_tooltip: String,
+    pub thumbnail: Option<SeriesThumbnail>,
+    pub thumbnail_loading: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeriesNavigationMode {
+    Initialize,
+    Replace,
+    Push,
+    Back,
+    Forward,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OpenedSeries {
+    pub current_path: PathBuf,
+    pub entries: Vec<SeriesEntry>,
+    pub back_history: Vec<PathBuf>,
+    pub forward_history: Vec<PathBuf>,
 }
 
 impl RecentFile {
@@ -569,6 +611,14 @@ pub struct AppState {
     pub show_metadata: bool,
     /// Whether scale bars are shown in all viewports.
     pub show_scale_bar: bool,
+    /// Whether a bottom panel is currently visible.
+    pub bottom_panel_visible: bool,
+    /// Which bottom-panel content is active.
+    pub bottom_panel_kind: BottomPanelKind,
+    /// Currently opened folder-backed series content.
+    pub opened_series: Option<OpenedSeries>,
+    /// Monotonic revision used to reject stale background thumbnail work.
+    pub series_revision: u64,
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
     /// Currently active plugin-provided sidebar, if any.
@@ -640,6 +690,10 @@ impl AppState {
             show_minimap: true,
             show_metadata: false,
             show_scale_bar: true,
+            bottom_panel_visible: false,
+            bottom_panel_kind: BottomPanelKind::None,
+            opened_series: None,
+            series_revision: 0,
             viewport_lock_enabled: false,
             active_sidebar: None,
             needs_render: true,
@@ -935,9 +989,7 @@ impl AppState {
 
                     let file_id = self.resolve_tab_file_id(tab_id);
                     let file = self.get_file(file_id)?;
-                    let file_path =
-                        fs::canonicalize(&file.path).unwrap_or_else(|_| file.path.clone());
-                    (file_path == normalized_path).then_some((PaneId(pane_index), tab_id))
+                    (file.path == normalized_path).then_some((PaneId(pane_index), tab_id))
                 })
             })
     }
@@ -1186,17 +1238,19 @@ impl AppState {
             thumbnail,
         } = new_file;
 
-        // Add to recent files
-        self.add_to_recent(&path);
+        let normalized_path = normalize_recent_path(&path);
 
-        let filename = path
+        // Add to recent files
+        self.add_to_recent(&normalized_path);
+
+        let filename = normalized_path
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
         self.open_files.push(OpenFile {
             id,
-            path,
+            path: normalized_path,
             filename,
             wsi,
             tile_manager,
@@ -1436,6 +1490,174 @@ impl AppState {
     pub fn toggle_scale_bar(&mut self) {
         self.show_scale_bar = !self.show_scale_bar;
         self.needs_render = true;
+    }
+
+    pub fn set_bottom_panel_visible(&mut self, visible: bool, kind: BottomPanelKind) {
+        self.bottom_panel_visible = visible;
+        self.bottom_panel_kind = if visible { kind } else { BottomPanelKind::None };
+        self.needs_render = true;
+    }
+
+    pub fn toggle_series_bar(&mut self) {
+        let next_visible = !(self.bottom_panel_visible
+            && self.bottom_panel_kind == BottomPanelKind::Series);
+        self.set_bottom_panel_visible(next_visible, BottomPanelKind::Series);
+    }
+
+    pub fn bottom_panel_height_px(&self) -> f32 {
+        if self.bottom_panel_visible {
+            BOTTOM_PANEL_HEIGHT_PX
+        } else {
+            0.0
+        }
+    }
+
+    pub fn current_series_path(&self) -> Option<&std::path::Path> {
+        self.opened_series
+            .as_ref()
+            .map(|series| series.current_path.as_path())
+    }
+
+    pub fn series_can_go_back(&self) -> bool {
+        self.opened_series
+            .as_ref()
+            .map(|series| !series.back_history.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn series_can_go_forward(&self) -> bool {
+        self.opened_series
+            .as_ref()
+            .map(|series| !series.forward_history.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn series_can_go_up(&self) -> bool {
+        self.current_series_path()
+            .and_then(|path| path.parent())
+            .is_some()
+    }
+
+    pub fn series_back_target(&self) -> Option<PathBuf> {
+        self.opened_series
+            .as_ref()
+            .and_then(|series| series.back_history.last().cloned())
+    }
+
+    pub fn series_forward_target(&self) -> Option<PathBuf> {
+        self.opened_series
+            .as_ref()
+            .and_then(|series| series.forward_history.last().cloned())
+    }
+
+    pub fn series_up_target(&self) -> Option<PathBuf> {
+        self.current_series_path()
+            .and_then(|path| path.parent())
+            .map(|path| path.to_path_buf())
+    }
+
+    pub fn set_opened_series(
+        &mut self,
+        folder_path: PathBuf,
+        entries: Vec<SeriesEntry>,
+        navigation: SeriesNavigationMode,
+    ) -> u64 {
+        self.series_revision = self.series_revision.wrapping_add(1);
+
+        match self.opened_series.as_mut() {
+            Some(series) => {
+                let current_path = series.current_path.clone();
+                match navigation {
+                    SeriesNavigationMode::Initialize | SeriesNavigationMode::Replace => {}
+                    SeriesNavigationMode::Push => {
+                        if current_path != folder_path {
+                            series.back_history.push(current_path);
+                            series.forward_history.clear();
+                        }
+                    }
+                    SeriesNavigationMode::Back => {
+                        if let Some(previous_path) = series.back_history.pop()
+                            && previous_path == folder_path
+                        {
+                            series.forward_history.push(current_path);
+                        }
+                    }
+                    SeriesNavigationMode::Forward => {
+                        if let Some(next_path) = series.forward_history.pop()
+                            && next_path == folder_path
+                        {
+                            series.back_history.push(current_path);
+                        }
+                    }
+                }
+                series.current_path = folder_path;
+                series.entries = entries;
+            }
+            None => {
+                self.opened_series = Some(OpenedSeries {
+                    current_path: folder_path,
+                    entries,
+                    back_history: Vec::new(),
+                    forward_history: Vec::new(),
+                });
+            }
+        }
+
+        self.needs_render = true;
+        self.series_revision
+    }
+
+    pub fn update_series_entry_thumbnail(
+        &mut self,
+        revision: u64,
+        path: &std::path::Path,
+        metadata_tooltip: String,
+        thumbnail: Option<SeriesThumbnail>,
+    ) -> bool {
+        if self.series_revision != revision {
+            return false;
+        }
+
+        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let Some(series) = self.opened_series.as_mut() else {
+            return false;
+        };
+
+        let Some(entry) = series.entries.iter_mut().find(|entry| {
+            fs::canonicalize(&entry.path).unwrap_or_else(|_| entry.path.clone()) == normalized_path
+        }) else {
+            return false;
+        };
+
+        entry.metadata_tooltip = metadata_tooltip;
+        entry.thumbnail = thumbnail;
+        entry.thumbnail_loading = false;
+        self.needs_render = true;
+        true
+    }
+
+    pub fn replace_opened_series_entries(
+        &mut self,
+        revision: u64,
+        folder_path: &std::path::Path,
+        entries: Vec<SeriesEntry>,
+    ) -> bool {
+        if self.series_revision != revision {
+            return false;
+        }
+
+        let normalized_path = fs::canonicalize(folder_path).unwrap_or_else(|_| folder_path.to_path_buf());
+        let Some(series) = self.opened_series.as_mut() else {
+            return false;
+        };
+
+        if series.current_path != normalized_path {
+            return false;
+        }
+
+        series.entries = entries;
+        self.needs_render = true;
+        true
     }
 
     pub fn toggle_viewport_lock(&mut self) {
