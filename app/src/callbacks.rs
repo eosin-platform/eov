@@ -429,8 +429,17 @@ fn open_path_with_series(
     path: PathBuf,
     mode: crate::file_ops::OpenFileMode,
 ) {
-    crate::file_ops::set_series_from_file_parent(ui, state, &path);
-    open_file_with_mode(ui, state, tile_cache, render_timer, path, mode);
+    let normalized_path = std::fs::canonicalize(&path).unwrap_or(path);
+    let skip_series_sync = normalized_path.parent().is_some_and(|parent| {
+        let guard = state.read();
+        guard.find_tab_by_path(&normalized_path).is_some()
+            && guard.current_series_path().is_some_and(|current| current == parent)
+    });
+
+    if !skip_series_sync {
+        crate::file_ops::set_series_from_file_parent(ui, state, &normalized_path);
+    }
+    open_file_with_mode(ui, state, tile_cache, render_timer, normalized_path, mode);
 }
 
 fn default_series_home() -> Option<PathBuf> {
@@ -1642,11 +1651,15 @@ pub fn setup_callbacks(
         ui.on_toggle_series_bar_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_series_bar_visibility(&ui, &state_handle);
+                let mut initialized_home = false;
                 if state_handle.read().bottom_panel_visible {
+                    initialized_home = state_handle.read().current_series_path().is_none();
                     ensure_series_home_if_needed(&ui, &state_handle);
                 }
-                let state = state_handle.read();
-                update_tabs(&ui, &state);
+                if !initialized_home {
+                    let state = state_handle.read();
+                    update_tabs(&ui, &state);
+                }
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });

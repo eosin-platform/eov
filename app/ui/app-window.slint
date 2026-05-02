@@ -157,6 +157,7 @@ export component AppWindow inherits Window {
     in-out property <BottomPanelKind> bottom-panel-kind: BottomPanelKind.none;
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
+    in-out property <string> series-selected-path: "";
     in-out property <bool> series-can-go-back: false;
     in-out property <bool> series-can-go-forward: false;
     in-out property <bool> series-can-go-up: false;
@@ -828,6 +829,7 @@ export component AppWindow inherits Window {
                 panel-height: root.bottom-panel-height * 1px;
                 panel-kind: root.bottom-panel-kind;
                 series-items: root.series-items;
+                series-selected-path: root.series-selected-path;
                 series-can-go-back: root.series-can-go-back;
                 series-can-go-forward: root.series-can-go-forward;
                 series-can-go-up: root.series-can-go-up;

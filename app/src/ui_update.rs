@@ -38,15 +38,8 @@ fn series_thumbnail_image(thumbnail: Option<&crate::state::SeriesThumbnail>) -> 
         .unwrap_or_default()
 }
 
-fn update_series_items_model(
-    state: &AppState,
-    series: &crate::state::OpenedSeries,
-) -> Rc<VecModel<SeriesItemData>> {
+fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel<SeriesItemData>> {
     let model = series_items_model();
-    let selected_path = state
-        .active_file_id_for_pane(state.focused_pane)
-        .and_then(|file_id| state.get_file(file_id))
-        .map(|file| file.path.clone());
 
     let mut row_count = model.row_count();
     while row_count > series.entries.len() {
@@ -70,7 +63,7 @@ fn update_series_items_model(
             thumbnail,
             has_thumbnail: entry.thumbnail.is_some(),
             is_loading: entry.thumbnail_loading,
-            is_selected: selected_path.as_ref() == Some(&entry.path),
+            is_selected: false,
         };
 
         if index < row_count {
@@ -433,8 +426,14 @@ pub fn update_tabs(
     ui.set_viewport_lock_enabled(state.viewport_lock_enabled);
     ui.set_show_plugin_sidebar(state.has_active_sidebar());
     ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
+    let selected_series_path = state
+        .active_file_id_for_pane(state.focused_pane)
+        .and_then(|file_id| state.get_file(file_id))
+        .map(|file| SharedString::from(file.path.display().to_string()))
+        .unwrap_or_default();
+    ui.set_series_selected_path(selected_series_path);
     if let Some(series) = state.opened_series.as_ref() {
-        ui.set_series_items(update_series_items_model(state, series).into());
+        ui.set_series_items(update_series_items_model(series).into());
         ui.set_series_can_go_back(state.series_can_go_back());
         ui.set_series_can_go_forward(state.series_can_go_forward());
         ui.set_series_can_go_up(state.series_can_go_up());
@@ -446,6 +445,7 @@ pub fn update_tabs(
             model.set_vec(Vec::new());
         }
         ui.set_series_items(model.into());
+        ui.set_series_selected_path(SharedString::new());
         ui.set_series_can_go_back(false);
         ui.set_series_can_go_forward(false);
         ui.set_series_can_go_up(false);

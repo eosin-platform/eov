@@ -7,6 +7,7 @@ export component BottomPanel inherits Rectangle {
     in property <length> panel-height: 0px;
     in property <BottomPanelKind> panel-kind: BottomPanelKind.none;
     in property <[SeriesItemData]> series-items: [];
+    in property <string> series-selected-path: "";
     in property <bool> series-can-go-back: false;
     in property <bool> series-can-go-forward: false;
     in property <bool> series-can-go-up: false;
@@ -44,6 +45,7 @@ export component BottomPanel inherits Rectangle {
             width: parent.width;
             height: max(0px, parent.height - 24px);
             items: root.series-items;
+            selected-path: root.series-selected-path;
             can-go-back: root.series-can-go-back;
             can-go-forward: root.series-can-go-forward;
             can-go-up: root.series-can-go-up;
