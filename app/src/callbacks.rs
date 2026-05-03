@@ -1825,7 +1825,8 @@ pub fn setup_callbacks(
                 }
                 let state = state_handle.read();
                 ui.set_focused_pane(pane);
-                refresh_tab_ui(&ui, &state);
+                update_tabs(&ui, &state);
+                let _ = crate::plugin_host::refresh_active_sidebar();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
