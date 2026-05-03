@@ -39,6 +39,12 @@ const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
 #[cfg(target_os = "macos")]
 const MACOS_TOOLBAR_HEIGHT: f64 = 40.0;
 
+fn dismiss_active_sidebar_popups(reason: &str) {
+    if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
+        tracing::debug!("Failed to dismiss active sidebar popups {reason}: {err}");
+    }
+}
+
 fn active_hud_mut(state: &mut AppState) -> Option<&mut HudSettings> {
     let pane = state.focused_pane;
     let file_id = state.active_file_id_for_pane(pane)?;
@@ -1159,9 +1165,24 @@ pub fn setup_callbacks(
 
     {
         let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_viewport_interaction_started(move |_pane| {
+            dismiss_active_sidebar_popups("on viewport interaction");
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
         let ui_weak = ui_weak.clone();
 
         ui.on_open_recent_menu_requested(move |x, y| {
+            dismiss_active_sidebar_popups("before open recent menu");
             if let Some(ui) = ui_weak.upgrade() {
                 let items = {
                     let state = state_handle.read();
@@ -1184,6 +1205,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_scale_bar_requested(move || {
+            dismiss_active_sidebar_popups("before toggle scale bar");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_scale_bar_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1198,6 +1220,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_viewport_lock_requested(move || {
+            dismiss_active_sidebar_popups("before toggle viewport lock");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_viewport_lock(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1474,11 +1497,7 @@ pub fn setup_callbacks(
                 return;
             };
 
-            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!(
-                    "Failed to dismiss active sidebar popups before viewport context menu: {err}"
-                );
-            }
+            dismiss_active_sidebar_popups("before viewport context menu");
 
             let pane = pane_from_index(pane);
             let point_delete_item = {
@@ -1764,6 +1783,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_back(move || {
+            dismiss_active_sidebar_popups("before series back");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1784,6 +1804,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_forward(move || {
+            dismiss_active_sidebar_popups("before series forward");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1804,6 +1825,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_up(move || {
+            dismiss_active_sidebar_popups("before series up");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1826,6 +1848,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_minimap_requested(move || {
+            dismiss_active_sidebar_popups("before toggle minimap");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_minimap_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1840,6 +1863,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_metadata_requested(move || {
+            dismiss_active_sidebar_popups("before toggle metadata");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_metadata_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1867,6 +1891,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_tab_activated(move |pane, id| {
+            dismiss_active_sidebar_popups("before tab activation");
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
@@ -1891,6 +1916,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_tab_close_requested(move |pane, id| {
+            dismiss_active_sidebar_popups("before tab close");
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
@@ -2066,6 +2092,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_pane_focused(move |pane| {
+            dismiss_active_sidebar_popups("before pane focus");
             let focus_changed = {
                 let state = state_handle.read();
                 state.focused_pane != pane_from_index(pane)
@@ -2441,6 +2468,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_item_activated(move |path_str| {
+            dismiss_active_sidebar_popups("before series item activation");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -2480,6 +2508,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_item_open_in_new_tab(move |path_str| {
+            dismiss_active_sidebar_popups("before series open in new tab");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -2554,11 +2583,7 @@ pub fn setup_callbacks(
         let pending_polygon_press_down = Rc::clone(&pending_polygon_press);
 
         ui.on_viewport_tool_mouse_down(move |x, y| {
-            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!(
-                    "Failed to dismiss active sidebar popups on viewport mouse down: {err}"
-                );
-            }
+            dismiss_active_sidebar_popups("on viewport mouse down");
 
             pending_point_press_down.borrow_mut().take();
             pending_polygon_press_down.borrow_mut().take();

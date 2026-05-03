@@ -61,6 +61,7 @@ export component Viewport inherits Rectangle {
     callback minimap-drag-end();
     callback zoom-slider-changed(float);
     callback file-dropped(string);
+    callback interaction-started();
     callback tool-mouse-down(float, float);
     callback tool-mouse-move(float, float);
     callback tool-mouse-up(float, float);
@@ -431,6 +432,7 @@ export component Viewport inherits Rectangle {
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
+                root.interaction-started();
                 root.hud-plugin-menu-open = false;
                 focus-scope.focus();
             }

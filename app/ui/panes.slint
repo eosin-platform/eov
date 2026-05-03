@@ -50,6 +50,7 @@ component PaneView inherits Rectangle {
     callback minimap-drag-start();
     callback minimap-drag-end();
     callback file-dropped(string);
+    callback viewport-interaction-started(int);
     callback pane-focused(int);
     callback tab-drag-started(int, int, string, int, length, length);
     callback tab-drag-moved(length, length);
@@ -198,6 +199,9 @@ component PaneView inherits Rectangle {
                 file-dropped(path) => {
                     root.pane-focused(root.pane-data.id);
                     root.file-dropped(path);
+                }
+                interaction-started => {
+                    root.viewport-interaction-started(root.pane-data.id);
                 }
                 tool-mouse-down(x, y) => {
                     root.pane-focused(root.pane-data.id);
@@ -439,6 +443,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback minimap-drag-start();
     callback minimap-drag-end();
     callback file-dropped(string);
+    callback viewport-interaction-started(int);
     callback pane-focused(int);
     callback split-position-changed(float);
     callback tab-drag-started(int, int, string, int, length, length);
@@ -552,6 +557,9 @@ export component SplitPaneContainer inherits Rectangle {
             }
             file-dropped(path) => {
                 root.file-dropped(path);
+            }
+            viewport-interaction-started(pane-id) => {
+                root.viewport-interaction-started(pane-id);
             }
             pane-focused(pane-id) => {
                 root.pane-focused(pane-id);

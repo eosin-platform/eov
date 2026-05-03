@@ -203,6 +203,7 @@ export component AppWindow inherits Window {
     callback minimap-drag-start();
     callback minimap-drag-end();
     callback file-dropped(string);
+    callback viewport-interaction-started(int);
     callback pane-focused(int);
     callback split-position-changed(float);
     callback request-render();
@@ -662,6 +663,9 @@ export component AppWindow inherits Window {
                     }
                     file-dropped(path) => {
                         root.file-dropped(path);
+                    }
+                    viewport-interaction-started(pane-id) => {
+                        root.viewport-interaction-started(pane-id);
                     }
                     pane-focused(pane) => {
                         root.pane-focused(pane);
