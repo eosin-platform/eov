@@ -70,6 +70,7 @@ export component SvgIconButton inherits Rectangle {
     in property <bool> enabled: true;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
+    callback secondary-clicked(length, length);
 
     width: 32px;
     height: 28px;
@@ -80,6 +81,12 @@ export component SvgIconButton inherits Rectangle {
         enabled: root.enabled;
         clicked => {
             root.clicked();
+        }
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.secondary-clicked(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
         }
     }
 

@@ -118,6 +118,7 @@ export component SeriesBar inherits Rectangle {
     in property <bool> can-go-forward: false;
     in property <bool> can-go-up: false;
     callback open-folder-requested();
+    callback open-folder-menu-requested(length, length);
     callback go-back();
     callback go-forward();
     callback go-up();
@@ -129,6 +130,18 @@ export component SeriesBar inherits Rectangle {
     property <length> tooltip-x: 0px;
     property <length> tooltip-y: 0px;
     property <length> scroll-x: 0px;
+
+    function show-tooltip(text: string, center-x: length, top-y: length) {
+        root.active-tooltip = text;
+        root.tooltip-x = center-x;
+        root.tooltip-y = top-y;
+    }
+
+    function clear-tooltip(text: string) {
+        if root.active-tooltip == text {
+            root.active-tooltip = "";
+        }
+    }
 
     clip: true;
     background: Theme.surface;
@@ -153,30 +166,51 @@ export component SeriesBar inherits Rectangle {
             alignment: stretch;
             spacing: 4px;
 
-            SvgIconButton {
+            back-button := SvgIconButton {
                 icon-source: @image-url("icons/back.svg");
                 tooltip-text: "Back";
                 enabled: root.can-go-back;
                 clicked => {
                     root.go-back();
                 }
+                changed hovered => {
+                    if self.hovered {
+                        root.show-tooltip(self.tooltip-text, self.absolute-position.x + self.width / 2, self.absolute-position.y - 8px);
+                    } else {
+                        root.clear-tooltip(self.tooltip-text);
+                    }
+                }
             }
 
-            SvgIconButton {
+            forward-button := SvgIconButton {
                 icon-source: @image-url("icons/forward.svg");
                 tooltip-text: "Forward";
                 enabled: root.can-go-forward;
                 clicked => {
                     root.go-forward();
                 }
+                changed hovered => {
+                    if self.hovered {
+                        root.show-tooltip(self.tooltip-text, self.absolute-position.x + self.width / 2, self.absolute-position.y - 8px);
+                    } else {
+                        root.clear-tooltip(self.tooltip-text);
+                    }
+                }
             }
 
-            SvgIconButton {
+            up-button := SvgIconButton {
                 icon-source: @image-url("icons/up.svg");
                 tooltip-text: "Up";
                 enabled: root.can-go-up;
                 clicked => {
                     root.go-up();
+                }
+                changed hovered => {
+                    if self.hovered {
+                        root.show-tooltip(self.tooltip-text, self.absolute-position.x + self.width / 2, self.absolute-position.y - 8px);
+                    } else {
+                        root.clear-tooltip(self.tooltip-text);
+                    }
                 }
             }
 
@@ -187,11 +221,21 @@ export component SeriesBar inherits Rectangle {
                 background: Theme.border;
             }
 
-            SvgIconButton {
+            open-folder-button := SvgIconButton {
                 icon-source: @image-url("icons/open-file.svg");
                 tooltip-text: "Open Folder";
                 clicked => {
                     root.open-folder-requested();
+                }
+                secondary-clicked(x, y) => {
+                    root.open-folder-menu-requested(x, y);
+                }
+                changed hovered => {
+                    if self.hovered {
+                        root.show-tooltip(self.tooltip-text, self.absolute-position.x + self.width / 2, self.absolute-position.y - 8px);
+                    } else {
+                        root.clear-tooltip(self.tooltip-text);
+                    }
                 }
             }
 
@@ -200,11 +244,18 @@ export component SeriesBar inherits Rectangle {
                 background: transparent;
             }
 
-            SvgIconButton {
+            hide-button := SvgIconButton {
                 icon-source: @image-url("icons/hide-series.svg");
                 tooltip-text: "Hide Series Bar";
                 clicked => {
                     root.hide-requested();
+                }
+                changed hovered => {
+                    if self.hovered {
+                        root.show-tooltip(self.tooltip-text, self.absolute-position.x + self.width / 2, self.absolute-position.y - 8px);
+                    } else {
+                        root.clear-tooltip(self.tooltip-text);
+                    }
                 }
             }
         }

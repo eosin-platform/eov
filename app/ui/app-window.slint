@@ -236,6 +236,9 @@ export component AppWindow inherits Window {
     callback series-go-forward();
     callback series-go-up();
     callback series-item-activated(string);
+    callback series-open-folder-menu-requested(length, length);
+    callback series-item-open-containing-folder(string);
+    callback series-item-copy-path(string);
     callback series-item-open-in-new-tab(string);
     callback os-file-drop(/* pane */ int, /* side: -1=center, 0=left, 1=right */ int, /* path */ string);
     callback hud-toggle-dropdown(int);
@@ -842,6 +845,9 @@ export component AppWindow inherits Window {
                 open-folder-requested => {
                     root.open-folder-requested();
                 }
+                open-folder-menu-requested(x, y) => {
+                    root.series-open-folder-menu-requested(x, y);
+                }
                 series-go-back => {
                     root.series-go-back();
                 }
@@ -864,8 +870,32 @@ export component AppWindow inherits Window {
                     root.context-menu-y = y;
                     root.context-menu-items = [
                         {
+                            id: "series-open",
+                            label: "Open",
+                            icon: "",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                        {
                             id: "series-open-new-tab",
                             label: "Open in New Tab",
+                            icon: "",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                        {
+                            id: "series-open-folder",
+                            label: "Open Containing Folder",
+                            icon: "",
+                            shortcut: "",
+                            enabled: true,
+                            separator-after: false
+                        },
+                        {
+                            id: "series-copy-path",
+                            label: "Copy Path",
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -947,8 +977,14 @@ export component AppWindow inherits Window {
                     root.split-right(root.drag-source-pane, root.context-menu-tab-id);
                 }
             } else if root.context-menu-series-path != "" {
-                if id == "series-open-new-tab" {
+                if id == "series-open" {
+                    root.series-item-activated(root.context-menu-series-path);
+                } else if id == "series-open-new-tab" {
                     root.series-item-open-in-new-tab(root.context-menu-series-path);
+                } else if id == "series-open-folder" {
+                    root.series-item-open-containing-folder(root.context-menu-series-path);
+                } else if id == "series-copy-path" {
+                    root.series-item-copy-path(root.context-menu-series-path);
                 }
             } else {
                 root.context-menu-command(id);

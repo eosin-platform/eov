@@ -15,6 +15,7 @@ export component BottomPanel inherits Rectangle {
     in property <string> status-right: "";
 
     callback open-folder-requested();
+    callback open-folder-menu-requested(length, length);
     callback hide-series-bar-requested();
     callback series-go-back();
     callback series-go-forward();
@@ -52,6 +53,9 @@ export component BottomPanel inherits Rectangle {
             can-go-up: root.series-can-go-up;
             open-folder-requested => {
                 root.open-folder-requested();
+            }
+            open-folder-menu-requested(x, y) => {
+                root.open-folder-menu-requested(x, y);
             }
             hide-requested => {
                 root.hide-series-bar-requested();

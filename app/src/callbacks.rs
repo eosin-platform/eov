@@ -1,5 +1,6 @@
 use crate::config;
 use crate::state::{self, AppState, HudSettings, IsolatedChannel, PaneId};
+use crate::ui_update::build_recent_folder_menu_items;
 use crate::{
     AppWindow, DatasetExportProgress, DatasetExportSettings,
     ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
@@ -1193,6 +1194,28 @@ pub fn setup_callbacks(
                 ui.set_context_menu_items(Rc::new(VecModel::from(items)).into());
                 ui.set_context_menu_tab_id(-1);
                 ui.set_drag_source_pane(-1);
+                ui.set_context_menu_x(x);
+                ui.set_context_menu_y(y);
+                ui.set_context_menu_visible(true);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_series_open_folder_menu_requested(move |x, y| {
+            dismiss_active_sidebar_popups("before series open folder menu");
+            if let Some(ui) = ui_weak.upgrade() {
+                let items = {
+                    let state = state_handle.read();
+                    build_recent_folder_menu_items(&state)
+                };
+                ui.set_context_menu_items(Rc::new(VecModel::from(items)).into());
+                ui.set_context_menu_tab_id(-1);
+                ui.set_drag_source_pane(-1);
+                ui.set_context_menu_series_path(SharedString::new());
                 ui.set_context_menu_x(x);
                 ui.set_context_menu_y(y);
                 ui.set_context_menu_visible(true);
@@ -2536,6 +2559,25 @@ pub fn setup_callbacks(
                     crate::file_ops::OpenFileMode::ForceNewTab,
                 );
             }
+        });
+    }
+
+    {
+        ui.on_series_item_open_containing_folder(move |path_str| {
+            let path = PathBuf::from(path_str.as_str());
+            if let Some(parent) = path.parent()
+                && let Err(err) = open::that(parent)
+            {
+                error!("Failed to open folder: {}", err);
+            }
+        });
+    }
+
+    {
+        let clipboard = Rc::clone(&clipboard);
+
+        ui.on_series_item_copy_path(move |path_str| {
+            copy_text_to_clipboard(&clipboard, path_str.to_string());
         });
     }
 

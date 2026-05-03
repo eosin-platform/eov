@@ -526,6 +526,47 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
     items
 }
 
+pub fn build_recent_folder_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
+    let recent_folders: Vec<_> = state
+        .recent_files
+        .iter()
+        .filter(|file| file.path.is_dir())
+        .take(10)
+        .collect();
+
+    let mut items = vec![ContextMenuItem {
+        id: SharedString::from("open-folder-dialog"),
+        label: SharedString::from("Open Folder..."),
+        icon: SharedString::new(),
+        shortcut: SharedString::new(),
+        enabled: true,
+        separator_after: !recent_folders.is_empty(),
+    }];
+
+    if recent_folders.is_empty() {
+        items.push(ContextMenuItem {
+            id: SharedString::from("recent-empty"),
+            label: SharedString::from("No opened folders"),
+            icon: SharedString::new(),
+            shortcut: SharedString::new(),
+            enabled: false,
+            separator_after: false,
+        });
+        return items;
+    }
+
+    items.extend(recent_folders.into_iter().map(|file| ContextMenuItem {
+        id: SharedString::from(format!("recent-file:{}", file.path.display())),
+        label: SharedString::from(file.name.clone()),
+        icon: SharedString::new(),
+        shortcut: SharedString::new(),
+        enabled: true,
+        separator_after: false,
+    }));
+
+    items
+}
+
 /// Update the render backend UI state
 pub fn update_render_backend(ui: &crate::AppWindow, state: &AppState) {
     ui.set_render_mode(ui_render_mode(state.render_backend));
