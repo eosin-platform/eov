@@ -1072,6 +1072,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_file_requested(move || {
+            dismiss_active_sidebar_popups("before open file dialog");
             let ui = ui_weak.upgrade().unwrap();
 
             let dialog = FileDialog::new()
@@ -1104,6 +1105,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_folder_requested(move || {
+            dismiss_active_sidebar_popups("before open folder dialog");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1559,6 +1561,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_render_backend_selected(move |mode| {
+            dismiss_active_sidebar_popups("before render backend selection");
             let backend = match mode {
                 RenderMode::Cpu => RenderBackend::Cpu,
                 RenderMode::Gpu => RenderBackend::Gpu,
@@ -1609,6 +1612,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_filtering_mode_selected(move |slint_mode| {
+            dismiss_active_sidebar_popups("before filtering mode selection");
             let mode = match slint_mode {
                 SlintFilteringMode::Bilinear => FilteringMode::Bilinear,
                 SlintFilteringMode::Trilinear => FilteringMode::Trilinear,
@@ -2542,6 +2546,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_tool_selected(move |tool_type| {
+            dismiss_active_sidebar_popups("before tool selection");
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
@@ -4451,6 +4456,7 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_dataset_export_open_dialog(move || {
+            dismiss_active_sidebar_popups("before dataset export dialog");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };

@@ -3404,7 +3404,9 @@ pub(crate) fn dismiss_active_sidebar_popups() -> Result<(), String> {
                 return Ok(());
             };
 
-            let _ = instance.set_property("dismiss-popups", slint_interpreter::Value::Bool(true));
+            instance
+                .set_property("dismiss-popups", slint_interpreter::Value::Bool(true))
+                .map_err(|err| format!("failed to dismiss active sidebar popups: {err}"))?;
             Ok(())
         })
     })
