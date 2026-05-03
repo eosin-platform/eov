@@ -663,7 +663,7 @@ export component TabBar inherits Rectangle {
     in property <bool> is-drop-target: false;
     in property <bool> show-drop-indicator: true;
     property <length> estimated-tabs-width: tabs.length * 101px;
-    property <length> tabs-content-width: tabs-overflow ? tabs-inline-layout.preferred-width : max(1px, tabs-inline-layout.preferred-width - 36px);
+    property <length> tabs-content-width: max(1px, tabs-end-marker.x);
     property <length> avg-slot: tabs.length > 0 ? (tabs-content-width + 1px) / tabs.length : 101px;
     property <int> raw-drop-index: !show-drop-indicator || !is-drop-target || drag-abs-x < 0px ? -1 : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
     out property <int> computed-drop-index: drag-source-pane == pane-id && drag-source-index >= 0 && (raw-drop-index == drag-source-index || raw-drop-index == drag-source-index + 1) ? -1 : raw-drop-index;
@@ -711,7 +711,7 @@ export component TabBar inherits Rectangle {
                 root.tabs-scroll-x = clamp(
                     root.tabs-scroll-x - e.delta-y,
                     0px,
-                    max(0px, tabs-inline-layout.preferred-width - parent.width)
+                    max(0px, root.tabs-content-width - parent.width)
                 );
                 accept
             }
@@ -736,7 +736,7 @@ export component TabBar inherits Rectangle {
                     root.tabs-scroll-x = clamp(
                         root.tabs-scroll-x - delta,
                         0px,
-                        max(0px, tabs-inline-layout.preferred-width - (root.tabs-overflow ? root.width - 39px : root.width - 4px))
+                        max(0px, root.tabs-content-width - (root.tabs-overflow ? root.width - 39px : root.width - 4px))
                     );
                 }
                 close-requested(id) => {
@@ -781,6 +781,11 @@ export component TabBar inherits Rectangle {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
+            }
+
+            tabs-end-marker := Rectangle {
+                width: 0px;
+                height: 0px;
             }
         }
 
