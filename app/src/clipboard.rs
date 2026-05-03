@@ -19,7 +19,6 @@ pub(crate) type PaneClipboardImage = RgbaImageData;
 enum ClipboardCommand {
     SetText {
         text: String,
-        response: mpsc::Sender<bool>,
     },
     SetImage {
         image: PaneClipboardImage,
@@ -100,17 +99,13 @@ fn clipboard_worker_sender() -> &'static mpsc::Sender<ClipboardCommand> {
 }
 
 fn send_text_to_clipboard_worker(text: String) -> bool {
-    let (response_tx, response_rx) = mpsc::channel();
     if clipboard_worker_sender()
-        .send(ClipboardCommand::SetText {
-            text,
-            response: response_tx,
-        })
+        .send(ClipboardCommand::SetText { text })
         .is_err()
     {
         return false;
     }
-    response_rx.recv().unwrap_or(false)
+    true
 }
 
 fn send_image_to_clipboard_worker(image: PaneClipboardImage) -> bool {
@@ -134,8 +129,8 @@ fn clipboard_worker_loop(rx: mpsc::Receiver<ClipboardCommand>) {
             warn!("Failed to initialize clipboard worker: {}", err);
             while let Ok(command) = rx.recv() {
                 match command {
-                    ClipboardCommand::SetText { response, .. }
-                    | ClipboardCommand::SetImage { response, .. } => {
+                    ClipboardCommand::SetText { .. } => {}
+                    ClipboardCommand::SetImage { response, .. } => {
                         let _ = response.send(false);
                     }
                 }
@@ -146,9 +141,8 @@ fn clipboard_worker_loop(rx: mpsc::Receiver<ClipboardCommand>) {
 
     while let Ok(command) = rx.recv() {
         match command {
-            ClipboardCommand::SetText { text, response } => {
-                let ok = set_text_with_clipboard(&mut clipboard, text);
-                let _ = response.send(ok);
+            ClipboardCommand::SetText { text } => {
+                let _ = set_text_with_clipboard(&mut clipboard, text);
             }
             ClipboardCommand::SetImage { image, response } => {
                 let ok = set_image_with_clipboard(&mut clipboard, image);
