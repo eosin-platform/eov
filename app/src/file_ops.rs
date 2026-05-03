@@ -453,6 +453,7 @@ pub fn open_file(
             pane_view_model,
         );
         update_recent_files(ui, &state_guard);
+        let _ = crate::plugin_host::refresh_active_sidebar();
         ui.set_is_loading(false);
         ui.set_status_text(SharedString::from(status_text));
         request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);

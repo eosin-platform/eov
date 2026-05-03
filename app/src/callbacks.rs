@@ -464,6 +464,7 @@ fn focus_existing_file(
         let state = state.read();
         update_tabs(ui, &state);
     }
+    let _ = crate::plugin_host::refresh_active_sidebar();
 
     ui.set_is_loading(false);
     ui.set_status_text(SharedString::from(format!("Focused {}", normalized_path.display())));
