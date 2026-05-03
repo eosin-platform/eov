@@ -53,13 +53,8 @@ struct OverlayPolygonShape {
     stroke_color: Color,
 }
 
-fn annotation_emphasis_rgb(red: u8, green: u8, blue: u8) -> (u8, u8, u8) {
-    let luminance = 0.299 * red as f32 + 0.587 * green as f32 + 0.114 * blue as f32;
-    if luminance >= 160.0 {
-        (0x14, 0xB8, 0xFF)
-    } else {
-        (0xFF, 0xE0, 0x47)
-    }
+fn annotation_hover_rgb() -> (u8, u8, u8) {
+    (0xFF, 0xE0, 0x47)
 }
 
 fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
@@ -79,9 +74,8 @@ fn overlay_polygon_fill_color(
     } else if plugin_id == "eovae" {
         Color::from_argb_u8(0x00, red, green, blue)
     } else if hovered {
-        let (emphasis_red, emphasis_green, emphasis_blue) =
-            annotation_emphasis_rgb(red, green, blue);
-        Color::from_argb_u8(0x70, emphasis_red, emphasis_green, emphasis_blue)
+        let (hover_red, hover_green, hover_blue) = annotation_hover_rgb();
+        Color::from_argb_u8(0x70, hover_red, hover_green, hover_blue)
     } else {
         polygon_fill_color(red, green, blue, hovered)
     }
@@ -100,9 +94,8 @@ fn overlay_polygon_stroke_color(
     } else if plugin_id == "eovae" {
         Color::from_rgb_u8(red, green, blue)
     } else if hovered {
-        let (emphasis_red, emphasis_green, emphasis_blue) =
-            annotation_emphasis_rgb(red, green, blue);
-        Color::from_rgb_u8(emphasis_red, emphasis_green, emphasis_blue)
+        let (hover_red, hover_green, hover_blue) = annotation_hover_rgb();
+        Color::from_rgb_u8(hover_red, hover_green, hover_blue)
     } else {
         Color::from_rgb_u8(red, green, blue)
     }
@@ -648,9 +641,8 @@ pub(crate) fn viewport_overlay_points_for_pane(
             });
             let hover_style_active = is_hovered;
             let ring_color = if hover_style_active {
-                let (emphasis_red, emphasis_green, emphasis_blue) =
-                    annotation_emphasis_rgb(point.ring_red, point.ring_green, point.ring_blue);
-                Color::from_rgb_u8(emphasis_red, emphasis_green, emphasis_blue)
+                let (hover_red, hover_green, hover_blue) = annotation_hover_rgb();
+                Color::from_rgb_u8(hover_red, hover_green, hover_blue)
             } else {
                 Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
             };
