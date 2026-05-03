@@ -472,6 +472,42 @@ fn focus_existing_file(
     true
 }
 
+fn open_existing_file_in_new_tab(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: &std::path::Path,
+) -> bool {
+    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let Some((_, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
+        return false;
+    };
+
+    {
+        let mut state = state.write();
+        let target_pane = if state.split_enabled {
+            state.focused_pane
+        } else {
+            crate::state::PaneId::PRIMARY
+        };
+        let duplicated_id = state.duplicate_tab_to_pane(tab_id, target_pane);
+        state.activate_tab_in_pane(target_pane, duplicated_id);
+        state.add_to_recent(&normalized_path);
+    }
+
+    {
+        let state = state.read();
+        update_tabs(ui, &state);
+    }
+    let _ = crate::plugin_host::refresh_active_sidebar();
+
+    ui.set_is_loading(false);
+    ui.set_status_text(SharedString::from(format!("Opened new tab for {}", normalized_path.display())));
+    request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
+    true
+}
+
 fn default_series_home() -> Option<PathBuf> {
     dirs::home_dir().or_else(|| std::env::current_dir().ok())
 }
@@ -2437,14 +2473,22 @@ pub fn setup_callbacks(
             };
             let path = PathBuf::from(path_str.as_str());
             if path.exists() && path.is_file() {
-                open_path_with_series(
+                if !open_existing_file_in_new_tab(
                     &ui,
                     &state_handle,
                     &tile_cache,
                     &render_timer,
-                    path,
-                    crate::file_ops::OpenFileMode::ForceNewTab,
-                );
+                    &path,
+                ) {
+                    open_path_with_series(
+                        &ui,
+                        &state_handle,
+                        &tile_cache,
+                        &render_timer,
+                        path,
+                        crate::file_ops::OpenFileMode::ForceNewTab,
+                    );
+                }
             }
         });
     }
