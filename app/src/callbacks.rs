@@ -9,9 +9,9 @@ use crate::{
     StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
     capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
     crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
-    handle_tool_mouse_up, insert_pane_ui_state, open_file_with_mode,
-    pane_from_index, refresh_tab_ui, request_render_loop, slider_value_to_zoom,
-    update_filtering_mode, update_recent_files, update_render_backend, update_tabs, update_tool_overlays,
+    handle_tool_mouse_up, insert_pane_ui_state, open_file_with_mode, pane_from_index,
+    refresh_tab_ui, request_render_loop, slider_value_to_zoom, update_filtering_mode,
+    update_recent_files, update_render_backend, update_tabs, update_tool_overlays,
     update_tool_state,
 };
 use common::viewport::ZOOM_FACTOR;
@@ -433,7 +433,9 @@ fn open_path_with_series(
     let skip_series_sync = normalized_path.parent().is_some_and(|parent| {
         let guard = state.read();
         guard.find_tab_by_path(&normalized_path).is_some()
-            && guard.current_series_path().is_some_and(|current| current == parent)
+            && guard
+                .current_series_path()
+                .is_some_and(|current| current == parent)
     });
 
     if !skip_series_sync {
@@ -467,7 +469,10 @@ fn focus_existing_file(
     let _ = crate::plugin_host::refresh_active_sidebar();
 
     ui.set_is_loading(false);
-    ui.set_status_text(SharedString::from(format!("Focused {}", normalized_path.display())));
+    ui.set_status_text(SharedString::from(format!(
+        "Focused {}",
+        normalized_path.display()
+    )));
     request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
     true
 }
@@ -503,7 +508,10 @@ fn open_existing_file_in_new_tab(
     let _ = crate::plugin_host::refresh_active_sidebar();
 
     ui.set_is_loading(false);
-    ui.set_status_text(SharedString::from(format!("Opened new tab for {}", normalized_path.display())));
+    ui.set_status_text(SharedString::from(format!(
+        "Opened new tab for {}",
+        normalized_path.display()
+    )));
     request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
     true
 }
@@ -523,13 +531,15 @@ fn navigate_series_to_folder(
 
 fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let should_initialize = state.read().current_series_path().is_none();
-    if should_initialize
-        && let Some(home) = default_series_home()
-    {
+    if should_initialize && let Some(home) = default_series_home() {
         let home = std::fs::canonicalize(&home).unwrap_or(home);
         let revision = {
             let mut state = state.write();
-            state.set_opened_series(home.clone(), Vec::new(), state::SeriesNavigationMode::Initialize)
+            state.set_opened_series(
+                home.clone(),
+                Vec::new(),
+                state::SeriesNavigationMode::Initialize,
+            )
         };
 
         {
@@ -575,7 +585,10 @@ pub(crate) fn open_folder_as_series(
             crate::file_ops::OpenFileMode::ReuseExistingTab,
         );
     } else {
-        ui.set_status_text(SharedString::from(format!("Browsing {}", normalized_folder.display())));
+        ui.set_status_text(SharedString::from(format!(
+            "Browsing {}",
+            normalized_folder.display()
+        )));
     }
 }
 
@@ -1030,6 +1043,7 @@ fn apply_filtering_mode(
 }
 
 type PendingPointPress = (crate::state::PluginAnnotationHandle, PaneId, f32, f32);
+type NavigateClickOrigin = (f32, f32, Option<crate::state::PluginAnnotationHandle>);
 
 pub fn setup_callbacks(
     ui: &AppWindow,
@@ -2439,23 +2453,21 @@ pub fn setup_callbacks(
                         path,
                         state::SeriesNavigationMode::Push,
                     );
-                } else {
-                    if !focus_existing_file(
+                } else if !focus_existing_file(
+                    &ui,
+                    &state_handle,
+                    &tile_cache,
+                    &render_timer,
+                    &path,
+                ) {
+                    open_path_with_series(
                         &ui,
                         &state_handle,
                         &tile_cache,
                         &render_timer,
-                        &path,
-                    ) {
-                        open_path_with_series(
-                            &ui,
-                            &state_handle,
-                            &tile_cache,
-                            &render_timer,
-                            path,
-                            crate::file_ops::OpenFileMode::ReuseExistingTab,
-                        );
-                    }
+                        path,
+                        crate::file_ops::OpenFileMode::ReuseExistingTab,
+                    );
                 }
             }
         });
@@ -2472,23 +2484,24 @@ pub fn setup_callbacks(
                 return;
             };
             let path = PathBuf::from(path_str.as_str());
-            if path.exists() && path.is_file() {
-                if !open_existing_file_in_new_tab(
+            if path.exists()
+                && path.is_file()
+                && !open_existing_file_in_new_tab(
                     &ui,
                     &state_handle,
                     &tile_cache,
                     &render_timer,
                     &path,
-                ) {
-                    open_path_with_series(
-                        &ui,
-                        &state_handle,
-                        &tile_cache,
-                        &render_timer,
-                        path,
-                        crate::file_ops::OpenFileMode::ForceNewTab,
-                    );
-                }
+                )
+            {
+                open_path_with_series(
+                    &ui,
+                    &state_handle,
+                    &tile_cache,
+                    &render_timer,
+                    path,
+                    crate::file_ops::OpenFileMode::ForceNewTab,
+                );
             }
         });
     }
@@ -2523,9 +2536,8 @@ pub fn setup_callbacks(
         });
     }
 
-    let navigate_click_origin: Rc<
-        RefCell<Option<(f32, f32, Option<crate::state::PluginAnnotationHandle>)>>,
-    > = Rc::new(RefCell::new(None));
+    let navigate_click_origin: Rc<RefCell<Option<NavigateClickOrigin>>> =
+        Rc::new(RefCell::new(None));
 
     {
         let state_handle = Arc::clone(&state);
@@ -3428,19 +3440,23 @@ pub fn setup_callbacks(
             };
 
             if let Some((pane, handle)) = point_click_selection {
+                let mut selection_applied = false;
                 if let Some(viewport) =
                     crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = plugin_manager
-                        .borrow_mut()
-                        .handle_viewport_annotation_selected(
-                            &handle.plugin_id,
-                            &viewport,
-                            &handle.annotation_id,
-                        )
+                    && let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
+                        &handle.plugin_id,
+                        &viewport,
+                        &handle.annotation_id,
+                    )
                 {
                     tracing::error!("Point annotation selection error: {err}");
+                } else {
+                    selection_applied = true;
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    if selection_applied {
+                        let _ = crate::plugin_host::refresh_active_sidebar();
+                    }
                     crate::plugin_host::sync_annotations_sidebar_hover_from_state(
                         &state_handle.read(),
                     );
@@ -3497,19 +3513,23 @@ pub fn setup_callbacks(
             };
 
             if let Some((pane, handle)) = polygon_click_selection {
+                let mut selection_applied = false;
                 if let Some(viewport) =
                     crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = plugin_manager
-                        .borrow_mut()
-                        .handle_viewport_annotation_selected(
-                            &handle.plugin_id,
-                            &viewport,
-                            &handle.annotation_id,
-                        )
+                    && let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
+                        &handle.plugin_id,
+                        &viewport,
+                        &handle.annotation_id,
+                    )
                 {
                     tracing::error!("Polygon annotation selection error: {err}");
+                } else {
+                    selection_applied = true;
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    if selection_applied {
+                        let _ = crate::plugin_host::refresh_active_sidebar();
+                    }
                     crate::plugin_host::sync_annotations_sidebar_hover_from_state(
                         &state_handle.read(),
                     );
@@ -3538,6 +3558,7 @@ pub fn setup_callbacks(
             };
 
             if let Some((pane, hit)) = navigate_click_selection {
+                let mut selection_applied = false;
                 if let Some(viewport) =
                     crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
                 {
@@ -3545,14 +3566,20 @@ pub fn setup_callbacks(
                         Some(handle) => (handle.plugin_id, handle.annotation_id),
                         None => ("annotations".to_string(), String::new()),
                     };
-                    if let Err(err) = plugin_manager
-                        .borrow_mut()
-                        .handle_viewport_annotation_selected(&plugin_id, &viewport, &annotation_id)
-                    {
+                    if let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
+                        &plugin_id,
+                        &viewport,
+                        &annotation_id,
+                    ) {
                         tracing::error!("Viewport annotation selection error: {err}");
+                    } else {
+                        selection_applied = true;
                     }
                 }
                 if let Some(ui) = ui_weak.upgrade() {
+                    if selection_applied {
+                        let _ = crate::plugin_host::refresh_active_sidebar();
+                    }
                     crate::plugin_host::sync_annotations_sidebar_hover_from_state(
                         &state_handle.read(),
                     );

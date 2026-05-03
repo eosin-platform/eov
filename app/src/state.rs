@@ -1508,8 +1508,8 @@ impl AppState {
     }
 
     pub fn toggle_series_bar(&mut self) {
-        let next_visible = !(self.bottom_panel_visible
-            && self.bottom_panel_kind == BottomPanelKind::Series);
+        let next_visible =
+            !(self.bottom_panel_visible && self.bottom_panel_kind == BottomPanelKind::Series);
         self.set_bottom_panel_visible(next_visible, BottomPanelKind::Series);
     }
 
@@ -1657,7 +1657,8 @@ impl AppState {
             return false;
         }
 
-        let normalized_path = fs::canonicalize(folder_path).unwrap_or_else(|_| folder_path.to_path_buf());
+        let normalized_path =
+            fs::canonicalize(folder_path).unwrap_or_else(|_| folder_path.to_path_buf());
         let Some(series) = self.opened_series.as_mut() else {
             return false;
         };

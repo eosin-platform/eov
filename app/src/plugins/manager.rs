@@ -547,26 +547,6 @@ impl PluginManager {
         )))
     }
 
-    pub fn handle_viewport_annotation_selected(
-        &mut self,
-        plugin_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
-        annotation_id: &str,
-    ) -> PluginResult<ActionOutcome> {
-        if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
-            let vt = *vtable;
-            (vt.on_viewport_annotation_selected)(
-                viewport_snapshot_to_ffi(viewport),
-                annotation_id.into(),
-            );
-            return Ok(ActionOutcome::Handled);
-        }
-
-        Err(plugin_api::PluginError::Other(format!(
-            "unknown annotation selection plugin '{plugin_id}'"
-        )))
-    }
-
     /// Activate a Python plugin: register its manifest-declared toolbar buttons
     /// and record it for subprocess spawning.
     fn activate_python_plugin(&mut self, desc: &PluginDescriptor) {

@@ -242,9 +242,7 @@ fn set_annotations_sidebar_hovered_row_id(annotation_id: Option<&str>) -> Result
     })
 }
 
-fn effective_annotations_hover(
-    state: &AppState,
-) -> Option<&crate::state::PluginAnnotationHandle> {
+fn effective_annotations_hover(state: &AppState) -> Option<&crate::state::PluginAnnotationHandle> {
     state
         .sidebar_hovered_plugin_annotation
         .as_ref()
@@ -274,8 +272,7 @@ fn handle_annotations_sidebar_hover_callback(
         if hovered_annotation_id.is_empty() {
             state.sidebar_hovered_plugin_annotation = None;
         } else {
-            state.sidebar_hovered_plugin_annotation =
-                Some(crate::state::PluginAnnotationHandle {
+            state.sidebar_hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
                 plugin_id: "annotations".to_string(),
                 annotation_id: hovered_annotation_id,
             });
@@ -585,6 +582,25 @@ pub(crate) fn viewport_snapshot_for_pane(
             file.pane_state(pane)
                 .map(|pane_state| to_viewport_snapshot(file, &pane_state.viewport, pane))
         })
+}
+
+pub(crate) fn invoke_viewport_annotation_selected(
+    plugin_id: &str,
+    viewport: &plugin_api::ViewportSnapshot,
+    annotation_id: &str,
+) -> Result<(), String> {
+    let Some((_, vtable)) = local_plugin_vtables()
+        .into_iter()
+        .find(|(candidate, _)| candidate == plugin_id)
+    else {
+        return Err(format!("local plugin '{plugin_id}' is not loaded"));
+    };
+
+    (vtable.on_viewport_annotation_selected)(
+        to_viewport_snapshot_ffi(viewport.clone()),
+        annotation_id.into(),
+    );
+    Ok(())
 }
 
 pub(crate) fn viewport_overlay_points_for_pane(
@@ -1889,8 +1905,8 @@ fn to_open_file_info(file: &crate::state::OpenFile) -> plugin_api::OpenFileInfo 
     let props = file.wsi.properties();
     plugin_api::OpenFileInfo {
         file_id: file.id,
-        path: props.path.to_string_lossy().into_owned(),
-        filename: props.filename.clone(),
+        path: file.path.to_string_lossy().into_owned(),
+        filename: file.filename.clone(),
         width: props.width,
         height: props.height,
         level_count: props.levels.len() as u32,

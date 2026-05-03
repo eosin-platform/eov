@@ -21,8 +21,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 const WSI_EXTENSIONS: &[&str] = &[
-    "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide",
-    "bif", "czi",
+    "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide", "bif", "czi",
 ];
 
 pub struct OpenFileUiContext<'a> {
@@ -40,7 +39,11 @@ pub enum OpenFileMode {
 pub fn is_supported_wsi_path(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| WSI_EXTENSIONS.iter().any(|candidate| candidate.eq_ignore_ascii_case(ext)))
+        .map(|ext| {
+            WSI_EXTENSIONS
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(ext))
+        })
         .unwrap_or(false)
 }
 
@@ -117,11 +120,9 @@ fn persist_thumbnail(path: &Path, thumbnail: &SeriesThumbnail) {
         return;
     }
     let cache_path = cache_dir.join(format!("{cache_key}.png"));
-    let Some(image) = image::RgbaImage::from_raw(
-        thumbnail.width,
-        thumbnail.height,
-        thumbnail.rgba.clone(),
-    ) else {
+    let Some(image) =
+        image::RgbaImage::from_raw(thumbnail.width, thumbnail.height, thumbnail.rgba.clone())
+    else {
         return;
     };
     let mut encoded = Vec::new();
@@ -147,7 +148,13 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
     let mpp = properties
         .mpp_x
         .zip(properties.mpp_y)
-        .map(|(x, y)| format!("{} x {} um/px", common::format_decimal(x), common::format_decimal(y)))
+        .map(|(x, y)| {
+            format!(
+                "{} x {} um/px",
+                common::format_decimal(x),
+                common::format_decimal(y)
+            )
+        })
         .unwrap_or_else(|| "N/A".to_string());
     let vendor = properties.vendor.as_deref().unwrap_or("Unknown");
 
@@ -192,7 +199,8 @@ fn generate_thumbnail_with_dimensions(wsi: &WsiFile, max_size: u32) -> Option<Se
         });
     }
 
-    let image = image::RgbaImage::from_raw(level_info.width as u32, level_info.height as u32, data)?;
+    let image =
+        image::RgbaImage::from_raw(level_info.width as u32, level_info.height as u32, data)?;
     let resized = image::imageops::resize(
         &image,
         thumb_w,
@@ -251,9 +259,7 @@ fn spawn_series_thumbnail_worker(
                     .and_then(|wsi| generate_thumbnail_with_dimensions(wsi, 180))
             });
 
-            if !had_cached_thumbnail
-                && let Some(thumbnail) = thumbnail.as_ref()
-            {
+            if !had_cached_thumbnail && let Some(thumbnail) = thumbnail.as_ref() {
                 persist_thumbnail(&path, thumbnail);
             }
 
@@ -320,7 +326,12 @@ pub fn load_series_entries_async(
             }
 
             if !paths.is_empty() {
-                spawn_series_thumbnail_worker(ui.as_weak(), Arc::clone(&state_handle), revision, paths);
+                spawn_series_thumbnail_worker(
+                    ui.as_weak(),
+                    Arc::clone(&state_handle),
+                    revision,
+                    paths,
+                );
             }
         });
     });

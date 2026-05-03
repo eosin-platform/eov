@@ -3,16 +3,15 @@
 //! This module contains functions for updating UI elements like tabs,
 //! recent files, and render backend settings.
 
+use crate::pane_ui::{series_items_model, series_items_revision, set_series_items_revision};
 use crate::state::{AppState, HudSettings, PaneId};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
-use crate::pane_ui::{series_items_model, series_items_revision, set_series_items_revision};
 use crate::{
-    BottomPanelKind as SlintBottomPanelKind, ContextMenuItem,
-    FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
-    IsolatedChannel as SlintIsolatedChannel, MeasurementUnit as SlintMeasurementUnit,
-    MetadataItem, MinimapRect, PaneRenderCacheEntry, PaneUiModels, PaneViewData,
-    RecentFileData, RenderMode, SeriesItemData, StainNormalization as SlintStainNormalization,
-    TabData, ViewportInfo,
+    BottomPanelKind as SlintBottomPanelKind, ContextMenuItem, FilteringMode as SlintFilteringMode,
+    HudSettings as SlintHudSettings, IsolatedChannel as SlintIsolatedChannel,
+    MeasurementUnit as SlintMeasurementUnit, MetadataItem, MinimapRect, PaneRenderCacheEntry,
+    PaneUiModels, PaneViewData, RecentFileData, RenderMode, SeriesItemData,
+    StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
 };
 use common::viewport::{MAX_ZOOM, MIN_ZOOM};
 use common::{
@@ -52,7 +51,9 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
         let existing = model.row_data(index);
         let thumbnail = existing
             .as_ref()
-            .filter(|item| item.path == entry_path && item.has_thumbnail == entry.thumbnail.is_some())
+            .filter(|item| {
+                item.path == entry_path && item.has_thumbnail == entry.thumbnail.is_some()
+            })
             .map(|item| item.thumbnail.clone())
             .unwrap_or_else(|| series_thumbnail_image(entry.thumbnail.as_ref()));
         let next = SeriesItemData {
@@ -421,7 +422,8 @@ pub fn update_tabs(
     ui.set_show_metadata(state.show_metadata);
     ui.set_show_scale_bar(state.show_scale_bar);
     ui.set_show_series_bar(
-        state.bottom_panel_visible && state.bottom_panel_kind == crate::state::BottomPanelKind::Series,
+        state.bottom_panel_visible
+            && state.bottom_panel_kind == crate::state::BottomPanelKind::Series,
     );
     ui.set_bottom_panel_kind(ui_bottom_panel_kind(state.bottom_panel_kind));
     ui.set_bottom_panel_height(state.bottom_panel_height_px());
@@ -444,8 +446,13 @@ pub fn update_tabs(
         ui.set_series_can_go_back(state.series_can_go_back());
         ui.set_series_can_go_forward(state.series_can_go_forward());
         ui.set_series_can_go_up(state.series_can_go_up());
-        ui.set_bottom_panel_status_left(SharedString::from(series.current_path.display().to_string()));
-        ui.set_bottom_panel_status_right(SharedString::from(format!("{} items", series.entries.len())));
+        ui.set_bottom_panel_status_left(SharedString::from(
+            series.current_path.display().to_string(),
+        ));
+        ui.set_bottom_panel_status_right(SharedString::from(format!(
+            "{} items",
+            series.entries.len()
+        )));
     } else {
         let model = series_items_model();
         if model.row_count() > 0 {
@@ -502,14 +509,20 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
         return items;
     }
 
-    items.extend(state.recent_files.iter().take(10).map(|file| ContextMenuItem {
-            id: SharedString::from(format!("recent-file:{}", file.path.display())),
-            label: SharedString::from(file.name.clone()),
-            icon: SharedString::new(),
-            shortcut: SharedString::new(),
-            enabled: true,
-            separator_after: false,
-        }));
+    items.extend(
+        state
+            .recent_files
+            .iter()
+            .take(10)
+            .map(|file| ContextMenuItem {
+                id: SharedString::from(format!("recent-file:{}", file.path.display())),
+                label: SharedString::from(file.name.clone()),
+                icon: SharedString::new(),
+                shortcut: SharedString::new(),
+                enabled: true,
+                separator_after: false,
+            }),
+    );
     items
 }
 
