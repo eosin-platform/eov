@@ -619,6 +619,8 @@ pub struct AppState {
     pub opened_series: Option<OpenedSeries>,
     /// Monotonic revision used to reject stale background thumbnail work.
     pub series_revision: u64,
+    /// Monotonic revision for visible series entry content changes.
+    pub series_content_revision: u64,
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
     /// Currently active plugin-provided sidebar, if any.
@@ -694,6 +696,7 @@ impl AppState {
             bottom_panel_kind: BottomPanelKind::None,
             opened_series: None,
             series_revision: 0,
+            series_content_revision: 0,
             viewport_lock_enabled: false,
             active_sidebar: None,
             needs_render: true,
@@ -1563,6 +1566,7 @@ impl AppState {
         navigation: SeriesNavigationMode,
     ) -> u64 {
         self.series_revision = self.series_revision.wrapping_add(1);
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
 
         match self.opened_series.as_mut() {
             Some(series) => {
@@ -1632,6 +1636,7 @@ impl AppState {
         entry.metadata_tooltip = metadata_tooltip;
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
     }
@@ -1656,6 +1661,7 @@ impl AppState {
         }
 
         series.entries = entries;
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
     }

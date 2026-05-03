@@ -5,7 +5,7 @@
 
 use crate::state::{AppState, HudSettings, PaneId};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
-use crate::pane_ui::series_items_model;
+use crate::pane_ui::{series_items_model, series_items_revision, set_series_items_revision};
 use crate::{
     BottomPanelKind as SlintBottomPanelKind, ContextMenuItem,
     FilteringMode as SlintFilteringMode, HudSettings as SlintHudSettings,
@@ -433,7 +433,12 @@ pub fn update_tabs(
         .unwrap_or_default();
     ui.set_series_selected_path(selected_series_path);
     if let Some(series) = state.opened_series.as_ref() {
-        ui.set_series_items(update_series_items_model(series).into());
+        if series_items_revision() != state.series_content_revision {
+            ui.set_series_items(update_series_items_model(series).into());
+            set_series_items_revision(state.series_content_revision);
+        } else {
+            ui.set_series_items(series_items_model().into());
+        }
         ui.set_series_can_go_back(state.series_can_go_back());
         ui.set_series_can_go_forward(state.series_can_go_forward());
         ui.set_series_can_go_up(state.series_can_go_up());
@@ -445,6 +450,7 @@ pub fn update_tabs(
             model.set_vec(Vec::new());
         }
         ui.set_series_items(model.into());
+        set_series_items_revision(0);
         ui.set_series_selected_path(SharedString::new());
         ui.set_series_can_go_back(false);
         ui.set_series_can_go_forward(false);

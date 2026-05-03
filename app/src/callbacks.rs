@@ -11,7 +11,7 @@ use crate::{
     crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
     handle_tool_mouse_up, insert_pane_ui_state, open_file_with_mode,
     pane_from_index, refresh_tab_ui, request_render_loop, slider_value_to_zoom,
-    update_filtering_mode, update_render_backend, update_tabs, update_tool_overlays,
+    update_filtering_mode, update_recent_files, update_render_backend, update_tabs, update_tool_overlays,
     update_tool_state,
 };
 use common::viewport::ZOOM_FACTOR;
@@ -442,6 +442,35 @@ fn open_path_with_series(
     open_file_with_mode(ui, state, tile_cache, render_timer, normalized_path, mode);
 }
 
+fn focus_existing_file(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: &std::path::Path,
+) -> bool {
+    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let Some((pane, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
+        return false;
+    };
+
+    {
+        let mut state = state.write();
+        state.activate_tab_in_pane(pane, tab_id);
+        state.add_to_recent(&normalized_path);
+    }
+
+    {
+        let state = state.read();
+        update_tabs(ui, &state);
+    }
+
+    ui.set_is_loading(false);
+    ui.set_status_text(SharedString::from(format!("Focused {}", normalized_path.display())));
+    request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
+    true
+}
+
 fn default_series_home() -> Option<PathBuf> {
     dirs::home_dir().or_else(|| std::env::current_dir().ok())
 }
@@ -475,16 +504,22 @@ fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     }
 }
 
-fn open_folder_as_series(
+pub(crate) fn open_folder_as_series(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     render_timer: &Rc<Timer>,
     folder: PathBuf,
 ) {
+    let normalized_folder = std::fs::canonicalize(&folder).unwrap_or(folder.clone());
     {
         let mut state = state.write();
         state.set_bottom_panel_visible(true, state::BottomPanelKind::Series);
+        state.add_to_recent(&normalized_folder);
+    }
+    {
+        let state = state.read();
+        update_recent_files(ui, &state);
     }
 
     let navigation = if state.read().current_series_path().is_some() {
@@ -492,7 +527,7 @@ fn open_folder_as_series(
     } else {
         state::SeriesNavigationMode::Initialize
     };
-    let paths = navigate_series_to_folder(ui, state, folder.clone(), navigation);
+    let paths = navigate_series_to_folder(ui, state, normalized_folder.clone(), navigation);
     if let Some(first_path) = paths.first().cloned() {
         open_file_with_mode(
             ui,
@@ -503,7 +538,7 @@ fn open_folder_as_series(
             crate::file_ops::OpenFileMode::ReuseExistingTab,
         );
     } else {
-        ui.set_status_text(SharedString::from(format!("Browsing {}", folder.display())));
+        ui.set_status_text(SharedString::from(format!("Browsing {}", normalized_folder.display())));
     }
 }
 
@@ -1055,14 +1090,18 @@ pub fn setup_callbacks(
             if path.exists()
                 && let Some(ui) = ui_weak.upgrade()
             {
-                open_path_with_series(
-                    &ui,
-                    &state,
-                    &tile_cache,
-                    &render_timer,
-                    path,
-                    crate::file_ops::OpenFileMode::ReuseExistingTab,
-                );
+                if path.is_dir() {
+                    open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
+                } else {
+                    open_path_with_series(
+                        &ui,
+                        &state,
+                        &tile_cache,
+                        &render_timer,
+                        path,
+                        crate::file_ops::OpenFileMode::ReuseExistingTab,
+                    );
+                }
             }
         });
     }
@@ -1164,14 +1203,18 @@ pub fn setup_callbacks(
             if let Some(path_str) = command.strip_prefix("recent-file:") {
                 let path = PathBuf::from(path_str);
                 if path.exists() {
-                    open_path_with_series(
-                        &ui,
-                        &state_handle,
-                        &tile_cache,
-                        &render_timer,
-                        path,
-                        crate::file_ops::OpenFileMode::ReuseExistingTab,
-                    );
+                    if path.is_dir() {
+                        open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, path);
+                    } else {
+                        open_path_with_series(
+                            &ui,
+                            &state_handle,
+                            &tile_cache,
+                            &render_timer,
+                            path,
+                            crate::file_ops::OpenFileMode::ReuseExistingTab,
+                        );
+                    }
                 }
                 return;
             }
@@ -2359,14 +2402,22 @@ pub fn setup_callbacks(
                         state::SeriesNavigationMode::Push,
                     );
                 } else {
-                    open_path_with_series(
+                    if !focus_existing_file(
                         &ui,
                         &state_handle,
                         &tile_cache,
                         &render_timer,
-                        path,
-                        crate::file_ops::OpenFileMode::ReuseExistingTab,
-                    );
+                        &path,
+                    ) {
+                        open_path_with_series(
+                            &ui,
+                            &state_handle,
+                            &tile_cache,
+                            &render_timer,
+                            path,
+                            crate::file_ops::OpenFileMode::ReuseExistingTab,
+                        );
+                    }
                 }
             }
         });

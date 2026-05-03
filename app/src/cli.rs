@@ -362,7 +362,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
                 .split(',')
                 .map(|entry| {
                     let path = PathBuf::from(entry.trim());
-                    validate_input_file(&path)?;
+                    validate_launch_input_path(&path)?;
                     Ok(path)
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -669,6 +669,18 @@ fn validate_input_file(path: &Path) -> Result<()> {
 
     if !path.is_file() {
         bail!("input path is not a file: {}", path.display());
+    }
+
+    Ok(())
+}
+
+fn validate_launch_input_path(path: &Path) -> Result<()> {
+    if !path.exists() {
+        bail!("input path does not exist: {}", path.display());
+    }
+
+    if !path.is_file() && !path.is_dir() {
+        bail!("input path is not a file or directory: {}", path.display());
     }
 
     Ok(())

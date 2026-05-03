@@ -499,6 +499,11 @@ fn main() -> Result<()> {
         ui.set_focused_pane(pane.as_index());
 
         for path in pane_spec.files {
+            if path.is_dir() {
+                callbacks::open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
+                continue;
+            }
+
             let existing_tab = {
                 let state = state.read();
                 state.find_tab_by_path(&path)

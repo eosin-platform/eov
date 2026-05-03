@@ -8,6 +8,7 @@ component SeriesCard inherits Rectangle {
     out property <bool> hovered: touch.has-hover;
     callback activated(string);
     callback context-menu(string, length, length);
+    callback horizontal-scroll(length);
 
     width: 148px;
     height: 150px;
@@ -19,6 +20,11 @@ component SeriesCard inherits Rectangle {
     touch := TouchArea {
         clicked => {
             root.activated(root.item.path);
+        }
+
+        scroll-event(e) => {
+            root.horizontal-scroll(e.delta-y);
+            accept
         }
 
         pointer-event(e) => {
@@ -115,6 +121,7 @@ export component SeriesBar inherits Rectangle {
     callback go-back();
     callback go-forward();
     callback go-up();
+    callback hide-requested();
     callback item-activated(string);
     callback item-context-menu(string, length, length);
 
@@ -142,7 +149,7 @@ export component SeriesBar inherits Rectangle {
         HorizontalLayout {
             padding-left: 8px;
             padding-right: 8px;
-            alignment: start;
+            alignment: stretch;
             spacing: 4px;
 
             SvgIconButton {
@@ -186,6 +193,19 @@ export component SeriesBar inherits Rectangle {
                     root.open-folder-requested();
                 }
             }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+
+            SvgIconButton {
+                icon-source: @image-url("icons/hide-series.svg");
+                tooltip-text: "Hide Series Bar";
+                clicked => {
+                    root.hide-requested();
+                }
+            }
         }
     }
 
@@ -220,7 +240,7 @@ export component SeriesBar inherits Rectangle {
         }
     }
 
-    if root.items.length > 0: Flickable {
+    if root.items.length > 0: series-flick := Flickable {
         x: 0px;
         y: 30px;
         width: parent.width;
@@ -253,6 +273,14 @@ export component SeriesBar inherits Rectangle {
             for item[i] in root.items: SeriesCard {
                 item: item;
                 selected: root.selected-path == item.path;
+                horizontal-scroll(delta) => {
+                    let next = clamp(
+                        series-flick.viewport-x + delta,
+                        0px,
+                        max(0px, series-flick.viewport-width - series-flick.width)
+                    );
+                    series-flick.viewport-x = next;
+                }
                 activated(path) => {
                     root.item-activated(path);
                 }

@@ -51,6 +51,7 @@ thread_local! {
     static PANE_VIEW_MODEL: RefCell<Rc<VecModel<PaneViewData>>> = RefCell::new(Rc::new(VecModel::default()));
     static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
     static SERIES_ITEMS_MODEL: RefCell<Rc<VecModel<SeriesItemData>>> = RefCell::new(Rc::new(VecModel::default()));
+    static SERIES_ITEMS_REVISION: RefCell<u64> = const { RefCell::new(0) };
 }
 
 pub(crate) fn pane_from_index(index: i32) -> PaneId {
@@ -59,6 +60,16 @@ pub(crate) fn pane_from_index(index: i32) -> PaneId {
 
 pub(crate) fn series_items_model() -> Rc<VecModel<SeriesItemData>> {
     SERIES_ITEMS_MODEL.with(|model| model.borrow().clone())
+}
+
+pub(crate) fn series_items_revision() -> u64 {
+    SERIES_ITEMS_REVISION.with(|revision| *revision.borrow())
+}
+
+pub(crate) fn set_series_items_revision(revision: u64) {
+    SERIES_ITEMS_REVISION.with(|stored| {
+        *stored.borrow_mut() = revision;
+    });
 }
 
 pub(crate) fn with_pane_render_cache<T>(
@@ -133,6 +144,9 @@ pub(crate) fn with_pane_ui_models<T>(
 pub(crate) fn reset_pane_ui_state() {
     PANE_RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
     PANE_UI_MODELS.with(|models| models.borrow_mut().clear());
+    SERIES_ITEMS_REVISION.with(|revision| {
+        *revision.borrow_mut() = 0;
+    });
     PANE_VIEW_MODEL.with(|model| {
         let model = model.borrow_mut();
         model.clear();
