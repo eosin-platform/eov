@@ -201,6 +201,8 @@ pub fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> b
         || existing.zoom_slider_position != next.zoom_slider_position
         || existing.roi_rect != next.roi_rect
         || existing.plugin_overlay_points != next.plugin_overlay_points
+        || existing.plugin_overlay_polygons != next.plugin_overlay_polygons
+        || existing.plugin_overlay_vertex_boxes != next.plugin_overlay_vertex_boxes
         || existing.candidate_measurement != next.candidate_measurement
         || existing.is_loading != next.is_loading
         || existing.hud != next.hud

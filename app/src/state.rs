@@ -559,6 +559,8 @@ pub struct AppState {
     pub candidate_point: Option<ImagePoint>,
     /// Plugin-owned annotation currently hovered in the viewport, if any.
     pub hovered_plugin_annotation: Option<PluginAnnotationHandle>,
+    /// Plugin-owned annotation currently hovered in a plugin sidebar, if any.
+    pub sidebar_hovered_plugin_annotation: Option<PluginAnnotationHandle>,
     /// Plugin-owned point annotation currently being dragged, if any.
     pub dragged_plugin_point: Option<PluginAnnotationHandle>,
     /// Transient image-space preview position for the dragged plugin point.
@@ -666,6 +668,7 @@ impl AppState {
             tool_state: ToolInteractionState::Idle,
             candidate_point: None,
             hovered_plugin_annotation: None,
+            sidebar_hovered_plugin_annotation: None,
             dragged_plugin_point: None,
             dragged_plugin_point_position: None,
             dragged_plugin_polygon: None,
@@ -1283,6 +1286,7 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.hovered_plugin_annotation = None;
+        self.sidebar_hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
         self.dragged_plugin_polygon = None;
@@ -1313,6 +1317,7 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.hovered_plugin_annotation = None;
+        self.sidebar_hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
         self.dragged_plugin_polygon = None;
@@ -1345,6 +1350,7 @@ impl AppState {
         self.tool_state = ToolInteractionState::Idle;
         self.candidate_point = None;
         self.hovered_plugin_annotation = None;
+        self.sidebar_hovered_plugin_annotation = None;
         self.dragged_plugin_point = None;
         self.dragged_plugin_point_position = None;
         self.dragged_plugin_polygon = None;

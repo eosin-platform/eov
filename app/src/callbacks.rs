@@ -2523,7 +2523,9 @@ pub fn setup_callbacks(
         });
     }
 
-    let navigate_click_origin: Rc<RefCell<Option<(f32, f32)>>> = Rc::new(RefCell::new(None));
+    let navigate_click_origin: Rc<
+        RefCell<Option<(f32, f32, Option<crate::state::PluginAnnotationHandle>)>>,
+    > = Rc::new(RefCell::new(None));
 
     {
         let state_handle = Arc::clone(&state);
@@ -2549,11 +2551,25 @@ pub fn setup_callbacks(
             pending_point_press_down.borrow_mut().take();
             pending_polygon_press_down.borrow_mut().take();
 
-            let track_navigate_click = {
+            let navigate_press = {
                 let state = state_handle.read();
-                state.current_tool == state::Tool::Navigate
+                if state.current_tool != state::Tool::Navigate {
+                    None
+                } else {
+                    let pane = state.focused_pane;
+                    let hit = crate::plugin_host::hit_test_overlay_point_for_pane(
+                        &state, pane, x, y, None,
+                    )
+                    .or_else(|| {
+                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
+                            &state, pane, x, y, None,
+                        )
+                        .map(|candidate| candidate.handle)
+                    });
+                    Some((x, y, hit))
+                }
             };
-            *navigate_click_origin_down.borrow_mut() = track_navigate_click.then_some((x, y));
+            *navigate_click_origin_down.borrow_mut() = navigate_press;
 
             let polygon_vertex_drag_candidate = {
                 let state = state_handle.read();
@@ -3503,7 +3519,7 @@ pub fn setup_callbacks(
             }
 
             let navigate_click_selection = match navigate_click_origin_up.borrow_mut().take() {
-                Some((down_x, down_y)) => {
+                Some((down_x, down_y, pressed_handle)) => {
                     let dx = x - down_x;
                     let dy = y - down_y;
                     if dx * dx + dy * dy > 16.0 {
@@ -3514,16 +3530,7 @@ pub fn setup_callbacks(
                             None
                         } else {
                             let pane = state.focused_pane;
-                            let hit = crate::plugin_host::hit_test_overlay_point_for_pane(
-                                &state, pane, x, y, None,
-                            )
-                            .or_else(|| {
-                                crate::plugin_host::hit_test_overlay_polygon_for_pane(
-                                    &state, pane, x, y, None,
-                                )
-                                .map(|candidate| candidate.handle)
-                            });
-                            Some((pane, hit))
+                            Some((pane, pressed_handle))
                         }
                     }
                 }

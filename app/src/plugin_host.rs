@@ -53,8 +53,13 @@ struct OverlayPolygonShape {
     stroke_color: Color,
 }
 
-fn annotation_hover_color() -> Color {
-    Color::from_rgb_u8(0xF8, 0xFA, 0xFC)
+fn annotation_emphasis_rgb(red: u8, green: u8, blue: u8) -> (u8, u8, u8) {
+    let luminance = 0.299 * red as f32 + 0.587 * green as f32 + 0.114 * blue as f32;
+    if luminance >= 160.0 {
+        (0x14, 0xB8, 0xFF)
+    } else {
+        (0xFF, 0xE0, 0x47)
+    }
 }
 
 fn polygon_fill_color(red: u8, green: u8, blue: u8, hovered: bool) -> Color {
@@ -73,6 +78,10 @@ fn overlay_polygon_fill_color(
         Color::from_argb_u8(if hovered { 0x88 } else { 0x66 }, red, green, blue)
     } else if plugin_id == "eovae" {
         Color::from_argb_u8(0x00, red, green, blue)
+    } else if hovered {
+        let (emphasis_red, emphasis_green, emphasis_blue) =
+            annotation_emphasis_rgb(red, green, blue);
+        Color::from_argb_u8(0x70, emphasis_red, emphasis_green, emphasis_blue)
     } else {
         polygon_fill_color(red, green, blue, hovered)
     }
@@ -91,7 +100,9 @@ fn overlay_polygon_stroke_color(
     } else if plugin_id == "eovae" {
         Color::from_rgb_u8(red, green, blue)
     } else if hovered {
-        annotation_hover_color()
+        let (emphasis_red, emphasis_green, emphasis_blue) =
+            annotation_emphasis_rgb(red, green, blue);
+        Color::from_rgb_u8(emphasis_red, emphasis_green, emphasis_blue)
     } else {
         Color::from_rgb_u8(red, green, blue)
     }
@@ -231,10 +242,17 @@ fn set_annotations_sidebar_hovered_row_id(annotation_id: Option<&str>) -> Result
     })
 }
 
-pub(crate) fn sync_annotations_sidebar_hover_from_state(state: &AppState) {
-    let hovered = state
-        .hovered_plugin_annotation
+fn effective_annotations_hover(
+    state: &AppState,
+) -> Option<&crate::state::PluginAnnotationHandle> {
+    state
+        .sidebar_hovered_plugin_annotation
         .as_ref()
+        .or(state.hovered_plugin_annotation.as_ref())
+}
+
+pub(crate) fn sync_annotations_sidebar_hover_from_state(state: &AppState) {
+    let hovered = effective_annotations_hover(state)
         .filter(|handle| handle.plugin_id == "annotations")
         .map(|handle| handle.annotation_id.as_str());
     let _ = set_annotations_sidebar_hovered_row_id(hovered);
@@ -254,15 +272,10 @@ fn handle_annotations_sidebar_hover_callback(
     {
         let mut state = runtime.state.write();
         if hovered_annotation_id.is_empty() {
-            if state
-                .hovered_plugin_annotation
-                .as_ref()
-                .is_some_and(|handle| handle.plugin_id == "annotations")
-            {
-                state.hovered_plugin_annotation = None;
-            }
+            state.sidebar_hovered_plugin_annotation = None;
         } else {
-            state.hovered_plugin_annotation = Some(crate::state::PluginAnnotationHandle {
+            state.sidebar_hovered_plugin_annotation =
+                Some(crate::state::PluginAnnotationHandle {
                 plugin_id: "annotations".to_string(),
                 annotation_id: hovered_annotation_id,
             });
@@ -591,7 +604,7 @@ pub(crate) fn viewport_overlay_points_for_pane(
     let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
     let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
     let vp = &pane_state.viewport.viewport;
-    let hovered = state.hovered_plugin_annotation.as_ref();
+    let hovered = effective_annotations_hover(state);
     let dragged = state.dragged_plugin_point.as_ref();
     let dragged_position = state.dragged_plugin_point_position;
 
@@ -619,7 +632,9 @@ pub(crate) fn viewport_overlay_points_for_pane(
             });
             let hover_style_active = is_hovered;
             let ring_color = if hover_style_active {
-                annotation_hover_color()
+                let (emphasis_red, emphasis_green, emphasis_blue) =
+                    annotation_emphasis_rgb(point.ring_red, point.ring_green, point.ring_blue);
+                Color::from_rgb_u8(emphasis_red, emphasis_green, emphasis_blue)
             } else {
                 Color::from_rgb_u8(point.ring_red, point.ring_green, point.ring_blue)
             };
@@ -674,7 +689,7 @@ fn overlay_polygon_shapes_for_pane(state: &AppState, pane: PaneId) -> Vec<Overla
 
     let snapshot = to_viewport_snapshot(file, &pane_state.viewport, pane);
     let snapshot_ffi = to_viewport_snapshot_ffi(snapshot);
-    let hovered = state.hovered_plugin_annotation.as_ref();
+    let hovered = effective_annotations_hover(state);
     let dragged = state.dragged_plugin_polygon.as_ref();
     let dragged_state = state.dragged_plugin_polygon_state.as_ref();
     let dragged_position = state.dragged_plugin_polygon_position;
@@ -2964,19 +2979,14 @@ fn build_plugin_component_factory(
                     .to_string();
                     let callback_name_for_timer = callback_name.clone();
                     let args_json_for_timer = args_json.clone();
-                    let args_json_for_hover = args_json.clone();
                     let plugin_id_for_timer = plugin_id.clone();
+                    if plugin_id == "annotations" && callback_name == "row-hovered" {
+                        let args_json_for_hover = args_json.clone();
+                        let _ = run_on_ui_thread(move |runtime| {
+                            handle_annotations_sidebar_hover_callback(runtime, &args_json_for_hover)
+                        });
+                    }
                     slint::Timer::single_shot(std::time::Duration::from_millis(0), move || {
-                        if plugin_id_for_timer == "annotations"
-                            && callback_name_for_timer == "row-hovered"
-                        {
-                            let _ = run_on_ui_thread(move |runtime| {
-                                handle_annotations_sidebar_hover_callback(
-                                    runtime,
-                                    &args_json_for_hover,
-                                )
-                            });
-                        }
                         plugin_trace(format!(
                             "dispatch ui_callback plugin={} name={} args={}",
                             plugin_id_for_timer, callback_name_for_timer, args_json_for_timer
@@ -3312,10 +3322,7 @@ pub(crate) fn refresh_active_sidebar() -> Result<(), String> {
                         plugin_id
                     );
                 } else {
-                    let hovered = state
-                        .read()
-                        .hovered_plugin_annotation
-                        .as_ref()
+                    let hovered = effective_annotations_hover(&state.read())
                         .filter(|handle| handle.plugin_id == "annotations")
                         .map(|handle| handle.annotation_id.clone());
                     let _ = set_annotations_sidebar_hovered_row_id(hovered.as_deref());

@@ -280,6 +280,9 @@ export component SeriesBar inherits Rectangle {
                     );
                 }
                 activated(path) => {
+                    if item.is-directory {
+                        root.scroll-x = 0px;
+                    }
                     root.item-activated(path);
                 }
                 context-menu(path, x, y) => {
