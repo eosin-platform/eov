@@ -709,7 +709,7 @@ export component TabBar inherits Rectangle {
 
             scroll-event(e) => {
                 root.tabs-scroll-x = clamp(
-                    root.tabs-scroll-x + e.delta-y,
+                    root.tabs-scroll-x - e.delta-y,
                     0px,
                     max(0px, tabs-inline-layout.preferred-width - parent.width)
                 );
@@ -734,7 +734,7 @@ export component TabBar inherits Rectangle {
                 is-dragging: root.dragging-tab-id == tab.id;
                 horizontal-scroll(delta) => {
                     root.tabs-scroll-x = clamp(
-                        root.tabs-scroll-x + delta,
+                        root.tabs-scroll-x - delta,
                         0px,
                         max(0px, tabs-inline-layout.preferred-width - (root.tabs-overflow ? root.width - 39px : root.width - 4px))
                     );

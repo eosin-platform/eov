@@ -253,7 +253,7 @@ export component SeriesBar inherits Rectangle {
             height: parent.height;
             scroll-event(e) => {
                 root.scroll-x = clamp(
-                    root.scroll-x + e.delta-y,
+                    root.scroll-x - e.delta-y,
                     0px,
                     max(0px, series-layout.preferred-width + 24px - parent.width)
                 );
@@ -274,7 +274,7 @@ export component SeriesBar inherits Rectangle {
                 selected: root.selected-path == item.path;
                 horizontal-scroll(delta) => {
                     root.scroll-x = clamp(
-                        root.scroll-x + delta,
+                        root.scroll-x - delta,
                         0px,
                         max(0px, series-layout.preferred-width + 24px - root.width)
                     );
