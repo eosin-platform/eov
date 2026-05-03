@@ -128,6 +128,7 @@ export component SeriesBar inherits Rectangle {
     property <string> active-tooltip: "";
     property <length> tooltip-x: 0px;
     property <length> tooltip-y: 0px;
+    property <length> scroll-x: 0px;
 
     clip: true;
     background: Theme.surface;
@@ -240,30 +241,28 @@ export component SeriesBar inherits Rectangle {
         }
     }
 
-    if root.items.length > 0: series-flick := Flickable {
+    if root.items.length > 0: Rectangle {
         x: 0px;
         y: 30px;
         width: parent.width;
         height: parent.height - 30px;
-        viewport-width: series-layout.preferred-width + 24px;
-        viewport-height: max(0px, parent.height - 30px);
-        interactive: true;
+        clip: true;
 
         TouchArea {
             width: parent.width;
             height: parent.height;
             scroll-event(e) => {
-                let next = clamp(
-                    parent.viewport-x + e.delta-y,
+                root.scroll-x = clamp(
+                    root.scroll-x + e.delta-y,
                     0px,
-                    max(0px, parent.viewport-width - parent.width)
+                    max(0px, series-layout.preferred-width + 24px - parent.width)
                 );
-                parent.viewport-x = next;
                 accept
             }
         }
 
         series-layout := HorizontalLayout {
+            x: -root.scroll-x;
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 12px;
@@ -274,12 +273,11 @@ export component SeriesBar inherits Rectangle {
                 item: item;
                 selected: root.selected-path == item.path;
                 horizontal-scroll(delta) => {
-                    let next = clamp(
-                        series-flick.viewport-x + delta,
+                    root.scroll-x = clamp(
+                        root.scroll-x + delta,
                         0px,
-                        max(0px, series-flick.viewport-width - series-flick.width)
+                        max(0px, series-layout.preferred-width + 24px - root.width)
                     );
-                    series-flick.viewport-x = next;
                 }
                 activated(path) => {
                     root.item-activated(path);

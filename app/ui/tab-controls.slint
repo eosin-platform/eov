@@ -502,6 +502,7 @@ component Tab inherits Rectangle {
     callback drag-ended(length, length);
     callback tab-tooltip-changed(bool, string, length, length);
 
+    callback horizontal-scroll(length);
     min-width: 100px;
     max-width: 200px;
     height: 35px;
@@ -533,6 +534,11 @@ component Tab inherits Rectangle {
         property <length> press-y;
         property <bool> drag-armed: false;
         property <bool> lmb-down: false;
+
+        scroll-event(e) => {
+            root.horizontal-scroll(e.delta-y);
+            accept
+        }
 
         pointer-event(e) => {
             if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
@@ -626,6 +632,11 @@ component Tab inherits Rectangle {
             }
 
             close-touch := TouchArea {
+                scroll-event(e) => {
+                    root.horizontal-scroll(e.delta-y);
+                    accept
+                }
+
                 clicked => {
                     root.close-requested(data.id);
                 }
@@ -657,6 +668,7 @@ export component TabBar inherits Rectangle {
     property <int> raw-drop-index: !show-drop-indicator || !is-drop-target || drag-abs-x < 0px ? -1 : Math.max(0, Math.min(tabs.length, Math.round((drag-abs-x - abs-tracker.absolute-position.x) / avg-slot)));
     out property <int> computed-drop-index: drag-source-pane == pane-id && drag-source-index >= 0 && (raw-drop-index == drag-source-index || raw-drop-index == drag-source-index + 1) ? -1 : raw-drop-index;
     property <bool> tabs-overflow: estimated-tabs-width + 35px > self.width - 8px;
+    property <length> tabs-scroll-x: 0px;
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback tab-context-menu(int, int, length, length);
@@ -683,20 +695,36 @@ export component TabBar inherits Rectangle {
         background: Theme.border;
     }
 
-    Flickable {
+    Rectangle {
         x: 4px;
         y: 0px;
         width: root.tabs-overflow ? root.width - 39px : root.width - 4px;
         height: 35px;
-        viewport-width: tabs-inline-layout.preferred-width;
-        interactive: root.tabs-overflow;
+        clip: true;
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: root.tabs-overflow;
+
+            scroll-event(e) => {
+                root.tabs-scroll-x = clamp(
+                    root.tabs-scroll-x + e.delta-y,
+                    0px,
+                    max(0px, tabs-inline-layout.preferred-width - parent.width)
+                );
+                accept
+            }
+        }
 
         abs-tracker := Rectangle {
+            x: tabs-inline-layout.x;
             width: 0px;
             height: 0px;
         }
 
         tabs-inline-layout := HorizontalLayout {
+            x: -root.tabs-scroll-x;
             alignment: start;
             spacing: 1px;
 
@@ -704,6 +732,13 @@ export component TabBar inherits Rectangle {
                 pane-id: root.pane-id;
                 data: tab;
                 is-dragging: root.dragging-tab-id == tab.id;
+                horizontal-scroll(delta) => {
+                    root.tabs-scroll-x = clamp(
+                        root.tabs-scroll-x + delta,
+                        0px,
+                        max(0px, tabs-inline-layout.preferred-width - (root.tabs-overflow ? root.width - 39px : root.width - 4px))
+                    );
+                }
                 close-requested(id) => {
                     root.tab-close-requested(root.pane-id, id);
                 }
@@ -750,7 +785,7 @@ export component TabBar inherits Rectangle {
         }
 
         if root.computed-drop-index >= 0: Rectangle {
-            x: root.computed-drop-index * root.avg-slot - 1px;
+            x: root.computed-drop-index * root.avg-slot - 1px - root.tabs-scroll-x;
             y: 4px;
             width: 2px;
             height: 27px;
