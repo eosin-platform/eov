@@ -64,7 +64,7 @@ fn vertices_to_ffi(
 
 /// Outcome of handling a toolbar button action.
 pub enum ActionOutcome {
-    /// Rust plugin: spawn `eov plugin-window <root>` as a subprocess.
+    /// Rust plugin: toggle the plugin's standalone window.
     RustPluginWindow { plugin_root: PathBuf },
     /// Python plugin: spawn the entry script as a subprocess.
     PythonSpawn {

@@ -15,7 +15,6 @@ component SectionCard inherits Rectangle {
     border-radius: 12px;
     border-width: 1px;
     border-color: #ffffff10;
-    clip: true;
 
     VerticalLayout {
         width: parent.width;
@@ -270,6 +269,7 @@ export component GamepadSidebar inherits Rectangle {
 
                         if root.device-options.length > 0: ComboBox {
                             width: parent.width;
+                            height: 30px;
                             model: root.device-options;
                             current-index: root.selected-device-index;
                             selected(value) => { root.device-selected(value); }
@@ -381,6 +381,7 @@ export component GamepadSidebar inherits Rectangle {
 
                         if root.profile-options.length > 0: ComboBox {
                             width: parent.width;
+                            height: 30px;
                             model: root.profile-options;
                             current-index: root.selected-profile-index;
                             selected(value) => { root.load-profile-selected(value); }
@@ -454,6 +455,7 @@ export component GamepadSidebar inherits Rectangle {
 
                                 if row.axis-control: ComboBox {
                                     horizontal-stretch: 1;
+                                    height: 30px;
                                     model: root.axis-action-options;
                                     current-index: row.current-index;
                                     selected(value) => { root.axis-mapping-selected(row.control-key, value); }
@@ -461,6 +463,7 @@ export component GamepadSidebar inherits Rectangle {
 
                                 if !row.axis-control: ComboBox {
                                     horizontal-stretch: 1;
+                                    height: 30px;
                                     model: root.button-action-options;
                                     current-index: row.current-index;
                                     selected(value) => { root.button-mapping-selected(row.control-key, value); }

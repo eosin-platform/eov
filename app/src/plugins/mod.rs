@@ -30,10 +30,37 @@ use std::rc::Rc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
+struct PluginWindowEntry {
+    plugin_id: String,
+    instance: slint_interpreter::ComponentInstance,
+    refresh_timer: Rc<Timer>,
+}
+
 // Thread-local storage for plugin window handles so they are not dropped.
 thread_local! {
-    static PLUGIN_WINDOWS: RefCell<Vec<slint_interpreter::ComponentInstance>> = const { RefCell::new(Vec::new()) };
-    static PLUGIN_WINDOW_TIMERS: RefCell<Vec<Rc<Timer>>> = const { RefCell::new(Vec::new()) };
+    static PLUGIN_WINDOWS: RefCell<Vec<PluginWindowEntry>> = const { RefCell::new(Vec::new()) };
+}
+
+fn close_plugin_window(plugin_id: &str) -> bool {
+    PLUGIN_WINDOWS.with(|windows| {
+        let mut windows = windows.borrow_mut();
+        let Some(index) = windows.iter().position(|entry| entry.plugin_id == plugin_id) else {
+            return false;
+        };
+        let entry = windows.remove(index);
+        entry.refresh_timer.stop();
+        let _ = entry.instance.hide();
+        true
+    })
+}
+
+fn plugin_window_is_open(plugin_id: &str) -> bool {
+    PLUGIN_WINDOWS.with(|windows| {
+        windows
+            .borrow()
+            .iter()
+            .any(|entry| entry.plugin_id == plugin_id)
+    })
 }
 
 fn apply_plugin_window_properties(
@@ -176,14 +203,61 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
     });
 
     PLUGIN_WINDOWS.with(|windows| {
-        windows.borrow_mut().push(instance);
-    });
-    PLUGIN_WINDOW_TIMERS.with(|timers| {
-        timers.borrow_mut().push(refresh_timer);
+        windows.borrow_mut().push(PluginWindowEntry {
+            plugin_id: req.plugin_id.clone(),
+            instance,
+            refresh_timer,
+        });
     });
 
     info!("Plugin window opened for '{}'", req.plugin_id);
     Ok(())
+}
+
+pub fn toggle_rust_plugin_window(plugin_root: &Path) -> anyhow::Result<bool> {
+    let manifest = plugin_api::PluginManifest::from_file(
+        &plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME),
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to load plugin manifest: {e}"))?;
+
+    if plugin_window_is_open(&manifest.id) {
+        close_plugin_window(&manifest.id);
+        return Ok(false);
+    }
+
+    let lib_name = ffi::plugin_library_filename(&manifest.id);
+    let lib_path = plugin_root.join(&lib_name);
+    if !lib_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Plugin shared library not found: {}",
+            lib_path.display()
+        ));
+    }
+
+    let raw = RawLibrary::load_at(&lib_path)
+        .map_err(|e| anyhow::anyhow!("Failed to load plugin library: {e}"))?;
+    let raw: &'static RawLibrary = Box::leak(Box::new(raw));
+    let vtable: PluginVTable = unsafe {
+        let sym = raw
+            .get::<ffi::GetPluginVTableFn>(ffi::PLUGIN_VTABLE_SYMBOL)
+            .map_err(|e| anyhow::anyhow!("Failed to find plugin vtable symbol: {e}"))?;
+        (*sym)()
+    };
+
+    let ui_path = manifest
+        .resolve_entry_ui(plugin_root)
+        .ok_or_else(|| anyhow::anyhow!("Plugin '{}' has no entry_ui", manifest.id))?;
+    let req = WindowOpenRequest {
+        plugin_id: manifest.id.clone(),
+        ui_path,
+        component: manifest
+            .entry_component
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Plugin '{}' has no entry_component", manifest.id))?,
+    };
+
+    open_plugin_window(&req, &vtable)?;
+    Ok(true)
 }
 
 /// Spawn a Python plugin's entry script as a subprocess.
@@ -238,42 +312,6 @@ pub fn spawn_python_plugin(
             error!(
                 "Failed to spawn Python plugin {}: {e}",
                 script_path.display()
-            );
-        }
-    }
-}
-
-/// Spawn the Rust plugin window in a child process.
-///
-/// Instead of opening a second Slint window in the same process (which
-/// crashes the wgpu renderer), we re-exec `eov plugin-window <dir>`.
-/// The child process gets its own GPU context and Slint event loop.
-pub fn spawn_rust_plugin_window(plugin_root: &Path) {
-    let eov_exe = std::env::current_exe().unwrap_or_else(|_| "eov".into());
-    info!(
-        "Spawning Rust plugin window subprocess: {} plugin-window {}",
-        eov_exe.display(),
-        plugin_root.display()
-    );
-
-    let mut cmd = std::process::Command::new(&eov_exe);
-    cmd.arg("plugin-window")
-        .arg(plugin_root)
-        .stdin(std::process::Stdio::null());
-
-    // Pass the extension host address if available.
-    if let Ok(host_addr) = std::env::var("EOV_EXTENSION_HOST") {
-        cmd.env("EOV_EXTENSION_HOST", &host_addr);
-    }
-
-    match cmd.spawn() {
-        Ok(child) => {
-            info!("Rust plugin window process started (pid {})", child.id());
-        }
-        Err(e) => {
-            error!(
-                "Failed to spawn plugin window process for {}: {e}",
-                plugin_root.display()
             );
         }
     }

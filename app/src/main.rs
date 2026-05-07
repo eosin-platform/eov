@@ -668,7 +668,22 @@ fn setup_callbacks(
                         "toolbar deferred rust window plugin={} action={}",
                         plugin_id, action_id
                     ));
-                    crate::plugins::spawn_rust_plugin_window(&plugin_root);
+                    match crate::plugins::toggle_rust_plugin_window(&plugin_root) {
+                        Ok(opened) => {
+                            let _ = crate::plugin_host::set_local_toolbar_button_active(
+                                &plugin_id,
+                                &action_id,
+                                opened,
+                            );
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                "Failed to toggle Rust plugin window for '{}' action '{}': {err}",
+                                plugin_id,
+                                action_id
+                            );
+                        }
+                    }
                 }
                 Ok(plugins::ActionOutcome::PythonSpawn {
                     script_path,
