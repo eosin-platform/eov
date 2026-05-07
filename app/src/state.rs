@@ -1833,7 +1833,7 @@ impl AppState {
         }
 
         series.entries = entries;
-    self.reconcile_series_selection();
+        self.reconcile_series_selection();
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
