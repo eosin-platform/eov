@@ -97,24 +97,96 @@ pub struct ControlDescriptor {
 }
 
 const CONTROL_DESCRIPTORS: &[ControlDescriptor] = &[
-    ControlDescriptor { key: "left_stick_x", label: "Left Stick X", axis: true },
-    ControlDescriptor { key: "left_stick_y", label: "Left Stick Y", axis: true },
-    ControlDescriptor { key: "right_stick_x", label: "Right Stick X", axis: true },
-    ControlDescriptor { key: "right_stick_y", label: "Right Stick Y", axis: true },
-    ControlDescriptor { key: "left_trigger", label: "Left Trigger", axis: true },
-    ControlDescriptor { key: "right_trigger", label: "Right Trigger", axis: true },
-    ControlDescriptor { key: "dpad_left", label: "D-Pad Left", axis: false },
-    ControlDescriptor { key: "dpad_right", label: "D-Pad Right", axis: false },
-    ControlDescriptor { key: "dpad_up", label: "D-Pad Up", axis: false },
-    ControlDescriptor { key: "dpad_down", label: "D-Pad Down", axis: false },
-    ControlDescriptor { key: "south", label: "South Button", axis: false },
-    ControlDescriptor { key: "east", label: "East Button", axis: false },
-    ControlDescriptor { key: "north", label: "North Button", axis: false },
-    ControlDescriptor { key: "west", label: "West Button", axis: false },
-    ControlDescriptor { key: "left_trigger_button", label: "Left Shoulder", axis: false },
-    ControlDescriptor { key: "right_trigger_button", label: "Right Shoulder", axis: false },
-    ControlDescriptor { key: "start", label: "Start", axis: false },
-    ControlDescriptor { key: "select", label: "Select", axis: false },
+    ControlDescriptor {
+        key: "left_stick_x",
+        label: "Left Stick X",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "left_stick_y",
+        label: "Left Stick Y",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "right_stick_x",
+        label: "Right Stick X",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "right_stick_y",
+        label: "Right Stick Y",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "left_trigger",
+        label: "Left Trigger",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "right_trigger",
+        label: "Right Trigger",
+        axis: true,
+    },
+    ControlDescriptor {
+        key: "dpad_left",
+        label: "D-Pad Left",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "dpad_right",
+        label: "D-Pad Right",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "dpad_up",
+        label: "D-Pad Up",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "dpad_down",
+        label: "D-Pad Down",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "south",
+        label: "South Button",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "east",
+        label: "East Button",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "north",
+        label: "North Button",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "west",
+        label: "West Button",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "left_trigger_button",
+        label: "Left Shoulder",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "right_trigger_button",
+        label: "Right Shoulder",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "start",
+        label: "Start",
+        axis: false,
+    },
+    ControlDescriptor {
+        key: "select",
+        label: "Select",
+        axis: false,
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -217,15 +289,25 @@ pub fn prepare_window_runtime() {
 }
 
 pub fn axis_action_options() -> Vec<&'static str> {
-    AXIS_ACTION_KEYS.iter().map(|key| action_label(key)).collect()
+    AXIS_ACTION_KEYS
+        .iter()
+        .map(|key| action_label(key))
+        .collect()
 }
 
 pub fn button_action_options() -> Vec<&'static str> {
-    BUTTON_ACTION_KEYS.iter().map(|key| action_label(key)).collect()
+    BUTTON_ACTION_KEYS
+        .iter()
+        .map(|key| action_label(key))
+        .collect()
 }
 
 pub fn action_index(action: MappingAction, axis: bool) -> i32 {
-    let options = if axis { AXIS_ACTION_KEYS } else { BUTTON_ACTION_KEYS };
+    let options = if axis {
+        AXIS_ACTION_KEYS
+    } else {
+        BUTTON_ACTION_KEYS
+    };
     options
         .iter()
         .position(|candidate| *candidate == action.key())
@@ -251,7 +333,12 @@ pub fn selected_device_index() -> i32 {
     state
         .selected_device_key
         .as_ref()
-        .and_then(|selected| state.devices.iter().position(|device| &device.key == selected))
+        .and_then(|selected| {
+            state
+                .devices
+                .iter()
+                .position(|device| &device.key == selected)
+        })
         .map(|index| index as i32)
         .unwrap_or(-1)
 }
@@ -427,7 +514,11 @@ pub fn set_numeric_field(field: &str, value: &str) {
 }
 
 pub fn set_mapping_by_label(control_key: &str, selected_label: &str, axis: bool) {
-    let options = if axis { AXIS_ACTION_KEYS } else { BUTTON_ACTION_KEYS };
+    let options = if axis {
+        AXIS_ACTION_KEYS
+    } else {
+        BUTTON_ACTION_KEYS
+    };
     let Some(action_key) = options
         .iter()
         .copied()
@@ -448,7 +539,8 @@ fn worker_loop() {
     let mut gilrs = match Gilrs::new() {
         Ok(gilrs) => gilrs,
         Err(err) => {
-            plugin_state().lock().unwrap().status_text = format!("Gamepad subsystem unavailable: {err}");
+            plugin_state().lock().unwrap().status_text =
+                format!("Gamepad subsystem unavailable: {err}");
             log_message(HostLogLevelFFI::Warn, format!("gilrs unavailable: {err}"));
             refresh_window_ui_if_available();
             return;
@@ -473,29 +565,39 @@ fn worker_loop() {
         let mut refresh_window = false;
         let selected_device_key = {
             let mut state = plugin_state().lock().unwrap();
-            if state.devices.iter().map(|device| device.key.as_str()).collect::<Vec<_>>()
-                != devices.iter().map(|device| device.key.as_str()).collect::<Vec<_>>()
+            if state
+                .devices
+                .iter()
+                .map(|device| device.key.as_str())
+                .collect::<Vec<_>>()
+                != devices
+                    .iter()
+                    .map(|device| device.key.as_str())
+                    .collect::<Vec<_>>()
             {
                 state.devices = devices.clone();
-                let preferred_available = state.preferred_device_key.as_ref().and_then(|preferred| {
-                    state
-                        .devices
-                        .iter()
-                        .find(|device| &device.key == preferred)
-                        .map(|device| device.key.clone())
-                });
+                let preferred_available =
+                    state.preferred_device_key.as_ref().and_then(|preferred| {
+                        state
+                            .devices
+                            .iter()
+                            .find(|device| &device.key == preferred)
+                            .map(|device| device.key.clone())
+                    });
                 if let Some(preferred_key) = preferred_available {
                     state.selected_device_key = Some(preferred_key);
                 } else if state.selected_device_key.as_ref().is_none_or(|selected| {
                     !state.devices.iter().any(|device| &device.key == selected)
                 }) {
-                    state.selected_device_key = state.devices.first().map(|device| device.key.clone());
+                    state.selected_device_key =
+                        state.devices.first().map(|device| device.key.clone());
                 }
                 if state.preferred_device_key.is_none() {
                     state.preferred_device_key = state.selected_device_key.clone();
                 }
                 if let Some(selected) = &state.selected_device_key
-                    && let Some(device) = state.devices.iter().find(|device| &device.key == selected)
+                    && let Some(device) =
+                        state.devices.iter().find(|device| &device.key == selected)
                 {
                     state.status_text = if state.controller_enabled {
                         format!("Ready: {}", device.label)
@@ -511,11 +613,9 @@ fn worker_loop() {
         };
 
         while let Some(event) = gilrs.next_event() {
-            let target_selected = selected_device_key
-                .as_ref()
-                .is_some_and(|selected| {
-                    *selected == device_key(event.id, &gilrs.gamepad(event.id))
-                });
+            let target_selected = selected_device_key.as_ref().is_some_and(|selected| {
+                *selected == device_key(event.id, &gilrs.gamepad(event.id))
+            });
 
             match event.event {
                 EventType::AxisChanged(axis, value, _) if target_selected => {
@@ -630,7 +730,10 @@ fn dispatch_button_action(control_key: &str) {
     }
 }
 
-fn apply_continuous_mappings(axis_values: &HashMap<String, f32>, _pressed_buttons: &HashSet<String>) {
+fn apply_continuous_mappings(
+    axis_values: &HashMap<String, f32>,
+    _pressed_buttons: &HashSet<String>,
+) {
     let snapshot = {
         let state = plugin_state().lock().unwrap();
         if !state.controller_enabled {
@@ -649,7 +752,10 @@ fn apply_continuous_mappings(axis_values: &HashMap<String, f32>, _pressed_button
         let mut pan_y = 0.0f64;
         let mut zoom_signal = 0.0f64;
 
-        for descriptor in CONTROL_DESCRIPTORS.iter().filter(|descriptor| descriptor.axis) {
+        for descriptor in CONTROL_DESCRIPTORS
+            .iter()
+            .filter(|descriptor| descriptor.axis)
+        {
             let value = normalized_axis_value(
                 descriptor.key,
                 axis_values.get(descriptor.key).copied().unwrap_or_default(),
@@ -680,7 +786,15 @@ fn apply_continuous_mappings(axis_values: &HashMap<String, f32>, _pressed_button
         } else {
             viewport.zoom
         };
-        (host, center_x, center_y, zoom, viewport.center_x, viewport.center_y, viewport.zoom)
+        (
+            host,
+            center_x,
+            center_y,
+            zoom,
+            viewport.center_x,
+            viewport.center_y,
+            viewport.zoom,
+        )
     };
 
     let (host, center_x, center_y, zoom, previous_x, previous_y, previous_zoom) = snapshot;
@@ -739,12 +853,7 @@ fn device_key(id: GamepadId, gamepad: &gilrs::Gamepad<'_>) -> String {
         .collect::<String>();
     format!(
         "{}::{}::{}::{}::{}::{}",
-        vendor,
-        product,
-        map_name,
-        os_name,
-        name,
-        uuid,
+        vendor, product, map_name, os_name, name, uuid,
     )
 }
 
@@ -802,11 +911,7 @@ fn apply_dead_zone(control_key: &str, value: f32, state: &PluginState) -> f32 {
         "left_trigger" | "right_trigger" => state.trigger_dead_zone,
         _ => 0.0,
     };
-    if value.abs() < threshold {
-        0.0
-    } else {
-        value
-    }
+    if value.abs() < threshold { 0.0 } else { value }
 }
 
 fn default_mappings() -> BTreeMap<String, MappingAction> {
@@ -828,21 +933,33 @@ fn profiles_dir() -> Result<PathBuf, String> {
     let Some(root) = dirs::config_dir() else {
         return Err("config directory is unavailable".to_string());
     };
-    Ok(root.join("eov").join("plugins").join("gamepad").join("profiles"))
+    Ok(root
+        .join("eov")
+        .join("plugins")
+        .join("gamepad")
+        .join("profiles"))
 }
 
 fn runtime_state_path() -> Result<PathBuf, String> {
     let Some(root) = dirs::config_dir() else {
         return Err("config directory is unavailable".to_string());
     };
-    Ok(root.join("eov").join("plugins").join("gamepad").join("state.json"))
+    Ok(root
+        .join("eov")
+        .join("plugins")
+        .join("gamepad")
+        .join("state.json"))
 }
 
 fn window_state_dir() -> Result<PathBuf, String> {
     let Some(root) = dirs::config_dir() else {
         return Err("config directory is unavailable".to_string());
     };
-    Ok(root.join("eov").join("plugins").join("gamepad").join("window"))
+    Ok(root
+        .join("eov")
+        .join("plugins")
+        .join("gamepad")
+        .join("window"))
 }
 
 fn window_heartbeat_path() -> Result<PathBuf, String> {
@@ -932,7 +1049,8 @@ fn ensure_window_watcher_started() {
                 let mut last_close_token = initial_close_token;
                 loop {
                     let _ = fs::write(&heartbeat_path, format!("{}", current_unix_millis()));
-                    let current_close_token = fs::read_to_string(&close_request_path).unwrap_or_default();
+                    let current_close_token =
+                        fs::read_to_string(&close_request_path).unwrap_or_default();
                     if !current_close_token.is_empty() && current_close_token != last_close_token {
                         let _ = slint::quit_event_loop();
                         break;

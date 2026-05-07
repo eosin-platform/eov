@@ -142,10 +142,7 @@ extern "C" fn apply_cpu_filter_ffi(
     false
 }
 
-extern "C" fn apply_gpu_filter_ffi(
-    _filter_id: RString,
-    _ctx: *const GpuFilterContextFFI,
-) -> bool {
+extern "C" fn apply_gpu_filter_ffi(_filter_id: RString, _ctx: *const GpuFilterContextFFI) -> bool {
     false
 }
 

@@ -21,8 +21,14 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
         state::property("device-options", json!(state::device_labels())),
         state::property("selected-device-index", json!(selected_device_index)),
         state::property("profile-options", json!(profile_names)),
-        state::property("selected-profile-index", json!(state::profile_selected_index())),
-        state::property("profile-draft-name", json!(state::current_profile_draft_name())),
+        state::property(
+            "selected-profile-index",
+            json!(state::profile_selected_index()),
+        ),
+        state::property(
+            "profile-draft-name",
+            json!(state::current_profile_draft_name()),
+        ),
         state::property(
             "left-dead-zone",
             json!(state::numeric_value_text("left-dead-zone")),
@@ -44,7 +50,10 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             json!(state::numeric_value_text("zoom-sensitivity")),
         ),
         state::property("axis-action-options", json!(state::axis_action_options())),
-        state::property("button-action-options", json!(state::button_action_options())),
+        state::property(
+            "button-action-options",
+            json!(state::button_action_options()),
+        ),
         state::property("mapping-rows", state::mapping_rows_json()),
     ])
 }

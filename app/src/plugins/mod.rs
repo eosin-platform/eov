@@ -46,7 +46,9 @@ thread_local! {
 fn remove_plugin_window(plugin_id: &str, hide_window: bool) -> Option<PluginWindowEntry> {
     PLUGIN_WINDOWS.with(|windows| {
         let mut windows = windows.borrow_mut();
-        let index = windows.iter().position(|entry| entry.plugin_id == plugin_id)?;
+        let index = windows
+            .iter()
+            .position(|entry| entry.plugin_id == plugin_id)?;
         let entry = windows.remove(index);
         entry.refresh_timer.stop();
         if hide_window {
@@ -103,13 +105,14 @@ fn apply_plugin_window_properties(
                 property_name
             )
         })?;
-        let target_json = serde_json::from_str::<serde_json::Value>(json_value.as_str()).map_err(|err| {
-            anyhow::anyhow!(
-                "failed to parse plugin window property JSON '{}:{}': {err}",
-                plugin_id,
-                property_name
-            )
-        })?;
+        let target_json =
+            serde_json::from_str::<serde_json::Value>(json_value.as_str()).map_err(|err| {
+                anyhow::anyhow!(
+                    "failed to parse plugin window property JSON '{}:{}': {err}",
+                    plugin_id,
+                    property_name
+                )
+            })?;
         let current_matches = instance
             .get_property(&property_name)
             .ok()
@@ -119,13 +122,15 @@ fn apply_plugin_window_properties(
         if current_matches {
             continue;
         }
-        instance.set_property(&property_name, value).map_err(|err| {
-            anyhow::anyhow!(
-                "failed to set plugin window property '{}:{}': {err}",
-                plugin_id,
-                property_name
-            )
-        })?;
+        instance
+            .set_property(&property_name, value)
+            .map_err(|err| {
+                anyhow::anyhow!(
+                    "failed to set plugin window property '{}:{}': {err}",
+                    plugin_id,
+                    property_name
+                )
+            })?;
     }
 
     Ok(())
@@ -190,7 +195,8 @@ fn open_plugin_window(
     instance.window().on_close_requested(move || {
         let _ = remove_plugin_window(&plugin_id, false);
         if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
-            let _ = crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
+            let _ =
+                crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
         }
         CloseRequestResponse::HideWindow
     });
@@ -259,7 +265,10 @@ fn open_plugin_window(
     Ok(())
 }
 
-pub fn toggle_rust_plugin_window(plugin_root: &Path, toolbar_button_id: &str) -> anyhow::Result<bool> {
+pub fn toggle_rust_plugin_window(
+    plugin_root: &Path,
+    toolbar_button_id: &str,
+) -> anyhow::Result<bool> {
     let manifest = plugin_api::PluginManifest::from_file(
         &plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME),
     )

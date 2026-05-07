@@ -671,9 +671,7 @@ fn setup_callbacks(
                     match crate::plugins::toggle_rust_plugin_window(&plugin_root, &action_id) {
                         Ok(opened) => {
                             let _ = crate::plugin_host::set_local_toolbar_button_active(
-                                &plugin_id,
-                                &action_id,
-                                opened,
+                                &plugin_id, &action_id, opened,
                             );
                         }
                         Err(err) => {
