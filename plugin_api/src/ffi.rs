@@ -235,6 +235,9 @@ pub struct HostApiVTable {
     ) -> RResult<(), RString>,
     pub cycle_focused_pane: extern "C" fn(context: u64, offset: i32) -> RResult<(), RString>,
     pub cycle_active_tab: extern "C" fn(context: u64, offset: i32) -> RResult<(), RString>,
+    pub toggle_series_bar: extern "C" fn(context: u64) -> RResult<(), RString>,
+    pub cycle_series_selection: extern "C" fn(context: u64, offset: i32) -> RResult<(), RString>,
+    pub activate_selected_series_entry: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub set_active_tool: extern "C" fn(context: u64, tool: HostToolModeFFI) -> RResult<(), RString>,
     pub request_render: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub set_toolbar_button_active:

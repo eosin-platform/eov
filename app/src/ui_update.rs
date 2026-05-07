@@ -431,9 +431,8 @@ pub fn update_tabs(
     ui.set_show_plugin_sidebar(state.has_active_sidebar());
     ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
     let selected_series_path = state
-        .active_file_id_for_pane(state.focused_pane)
-        .and_then(|file_id| state.get_file(file_id))
-        .map(|file| SharedString::from(file.path.display().to_string()))
+        .selected_series_path()
+        .map(|path| SharedString::from(path.display().to_string()))
         .unwrap_or_default();
     ui.set_series_selected_path(selected_series_path);
     if let Some(series) = state.opened_series.as_ref() {

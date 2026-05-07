@@ -115,6 +115,7 @@ jobs:
             libpng-dev \
             libsqlite3-dev \
             libtiff-dev \
+            libudev-dev \
             libvulkan-dev \
             libfontconfig-dev \
             libfreetype6-dev \

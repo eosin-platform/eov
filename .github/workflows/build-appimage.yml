@@ -70,6 +70,7 @@ jobs:
             libpng-dev \
             libsqlite3-dev \
             libtiff-dev \
+            libudev-dev \
             libxml2-dev \
             meson \
             ninja-build \

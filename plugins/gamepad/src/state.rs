@@ -27,6 +27,10 @@ const BUTTON_ACTION_KEYS: &[&str] = &[
     "next_pane",
     "previous_tab",
     "next_tab",
+    "toggle_series_bar",
+    "previous_series_item",
+    "next_series_item",
+    "activate_series_item",
     "fit_view",
     "toggle_panel",
     "toggle_controller",
@@ -44,6 +48,10 @@ pub enum MappingAction {
     NextPane,
     PreviousTab,
     NextTab,
+    ToggleSeriesBar,
+    PreviousSeriesItem,
+    NextSeriesItem,
+    ActivateSeriesItem,
     FitView,
     TogglePanel,
     ToggleController,
@@ -62,6 +70,10 @@ impl MappingAction {
             Self::NextPane => "next_pane",
             Self::PreviousTab => "previous_tab",
             Self::NextTab => "next_tab",
+            Self::ToggleSeriesBar => "toggle_series_bar",
+            Self::PreviousSeriesItem => "previous_series_item",
+            Self::NextSeriesItem => "next_series_item",
+            Self::ActivateSeriesItem => "activate_series_item",
             Self::FitView => "fit_view",
             Self::TogglePanel => "toggle_panel",
             Self::ToggleController => "toggle_controller",
@@ -79,6 +91,10 @@ impl MappingAction {
             "next_pane" => Self::NextPane,
             "previous_tab" => Self::PreviousTab,
             "next_tab" => Self::NextTab,
+            "toggle_series_bar" => Self::ToggleSeriesBar,
+            "previous_series_item" => Self::PreviousSeriesItem,
+            "next_series_item" => Self::NextSeriesItem,
+            "activate_series_item" => Self::ActivateSeriesItem,
             "fit_view" => Self::FitView,
             "toggle_panel" => Self::TogglePanel,
             "toggle_controller" => Self::ToggleController,
@@ -696,6 +712,18 @@ fn dispatch_button_action(control_key: &str) {
         MappingAction::NextTab => {
             let _ = (host.cycle_active_tab)(host.context, 1);
         }
+        MappingAction::ToggleSeriesBar => {
+            let _ = (host.toggle_series_bar)(host.context);
+        }
+        MappingAction::PreviousSeriesItem => {
+            let _ = (host.cycle_series_selection)(host.context, -1);
+        }
+        MappingAction::NextSeriesItem => {
+            let _ = (host.cycle_series_selection)(host.context, 1);
+        }
+        MappingAction::ActivateSeriesItem => {
+            let _ = (host.activate_selected_series_entry)(host.context);
+        }
         MappingAction::FitView => {
             let _ = (host.fit_active_viewport)(host.context);
         }
@@ -926,6 +954,16 @@ fn default_mappings() -> BTreeMap<String, MappingAction> {
     mappings.insert("dpad_right".to_string(), MappingAction::NextPane);
     mappings.insert("dpad_up".to_string(), MappingAction::PreviousTab);
     mappings.insert("dpad_down".to_string(), MappingAction::NextTab);
+    mappings.insert("north".to_string(), MappingAction::ToggleSeriesBar);
+    mappings.insert(
+        "left_trigger_button".to_string(),
+        MappingAction::PreviousSeriesItem,
+    );
+    mappings.insert(
+        "right_trigger_button".to_string(),
+        MappingAction::NextSeriesItem,
+    );
+    mappings.insert("south".to_string(), MappingAction::ActivateSeriesItem);
     mappings
 }
 
@@ -1158,6 +1196,10 @@ fn action_label(key: &str) -> &'static str {
         "next_pane" => "Next Pane",
         "previous_tab" => "Previous Tab",
         "next_tab" => "Next Tab",
+        "toggle_series_bar" => "Toggle Series Bar",
+        "previous_series_item" => "Previous Series Item",
+        "next_series_item" => "Next Series Item",
+        "activate_series_item" => "Open Selected Series Item",
         "fit_view" => "Fit View",
         "toggle_panel" => "Toggle Panel",
         "toggle_controller" => "Enable / Pause",

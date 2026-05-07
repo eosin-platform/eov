@@ -10,9 +10,13 @@ use common::{
 use plugin_api::{PluginUndoRedoState, ToolbarButtonRegistration};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+
+fn normalize_series_entry_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PaneState {
@@ -619,6 +623,8 @@ pub struct AppState {
     pub bottom_panel_kind: BottomPanelKind,
     /// Currently opened folder-backed series content.
     pub opened_series: Option<OpenedSeries>,
+    /// Currently selected entry in the series bar, if any.
+    pub series_selected_path: Option<PathBuf>,
     /// Monotonic revision used to reject stale background thumbnail work.
     pub series_revision: u64,
     /// Monotonic revision for visible series entry content changes.
@@ -698,6 +704,7 @@ impl AppState {
             bottom_panel_visible: false,
             bottom_panel_kind: BottomPanelKind::None,
             opened_series: None,
+            series_selected_path: None,
             series_revision: 0,
             series_content_revision: 0,
             viewport_lock_enabled: false,
@@ -874,6 +881,71 @@ impl AppState {
             .active_tab_id_for_pane(self.focused_pane)
             .filter(|id| !self.is_home_tab(*id))
             .map(|id| self.resolve_tab_file_id(id));
+        self.sync_series_selection_to_active_file();
+    }
+
+    fn sync_series_selection_to_active_file(&mut self) {
+        let Some(active_path) = self
+            .active_file_id
+            .and_then(|file_id| self.get_file(file_id))
+            .map(|file| normalize_series_entry_path(&file.path))
+        else {
+            return;
+        };
+
+        let Some(series) = self.opened_series.as_ref() else {
+            return;
+        };
+
+        if let Some(entry) = series
+            .entries
+            .iter()
+            .find(|entry| normalize_series_entry_path(&entry.path) == active_path)
+        {
+            self.series_selected_path = Some(entry.path.clone());
+        }
+    }
+
+    fn reconcile_series_selection(&mut self) {
+        let Some(series) = self.opened_series.as_ref() else {
+            self.series_selected_path = None;
+            return;
+        };
+
+        if series.entries.is_empty() {
+            self.series_selected_path = None;
+            return;
+        }
+
+        let current_selection = self
+            .series_selected_path
+            .as_ref()
+            .map(|path| normalize_series_entry_path(path));
+        let active_file_path = self
+            .active_file_id
+            .and_then(|file_id| self.get_file(file_id))
+            .map(|file| normalize_series_entry_path(&file.path));
+
+        let next_selection = current_selection
+            .as_ref()
+            .and_then(|selected| {
+                series
+                    .entries
+                    .iter()
+                    .find(|entry| normalize_series_entry_path(&entry.path) == *selected)
+            })
+            .or_else(|| {
+                active_file_path.as_ref().and_then(|active| {
+                    series
+                        .entries
+                        .iter()
+                        .find(|entry| normalize_series_entry_path(&entry.path) == *active)
+                })
+            })
+            .or_else(|| series.entries.first())
+            .map(|entry| entry.path.clone());
+
+        self.series_selected_path = next_selection;
     }
 
     pub fn active_tab_id_for_pane(&self, pane: PaneId) -> Option<i32> {
@@ -1557,6 +1629,67 @@ impl AppState {
             .map(|series| series.current_path.as_path())
     }
 
+    pub fn selected_series_path(&self) -> Option<&Path> {
+        self.series_selected_path.as_deref()
+    }
+
+    pub fn cycle_series_selection(&mut self, offset: i32) -> Option<PathBuf> {
+        let Some(series) = self.opened_series.as_ref() else {
+            self.series_selected_path = None;
+            return None;
+        };
+        if series.entries.is_empty() {
+            self.series_selected_path = None;
+            return None;
+        }
+
+        let selected_path = self
+            .series_selected_path
+            .as_ref()
+            .map(|path| normalize_series_entry_path(path));
+        let active_file_path = self
+            .active_file_id
+            .and_then(|file_id| self.get_file(file_id))
+            .map(|file| normalize_series_entry_path(&file.path));
+
+        let current_index = selected_path
+            .as_ref()
+            .and_then(|selected| {
+                series
+                    .entries
+                    .iter()
+                    .position(|entry| normalize_series_entry_path(&entry.path) == *selected)
+            })
+            .or_else(|| {
+                active_file_path.as_ref().and_then(|active| {
+                    series
+                        .entries
+                        .iter()
+                        .position(|entry| normalize_series_entry_path(&entry.path) == *active)
+                })
+            })
+            .unwrap_or(0) as i32;
+
+        let next_index = (current_index + offset).rem_euclid(series.entries.len() as i32) as usize;
+        let next_path = series.entries[next_index].path.clone();
+        self.series_selected_path = Some(next_path.clone());
+        self.needs_render = true;
+        Some(next_path)
+    }
+
+    pub fn selected_series_entry_path(&self) -> Option<PathBuf> {
+        let selected_path = self
+            .series_selected_path
+            .as_ref()
+            .map(|path| normalize_series_entry_path(path))?;
+        let series = self.opened_series.as_ref()?;
+        series
+            .entries
+            .iter()
+            .find(|entry| normalize_series_entry_path(&entry.path) == selected_path)
+            .map(|entry| entry.path.clone())
+    }
+
     pub fn series_can_go_back(&self) -> bool {
         self.opened_series
             .as_ref()
@@ -1643,6 +1776,8 @@ impl AppState {
             }
         }
 
+        self.reconcile_series_selection();
+
         self.needs_render = true;
         self.series_revision
     }
@@ -1698,6 +1833,7 @@ impl AppState {
         }
 
         series.entries = entries;
+    self.reconcile_series_selection();
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true

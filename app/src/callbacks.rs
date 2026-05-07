@@ -428,6 +428,25 @@ fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_viewport_lock_enabled(viewport_lock_enabled);
 }
 
+pub(crate) fn toggle_series_bar_requested(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+) {
+    toggle_series_bar_visibility(ui, state);
+    let mut initialized_home = false;
+    if state.read().bottom_panel_visible {
+        initialized_home = state.read().current_series_path().is_none();
+        ensure_series_home_if_needed(ui, state);
+    }
+    if !initialized_home {
+        let state = state.read();
+        update_tabs(ui, &state);
+    }
+    request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
+}
+
 fn open_path_with_series(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -555,6 +574,32 @@ fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         }
 
         crate::file_ops::load_series_entries_async(ui.as_weak(), Arc::clone(state), home, revision);
+    }
+}
+
+pub(crate) fn activate_series_entry_path(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+) {
+    let path = std::fs::canonicalize(&path).unwrap_or(path);
+    if !path.exists() {
+        return;
+    }
+
+    if path.is_dir() {
+        let _ = navigate_series_to_folder(ui, state, path, state::SeriesNavigationMode::Push);
+    } else if !focus_existing_file(ui, state, tile_cache, render_timer, &path) {
+        open_path_with_series(
+            ui,
+            state,
+            tile_cache,
+            render_timer,
+            path,
+            crate::file_ops::OpenFileMode::ReuseExistingTab,
+        );
     }
 }
 
@@ -1790,17 +1835,7 @@ pub fn setup_callbacks(
 
         ui.on_toggle_series_bar_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
-                toggle_series_bar_visibility(&ui, &state_handle);
-                let mut initialized_home = false;
-                if state_handle.read().bottom_panel_visible {
-                    initialized_home = state_handle.read().current_series_path().is_none();
-                    ensure_series_home_if_needed(&ui, &state_handle);
-                }
-                if !initialized_home {
-                    let state = state_handle.read();
-                    update_tabs(&ui, &state);
-                }
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                toggle_series_bar_requested(&ui, &state_handle, &tile_cache, &render_timer);
             }
         });
     }
@@ -2499,32 +2534,13 @@ pub fn setup_callbacks(
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
-            let path = PathBuf::from(path_str.as_str());
-            if path.exists() {
-                if path.is_dir() {
-                    let _ = navigate_series_to_folder(
-                        &ui,
-                        &state_handle,
-                        path,
-                        state::SeriesNavigationMode::Push,
-                    );
-                } else if !focus_existing_file(
-                    &ui,
-                    &state_handle,
-                    &tile_cache,
-                    &render_timer,
-                    &path,
-                ) {
-                    open_path_with_series(
-                        &ui,
-                        &state_handle,
-                        &tile_cache,
-                        &render_timer,
-                        path,
-                        crate::file_ops::OpenFileMode::ReuseExistingTab,
-                    );
-                }
-            }
+            activate_series_entry_path(
+                &ui,
+                &state_handle,
+                &tile_cache,
+                &render_timer,
+                PathBuf::from(path_str.as_str()),
+            );
         });
     }
 
