@@ -205,160 +205,151 @@ export component GamepadSidebar inherits Rectangle {
                 width: parent.width - 28px;
                 spacing: 12px;
 
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 136px;
+                        border-radius: 16px;
+                        background: @linear-gradient(135deg, #1a66c2 0%, #0f3e70 55%, #0b223d 100%);
+                        border-width: 1px;
+                        border-color: #ffffff18;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            padding-top: 14px;
+                            padding-right: 14px;
+                            padding-bottom: 14px;
+                            padding-left: 14px;
+                            spacing: 8px;
+
+                            Text {
+                                text: "Gamepad Control";
+                                color: white;
+                                font-size: 18px;
+                                font-weight: 800;
+                            }
+
+                            Text {
+                                text: "Map controller input to viewport navigation and workspace actions.";
+                                color: #d8e6ff;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+
+                                ToggleChip {
+                                    checked: root.controller-enabled;
+                                    toggled(value) => { root.enabled-changed(value); }
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.status-text;
+                                    color: #eff6ff;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 136px;
+                        border-radius: 12px;
+                        background: #0f1726;
+                        border-width: 1px;
+                        border-color: #ffffff10;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            padding-top: 12px;
+                            padding-right: 12px;
+                            padding-bottom: 12px;
+                            padding-left: 12px;
+                            spacing: 8px;
+
+                            Text {
+                                text: "Device";
+                                color: #f5f7fb;
+                                font-size: 14px;
+                                font-weight: 700;
+                            }
+
+                            Text {
+                                text: "Choose the active controller.";
+                                color: #97a3ba;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+
+                            if root.device-options.length > 0: ComboBox {
+                                horizontal-stretch: 1;
+                                height: 30px;
+                                model: root.device-options;
+                                current-index: root.selected-device-index;
+                                selected(value) => { root.device-selected(value); }
+                            }
+
+                            if root.device-options.length == 0: Rectangle {
+                                horizontal-stretch: 1;
+                                height: 36px;
+                                border-radius: 8px;
+                                background: #0a101b;
+                                border-width: 1px;
+                                border-color: #1f3149;
+
+                                Text {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    text: "No controllers detected";
+                                    color: #9eb0ca;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Rectangle {
-                    width: parent.width;
-                    height: 118px;
-                    border-radius: 16px;
-                    background: @linear-gradient(135deg, #1a66c2 0%, #0f3e70 55%, #0b223d 100%);
+                    horizontal-stretch: 1;
+                    height: 186px;
+                    border-radius: 12px;
+                    background: #0f1726;
                     border-width: 1px;
-                    border-color: #ffffff18;
+                    border-color: #ffffff10;
 
                     VerticalLayout {
-                        width: parent.width;
-                        padding-top: 14px;
-                        padding-right: 14px;
-                        padding-bottom: 14px;
-                        padding-left: 14px;
+                        horizontal-stretch: 1;
+                        padding-top: 12px;
+                        padding-right: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 12px;
                         spacing: 8px;
 
                         Text {
-                            text: "Gamepad Control";
-                            color: white;
-                            font-size: 18px;
-                            font-weight: 800;
+                            text: "Profiles";
+                            color: #f5f7fb;
+                            font-size: 14px;
+                            font-weight: 700;
                         }
 
                         Text {
-                            text: "Map controller input to viewport navigation and workspace actions.";
-                            color: #d8e6ff;
+                            text: "Save named mapping profiles under your local EOV config directory.";
+                            color: #97a3ba;
                             font-size: 11px;
                             wrap: word-wrap;
                         }
 
-                        HorizontalLayout {
-                            spacing: 10px;
-
-                            ToggleChip {
-                                checked: root.controller-enabled;
-                                toggled(value) => { root.enabled-changed(value); }
-                            }
-
-                            Text {
-                                horizontal-stretch: 1;
-                                text: root.status-text;
-                                color: #eff6ff;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                            }
-                        }
-                    }
-                }
-
-                SectionCard {
-                    width: parent.width;
-                    height: 126px;
-                    title: "Device";
-                    subtitle: "Choose the active controller. The plugin keeps polling in-process via gilrs.";
-
-                    VerticalLayout {
-                        y: 62px;
-                        x: 12px;
-                        width: parent.width - 24px;
-                        spacing: 8px;
-
-                        if root.device-options.length > 0: ComboBox {
-                            width: parent.width;
-                            height: 30px;
-                            model: root.device-options;
-                            current-index: root.selected-device-index;
-                            selected(value) => { root.device-selected(value); }
-                        }
-
-                        if root.device-options.length == 0: Rectangle {
-                            width: parent.width;
-                            height: 36px;
-                            border-radius: 8px;
-                            background: #0a101b;
-                            border-width: 1px;
-                            border-color: #1f3149;
-
-                            Text {
-                                width: parent.width;
-                                height: parent.height;
-                                text: "No controllers detected";
-                                color: #9eb0ca;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                            }
-                        }
-                    }
-                }
-
-                SectionCard {
-                    width: parent.width;
-                    height: 282px;
-                    title: "Tuning";
-                    subtitle: "Dead zones filter stick drift. Sensitivity scales pan and zoom response.";
-
-                    VerticalLayout {
-                        y: 62px;
-                        x: 12px;
-                        width: parent.width - 24px;
-                        spacing: 8px;
-
-                        left-dead-zone-input := InputField {
-                            width: parent.width;
-                            label: "left-dead-zone";
-                            value: root.left-dead-zone;
-                            changed(label, value) => { root.numeric-field-changed(label, value); }
-                        }
-
-                        right-dead-zone-input := InputField {
-                            width: parent.width;
-                            label: "right-dead-zone";
-                            value: root.right-dead-zone;
-                            changed(label, value) => { root.numeric-field-changed(label, value); }
-                        }
-
-                        trigger-dead-zone-input := InputField {
-                            width: parent.width;
-                            label: "trigger-dead-zone";
-                            value: root.trigger-dead-zone;
-                            changed(label, value) => { root.numeric-field-changed(label, value); }
-                        }
-
-                        pan-sensitivity-input := InputField {
-                            width: parent.width;
-                            label: "pan-sensitivity";
-                            value: root.pan-sensitivity;
-                            changed(label, value) => { root.numeric-field-changed(label, value); }
-                        }
-
-                        zoom-sensitivity-input := InputField {
-                            width: parent.width;
-                            label: "zoom-sensitivity";
-                            value: root.zoom-sensitivity;
-                            changed(label, value) => { root.numeric-field-changed(label, value); }
-                        }
-                    }
-                }
-
-                SectionCard {
-                    width: parent.width;
-                    height: 186px;
-                    title: "Profiles";
-                    subtitle: "Save named mapping profiles under your local EOV config directory.";
-
-                    VerticalLayout {
-                        y: 62px;
-                        x: 12px;
-                        width: parent.width - 24px;
-                        spacing: 8px;
-
                         Rectangle {
-                            width: parent.width;
+                            horizontal-stretch: 1;
                             height: 30px;
                             border-radius: 8px;
                             background: #0a101b;
@@ -380,7 +371,7 @@ export component GamepadSidebar inherits Rectangle {
                         }
 
                         if root.profile-options.length > 0: ComboBox {
-                            width: parent.width;
+                            horizontal-stretch: 1;
                             height: 30px;
                             model: root.profile-options;
                             current-index: root.selected-profile-index;
@@ -407,20 +398,105 @@ export component GamepadSidebar inherits Rectangle {
                     }
                 }
 
-                SectionCard {
-                    width: parent.width;
-                    height: 82px + root.mapping-rows.length * 56px;
-                    title: "Mappings";
-                    subtitle: "Defaults: left stick pans, right stick vertical zooms, D-pad cycles panes and tabs.";
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 282px;
+                    border-radius: 12px;
+                    background: #0f1726;
+                    border-width: 1px;
+                    border-color: #ffffff10;
 
                     VerticalLayout {
-                        y: 62px;
-                        x: 12px;
-                        width: parent.width - 24px;
+                        horizontal-stretch: 1;
+                        padding-top: 12px;
+                        padding-right: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 12px;
                         spacing: 8px;
 
+                        Text {
+                            text: "Tuning";
+                            color: #f5f7fb;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: "Dead zones filter stick drift. Sensitivity scales pan and zoom response.";
+                            color: #97a3ba;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+
+                        left-dead-zone-input := InputField {
+                            horizontal-stretch: 1;
+                            label: "left-dead-zone";
+                            value: root.left-dead-zone;
+                            changed(label, value) => { root.numeric-field-changed(label, value); }
+                        }
+
+                        right-dead-zone-input := InputField {
+                            horizontal-stretch: 1;
+                            label: "right-dead-zone";
+                            value: root.right-dead-zone;
+                            changed(label, value) => { root.numeric-field-changed(label, value); }
+                        }
+
+                        trigger-dead-zone-input := InputField {
+                            horizontal-stretch: 1;
+                            label: "trigger-dead-zone";
+                            value: root.trigger-dead-zone;
+                            changed(label, value) => { root.numeric-field-changed(label, value); }
+                        }
+
+                        pan-sensitivity-input := InputField {
+                            horizontal-stretch: 1;
+                            label: "pan-sensitivity";
+                            value: root.pan-sensitivity;
+                            changed(label, value) => { root.numeric-field-changed(label, value); }
+                        }
+
+                        zoom-sensitivity-input := InputField {
+                            horizontal-stretch: 1;
+                            label: "zoom-sensitivity";
+                            value: root.zoom-sensitivity;
+                            changed(label, value) => { root.numeric-field-changed(label, value); }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 108px + root.mapping-rows.length * 56px;
+                    border-radius: 12px;
+                    background: #0f1726;
+                    border-width: 1px;
+                    border-color: #ffffff10;
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        padding-top: 12px;
+                        padding-right: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 12px;
+                        spacing: 8px;
+
+                        Text {
+                            text: "Mappings";
+                            color: #f5f7fb;
+                            font-size: 14px;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: "Defaults: left stick pans, right stick vertical zooms, D-pad cycles panes and tabs.";
+                            color: #97a3ba;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+
                         for row in root.mapping-rows: Rectangle {
-                            width: parent.width;
+                            horizontal-stretch: 1;
                             height: 48px;
                             border-radius: 10px;
                             background: #0a101b;

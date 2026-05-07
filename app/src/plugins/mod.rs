@@ -22,9 +22,10 @@ use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
 use host_context::WindowOpenRequest;
 use plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
-use slint::{ComponentHandle, Timer, TimerMode};
+use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
@@ -32,6 +33,7 @@ use tracing::{error, info, warn};
 
 struct PluginWindowEntry {
     plugin_id: String,
+    toolbar_button_id: Option<String>,
     instance: slint_interpreter::ComponentInstance,
     refresh_timer: Rc<Timer>,
 }
@@ -41,17 +43,27 @@ thread_local! {
     static PLUGIN_WINDOWS: RefCell<Vec<PluginWindowEntry>> = const { RefCell::new(Vec::new()) };
 }
 
-fn close_plugin_window(plugin_id: &str) -> bool {
+fn remove_plugin_window(plugin_id: &str, hide_window: bool) -> Option<PluginWindowEntry> {
     PLUGIN_WINDOWS.with(|windows| {
         let mut windows = windows.borrow_mut();
-        let Some(index) = windows.iter().position(|entry| entry.plugin_id == plugin_id) else {
-            return false;
-        };
+        let index = windows.iter().position(|entry| entry.plugin_id == plugin_id)?;
         let entry = windows.remove(index);
         entry.refresh_timer.stop();
-        let _ = entry.instance.hide();
-        true
+        if hide_window {
+            let _ = entry.instance.hide();
+        }
+        Some(entry)
     })
+}
+
+fn close_plugin_window(plugin_id: &str) -> bool {
+    let Some(entry) = remove_plugin_window(plugin_id, true) else {
+        return false;
+    };
+    if let Some(button_id) = entry.toolbar_button_id.as_deref() {
+        let _ = crate::plugin_host::set_local_toolbar_button_active(plugin_id, button_id, false);
+    }
+    true
 }
 
 fn plugin_window_is_open(plugin_id: &str) -> bool {
@@ -68,6 +80,7 @@ fn apply_plugin_window_properties(
     vtable: PluginVTable,
     instance: &slint_interpreter::ComponentInstance,
 ) -> anyhow::Result<()> {
+    let mut applied_values = BTreeMap::new();
     let property_types: Vec<_> = instance
         .definition()
         .properties_and_callbacks()
@@ -90,6 +103,22 @@ fn apply_plugin_window_properties(
                 property_name
             )
         })?;
+        let target_json = serde_json::from_str::<serde_json::Value>(json_value.as_str()).map_err(|err| {
+            anyhow::anyhow!(
+                "failed to parse plugin window property JSON '{}:{}': {err}",
+                plugin_id,
+                property_name
+            )
+        })?;
+        let current_matches = instance
+            .get_property(&property_name)
+            .ok()
+            .and_then(|current| value_to_json(&current).ok())
+            .is_some_and(|current_json| current_json == target_json);
+        applied_values.insert(property_name.clone(), target_json);
+        if current_matches {
+            continue;
+        }
         instance.set_property(&property_name, value).map_err(|err| {
             anyhow::anyhow!(
                 "failed to set plugin window property '{}:{}': {err}",
@@ -103,7 +132,11 @@ fn apply_plugin_window_properties(
 }
 
 /// Open a plugin window using the Slint runtime interpreter.
-fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow::Result<()> {
+fn open_plugin_window(
+    req: &WindowOpenRequest,
+    vtable: &PluginVTable,
+    toolbar_button_id: Option<&str>,
+) -> anyhow::Result<()> {
     info!(
         "Opening plugin window for '{}': {} (component: {})",
         req.plugin_id,
@@ -150,6 +183,17 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
     let instance = definition
         .create()
         .map_err(|e| anyhow::anyhow!("Failed to create plugin component: {e}"))?;
+
+    let plugin_id = req.plugin_id.clone();
+    let toolbar_button_id_owned = toolbar_button_id.map(ToOwned::to_owned);
+    let toolbar_button_id_for_close = toolbar_button_id_owned.clone();
+    instance.window().on_close_requested(move || {
+        let _ = remove_plugin_window(&plugin_id, false);
+        if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
+            let _ = crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
+        }
+        CloseRequestResponse::HideWindow
+    });
 
     apply_plugin_window_properties(&req.plugin_id, *vtable, &instance)?;
 
@@ -205,6 +249,7 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
     PLUGIN_WINDOWS.with(|windows| {
         windows.borrow_mut().push(PluginWindowEntry {
             plugin_id: req.plugin_id.clone(),
+            toolbar_button_id: toolbar_button_id_owned,
             instance,
             refresh_timer,
         });
@@ -214,7 +259,7 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
     Ok(())
 }
 
-pub fn toggle_rust_plugin_window(plugin_root: &Path) -> anyhow::Result<bool> {
+pub fn toggle_rust_plugin_window(plugin_root: &Path, toolbar_button_id: &str) -> anyhow::Result<bool> {
     let manifest = plugin_api::PluginManifest::from_file(
         &plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME),
     )
@@ -256,7 +301,7 @@ pub fn toggle_rust_plugin_window(plugin_root: &Path) -> anyhow::Result<bool> {
             .ok_or_else(|| anyhow::anyhow!("Plugin '{}' has no entry_component", manifest.id))?,
     };
 
-    open_plugin_window(&req, &vtable)?;
+    open_plugin_window(&req, &vtable, Some(toolbar_button_id))?;
     Ok(true)
 }
 
@@ -361,7 +406,7 @@ pub fn run_plugin_window_standalone(plugin_root: &Path) -> anyhow::Result<()> {
     };
 
     // Open the window directly (no deferral needed — we own the event loop).
-    open_plugin_window(&req, &vtable)?;
+    open_plugin_window(&req, &vtable, None)?;
 
     // Run until the window is closed.
     slint::run_event_loop()?;

@@ -668,7 +668,7 @@ fn setup_callbacks(
                         "toolbar deferred rust window plugin={} action={}",
                         plugin_id, action_id
                     ));
-                    match crate::plugins::toggle_rust_plugin_window(&plugin_root) {
+                    match crate::plugins::toggle_rust_plugin_window(&plugin_root, &action_id) {
                         Ok(opened) => {
                             let _ = crate::plugin_host::set_local_toolbar_button_active(
                                 &plugin_id,
