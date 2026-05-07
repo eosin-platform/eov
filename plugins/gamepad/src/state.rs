@@ -522,7 +522,7 @@ pub fn set_mapping_by_label(control_key: &str, selected_label: &str, axis: bool)
     let Some(action_key) = options
         .iter()
         .copied()
-        .find(|candidate| action_label(*candidate) == selected_label)
+        .find(|candidate| action_label(candidate) == selected_label)
     else {
         return;
     };
