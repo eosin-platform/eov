@@ -233,6 +233,8 @@ pub struct HostApiVTable {
         width: f64,
         height: f64,
     ) -> RResult<(), RString>,
+    pub cycle_focused_pane: extern "C" fn(context: u64, offset: i32) -> RResult<(), RString>,
+    pub cycle_active_tab: extern "C" fn(context: u64, offset: i32) -> RResult<(), RString>,
     pub set_active_tool: extern "C" fn(context: u64, tool: HostToolModeFFI) -> RResult<(), RString>,
     pub request_render: extern "C" fn(context: u64) -> RResult<(), RString>,
     pub set_toolbar_button_active:

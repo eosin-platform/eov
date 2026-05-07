@@ -85,7 +85,7 @@ echo "Building eov with annotation plugin..."
 
 cargo build -p app
 
-PLUGINS=(annotations eovae)
+PLUGINS=(annotations eovae gamepad)
 
 for plugin_name in "${PLUGINS[@]}"; do
     plugin_src="$PLUGINS_DIR/$plugin_name"

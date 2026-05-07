@@ -917,6 +917,17 @@ impl AppState {
         }
     }
 
+    pub fn cycle_focused_pane(&mut self, offset: i32) {
+        let pane_count = self.panes.len();
+        if pane_count <= 1 || offset == 0 {
+            return;
+        }
+
+        let current = self.focused_pane.0 as i32;
+        let next = (current + offset).rem_euclid(pane_count as i32) as usize;
+        self.set_focused_pane(PaneId(next));
+    }
+
     fn ensure_file_pane_state(&mut self, id: i32, pane: PaneId, source_pane: PaneId) {
         let file_id = self.resolve_tab_file_id(id);
         if let Some(file) = self.get_file_mut(file_id) {
@@ -1136,6 +1147,25 @@ impl AppState {
         self.select_tab_in_pane(pane, id);
         self.set_focused_pane(pane);
         self.needs_render = true;
+    }
+
+    pub fn cycle_tab_in_focused_pane(&mut self, offset: i32) {
+        if offset == 0 {
+            return;
+        }
+
+        let pane = self.focused_pane;
+        let tabs = self.tabs_for_pane(pane).to_vec();
+        if tabs.is_empty() {
+            return;
+        }
+
+        let current_index = self
+            .active_tab_id_for_pane(pane)
+            .and_then(|active_id| tabs.iter().position(|tab_id| *tab_id == active_id))
+            .unwrap_or(0) as i32;
+        let next_index = (current_index + offset).rem_euclid(tabs.len() as i32) as usize;
+        self.activate_tab_in_pane(pane, tabs[next_index]);
     }
 
     /// Create a new home tab and return its ID.

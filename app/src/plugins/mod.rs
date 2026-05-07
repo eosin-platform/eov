@@ -21,15 +21,58 @@ pub use manager::{ActionOutcome, PluginManager};
 use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
 use host_context::WindowOpenRequest;
-use plugin_api::ffi::{self, PluginVTable};
-use slint::ComponentHandle;
+use plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
+use slint::{ComponentHandle, Timer, TimerMode};
+use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 // Thread-local storage for plugin window handles so they are not dropped.
 thread_local! {
     static PLUGIN_WINDOWS: RefCell<Vec<slint_interpreter::ComponentInstance>> = const { RefCell::new(Vec::new()) };
+    static PLUGIN_WINDOW_TIMERS: RefCell<Vec<Rc<Timer>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn apply_plugin_window_properties(
+    plugin_id: &str,
+    vtable: PluginVTable,
+    instance: &slint_interpreter::ComponentInstance,
+) -> anyhow::Result<()> {
+    let property_types: Vec<_> = instance
+        .definition()
+        .properties_and_callbacks()
+        .filter_map(|(name, (ty, _visibility))| ty.is_property_type().then_some((name, ty)))
+        .collect();
+
+    for UiPropertyFFI { name, json_value } in (vtable.get_sidebar_properties)().into_iter() {
+        let property_name = name.to_string();
+        let Some((_, property_type)) = property_types
+            .iter()
+            .find(|(candidate, _)| candidate == &property_name)
+        else {
+            continue;
+        };
+
+        let value = value_from_json_str(property_type, json_value.as_str()).map_err(|err| {
+            anyhow::anyhow!(
+                "failed to decode plugin window property '{}:{}' from JSON: {err}",
+                plugin_id,
+                property_name
+            )
+        })?;
+        instance.set_property(&property_name, value).map_err(|err| {
+            anyhow::anyhow!(
+                "failed to set plugin window property '{}:{}': {err}",
+                plugin_id,
+                property_name
+            )
+        })?;
+    }
+
+    Ok(())
 }
 
 /// Open a plugin window using the Slint runtime interpreter.
@@ -81,14 +124,29 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
         .create()
         .map_err(|e| anyhow::anyhow!("Failed to create plugin component: {e}"))?;
 
+    apply_plugin_window_properties(&req.plugin_id, *vtable, &instance)?;
+
     // Wire all user-defined callbacks in the .slint to call through the
     // plugin's on_ui_callback vtable entry.
     let on_ui_cb = vtable.on_ui_callback;
+    let property_vtable = *vtable;
     for name in definition.callbacks() {
         let cb_name = name.clone();
+        let instance_weak = instance.as_weak();
+        let plugin_id = req.plugin_id.clone();
         if instance
-            .set_callback(&name, move |_args| {
-                (on_ui_cb)(RString::from(cb_name.as_str()), RString::from("[]"));
+            .set_callback(&name, move |args| {
+                let args_json = serde_json::Value::Array(
+                    args.iter()
+                        .map(value_to_json)
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap_or_default(),
+                )
+                .to_string();
+                (on_ui_cb)(RString::from(cb_name.as_str()), RString::from(args_json));
+                if let Some(instance) = instance_weak.upgrade() {
+                    let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance);
+                }
                 slint_interpreter::Value::Void
             })
             .is_err()
@@ -104,8 +162,24 @@ fn open_plugin_window(req: &WindowOpenRequest, vtable: &PluginVTable) -> anyhow:
         .show()
         .map_err(|e| anyhow::anyhow!("Failed to show plugin window: {e}"))?;
 
+    let refresh_timer = Rc::new(Timer::default());
+    let refresh_timer_for_callback = Rc::clone(&refresh_timer);
+    let instance_weak = instance.as_weak();
+    let plugin_id = req.plugin_id.clone();
+    let property_vtable = *vtable;
+    refresh_timer.start(TimerMode::Repeated, Duration::from_millis(200), move || {
+        let Some(instance) = instance_weak.upgrade() else {
+            refresh_timer_for_callback.stop();
+            return;
+        };
+        let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance);
+    });
+
     PLUGIN_WINDOWS.with(|windows| {
         windows.borrow_mut().push(instance);
+    });
+    PLUGIN_WINDOW_TIMERS.with(|timers| {
+        timers.borrow_mut().push(refresh_timer);
     });
 
     info!("Plugin window opened for '{}'", req.plugin_id);
@@ -324,6 +398,29 @@ mod tests {
             );
 
             let definition = result.component("EovaeSidebar").unwrap();
+            let _instance = definition.create().unwrap();
+        });
+    }
+
+    #[test]
+    fn gamepad_sidebar_runtime_compiles_and_creates() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../plugins/gamepad/ui/gamepad-sidebar.slint");
+            let source = std::fs::read_to_string(&ui_path).unwrap();
+
+            let compiler = slint_interpreter::Compiler::default();
+            let result = spin_on_for_test(compiler.build_from_source(source, ui_path.clone()));
+
+            let diagnostics = result.diagnostics().collect::<Vec<_>>();
+            assert!(
+                diagnostics.iter().all(|diagnostic| {
+                    diagnostic.level() != slint_interpreter::DiagnosticLevel::Error
+                }),
+                "runtime compile diagnostics: {diagnostics:?}"
+            );
+
+            let definition = result.component("GamepadSidebar").unwrap();
             let _instance = definition.create().unwrap();
         });
     }

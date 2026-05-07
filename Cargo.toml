@@ -7,6 +7,7 @@ members = [
     "example_plugins/grayscale_rust",
     "plugins/annotations",
     "plugins/eovae",
+    "plugins/gamepad",
 ]
 exclude = ["plugins/annotations"]
 resolver = "3"

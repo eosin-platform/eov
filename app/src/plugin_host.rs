@@ -447,6 +447,8 @@ pub(crate) fn build_host_api(
         set_active_viewport: ffi_set_active_viewport,
         fit_active_viewport: ffi_fit_active_viewport,
         frame_active_rect: ffi_frame_active_rect,
+        cycle_focused_pane: ffi_cycle_focused_pane,
+        cycle_active_tab: ffi_cycle_active_tab,
         set_active_tool: ffi_set_active_tool,
         request_render: ffi_request_render,
         set_toolbar_button_active: ffi_set_toolbar_button_active,
@@ -1234,6 +1236,58 @@ pub(crate) fn frame_active_rect(x: f64, y: f64, width: f64, height: f64) -> Resu
             }
             state.mirror_locked_viewports_from_active();
         }
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
+pub(crate) fn cycle_focused_pane(offset: i32) -> Result<(), String> {
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        {
+            let mut state = runtime.state.write();
+            state.cycle_focused_pane(offset);
+        }
+        {
+            let state = runtime.state.read();
+            ui.set_focused_pane(state.focused_pane.as_index());
+            crate::update_tabs(&ui, &state);
+        }
+        let _ = refresh_active_sidebar();
+        request_render_loop(
+            &runtime.render_timer,
+            &runtime.ui_weak,
+            &runtime.state,
+            &runtime.tile_cache,
+        );
+        Ok(())
+    })
+}
+
+pub(crate) fn cycle_active_tab(offset: i32) -> Result<(), String> {
+    run_on_ui_thread(move |runtime| {
+        let ui = runtime
+            .ui_weak
+            .upgrade()
+            .ok_or_else(|| "application window is no longer available".to_string())?;
+        {
+            let mut state = runtime.state.write();
+            state.cycle_tab_in_focused_pane(offset);
+        }
+        {
+            let state = runtime.state.read();
+            ui.set_focused_pane(state.focused_pane.as_index());
+            crate::update_tabs(&ui, &state);
+        }
+        let _ = refresh_active_sidebar();
         request_render_loop(
             &runtime.render_timer,
             &runtime.ui_weak,
@@ -3527,6 +3581,26 @@ extern "C" fn ffi_frame_active_rect(
         return RResult::RErr(RString::from("invalid host API context"));
     }
     match frame_active_rect(x, y, width, height) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_cycle_focused_pane(context: u64, offset: i32) -> RResult<(), RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match cycle_focused_pane(offset) {
+        Ok(()) => RResult::ROk(()),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_cycle_active_tab(context: u64, offset: i32) -> RResult<(), RString> {
+    if context_state(context).is_err() {
+        return RResult::RErr(RString::from("invalid host API context"));
+    }
+    match cycle_active_tab(offset) {
         Ok(()) => RResult::ROk(()),
         Err(err) => RResult::RErr(RString::from(err)),
     }
