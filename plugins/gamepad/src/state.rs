@@ -139,6 +139,7 @@ pub struct PluginState {
     pub controller_enabled: bool,
     pub devices: Vec<DeviceSummary>,
     pub selected_device_key: Option<String>,
+    pub preferred_device_key: Option<String>,
     pub left_dead_zone: f32,
     pub right_dead_zone: f32,
     pub trigger_dead_zone: f32,
@@ -157,6 +158,7 @@ impl Default for PluginState {
             controller_enabled: true,
             devices: Vec::new(),
             selected_device_key: None,
+            preferred_device_key: None,
             left_dead_zone: 0.16,
             right_dead_zone: 0.12,
             trigger_dead_zone: 0.08,
@@ -386,6 +388,7 @@ pub fn set_selected_device_by_label(label: &str) {
         .map(|device| (device.key.clone(), device.label.clone()))
     {
         state.selected_device_key = Some(device_key);
+        state.preferred_device_key = state.selected_device_key.clone();
         state.status_text = format!("Ready: {device_label}");
     }
 }
@@ -474,10 +477,22 @@ fn worker_loop() {
                 != devices.iter().map(|device| device.key.as_str()).collect::<Vec<_>>()
             {
                 state.devices = devices.clone();
-                if state.selected_device_key.as_ref().is_none_or(|selected| {
+                let preferred_available = state.preferred_device_key.as_ref().and_then(|preferred| {
+                    state
+                        .devices
+                        .iter()
+                        .find(|device| &device.key == preferred)
+                        .map(|device| device.key.clone())
+                });
+                if let Some(preferred_key) = preferred_available {
+                    state.selected_device_key = Some(preferred_key);
+                } else if state.selected_device_key.as_ref().is_none_or(|selected| {
                     !state.devices.iter().any(|device| &device.key == selected)
                 }) {
                     state.selected_device_key = state.devices.first().map(|device| device.key.clone());
+                }
+                if state.preferred_device_key.is_none() {
+                    state.preferred_device_key = state.selected_device_key.clone();
                 }
                 if let Some(selected) = &state.selected_device_key
                     && let Some(device) = state.devices.iter().find(|device| &device.key == selected)
@@ -498,7 +513,9 @@ fn worker_loop() {
         while let Some(event) = gilrs.next_event() {
             let target_selected = selected_device_key
                 .as_ref()
-                .is_some_and(|selected| *selected == device_key(event.id, gilrs.gamepad(event.id).name()));
+                .is_some_and(|selected| {
+                    *selected == device_key(event.id, &gilrs.gamepad(event.id))
+                });
 
             match event.event {
                 EventType::AxisChanged(axis, value, _) if target_selected => {
@@ -694,15 +711,51 @@ fn nudge_zoom(factor: f64) {
 fn collect_devices(gilrs: &Gilrs) -> Vec<DeviceSummary> {
     gilrs
         .gamepads()
+        .filter(|(_, gamepad)| is_supported_controller(gamepad))
         .map(|(id, gamepad)| DeviceSummary {
-            key: device_key(id, gamepad.name()),
+            key: device_key(id, &gamepad),
             label: format!("{} ({:?})", gamepad.name(), gamepad.power_info()),
         })
         .collect()
 }
 
-fn device_key(id: GamepadId, name: &str) -> String {
-    format!("{}::{}", usize::from(id), name)
+fn device_key(id: GamepadId, gamepad: &gilrs::Gamepad<'_>) -> String {
+    let _ = id;
+    let vendor = gamepad
+        .vendor_id()
+        .map(|value| format!("{value:04x}"))
+        .unwrap_or_else(|| "none".to_string());
+    let product = gamepad
+        .product_id()
+        .map(|value| format!("{value:04x}"))
+        .unwrap_or_else(|| "none".to_string());
+    let map_name = gamepad.map_name().unwrap_or("unmapped");
+    let os_name = gamepad.os_name();
+    let name = gamepad.name();
+    let uuid = gamepad
+        .uuid()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!(
+        "{}::{}::{}::{}::{}::{}",
+        vendor,
+        product,
+        map_name,
+        os_name,
+        name,
+        uuid,
+    )
+}
+
+fn is_supported_controller(gamepad: &gilrs::Gamepad<'_>) -> bool {
+    let has_primary_face_button = gamepad.button_code(Button::South).is_some()
+        || gamepad.button_code(Button::East).is_some()
+        || gamepad.button_code(Button::Start).is_some();
+    let has_primary_stick = gamepad.axis_code(Axis::LeftStickX).is_some()
+        && gamepad.axis_code(Axis::LeftStickY).is_some();
+    let has_known_mapping = gamepad.map_name().is_some();
+    has_primary_face_button && has_primary_stick && has_known_mapping
 }
 
 fn axis_key(axis: Axis) -> Option<&'static str> {
