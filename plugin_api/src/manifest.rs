@@ -4,17 +4,7 @@ use crate::{IconDescriptor, PluginError, PluginResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Language a plugin is written in.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum PluginLanguage {
-    #[default]
-    Rust,
-    Python,
-}
-
-/// A toolbar button declared in the manifest (used by non-Rust plugins that
-/// cannot register buttons programmatically at activation time).
+/// A toolbar button declared in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestToolbarButton {
     pub button_id: String,
@@ -43,13 +33,7 @@ pub struct PluginManifest {
     pub entry_component: Option<String>,
     /// Optional icon for the toolbar button.
     pub icon: Option<IconDescriptor>,
-    /// Language the plugin is written in (default: `rust`).
-    #[serde(default)]
-    pub language: PluginLanguage,
-    /// Entry point script for non-Rust plugins (e.g. `"plugin.py"`).
-    pub entry_script: Option<String>,
-    /// Toolbar buttons declared in the manifest. Used by non-Rust plugins
-    /// that cannot register buttons via code at activation time.
+    /// Toolbar buttons declared in the manifest.
     #[serde(default)]
     pub toolbar_buttons: Vec<ManifestToolbarButton>,
 }
@@ -132,28 +116,6 @@ impl PluginManifest {
                 message: "'entry_component' must not be empty when specified".into(),
             });
         }
-        // Python plugins require entry_script
-        if self.language == PluginLanguage::Python {
-            let script = self.entry_script.as_deref().unwrap_or("");
-            if script.is_empty() {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: "'entry_script' is required for Python plugins".into(),
-                });
-            }
-            if Path::new(script).is_absolute() {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!("'entry_script' must be a relative path, got '{script}'"),
-                });
-            }
-            if script.contains("..") {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!("'entry_script' must not contain '..', got '{script}'"),
-                });
-            }
-        }
         // Validate icon file path if present
         if let Some(IconDescriptor::File { path }) = &self.icon {
             if path.is_absolute() {
@@ -197,15 +159,6 @@ impl PluginManifest {
                 return Err(PluginError::MissingFile {
                     plugin_id: self.id.clone(),
                     path: icon_path,
-                });
-            }
-        }
-        if let Some(script) = &self.entry_script {
-            let script_path = plugin_root.join(script);
-            if !script_path.exists() {
-                return Err(PluginError::MissingFile {
-                    plugin_id: self.id.clone(),
-                    path: script_path,
                 });
             }
         }

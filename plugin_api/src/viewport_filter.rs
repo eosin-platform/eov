@@ -9,13 +9,9 @@
 //! - **CPU**: The filter receives and returns an RGBA8 pixel buffer.
 //! - **GPU**: The filter receives raw Vulkan handles for zero-copy access
 //!   to GPU memory. In-process (FFI) plugins get the VkDevice and VkImage
-//!   directly; out-of-process (gRPC) plugins receive a DMA-BUF file
-//!   descriptor passed over a Unix domain socket.
+//!   directly, and may also import exported DMA-BUF handles when needed.
 //!
 //! In-process Rust plugins implement this trait directly via `abi_stable`.
-//! Out-of-process plugins (Python, etc.) use the gRPC `ExtensionHost` service,
-//! where the host acts as a bridge between the render pipeline and the remote
-//! filter.
 
 #[cfg(unix)]
 use std::os::fd::RawFd;

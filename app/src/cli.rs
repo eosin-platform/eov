@@ -277,12 +277,6 @@ struct Cli {
     #[arg(long, value_name = "PATH", global = true)]
     plugin_dir: Option<PathBuf>,
 
-    /// Start the gRPC extension host server on this port.
-    /// When set, external plugins can connect via gRPC to register
-    /// viewport filters and exchange pixel data.
-    #[arg(long, value_name = "PORT", global = true)]
-    extension_host_port: Option<u16>,
-
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     viewport_lock: bool,
 }
@@ -312,7 +306,6 @@ pub(crate) struct LaunchOptions {
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) window_geometry: WindowGeometry,
     pub(crate) plugin_dir: PathBuf,
-    pub(crate) extension_host_port: Option<u16>,
     command: CommandAction,
 }
 
@@ -431,7 +424,6 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             y: cli.window_y,
         },
         plugin_dir,
-        extension_host_port: cli.extension_host_port,
         command,
     })
 }

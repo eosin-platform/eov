@@ -10,8 +10,4 @@ fn main() {
     }
 
     println!("cargo:rustc-link-lib=dylib=openslide");
-
-    // Compile gRPC proto for the extension host.
-    tonic_build::compile_protos("../proto/eov_extension.proto")
-        .expect("Failed to compile extension host proto");
 }

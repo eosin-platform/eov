@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 struct PluginWindowEntry {
     plugin_id: String,
@@ -312,63 +312,6 @@ pub fn toggle_rust_plugin_window(
 
     open_plugin_window(&req, &vtable, Some(toolbar_button_id))?;
     Ok(true)
-}
-
-/// Spawn a Python plugin's entry script as a subprocess.
-///
-/// The script is expected to use `slint`-python to create its own window
-/// and handle callbacks. The process runs independently of the host.
-///
-/// The plugin is expected to have a `.venv/` directory inside its root
-/// with the slint package installed. The host uses the venv's python3.
-pub fn spawn_python_plugin(
-    script_path: &Path,
-    plugin_root: &Path,
-    initial_action_id: Option<&str>,
-) {
-    info!(
-        "Spawning Python plugin: {} (cwd: {})",
-        script_path.display(),
-        plugin_root.display()
-    );
-
-    // Use the venv python inside the plugin directory.
-    let venv_python = plugin_root.join(".venv").join("bin").join("python3");
-    let python = if venv_python.exists() {
-        info!("Using plugin venv: {}", venv_python.display());
-        venv_python.into_os_string()
-    } else {
-        warn!(
-            "No .venv found in {}, falling back to system python3",
-            plugin_root.display()
-        );
-        std::ffi::OsString::from("python3")
-    };
-
-    let mut cmd = std::process::Command::new(&python);
-    cmd.arg(script_path)
-        .current_dir(plugin_root)
-        .stdin(std::process::Stdio::null());
-
-    // Pass the extension host address if available.
-    if let Ok(host_addr) = std::env::var("EOV_EXTENSION_HOST") {
-        cmd.env("EOV_EXTENSION_HOST", &host_addr);
-    }
-    if let Some(action_id) = initial_action_id {
-        cmd.env("EOV_INITIAL_PLUGIN_ACTION", action_id);
-    }
-
-    match cmd.spawn() {
-        Ok(child) => {
-            info!("Python plugin process started (pid {})", child.id());
-        }
-        Err(e) => {
-            error!(
-                "Failed to spawn Python plugin {}: {e}",
-                script_path.display()
-            );
-        }
-    }
 }
 
 /// Entry point for `eov plugin-window <plugin_root>`.

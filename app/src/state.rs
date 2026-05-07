@@ -1,6 +1,5 @@
 //! Application state management
 
-use crate::extension_host::SharedExtensionHostState;
 use crate::tile_loader::TileLoader;
 use crate::viewport_filter::SharedFilterChain;
 use common::{
@@ -647,10 +646,6 @@ pub struct AppState {
     pub local_plugin_undo_redo_order: Vec<String>,
     /// In-process viewport filter chain (FFI plugins).
     pub filter_chain: SharedFilterChain,
-    /// Shared extension host state (remote gRPC filters).
-    pub extension_host_state: SharedExtensionHostState,
-    /// Tokio runtime handle for async gRPC calls.
-    pub tokio_handle: Option<tokio::runtime::Handle>,
     /// Monotonic revision for viewport filter enable-state changes.
     pub filter_revision: u64,
     /// Host-managed stack of held temporary tool overrides.
@@ -716,8 +711,6 @@ impl AppState {
             local_plugin_undo_redo_states: HashMap::new(),
             local_plugin_undo_redo_order: Vec::new(),
             filter_chain: crate::viewport_filter::new_shared_filter_chain(),
-            extension_host_state: crate::extension_host::new_shared_state(),
-            tokio_handle: None,
             filter_revision: 0,
             temporary_tool_overrides: Vec::new(),
         }

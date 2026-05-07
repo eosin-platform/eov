@@ -273,13 +273,9 @@ eov has an experimental plugin system that lets external crates extend the viewe
 
 An official companion plugin, [Annotations](https://github.com/eosin-platform/eov-annotations-plugin), adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
 
-Plugins can be written in any language and need not use Slint for their GUIs. Example plugins written in Python are available in `example_plugins/`, which communicate with the host app via gRPC. Plugins can access underlying GPU resources via Vulkan DMA buf.
+Plugins are native Rust dynamic libraries loaded through `abi_stable`. They can contribute toolbar buttons, HUD actions, sidebars, viewport overlays, and viewport filters while interacting with the host through a stable vtable.
 
-Rust plugins can interact directly with the host application via FFI. The gRPC API surface is available when using other languages.
-
-Both transports now expose the same host-facing capability set as closely as possible. Plugins can query a host snapshot containing app/session state, open-file metadata, and the active viewport; read slide regions by file id; open a file in the viewer; move or fit the active viewport; frame an image-space rectangle; and send plugin-scoped log messages back to the host.
-
-For Rust plugins this surface is provided as a host API vtable over `abi_stable`. For out-of-process plugins it is available from the `ExtensionHost` gRPC service in `proto/eov_extension.proto`.
+Plugins can query a host snapshot containing app/session state, open-file metadata, and the active viewport; read slide regions by file id; open a file in the viewer; move or fit the active viewport; frame an image-space rectangle; and send plugin-scoped log messages back to the host.
 
 ### Plugin Directory
 
@@ -355,13 +351,13 @@ impl Plugin for MyPlugin {
 
 ### Example Plugin
 
-The `example_plugins/example_rust/` crate in this repository demonstrates the full pattern: a toolbar button with an inline SVG icon that opens a standalone Slint window. To try it:
+The in-tree plugins under `plugins/` demonstrate the supported native pattern. To try them:
 
-1. Build, package, and launch the example plugins with `./scripts/run-with-example-plugins.sh slide.svs`
+1. Build, package, and launch the native plugins with `./scripts/run-with-plugins.sh slide.svs`
 2. Inspect the generated `.eop` packages in `~/.eov/plugins/` if you want to load them manually later
 3. Use `eov --plugin-dir ~/.eov/plugins slide.svs` to point the app at the packaged plugin directory explicitly if needed
 
-The smiley-face button should appear in the toolbar; clicking it opens the example panel window.
+The packaged plugin buttons should appear in the toolbar, and the plugin sidebars/windows can then be opened from the app UI.
 
 ## Configuration And Persistence
 
@@ -377,7 +373,6 @@ Example config file:
 ```toml
 render_backend = "gpu"
 filtering_mode = "trilinear"
-extension_host_port = 12345
 ```
 
 ## Architecture
@@ -386,8 +381,8 @@ This repository is a Cargo workspace with four crates:
 
 - `common`: WSI access, tile management, caching, viewport math, and benchmarks.
 - `app`: the desktop application built with Slint + CPU/GPU rendering paths.
-- `plugin_api`: shared trait definitions and manifest types for the plugin system.
-- `example_plugin`: a reference plugin demonstrating toolbar buttons and runtime UI windows.
+- `plugin_api`: shared trait definitions and manifest types for the native plugin system.
+- `plugins/*`: in-tree native plugins loaded through `abi_stable`.
 
 At a high level, the flow is:
 
@@ -476,11 +471,10 @@ Current packaging entry points:
 │   └── benches/          # Benchmarks for various core functions
 ├── plugin_api/           # Shared plugin trait definitions and manifest types
 │   └── src/
-├── example_plugins/      # Reference plugins
-│   ├── example_rust/     # FFI plugin with toolbar button and UI window
-│   ├── example_python/   # Python plugin with Slint UI
-│   ├── grayscale_rust/   # Viewport filter plugin (Rust FFI)
-│   └── grayscale_python/ # Viewport filter plugin (Python gRPC)
+├── plugins/              # In-tree native plugins
+│   ├── annotations/
+│   ├── eovae/
+│   └── gamepad/
 └── fixtures/             # Sample data used for local testing/benchmarks
 ```
 

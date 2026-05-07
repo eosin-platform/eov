@@ -58,8 +58,6 @@ struct RenderPaneRequest<'a> {
     render_backend: RenderBackend,
     filtering_mode: FilteringMode,
     filter_chain: &'a crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&'a tokio::runtime::Handle>,
 }
 
 #[derive(Clone)]
@@ -216,8 +214,6 @@ struct RenderCachedCpuFrameWithFiltersContext<'a> {
     render_width: u32,
     render_height: u32,
     filter_chain: &'a crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&'a tokio::runtime::Handle>,
 }
 
 fn render_cached_cpu_frame_with_filters(
@@ -232,8 +228,6 @@ fn render_cached_cpu_frame_with_filters(
         render_width,
         render_height,
         filter_chain,
-        extension_host_state,
-        tokio_handle,
     } = ctx;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -270,16 +264,6 @@ fn render_cached_cpu_frame_with_filters(
             }
         }
 
-        if let Some(handle) = tokio_handle {
-            crate::extension_host::apply_remote_cpu_filters(
-                extension_host_state,
-                preview,
-                render_width,
-                render_height,
-                handle,
-            );
-        }
-
         blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
     })
 }
@@ -293,8 +277,6 @@ struct RenderGpuSurfaceWithFiltersContext<'a> {
     render_width: u32,
     render_height: u32,
     filter_chain: &'a crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&'a tokio::runtime::Handle>,
 }
 
 fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> Option<Image> {
@@ -307,8 +289,6 @@ fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> O
         render_width,
         render_height,
         filter_chain,
-        extension_host_state,
-        tokio_handle,
     } = ctx;
     let slot = match pane {
         PaneId::PRIMARY => SurfaceSlot::PRIMARY,
@@ -346,16 +326,6 @@ fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> O
                 Some(&filter_viewport),
             );
         }
-    }
-
-    if let Some(handle) = tokio_handle {
-        crate::extension_host::apply_remote_cpu_filters(
-            extension_host_state,
-            &mut pixels,
-            render_width,
-            render_height,
-            handle,
-        );
     }
 
     blitter::create_image_buffer(&pixels, render_width, render_height).map(Image::from_rgba8)
@@ -667,8 +637,6 @@ pub(crate) fn update_and_render(
     let mut keep_running = render_requested || cpu_jobs_pending;
     let mut rendered_frame = completed_cpu_frame;
     let filter_chain = state.filter_chain.clone();
-    let extension_host_state = state.extension_host_state.clone();
-    let tokio_handle = state.tokio_handle.clone();
 
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
         let pane = PaneId(pane_index);
@@ -732,8 +700,6 @@ pub(crate) fn update_and_render(
                 render_backend,
                 filtering_mode,
                 filter_chain: &filter_chain,
-                extension_host_state: &extension_host_state,
-                tokio_handle: tokio_handle.as_ref(),
             },
         );
 
@@ -782,13 +748,9 @@ fn update_and_render_cpu(
         return false;
     };
 
-    let (filter_chain, extension_host_state, tokio_handle) = {
+    let filter_chain = {
         let state = state.read();
-        (
-            state.filter_chain.clone(),
-            state.extension_host_state.clone(),
-            state.tokio_handle.clone(),
-        )
+        state.filter_chain.clone()
     };
 
     let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<common::TileCoord>)> =
@@ -846,13 +808,7 @@ fn update_and_render_cpu(
             crate::set_cached_pane_minimap(snapshot.pane, snapshot.minimap_image.clone());
         }
 
-        let execution = render_cpu_pane_from_snapshot(
-            &snapshot,
-            tile_cache,
-            &filter_chain,
-            &extension_host_state,
-            tokio_handle.as_ref(),
-        );
+        let execution = render_cpu_pane_from_snapshot(&snapshot, tile_cache, &filter_chain);
         keep_running |= execution.outcome.keep_running || snapshot.file_switched;
         rendered_frame |= execution.outcome.rendered;
 
@@ -1222,17 +1178,6 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             }
         }
 
-        // Apply remote (gRPC) viewport filters.
-        if let Some(ref tokio_handle) = state.tokio_handle {
-            crate::extension_host::apply_remote_cpu_filters(
-                &state.extension_host_state,
-                &mut result.pixels,
-                result.width,
-                result.height,
-                tokio_handle,
-            );
-        }
-
         let Some(buffer) =
             blitter::create_image_buffer(&result.pixels, result.width, result.height)
         else {
@@ -1272,8 +1217,6 @@ fn render_cpu_pane_from_snapshot(
     snapshot: &CpuPaneSnapshot,
     tile_cache: &Arc<TileCache>,
     filter_chain: &crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&tokio::runtime::Handle>,
 ) -> CpuPaneExecution {
     let vp = &snapshot.viewport_state.viewport;
     let vp_zoom = vp.zoom;
@@ -1414,8 +1357,6 @@ fn render_cpu_pane_from_snapshot(
                 render_width,
                 render_height,
                 filter_chain,
-                extension_host_state,
-                tokio_handle,
             })
     {
         return CpuPaneExecution {
@@ -1697,8 +1638,6 @@ fn render_cpu_pane_from_snapshot(
             fine_commands: &fine_commands,
             postprocess: &postprocess,
             filter_chain,
-            extension_host_state,
-            tokio_handle,
         })
     } else {
         None
@@ -1765,8 +1704,6 @@ fn render_pane_to_image(
         render_backend,
         filtering_mode,
         filter_chain,
-        extension_host_state,
-        tokio_handle,
     } = request;
 
     let (
@@ -2010,8 +1947,6 @@ fn render_pane_to_image(
                 render_width,
                 render_height,
                 filter_chain,
-                extension_host_state,
-                tokio_handle,
             })
     {
         return PaneRenderOutcome {
@@ -2021,9 +1956,8 @@ fn render_pane_to_image(
         };
     }
 
-    let has_cpu_only_filters = render_backend == RenderBackend::Gpu
-        && (crate::extension_host::has_enabled_remote_cpu_only_filters(extension_host_state)
-            || filter_chain.read().has_enabled_cpu_only_filters());
+    let has_cpu_only_filters =
+        render_backend == RenderBackend::Gpu && filter_chain.read().has_enabled_cpu_only_filters();
 
     if force_render
         && has_cpu_only_filters
@@ -2046,8 +1980,6 @@ fn render_pane_to_image(
             render_width,
             render_height,
             filter_chain,
-            extension_host_state,
-            tokio_handle,
         })
     {
         return PaneRenderOutcome {
@@ -2444,8 +2376,6 @@ fn render_pane_to_image(
             fine_commands: &fine_commands,
             postprocess: &postprocess,
             filter_chain,
-            extension_host_state,
-            tokio_handle,
         })
     } else {
         None
@@ -2506,8 +2436,6 @@ struct RenderCachedPreview<'a> {
     fine_commands: &'a [CpuBlitCommand],
     postprocess: &'a CpuRenderPostProcess,
     filter_chain: &'a crate::viewport_filter::SharedFilterChain,
-    extension_host_state: &'a crate::extension_host::SharedExtensionHostState,
-    tokio_handle: Option<&'a tokio::runtime::Handle>,
 }
 
 fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
@@ -2523,8 +2451,6 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         fine_commands,
         postprocess,
         filter_chain,
-        extension_host_state,
-        tokio_handle,
     } = input;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -2602,17 +2528,6 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
                 );
                 chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
             }
-        }
-
-        // Apply remote (gRPC) viewport filters during preview as well.
-        if let Some(handle) = tokio_handle {
-            crate::extension_host::apply_remote_cpu_filters(
-                extension_host_state,
-                preview,
-                render_width,
-                render_height,
-                handle,
-            );
         }
 
         blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)

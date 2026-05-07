@@ -35,8 +35,8 @@ pub use host::{
     ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, ModalDialogRequest, OpenFileInfo,
     PluginUndoRedoState, SidebarRequest, ViewportOverlayComponentRequest, ViewportSnapshot,
 };
+pub use manifest::ManifestToolbarButton;
 pub use manifest::PluginManifest;
-pub use manifest::{ManifestToolbarButton, PluginLanguage};
 pub use viewport_filter::ViewportFilter;
 pub use viewport_filter::{DmaBufDescriptor, GpuFilterContext};
 
@@ -289,8 +289,6 @@ mod tests {
                 entry_ui: Some("ui/panel.slint".into()),
                 entry_component: Some("Panel".into()),
                 icon: None,
-                language: Default::default(),
-                entry_script: None,
                 toolbar_buttons: Vec::new(),
             },
         };

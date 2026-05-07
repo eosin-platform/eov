@@ -1,7 +1,7 @@
 //! Viewport filter chain — manages and applies post-processing filters.
 //!
-//! The filter chain collects both in-process (FFI/Rust) and remote (gRPC)
-//! filters and applies them sequentially to rendered frames.
+//! The filter chain collects in-process `abi_stable` filters and applies them
+//! sequentially to rendered frames.
 
 use parking_lot::RwLock;
 use plugin_api::ffi::{PluginVTable, ViewportFilterFFI, ViewportSnapshotFFI};

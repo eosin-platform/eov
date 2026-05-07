@@ -7,8 +7,7 @@
 //! - Creating and exporting sync fences as fd
 //!
 //! These are used by the GPU viewport filter pipeline to share textures
-//! with in-process FFI plugins (raw VkDevice/VkImage) and out-of-process
-//! gRPC plugins (DMA-BUF fd over Unix socket).
+//! with in-process FFI plugins (raw VkDevice/VkImage).
 
 use ash::vk;
 use slint::wgpu_28::wgpu;

@@ -7,7 +7,6 @@ mod callbacks;
 mod cli;
 mod clipboard;
 mod config;
-mod extension_host;
 mod file_ops;
 mod gpu;
 mod gpu_interop;
@@ -24,11 +23,6 @@ mod tile_loader;
 mod tools;
 mod ui_update;
 mod viewport_filter;
-
-/// Compiled gRPC proto module.
-pub(crate) mod eov_extension {
-    tonic::include_proto!("eov.extension");
-}
 
 use anyhow::Result;
 use common::{RenderBackend, TileCache};
@@ -312,46 +306,6 @@ fn main() -> Result<()> {
     ));
     render_pool::init_global()?;
 
-    // ----- Extension host (gRPC server for external plugins) -----
-    let extension_host_port = launch_options
-        .extension_host_port
-        .or_else(|| config::load_extension_host_port().ok().flatten());
-
-    // Build and leak a multi-threaded Tokio runtime for the async gRPC server
-    // and any other async work (export, etc.).
-    let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()?;
-    let tokio_handle = tokio_runtime.handle().clone();
-
-    // Store the shared handles in AppState so the render pipeline can reach them.
-    {
-        let mut s = state.write();
-        s.tokio_handle = Some(tokio_handle.clone());
-    }
-
-    let extension_host_state = {
-        let s = state.read();
-        Arc::clone(&s.extension_host_state)
-    };
-
-    if let Some(port) = extension_host_port {
-        let ext_state = Arc::clone(&extension_host_state);
-        let app_state = Arc::clone(&state);
-        tokio_handle.spawn(async move {
-            if let Err(e) = extension_host::start_extension_host(port, ext_state, app_state).await {
-                tracing::error!("Extension host server failed: {e}");
-            }
-        });
-        // Set the env var so spawned plugin processes can discover the host.
-        // SAFETY: called before spawning any plugin child processes.
-        unsafe {
-            std::env::set_var("EOV_EXTENSION_HOST", format!("grpc://localhost:{port}"));
-        }
-        info!("Extension host gRPC server starting on port {port}");
-    }
-
     // ----- Plugin system initialization -----
     let plugin_manager = Rc::new(RefCell::new(plugins::PluginManager::new(
         launch_options.plugin_dir.clone(),
@@ -619,39 +573,6 @@ fn setup_callbacks(
                 return;
             }
 
-            let extension_host_state = {
-                let state = filter_state.read();
-                Arc::clone(&state.extension_host_state)
-            };
-            if crate::extension_host::has_remote_toolbar_action(
-                &extension_host_state,
-                &plugin_id,
-                &action_id,
-            ) {
-                match crate::extension_host::dispatch_remote_toolbar_action(
-                    &extension_host_state,
-                    &plugin_id,
-                    &action_id,
-                ) {
-                    Ok(true) => {
-                        plugin_trace(format!(
-                            "toolbar deferred handled remotely plugin={} action={}",
-                            plugin_id, action_id
-                        ));
-                        return;
-                    }
-                    Ok(false) => {}
-                    Err(err) => {
-                        tracing::error!("Remote plugin action error: {err}");
-                        plugin_trace(format!(
-                            "toolbar deferred remote error plugin={} action={} err={}",
-                            plugin_id, action_id, err
-                        ));
-                        return;
-                    }
-                }
-            }
-
             let sidebar_toggle_was_active = {
                 let state = rerender_state.read();
                 state.active_sidebar_button() == Some((plugin_id.as_str(), action_id.as_str()))
@@ -681,38 +602,6 @@ fn setup_callbacks(
                                 action_id
                             );
                         }
-                    }
-                }
-                Ok(plugins::ActionOutcome::PythonSpawn {
-                    script_path,
-                    plugin_root,
-                }) => {
-                    plugin_trace(format!(
-                        "toolbar deferred python spawn plugin={} action={}",
-                        plugin_id, action_id
-                    ));
-                    // If the Python plugin has been spawned before (and presumably
-                    // registered remote filters), toggle those filters on/off rather
-                    // than spawning a second instance.
-                    if pm.spawned_python_plugins.contains(&plugin_id) {
-                        {
-                            let mut s = filter_state.write();
-                            s.extension_host_state.write().toggle_all_filters();
-                            s.bump_filter_revision();
-                        }
-                        request_render_loop(
-                            &rerender_timer,
-                            &rerender_ui,
-                            &rerender_state,
-                            &rerender_cache,
-                        );
-                    } else {
-                        pm.spawned_python_plugins.insert(plugin_id.clone());
-                        crate::plugins::spawn_python_plugin(
-                            &script_path,
-                            &plugin_root,
-                            Some(&action_id),
-                        );
                     }
                 }
                 Ok(plugins::ActionOutcome::Handled) => {
@@ -787,8 +676,7 @@ fn setup_callbacks(
         let mut pm = pm.borrow_mut();
         match pm.handle_undo(&plugin_id) {
             Ok(plugins::ActionOutcome::Handled)
-            | Ok(plugins::ActionOutcome::RustPluginWindow { .. })
-            | Ok(plugins::ActionOutcome::PythonSpawn { .. }) => {
+            | Ok(plugins::ActionOutcome::RustPluginWindow { .. }) => {
                 if let Some(ui) = rerender_ui.upgrade() {
                     let state = rerender_state.read();
                     update_tool_state(&ui, &state);
@@ -815,8 +703,7 @@ fn setup_callbacks(
         let mut pm = pm.borrow_mut();
         match pm.handle_redo(&plugin_id) {
             Ok(plugins::ActionOutcome::Handled)
-            | Ok(plugins::ActionOutcome::RustPluginWindow { .. })
-            | Ok(plugins::ActionOutcome::PythonSpawn { .. }) => {
+            | Ok(plugins::ActionOutcome::RustPluginWindow { .. }) => {
                 if let Some(ui) = rerender_ui.upgrade() {
                     let state = rerender_state.read();
                     update_tool_state(&ui, &state);
@@ -1006,30 +893,6 @@ fn setup_callbacks(
                 return;
             }
         };
-
-        let extension_host_state = {
-            let state = filter_state.read();
-            Arc::clone(&state.extension_host_state)
-        };
-        if crate::extension_host::has_remote_hud_toolbar_action(
-            &extension_host_state,
-            &plugin_id,
-            &action_id,
-        ) {
-            match crate::extension_host::dispatch_remote_hud_toolbar_action(
-                &extension_host_state,
-                &plugin_id,
-                &action_id,
-                viewport.clone(),
-            ) {
-                Ok(true) => return,
-                Ok(false) => {}
-                Err(err) => {
-                    tracing::error!("Remote HUD plugin action error: {err}");
-                    return;
-                }
-            }
-        }
 
         let mut pm = pm.borrow_mut();
         if let Err(err) = pm.handle_hud_action(&plugin_id, &action_id, &viewport) {

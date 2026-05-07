@@ -4,12 +4,10 @@
 //! It discovers plugins on disk, matches them against the plugin registry,
 //! validates their files, and activates them against the host API.
 //!
-//! Plugins are loaded in three ways:
+//! Plugins are loaded in two ways:
 //! 1. **Dynamic Rust** (preferred): the plugin directory contains a shared
 //!    library (e.g. `libexample_plugin.so`) loaded via `abi_stable`.
-//! 2. **Python**: the plugin directory contains a Python script that is
-//!    spawned as a subprocess. The script uses slint-python for its UI.
-//! 3. **Static** (fallback, used in tests): the plugin is compiled into the
+//! 2. **Static** (fallback, used in tests): the plugin is compiled into the
 //!    host binary and registered via `PluginRegistry`.
 
 use crate::plugins::discovery;
@@ -19,12 +17,11 @@ use crate::plugins::toolbar::ToolbarManager;
 use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
 use plugin_api::ffi::{self, PluginVTable};
-use plugin_api::manifest::PluginLanguage;
 use plugin_api::{
     HostToolMode, IconDescriptor, PluginDescriptor, PluginResult, PluginUndoRedoState,
     ToolbarButtonRegistration,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
@@ -66,11 +63,6 @@ fn vertices_to_ffi(
 pub enum ActionOutcome {
     /// Rust plugin: toggle the plugin's standalone window.
     RustPluginWindow { plugin_root: PathBuf },
-    /// Python plugin: spawn the entry script as a subprocess.
-    PythonSpawn {
-        script_path: PathBuf,
-        plugin_root: PathBuf,
-    },
     /// Static plugin handled the action internally.
     Handled,
 }
@@ -90,10 +82,6 @@ pub struct PluginManager {
     plugin_dir: PathBuf,
     /// Dynamically loaded plugin vtables, keyed by plugin id.
     loaded_vtables: HashMap<String, PluginVTable>,
-    /// Plugin ids that are Python plugins (spawned as subprocesses).
-    python_plugins: HashSet<String>,
-    /// Python plugin ids that have already been spawned at least once.
-    pub spawned_python_plugins: HashSet<String>,
 }
 
 impl PluginManager {
@@ -108,8 +96,6 @@ impl PluginManager {
             old_plugin_package_files: Vec::new(),
             plugin_dir,
             loaded_vtables: HashMap::new(),
-            python_plugins: HashSet::new(),
-            spawned_python_plugins: HashSet::new(),
         }
     }
 
@@ -127,20 +113,9 @@ impl PluginManager {
     }
 
     /// Activate all discovered plugins.
-    ///
-    /// For each plugin, the language field determines the activation strategy:
-    /// - **Rust**: tries dynamic loading (shared library), falls back to static.
-    /// - **Python**: registers toolbar buttons from the manifest and records the
-    ///   plugin id so that actions spawn its entry script as a subprocess.
     pub fn activate_all(&mut self) -> PluginResult<()> {
         let descriptors = self.descriptors.clone();
         for desc in &descriptors {
-            // Handle Python plugins
-            if desc.manifest.language == PluginLanguage::Python {
-                self.activate_python_plugin(desc);
-                continue;
-            }
-
             // Try dynamic loading first (Rust plugins)
             let lib_name = ffi::plugin_library_filename(&desc.manifest.id);
             let lib_path = desc.root.join(&lib_name);
@@ -279,22 +254,6 @@ impl PluginManager {
         plugin_id: &str,
         action_id: &str,
     ) -> PluginResult<ActionOutcome> {
-        // Python plugins – spawn the entry script as a subprocess.
-        if self.python_plugins.contains(plugin_id) {
-            if let Some(desc) = self.descriptor(plugin_id)
-                && let Some(script) = &desc.manifest.entry_script
-            {
-                let script_path = desc.root.join(script);
-                return Ok(ActionOutcome::PythonSpawn {
-                    script_path,
-                    plugin_root: desc.root.clone(),
-                });
-            }
-            return Err(plugin_api::PluginError::Other(format!(
-                "Python plugin '{plugin_id}' has no entry_script"
-            )));
-        }
-
         // Check dynamically loaded Rust plugins.
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
             let vt = *vtable; // Copy – PluginVTable is Copy
@@ -547,57 +506,6 @@ impl PluginManager {
         )))
     }
 
-    /// Activate a Python plugin: register its manifest-declared toolbar buttons
-    /// and record it for subprocess spawning.
-    fn activate_python_plugin(&mut self, desc: &PluginDescriptor) {
-        if let Err(e) = desc.manifest.validate_files(&desc.root) {
-            warn!(
-                "Python plugin '{}' has missing files, skipping: {e}",
-                desc.manifest.id
-            );
-            return;
-        }
-
-        // Register toolbar buttons declared in the manifest.
-        let top_icon_svg = match &desc.manifest.icon {
-            Some(IconDescriptor::Svg { data }) => Some(data.clone()),
-            _ => None,
-        };
-
-        for btn in &desc.manifest.toolbar_buttons {
-            let svg = btn
-                .icon_svg
-                .as_deref()
-                .or(top_icon_svg.as_deref())
-                .unwrap_or("")
-                .to_string();
-            let registration = ToolbarButtonRegistration {
-                plugin_id: desc.manifest.id.clone(),
-                button_id: btn.button_id.clone(),
-                tooltip: btn.tooltip.clone(),
-                icon: IconDescriptor::Svg { data: svg },
-                toggled_icon: None,
-                action_id: btn.action_id.clone(),
-                tool_mode: None,
-                hotkey: None,
-                active: false,
-            };
-            if let Err(e) = self.toolbar.register(registration) {
-                warn!(
-                    "Failed to register toolbar button for Python plugin '{}': {e}",
-                    desc.manifest.id
-                );
-            }
-        }
-
-        self.python_plugins.insert(desc.manifest.id.clone());
-        info!(
-            "Activated Python plugin '{}' from {}",
-            desc.manifest.id,
-            desc.root.display()
-        );
-    }
-
     /// Find a plugin descriptor by id.
     pub fn descriptor(&self, id: &str) -> Option<&PluginDescriptor> {
         self.descriptors.iter().find(|d| d.manifest.id == id)
@@ -672,8 +580,6 @@ mod tests {
                 icon: Some(IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 }),
-                language: Default::default(),
-                entry_script: None,
                 toolbar_buttons: Vec::new(),
             }
         }

@@ -190,8 +190,6 @@ mod tests {
                 icon: Some(IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 }),
-                language: Default::default(),
-                entry_script: None,
                 toolbar_buttons: Vec::new(),
             }
         }

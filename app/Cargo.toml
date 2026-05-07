@@ -32,9 +32,6 @@ slint = { version = "1.15.1", features = ["backend-winit", "renderer-femtovg-wgp
 # Slint interpreter for runtime plugin UI loading
 slint-interpreter = { version = "1.15.1", features = ["internal", "internal-json"] }
 
-# Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
-
 # Image handling
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 sha2 = "0.10"
@@ -82,12 +79,6 @@ semver = "1"
 # GPU vertex buffer casting
 bytemuck = { version = "1", features = ["derive"] }
 
-# gRPC extension host
-tonic = "0.13"
-prost = "0.13"
-tokio-stream = "0.1"
-futures-core = "0.3"
-
 # UUID for filter IDs
 uuid = { version = "1", features = ["v4"] }
 
@@ -111,7 +102,6 @@ objc = "0.2"
 
 [build-dependencies]
 slint-build = "1.15.1"
-tonic-build = "0.13"
 
 [dev-dependencies]
 tempfile = "3"

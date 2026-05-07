@@ -18,7 +18,7 @@ use slint::{
 };
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -546,22 +546,6 @@ pub(crate) fn hotkey_button_for_key(
         .iter()
         .find(|button| button.hotkey.as_deref() == Some(key) && button.tool_mode.is_some())
         .cloned()
-}
-
-pub(crate) fn request_filter_repaint() -> Result<(), String> {
-    run_on_ui_thread(move |runtime| {
-        {
-            let mut state = runtime.state.write();
-            state.bump_filter_revision();
-        }
-        request_render_loop(
-            &runtime.render_timer,
-            &runtime.ui_weak,
-            &runtime.state,
-            &runtime.tile_cache,
-        );
-        Ok(())
-    })
 }
 
 pub(crate) fn snapshot(state: &Arc<RwLock<AppState>>) -> plugin_api::HostSnapshot {
@@ -2151,29 +2135,9 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
         .upgrade()
         .ok_or_else(|| "application window is no longer available".to_string())?;
     let state = runtime.state.read();
-    let remote_buttons = {
-        let extension_state = state.extension_host_state.read();
-        (
-            extension_state.toolbar_buttons.clone(),
-            extension_state.hud_toolbar_buttons.clone(),
-        )
-    };
-    let remote_toolbar_keys: HashSet<(String, String)> = remote_buttons
-        .0
-        .iter()
-        .map(|button| (button.plugin_id.clone(), button.button_id.clone()))
-        .collect();
-    let remote_hud_toolbar_keys: HashSet<(String, String)> = remote_buttons
-        .1
-        .iter()
-        .map(|button| (button.plugin_id.clone(), button.button_id.clone()))
-        .collect();
     let buttons: Vec<crate::PluginButtonData> = state
         .local_plugin_buttons
         .iter()
-        .filter(|button| {
-            !remote_toolbar_keys.contains(&(button.plugin_id.clone(), button.button_id.clone()))
-        })
         .map(|button| {
             (
                 button.plugin_id.clone(),
@@ -2184,16 +2148,6 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
                 button.active,
             )
         })
-        .chain(remote_buttons.0.into_iter().map(|button| {
-            (
-                button.plugin_id,
-                button.button_id,
-                button.tooltip,
-                image_from_svg(&button.icon_svg),
-                button.action_id,
-                button.active,
-            )
-        }))
         .scan(
             None::<String>,
             |previous_plugin_id, (plugin_id, button_id, tooltip, icon, action_id, active)| {
@@ -2215,27 +2169,7 @@ fn refresh_plugin_buttons_in_ui(runtime: &UiRuntime) -> Result<(), String> {
             },
         )
         .collect();
-    let mut hud_buttons: Vec<crate::HudToolbarButtonData> = local_hud_buttons_for_panes(&state)
-        .into_iter()
-        .filter(|button| {
-            !remote_hud_toolbar_keys
-                .contains(&(button.plugin_id.to_string(), button.button_id.to_string()))
-        })
-        .collect();
-    let pane_count = state.panes.len().max(1);
-    for pane_index in 0..pane_count {
-        hud_buttons.extend(remote_buttons.1.iter().cloned().map(|button| {
-            crate::HudToolbarButtonData {
-                pane_id: pane_index as i32,
-                plugin_id: button.plugin_id.into(),
-                button_id: button.button_id.into(),
-                tooltip: button.tooltip.into(),
-                icon: image_from_svg(&button.icon_svg),
-                action_id: button.action_id.into(),
-                active: button.active,
-            }
-        }));
-    }
+    let hud_buttons: Vec<crate::HudToolbarButtonData> = local_hud_buttons_for_panes(&state);
     let active_undo_redo = state
         .local_plugin_undo_redo_order
         .iter()
@@ -3150,16 +3084,6 @@ fn set_toolbar_button_active_in_state(
 ) {
     if let Some(button) = state
         .local_plugin_buttons
-        .iter_mut()
-        .find(|button| button.plugin_id == plugin_id && button.button_id == button_id)
-    {
-        button.active = active;
-        return;
-    }
-
-    let mut extension_state = state.extension_host_state.write();
-    if let Some(button) = extension_state
-        .toolbar_buttons
         .iter_mut()
         .find(|button| button.plugin_id == plugin_id && button.button_id == button_id)
     {
