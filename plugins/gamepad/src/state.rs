@@ -990,8 +990,7 @@ fn is_supported_controller(gamepad: &gilrs::Gamepad<'_>) -> bool {
         || gamepad.button_code(Button::Start).is_some();
     let has_primary_stick = gamepad.axis_code(Axis::LeftStickX).is_some()
         && gamepad.axis_code(Axis::LeftStickY).is_some();
-    let has_known_mapping = gamepad.map_name().is_some();
-    has_primary_face_button && has_primary_stick && has_known_mapping
+    has_primary_face_button && has_primary_stick
 }
 
 fn axis_key(axis: Axis) -> Option<&'static str> {
