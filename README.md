@@ -213,7 +213,6 @@ Notable options:
 - `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
-- `--extension-host-port <PORT>` the port use for the extension host (required for non-Rust plugins)
 
 ## Dataset Patch Extraction
 
