@@ -1,8 +1,8 @@
 id = "gamepad"
 name = "Gamepad"
 version = "0.1.0"
-entry_ui = "ui/gamepad-sidebar.slint"
-entry_component = "GamepadSidebar"
+entry_ui = "ui/gamepad-window.slint"
+entry_component = "GamepadWindow"
 
 [icon]
 kind = "svg"

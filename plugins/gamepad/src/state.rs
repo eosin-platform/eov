@@ -334,6 +334,16 @@ pub fn profile_names() -> Vec<String> {
     plugin_state().lock().unwrap().available_profiles.clone()
 }
 
+pub fn profile_hint_text() -> String {
+    match profiles_dir() {
+        Ok(path) => format!(
+            "Profiles are stored under your local EOV config directory: {}",
+            path.display()
+        ),
+        Err(_) => "Profiles are stored under your local EOV config directory.".to_string(),
+    }
+}
+
 pub fn profile_selected_index() -> i32 {
     let state = plugin_state().lock().unwrap();
     state
@@ -414,6 +424,26 @@ pub fn save_profile(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn create_new_profile() -> Result<(), String> {
+    let mut state = plugin_state().lock().unwrap();
+    state.left_dead_zone = 0.16;
+    state.right_dead_zone = 0.12;
+    state.trigger_dead_zone = 0.08;
+    state.pan_sensitivity = 0.95;
+    state.zoom_sensitivity = 0.78;
+    state.mappings = default_mappings();
+
+    let mut suffix = 1;
+    let mut candidate = "untitled".to_string();
+    while state.available_profiles.iter().any(|name| name == &candidate) {
+        suffix += 1;
+        candidate = format!("untitled-{suffix}");
+    }
+    state.profile_draft_name = candidate.clone();
+    drop(state);
+    save_profile(&candidate)
+}
+
 pub fn load_profile(name: &str) -> Result<(), String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -443,6 +473,45 @@ pub fn load_profile(name: &str) -> Result<(), String> {
     state.available_profiles = discover_profile_names();
     persist_runtime_state(&state)?;
     Ok(())
+}
+
+pub fn import_profile_via_dialog() -> Result<(), String> {
+    let Some(host) = host_api() else {
+        return Err("host API is not available".to_string());
+    };
+    let import_path = match (host.open_file_dialog)(host.context, "JSON".into(), "json".into())
+        .into_result()
+    {
+        Ok(path) => path.to_string(),
+        Err(_) => return Ok(()),
+    };
+
+    let raw = fs::read_to_string(&import_path)
+        .map_err(|err| format!("failed to read profile import '{}': {err}", import_path))?;
+    let persisted: PersistedProfile = serde_json::from_str(&raw)
+        .map_err(|err| format!("failed to parse profile import '{}': {err}", import_path))?;
+
+    let source_name = PathBuf::from(&import_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("imported-profile")
+        .trim()
+        .to_string();
+
+    let mut target_name = source_name.clone();
+    let mut suffix = 2;
+    while profiles_dir()?.join(format!("{target_name}.json")).exists() {
+        target_name = format!("{source_name}-{suffix}");
+        suffix += 1;
+    }
+
+    let profile_dir = profiles_dir()?;
+    fs::create_dir_all(&profile_dir).map_err(|err| err.to_string())?;
+    let payload = serde_json::to_string_pretty(&persisted).map_err(|err| err.to_string())?;
+    fs::write(profile_dir.join(format!("{target_name}.json")), payload)
+        .map_err(|err| err.to_string())?;
+    load_profile(&target_name)
 }
 
 pub fn delete_profile(name: &str) -> Result<(), String> {
@@ -498,7 +567,7 @@ pub fn set_selected_device_by_label(label: &str) {
 
 pub fn set_profile_draft_name(name: String) {
     let mut state = plugin_state().lock().unwrap();
-    state.profile_draft_name = name;
+    state.profile_draft_name = name.trim().to_string();
     let _ = persist_runtime_state(&state);
 }
 
@@ -517,16 +586,25 @@ pub fn set_numeric_field(field: &str, value: &str) {
     let Ok(parsed) = value.trim().parse::<f32>() else {
         return;
     };
+    set_numeric_value(field, parsed);
+}
+
+pub fn set_numeric_value(field: &str, value: f32) {
     let mut state = plugin_state().lock().unwrap();
     match field {
-        "left-dead-zone" => state.left_dead_zone = clamp_unit(parsed),
-        "right-dead-zone" => state.right_dead_zone = clamp_unit(parsed),
-        "trigger-dead-zone" => state.trigger_dead_zone = clamp_unit(parsed),
-        "pan-sensitivity" => state.pan_sensitivity = clamp_sensitivity(parsed),
-        "zoom-sensitivity" => state.zoom_sensitivity = clamp_sensitivity(parsed),
+        "left-dead-zone" => state.left_dead_zone = clamp_unit(value),
+        "right-dead-zone" => state.right_dead_zone = clamp_unit(value),
+        "trigger-dead-zone" => state.trigger_dead_zone = clamp_unit(value),
+        "pan-sensitivity" => state.pan_sensitivity = clamp_sensitivity(value),
+        "zoom-sensitivity" => state.zoom_sensitivity = clamp_sensitivity(value),
         _ => {}
     }
+    let profile_name = state.profile_draft_name.clone();
     let _ = persist_runtime_state(&state);
+    drop(state);
+    if !profile_name.is_empty() {
+        let _ = save_profile(&profile_name);
+    }
 }
 
 pub fn set_mapping_by_label(control_key: &str, selected_label: &str, axis: bool) {
@@ -542,13 +620,16 @@ pub fn set_mapping_by_label(control_key: &str, selected_label: &str, axis: bool)
     else {
         return;
     };
-    plugin_state()
-        .lock()
-        .unwrap()
+    let mut state = plugin_state().lock().unwrap();
+    state
         .mappings
         .insert(control_key.to_string(), MappingAction::from_key(action_key));
-    let state = plugin_state().lock().unwrap();
+    let profile_name = state.profile_draft_name.clone();
     let _ = persist_runtime_state(&state);
+    drop(state);
+    if !profile_name.is_empty() {
+        let _ = save_profile(&profile_name);
+    }
 }
 
 fn worker_loop() {
@@ -581,6 +662,7 @@ fn worker_loop() {
         let mut refresh_window = false;
         let selected_device_key = {
             let mut state = plugin_state().lock().unwrap();
+            let was_empty = state.devices.is_empty();
             if state
                 .devices
                 .iter()
@@ -592,23 +674,22 @@ fn worker_loop() {
                     .collect::<Vec<_>>()
             {
                 state.devices = devices.clone();
-                let preferred_available =
-                    state.preferred_device_key.as_ref().and_then(|preferred| {
-                        state
-                            .devices
-                            .iter()
-                            .find(|device| &device.key == preferred)
-                            .map(|device| device.key.clone())
-                    });
-                if let Some(preferred_key) = preferred_available {
-                    state.selected_device_key = Some(preferred_key);
+                if was_empty && !state.devices.is_empty() {
+                    state.selected_device_key = state.devices.first().map(|device| device.key.clone());
+                    state.preferred_device_key = state.selected_device_key.clone();
                 } else if state.selected_device_key.as_ref().is_none_or(|selected| {
                     !state.devices.iter().any(|device| &device.key == selected)
                 }) {
-                    state.selected_device_key =
-                        state.devices.first().map(|device| device.key.clone());
-                }
-                if state.preferred_device_key.is_none() {
+                    let preferred_available =
+                        state.preferred_device_key.as_ref().and_then(|preferred| {
+                            state
+                                .devices
+                                .iter()
+                                .find(|device| &device.key == preferred)
+                                .map(|device| device.key.clone())
+                        });
+                    state.selected_device_key = preferred_available
+                        .or_else(|| state.devices.first().map(|device| device.key.clone()));
                     state.preferred_device_key = state.selected_device_key.clone();
                 }
                 if let Some(selected) = &state.selected_device_key
@@ -1244,4 +1325,16 @@ pub fn numeric_value_text(field: &str) -> String {
         _ => 0.0,
     };
     format!("{value:.2}")
+}
+
+pub fn numeric_value_number(field: &str) -> f32 {
+    let state = plugin_state().lock().unwrap();
+    match field {
+        "left-dead-zone" => state.left_dead_zone,
+        "right-dead-zone" => state.right_dead_zone,
+        "trigger-dead-zone" => state.trigger_dead_zone,
+        "pan-sensitivity" => state.pan_sensitivity,
+        "zoom-sensitivity" => state.zoom_sensitivity,
+        _ => 0.0,
+    }
 }

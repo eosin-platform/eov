@@ -16,6 +16,7 @@ use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
     VecModel,
 };
+use slint::winit_030::WinitWindowAccessor;
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -202,6 +203,14 @@ struct UiRuntime {
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MainWindowGeometry {
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
 }
 
 struct ActiveSidebarInstance {
@@ -420,6 +429,31 @@ pub(crate) fn init_ui_runtime(
             render_timer: Rc::clone(render_timer),
         });
     });
+}
+
+pub(crate) fn main_window_geometry() -> Option<MainWindowGeometry> {
+    UI_RUNTIME.with(|slot| {
+        let runtime = slot.borrow();
+        let ui = runtime.as_ref()?.ui_weak.upgrade()?;
+        let size = ui.window().size();
+        let scale = ui.window().scale_factor();
+        let logical = size.to_logical(scale);
+
+        let mut position = None;
+        ui.window().with_winit_window(|window: &slint::winit_030::winit::window::Window| {
+            if let Ok(current) = window.outer_position() {
+                position = Some(current);
+            }
+        });
+
+        let position = position?;
+        Some(MainWindowGeometry {
+            x: position.x,
+            y: position.y,
+            width: logical.width.max(1.0).round() as u32,
+            height: logical.height.max(1.0).round() as u32,
+        })
+    })
 }
 
 pub(crate) fn build_host_api(

@@ -25,6 +25,7 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             "selected-profile-index",
             json!(state::profile_selected_index()),
         ),
+        state::property("profile-hint-text", json!(state::profile_hint_text())),
         state::property(
             "profile-draft-name",
             json!(state::current_profile_draft_name()),
@@ -34,20 +35,40 @@ pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
             json!(state::numeric_value_text("left-dead-zone")),
         ),
         state::property(
+            "left-dead-zone-value",
+            json!(state::numeric_value_number("left-dead-zone")),
+        ),
+        state::property(
             "right-dead-zone",
             json!(state::numeric_value_text("right-dead-zone")),
+        ),
+        state::property(
+            "right-dead-zone-value",
+            json!(state::numeric_value_number("right-dead-zone")),
         ),
         state::property(
             "trigger-dead-zone",
             json!(state::numeric_value_text("trigger-dead-zone")),
         ),
         state::property(
+            "trigger-dead-zone-value",
+            json!(state::numeric_value_number("trigger-dead-zone")),
+        ),
+        state::property(
             "pan-sensitivity",
             json!(state::numeric_value_text("pan-sensitivity")),
         ),
         state::property(
+            "pan-sensitivity-value",
+            json!(state::numeric_value_number("pan-sensitivity")),
+        ),
+        state::property(
             "zoom-sensitivity",
             json!(state::numeric_value_text("zoom-sensitivity")),
+        ),
+        state::property(
+            "zoom-sensitivity-value",
+            json!(state::numeric_value_number("zoom-sensitivity")),
         ),
         state::property("axis-action-options", json!(state::axis_action_options())),
         state::property(
@@ -77,9 +98,13 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 state::set_profile_draft_name(name.to_string());
             }
         }
-        "save-profile-clicked" => {
-            let name = state::current_profile_draft_name();
-            if let Err(err) = state::save_profile(&name) {
+        "new-profile-clicked" => {
+            if let Err(err) = state::create_new_profile() {
+                state::log_message(HostLogLevelFFI::Warn, err);
+            }
+        }
+        "import-profile-clicked" => {
+            if let Err(err) = state::import_profile_via_dialog() {
                 state::log_message(HostLogLevelFFI::Warn, err);
             }
         }
@@ -102,6 +127,14 @@ pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
                 args.get(1).and_then(|value| value.as_str()),
             ) {
                 state::set_numeric_field(field, value);
+            }
+        }
+        "numeric-slider-changed" => {
+            if let (Some(field), Some(value)) = (
+                args.first().and_then(|value| value.as_str()),
+                args.get(1).and_then(|value| value.as_f64()),
+            ) {
+                state::set_numeric_value(field, value as f32);
             }
         }
         "axis-mapping-selected" => {

@@ -23,6 +23,7 @@ use abi_stable::std_types::RString;
 use host_context::WindowOpenRequest;
 use plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
 use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
+use slint::winit_030::WinitWindowAccessor;
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -30,6 +31,37 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 use tracing::{error, info};
+
+fn apply_plugin_window_geometry(
+    plugin_id: &str,
+    instance: &slint_interpreter::ComponentInstance,
+) {
+    let Some(parent) = crate::plugin_host::main_window_geometry() else {
+        return;
+    };
+
+    let base_width = ((parent.width as f32) * 0.76).round();
+    let target_width = if plugin_id == "gamepad" {
+        (base_width * 2.0).clamp(1040.0, 1760.0)
+    } else {
+        base_width.clamp(520.0, 1080.0)
+    };
+    let target_height = ((parent.height as f32) * 0.7).round().clamp(420.0, 880.0);
+    instance
+        .window()
+        .set_size(slint::LogicalSize::new(target_width, target_height));
+
+    instance.window().with_winit_window(|window: &slint::winit_030::winit::window::Window| {
+        use slint::winit_030::winit::dpi::LogicalPosition;
+
+        let offset_x = (parent.width as f32 * 0.08).round() as i32 + 36;
+        let offset_y = (parent.height as f32 * 0.1).round() as i32 + 42;
+        window.set_outer_position(LogicalPosition::new(
+            parent.x + offset_x,
+            parent.y + offset_y,
+        ));
+    });
+}
 
 struct PluginWindowEntry {
     plugin_id: String,
@@ -239,6 +271,8 @@ fn open_plugin_window(
         .show()
         .map_err(|e| anyhow::anyhow!("Failed to show plugin window: {e}"))?;
 
+    apply_plugin_window_geometry(&req.plugin_id, &instance);
+
     let refresh_timer = Rc::new(Timer::default());
     let refresh_timer_for_callback = Rc::clone(&refresh_timer);
     let instance_weak = instance.as_weak();
@@ -441,7 +475,7 @@ mod tests {
     fn gamepad_sidebar_runtime_compiles_and_creates() {
         crate::test_support::run_on_slint_ui_test_thread(|| {
             let ui_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../plugins/gamepad/ui/gamepad-sidebar.slint");
+                .join("../plugins/gamepad/ui/gamepad-window.slint");
             let source = std::fs::read_to_string(&ui_path).unwrap();
 
             let compiler = slint_interpreter::Compiler::default();
@@ -455,7 +489,7 @@ mod tests {
                 "runtime compile diagnostics: {diagnostics:?}"
             );
 
-            let definition = result.component("GamepadSidebar").unwrap();
+            let definition = result.component("GamepadWindow").unwrap();
             let _instance = definition.create().unwrap();
         });
     }
