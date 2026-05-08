@@ -711,7 +711,7 @@ export component GamepadWindow inherits Rectangle {
 
                 Rectangle {
                     horizontal-stretch: 1;
-                    height: 282px;
+                    height: 304px;
                     border-radius: 12px;
                     background: #0f1726;
                     border-width: 1px;
@@ -851,49 +851,42 @@ export component GamepadWindow inherits Rectangle {
                                 padding-right: 10px;
                                 spacing: 10px;
 
-                                VerticalLayout {
+                                Rectangle {
                                     width: 124px;
-                                    spacing: 0px;
-
-                                    Rectangle {
-                                        height: 4px;
-                                        background: transparent;
-                                    }
+                                    height: parent.height;
+                                    background: transparent;
 
                                     Text {
-                                        height: 30px;
+                                        width: parent.width;
+                                        height: parent.height;
                                         text: row.control-label;
                                         color: #f2f6ff;
                                         font-size: 11px;
                                         font-weight: 700;
                                         wrap: word-wrap;
+                                        horizontal-alignment: left;
                                         vertical-alignment: center;
                                     }
                                 }
 
-                                VerticalLayout {
+                                Rectangle {
                                     horizontal-stretch: 1;
-                                    spacing: 0px;
+                                    height: parent.height;
+                                    background: transparent;
 
-                                    Rectangle {
-                                        height: 4px;
-                                        background: transparent;
-                                    }
-
-                                    if row.axis-control: ComboBox {
-                                        horizontal-stretch: 1;
+                                    mapping-action-combo := ComboBox {
+                                        y: 10px;
+                                        width: parent.width;
                                         height: 30px;
-                                        model: root.axis-action-options;
+                                        model: row.axis-control ? root.axis-action-options : root.button-action-options;
                                         current-index: row.current-index;
-                                        selected(value) => { root.axis-mapping-selected(row.control-key, value); }
-                                    }
-
-                                    if !row.axis-control: ComboBox {
-                                        horizontal-stretch: 1;
-                                        height: 30px;
-                                        model: root.button-action-options;
-                                        current-index: row.current-index;
-                                        selected(value) => { root.button-mapping-selected(row.control-key, value); }
+                                        selected(value) => {
+                                            if row.axis-control {
+                                                root.axis-mapping-selected(row.control-key, value);
+                                            } else {
+                                                root.button-mapping-selected(row.control-key, value);
+                                            }
+                                        }
                                     }
                                 }
                             }
