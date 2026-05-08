@@ -12,11 +12,11 @@ use plugin_api::ffi::{
     PluginUndoRedoStateFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
     ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
+use slint::winit_030::WinitWindowAccessor;
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
     VecModel,
 };
-use slint::winit_030::WinitWindowAccessor;
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -440,11 +440,12 @@ pub(crate) fn main_window_geometry() -> Option<MainWindowGeometry> {
         let logical = size.to_logical(scale);
 
         let mut position = None;
-        ui.window().with_winit_window(|window: &slint::winit_030::winit::window::Window| {
-            if let Ok(current) = window.outer_position() {
-                position = Some(current);
-            }
-        });
+        ui.window()
+            .with_winit_window(|window: &slint::winit_030::winit::window::Window| {
+                if let Ok(current) = window.outer_position() {
+                    position = Some(current);
+                }
+            });
 
         let position = position?;
         Some(MainWindowGeometry {

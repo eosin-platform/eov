@@ -22,8 +22,8 @@ use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
 use host_context::WindowOpenRequest;
 use plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
-use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
 use slint::winit_030::WinitWindowAccessor;
+use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
 use slint_interpreter::json::{value_from_json_str, value_to_json};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -32,10 +32,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tracing::{error, info};
 
-fn apply_plugin_window_geometry(
-    plugin_id: &str,
-    instance: &slint_interpreter::ComponentInstance,
-) {
+fn apply_plugin_window_geometry(plugin_id: &str, instance: &slint_interpreter::ComponentInstance) {
     let Some(parent) = crate::plugin_host::main_window_geometry() else {
         return;
     };
@@ -51,16 +48,18 @@ fn apply_plugin_window_geometry(
         .window()
         .set_size(slint::LogicalSize::new(target_width, target_height));
 
-    instance.window().with_winit_window(|window: &slint::winit_030::winit::window::Window| {
-        use slint::winit_030::winit::dpi::LogicalPosition;
+    instance
+        .window()
+        .with_winit_window(|window: &slint::winit_030::winit::window::Window| {
+            use slint::winit_030::winit::dpi::LogicalPosition;
 
-        let offset_x = (parent.width as f32 * 0.08).round() as i32 + 36;
-        let offset_y = (parent.height as f32 * 0.1).round() as i32 + 42;
-        window.set_outer_position(LogicalPosition::new(
-            parent.x + offset_x,
-            parent.y + offset_y,
-        ));
-    });
+            let offset_x = (parent.width as f32 * 0.08).round() as i32 + 36;
+            let offset_y = (parent.height as f32 * 0.1).round() as i32 + 42;
+            window.set_outer_position(LogicalPosition::new(
+                parent.x + offset_x,
+                parent.y + offset_y,
+            ));
+        });
 }
 
 struct PluginWindowEntry {
@@ -258,7 +257,12 @@ fn open_plugin_window(
                 .to_string();
                 (on_ui_cb)(RString::from(cb_name.as_str()), RString::from(args_json));
                 if let Some(instance) = instance_weak.upgrade() {
-                    let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance, false);
+                    let _ = apply_plugin_window_properties(
+                        &plugin_id,
+                        property_vtable,
+                        &instance,
+                        false,
+                    );
                 }
                 slint_interpreter::Value::Void
             })

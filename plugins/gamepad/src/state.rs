@@ -435,7 +435,11 @@ pub fn create_new_profile() -> Result<(), String> {
 
     let mut suffix = 1;
     let mut candidate = "untitled".to_string();
-    while state.available_profiles.iter().any(|name| name == &candidate) {
+    while state
+        .available_profiles
+        .iter()
+        .any(|name| name == &candidate)
+    {
         suffix += 1;
         candidate = format!("untitled-{suffix}");
     }
@@ -479,12 +483,11 @@ pub fn import_profile_via_dialog() -> Result<(), String> {
     let Some(host) = host_api() else {
         return Err("host API is not available".to_string());
     };
-    let import_path = match (host.open_file_dialog)(host.context, "JSON".into(), "json".into())
-        .into_result()
-    {
-        Ok(path) => path.to_string(),
-        Err(_) => return Ok(()),
-    };
+    let import_path =
+        match (host.open_file_dialog)(host.context, "JSON".into(), "json".into()).into_result() {
+            Ok(path) => path.to_string(),
+            Err(_) => return Ok(()),
+        };
 
     let raw = fs::read_to_string(&import_path)
         .map_err(|err| format!("failed to read profile import '{}': {err}", import_path))?;
@@ -675,7 +678,8 @@ fn worker_loop() {
             {
                 state.devices = devices.clone();
                 if was_empty && !state.devices.is_empty() {
-                    state.selected_device_key = state.devices.first().map(|device| device.key.clone());
+                    state.selected_device_key =
+                        state.devices.first().map(|device| device.key.clone());
                     state.preferred_device_key = state.selected_device_key.clone();
                 } else if state.selected_device_key.as_ref().is_none_or(|selected| {
                     !state.devices.iter().any(|device| &device.key == selected)
@@ -745,6 +749,20 @@ fn worker_loop() {
         if current_visible_devices != last_visible_devices {
             last_visible_devices = current_visible_devices;
             refresh_window = true;
+        }
+
+        if let Some(selected) = selected_device_key.as_ref()
+            && let Some((id, _)) = gilrs
+                .gamepads()
+                .find(|(id, gamepad)| device_key(*id, gamepad) == *selected)
+        {
+            let gamepad = gilrs.gamepad(id);
+            if let Some(value) = analog_trigger_value(&gamepad, true) {
+                axis_values.insert("left_trigger".to_string(), value);
+            }
+            if let Some(value) = analog_trigger_value(&gamepad, false) {
+                axis_values.insert("right_trigger".to_string(), value);
+            }
         }
 
         apply_continuous_mappings(&axis_values, &pressed_buttons);
@@ -988,9 +1006,36 @@ fn axis_key(axis: Axis) -> Option<&'static str> {
     }
 }
 
+fn analog_trigger_value(gamepad: &gilrs::Gamepad<'_>, left: bool) -> Option<f32> {
+    let primary = if left {
+        Button::LeftTrigger2
+    } else {
+        Button::RightTrigger2
+    };
+    let fallback = if left {
+        Button::LeftTrigger
+    } else {
+        Button::RightTrigger
+    };
+
+    gamepad
+        .button_data(primary)
+        .or_else(|| gamepad.button_data(fallback))
+        .map(|data| data.value())
+}
+
 fn normalized_axis_value(control_key: &str, value: f32) -> f32 {
     match control_key {
         "left_stick_y" | "right_stick_y" => -value,
+        // Triggers are pressure inputs. Normalize them to 0..1 so a light press
+        // produces a small zoom signal and a full press reaches max speed.
+        "left_trigger" | "right_trigger" => {
+            if value >= 0.0 {
+                value.clamp(0.0, 1.0)
+            } else {
+                ((value + 1.0) * 0.5).clamp(0.0, 1.0)
+            }
+        }
         _ => value,
     }
 }
