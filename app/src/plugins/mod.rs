@@ -113,6 +113,7 @@ fn apply_plugin_window_properties(
     plugin_id: &str,
     vtable: PluginVTable,
     instance: &slint_interpreter::ComponentInstance,
+    skip_mapping_rows: bool,
 ) -> anyhow::Result<()> {
     let mut applied_values = BTreeMap::new();
     let property_types: Vec<_> = instance
@@ -123,6 +124,9 @@ fn apply_plugin_window_properties(
 
     for UiPropertyFFI { name, json_value } in (vtable.get_sidebar_properties)().into_iter() {
         let property_name = name.to_string();
+        if skip_mapping_rows && plugin_id == "gamepad" && property_name == "mapping-rows" {
+            continue;
+        }
         let Some((_, property_type)) = property_types
             .iter()
             .find(|(candidate, _)| candidate == &property_name)
@@ -233,7 +237,7 @@ fn open_plugin_window(
         CloseRequestResponse::HideWindow
     });
 
-    apply_plugin_window_properties(&req.plugin_id, *vtable, &instance)?;
+    apply_plugin_window_properties(&req.plugin_id, *vtable, &instance, false)?;
 
     // Wire all user-defined callbacks in the .slint to call through the
     // plugin's on_ui_callback vtable entry.
@@ -254,7 +258,7 @@ fn open_plugin_window(
                 .to_string();
                 (on_ui_cb)(RString::from(cb_name.as_str()), RString::from(args_json));
                 if let Some(instance) = instance_weak.upgrade() {
-                    let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance);
+                    let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance, false);
                 }
                 slint_interpreter::Value::Void
             })
@@ -283,7 +287,7 @@ fn open_plugin_window(
             refresh_timer_for_callback.stop();
             return;
         };
-        let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance);
+        let _ = apply_plugin_window_properties(&plugin_id, property_vtable, &instance, true);
     });
 
     PLUGIN_WINDOWS.with(|windows| {
