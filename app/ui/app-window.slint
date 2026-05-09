@@ -754,8 +754,8 @@ export component AppWindow inherits Window {
                     tab-tooltip-changed(visible, text, cx, ty) => {
                         root.tab-tooltip-visible = visible;
                         root.tab-tooltip-text = text;
-                        root.tab-tooltip-x = cx;
-                        root.tab-tooltip-y = ty;
+                        root.tab-tooltip-x = cx - root.absolute-position.x;
+                        root.tab-tooltip-y = ty - root.absolute-position.y;
                     }
                     hud-toggle-dropdown(pane) => {
                         root.hud-toggle-dropdown(pane);
