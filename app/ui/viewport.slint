@@ -91,6 +91,7 @@ export component Viewport inherits Rectangle {
     out property <length> viewport-width: self.width;
     out property <length> viewport-height: self.height;
     property <length> metadata-hud-height: show-metadata && metadata-items.length > 0 ? 52px + metadata-items.length * 22px : 0px;
+    private property <float> mouse-wheel-zoom-factor: 1.3225;
 
     background: Theme.viewport-bg;
 
@@ -560,7 +561,9 @@ export component Viewport inherits Rectangle {
         }
 
         scroll-event(e) => {
-            let factor = e.delta-y > 0 ? 1.05 : (1.0 / 1.05);
+            let factor = e.delta-y > 0
+                ? root.mouse-wheel-zoom-factor
+                : (1.0 / root.mouse-wheel-zoom-factor);
             root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
             accept
         }
