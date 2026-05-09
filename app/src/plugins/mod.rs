@@ -67,6 +67,7 @@ struct PluginWindowEntry {
     toolbar_button_id: Option<String>,
     instance: slint_interpreter::ComponentInstance,
     refresh_timer: Rc<Timer>,
+    hidden: bool,
 }
 
 // Thread-local storage for plugin window handles so they are not dropped.
@@ -79,7 +80,8 @@ fn remove_plugin_window(plugin_id: &str, hide_window: bool) -> Option<PluginWind
         let mut windows = windows.borrow_mut();
         let index = windows
             .iter()
-            .position(|entry| entry.plugin_id == plugin_id)?;
+            .rposition(|entry| entry.plugin_id == plugin_id && !entry.hidden)
+            .or_else(|| windows.iter().rposition(|entry| entry.plugin_id == plugin_id))?;
         let entry = windows.remove(index);
         entry.refresh_timer.stop();
         if hide_window {
@@ -104,8 +106,23 @@ fn plugin_window_is_open(plugin_id: &str) -> bool {
         windows
             .borrow()
             .iter()
-            .any(|entry| entry.plugin_id == plugin_id)
+            .any(|entry| {
+                entry.plugin_id == plugin_id && !entry.hidden && entry.instance.window().is_visible()
+            })
     })
+}
+
+fn mark_plugin_window_hidden(plugin_id: &str) {
+    PLUGIN_WINDOWS.with(|windows| {
+        let mut windows = windows.borrow_mut();
+        if let Some(entry) = windows
+            .iter_mut()
+            .rfind(|entry| entry.plugin_id == plugin_id && !entry.hidden)
+        {
+            entry.hidden = true;
+            entry.refresh_timer.stop();
+        }
+    });
 }
 
 fn apply_plugin_window_properties(
@@ -228,18 +245,10 @@ fn open_plugin_window(
     let toolbar_button_id_owned = toolbar_button_id.map(ToOwned::to_owned);
     let toolbar_button_id_for_close = toolbar_button_id_owned.clone();
     instance.window().on_close_requested(move || {
-        let plugin_id = plugin_id.clone();
-        let toolbar_button_id_for_close = toolbar_button_id_for_close.clone();
-        slint::Timer::single_shot(Duration::from_millis(0), move || {
-            let _ = remove_plugin_window(&plugin_id, false);
-            if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
-                let _ = crate::plugin_host::set_local_toolbar_button_active(
-                    &plugin_id,
-                    button_id,
-                    false,
-                );
-            }
-        });
+        mark_plugin_window_hidden(&plugin_id);
+        if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
+            let _ = crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
+        }
         CloseRequestResponse::HideWindow
     });
 
@@ -307,6 +316,7 @@ fn open_plugin_window(
             toolbar_button_id: toolbar_button_id_owned,
             instance,
             refresh_timer,
+            hidden: false,
         });
     });
 
