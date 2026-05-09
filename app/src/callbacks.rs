@@ -1,6 +1,7 @@
 use crate::config;
 use crate::state::{self, AppState, HudSettings, IsolatedChannel, PaneId};
 use crate::ui_update::build_recent_folder_menu_items;
+use crate::zoom_display::parse_zoom_input;
 use crate::{
     AppWindow, DatasetExportProgress, DatasetExportSettings,
     ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
@@ -4103,8 +4104,16 @@ pub fn setup_callbacks(
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
                 let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.zoom_to(value as f64);
+                let objective_power = state
+                    .active_file_id_for_pane(state.focused_pane)
+                    .and_then(|file_id| state.get_file(file_id))
+                    .map(|file| file.wsi.properties().objective_power)
+                    .unwrap_or(None);
+                let requested_zoom = parse_zoom_input(value.as_str(), objective_power);
+                if let Some(viewport) = state.active_viewport_mut()
+                    && let Some(value) = requested_zoom
+                {
+                    viewport.zoom_to(value);
                     changed = true;
                 }
                 changed |= state.mirror_locked_viewports_from_active();

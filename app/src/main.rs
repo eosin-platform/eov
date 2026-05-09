@@ -23,6 +23,7 @@ mod tile_loader;
 mod tools;
 mod ui_update;
 mod viewport_filter;
+mod zoom_display;
 
 use anyhow::Result;
 use common::{RenderBackend, TileCache};

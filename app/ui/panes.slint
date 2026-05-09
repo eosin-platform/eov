@@ -71,7 +71,7 @@ component PaneView inherits Rectangle {
     callback hud-measurement-unit-changed(int, MeasurementUnit);
     callback hud-stain-normalization-changed(int, StainNormalization);
     callback hud-reset-adjustments(int);
-    callback hud-zoom-input(int, float);
+    callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
@@ -140,6 +140,9 @@ component PaneView inherits Rectangle {
             if !root.pane-data.is-home-tab && root.pane-data.tabs.length > 0: Viewport {
                 content: root.pane-data.content;
                 viewport-info: root.pane-data.viewport-info;
+                zoom-display-text: root.pane-data.zoom-display-text;
+                zoom-input-text: root.pane-data.zoom-input-text;
+                zoom-tooltip: root.pane-data.zoom-tooltip;
                 minimap-thumbnail: root.pane-data.minimap-thumbnail;
                 minimap-rect: root.pane-data.minimap-rect;
                 show-minimap: root.show-minimap;
@@ -469,7 +472,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback hud-measurement-unit-changed(int, MeasurementUnit);
     callback hud-stain-normalization-changed(int, StainNormalization);
     callback hud-reset-adjustments(int);
-    callback hud-zoom-input(int, float);
+    callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);

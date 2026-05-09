@@ -25,6 +25,9 @@ export { Minimap, ZoomSlider, MetadataHud, ScaleBar, HudToolbar, HudSettingsPane
 export component Viewport inherits Rectangle {
     in property <image> content;
     in property <ViewportInfo> viewport-info;
+    in property <string> zoom-display-text: "100%";
+    in property <string> zoom-input-text: "100";
+    in property <string> zoom-tooltip: "100% = 1 image pixel per display pixel";
     in property <image> minimap-thumbnail;
     in property <MinimapRect> minimap-rect;
     in property <bool> show-minimap: true;
@@ -77,7 +80,7 @@ export component Viewport inherits Rectangle {
     callback hud-measurement-unit-changed(MeasurementUnit);
     callback hud-stain-normalization-changed(StainNormalization);
     callback hud-reset-adjustments();
-    callback hud-zoom-input(float);
+    callback hud-zoom-input(string);
     callback hud-zoom-in();
     callback hud-zoom-out();
     callback hud-deconv-h-intensity-changed(float);
@@ -628,6 +631,9 @@ export component Viewport inherits Rectangle {
         pane-id: root.pane-id;
         plugin-menu-open <=> root.hud-plugin-menu-open;
         zoom-level: root.viewport-info.zoom;
+        zoom-display-text: root.zoom-display-text;
+        zoom-input-text: root.zoom-input-text;
+        zoom-tooltip: root.zoom-tooltip;
         dropdown-open: root.hud.hud-dropdown-open;
         has-adjustments: root.hud.sharpness > 0.01 || (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
         plugin-buttons: root.plugin-hud-buttons;

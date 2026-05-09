@@ -50,6 +50,9 @@ component HudSeparator inherits Rectangle {
 export component HudToolbar inherits Rectangle {
     in property <int> pane-id: 0;
     in property <float> zoom-level: 1.0;
+    in property <string> zoom-display-text: "100%";
+    in property <string> zoom-input-text: "100";
+    in property <string> zoom-tooltip: "100% = 1 image pixel per display pixel";
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
     in property <[HudToolbarButtonData]> plugin-buttons: [];
@@ -58,12 +61,10 @@ export component HudToolbar inherits Rectangle {
     callback zoom-in();
     callback zoom-out();
     callback toggle-dropdown();
-    callback zoom-input(float);
+    callback zoom-input(string);
     callback plugin-button-clicked(string, string);
     callback dismiss-plugin-menu();
 
-    property <string> zoom-text: zoom-level >= 1.0 ? Math.round(zoom-level * 100) + "%" : Math.round(zoom-level * 1000) / 10 + "%";
-    property <string> zoom-input-text: zoom-level >= 1.0 ? "" + Math.round(zoom-level * 100) : "" + (Math.round(zoom-level * 1000) / 10);
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
     in-out property <bool> plugin-menu-open: false;
@@ -81,9 +82,9 @@ export component HudToolbar inherits Rectangle {
     ];
 
     property <string> active-tooltip:
-        adjust-btn.hovered ? adjust-btn.tooltip-text : "";
+        zoom-touch.has-hover ? root.zoom-tooltip : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
     property <length> tooltip-center-x:
-        adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
+        zoom-touch.has-hover ? zoom-touch.absolute-position.x - root.absolute-position.x + zoom-touch.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
 
     width: bar.preferred-width;
     height: 38px;
@@ -116,7 +117,7 @@ export component HudToolbar inherits Rectangle {
 
                 Text {
                     visible: !root.editing-zoom;
-                    text: root.zoom-text;
+                    text: root.zoom-display-text;
                     color: #e0e0e0;
                     font-size: 15px;
                     font-weight: 600;
@@ -143,12 +144,11 @@ export component HudToolbar inherits Rectangle {
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         text: root.zoom-input-text;
-                        input-type: InputType.decimal;
 
                         accepted => {
                             root.cancel-zoom-edit = false;
                             root.editing-zoom = false;
-                            root.zoom-input(self.text.to-float() / 100.0);
+                            root.zoom-input(self.text);
                         }
 
                         changed has-focus => {
@@ -159,7 +159,7 @@ export component HudToolbar inherits Rectangle {
                                     self.text = root.zoom-input-text;
                                 } else {
                                     root.editing-zoom = false;
-                                    root.zoom-input(self.text.to-float() / 100.0);
+                                    root.zoom-input(self.text);
                                 }
                             }
                         }

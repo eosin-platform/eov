@@ -6,6 +6,7 @@
 use crate::pane_ui::{series_items_model, series_items_revision, set_series_items_revision};
 use crate::state::{AppState, HudSettings, PaneId};
 use crate::tools::{pane_overlay_data, pane_viewport_state};
+use crate::zoom_display::zoom_display_info;
 use crate::{
     BottomPanelKind as SlintBottomPanelKind, ContextMenuItem, FilteringMode as SlintFilteringMode,
     HudSettings as SlintHudSettings, IsolatedChannel as SlintIsolatedChannel,
@@ -195,6 +196,9 @@ pub fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> b
     existing.id != next.id
         || existing.content != next.content
         || existing.viewport_info != next.viewport_info
+        || existing.zoom_display_text != next.zoom_display_text
+        || existing.zoom_input_text != next.zoom_input_text
+        || existing.zoom_tooltip != next.zoom_tooltip
         || existing.minimap_thumbnail != next.minimap_thumbnail
         || existing.minimap_rect != next.minimap_rect
         || existing.metadata_items != next.metadata_items
@@ -301,6 +305,13 @@ pub fn update_tabs(
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;
+            let mut zoom_display = zoom_display_info(1.0, None);
+
+            if let Some(file_id) = state.active_file_id_for_pane(pane)
+                && let Some(file) = state.get_file(file_id)
+            {
+                zoom_display = zoom_display_info(1.0, file.wsi.properties().objective_power);
+            }
 
             if let Some(file_id) = state.active_file_id_for_pane(pane)
                 && let Some(file) = state.get_file(file_id)
@@ -326,6 +337,7 @@ pub fn update_tabs(
                     height: rect.height,
                 };
                 zoom_slider_position = zoom_to_slider_value(vp.zoom);
+                zoom_display = zoom_display_info(vp.zoom, file.wsi.properties().objective_power);
             }
 
             let metadata_items = build_metadata_items(state, pane, &viewport_info);
@@ -361,6 +373,9 @@ pub fn update_tabs(
                 tabs: pane_ui.tabs.clone().into(),
                 content: cached.content.unwrap_or_default(),
                 viewport_info,
+                zoom_display_text: SharedString::from(zoom_display.text),
+                zoom_input_text: SharedString::from(zoom_display.input_text),
+                zoom_tooltip: SharedString::from(zoom_display.tooltip),
                 minimap_thumbnail: cached.minimap_thumbnail.unwrap_or_default(),
                 minimap_rect,
                 metadata_items: metadata_items.as_slice().into(),
