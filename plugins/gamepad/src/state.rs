@@ -893,7 +893,10 @@ fn apply_continuous_mappings(
     let mut mouse_x = 0.0f64;
     let mut mouse_y = 0.0f64;
 
-    for descriptor in CONTROL_DESCRIPTORS.iter().filter(|descriptor| descriptor.axis) {
+    for descriptor in CONTROL_DESCRIPTORS
+        .iter()
+        .filter(|descriptor| descriptor.axis)
+    {
         let value = normalized_axis_value(
             descriptor.key,
             axis_values.get(descriptor.key).copied().unwrap_or_default(),
@@ -954,23 +957,15 @@ fn apply_continuous_mappings(
     }
 }
 
+#[derive(Default)]
 struct MouseController {
     backend: Option<MouseBackend>,
     unavailable: bool,
 }
 
-impl Default for MouseController {
-    fn default() -> Self {
-        Self {
-            backend: None,
-            unavailable: false,
-        }
-    }
-}
-
 enum MouseBackend {
     Portal(PortalMouseController),
-    Enigo(Enigo),
+    Enigo(Box<Enigo>),
 }
 
 struct PortalMouseController {
@@ -1028,7 +1023,12 @@ impl PortalMouseController {
                 .await
                 .map_err(|err| format!("failed to create remote desktop session: {err}"))?;
             remote_desktop
-                .select_devices(&session, DeviceType::Pointer.into(), None, PersistMode::Application)
+                .select_devices(
+                    &session,
+                    DeviceType::Pointer.into(),
+                    None,
+                    PersistMode::Application,
+                )
                 .await
                 .map_err(|err| format!("failed to request remote desktop pointer access: {err}"))?;
             let response = remote_desktop
@@ -1048,44 +1048,53 @@ impl PortalMouseController {
     }
 
     fn move_relative(&self, x: i32, y: i32) -> Result<(), String> {
-        futures::executor::block_on(
-            self.remote_desktop
-                .notify_pointer_motion(&self.session, x as f64, y as f64),
-        )
+        futures::executor::block_on(self.remote_desktop.notify_pointer_motion(
+            &self.session,
+            x as f64,
+            y as f64,
+        ))
         .map_err(|err| err.to_string())
     }
 }
 
 fn create_mouse_backend() -> Result<MouseBackend, String> {
     let wayland_session = env::var("XDG_SESSION_TYPE").ok().as_deref() == Some("wayland")
-        || env::var("WAYLAND_DISPLAY").ok().is_some_and(|value| !value.is_empty());
+        || env::var("WAYLAND_DISPLAY")
+            .ok()
+            .is_some_and(|value| !value.is_empty());
 
     if wayland_session && let Ok(controller) = PortalMouseController::new() {
         return Ok(MouseBackend::Portal(controller));
     }
 
-    create_mouse_enigo().map(MouseBackend::Enigo)
+    create_mouse_enigo().map(|enigo| MouseBackend::Enigo(Box::new(enigo)))
 }
 
 fn create_mouse_enigo() -> Result<Enigo, String> {
     let wayland_session = env::var("XDG_SESSION_TYPE").ok().as_deref() == Some("wayland")
-        || env::var("WAYLAND_DISPLAY").ok().is_some_and(|value| !value.is_empty());
+        || env::var("WAYLAND_DISPLAY")
+            .ok()
+            .is_some_and(|value| !value.is_empty());
 
     if wayland_session {
-        let mut libei_only = Settings::default();
-        libei_only.x11_display = Some(DISABLED_DISPLAY_NAME.to_string());
-        libei_only.wayland_display = Some(DISABLED_DISPLAY_NAME.to_string());
+        let libei_only = Settings {
+            x11_display: Some(DISABLED_DISPLAY_NAME.to_string()),
+            wayland_display: Some(DISABLED_DISPLAY_NAME.to_string()),
+            ..Settings::default()
+        };
         if let Ok(enigo) = Enigo::new(&libei_only) {
             return Ok(enigo);
         }
     }
 
     if let Some(display) = env::var("DISPLAY").ok().filter(|value| !value.is_empty()) {
-        let mut x11_preferred = Settings::default();
-        x11_preferred.x11_display = Some(display);
         // Mixed Wayland/XWayland sessions still need an X11 fallback when portal-based
         // pointer injection is unavailable.
-        x11_preferred.wayland_display = Some(DISABLED_DISPLAY_NAME.to_string());
+        let x11_preferred = Settings {
+            x11_display: Some(display),
+            wayland_display: Some(DISABLED_DISPLAY_NAME.to_string()),
+            ..Settings::default()
+        };
         if let Ok(enigo) = Enigo::new(&x11_preferred) {
             return Ok(enigo);
         }

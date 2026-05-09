@@ -27,7 +27,10 @@ fn parse_stain_value_from_token(token: &str) -> Option<String> {
     let lower = trimmed.to_ascii_lowercase();
     for separator in [':', '='] {
         if let Some((key, value)) = trimmed.split_once(separator) {
-            let normalized_key = key.trim().to_ascii_lowercase().replace([' ', '-', '.'], "_");
+            let normalized_key = key
+                .trim()
+                .to_ascii_lowercase()
+                .replace([' ', '-', '.'], "_");
             if matches!(
                 normalized_key.as_str(),
                 "stain" | "stain_name" | "stain_type" | "primary_stain" | "histologic_stain"

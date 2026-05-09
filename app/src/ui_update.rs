@@ -107,22 +107,6 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
     model
 }
 
-#[cfg(test)]
-mod tests {
-    use super::series_index_label;
-
-    #[test]
-    fn series_index_label_uses_excel_style_letters() {
-        assert_eq!(series_index_label(0), "A");
-        assert_eq!(series_index_label(25), "Z");
-        assert_eq!(series_index_label(26), "AA");
-        assert_eq!(series_index_label(51), "AZ");
-        assert_eq!(series_index_label(52), "BA");
-        assert_eq!(series_index_label(701), "ZZ");
-        assert_eq!(series_index_label(702), "AAA");
-    }
-}
-
 fn build_metadata_items(
     state: &AppState,
     pane: PaneId,
@@ -688,4 +672,20 @@ fn ui_isolated_channel(ic: crate::state::IsolatedChannel) -> SlintIsolatedChanne
 /// Update the filtering mode UI state
 pub fn update_filtering_mode(ui: &crate::AppWindow, state: &AppState) {
     ui.set_filtering_mode(ui_filtering_mode(state.filtering_mode));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::series_index_label;
+
+    #[test]
+    fn series_index_label_uses_excel_style_letters() {
+        assert_eq!(series_index_label(0), "A");
+        assert_eq!(series_index_label(25), "Z");
+        assert_eq!(series_index_label(26), "AA");
+        assert_eq!(series_index_label(51), "AZ");
+        assert_eq!(series_index_label(52), "BA");
+        assert_eq!(series_index_label(701), "ZZ");
+        assert_eq!(series_index_label(702), "AAA");
+    }
 }

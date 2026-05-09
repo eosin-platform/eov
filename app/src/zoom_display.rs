@@ -225,7 +225,13 @@ mod tests {
 
         let wsi = WsiFile::open(&path).expect("Failed to open WSI fixture");
         assert_eq!(wsi.properties().objective_power, None);
-        assert_eq!(zoom_display_mode(wsi.properties().objective_power), ZoomDisplayMode::Percent);
-        assert_eq!(zoom_display_info(0.5, wsi.properties().objective_power).text, "50%");
+        assert_eq!(
+            zoom_display_mode(wsi.properties().objective_power),
+            ZoomDisplayMode::Percent
+        );
+        assert_eq!(
+            zoom_display_info(0.5, wsi.properties().objective_power).text,
+            "50%"
+        );
     }
 }

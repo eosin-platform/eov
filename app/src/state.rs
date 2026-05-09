@@ -1802,8 +1802,8 @@ impl AppState {
         };
 
         entry.metadata_tooltip = metadata_tooltip;
-    entry.objective_label = objective_label;
-    entry.stain_label = stain_label;
+        entry.objective_label = objective_label;
+        entry.stain_label = stain_label;
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
         self.series_content_revision = self.series_content_revision.wrapping_add(1);

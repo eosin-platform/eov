@@ -81,7 +81,11 @@ fn remove_plugin_window(plugin_id: &str, hide_window: bool) -> Option<PluginWind
         let index = windows
             .iter()
             .rposition(|entry| entry.plugin_id == plugin_id && !entry.hidden)
-            .or_else(|| windows.iter().rposition(|entry| entry.plugin_id == plugin_id))?;
+            .or_else(|| {
+                windows
+                    .iter()
+                    .rposition(|entry| entry.plugin_id == plugin_id)
+            })?;
         let entry = windows.remove(index);
         entry.refresh_timer.stop();
         if hide_window {
@@ -103,12 +107,9 @@ fn close_plugin_window(plugin_id: &str) -> bool {
 
 fn plugin_window_is_open(plugin_id: &str) -> bool {
     PLUGIN_WINDOWS.with(|windows| {
-        windows
-            .borrow()
-            .iter()
-            .any(|entry| {
-                entry.plugin_id == plugin_id && !entry.hidden && entry.instance.window().is_visible()
-            })
+        windows.borrow().iter().any(|entry| {
+            entry.plugin_id == plugin_id && !entry.hidden && entry.instance.window().is_visible()
+        })
     })
 }
 
@@ -247,7 +248,8 @@ fn open_plugin_window(
     instance.window().on_close_requested(move || {
         mark_plugin_window_hidden(&plugin_id);
         if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
-            let _ = crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
+            let _ =
+                crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
         }
         CloseRequestResponse::HideWindow
     });
