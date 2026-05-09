@@ -38,6 +38,21 @@ fn series_thumbnail_image(thumbnail: Option<&crate::state::SeriesThumbnail>) -> 
         .unwrap_or_default()
 }
 
+fn series_index_label(index: usize) -> String {
+    let mut value = index;
+    let mut label = Vec::new();
+
+    loop {
+        label.push((b'A' + (value % 26) as u8) as char);
+        if value < 26 {
+            break;
+        }
+        value = value / 26 - 1;
+    }
+
+    label.iter().rev().collect()
+}
+
 fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel<SeriesItemData>> {
     let model = series_items_model();
 
@@ -47,6 +62,7 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
         model.remove(row_count);
     }
 
+    let mut file_index = 0usize;
     for (index, entry) in series.entries.iter().enumerate() {
         let entry_path = SharedString::from(entry.path.display().to_string());
         let existing = model.row_data(index);
@@ -57,9 +73,19 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
             })
             .map(|item| item.thumbnail.clone())
             .unwrap_or_else(|| series_thumbnail_image(entry.thumbnail.as_ref()));
+        let series_label = if entry.is_directory {
+            SharedString::default()
+        } else {
+            let label = series_index_label(file_index);
+            file_index += 1;
+            SharedString::from(label)
+        };
         let next = SeriesItemData {
             path: entry_path,
             name: SharedString::from(entry.filename.clone()),
+            series_label,
+            objective_label: SharedString::from(entry.objective_label.clone().unwrap_or_default()),
+            stain_label: SharedString::from(entry.stain_label.clone().unwrap_or_default()),
             is_directory: entry.is_directory,
             metadata_tooltip: SharedString::from(entry.metadata_tooltip.clone()),
             thumbnail,
@@ -79,6 +105,22 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
     }
 
     model
+}
+
+#[cfg(test)]
+mod tests {
+    use super::series_index_label;
+
+    #[test]
+    fn series_index_label_uses_excel_style_letters() {
+        assert_eq!(series_index_label(0), "A");
+        assert_eq!(series_index_label(25), "Z");
+        assert_eq!(series_index_label(26), "AA");
+        assert_eq!(series_index_label(51), "AZ");
+        assert_eq!(series_index_label(52), "BA");
+        assert_eq!(series_index_label(701), "ZZ");
+        assert_eq!(series_index_label(702), "AAA");
+    }
 }
 
 fn build_metadata_items(

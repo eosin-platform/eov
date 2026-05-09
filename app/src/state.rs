@@ -159,6 +159,8 @@ pub struct SeriesEntry {
     pub filename: String,
     pub is_directory: bool,
     pub metadata_tooltip: String,
+    pub objective_label: Option<String>,
+    pub stain_label: Option<String>,
     pub thumbnail: Option<SeriesThumbnail>,
     pub thumbnail_loading: bool,
 }
@@ -1780,6 +1782,8 @@ impl AppState {
         revision: u64,
         path: &std::path::Path,
         metadata_tooltip: String,
+        objective_label: Option<String>,
+        stain_label: Option<String>,
         thumbnail: Option<SeriesThumbnail>,
     ) -> bool {
         if self.series_revision != revision {
@@ -1798,6 +1802,8 @@ impl AppState {
         };
 
         entry.metadata_tooltip = metadata_tooltip;
+    entry.objective_label = objective_label;
+    entry.stain_label = stain_label;
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
         self.series_content_revision = self.series_content_revision.wrapping_add(1);

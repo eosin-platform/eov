@@ -9,17 +9,29 @@ component SeriesCard inherits Rectangle {
     callback activated(string);
     callback context-menu(string, length, length);
     callback horizontal-scroll(length);
+    callback show-tooltip(string, length, length);
+    callback clear-tooltip(string);
 
     width: 148px;
     height: 150px;
     border-radius: 8px;
-    border-width: 1px;
-    border-color: selected ? Theme.accent : (touch.has-hover ? Theme.border : Theme.border-subtle);
-    background: selected ? #0e639c22 : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
 
     touch := TouchArea {
         clicked => {
             root.activated(root.item.path);
+        }
+
+        changed has-hover => {
+            if self.has-hover {
+                root.show-tooltip(
+                    root.item.name,
+                    root.absolute-position.x + root.width / 2,
+                    root.absolute-position.y - 8px,
+                );
+            } else {
+                root.clear-tooltip(root.item.name);
+            }
         }
 
         scroll-event(e) => {
@@ -42,8 +54,35 @@ component SeriesCard inherits Rectangle {
     }
 
     VerticalLayout {
-        padding: 10px;
-        spacing: 8px;
+        padding: 8px;
+        spacing: 4px;
+
+        HorizontalLayout {
+            height: 16px;
+            padding-left: 4px;
+            padding-right: 4px;
+            spacing: 6px;
+            alignment: stretch;
+
+            if item.series_label != "": Text {
+                text: item.series_label;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: item.name;
+                color: Theme.text-primary;
+                font-size: 11px;
+                font-weight: 500;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
 
         Rectangle {
             height: 112px;
@@ -70,6 +109,42 @@ component SeriesCard inherits Rectangle {
                 height: parent.height;
                 source: item.thumbnail;
                 image-fit: contain;
+            }
+
+            if !item.is-directory && item.objective_label != "": Rectangle {
+                x: 8px;
+                y: 8px;
+                height: 20px;
+                width: objective-text.width + 10px;
+                border-radius: 4px;
+                background: #0f141bcc;
+
+                objective-text := Text {
+                    x: 5px;
+                    y: 3px;
+                    text: item.objective_label;
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 700;
+                }
+            }
+
+            if !item.is-directory && item.stain_label != "": Rectangle {
+                y: parent.height - self.height - 8px;
+                height: 20px;
+                width: stain-text.width + 10px;
+                x: parent.width - self.width - 8px;
+                border-radius: 4px;
+                background: #0f141bcc;
+
+                stain-text := Text {
+                    x: 5px;
+                    y: 3px;
+                    text: item.stain_label;
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
             }
 
             if !item.is-directory && item.is-loading: Rectangle {
@@ -99,15 +174,6 @@ component SeriesCard inherits Rectangle {
             }
         }
 
-        Text {
-            text: item.name;
-            color: selected ? white : Theme.text-primary;
-            font-size: 11px;
-            font-weight: selected ? 600 : 500;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-            max-height: 28px;
-        }
     }
 }
 
@@ -133,8 +199,8 @@ export component SeriesBar inherits Rectangle {
 
     function show-tooltip(text: string, center-x: length, top-y: length) {
         root.active-tooltip = text;
-        root.tooltip-x = center-x;
-        root.tooltip-y = top-y;
+        root.tooltip-x = center-x - root.absolute-position.x;
+        root.tooltip-y = top-y - root.absolute-position.y;
     }
 
     function clear-tooltip(text: string) {
@@ -339,14 +405,11 @@ export component SeriesBar inherits Rectangle {
                 context-menu(path, x, y) => {
                     root.item-context-menu(path, x, y);
                 }
-                changed hovered => {
-                    if self.hovered {
-                        root.active-tooltip = item.metadata-tooltip;
-                        root.tooltip-x = self.absolute-position.x + self.width / 2;
-                        root.tooltip-y = self.absolute-position.y - 8px;
-                    } else if root.active-tooltip == item.metadata-tooltip {
-                        root.active-tooltip = "";
-                    }
+                show-tooltip(text, center-x, top-y) => {
+                    root.show-tooltip(text, center-x, top-y);
+                }
+                clear-tooltip(text) => {
+                    root.clear-tooltip(text);
                 }
             }
         }

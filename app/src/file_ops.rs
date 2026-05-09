@@ -70,6 +70,8 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
                 } else {
                     "Loading metadata...".to_string()
                 },
+                objective_label: None,
+                stain_label: None,
                 thumbnail: None,
                 thumbnail_loading: !is_directory,
             }
@@ -157,9 +159,10 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
         })
         .unwrap_or_else(|| "N/A".to_string());
     let vendor = properties.vendor.as_deref().unwrap_or("Unknown");
+    let stain = properties.stain.as_deref().unwrap_or("N/A");
 
     format!(
-        "{}\n{} x {} px\n{} levels\nVendor: {}\nObjective: {}\nMPP: {}",
+        "{}\n{} x {} px\n{} levels\nVendor: {}\nObjective: {}\nMPP: {}\nStain: {}",
         header,
         common::format_u64(properties.width),
         common::format_u64(properties.height),
@@ -167,7 +170,21 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
         vendor,
         objective,
         mpp,
+        stain,
     )
+}
+
+fn build_series_overlay_labels(wsi: Option<&WsiFile>) -> (Option<String>, Option<String>) {
+    let Some(wsi) = wsi else {
+        return (None, None);
+    };
+
+    let properties = wsi.properties();
+    let objective_label = properties
+        .objective_power
+        .map(|value| format!("{}x", common::format_decimal(value)));
+    let stain_label = properties.stain.clone();
+    (objective_label, stain_label)
 }
 
 fn generate_thumbnail_with_dimensions(wsi: &WsiFile, max_size: u32) -> Option<SeriesThumbnail> {
@@ -240,6 +257,8 @@ fn spawn_series_thumbnail_worker(
                             revision,
                             &update_path,
                             metadata_tooltip,
+                            None,
+                            None,
                             Some(cached_thumbnail),
                         )
                     };
@@ -253,6 +272,7 @@ fn spawn_series_thumbnail_worker(
 
             let opened = WsiFile::open(&path).ok();
             let metadata_tooltip = build_series_metadata_tooltip(&path, opened.as_ref());
+            let (objective_label, stain_label) = build_series_overlay_labels(opened.as_ref());
             let thumbnail = cached_thumbnail.or_else(|| {
                 opened
                     .as_ref()
@@ -277,6 +297,8 @@ fn spawn_series_thumbnail_worker(
                         revision,
                         &update_path,
                         metadata_tooltip,
+                        objective_label,
+                        stain_label,
                         thumbnail,
                     )
                 };

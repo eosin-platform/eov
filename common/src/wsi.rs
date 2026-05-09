@@ -8,6 +8,81 @@ use openslide_rs::{Address, OpenSlide, Region, Size};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
+fn clean_metadata_value(value: &str) -> Option<String> {
+    let cleaned = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("unknown")
+        || trimmed.eq_ignore_ascii_case("n/a")
+        || trimmed.eq_ignore_ascii_case("na")
+    {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn parse_stain_value_from_token(token: &str) -> Option<String> {
+    let trimmed = token.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for separator in [':', '='] {
+        if let Some((key, value)) = trimmed.split_once(separator) {
+            let normalized_key = key.trim().to_ascii_lowercase().replace([' ', '-', '.'], "_");
+            if matches!(
+                normalized_key.as_str(),
+                "stain" | "stain_name" | "stain_type" | "primary_stain" | "histologic_stain"
+            ) {
+                return clean_metadata_value(value);
+            }
+        }
+    }
+
+    if lower.contains("hematoxylin and eosin")
+        || lower.contains("hematoxylin & eosin")
+        || lower.contains("h&e")
+        || lower.contains("h & e")
+    {
+        return Some("H&E".to_string());
+    }
+
+    if lower.contains("immunohistochemistry") || lower == "ihc" {
+        return Some("IHC".to_string());
+    }
+
+    None
+}
+
+fn extract_stain_from_text(text: &str) -> Option<String> {
+    text.split(['|', ';', '\n'])
+        .find_map(parse_stain_value_from_token)
+}
+
+fn extract_stain_metadata(slide: &OpenSlide) -> Option<String> {
+    let property_names = slide.get_property_names();
+
+    for name in &property_names {
+        if !name.to_ascii_lowercase().contains("stain") {
+            continue;
+        }
+
+        if let Ok(value) = slide.get_property_value(name)
+            && let Some(stain) = clean_metadata_value(&value)
+        {
+            return Some(stain);
+        }
+    }
+
+    for key in ["openslide.comment", "tiff.ImageDescription", "aperio.Title"] {
+        if let Ok(value) = slide.get_property_value(key)
+            && let Some(stain) = extract_stain_from_text(&value)
+        {
+            return Some(stain);
+        }
+    }
+
+    None
+}
+
 /// Default tile size for rendering
 pub const DEFAULT_TILE_SIZE: u32 = 256;
 pub const MEDIUM_TILE_SIZE: u32 = 512;
@@ -58,6 +133,8 @@ pub struct WsiProperties {
     pub objective_power: Option<f64>,
     /// Scan date if available
     pub scan_date: Option<String>,
+    /// Stain label if available in slide metadata
+    pub stain: Option<String>,
     /// All available levels
     pub levels: Vec<WsiLevel>,
     /// Total width at level 0
@@ -165,6 +242,7 @@ impl WsiFile {
             mpp_y: openslide_props.mpp_y.map(|v| v as f64),
             objective_power: openslide_props.objective_power.map(|v| v as f64),
             scan_date: aperio_props.date.clone(),
+            stain: extract_stain_metadata(&slide),
             levels,
             width: size0.w as u64,
             height: size0.h as u64,
@@ -406,5 +484,29 @@ mod tests {
         // At very high downsample, should return highest level
         let level = wsi.best_level_for_downsample(1000.0);
         assert!(level < wsi.level_count());
+    }
+
+    #[test]
+    fn parses_explicit_stain_tokens() {
+        assert_eq!(
+            parse_stain_value_from_token("Stain = Masson trichrome"),
+            Some("Masson trichrome".to_string())
+        );
+        assert_eq!(
+            parse_stain_value_from_token("stain_name: PAS"),
+            Some("PAS".to_string())
+        );
+    }
+
+    #[test]
+    fn detects_common_he_stain_markers() {
+        assert_eq!(
+            extract_stain_from_text("Case 12 | H&E | archived slide"),
+            Some("H&E".to_string())
+        );
+        assert_eq!(
+            extract_stain_from_text("hematoxylin and eosin section"),
+            Some("H&E".to_string())
+        );
     }
 }
