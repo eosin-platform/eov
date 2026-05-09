@@ -228,11 +228,18 @@ fn open_plugin_window(
     let toolbar_button_id_owned = toolbar_button_id.map(ToOwned::to_owned);
     let toolbar_button_id_for_close = toolbar_button_id_owned.clone();
     instance.window().on_close_requested(move || {
-        let _ = remove_plugin_window(&plugin_id, false);
-        if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
-            let _ =
-                crate::plugin_host::set_local_toolbar_button_active(&plugin_id, button_id, false);
-        }
+        let plugin_id = plugin_id.clone();
+        let toolbar_button_id_for_close = toolbar_button_id_for_close.clone();
+        slint::Timer::single_shot(Duration::from_millis(0), move || {
+            let _ = remove_plugin_window(&plugin_id, false);
+            if let Some(button_id) = toolbar_button_id_for_close.as_deref() {
+                let _ = crate::plugin_host::set_local_toolbar_button_active(
+                    &plugin_id,
+                    button_id,
+                    false,
+                );
+            }
+        });
         CloseRequestResponse::HideWindow
     });
 

@@ -1,9 +1,15 @@
 use abi_stable::std_types::RString;
+use ashpd::desktop::{
+    PersistMode, Session,
+    remote_desktop::{DeviceType, RemoteDesktop},
+};
+use enigo::{Coordinate, Enigo, Mouse, Settings};
 use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
 use plugin_api::ffi::{HostApiVTable, HostLogLevelFFI, UiPropertyFFI};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, Once, OnceLock};
@@ -12,11 +18,15 @@ use std::time::{Duration, SystemTime};
 const TOOLBAR_BUTTON_ID: &str = "toggle_gamepad";
 const WINDOW_HEARTBEAT_STALE_AFTER: Duration = Duration::from_millis(1200);
 const WINDOW_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(250);
+const MOUSE_PIXELS_PER_TICK: f64 = 24.0;
+const DISABLED_DISPLAY_NAME: &str = "eov-disable-backend";
 
 const AXIS_ACTION_KEYS: &[&str] = &[
     "none",
     "pan_horizontal",
     "pan_vertical",
+    "mouse_horizontal",
+    "mouse_vertical",
     "zoom",
     "zoom_in",
     "zoom_out",
@@ -43,6 +53,8 @@ pub enum MappingAction {
     None,
     PanHorizontal,
     PanVertical,
+    MouseHorizontal,
+    MouseVertical,
     Zoom,
     PreviousPane,
     NextPane,
@@ -65,6 +77,8 @@ impl MappingAction {
             Self::None => "none",
             Self::PanHorizontal => "pan_horizontal",
             Self::PanVertical => "pan_vertical",
+            Self::MouseHorizontal => "mouse_horizontal",
+            Self::MouseVertical => "mouse_vertical",
             Self::Zoom => "zoom",
             Self::PreviousPane => "previous_pane",
             Self::NextPane => "next_pane",
@@ -86,6 +100,8 @@ impl MappingAction {
         match key {
             "pan_horizontal" => Self::PanHorizontal,
             "pan_vertical" => Self::PanVertical,
+            "mouse_horizontal" => Self::MouseHorizontal,
+            "mouse_vertical" => Self::MouseVertical,
             "zoom" => Self::Zoom,
             "previous_pane" => Self::PreviousPane,
             "next_pane" => Self::NextPane,
@@ -652,6 +668,7 @@ fn worker_loop() {
     let mut last_visible_devices = Vec::<String>::new();
     let mut last_runtime_sync = SystemTime::UNIX_EPOCH;
     let mut last_window_open_state = false;
+    let mut mouse_controller = MouseController::default();
 
     loop {
         if host_api().is_some()
@@ -765,7 +782,7 @@ fn worker_loop() {
             }
         }
 
-        apply_continuous_mappings(&axis_values, &pressed_buttons);
+        apply_continuous_mappings(&axis_values, &pressed_buttons, &mut mouse_controller);
 
         let window_open = window_is_open();
         if window_open != last_window_open_state {
@@ -860,76 +877,229 @@ fn dispatch_button_action(control_key: &str) {
 fn apply_continuous_mappings(
     axis_values: &HashMap<String, f32>,
     _pressed_buttons: &HashSet<String>,
+    mouse_controller: &mut MouseController,
 ) {
-    let snapshot = {
+    let state = {
         let state = plugin_state().lock().unwrap();
         if !state.controller_enabled {
             return;
         }
-        let Some(host) = state.host_api else {
-            return;
-        };
-        let host_snapshot = (host.get_snapshot)(host.context);
-        let Some(viewport) = host_snapshot.active_viewport.into_option() else {
-            return;
-        };
-        let x_span = (viewport.bounds_right - viewport.bounds_left).max(1.0);
-        let y_span = (viewport.bounds_bottom - viewport.bounds_top).max(1.0);
-        let mut pan_x = 0.0f64;
-        let mut pan_y = 0.0f64;
-        let mut zoom_signal = 0.0f64;
-
-        for descriptor in CONTROL_DESCRIPTORS
-            .iter()
-            .filter(|descriptor| descriptor.axis)
-        {
-            let value = normalized_axis_value(
-                descriptor.key,
-                axis_values.get(descriptor.key).copied().unwrap_or_default(),
-            );
-            let filtered = apply_dead_zone(descriptor.key, value, &state);
-            if filtered.abs() <= f32::EPSILON {
-                continue;
-            }
-            match state
-                .mappings
-                .get(descriptor.key)
-                .copied()
-                .unwrap_or(MappingAction::None)
-            {
-                MappingAction::PanHorizontal => pan_x += filtered as f64,
-                MappingAction::PanVertical => pan_y += filtered as f64,
-                MappingAction::Zoom => zoom_signal += -(filtered as f64),
-                MappingAction::ZoomIn => zoom_signal += filtered.abs() as f64,
-                MappingAction::ZoomOut => zoom_signal -= filtered.abs() as f64,
-                _ => {}
-            }
-        }
-
-        let center_x = viewport.center_x + x_span * pan_x * state.pan_sensitivity as f64 * 0.024;
-        let center_y = viewport.center_y + y_span * pan_y * state.pan_sensitivity as f64 * 0.024;
-        let zoom = if zoom_signal.abs() > 0.001 {
-            viewport.zoom * f64::exp(zoom_signal * state.zoom_sensitivity as f64 * 0.04)
-        } else {
-            viewport.zoom
-        };
-        (
-            host,
-            center_x,
-            center_y,
-            zoom,
-            viewport.center_x,
-            viewport.center_y,
-            viewport.zoom,
-        )
+        state.clone()
     };
 
-    let (host, center_x, center_y, zoom, previous_x, previous_y, previous_zoom) = snapshot;
-    if (center_x - previous_x).abs() > 0.0001
-        || (center_y - previous_y).abs() > 0.0001
-        || (zoom - previous_zoom).abs() > 0.0001
+    let mut pan_x = 0.0f64;
+    let mut pan_y = 0.0f64;
+    let mut zoom_signal = 0.0f64;
+    let mut mouse_x = 0.0f64;
+    let mut mouse_y = 0.0f64;
+
+    for descriptor in CONTROL_DESCRIPTORS.iter().filter(|descriptor| descriptor.axis) {
+        let value = normalized_axis_value(
+            descriptor.key,
+            axis_values.get(descriptor.key).copied().unwrap_or_default(),
+        );
+        let filtered = apply_dead_zone(descriptor.key, value, &state);
+        if filtered.abs() <= f32::EPSILON {
+            continue;
+        }
+        match state
+            .mappings
+            .get(descriptor.key)
+            .copied()
+            .unwrap_or(MappingAction::None)
+        {
+            MappingAction::PanHorizontal => pan_x += filtered as f64,
+            MappingAction::PanVertical => pan_y += filtered as f64,
+            MappingAction::MouseHorizontal => mouse_x += filtered as f64,
+            MappingAction::MouseVertical => mouse_y += filtered as f64,
+            MappingAction::Zoom => zoom_signal += -(filtered as f64),
+            MappingAction::ZoomIn => zoom_signal += filtered.abs() as f64,
+            MappingAction::ZoomOut => zoom_signal -= filtered.abs() as f64,
+            _ => {}
+        }
+    }
+
+    let mouse_dx = mouse_delta(mouse_x);
+    let mouse_dy = mouse_delta(mouse_y);
+    if mouse_dx != 0 || mouse_dy != 0 {
+        mouse_controller.move_relative(mouse_dx, mouse_dy);
+    }
+
+    if pan_x.abs() <= 0.0001 && pan_y.abs() <= 0.0001 && zoom_signal.abs() <= 0.0001 {
+        return;
+    }
+
+    let Some(host) = state.host_api else {
+        return;
+    };
+    let host_snapshot = (host.get_snapshot)(host.context);
+    let Some(viewport) = host_snapshot.active_viewport.into_option() else {
+        return;
+    };
+    let x_span = (viewport.bounds_right - viewport.bounds_left).max(1.0);
+    let y_span = (viewport.bounds_bottom - viewport.bounds_top).max(1.0);
+    let center_x = viewport.center_x + x_span * pan_x * state.pan_sensitivity as f64 * 0.024;
+    let center_y = viewport.center_y + y_span * pan_y * state.pan_sensitivity as f64 * 0.024;
+    let zoom = if zoom_signal.abs() > 0.001 {
+        viewport.zoom * f64::exp(zoom_signal * state.zoom_sensitivity as f64 * 0.04)
+    } else {
+        viewport.zoom
+    };
+
+    if (center_x - viewport.center_x).abs() > 0.0001
+        || (center_y - viewport.center_y).abs() > 0.0001
+        || (zoom - viewport.zoom).abs() > 0.0001
     {
         let _ = (host.set_active_viewport)(host.context, center_x, center_y, zoom);
+    }
+}
+
+struct MouseController {
+    backend: Option<MouseBackend>,
+    unavailable: bool,
+}
+
+impl Default for MouseController {
+    fn default() -> Self {
+        Self {
+            backend: None,
+            unavailable: false,
+        }
+    }
+}
+
+enum MouseBackend {
+    Portal(PortalMouseController),
+    Enigo(Enigo),
+}
+
+struct PortalMouseController {
+    remote_desktop: RemoteDesktop<'static>,
+    session: Session<'static, RemoteDesktop<'static>>,
+}
+
+impl MouseController {
+    fn move_relative(&mut self, x: i32, y: i32) {
+        if x == 0 && y == 0 {
+            return;
+        }
+        if self.unavailable {
+            return;
+        }
+        if self.backend.is_none() {
+            match create_mouse_backend() {
+                Ok(backend) => self.backend = Some(backend),
+                Err(err) => {
+                    self.unavailable = true;
+                    log_message(
+                        HostLogLevelFFI::Warn,
+                        format!("gamepad mouse control unavailable: {err}"),
+                    );
+                    return;
+                }
+            }
+        }
+        let result = match self.backend.as_mut() {
+            Some(MouseBackend::Portal(controller)) => controller.move_relative(x, y),
+            Some(MouseBackend::Enigo(enigo)) => enigo
+                .move_mouse(x, y, Coordinate::Rel)
+                .map_err(|err| err.to_string()),
+            None => Ok(()),
+        };
+        if let Err(err) = result {
+            self.backend = None;
+            self.unavailable = true;
+            log_message(
+                HostLogLevelFFI::Warn,
+                format!("gamepad mouse move failed: {err}"),
+            );
+        }
+    }
+}
+
+impl PortalMouseController {
+    fn new() -> Result<Self, String> {
+        futures::executor::block_on(async {
+            let remote_desktop = RemoteDesktop::new()
+                .await
+                .map_err(|err| format!("failed to create remote desktop portal: {err}"))?;
+            let session = remote_desktop
+                .create_session()
+                .await
+                .map_err(|err| format!("failed to create remote desktop session: {err}"))?;
+            remote_desktop
+                .select_devices(&session, DeviceType::Pointer.into(), None, PersistMode::Application)
+                .await
+                .map_err(|err| format!("failed to request remote desktop pointer access: {err}"))?;
+            let response = remote_desktop
+                .start(&session, None)
+                .await
+                .map_err(|err| format!("failed to start remote desktop session: {err}"))?
+                .response()
+                .map_err(|err| format!("remote desktop permission denied: {err}"))?;
+            if !response.devices().contains(DeviceType::Pointer) {
+                return Err("remote desktop pointer access was not granted".to_string());
+            }
+            Ok(Self {
+                remote_desktop,
+                session,
+            })
+        })
+    }
+
+    fn move_relative(&self, x: i32, y: i32) -> Result<(), String> {
+        futures::executor::block_on(
+            self.remote_desktop
+                .notify_pointer_motion(&self.session, x as f64, y as f64),
+        )
+        .map_err(|err| err.to_string())
+    }
+}
+
+fn create_mouse_backend() -> Result<MouseBackend, String> {
+    let wayland_session = env::var("XDG_SESSION_TYPE").ok().as_deref() == Some("wayland")
+        || env::var("WAYLAND_DISPLAY").ok().is_some_and(|value| !value.is_empty());
+
+    if wayland_session && let Ok(controller) = PortalMouseController::new() {
+        return Ok(MouseBackend::Portal(controller));
+    }
+
+    create_mouse_enigo().map(MouseBackend::Enigo)
+}
+
+fn create_mouse_enigo() -> Result<Enigo, String> {
+    let wayland_session = env::var("XDG_SESSION_TYPE").ok().as_deref() == Some("wayland")
+        || env::var("WAYLAND_DISPLAY").ok().is_some_and(|value| !value.is_empty());
+
+    if wayland_session {
+        let mut libei_only = Settings::default();
+        libei_only.x11_display = Some(DISABLED_DISPLAY_NAME.to_string());
+        libei_only.wayland_display = Some(DISABLED_DISPLAY_NAME.to_string());
+        if let Ok(enigo) = Enigo::new(&libei_only) {
+            return Ok(enigo);
+        }
+    }
+
+    if let Some(display) = env::var("DISPLAY").ok().filter(|value| !value.is_empty()) {
+        let mut x11_preferred = Settings::default();
+        x11_preferred.x11_display = Some(display);
+        // Mixed Wayland/XWayland sessions still need an X11 fallback when portal-based
+        // pointer injection is unavailable.
+        x11_preferred.wayland_display = Some(DISABLED_DISPLAY_NAME.to_string());
+        if let Ok(enigo) = Enigo::new(&x11_preferred) {
+            return Ok(enigo);
+        }
+    }
+
+    Enigo::new(&Settings::default()).map_err(|err| err.to_string())
+}
+
+fn mouse_delta(value: f64) -> i32 {
+    let scaled = value * value.abs() * MOUSE_PIXELS_PER_TICK;
+    if scaled.abs() < 0.5 {
+        0
+    } else {
+        scaled.round() as i32
     }
 }
 
@@ -1006,21 +1176,13 @@ fn axis_key(axis: Axis) -> Option<&'static str> {
 }
 
 fn analog_trigger_value(gamepad: &gilrs::Gamepad<'_>, left: bool) -> Option<f32> {
-    let primary = if left {
+    let trigger_button = if left {
         Button::LeftTrigger2
     } else {
         Button::RightTrigger2
     };
-    let fallback = if left {
-        Button::LeftTrigger
-    } else {
-        Button::RightTrigger
-    };
 
-    gamepad
-        .button_data(primary)
-        .or_else(|| gamepad.button_data(fallback))
-        .map(|data| data.value())
+    gamepad.button_data(trigger_button).map(|data| data.value())
 }
 
 fn normalized_axis_value(control_key: &str, value: f32) -> f32 {
@@ -1074,7 +1236,10 @@ fn default_mappings() -> BTreeMap<String, MappingAction> {
         .collect::<BTreeMap<_, _>>();
     mappings.insert("left_stick_x".to_string(), MappingAction::PanHorizontal);
     mappings.insert("left_stick_y".to_string(), MappingAction::PanVertical);
-    mappings.insert("right_stick_y".to_string(), MappingAction::Zoom);
+    mappings.insert("right_stick_x".to_string(), MappingAction::MouseHorizontal);
+    mappings.insert("right_stick_y".to_string(), MappingAction::MouseVertical);
+    mappings.insert("left_trigger".to_string(), MappingAction::ZoomOut);
+    mappings.insert("right_trigger".to_string(), MappingAction::ZoomIn);
     mappings.insert("dpad_left".to_string(), MappingAction::PreviousPane);
     mappings.insert("dpad_right".to_string(), MappingAction::NextPane);
     mappings.insert("dpad_up".to_string(), MappingAction::PreviousTab);
@@ -1316,6 +1481,8 @@ fn action_label(key: &str) -> &'static str {
     match key {
         "pan_horizontal" => "Pan Horizontally",
         "pan_vertical" => "Pan Vertically",
+        "mouse_horizontal" => "Move Mouse Horizontally",
+        "mouse_vertical" => "Move Mouse Vertically",
         "zoom" => "Zoom Axis",
         "previous_pane" => "Previous Pane",
         "next_pane" => "Next Pane",

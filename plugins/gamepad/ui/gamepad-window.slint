@@ -425,7 +425,6 @@ export component GamepadWindow inherits Rectangle {
     private property <bool> stack-first-row: self.width < 780px;
 
     background: #08111d;
-
     Rectangle {
         width: parent.width;
         height: parent.height;
@@ -830,7 +829,7 @@ export component GamepadWindow inherits Rectangle {
                         }
 
                         Text {
-                            text: "Defaults: left stick pans, right stick vertical zooms, D-pad cycles panes and tabs.";
+                            text: "Defaults: left stick pans, triggers zoom out and in, right stick moves the mouse, D-pad cycles panes and tabs.";
                             color: #97a3ba;
                             font-size: 11px;
                             wrap: word-wrap;
