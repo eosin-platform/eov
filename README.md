@@ -98,7 +98,6 @@ Current capabilities include:
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
 - Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
-- An official [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin/).
 - Various quality of life enhancements expected from modern software packages
 
 ## Screenshots
@@ -270,7 +269,13 @@ This first version extracts fixed-grid patches only. Annotation-driven labeling 
 
 eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
 
-An official companion plugin, [Annotations](https://github.com/eosin-platform/eov-annotations-plugin), adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
+### Annotations Plugin
+
+The official companion [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
+
+### Gamepad Plugin
+
+The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles.
 
 Plugins are native Rust dynamic libraries loaded through `abi_stable`. They can contribute toolbar buttons, HUD actions, sidebars, viewport overlays, and viewport filters while interacting with the host through a stable vtable.
 
