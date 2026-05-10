@@ -7,3 +7,6 @@
 [submodule "plugins/eovae/HistoVAE"]
 	path = plugins/eovae/HistoVAE
 	url = git@github.com:sablecrestlabs/HistoVAE.git
+[submodule "plugins/eov-gamepad-plugin"]
+	path = plugins/eov-gamepad-plugin
+	url = git@github.com:eosin-platform/eov-gamepad-plugin.git
