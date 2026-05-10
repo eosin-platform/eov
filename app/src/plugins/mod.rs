@@ -75,31 +75,29 @@ thread_local! {
     static PLUGIN_WINDOWS: RefCell<Vec<PluginWindowEntry>> = const { RefCell::new(Vec::new()) };
 }
 
-fn remove_plugin_window(plugin_id: &str, hide_window: bool) -> Option<PluginWindowEntry> {
-    PLUGIN_WINDOWS.with(|windows| {
+fn hide_plugin_window(plugin_id: &str) -> Option<Option<String>> {
+    let instance_to_hide = PLUGIN_WINDOWS.with(|windows| {
         let mut windows = windows.borrow_mut();
-        let index = windows
-            .iter()
-            .rposition(|entry| entry.plugin_id == plugin_id && !entry.hidden)
-            .or_else(|| {
-                windows
-                    .iter()
-                    .rposition(|entry| entry.plugin_id == plugin_id)
-            })?;
-        let entry = windows.remove(index);
+        let entry = windows
+            .iter_mut()
+            .rfind(|entry| entry.plugin_id == plugin_id && !entry.hidden)?;
+        entry.hidden = true;
         entry.refresh_timer.stop();
-        if hide_window {
-            let _ = entry.instance.hide();
-        }
-        Some(entry)
-    })
+        Some((entry.instance.as_weak(), entry.toolbar_button_id.clone()))
+    });
+
+    let (instance_to_hide, toolbar_button_id) = instance_to_hide?;
+    if let Some(instance) = instance_to_hide.upgrade() {
+        let _ = instance.hide();
+    }
+    Some(toolbar_button_id)
 }
 
 fn close_plugin_window(plugin_id: &str) -> bool {
-    let Some(entry) = remove_plugin_window(plugin_id, true) else {
+    let Some(toolbar_button_id) = hide_plugin_window(plugin_id) else {
         return false;
     };
-    if let Some(button_id) = entry.toolbar_button_id.as_deref() {
+    if let Some(button_id) = toolbar_button_id.as_deref() {
         let _ = crate::plugin_host::set_local_toolbar_button_active(plugin_id, button_id, false);
     }
     true

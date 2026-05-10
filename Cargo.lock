@@ -339,7 +339,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "app"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -1207,7 +1207,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -2318,7 +2318,7 @@ dependencies = [
 
 [[package]]
 name = "gamepad"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "abi_stable",
  "ashpd 0.12.3",
