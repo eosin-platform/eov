@@ -433,7 +433,12 @@ pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {
         Some(level) => tracing_subscriber::EnvFilter::new(level.as_filter()),
         None => tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-    };
+    }
+    .add_directive(
+        "sctk_adwaita::buttons=error"
+            .parse()
+            .expect("valid sctk_adwaita buttons log directive"),
+    );
 
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 }
