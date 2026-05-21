@@ -31,9 +31,19 @@ The `.app` file is available. For Intel-based Macs, download the release with `x
 - [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.3.1/eov-v0.3.1-macos-arm64.zip) (all Macs released since June 2023)
 - [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.3.1/eov-v0.3.1-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
-Download and open the `.app` file to run it. The app is not signed and you'll see an error message about the app being from an unidentified developer. To fix this, go to System Preferences → Security & Privacy and hit the "Open Anyway" button. Expect to repeat this process whenever you download a new version. 
+Download and open the `.app` file to run it. The app is not signed and you'll see an error message about the app being from an unidentified developer. To fix this, go to System Preferences → Privacy & Security and hit the "Open Anyway" button. Expect to repeat this process whenever you download a new version. 
 
-Installation via `brew` is currently a work-in-progress. 
+#### Homebrew
+Installation through Homebrew is managed through a [community-maintained cask](https://github.com/brendisurfs/homebrew-eov). 
+
+To install via Homebrew: 
+```bash
+brew tap brendisurfs/eov
+brew install --cask eov
+``` 
+
+**Note:** `eov` is not notarized by Apple. If macOS prevents it from opening, go to: System Settings → Privacy & Security → Open Anyway
+
 
 ### Windows
 A zip file containing a portable Windows build is available:
