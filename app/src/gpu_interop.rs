@@ -10,7 +10,7 @@
 //! with in-process FFI plugins (raw VkDevice/VkImage).
 
 use ash::vk;
-use slint::wgpu_28::wgpu;
+use slint::wgpu_29::wgpu;
 
 #[cfg(unix)]
 use std::os::fd::RawFd;

@@ -181,12 +181,10 @@ pub fn load_model(path: &str, prefer_gpu: bool) -> Result<LoadedModel, String> {
     log_model_operation_summary(&onnx_model);
     let inputs = onnx_model
         .get_input_tensors()
-        .into_iter()
         .map(tensor_to_summary)
         .collect::<Result<Vec<_>, _>>()?;
     let outputs = onnx_model
         .get_output_tensors()
-        .into_iter()
         .map(tensor_to_summary)
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -1191,7 +1189,7 @@ fn log_model_operation_summary(onnx_model: &OnnxModel) {
         .count_operations_by_type()
         .into_iter()
         .collect::<Vec<_>>();
-    counts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    counts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
     let summary = counts
         .iter()
         .map(|(op_type, count)| format!("{op_type}={count}"))
@@ -1250,8 +1248,8 @@ fn log_selected_output_subgraph(onnx_model: &OnnxModel, summary: &ModelSummary) 
             "selected branch node[{branch_index:03}]: name=\"{}\" op={} inputs=[{}] outputs=[{}]",
             display_node_name(operation),
             operation.op_type(),
-            format_tensor_names(&operation.inputs()),
-            format_tensor_names(&operation.outputs())
+            format_tensor_names(operation.inputs()),
+            format_tensor_names(operation.outputs())
         ));
     }
 
@@ -1345,8 +1343,8 @@ fn log_placement_sensitive_branch_nodes(branch_operations: &[(usize, &OnnxOperat
                 "    name=\"{}\" op={} inputs=[{}] outputs=[{}]",
                 display_node_name(operation),
                 operation.op_type(),
-                format_tensor_names(&operation.inputs()),
-                format_tensor_names(&operation.outputs())
+                format_tensor_names(operation.inputs()),
+                format_tensor_names(operation.outputs())
             ));
         }
     }

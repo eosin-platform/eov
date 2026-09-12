@@ -1,6 +1,6 @@
 use anyhow::Result;
 use slint::BackendSelector;
-use slint::wgpu_28::wgpu;
+use slint::wgpu_29::wgpu;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WindowGeometry {
@@ -11,12 +11,12 @@ pub(crate) struct WindowGeometry {
 }
 
 pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<()> {
-    let mut settings = slint::wgpu_28::WGPUSettings::default();
+    let mut settings = slint::wgpu_29::WGPUSettings::default();
     settings.backends = preferred_backends();
 
     winit_backend_selector(window_geometry)
         .renderer_name("femtovg-wgpu".to_string())
-        .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::Automatic(settings))
+        .require_wgpu_29(slint::wgpu_29::WGPUConfiguration::Automatic(settings))
         .select()?;
     Ok(())
 }

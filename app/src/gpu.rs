@@ -4,7 +4,7 @@ use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use eov_common::{FilteringMode, TileCoord, TileData};
 use slint::ComponentHandle;
-use slint::wgpu_28::wgpu;
+use slint::wgpu_29::wgpu;
 use slint::{GraphicsAPI, Image, RenderingState};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -905,7 +905,7 @@ impl GpuRenderer {
             return;
         }
 
-        let GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api else {
+        let GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api else {
             return;
         };
 
@@ -977,7 +977,7 @@ impl GpuRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("viewport-tile-pipeline-layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
 
@@ -1108,7 +1108,7 @@ impl GpuRenderer {
 
         let pp_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("post-process-pipeline-layout"),
-            bind_group_layouts: &[&post_process_bind_group_layout],
+            bind_group_layouts: &[Some(&post_process_bind_group_layout)],
             immediate_size: 0,
         });
 
