@@ -6,7 +6,7 @@
 	url = https://github.com/eosin-platform/eov-annotations-plugin.git
 [submodule "plugins/eovae/HistoVAE"]
 	path = plugins/eovae/HistoVAE
-	url = git@github.com:sablecrestlabs/HistoVAE.git
+	url = https://github.com/sablecrestlabs/HistoVAE.git
 [submodule "plugins/eov-gamepad-plugin"]
 	path = plugins/gamepad
-	url = git@github.com:eosin-platform/eov-gamepad-plugin.git
+	url = https://github.com/eosin-platform/eov-gamepad-plugin.git
