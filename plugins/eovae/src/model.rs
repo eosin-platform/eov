@@ -1199,7 +1199,7 @@ fn log_model_operation_summary(onnx_model: &OnnxModel) {
         .join(", ");
     debug_timing(&format!(
         "model operations: total_nodes={} unique_ops={} {summary}",
-        onnx_model.operations.len(),
+        onnx_model.operations().len(),
         counts.len()
     ));
 }
@@ -1249,9 +1249,9 @@ fn log_selected_output_subgraph(onnx_model: &OnnxModel, summary: &ModelSummary) 
         debug_timing(&format!(
             "selected branch node[{branch_index:03}]: name=\"{}\" op={} inputs=[{}] outputs=[{}]",
             display_node_name(operation),
-            operation.op_type,
-            format_tensor_names(&operation.inputs),
-            format_tensor_names(&operation.outputs)
+            operation.op_type(),
+            format_tensor_names(&operation.inputs()),
+            format_tensor_names(&operation.outputs())
         ));
     }
 
@@ -1262,7 +1262,7 @@ fn log_selected_output_subgraph(onnx_model: &OnnxModel, summary: &ModelSummary) 
         .fold(
             HashMap::<String, usize>::new(),
             |mut counts, (_, operation)| {
-                *counts.entry(operation.op_type.clone()).or_insert(0) += 1;
+                *counts.entry(operation.op_type().to_string()).or_insert(0) += 1;
                 counts
             },
         )
@@ -1288,8 +1288,8 @@ fn collect_selected_branch_operations<'a>(
     selected_output_name: &str,
 ) -> Vec<(usize, &'a OnnxOperation)> {
     let mut producers = HashMap::new();
-    for (index, operation) in onnx_model.operations.iter().enumerate() {
-        for output in &operation.outputs {
+    for (index, operation) in onnx_model.operations().iter().enumerate() {
+        for output in operation.outputs() {
             if !output.is_empty() {
                 producers.insert(output.as_str(), index);
             }
@@ -1307,9 +1307,9 @@ fn collect_selected_branch_operations<'a>(
         let Some(&operation_index) = producers.get(tensor_name) else {
             continue;
         };
-        let operation = &onnx_model.operations[operation_index];
+        let operation = &onnx_model.operations()[operation_index];
         if visited_ops.insert(operation_index) {
-            for input in &operation.inputs {
+            for input in operation.inputs() {
                 if !input.is_empty() {
                     pending_tensors.push(input);
                 }
@@ -1321,7 +1321,7 @@ fn collect_selected_branch_operations<'a>(
     operation_indices.sort_unstable();
     operation_indices
         .into_iter()
-        .map(|index| (index, &onnx_model.operations[index]))
+        .map(|index| (index, &onnx_model.operations()[index]))
         .collect()
 }
 
@@ -1330,7 +1330,7 @@ fn log_placement_sensitive_branch_nodes(branch_operations: &[(usize, &OnnxOperat
     for op_type in PLACEMENT_SENSITIVE_OPS {
         let matching = branch_operations
             .iter()
-            .filter_map(|(_, operation)| (operation.op_type == *op_type).then_some(*operation))
+            .filter_map(|(_, operation)| (operation.op_type() == *op_type).then_some(*operation))
             .collect::<Vec<_>>();
         if matching.is_empty() {
             continue;
@@ -1344,19 +1344,19 @@ fn log_placement_sensitive_branch_nodes(branch_operations: &[(usize, &OnnxOperat
             debug_timing(&format!(
                 "    name=\"{}\" op={} inputs=[{}] outputs=[{}]",
                 display_node_name(operation),
-                operation.op_type,
-                format_tensor_names(&operation.inputs),
-                format_tensor_names(&operation.outputs)
+                operation.op_type(),
+                format_tensor_names(&operation.inputs()),
+                format_tensor_names(&operation.outputs())
             ));
         }
     }
 }
 
 fn display_node_name(operation: &OnnxOperation) -> &str {
-    if operation.name.is_empty() {
+    if operation.name().is_empty() {
         "<unnamed>"
     } else {
-        operation.name.as_str()
+        operation.name()
     }
 }
 
