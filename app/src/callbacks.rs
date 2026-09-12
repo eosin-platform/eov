@@ -679,7 +679,10 @@ fn slint_to_export_settings(s: &SlintExportSettings) -> eov_common::ExportSettin
     }
 }
 
-fn slint_color_to_overlay(color: slint::Color, opacity_pct: f32) -> eov_common::overlay::OverlayColor {
+fn slint_color_to_overlay(
+    color: slint::Color,
+    opacity_pct: f32,
+) -> eov_common::overlay::OverlayColor {
     let a = (color.alpha() as f32 * opacity_pct / 100.0)
         .round()
         .clamp(0.0, 255.0) as u8;
@@ -1110,7 +1113,8 @@ pub fn setup_callbacks(
     let toast_timer = Rc::new(Timer::default());
     let cached_export_settings: Rc<RefCell<Option<SlintExportSettings>>> =
         Rc::new(RefCell::new(None));
-    let overlay_font: Option<eov_common::overlay::FontArc> = eov_common::overlay::load_system_font();
+    let overlay_font: Option<eov_common::overlay::FontArc> =
+        eov_common::overlay::load_system_font();
 
     {
         let state = Arc::clone(&state);
@@ -4430,7 +4434,9 @@ pub fn setup_callbacks(
                     // Convert RGBA to RGB for JPEG
                     let rgb: Vec<u8> = image_data
                         .pixels
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .flat_map(|px| [px[0], px[1], px[2]])
                         .collect();
                     image::save_buffer(&path, &rgb, width, height, image::ExtendedColorType::Rgb8)
@@ -4722,8 +4728,9 @@ pub fn setup_callbacks(
             let ptte = Arc::clone(&progress_total_tiles_expected);
             let cancel_bg = Arc::clone(&cancel);
 
-            let (result_tx, result_rx) =
-                std::sync::mpsc::channel::<Result<eov_common::dataset::DatasetPatchesReport, String>>();
+            let (result_tx, result_rx) = std::sync::mpsc::channel::<
+                Result<eov_common::dataset::DatasetPatchesReport, String>,
+            >();
 
             std::thread::Builder::new()
                 .name("dataset-export".into())

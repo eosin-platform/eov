@@ -435,7 +435,7 @@ fn sample_tissue_od_from_raw(tile_slices: &[&[u8]], max_samples: usize) -> Vec<[
     let mut result = Vec::with_capacity(max_samples);
     let mut idx = 0usize;
     for slice in tile_slices {
-        for chunk in slice.chunks_exact(4) {
+        for chunk in slice.as_chunks::<4>().0 {
             if idx.is_multiple_of(sample_step) {
                 let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
                 if is_tissue(&od) {
@@ -525,7 +525,7 @@ pub fn apply_normalization_to_buffer(buffer: &mut [u8], params: &StainNormParams
     ];
     let scale = [params.inv_stain_r0[3], params.inv_stain_r1[3]];
 
-    for chunk in buffer.chunks_exact_mut(4) {
+    for chunk in buffer.as_chunks_mut::<4>().0 {
         let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
         if !is_tissue(&od) {
             continue;
@@ -751,7 +751,7 @@ pub fn apply_color_deconvolution(buffer: &mut [u8], params: &ColorDeconvParams) 
     let stain_h = [params.stain_h[0], params.stain_h[1], params.stain_h[2]];
     let stain_e = [params.stain_e[0], params.stain_e[1], params.stain_e[2]];
 
-    for chunk in buffer.chunks_exact_mut(4) {
+    for chunk in buffer.as_chunks_mut::<4>().0 {
         let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
         let od_sum = od[0] + od[1] + od[2];
         if od_sum <= OD_THRESHOLD {
@@ -819,7 +819,7 @@ mod tests {
     fn collect_tissue_od(buffer: &[u8]) -> Vec<[f32; 3]> {
         let pixel_count = buffer.len() / 4;
         let mut result = Vec::with_capacity(pixel_count / 2);
-        for chunk in buffer.chunks_exact(4) {
+        for chunk in buffer.as_chunks::<4>().0 {
             let od = rgb_to_od(chunk[0], chunk[1], chunk[2]);
             if is_tissue(&od) {
                 result.push(od);

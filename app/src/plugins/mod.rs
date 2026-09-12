@@ -426,13 +426,9 @@ pub fn run_plugin_window_standalone(plugin_root: &Path) -> anyhow::Result<()> {
 
 /// Minimal synchronous executor for futures that are not truly async.
 fn spin_on<T>(future: impl std::future::Future<Output = T>) -> T {
-    use std::task::{Context, Poll, Wake, Waker};
-    struct NoopWaker;
-    impl Wake for NoopWaker {
-        fn wake(self: std::sync::Arc<Self>) {}
-    }
-    let waker = Waker::from(std::sync::Arc::new(NoopWaker));
-    let mut cx = Context::from_waker(&waker);
+    use std::task::{Context, Poll, Waker};
+    let waker = Waker::noop();
+    let mut cx = Context::from_waker(waker);
     let mut future = std::pin::pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {

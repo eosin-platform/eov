@@ -3,8 +3,8 @@
 //! This module provides asynchronous tile loading that automatically discards
 //! requests for tiles that are no longer visible.
 
-use eov_common::{TileCache, TileCoord, TileManager, WsiFile};
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
+use eov_common::{TileCache, TileCoord, TileManager, WsiFile};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

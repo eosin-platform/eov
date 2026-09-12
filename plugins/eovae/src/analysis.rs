@@ -1348,7 +1348,12 @@ fn should_skip_background(rgba: &[u8], threshold: u8) -> bool {
     }
     let mut bright_pixels = 0usize;
     let mut total_pixels = 0usize;
-    for pixel in rgba.chunks_exact(4).step_by(BACKGROUND_SAMPLE_STRIDE) {
+    for pixel in rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .step_by(BACKGROUND_SAMPLE_STRIDE)
+    {
         total_pixels += 1;
         if pixel[0] >= threshold && pixel[1] >= threshold && pixel[2] >= threshold {
             bright_pixels += 1;

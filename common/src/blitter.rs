@@ -228,7 +228,7 @@ pub fn fast_fill_rgba(buffer: &mut [u8], r: u8, g: u8, b: u8, a: u8) {
     if buffer.len() >= 4 && buffer.len().is_multiple_of(4) {
         let (prefix, pixels, suffix) = unsafe { buffer.align_to_mut::<u32>() };
 
-        for chunk in prefix.chunks_exact_mut(4) {
+        for chunk in prefix.as_chunks_mut::<4>().0 {
             chunk[0] = r;
             chunk[1] = g;
             chunk[2] = b;
@@ -237,14 +237,14 @@ pub fn fast_fill_rgba(buffer: &mut [u8], r: u8, g: u8, b: u8, a: u8) {
 
         pixels.fill(pixel);
 
-        for chunk in suffix.chunks_exact_mut(4) {
+        for chunk in suffix.as_chunks_mut::<4>().0 {
             chunk[0] = r;
             chunk[1] = g;
             chunk[2] = b;
             chunk[3] = a;
         }
     } else {
-        for chunk in buffer.chunks_exact_mut(4) {
+        for chunk in buffer.as_chunks_mut::<4>().0 {
             chunk[0] = r;
             chunk[1] = g;
             chunk[2] = b;
@@ -553,7 +553,12 @@ pub fn blit_tile_lanczos3(
 pub fn blend_buffers(dest: &mut [u8], coarse: &[u8], blend: f64) {
     let b = (blend * 256.0).round() as u32;
     let inv_b = 256 - b;
-    for (d, c) in dest.chunks_exact_mut(4).zip(coarse.chunks_exact(4)) {
+    for (d, c) in dest
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(coarse.as_chunks::<4>().0)
+    {
         d[0] = ((d[0] as u32 * inv_b + c[0] as u32 * b) >> 8) as u8;
         d[1] = ((d[1] as u32 * inv_b + c[1] as u32 * b) >> 8) as u8;
         d[2] = ((d[2] as u32 * inv_b + c[2] as u32 * b) >> 8) as u8;

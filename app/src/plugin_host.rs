@@ -3146,16 +3146,9 @@ fn tool_mode_matches_state(
 }
 
 fn spin_on<T>(future: impl std::future::Future<Output = T>) -> T {
-    use std::task::{Context, Poll, Wake, Waker};
-
-    struct NoopWaker;
-
-    impl Wake for NoopWaker {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    let waker = Waker::from(Arc::new(NoopWaker));
-    let mut cx = Context::from_waker(&waker);
+    use std::task::{Context, Poll, Waker};
+    let waker = Waker::noop();
+    let mut cx = Context::from_waker(waker);
     let mut future = std::pin::pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {

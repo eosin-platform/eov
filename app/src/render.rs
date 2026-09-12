@@ -2647,15 +2647,15 @@ fn collect_tile_draws_from_cached(
         downsample: 1.0,
     };
     let level_count = file.wsi.level_count();
-    let coarse_tile_map: HashMap<eov_common::TileCoord, Arc<eov_common::TileData>> = if filtering_mode
-        == FilteringMode::Trilinear
-        && trilinear.level_fine != trilinear.level_coarse
-        && trilinear.blend > 0.01
-    {
-        cached_coarse_tiles.iter().cloned().collect()
-    } else {
-        HashMap::new()
-    };
+    let coarse_tile_map: HashMap<eov_common::TileCoord, Arc<eov_common::TileData>> =
+        if filtering_mode == FilteringMode::Trilinear
+            && trilinear.level_fine != trilinear.level_coarse
+            && trilinear.blend > 0.01
+        {
+            cached_coarse_tiles.iter().cloned().collect()
+        } else {
+            HashMap::new()
+        };
 
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= trilinear.level_fine {

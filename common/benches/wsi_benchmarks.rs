@@ -2,8 +2,8 @@
 //!
 //! Run with: cargo bench -p common
 
-use eov_common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use eov_common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
 use std::path::PathBuf;
 
 fn get_svs_fixture() -> PathBuf {
