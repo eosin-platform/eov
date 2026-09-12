@@ -7,8 +7,8 @@ use crate::state::{
     AnalysisPhase, JobKind, RunningJob, VisualizationMode, host_api, log_message, plugin_state,
     rebuild_sidebar_statistics, refresh_sidebar_if_available, request_render_if_available,
 };
-use common::file_id::{cached_sha256, hex_digest};
-use plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
+use eov_common::file_id::{cached_sha256, hex_digest};
+use eov_plugin_api::ffi::{HostLogLevelFFI, ViewportSnapshotFFI};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::env;
@@ -867,7 +867,7 @@ struct RunTilePlanWithFileGpuBatchedContext<'a> {
     tiles: &'a [TilePlan],
     cancel: &'a Arc<AtomicBool>,
     file_id: i32,
-    host: plugin_api::ffi::HostApiVTable,
+    host: eov_plugin_api::ffi::HostApiVTable,
     skip_background: bool,
     background_threshold: u8,
     analysis_threads: usize,

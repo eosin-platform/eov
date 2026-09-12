@@ -3,7 +3,7 @@
 //! Discovers `.eop` tarballs, extracts them into a cache directory, and loads
 //! plugin manifests from the extracted plugin root.
 
-use plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
+use eov_plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
 use semver::Version;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -198,7 +198,7 @@ fn try_load_descriptor_from_package(
     cache_dir: &Path,
 ) -> PluginResult<PluginDescriptor> {
     let plugin_root = ensure_extracted_plugin_root(package_path, cache_dir)?;
-    let manifest_path = plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME);
+    let manifest_path = plugin_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME);
     let manifest = PluginManifest::from_file(&manifest_path)?;
     Ok(PluginDescriptor {
         root: plugin_root,
@@ -366,7 +366,7 @@ fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
                 continue;
             }
 
-            if path.file_name() == Some(OsStr::new(plugin_api::manifest::MANIFEST_FILENAME)) {
+            if path.file_name() == Some(OsStr::new(eov_plugin_api::manifest::MANIFEST_FILENAME)) {
                 manifest_roots.push(
                     path.parent()
                         .unwrap_or(extracted_dir)
@@ -387,13 +387,13 @@ fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
         0 => Err(PluginError::Other(format!(
             "plugin package extraction '{}' does not contain {}",
             extracted_dir.display(),
-            plugin_api::manifest::MANIFEST_FILENAME
+            eov_plugin_api::manifest::MANIFEST_FILENAME
         ))),
         1 => Ok(manifest_roots.pop().unwrap_or_default()),
         _ => Err(PluginError::Other(format!(
             "plugin package extraction '{}' contains multiple {} files",
             extracted_dir.display(),
-            plugin_api::manifest::MANIFEST_FILENAME
+            eov_plugin_api::manifest::MANIFEST_FILENAME
         ))),
     }
 }

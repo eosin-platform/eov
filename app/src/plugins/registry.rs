@@ -6,7 +6,7 @@
 //! runtime. A future iteration can replace static registration with dynamic
 //! library loading.
 
-use plugin_api::Plugin;
+use eov_plugin_api::Plugin;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -26,10 +26,10 @@ impl PluginRegistry {
 
     /// Register a plugin by its manifest id.
     #[cfg(test)]
-    pub fn register(&mut self, plugin: Arc<dyn Plugin>) -> plugin_api::PluginResult<()> {
+    pub fn register(&mut self, plugin: Arc<dyn Plugin>) -> eov_plugin_api::PluginResult<()> {
         let id = plugin.manifest().id.clone();
         if self.plugins.contains_key(&id) {
-            return Err(plugin_api::PluginError::DuplicateId(id));
+            return Err(eov_plugin_api::PluginError::DuplicateId(id));
         }
         self.plugins.insert(id, plugin);
         Ok(())

@@ -1,6 +1,7 @@
 id = "eovae"
 name = "EOV VAE"
 version = "0.1.0"
+license = "MIT OR Apache-2.0 OR GPL-3.0"
 
 [icon]
 kind = "svg"

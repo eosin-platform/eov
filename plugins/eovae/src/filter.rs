@@ -8,7 +8,7 @@ pub fn apply_overlay(
     rgba_data: &mut [u8],
     width: u32,
     height: u32,
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
+    viewport: &eov_plugin_api::ffi::ViewportSnapshotFFI,
 ) -> bool {
     let (mode, tile_size, mip_level, namespace, error_p05, error_p95) = {
         let state = plugin_state().lock().unwrap();
@@ -108,7 +108,7 @@ struct CompositeTileContext<'a> {
     rgba_data: &'a mut [u8],
     frame_width: u32,
     frame_height: u32,
-    viewport: &'a plugin_api::ffi::ViewportSnapshotFFI,
+    viewport: &'a eov_plugin_api::ffi::ViewportSnapshotFFI,
     entry: &'a TileCacheEntry,
     mode: VisualizationMode,
     error_p05: f64,
@@ -232,7 +232,7 @@ fn blend(base: u8, overlay: u8, alpha: u8) -> u8 {
 }
 
 fn viewport_tile_grid(
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
+    viewport: &eov_plugin_api::ffi::ViewportSnapshotFFI,
     tile_size: u32,
     mip_level: u32,
 ) -> ViewportTileGrid {
@@ -278,7 +278,7 @@ fn collect_visible_tiles(grid: &ViewportTileGrid) -> Vec<VisibleTile> {
 }
 
 fn maybe_start_viewport_analysis(
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
+    viewport: &eov_plugin_api::ffi::ViewportSnapshotFFI,
     missing_tiles: &[VisibleTile],
     namespace: &str,
     mip_level: u32,
@@ -344,7 +344,7 @@ fn paint_pending_tile(
     rgba_data: &mut [u8],
     frame_width: u32,
     frame_height: u32,
-    viewport: &plugin_api::ffi::ViewportSnapshotFFI,
+    viewport: &eov_plugin_api::ffi::ViewportSnapshotFFI,
     tile: &VisibleTile,
 ) {
     let view_width = (viewport.bounds_right - viewport.bounds_left).max(1.0);

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use common::{FilteringMode, RenderBackend};
-use plugin_api::ActiveSidebar;
+use eov_common::{FilteringMode, RenderBackend};
+use eov_plugin_api::ActiveSidebar;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

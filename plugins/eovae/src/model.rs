@@ -1705,7 +1705,7 @@ fn reconstruction_postprocess_parallelism(batch_size: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::WsiFile;
+    use eov_common::WsiFile;
     use std::path::PathBuf;
 
     fn tensor(name: &str, shape: &[i64]) -> TensorSummary {

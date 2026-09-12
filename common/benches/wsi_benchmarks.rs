@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo bench -p common
 
-use common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
+use eov_common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use std::path::PathBuf;
 
@@ -155,7 +155,7 @@ fn bench_cache(c: &mut Criterion) {
 
     // Pre-populate cache
     for i in 0..100u64 {
-        let tile = common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
+        let tile = eov_common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
         cache.insert(tile);
     }
 
@@ -175,7 +175,7 @@ fn bench_cache(c: &mut Criterion) {
     group.bench_function("cache_insert", |b| {
         let mut i = 1000u64;
         b.iter(|| {
-            let tile = common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
+            let tile = eov_common::TileData::placeholder(TileCoord::new(0, 0, i, 0, 256), 256);
             cache.insert(tile);
             i += 1;
         })

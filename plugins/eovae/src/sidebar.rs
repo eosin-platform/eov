@@ -7,7 +7,7 @@ use crate::state::{
     save_persisted_config_field, save_persisted_model_path,
 };
 use abi_stable::std_types::{ROption, RString, RVec};
-use plugin_api::ffi::{ConfirmationDialogRequestFFI, HostLogLevelFFI, UiPropertyFFI};
+use eov_plugin_api::ffi::{ConfirmationDialogRequestFFI, HostLogLevelFFI, UiPropertyFFI};
 use serde_json::json;
 use std::path::Path;
 use std::thread;

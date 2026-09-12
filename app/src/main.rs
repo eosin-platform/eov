@@ -26,7 +26,7 @@ mod viewport_filter;
 mod zoom_display;
 
 use anyhow::Result;
-use common::{RenderBackend, TileCache};
+use eov_common::{RenderBackend, TileCache};
 use gpu::GpuRenderer;
 use parking_lot::RwLock;
 use slint::{SharedString, Timer, TimerMode};
@@ -55,7 +55,7 @@ fn restore_persisted_sidebar(plugin_manager: &plugins::PluginManager) {
         &sidebar.plugin_id,
         Some(&descriptor.root),
         Some(vtable),
-        plugin_api::SidebarRequest {
+        eov_plugin_api::SidebarRequest {
             button_id: sidebar.button_id.clone(),
             width_px: sidebar.width_px,
             ui_path: sidebar.ui_path.clone(),
@@ -138,20 +138,20 @@ fn deactivate_active_plugin_tool_if_matching(
     {
         let mut app_state = state.write();
         let is_active = match tool_mode {
-            plugin_api::HostToolMode::Navigate => {
+            eov_plugin_api::HostToolMode::Navigate => {
                 app_state.current_tool == crate::state::Tool::Navigate
             }
-            plugin_api::HostToolMode::RegionOfInterest => {
+            eov_plugin_api::HostToolMode::RegionOfInterest => {
                 app_state.current_tool == crate::state::Tool::RegionOfInterest
             }
-            plugin_api::HostToolMode::MeasureDistance => {
+            eov_plugin_api::HostToolMode::MeasureDistance => {
                 app_state.current_tool == crate::state::Tool::MeasureDistance
             }
-            plugin_api::HostToolMode::PointAnnotation => {
+            eov_plugin_api::HostToolMode::PointAnnotation => {
                 app_state.current_tool == crate::state::Tool::PointAnnotation
                     && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
             }
-            plugin_api::HostToolMode::PolygonAnnotation => {
+            eov_plugin_api::HostToolMode::PolygonAnnotation => {
                 app_state.current_tool == crate::state::Tool::PolygonAnnotation
                     && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
             }
@@ -176,14 +176,14 @@ fn normalize_hotkey_text(text: &str) -> Option<String> {
 }
 
 fn tool_selection_for_button(
-    button: &plugin_api::ToolbarButtonRegistration,
+    button: &eov_plugin_api::ToolbarButtonRegistration,
 ) -> Option<state::ToolSelection> {
     let tool = match button.tool_mode? {
-        plugin_api::HostToolMode::Navigate => state::Tool::Navigate,
-        plugin_api::HostToolMode::RegionOfInterest => state::Tool::RegionOfInterest,
-        plugin_api::HostToolMode::MeasureDistance => state::Tool::MeasureDistance,
-        plugin_api::HostToolMode::PointAnnotation => state::Tool::PointAnnotation,
-        plugin_api::HostToolMode::PolygonAnnotation => state::Tool::PolygonAnnotation,
+        eov_plugin_api::HostToolMode::Navigate => state::Tool::Navigate,
+        eov_plugin_api::HostToolMode::RegionOfInterest => state::Tool::RegionOfInterest,
+        eov_plugin_api::HostToolMode::MeasureDistance => state::Tool::MeasureDistance,
+        eov_plugin_api::HostToolMode::PointAnnotation => state::Tool::PointAnnotation,
+        eov_plugin_api::HostToolMode::PolygonAnnotation => state::Tool::PolygonAnnotation,
     };
     Some(state::ToolSelection {
         tool,
@@ -197,7 +197,7 @@ fn tool_selection_for_button(
 
 fn selection_matches_button(
     app_state: &AppState,
-    button: &plugin_api::ToolbarButtonRegistration,
+    button: &eov_plugin_api::ToolbarButtonRegistration,
 ) -> bool {
     let Some(target) = tool_selection_for_button(button) else {
         return false;

@@ -1,16 +1,17 @@
 [package]
-name = "common"
-version = "0.3.1"
+name = "eov-common"
+version = "0.4.0"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0"
 description = "Common utilities and abstractions for the EOV project, including WSI handling, image processing, caching, and math utilities."
 keywords = ["wsi", "biology", "pathology"]
-homepage = "https://github.com/eosin-platform/eov"
+homepage = "https://eov.sh"
+repository = "https://github.com/eosin-platform/eov"
 publish = false
 
 [lib]
-name = "common"
+name = "eov_common"
 path = "src/lib.rs"
 
 [dependencies]

@@ -14,8 +14,8 @@ use crate::{
     PaneUiModels, PaneViewData, RecentFileData, RenderMode, SeriesItemData,
     StainNormalization as SlintStainNormalization, TabData, ViewportInfo,
 };
-use common::viewport::{MAX_ZOOM, MIN_ZOOM};
-use common::{
+use eov_common::viewport::{MAX_ZOOM, MIN_ZOOM};
+use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, format_decimal,
     format_file_size, format_u64,
 };

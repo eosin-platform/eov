@@ -12,8 +12,8 @@ use crate::render_pool::{
 use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::tools;
-use common::render::single_level_trilinear;
-use common::{
+use eov_common::render::single_level_trilinear;
+use eov_common::{
     FilteringMode, RenderBackend, StainNormalization, TileCache, TileManager, TrilinearLevels,
     Viewport, calculate_trilinear_levels,
 };
@@ -40,7 +40,7 @@ fn lanczos_adaptive_weight(zoom: f64) -> f64 {
     }
 }
 
-type CoarseBlendData = (Arc<common::TileData>, [f32; 2], [f32; 2], f32);
+type CoarseBlendData = (Arc<eov_common::TileData>, [f32; 2], [f32; 2], f32);
 
 #[derive(Default)]
 struct PaneRenderOutcome {
@@ -72,7 +72,7 @@ struct CpuPaneSnapshot {
     minimap_image: Option<Image>,
     tile_manager: Arc<TileManager>,
     tile_loader: Arc<TileLoader>,
-    viewport_state: common::ViewportState,
+    viewport_state: eov_common::ViewportState,
     frame_count: u32,
     last_render_zoom: f64,
     last_render_center_x: f64,
@@ -163,11 +163,11 @@ fn viewport_snapshot_ffi_for_render(
     file_id: i32,
     file_path: &str,
     filename: &str,
-    viewport: &common::ViewportState,
+    viewport: &eov_common::ViewportState,
     pane: PaneId,
-) -> plugin_api::ffi::ViewportSnapshotFFI {
+) -> eov_plugin_api::ffi::ViewportSnapshotFFI {
     let bounds = viewport.viewport.bounds();
-    plugin_api::ffi::ViewportSnapshotFFI {
+    eov_plugin_api::ffi::ViewportSnapshotFFI {
         pane_index: pane.0 as u32,
         file_id,
         file_path: file_path.to_string().into(),
@@ -246,7 +246,7 @@ fn render_cached_cpu_frame_with_filters(
         {
             let chain = filter_chain.read();
             if chain.has_enabled_cpu_filters() {
-                let mut viewport_state = common::ViewportState::new(
+                let mut viewport_state = eov_common::ViewportState::new(
                     viewport.width,
                     viewport.height,
                     viewport.image_width,
@@ -305,7 +305,7 @@ fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> O
     {
         let chain = filter_chain.read();
         if chain.has_enabled_cpu_filters() {
-            let mut viewport_state = common::ViewportState::new(
+            let mut viewport_state = eov_common::ViewportState::new(
                 viewport.width,
                 viewport.height,
                 viewport.image_width,
@@ -340,8 +340,8 @@ struct TileProjection<'a> {
 }
 
 struct CachedVisibleTiles {
-    fine_tiles: Vec<(common::TileCoord, Arc<common::TileData>)>,
-    coarse_tiles: Vec<(common::TileCoord, Arc<common::TileData>)>,
+    fine_tiles: Vec<(eov_common::TileCoord, Arc<eov_common::TileData>)>,
+    coarse_tiles: Vec<(eov_common::TileCoord, Arc<eov_common::TileData>)>,
 }
 
 #[derive(Clone, Copy)]
@@ -567,7 +567,7 @@ pub(crate) fn update_and_render(
         / pane_count.max(1) as f64)
         .max(100.0);
 
-    let mut wanted_tiles_by_file: HashMap<i32, HashSet<common::TileCoord>> = HashMap::new();
+    let mut wanted_tiles_by_file: HashMap<i32, HashSet<eov_common::TileCoord>> = HashMap::new();
     for (pane_index, file_id) in active_file_ids.iter().copied().enumerate() {
         let Some(file_id) = file_id else {
             continue;
@@ -753,7 +753,7 @@ fn update_and_render_cpu(
         state.filter_chain.clone()
     };
 
-    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<common::TileCoord>)> =
+    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<eov_common::TileCoord>)> =
         HashMap::new();
 
     for snapshot in frame.panes.iter().flatten() {
@@ -1491,7 +1491,7 @@ fn render_cpu_pane_from_snapshot(
     }
 
     let fine_blit_rect =
-        |coord: &common::TileCoord, tile_data: &common::TileData| -> blitter::BlitRect {
+        |coord: &eov_common::TileCoord, tile_data: &eov_common::TileData| -> blitter::BlitRect {
             let origin_x = coord.x as f64 * coord.tile_size as f64;
             let origin_y = coord.y as f64 * coord.tile_size as f64;
             let image_x = origin_x * level_info.downsample;
@@ -2219,7 +2219,7 @@ fn render_pane_to_image(
     }
 
     let fine_blit_rect =
-        |coord: &common::TileCoord, tile_data: &common::TileData| -> blitter::BlitRect {
+        |coord: &eov_common::TileCoord, tile_data: &eov_common::TileData| -> blitter::BlitRect {
             let origin_x = coord.x as f64 * coord.tile_size as f64;
             let origin_y = coord.y as f64 * coord.tile_size as f64;
             let image_x = origin_x * level_info.downsample;
@@ -2512,7 +2512,7 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         {
             let chain = filter_chain.read();
             if chain.has_enabled_cpu_filters() {
-                let mut viewport_state = common::ViewportState::new(
+                let mut viewport_state = eov_common::ViewportState::new(
                     viewport.width,
                     viewport.height,
                     viewport.image_width,
@@ -2635,8 +2635,8 @@ fn collect_tile_draws_from_cached(
     vp: &Viewport,
     trilinear: TrilinearLevels,
     filtering_mode: FilteringMode,
-    cached_tiles: &[(common::TileCoord, Arc<common::TileData>)],
-    cached_coarse_tiles: &[(common::TileCoord, Arc<common::TileData>)],
+    cached_tiles: &[(eov_common::TileCoord, Arc<eov_common::TileData>)],
+    cached_coarse_tiles: &[(eov_common::TileCoord, Arc<eov_common::TileData>)],
 ) -> Vec<TileDraw> {
     let mut draws = Vec::new();
     let bounds = vp.bounds();
@@ -2647,7 +2647,7 @@ fn collect_tile_draws_from_cached(
         downsample: 1.0,
     };
     let level_count = file.wsi.level_count();
-    let coarse_tile_map: HashMap<common::TileCoord, Arc<common::TileData>> = if filtering_mode
+    let coarse_tile_map: HashMap<eov_common::TileCoord, Arc<eov_common::TileData>> = if filtering_mode
         == FilteringMode::Trilinear
         && trilinear.level_fine != trilinear.level_coarse
         && trilinear.blend > 0.01
@@ -2723,11 +2723,11 @@ fn collect_tile_draws_from_cached(
 
 fn coarse_blend_for_tile(
     tile_manager: &TileManager,
-    coarse_tiles: &HashMap<common::TileCoord, Arc<common::TileData>>,
+    coarse_tiles: &HashMap<eov_common::TileCoord, Arc<eov_common::TileData>>,
     trilinear: TrilinearLevels,
     fine_downsample: f64,
-    fine_coord: common::TileCoord,
-    fine_tile: &Arc<common::TileData>,
+    fine_coord: eov_common::TileCoord,
+    fine_tile: &Arc<eov_common::TileData>,
 ) -> Option<CoarseBlendData> {
     const COARSE_BOUNDARY_EPSILON: f64 = 1e-3;
 
@@ -2759,7 +2759,7 @@ fn coarse_blend_for_tile(
         return None;
     }
 
-    let coarse_coord = common::TileCoord::new(
+    let coarse_coord = eov_common::TileCoord::new(
         fine_coord.file_id,
         trilinear.level_coarse,
         coarse_start_tile_x,
@@ -2804,8 +2804,8 @@ fn coarse_blend_for_tile(
 
 fn tile_draw_from_tile(
     projection: TileProjection<'_>,
-    coord: common::TileCoord,
-    tile_data: Arc<common::TileData>,
+    coord: eov_common::TileCoord,
+    tile_data: Arc<eov_common::TileData>,
     coarse_blend: Option<CoarseBlendData>,
     filtering_mode: FilteringMode,
 ) -> Option<TileDraw> {
@@ -2856,7 +2856,7 @@ fn tile_draw_from_tile(
 
 #[cfg(test)]
 mod tests {
-    use common::render::{TRILINEAR_LOD_BIAS, finalize_trilinear_levels};
+    use eov_common::render::{TRILINEAR_LOD_BIAS, finalize_trilinear_levels};
 
     #[test]
     fn trilinear_bias_shifts_lod_toward_finer_mips() {

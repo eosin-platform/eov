@@ -8,7 +8,7 @@ use crate::state::{
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
 use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loop};
-use common::{TileCache, TileManager, ViewportState, WsiFile};
+use eov_common::{TileCache, TileManager, ViewportState, WsiFile};
 use natord::compare_ignore_case;
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
@@ -91,9 +91,9 @@ fn thumbnail_cache_dir() -> PathBuf {
 
 fn thumbnail_cache_key(path: &Path) -> Option<String> {
     let normalized_path = fs::canonicalize(path).ok()?;
-    let fingerprint = common::file_id::compute_fingerprint(&normalized_path).ok()?;
+    let fingerprint = eov_common::file_id::compute_fingerprint(&normalized_path).ok()?;
     let mut hasher = Sha256::new();
-    hasher.update(common::file_id::hex_digest(&fingerprint).as_bytes());
+    hasher.update(eov_common::file_id::hex_digest(&fingerprint).as_bytes());
     hasher.update(normalized_path.to_string_lossy().as_bytes());
     Some(format!("{:x}", hasher.finalize()))
 }
@@ -145,7 +145,7 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
     let properties = wsi.properties();
     let objective = properties
         .objective_power
-        .map(|value| format!("{}x", common::format_decimal(value)))
+        .map(|value| format!("{}x", eov_common::format_decimal(value)))
         .unwrap_or_else(|| "N/A".to_string());
     let mpp = properties
         .mpp_x
@@ -153,8 +153,8 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
         .map(|(x, y)| {
             format!(
                 "{} x {} um/px",
-                common::format_decimal(x),
-                common::format_decimal(y)
+                eov_common::format_decimal(x),
+                eov_common::format_decimal(y)
             )
         })
         .unwrap_or_else(|| "N/A".to_string());
@@ -164,8 +164,8 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
     format!(
         "{}\n{} x {} px\n{} levels\nVendor: {}\nObjective: {}\nMPP: {}\nStain: {}",
         header,
-        common::format_u64(properties.width),
-        common::format_u64(properties.height),
+        eov_common::format_u64(properties.width),
+        eov_common::format_u64(properties.height),
         properties.levels.len(),
         vendor,
         objective,
@@ -182,7 +182,7 @@ fn build_series_overlay_labels(wsi: Option<&WsiFile>) -> (Option<String>, Option
     let properties = wsi.properties();
     let objective_label = properties
         .objective_power
-        .map(|value| format!("{}x", common::format_decimal(value)));
+        .map(|value| format!("{}x", eov_common::format_decimal(value)));
     let stain_label = properties.stain.clone();
     (objective_label, stain_label)
 }

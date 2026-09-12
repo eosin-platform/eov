@@ -2,7 +2,7 @@ use crate::analysis::{AnalysisConfig, HotRegion, TileCacheEntry};
 use crate::model::LoadedModel;
 use crate::stats::{ErrorHistogramBin, ErrorStats, build_error_histogram, summarize_errors};
 use abi_stable::std_types::RString;
-use plugin_api::ffi::{HostApiVTable, HostLogLevelFFI};
+use eov_plugin_api::ffi::{HostApiVTable, HostLogLevelFFI};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;

@@ -4,7 +4,7 @@
 //! ensuring they are appended after built-in toolbar items. It is independent
 //! of Slint so it can be tested in pure Rust.
 
-use plugin_api::{PluginError, PluginResult, ToolbarButtonRegistration};
+use eov_plugin_api::{PluginError, PluginResult, ToolbarButtonRegistration};
 use std::collections::HashSet;
 
 /// Manages the ordered list of plugin toolbar buttons.
@@ -65,7 +65,7 @@ impl ToolbarManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_api::IconDescriptor;
+    use eov_plugin_api::IconDescriptor;
 
     fn make_button(plugin_id: &str, button_id: &str) -> ToolbarButtonRegistration {
         ToolbarButtonRegistration {

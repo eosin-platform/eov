@@ -272,9 +272,9 @@ name = "annotations"
 version = "0.1.10"
 dependencies = [
  "abi_stable",
- "common",
  "dirs",
- "plugin_api",
+ "eov-common",
+ "eov-plugin-api",
  "rusqlite",
  "serde",
  "serde_json",
@@ -339,7 +339,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "app"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -347,11 +347,12 @@ dependencies = [
  "ash",
  "bytemuck",
  "clap",
- "common",
  "crossbeam-channel",
  "ctrlc",
  "dashmap",
  "dirs",
+ "eov-common",
+ "eov-plugin-api",
  "eovae",
  "i-slint-backend-testing",
  "image 0.25.10",
@@ -361,7 +362,6 @@ dependencies = [
  "objc",
  "open",
  "parking_lot",
- "plugin_api",
  "raw-window-handle",
  "rayon",
  "rfd",
@@ -1206,30 +1206,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.3.1"
-dependencies = [
- "ab_glyph",
- "anyhow",
- "criterion",
- "csv",
- "dashmap",
- "glam",
- "image 0.25.10",
- "lru",
- "openslide-rs",
- "parking_lot",
- "rayon",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1873,18 +1849,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "eov-common"
+version = "0.4.0"
+dependencies = [
+ "ab_glyph",
+ "anyhow",
+ "criterion",
+ "csv",
+ "dashmap",
+ "glam",
+ "image 0.25.10",
+ "lru",
+ "openslide-rs",
+ "parking_lot",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "eov-plugin-api"
+version = "0.4.0"
+dependencies = [
+ "abi_stable",
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "eovae"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
  "chrono",
- "common",
  "dirs",
+ "eov-common",
+ "eov-plugin-api",
  "libloading 0.8.9",
  "ndarray",
  "onnx-extractor",
  "ort",
- "plugin_api",
  "rusqlite",
  "serde",
  "serde_json",
@@ -2324,9 +2334,9 @@ dependencies = [
  "ashpd 0.12.3",
  "dirs",
  "enigo",
+ "eov-plugin-api",
  "futures",
  "gilrs",
- "plugin_api",
  "serde",
  "serde_json",
  "slint",
@@ -4864,16 +4874,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
-]
-
-[[package]]
-name = "plugin_api"
-version = "0.1.0"
-dependencies = [
- "abi_stable",
- "serde",
- "thiserror 2.0.18",
- "toml 0.8.23",
 ]
 
 [[package]]

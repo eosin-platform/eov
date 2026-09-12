@@ -2,7 +2,7 @@ use crate::AppWindow;
 use crate::gpu_interop::{ExportableImage, VulkanHandles};
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
-use common::{FilteringMode, TileCoord, TileData};
+use eov_common::{FilteringMode, TileCoord, TileData};
 use slint::ComponentHandle;
 use slint::wgpu_28::wgpu;
 use slint::{GraphicsAPI, Image, RenderingState};

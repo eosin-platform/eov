@@ -1,4 +1,4 @@
-use common::format_decimal;
+use eov_common::format_decimal;
 
 const WHOLE_NUMBER_EPSILON: f64 = 0.05;
 
@@ -108,7 +108,7 @@ fn format_one_decimal_clean(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{ZoomDisplayMode, *};
-    use common::WsiFile;
+    use eov_common::WsiFile;
     use std::path::PathBuf;
 
     fn fixture_path(name: &str) -> PathBuf {

@@ -6,7 +6,7 @@
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
 // Re-export all public blitting primitives from common.
-pub use common::blitter::{
+pub use eov_common::blitter::{
     BlitRect, CoarseSrc, TileSrc, blit_tile, blit_tile_lanczos3, blit_tile_trilinear,
     fast_fill_rgba,
 };
@@ -23,10 +23,10 @@ pub fn reproject_frame(
     dest_height: u32,
     src: FrameSrc<'_>,
     src_viewport: &crate::render_pool::CachedCpuFrame,
-    dest_viewport: &common::Viewport,
+    dest_viewport: &eov_common::Viewport,
     clear_rgba: [u8; 4],
 ) {
-    common::blitter::reproject_frame(
+    eov_common::blitter::reproject_frame(
         dest,
         dest_width,
         dest_height,

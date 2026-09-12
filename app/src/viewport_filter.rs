@@ -3,9 +3,9 @@
 //! The filter chain collects in-process `abi_stable` filters and applies them
 //! sequentially to rendered frames.
 
+use eov_plugin_api::ffi::{PluginVTable, ViewportFilterFFI, ViewportSnapshotFFI};
+use eov_plugin_api::viewport_filter::{CpuFrameBuffer, ViewportFilter};
 use parking_lot::RwLock;
-use plugin_api::ffi::{PluginVTable, ViewportFilterFFI, ViewportSnapshotFFI};
-use plugin_api::viewport_filter::{CpuFrameBuffer, ViewportFilter};
 use std::sync::Arc;
 
 use abi_stable::std_types::RString;

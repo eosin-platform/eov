@@ -2,11 +2,11 @@
 
 use crate::tile_loader::TileLoader;
 use crate::viewport_filter::SharedFilterChain;
-use common::{
+use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileManager, ViewportState,
     WsiFile,
 };
-use plugin_api::{PluginUndoRedoState, ToolbarButtonRegistration};
+use eov_plugin_api::{PluginUndoRedoState, ToolbarButtonRegistration};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -633,7 +633,7 @@ pub struct AppState {
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
     /// Currently active plugin-provided sidebar, if any.
-    pub active_sidebar: Option<plugin_api::ActiveSidebar>,
+    pub active_sidebar: Option<eov_plugin_api::ActiveSidebar>,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -1930,7 +1930,7 @@ impl AppState {
         changed
     }
 
-    pub fn set_active_sidebar(&mut self, sidebar: plugin_api::ActiveSidebar) {
+    pub fn set_active_sidebar(&mut self, sidebar: eov_plugin_api::ActiveSidebar) {
         self.active_sidebar = Some(sidebar);
         self.needs_render = true;
     }
@@ -1951,7 +1951,7 @@ impl AppState {
         self.active_sidebar.is_some()
     }
 
-    pub fn active_sidebar(&self) -> Option<&plugin_api::ActiveSidebar> {
+    pub fn active_sidebar(&self) -> Option<&eov_plugin_api::ActiveSidebar> {
         self.active_sidebar.as_ref()
     }
 
@@ -1979,7 +1979,7 @@ impl AppState {
     pub fn has_matching_sidebar_request(
         &self,
         plugin_id: &str,
-        request: &plugin_api::SidebarRequest,
+        request: &eov_plugin_api::SidebarRequest,
     ) -> bool {
         self.sidebar_matches(
             plugin_id,
@@ -1992,9 +1992,9 @@ impl AppState {
     pub fn set_sidebar_from_request(
         &mut self,
         plugin_id: String,
-        request: plugin_api::SidebarRequest,
+        request: eov_plugin_api::SidebarRequest,
     ) {
-        self.set_active_sidebar(plugin_api::ActiveSidebar {
+        self.set_active_sidebar(eov_plugin_api::ActiveSidebar {
             plugin_id,
             button_id: request.button_id,
             width_px: request.width_px,

@@ -16,8 +16,8 @@ use crate::{
     update_recent_files, update_render_backend, update_tabs, update_tool_overlays,
     update_tool_state,
 };
-use common::viewport::ZOOM_FACTOR;
-use common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
+use eov_common::viewport::ZOOM_FACTOR;
+use eov_common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{ComponentHandle, Model, SharedString, Timer, VecModel};
@@ -646,7 +646,7 @@ pub(crate) fn open_folder_as_series(
 }
 
 /// Convert Slint export settings to common crate's `ExportSettings`.
-fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
+fn slint_to_export_settings(s: &SlintExportSettings) -> eov_common::ExportSettings {
     let filtering_mode = match s.filtering_mode {
         SlintExportFilteringMode::Bilinear => FilteringMode::Bilinear,
         SlintExportFilteringMode::Trilinear => FilteringMode::Trilinear,
@@ -662,7 +662,7 @@ fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
         SlintIsolatedChannel::Eosin => 2,
         _ => 0,
     };
-    common::ExportSettings {
+    eov_common::ExportSettings {
         dpi: s.dpi.max(1) as u32,
         filtering_mode,
         stain_normalization,
@@ -679,11 +679,11 @@ fn slint_to_export_settings(s: &SlintExportSettings) -> common::ExportSettings {
     }
 }
 
-fn slint_color_to_overlay(color: slint::Color, opacity_pct: f32) -> common::overlay::OverlayColor {
+fn slint_color_to_overlay(color: slint::Color, opacity_pct: f32) -> eov_common::overlay::OverlayColor {
     let a = (color.alpha() as f32 * opacity_pct / 100.0)
         .round()
         .clamp(0.0, 255.0) as u8;
-    common::overlay::OverlayColor::new(color.red(), color.green(), color.blue(), a)
+    eov_common::overlay::OverlayColor::new(color.red(), color.green(), color.blue(), a)
 }
 
 fn slint_stroke_to_overlay(
@@ -691,36 +691,36 @@ fn slint_stroke_to_overlay(
     dash_length: f32,
     dash_gap: f32,
     dot_spacing: f32,
-) -> common::overlay::StrokeStyle {
+) -> eov_common::overlay::StrokeStyle {
     match style {
-        crate::StrokeStyle::Solid => common::overlay::StrokeStyle::Solid,
-        crate::StrokeStyle::Dashed => common::overlay::StrokeStyle::Dashed {
+        crate::StrokeStyle::Solid => eov_common::overlay::StrokeStyle::Solid,
+        crate::StrokeStyle::Dashed => eov_common::overlay::StrokeStyle::Dashed {
             length: dash_length,
             gap: dash_gap,
         },
-        crate::StrokeStyle::Dotted => common::overlay::StrokeStyle::Dotted {
+        crate::StrokeStyle::Dotted => eov_common::overlay::StrokeStyle::Dotted {
             spacing: dot_spacing,
         },
     }
 }
 
-fn slint_cap_to_overlay(cap: crate::CapStyle) -> common::overlay::CapStyle {
+fn slint_cap_to_overlay(cap: crate::CapStyle) -> eov_common::overlay::CapStyle {
     match cap {
-        crate::CapStyle::Round => common::overlay::CapStyle::Round,
-        crate::CapStyle::Square => common::overlay::CapStyle::Square,
-        crate::CapStyle::Flat => common::overlay::CapStyle::Flat,
+        crate::CapStyle::Round => eov_common::overlay::CapStyle::Round,
+        crate::CapStyle::Square => eov_common::overlay::CapStyle::Square,
+        crate::CapStyle::Flat => eov_common::overlay::CapStyle::Flat,
     }
 }
 
 /// Draw measurement overlays on an export image buffer.
 fn draw_measurement_overlays(
-    image_data: &mut common::RgbaImageData,
+    image_data: &mut eov_common::RgbaImageData,
     file: &state::OpenFile,
     pane: PaneId,
-    export_vp: &common::Viewport,
+    export_vp: &eov_common::Viewport,
     settings: &SlintExportSettings,
     dpi_scale: f32,
-    font: Option<&common::overlay::FontArc>,
+    font: Option<&eov_common::overlay::FontArc>,
 ) {
     if !settings.show_measurement || !settings.has_measurement {
         return;
@@ -755,7 +755,7 @@ fn draw_measurement_overlays(
         let p2 = export_vp.image_to_screen(m.end.x, m.end.y);
 
         // Draw line
-        common::overlay::draw_line(
+        eov_common::overlay::draw_line(
             &mut image_data.pixels,
             w,
             h,
@@ -771,9 +771,9 @@ fn draw_measurement_overlays(
 
         // Endpoint circles (white border + filled color, matching viewport style)
         let endpoint_r = (thickness + 1.0) * 0.5 + 1.0 * dpi_scale;
-        let white = common::overlay::OverlayColor::new(255, 255, 255, color.a);
+        let white = eov_common::overlay::OverlayColor::new(255, 255, 255, color.a);
         for p in [p1, p2] {
-            common::overlay::draw_filled_circle(
+            eov_common::overlay::draw_filled_circle(
                 &mut image_data.pixels,
                 w,
                 h,
@@ -782,7 +782,7 @@ fn draw_measurement_overlays(
                 endpoint_r + 1.5 * dpi_scale,
                 white,
             );
-            common::overlay::draw_filled_circle(
+            eov_common::overlay::draw_filled_circle(
                 &mut image_data.pixels,
                 w,
                 h,
@@ -797,7 +797,7 @@ fn draw_measurement_overlays(
         if let Some(font) = font {
             let distance_um = m.distance() * mpp;
             let label = if distance_um > 0.0 {
-                common::overlay::format_measurement_label(distance_um)
+                eov_common::overlay::format_measurement_label(distance_um)
             } else {
                 // Fallback: distance in screen pixels
                 let dx = p2.x - p1.x;
@@ -808,7 +808,7 @@ fn draw_measurement_overlays(
 
             let mid_x = (p1.x + p2.x) as f32 / 2.0;
             let mid_y = (p1.y + p2.y) as f32 / 2.0;
-            common::overlay::draw_measurement_label(
+            eov_common::overlay::draw_measurement_label(
                 &mut image_data.pixels,
                 w,
                 h,
@@ -825,9 +825,9 @@ fn draw_measurement_overlays(
 
 /// Draw ROI overlays on an export image buffer.
 fn draw_roi_overlays(
-    image_data: &mut common::RgbaImageData,
+    image_data: &mut eov_common::RgbaImageData,
     file: &state::OpenFile,
-    export_vp: &common::Viewport,
+    export_vp: &eov_common::Viewport,
     settings: &SlintExportSettings,
     dpi_scale: f32,
 ) {
@@ -845,7 +845,7 @@ fn draw_roi_overlays(
     if settings.roi_outside_overlay {
         let outside_color =
             slint_color_to_overlay(settings.roi_outside_color, settings.roi_outside_opacity);
-        common::overlay::fill_outside_rect(
+        eov_common::overlay::fill_outside_rect(
             &mut image_data.pixels,
             w,
             h,
@@ -868,7 +868,7 @@ fn draw_roi_overlays(
         );
         let cap = slint_cap_to_overlay(settings.roi_cap_style);
         let thickness = settings.roi_thickness * dpi_scale;
-        common::overlay::draw_rect_outline(
+        eov_common::overlay::draw_rect_outline(
             &mut image_data.pixels,
             w,
             h,
@@ -894,8 +894,8 @@ fn render_export_image(
     pane: PaneId,
     slint_settings: &SlintExportSettings,
     override_dpi: Option<u32>,
-    overlay_font: Option<&common::overlay::FontArc>,
-) -> Option<common::RgbaImageData> {
+    overlay_font: Option<&eov_common::overlay::FontArc>,
+) -> Option<eov_common::RgbaImageData> {
     let file_id = state.active_file_id_for_pane(pane)?;
     let file = state.get_file(file_id)?;
     let pane_state = file.pane_state(pane)?;
@@ -904,10 +904,10 @@ fn render_export_image(
     let render_dpi = override_dpi.unwrap_or(settings.dpi);
     settings.dpi = render_dpi;
     let mut img =
-        common::export::render_export(&file.tile_manager, tile_cache, viewport, &settings)?;
+        eov_common::export::render_export(&file.tile_manager, tile_cache, viewport, &settings)?;
 
     // Draw overlays
-    let export_vp = common::export::export_viewport(viewport, render_dpi);
+    let export_vp = eov_common::export::export_viewport(viewport, render_dpi);
     let dpi_scale = render_dpi as f32 / 96.0;
     draw_measurement_overlays(
         &mut img,
@@ -1003,7 +1003,7 @@ fn open_export_dialog(
     tile_cache: &Arc<TileCache>,
     pane: PaneId,
     cached: &Rc<RefCell<Option<SlintExportSettings>>>,
-    overlay_font: Option<&common::overlay::FontArc>,
+    overlay_font: Option<&eov_common::overlay::FontArc>,
 ) {
     let settings = {
         let state = state.read();
@@ -1110,7 +1110,7 @@ pub fn setup_callbacks(
     let toast_timer = Rc::new(Timer::default());
     let cached_export_settings: Rc<RefCell<Option<SlintExportSettings>>> =
         Rc::new(RefCell::new(None));
-    let overlay_font: Option<common::overlay::FontArc> = common::overlay::load_system_font();
+    let overlay_font: Option<eov_common::overlay::FontArc> = eov_common::overlay::load_system_font();
 
     {
         let state = Arc::clone(&state);
@@ -4678,7 +4678,7 @@ pub fn setup_callbacks(
                 return;
             }
 
-            let config = common::dataset::DatasetPatchesConfig {
+            let config = eov_common::dataset::DatasetPatchesConfig {
                 inputs,
                 output_dir: PathBuf::from(settings.output_dir.as_str()),
                 tile_size: settings.tile_size.max(1) as u32,
@@ -4723,12 +4723,12 @@ pub fn setup_callbacks(
             let cancel_bg = Arc::clone(&cancel);
 
             let (result_tx, result_rx) =
-                std::sync::mpsc::channel::<Result<common::dataset::DatasetPatchesReport, String>>();
+                std::sync::mpsc::channel::<Result<eov_common::dataset::DatasetPatchesReport, String>>();
 
             std::thread::Builder::new()
                 .name("dataset-export".into())
                 .spawn(move || {
-                    let result = common::dataset::run_dataset_patches_with_progress(
+                    let result = eov_common::dataset::run_dataset_patches_with_progress(
                         &config, &cancel_bg, &pt, &pcs, &pts, &ptte,
                     );
                     let _ = result_tx.send(result.map_err(|e| e.to_string()));

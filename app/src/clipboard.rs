@@ -1,7 +1,7 @@
 use crate::gpu::SurfaceSlot;
 use crate::pane_ui::{with_gpu_renderer, with_pane_render_cache};
 use crate::state::PaneId;
-use common::{
+use eov_common::{
     RgbaImageData, Viewport, crop_image_to_viewport_bounds as crop_to_viewport_bounds,
     crop_transparent_edges,
 };

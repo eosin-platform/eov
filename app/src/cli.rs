@@ -3,7 +3,7 @@ use crate::config;
 use crate::state::AppState;
 use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use common::{
+use eov_common::{
     FilteringMode, RenderBackend, WsiFile,
     cache::{DEFAULT_CACHE_SIZE_BYTES, DEFAULT_MAX_TILES},
     dataset::{self, DatasetPatchesConfig, MetadataFormat},

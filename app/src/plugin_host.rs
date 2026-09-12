@@ -1,17 +1,17 @@
 use crate::{AppWindow, config, open_file, request_render_loop};
 use abi_stable::std_types::{ROption, RResult, RString, RVec};
-use common::viewport::{MAX_ZOOM, MIN_ZOOM};
-use common::{FilteringMode, RenderBackend, TileCache};
-use parking_lot::RwLock;
-use plugin_api::HostToolMode;
-use plugin_api::IconDescriptor;
-use plugin_api::PluginUndoRedoState;
-use plugin_api::ffi::{
+use eov_common::viewport::{MAX_ZOOM, MIN_ZOOM};
+use eov_common::{FilteringMode, RenderBackend, TileCache};
+use eov_plugin_api::HostToolMode;
+use eov_plugin_api::IconDescriptor;
+use eov_plugin_api::PluginUndoRedoState;
+use eov_plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
     HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI,
     PluginUndoRedoStateFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
     ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
+use parking_lot::RwLock;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{
     Color, ComponentFactory, ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer,
@@ -575,7 +575,7 @@ pub(crate) fn sync_tool_button_states(state: &mut AppState) {
 pub(crate) fn hotkey_button_for_key(
     state: &AppState,
     key: &str,
-) -> Option<plugin_api::ToolbarButtonRegistration> {
+) -> Option<eov_plugin_api::ToolbarButtonRegistration> {
     state
         .local_plugin_buttons
         .iter()
@@ -583,14 +583,14 @@ pub(crate) fn hotkey_button_for_key(
         .cloned()
 }
 
-pub(crate) fn snapshot(state: &Arc<RwLock<AppState>>) -> plugin_api::HostSnapshot {
+pub(crate) fn snapshot(state: &Arc<RwLock<AppState>>) -> eov_plugin_api::HostSnapshot {
     snapshot_from_state(&state.read())
 }
 
 pub(crate) fn viewport_snapshot_for_pane(
     state: &Arc<RwLock<AppState>>,
     pane: PaneId,
-) -> Option<plugin_api::ViewportSnapshot> {
+) -> Option<eov_plugin_api::ViewportSnapshot> {
     let guard = state.read();
     guard
         .active_file_id_for_pane(pane)
@@ -603,7 +603,7 @@ pub(crate) fn viewport_snapshot_for_pane(
 
 pub(crate) fn invoke_viewport_annotation_selected(
     plugin_id: &str,
-    viewport: &plugin_api::ViewportSnapshot,
+    viewport: &eov_plugin_api::ViewportSnapshot,
     annotation_id: &str,
 ) -> Result<(), String> {
     let Some((_, vtable)) = local_plugin_vtables()
@@ -1631,14 +1631,14 @@ pub(crate) fn handle_confirmation_dialog_response(confirmed: bool) -> Result<(),
     })
 }
 
-pub(crate) fn log_message(plugin_id: &str, level: plugin_api::HostLogLevel, message: &str) {
+pub(crate) fn log_message(plugin_id: &str, level: eov_plugin_api::HostLogLevel, message: &str) {
     let message = format!("plugin[{plugin_id}]: {message}");
     match level {
-        plugin_api::HostLogLevel::Trace => tracing::trace!("{message}"),
-        plugin_api::HostLogLevel::Debug => tracing::debug!("{message}"),
-        plugin_api::HostLogLevel::Info => tracing::info!("{message}"),
-        plugin_api::HostLogLevel::Warn => tracing::warn!("{message}"),
-        plugin_api::HostLogLevel::Error => tracing::error!("{message}"),
+        eov_plugin_api::HostLogLevel::Trace => tracing::trace!("{message}"),
+        eov_plugin_api::HostLogLevel::Debug => tracing::debug!("{message}"),
+        eov_plugin_api::HostLogLevel::Info => tracing::info!("{message}"),
+        eov_plugin_api::HostLogLevel::Warn => tracing::warn!("{message}"),
+        eov_plugin_api::HostLogLevel::Error => tracing::error!("{message}"),
     }
 }
 
@@ -1646,7 +1646,7 @@ pub(crate) fn show_sidebar(
     plugin_id: &str,
     plugin_root: Option<&Path>,
     vtable: Option<PluginVTable>,
-    request: plugin_api::SidebarRequest,
+    request: eov_plugin_api::SidebarRequest,
 ) -> Result<(), String> {
     let resolved_request = resolve_sidebar_request(plugin_root, request)?;
     let plugin_id = plugin_id.to_string();
@@ -1906,7 +1906,7 @@ pub(crate) fn show_modal_dialog(
     plugin_id: &str,
     plugin_root: Option<&Path>,
     vtable: Option<PluginVTable>,
-    request: plugin_api::ModalDialogRequest,
+    request: eov_plugin_api::ModalDialogRequest,
 ) -> Result<(), String> {
     let resolved_request = resolve_modal_request(plugin_root, request)?;
     let plugin_id = plugin_id.to_string();
@@ -1996,7 +1996,7 @@ fn run_on_ui_thread<R: Send + 'static>(
         .map_err(|err| format!("failed to receive UI task result: {err}"))?
 }
 
-fn snapshot_from_state(state: &AppState) -> plugin_api::HostSnapshot {
+fn snapshot_from_state(state: &AppState) -> eov_plugin_api::HostSnapshot {
     let focused_pane = state.focused_pane;
     let active_file = state
         .active_file_id_for_pane(focused_pane)
@@ -2010,7 +2010,7 @@ fn snapshot_from_state(state: &AppState) -> plugin_api::HostSnapshot {
                 .map(|pane_state| to_viewport_snapshot(file, &pane_state.viewport, focused_pane))
         });
 
-    plugin_api::HostSnapshot {
+    eov_plugin_api::HostSnapshot {
         app_name: "eov".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         render_backend: render_backend_label(state.render_backend).to_string(),
@@ -2029,9 +2029,9 @@ fn snapshot_from_state(state: &AppState) -> plugin_api::HostSnapshot {
     }
 }
 
-fn to_open_file_info(file: &crate::state::OpenFile) -> plugin_api::OpenFileInfo {
+fn to_open_file_info(file: &crate::state::OpenFile) -> eov_plugin_api::OpenFileInfo {
     let props = file.wsi.properties();
-    plugin_api::OpenFileInfo {
+    eov_plugin_api::OpenFileInfo {
         file_id: file.id,
         path: file.path.to_string_lossy().into_owned(),
         filename: file.filename.clone(),
@@ -2048,11 +2048,11 @@ fn to_open_file_info(file: &crate::state::OpenFile) -> plugin_api::OpenFileInfo 
 
 fn to_viewport_snapshot(
     file: &crate::state::OpenFile,
-    viewport: &common::ViewportState,
+    viewport: &eov_common::ViewportState,
     pane: PaneId,
-) -> plugin_api::ViewportSnapshot {
+) -> eov_plugin_api::ViewportSnapshot {
     let bounds = viewport.viewport.bounds();
-    plugin_api::ViewportSnapshot {
+    eov_plugin_api::ViewportSnapshot {
         pane_index: pane.0 as u32,
         file_id: file.id,
         file_path: file.path.to_string_lossy().into_owned(),
@@ -2101,7 +2101,7 @@ fn hud_button_state_property_name(button_id: &str) -> String {
 
 fn hud_button_state_for_viewport(
     vtable: PluginVTable,
-    viewport: &plugin_api::ViewportSnapshot,
+    viewport: &eov_plugin_api::ViewportSnapshot,
     button_id: &str,
 ) -> HudButtonViewportState {
     let property_name = hud_button_state_property_name(button_id);
@@ -2248,8 +2248,8 @@ extern "C" fn ffi_set_undo_redo_state(
 
 fn resolve_sidebar_request(
     plugin_root: Option<&Path>,
-    mut request: plugin_api::SidebarRequest,
-) -> Result<plugin_api::SidebarRequest, String> {
+    mut request: eov_plugin_api::SidebarRequest,
+) -> Result<eov_plugin_api::SidebarRequest, String> {
     if request.width_px == 0 {
         return Err("sidebar width must be greater than zero".to_string());
     }
@@ -2273,8 +2273,8 @@ fn resolve_sidebar_request(
 
 fn resolve_modal_request(
     plugin_root: Option<&Path>,
-    mut request: plugin_api::ModalDialogRequest,
-) -> Result<plugin_api::ModalDialogRequest, String> {
+    mut request: eov_plugin_api::ModalDialogRequest,
+) -> Result<eov_plugin_api::ModalDialogRequest, String> {
     if request.width_px == 0 || request.height_px == 0 {
         return Err("modal width and height must be greater than zero".to_string());
     }
@@ -2298,8 +2298,8 @@ fn resolve_modal_request(
 
 fn resolve_viewport_overlay_request(
     plugin_root: &Path,
-    request: plugin_api::ViewportOverlayComponentRequest,
-) -> plugin_api::ViewportOverlayComponentRequest {
+    request: eov_plugin_api::ViewportOverlayComponentRequest,
+) -> eov_plugin_api::ViewportOverlayComponentRequest {
     let ui_path = PathBuf::from(&request.ui_path);
     let resolved_path = if ui_path.is_absolute() {
         ui_path
@@ -2307,7 +2307,7 @@ fn resolve_viewport_overlay_request(
         plugin_root.join(ui_path)
     };
 
-    plugin_api::ViewportOverlayComponentRequest {
+    eov_plugin_api::ViewportOverlayComponentRequest {
         ui_path: resolved_path.to_string_lossy().into_owned(),
         component: request.component,
         z_index: request.z_index,
@@ -2351,7 +2351,7 @@ fn clear_viewport_overlay_layer(ui: &AppWindow, layer: ViewportOverlayLayer) {
     set_viewport_overlay_factory(ui, layer, ComponentFactory::default());
 }
 
-fn viewport_snapshots_in_display_order(state: &AppState) -> Vec<plugin_api::ViewportSnapshot> {
+fn viewport_snapshots_in_display_order(state: &AppState) -> Vec<eov_plugin_api::ViewportSnapshot> {
     state
         .panes
         .iter()
@@ -2378,7 +2378,7 @@ fn resolved_viewport_overlay_components() -> Vec<ResolvedViewportOverlayComponen
             let request = (ctx.vtable.get_viewport_overlay_component)().into_option()?;
             let request = resolve_viewport_overlay_request(
                 &ctx.plugin_root,
-                plugin_api::ViewportOverlayComponentRequest {
+                eov_plugin_api::ViewportOverlayComponentRequest {
                     ui_path: request.ui_path.to_string(),
                     component: request.component.to_string(),
                     z_index: request.z_index,
@@ -2395,8 +2395,8 @@ fn resolved_viewport_overlay_components() -> Vec<ResolvedViewportOverlayComponen
         .collect()
 }
 
-fn default_overlay_viewport_snapshot() -> plugin_api::ViewportSnapshot {
-    plugin_api::ViewportSnapshot {
+fn default_overlay_viewport_snapshot() -> eov_plugin_api::ViewportSnapshot {
+    eov_plugin_api::ViewportSnapshot {
         pane_index: 0,
         file_id: -1,
         file_path: String::new(),
@@ -2466,7 +2466,7 @@ fn overlay_value_from_json(
 fn build_viewport_overlay_layer_factory(
     layer: ViewportOverlayLayer,
     requests: &[ResolvedViewportOverlayComponent],
-    snapshots: &[plugin_api::ViewportSnapshot],
+    snapshots: &[eov_plugin_api::ViewportSnapshot],
 ) -> Result<(ComponentFactory, ViewportOverlayLayerState), String> {
     let mut sorted_requests = requests.to_vec();
     sorted_requests.sort_by(|left, right| {
@@ -2708,7 +2708,7 @@ fn build_viewport_overlay_layer_factory(
 
 fn apply_viewport_overlay_properties(
     instance: &slint_interpreter::ComponentInstance,
-    snapshot: &plugin_api::ViewportSnapshot,
+    snapshot: &eov_plugin_api::ViewportSnapshot,
     contributions: &[ViewportOverlayContribution],
 ) -> Result<(), String> {
     let standard_values = [
@@ -2807,7 +2807,7 @@ fn apply_viewport_overlay_properties(
 
 fn refresh_viewport_overlay_layer_instances(
     layer: ViewportOverlayLayer,
-    snapshots: &[plugin_api::ViewportSnapshot],
+    snapshots: &[eov_plugin_api::ViewportSnapshot],
 ) -> Result<(), String> {
     let Some(layer_state) = viewport_overlay_state(layer).with(|slot| slot.borrow().clone()) else {
         return Ok(());
@@ -2829,7 +2829,7 @@ fn ensure_viewport_overlay_layer(
     ui: &AppWindow,
     layer: ViewportOverlayLayer,
     requests: &[ResolvedViewportOverlayComponent],
-    snapshots: &[plugin_api::ViewportSnapshot],
+    snapshots: &[eov_plugin_api::ViewportSnapshot],
 ) -> Result<(), String> {
     if requests.is_empty() {
         clear_viewport_overlay_layer(ui, layer);
@@ -3177,7 +3177,7 @@ fn empty_image() -> Image {
     Image::from_rgba8_premultiplied(SharedPixelBuffer::<Rgba8Pixel>::new(1, 1))
 }
 
-fn to_snapshot_ffi(snapshot: plugin_api::HostSnapshot) -> HostSnapshotFFI {
+fn to_snapshot_ffi(snapshot: eov_plugin_api::HostSnapshot) -> HostSnapshotFFI {
     HostSnapshotFFI {
         app_name: RString::from(snapshot.app_name),
         app_version: RString::from(snapshot.app_version),
@@ -3204,7 +3204,7 @@ fn to_snapshot_ffi(snapshot: plugin_api::HostSnapshot) -> HostSnapshotFFI {
     }
 }
 
-fn to_active_sidebar_ffi(sidebar: plugin_api::ActiveSidebar) -> ActiveSidebarFFI {
+fn to_active_sidebar_ffi(sidebar: eov_plugin_api::ActiveSidebar) -> ActiveSidebarFFI {
     ActiveSidebarFFI {
         plugin_id: RString::from(sidebar.plugin_id),
         button_id: sidebar.button_id.map(RString::from).into(),
@@ -3214,7 +3214,7 @@ fn to_active_sidebar_ffi(sidebar: plugin_api::ActiveSidebar) -> ActiveSidebarFFI
     }
 }
 
-fn to_open_file_info_ffi(file: plugin_api::OpenFileInfo) -> OpenFileInfoFFI {
+fn to_open_file_info_ffi(file: eov_plugin_api::OpenFileInfo) -> OpenFileInfoFFI {
     OpenFileInfoFFI {
         file_id: file.file_id,
         path: RString::from(file.path),
@@ -3230,7 +3230,7 @@ fn to_open_file_info_ffi(file: plugin_api::OpenFileInfo) -> OpenFileInfoFFI {
     }
 }
 
-fn to_viewport_snapshot_ffi(viewport: plugin_api::ViewportSnapshot) -> ViewportSnapshotFFI {
+fn to_viewport_snapshot_ffi(viewport: eov_plugin_api::ViewportSnapshot) -> ViewportSnapshotFFI {
     ViewportSnapshotFFI {
         pane_index: viewport.pane_index,
         file_id: viewport.file_id,
@@ -3250,13 +3250,13 @@ fn to_viewport_snapshot_ffi(viewport: plugin_api::ViewportSnapshot) -> ViewportS
     }
 }
 
-fn host_log_level(level: HostLogLevelFFI) -> plugin_api::HostLogLevel {
+fn host_log_level(level: HostLogLevelFFI) -> eov_plugin_api::HostLogLevel {
     match level {
-        HostLogLevelFFI::Trace => plugin_api::HostLogLevel::Trace,
-        HostLogLevelFFI::Debug => plugin_api::HostLogLevel::Debug,
-        HostLogLevelFFI::Info => plugin_api::HostLogLevel::Info,
-        HostLogLevelFFI::Warn => plugin_api::HostLogLevel::Warn,
-        HostLogLevelFFI::Error => plugin_api::HostLogLevel::Error,
+        HostLogLevelFFI::Trace => eov_plugin_api::HostLogLevel::Trace,
+        HostLogLevelFFI::Debug => eov_plugin_api::HostLogLevel::Debug,
+        HostLogLevelFFI::Info => eov_plugin_api::HostLogLevel::Info,
+        HostLogLevelFFI::Warn => eov_plugin_api::HostLogLevel::Warn,
+        HostLogLevelFFI::Error => eov_plugin_api::HostLogLevel::Error,
     }
 }
 
@@ -3716,7 +3716,7 @@ extern "C" fn ffi_show_sidebar(
     let Some(plugin_id) = context_plugin_id(context) else {
         return RResult::RErr(RString::from("invalid host API context"));
     };
-    let request = plugin_api::SidebarRequest {
+    let request = eov_plugin_api::SidebarRequest {
         button_id: (!button_id.is_empty()).then(|| button_id.to_string()),
         width_px,
         ui_path: ui_path.to_string(),
@@ -3773,7 +3773,7 @@ extern "C" fn ffi_show_modal_dialog(
     let Some(plugin_id) = context_plugin_id(context) else {
         return RResult::RErr(RString::from("invalid host API context"));
     };
-    let request = plugin_api::ModalDialogRequest {
+    let request = eov_plugin_api::ModalDialogRequest {
         ui_path: request.ui_path.to_string(),
         component: request.component.to_string(),
         width_px: request.width_px,
@@ -3843,14 +3843,14 @@ extern "C" fn ffi_log_message(context: u64, level: HostLogLevelFFI, message: RSt
 mod tests {
     use super::*;
     use abi_stable::std_types::{RString, RVec};
-    use plugin_api::ffi::{
+    use eov_plugin_api::ffi::{
         ActionResponseFFI, GpuFilterContextFFI, HostApiVTable, HudToolbarButtonFFI, UiPropertyFFI,
         ViewportContextMenuItemFFI, ViewportOverlayPointFFI, ViewportOverlayPolygonFFI,
         ViewportOverlayVertexFFI, ViewportSnapshotFFI,
     };
 
     extern "C" fn noop_set_host_api(_host_api: HostApiVTable) {}
-    extern "C" fn noop_get_toolbar_buttons() -> RVec<plugin_api::ffi::ToolbarButtonFFI> {
+    extern "C" fn noop_get_toolbar_buttons() -> RVec<eov_plugin_api::ffi::ToolbarButtonFFI> {
         RVec::new()
     }
     extern "C" fn noop_get_hud_toolbar_buttons() -> RVec<HudToolbarButtonFFI> {
@@ -3960,7 +3960,7 @@ mod tests {
         RVec::new()
     }
     extern "C" fn noop_get_viewport_overlay_component()
-    -> ROption<plugin_api::ffi::ViewportOverlayComponentRequestFFI> {
+    -> ROption<eov_plugin_api::ffi::ViewportOverlayComponentRequestFFI> {
         ROption::RNone
     }
     extern "C" fn noop_get_viewport_overlay_properties(
@@ -4003,7 +4003,7 @@ mod tests {
         _vertices: RVec<ViewportOverlayVertexFFI>,
     ) {
     }
-    extern "C" fn noop_get_viewport_filters() -> RVec<plugin_api::ffi::ViewportFilterFFI> {
+    extern "C" fn noop_get_viewport_filters() -> RVec<eov_plugin_api::ffi::ViewportFilterFFI> {
         RVec::new()
     }
     extern "C" fn noop_apply_filter_cpu(
@@ -4103,7 +4103,7 @@ mod tests {
                 "eovae",
                 Some(&plugin_root),
                 Some(fake_eovae_vtable()),
-                plugin_api::SidebarRequest {
+                eov_plugin_api::SidebarRequest {
                     button_id: Some("toggle_eovae".to_string()),
                     width_px: 340,
                     ui_path: "ui/eovae-sidebar.slint".to_string(),
@@ -4128,7 +4128,7 @@ mod tests {
                 "eovae",
                 Some(&plugin_root),
                 Some(eovae::eov_get_plugin_vtable()),
-                plugin_api::SidebarRequest {
+                eov_plugin_api::SidebarRequest {
                     button_id: Some("toggle_eovae".to_string()),
                     width_px: 340,
                     ui_path: "ui/eovae-sidebar.slint".to_string(),

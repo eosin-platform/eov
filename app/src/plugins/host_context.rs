@@ -5,7 +5,7 @@
 //! to wire them into the real UI.
 
 use crate::plugins::toolbar::ToolbarManager;
-use plugin_api::{
+use eov_plugin_api::{
     HostContext, HudToolbarButtonRegistration, PluginError, PluginResult, PluginUndoRedoState,
     ToolbarButtonRegistration,
 };
@@ -162,7 +162,7 @@ impl HostContext for MockHostContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plugin_api::{
+    use eov_plugin_api::{
         HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
         ToolbarButtonRegistration,
     };
@@ -308,7 +308,7 @@ mod tests {
                 plugin_id: "p".into(),
                 button_id: "b".into(),
                 tooltip: "T".into(),
-                icon: plugin_api::IconDescriptor::Svg {
+                icon: eov_plugin_api::IconDescriptor::Svg {
                     data: "<svg/>".into(),
                 },
                 toggled_icon: None,

@@ -1,6 +1,6 @@
 use crate::blitter;
 use crate::stain;
-use common::{TileData, Viewport};
+use eov_common::{TileData, Viewport};
 use parking_lot::Mutex;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
@@ -249,7 +249,7 @@ fn render_job_into_buffer(
     }
 
     if job.postprocess.sharpness > 0.001 {
-        common::postprocess::apply_sharpening(buffer, width, height, job.postprocess.sharpness);
+        eov_common::postprocess::apply_sharpening(buffer, width, height, job.postprocess.sharpness);
         if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
             return false;
         }
@@ -259,7 +259,7 @@ fn render_job_into_buffer(
         || job.postprocess.brightness.abs() > 0.001
         || (job.postprocess.contrast - 1.0).abs() > 0.001;
     if has_adjustments {
-        common::postprocess::apply_adjustments(
+        eov_common::postprocess::apply_adjustments(
             buffer,
             job.postprocess.gamma,
             job.postprocess.brightness,
@@ -280,13 +280,13 @@ pub fn apply_postprocess(buffer: &mut [u8], width: u32, height: u32, pp: &CpuRen
         stain::apply_color_deconvolution(buffer, params);
     }
     if pp.sharpness > 0.001 {
-        common::postprocess::apply_sharpening(buffer, width, height, pp.sharpness);
+        eov_common::postprocess::apply_sharpening(buffer, width, height, pp.sharpness);
     }
     let has_adjustments = (pp.gamma - 1.0).abs() > 0.001
         || pp.brightness.abs() > 0.001
         || (pp.contrast - 1.0).abs() > 0.001;
     if has_adjustments {
-        common::postprocess::apply_adjustments(buffer, pp.gamma, pp.brightness, pp.contrast);
+        eov_common::postprocess::apply_adjustments(buffer, pp.gamma, pp.brightness, pp.contrast);
     }
 }
 

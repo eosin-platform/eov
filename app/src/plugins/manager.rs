@@ -16,8 +16,8 @@ use crate::plugins::registry::PluginRegistry;
 use crate::plugins::toolbar::ToolbarManager;
 use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
-use plugin_api::ffi::{self, PluginVTable};
-use plugin_api::{
+use eov_plugin_api::ffi::{self, PluginVTable};
+use eov_plugin_api::{
     HostToolMode, IconDescriptor, PluginDescriptor, PluginResult, PluginUndoRedoState,
     ToolbarButtonRegistration,
 };
@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 fn viewport_snapshot_to_ffi(
-    viewport: &plugin_api::ViewportSnapshot,
-) -> plugin_api::ffi::ViewportSnapshotFFI {
-    plugin_api::ffi::ViewportSnapshotFFI {
+    viewport: &eov_plugin_api::ViewportSnapshot,
+) -> eov_plugin_api::ffi::ViewportSnapshotFFI {
+    eov_plugin_api::ffi::ViewportSnapshotFFI {
         pane_index: viewport.pane_index,
         file_id: viewport.file_id,
         file_path: viewport.file_path.clone().into(),
@@ -49,10 +49,10 @@ fn viewport_snapshot_to_ffi(
 
 fn vertices_to_ffi(
     vertices: &[crate::state::ImagePoint],
-) -> abi_stable::std_types::RVec<plugin_api::ffi::ViewportOverlayVertexFFI> {
+) -> abi_stable::std_types::RVec<eov_plugin_api::ffi::ViewportOverlayVertexFFI> {
     vertices
         .iter()
-        .map(|vertex| plugin_api::ffi::ViewportOverlayVertexFFI {
+        .map(|vertex| eov_plugin_api::ffi::ViewportOverlayVertexFFI {
             x_level0: vertex.x,
             y_level0: vertex.y,
         })
@@ -272,7 +272,9 @@ impl PluginManager {
         let plugin = self
             .registry
             .get(plugin_id)
-            .ok_or_else(|| plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'")))?
+            .ok_or_else(|| {
+                eov_plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'"))
+            })?
             .clone();
 
         let plugin_root = self
@@ -307,7 +309,9 @@ impl PluginManager {
         let plugin = self
             .registry
             .get(plugin_id)
-            .ok_or_else(|| plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'")))?
+            .ok_or_else(|| {
+                eov_plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'"))
+            })?
             .clone();
         let plugin_root = self
             .descriptor(plugin_id)
@@ -340,7 +344,9 @@ impl PluginManager {
         let plugin = self
             .registry
             .get(plugin_id)
-            .ok_or_else(|| plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'")))?
+            .ok_or_else(|| {
+                eov_plugin_api::PluginError::Other(format!("unknown plugin '{plugin_id}'"))
+            })?
             .clone();
         let plugin_root = self
             .descriptor(plugin_id)
@@ -361,11 +367,11 @@ impl PluginManager {
         &mut self,
         plugin_id: &str,
         action_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
     ) -> PluginResult<ActionOutcome> {
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
             let vt = *vtable;
-            let viewport = plugin_api::ffi::ViewportSnapshotFFI {
+            let viewport = eov_plugin_api::ffi::ViewportSnapshotFFI {
                 pane_index: viewport.pane_index,
                 file_id: viewport.file_id,
                 file_path: viewport.file_path.clone().into(),
@@ -386,7 +392,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown HUD plugin '{plugin_id}'"
         )))
     }
@@ -395,11 +401,11 @@ impl PluginManager {
         &mut self,
         plugin_id: &str,
         item_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
     ) -> PluginResult<ActionOutcome> {
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
             let vt = *vtable;
-            let viewport = plugin_api::ffi::ViewportSnapshotFFI {
+            let viewport = eov_plugin_api::ffi::ViewportSnapshotFFI {
                 pane_index: viewport.pane_index,
                 file_id: viewport.file_id,
                 file_path: viewport.file_path.clone().into(),
@@ -420,7 +426,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown viewport menu plugin '{plugin_id}'"
         )))
     }
@@ -428,7 +434,7 @@ impl PluginManager {
     pub fn handle_point_annotation_placed(
         &mut self,
         plugin_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
         x_level0: f64,
         y_level0: f64,
     ) -> PluginResult<ActionOutcome> {
@@ -439,7 +445,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown point annotation plugin '{plugin_id}'"
         )))
     }
@@ -447,7 +453,7 @@ impl PluginManager {
     pub fn handle_point_annotation_moved(
         &mut self,
         plugin_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
         annotation_id: &str,
         x_level0: f64,
         y_level0: f64,
@@ -459,7 +465,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown point annotation plugin '{plugin_id}'"
         )))
     }
@@ -467,7 +473,7 @@ impl PluginManager {
     pub fn handle_polygon_annotation_placed(
         &mut self,
         plugin_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
         vertices: &[crate::state::ImagePoint],
     ) -> PluginResult<ActionOutcome> {
         if let Some(vtable) = self.loaded_vtables.get(plugin_id) {
@@ -479,7 +485,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown polygon annotation plugin '{plugin_id}'"
         )))
     }
@@ -487,7 +493,7 @@ impl PluginManager {
     pub fn handle_polygon_annotation_moved(
         &mut self,
         plugin_id: &str,
-        viewport: &plugin_api::ViewportSnapshot,
+        viewport: &eov_plugin_api::ViewportSnapshot,
         annotation_id: &str,
         vertices: &[crate::state::ImagePoint],
     ) -> PluginResult<ActionOutcome> {
@@ -501,7 +507,7 @@ impl PluginManager {
             return Ok(ActionOutcome::Handled);
         }
 
-        Err(plugin_api::PluginError::Other(format!(
+        Err(eov_plugin_api::PluginError::Other(format!(
             "unknown polygon annotation plugin '{plugin_id}'"
         )))
     }
@@ -530,13 +536,13 @@ impl PluginManager {
     }
 }
 
-fn host_tool_mode_from_ffi(mode: plugin_api::ffi::HostToolModeFFI) -> HostToolMode {
+fn host_tool_mode_from_ffi(mode: eov_plugin_api::ffi::HostToolModeFFI) -> HostToolMode {
     match mode {
-        plugin_api::ffi::HostToolModeFFI::Navigate => HostToolMode::Navigate,
-        plugin_api::ffi::HostToolModeFFI::RegionOfInterest => HostToolMode::RegionOfInterest,
-        plugin_api::ffi::HostToolModeFFI::MeasureDistance => HostToolMode::MeasureDistance,
-        plugin_api::ffi::HostToolModeFFI::PointAnnotation => HostToolMode::PointAnnotation,
-        plugin_api::ffi::HostToolModeFFI::PolygonAnnotation => HostToolMode::PolygonAnnotation,
+        eov_plugin_api::ffi::HostToolModeFFI::Navigate => HostToolMode::Navigate,
+        eov_plugin_api::ffi::HostToolModeFFI::RegionOfInterest => HostToolMode::RegionOfInterest,
+        eov_plugin_api::ffi::HostToolModeFFI::MeasureDistance => HostToolMode::MeasureDistance,
+        eov_plugin_api::ffi::HostToolModeFFI::PointAnnotation => HostToolMode::PointAnnotation,
+        eov_plugin_api::ffi::HostToolModeFFI::PolygonAnnotation => HostToolMode::PolygonAnnotation,
     }
 }
 
@@ -546,12 +552,12 @@ mod tests {
     use crate::AppWindow;
     use crate::plugin_host::{build_host_api, init_ui_runtime};
     use crate::state::AppState;
-    use common::TileCache;
-    use parking_lot::RwLock;
-    use plugin_api::{
+    use eov_common::TileCache;
+    use eov_plugin_api::{
         HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
         ToolbarButtonRegistration,
     };
+    use parking_lot::RwLock;
     use slint::Timer;
     use std::cell::RefCell;
     use std::fs;

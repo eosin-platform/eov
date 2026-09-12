@@ -20,8 +20,8 @@ pub use manager::{ActionOutcome, PluginManager};
 
 use abi_stable::library::RawLibrary;
 use abi_stable::std_types::RString;
+use eov_plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
 use host_context::WindowOpenRequest;
-use plugin_api::ffi::{self, PluginVTable, UiPropertyFFI};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{CloseRequestResponse, ComponentHandle, Timer, TimerMode};
 use slint_interpreter::json::{value_from_json_str, value_to_json};
@@ -328,8 +328,8 @@ pub fn toggle_rust_plugin_window(
     plugin_root: &Path,
     toolbar_button_id: &str,
 ) -> anyhow::Result<bool> {
-    let manifest = plugin_api::PluginManifest::from_file(
-        &plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME),
+    let manifest = eov_plugin_api::PluginManifest::from_file(
+        &plugin_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME),
     )
     .map_err(|e| anyhow::anyhow!("Failed to load plugin manifest: {e}"))?;
 
@@ -379,8 +379,8 @@ pub fn toggle_rust_plugin_window(
 /// Loads the plugin manifest, shared library, and .slint UI; wires callbacks
 /// through the vtable; shows the window; and blocks until it is closed.
 pub fn run_plugin_window_standalone(plugin_root: &Path) -> anyhow::Result<()> {
-    let manifest = plugin_api::PluginManifest::from_file(
-        &plugin_root.join(plugin_api::manifest::MANIFEST_FILENAME),
+    let manifest = eov_plugin_api::PluginManifest::from_file(
+        &plugin_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME),
     )
     .map_err(|e| anyhow::anyhow!("Failed to load plugin manifest: {e}"))?;
 
