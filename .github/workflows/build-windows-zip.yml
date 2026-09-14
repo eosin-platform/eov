@@ -270,7 +270,7 @@ jobs:
         run: |
           $libDir = Join-Path (Get-Location) "openslide-msvc"
           $env:RUSTFLAGS = "-L native=$libDir"
-          cargo build --release --target ${{ matrix.rust_target }} --bin eov
+          cargo build --release --target ${{ matrix.rust_target }} --bin eov --no-default-features --features "distribution-windows-portable"
 
       - name: Collect runtime DLLs
         shell: msys2 {0}

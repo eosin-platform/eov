@@ -1,0 +1,53 @@
+[platform.windows.x86_64]
+version = "0.4.1"
+hash = "e2060c5902a8f31ba98c3c3b6e498ac206ab366633322dfb79b61c7ac55673e6"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-windows-x86_64.zip"
+
+[platform.windows.arm64]
+version = "0.4.1"
+hash = "d66e5d4b6a46b37af2e21b127d2d6afb10129367c86948a3daa96abb8c94b7db"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-windows-arm64.zip"
+
+[platform.linux.appimage.aarch64]
+version = "0.4.1"
+hash = ""
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-linux-aarch64.AppImage"
+
+[platform.linux.flatpak.aarch64]
+version = "0.4.1"
+hash = ""
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-linux-aarch64.flatpak"
+
+[platform.linux.appimage.x86_64]
+version = "0.4.1"
+hash = "35d1c6d7f01dcb48b49b0307b9cb88b3790adddf3f3cfdb8acb0325b7f2d79b3"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-linux-x86_64.AppImage"
+
+[platform.linux.flatpak.x86_64]
+version = "0.4.1"
+hash = ""
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-linux-x86_64.flatpak"
+
+[platform.macos.arm64]
+version = "0.4.1"
+hash = ""
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-macos-arm64.zip"
+
+[platform.macos.x86_64]
+version = "0.4.1"
+hash = ""
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.1/eov-v0.4.1-macos-x86_64.zip"
+
+# =================================================================
+# Plugins section
+# =================================================================
+
+[plugins.annotations]
+repository = "https://github.com/eosin-platform/eov-annotations-plugin"
+version = "0.2.0"
+description = "Official annotations plugin"
+
+[plugins.gamepad]
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+version = "0.2.1"
+description = "Provides support for using gamepads as input devices"

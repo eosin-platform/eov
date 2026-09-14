@@ -252,7 +252,9 @@ impl PluginDescriptor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::manifest::PluginEnvironment;
+
+use super::*;
 
     #[test]
     fn toolbar_button_fields_preserved() {
@@ -290,6 +292,9 @@ mod tests {
                 entry_component: Some("Panel".into()),
                 icon: None,
                 toolbar_buttons: Vec::new(),
+                environment: PluginEnvironment {
+                    version: ">=0.0.0".into(),
+                },
             },
         };
         assert_eq!(

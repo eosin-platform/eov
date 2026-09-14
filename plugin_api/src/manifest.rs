@@ -14,6 +14,12 @@ pub struct ManifestToolbarButton {
     pub icon_svg: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginEnvironment {
+    /// Host application version constraint.
+    pub version: String,
+}
+
 /// The parsed contents of a `plugin.toml` manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginManifest {
@@ -36,6 +42,8 @@ pub struct PluginManifest {
     /// Toolbar buttons declared in the manifest.
     #[serde(default)]
     pub toolbar_buttons: Vec<ManifestToolbarButton>,
+    /// Host application requirements for the plugin.
+    pub environment: PluginEnvironment,
 }
 
 /// Name of the manifest file inside each plugin directory.

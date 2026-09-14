@@ -7,6 +7,7 @@ mod callbacks;
 mod cli;
 mod clipboard;
 mod config;
+mod distribution;
 mod file_ops;
 mod gpu;
 mod gpu_interop;
@@ -22,6 +23,7 @@ mod test_support;
 mod tile_loader;
 mod tools;
 mod ui_update;
+mod version;
 mod viewport_filter;
 mod zoom_display;
 

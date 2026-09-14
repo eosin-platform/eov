@@ -33,6 +33,10 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MACOS_BINARY_PATH="$MACOS_DIR/$EXECUTABLE_NAME"
 ICON_OUTPUT_PATH="$RESOURCES_DIR/$BUNDLE_ICON_NAME"
 
+# The Cargo feature to enable when building the macOS bundle.
+# Recommended distribution for macOS is via Homebrew.
+DISTRIBUTION_FEATURE_TARGET="${DISTRIBUTION_FEATURE_TARGET:-distribution-homebrew}"
+
 log() {
     echo "[macos] $*"
 }
@@ -139,7 +143,7 @@ prepare_layout() {
 }
 
 build_binary() {
-    local -a cargo_cmd=(cargo build --bin "$APP_NAME")
+    local -a cargo_cmd=(cargo build --bin "$APP_NAME" --no-default-features --features "$DISTRIBUTION_FEATURE_TARGET")
     if [[ "$BUILD_PROFILE" == "release" ]]; then
         cargo_cmd+=(--release)
     else

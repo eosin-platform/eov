@@ -553,7 +553,8 @@ mod tests {
     use crate::plugin_host::{build_host_api, init_ui_runtime};
     use crate::state::AppState;
     use eov_common::TileCache;
-    use eov_plugin_api::{
+    use eov_plugin_api::manifest::PluginEnvironment;
+use eov_plugin_api::{
         HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
         ToolbarButtonRegistration,
     };
@@ -587,6 +588,9 @@ mod tests {
                     data: "<svg/>".into(),
                 }),
                 toolbar_buttons: Vec::new(),
+                environment: PluginEnvironment {
+                    version: ">=0.0.0".into(),
+                },
             }
         }
     }

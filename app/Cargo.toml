@@ -1,6 +1,6 @@
 [package]
-name = "app"
-version = "0.4.1"
+name = "eov"
+version = "0.4.2"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0"
@@ -8,7 +8,7 @@ description = "Main application for the EOV project, providing a Slint user inte
 keywords = ["application", "gui", "tool", "wsi", "biology", "pathology"]
 homepage = "https://eov.sh"
 repository = "https://github.com/eosin-platform/eov"
-publish = false
+publish = true
 
 [[bin]]
 name = "eov"
@@ -130,3 +130,11 @@ slint-build = "1.17.1"
 tempfile = "3"
 eovae = { path = "../plugins/eovae", default-features = false }
 i-slint-backend-testing = { version = "1.17.1" }
+
+[features]
+default = ["distribution-cargo"]
+distribution-cargo = []
+distribution-appimage = []
+distribution-flatpak = []
+distribution-homebrew = []
+distribution-windows-portable = []

@@ -233,7 +233,7 @@ build_binary() {
 
     (
         cd "$REPO_ROOT"
-        cargo build --release --bin "$APP_NAME"
+        cargo build --release --bin "$APP_NAME" --no-default-features --features "distribution-appimage"
     )
 
     require_file "$BINARY_PATH"

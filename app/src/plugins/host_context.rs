@@ -163,8 +163,7 @@ impl HostContext for MockHostContext {
 mod tests {
     use super::*;
     use eov_plugin_api::{
-        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
-        ToolbarButtonRegistration,
+        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult, ToolbarButtonRegistration, manifest::PluginEnvironment,
     };
 
     use std::path::PathBuf;
@@ -191,6 +190,9 @@ mod tests {
                     data: "<svg/>".into(),
                 }),
                 toolbar_buttons: Vec::new(),
+                environment: PluginEnvironment {
+                    version: ">=0.0.0".into(),
+                },
             }
         }
     }

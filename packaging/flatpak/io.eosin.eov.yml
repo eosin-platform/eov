@@ -98,7 +98,7 @@ modules:
     build-commands:
       - mkdir -p .cargo
       - install -Dm0644 cargo/config .cargo/config.toml
-      - cargo --offline build --release --locked --bin eov -vv
+      - cargo --offline build --release --locked --bin eov -vv --no-default-features --features "distribution-flatpak"
 
       - install -Dm755 target/release/eov /app/bin/eov
       - install -Dm644 assets/linux/io.eosin.eov.desktop /app/share/applications/io.eosin.eov.desktop
