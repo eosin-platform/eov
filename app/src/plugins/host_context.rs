@@ -163,7 +163,8 @@ impl HostContext for MockHostContext {
 mod tests {
     use super::*;
     use eov_plugin_api::{
-        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult, ToolbarButtonRegistration, manifest::PluginEnvironment,
+        HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
+        ToolbarButtonRegistration, manifest::PluginEnvironment,
     };
 
     use std::path::PathBuf;

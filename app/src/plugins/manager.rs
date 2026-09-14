@@ -554,7 +554,7 @@ mod tests {
     use crate::state::AppState;
     use eov_common::TileCache;
     use eov_plugin_api::manifest::PluginEnvironment;
-use eov_plugin_api::{
+    use eov_plugin_api::{
         HostContext, IconDescriptor, Plugin, PluginManifest, PluginResult,
         ToolbarButtonRegistration,
     };

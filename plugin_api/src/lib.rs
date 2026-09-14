@@ -254,7 +254,7 @@ impl PluginDescriptor {
 mod tests {
     use crate::manifest::PluginEnvironment;
 
-use super::*;
+    use super::*;
 
     #[test]
     fn toolbar_button_fields_preserved() {
