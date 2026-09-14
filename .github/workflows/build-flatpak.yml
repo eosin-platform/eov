@@ -126,6 +126,7 @@ jobs:
           # matches what flatpak --default-arch would return.
           arch="${{ matrix.arch }}"
           bundle_name="eov-${tag}-linux-${arch}.flatpak"
+          checksum_name="${bundle_name}.sha256"
 
           {
             echo "tag=$tag"
@@ -133,6 +134,7 @@ jobs:
             echo "is_release=$is_release"
             echo "arch=$arch"
             echo "bundle_name=$bundle_name"
+            echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build Flatpak
@@ -152,11 +154,15 @@ jobs:
             "${{ steps.meta.outputs.bundle_name }}" \
             "${{ env.APP_ID }}" \
             stable
+          sha256sum "${{ steps.meta.outputs.bundle_name }}" > "${{ steps.meta.outputs.checksum_name }}"
 
           echo "bundle_path=${{ steps.meta.outputs.bundle_name }}" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=${{ steps.meta.outputs.checksum_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.meta.outputs.bundle_name }}
-          path: ${{ steps.bundle.outputs.bundle_path }}
+          path: |
+            ${{ steps.bundle.outputs.bundle_path }}
+            ${{ steps.bundle.outputs.checksum_path }}
