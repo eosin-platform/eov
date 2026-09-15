@@ -21,6 +21,9 @@
 //! entry_ui = "ui/my_panel.slint"
 //! entry_component = "MyPanel"
 //!
+//! [environment]
+//! version = ">=0.4.1"
+//!
 //! [icon]
 //! kind = "svg"
 //! data = "<svg>...</svg>"

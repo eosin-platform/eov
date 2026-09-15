@@ -4,7 +4,7 @@
 //! plugin manifests from the extracted plugin root.
 
 use eov_plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
-use semver::Version;
+use semver::{Version, VersionReq};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
@@ -35,6 +35,15 @@ struct ScannedPluginPackage {
 /// Invalid plugins are skipped with a warning; they do not prevent other
 /// plugins from being discovered.
 pub fn discover_plugins(plugin_dir: &Path) -> PluginDiscoveryResult {
+    let host_version = Version::parse(crate::version::BUILD_VERSION)
+        .expect("CARGO_PKG_VERSION must be a valid semantic version");
+    discover_plugins_for_host_version(plugin_dir, &host_version)
+}
+
+fn discover_plugins_for_host_version(
+    plugin_dir: &Path,
+    host_version: &Version,
+) -> PluginDiscoveryResult {
     if !plugin_dir.is_dir() {
         info!(
             "Plugin directory does not exist, skipping discovery: {}",
@@ -90,17 +99,40 @@ pub fn discover_plugins(plugin_dir: &Path) -> PluginDiscoveryResult {
         }
 
         match try_load_descriptor_from_package(&path, &cache_dir) {
-            Ok(desc) => {
-                info!(
-                    "Discovered plugin '{}' from {}",
-                    desc.manifest.id,
-                    path.display()
-                );
-                packages.push(ScannedPluginPackage {
-                    descriptor: desc,
-                    package_path: path,
-                });
-            }
+            Ok(desc) => match host_version_satisfies_requirement(
+                &desc.manifest.environment.version,
+                host_version,
+            ) {
+                Ok(true) => {
+                    info!(
+                        "Discovered compatible plugin '{}' from {}",
+                        desc.manifest.id,
+                        path.display()
+                    );
+                    packages.push(ScannedPluginPackage {
+                        descriptor: desc,
+                        package_path: path,
+                    });
+                }
+                Ok(false) => {
+                    warn!(
+                        "Skipping incompatible plugin '{}' from {}: requires host version '{}', running {}",
+                        desc.manifest.id,
+                        path.display(),
+                        desc.manifest.environment.version,
+                        host_version
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        "Skipping plugin '{}' from {}: invalid host version requirement '{}': {}",
+                        desc.manifest.id,
+                        path.display(),
+                        desc.manifest.environment.version,
+                        err
+                    );
+                }
+            },
             Err(e) => {
                 warn!("Skipping invalid plugin at {}: {e}", path.display());
             }
@@ -108,6 +140,13 @@ pub fn discover_plugins(plugin_dir: &Path) -> PluginDiscoveryResult {
     }
 
     dedupe_plugin_versions(packages)
+}
+
+fn host_version_satisfies_requirement(
+    requirement: &str,
+    host_version: &Version,
+) -> Result<bool, semver::Error> {
+    Ok(VersionReq::parse(requirement)?.matches(host_version))
 }
 
 fn dedupe_plugin_versions(packages: Vec<ScannedPluginPackage>) -> PluginDiscoveryResult {
@@ -601,6 +640,22 @@ version = ">=0.4.1"
         id: &str,
         version: &str,
     ) -> PathBuf {
+        write_plugin_package_with_version_and_requirement(
+            base,
+            package_name,
+            id,
+            version,
+            ">=0.4.1",
+        )
+    }
+
+    fn write_plugin_package_with_version_and_requirement(
+        base: &Path,
+        package_name: &str,
+        id: &str,
+        version: &str,
+        host_requirement: &str,
+    ) -> PathBuf {
         let source_dir = base.join(format!("{package_name}_src"));
         fs::create_dir_all(source_dir.join("ui")).unwrap();
         fs::write(
@@ -614,7 +669,7 @@ entry_ui = "ui/panel.slint"
 entry_component = "Panel"
 
 [environment]
-version = ">=0.4.1"
+version = "{host_requirement}"
 "#
             ),
         )
@@ -631,6 +686,65 @@ version = ">=0.4.1"
         append_tree(&mut builder, &source_dir, &source_dir, Path::new(""));
         builder.finish().unwrap();
         package_path
+    }
+
+    #[test]
+    fn semver_compatibility_supports_standard_requirements() {
+        let host_version = Version::parse("0.3.5").unwrap();
+
+        for requirement in [
+            ">0.3.4",
+            ">=0.3.4",
+            "^0.3.4",
+            "~0.3.4",
+            ">=0.3.4, <0.4.0",
+            "0.3.*",
+            "*",
+        ] {
+            assert!(
+                host_version_satisfies_requirement(requirement, &host_version).unwrap(),
+                "expected host version {host_version} to satisfy {requirement}"
+            );
+        }
+
+        assert!(host_version_satisfies_requirement("0.3.4", &host_version).unwrap());
+        assert!(!host_version_satisfies_requirement("=0.3.4", &host_version).unwrap());
+        assert!(!host_version_satisfies_requirement(">=0.4.0", &host_version).unwrap());
+        assert!(host_version_satisfies_requirement("0.3.5", &host_version).unwrap());
+        assert!(host_version_satisfies_requirement("^0.3.0", &host_version).unwrap());
+    }
+
+    #[test]
+    fn discover_skips_incompatible_and_invalid_requirements() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_plugin_package_with_version_and_requirement(
+            tmp.path(),
+            "compatible",
+            "compatible",
+            "1.0.0",
+            ">=0.3.4, <0.4.0",
+        );
+        write_plugin_package_with_version_and_requirement(
+            tmp.path(),
+            "incompatible",
+            "incompatible",
+            "1.0.0",
+            ">=0.4.0",
+        );
+        write_plugin_package_with_version_and_requirement(
+            tmp.path(),
+            "invalid",
+            "invalid",
+            "1.0.0",
+            "not a semver requirement",
+        );
+
+        let host_version = Version::parse("0.3.5").unwrap();
+        let result = discover_plugins_for_host_version(tmp.path(), &host_version);
+
+        assert_eq!(result.descriptors.len(), 1);
+        assert_eq!(result.descriptors[0].manifest.id, "compatible");
+        assert!(result.old_plugin_files.is_empty());
     }
 
     #[test]
