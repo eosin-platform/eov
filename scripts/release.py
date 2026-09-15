@@ -208,7 +208,7 @@ def render_release_toml(
             (
                 f"[{platform.section}]",
                 f"version = {toml_string(version)}",
-                f"hash = {toml_string(digest)}",
+                f"sha256 = {toml_string(digest.removeprefix('sha256:'))}",
                 f"url = {toml_string(download_url)}",
                 "",
             )
