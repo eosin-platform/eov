@@ -277,6 +277,8 @@ The official companion [annotations plugin](https://github.com/eosin-platform/eo
 
 The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles.
 
+### General Plugin Architecture
+
 Plugins are native Rust dynamic libraries loaded through `abi_stable`. They can contribute toolbar buttons, HUD actions, sidebars, viewport overlays, and viewport filters while interacting with the host through a stable vtable.
 
 Plugins can query a host snapshot containing app/session state, open-file metadata, and the active viewport; read slide regions by file id; open a file in the viewer; move or fit the active viewport; frame an image-space rectangle; and send plugin-scoped log messages back to the host.
