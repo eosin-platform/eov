@@ -8,6 +8,7 @@ description = "Common utilities and abstractions for the EOV project, including 
 keywords = ["wsi", "biology", "pathology"]
 repository = "https://github.com/eosin-platform/eov"
 homepage = "https://eov.sh"
+readme = "README.md"
 publish = true
 
 [lib]

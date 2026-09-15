@@ -8,6 +8,7 @@ description = "Main application for the EOV project, providing a Slint user inte
 keywords = ["wsi", "biology", "pathology", "medical", "histology"]
 homepage = "https://eov.sh"
 repository = "https://github.com/eosin-platform/eov"
+readme = "README.md"
 publish = true
 
 [[bin]]
