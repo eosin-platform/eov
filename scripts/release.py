@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
@@ -34,6 +35,18 @@ class ReleaseError(Exception):
 EOV_REPOSITORY = "eosin-platform/eov"
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "release.toml"
 CASK_OUTPUT_PATH = OUTPUT_PATH.parent / "Casks" / "eov.rb"
+MACOS_INFO_PLIST_PATH = OUTPUT_PATH.parent / "assets" / "macos" / "Info.plist"
+
+MACOS_CASK_SYMBOLS = {
+    "10.13": "high_sierra",
+    "10.14": "mojave",
+    "10.15": "catalina",
+    "11.0": "big_sur",
+    "12.0": "monterey",
+    "13.0": "ventura",
+    "14.0": "sonoma",
+    "15.0": "sequoia",
+}
 
 PLATFORMS = (
     Platform("platform.windows.x86_64", "eov-v{version}-windows-x86_64.zip"),
@@ -84,7 +97,7 @@ def fetch_latest_release(gh_path: str, repository: str) -> dict[str, object]:
         )
     except FileNotFoundError as error:
         raise ReleaseError(
-            "GitHub CLI (`gh`) is required to generate release.toml."
+            "GitHub CLI (`gh`) is required to generate release metadata."
         ) from error
     except subprocess.CalledProcessError as error:
         details = "\n".join(
@@ -198,6 +211,33 @@ def toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=True)
 
 
+def macos_cask_symbol(info_plist_path: Path) -> str:
+    try:
+        with info_plist_path.open("rb") as plist_file:
+            info_plist = plistlib.load(plist_file)
+    except (OSError, ValueError, plistlib.InvalidFileException) as error:
+        raise ReleaseError(
+            f"Could not read macOS bundle metadata from {info_plist_path}: {error}"
+        ) from error
+
+    if not isinstance(info_plist, dict):
+        raise ReleaseError(
+            f"macOS bundle metadata in {info_plist_path} is not a property list object."
+        )
+
+    minimum_version = info_plist.get("LSMinimumSystemVersion")
+    if not isinstance(minimum_version, str) or not minimum_version:
+        raise ReleaseError(f"{info_plist_path} is missing LSMinimumSystemVersion.")
+
+    symbol = MACOS_CASK_SYMBOLS.get(minimum_version)
+    if symbol is None:
+        raise ReleaseError(
+            f"LSMinimumSystemVersion {minimum_version!r} in {info_plist_path} "
+            "does not have a supported Homebrew cask symbol."
+        )
+    return symbol
+
+
 def render_release_toml(
     version: str,
     platforms: list[tuple[Platform, str, str]],
@@ -239,7 +279,11 @@ def render_release_toml(
     return "\n".join(lines) + "\n"
 
 
-def render_cask(version: str, platforms: list[tuple[Platform, str, str]]) -> str:
+def render_cask(
+    version: str,
+    platforms: list[tuple[Platform, str, str]],
+    macos_symbol: str,
+) -> str:
     assets = {
         platform.section: (digest.removeprefix("sha256:"), download_url)
         for platform, digest, download_url in platforms
@@ -270,7 +314,7 @@ def render_cask(version: str, platforms: list[tuple[Platform, str, str]]) -> str
     desc "Lightweight, cross-platform Whole Slide Image (WSI) viewer for digital pathology"
     homepage "https://eov.sh/"
 
-    depends_on macos: :big_sur
+    depends_on macos: :{macos_symbol}
 
     app "eov.app"
     binary "#{{appdir}}/eov.app/Contents/MacOS/eov"
@@ -328,6 +372,7 @@ def main() -> int:
         eov_release = fetch_latest_release(gh_path, EOV_REPOSITORY)
         eov_version = release_version(eov_release, EOV_REPOSITORY)
         platforms = platform_releases(eov_release, eov_version, EOV_REPOSITORY)
+        macos_symbol = macos_cask_symbol(MACOS_INFO_PLIST_PATH)
 
         plugin_versions: dict[str, str] = {}
         for plugin in PLUGINS:
@@ -336,7 +381,10 @@ def main() -> int:
 
         content = render_release_toml(eov_version, platforms, plugin_versions)
         write_atomically(OUTPUT_PATH, content)
-        write_atomically(CASK_OUTPUT_PATH, render_cask(eov_version, platforms))
+        write_atomically(
+            CASK_OUTPUT_PATH,
+            render_cask(eov_version, platforms, macos_symbol),
+        )
     except ReleaseError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
