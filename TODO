@@ -1,5 +1,3 @@
-- flatpak sha256 file
-- generate release.toml script
 - homebrew cask
 - update command
 - plugin commands
