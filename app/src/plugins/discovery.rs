@@ -411,6 +411,9 @@ name = "Test Plugin {id}"
 version = "0.1.0"
 entry_ui = "ui/panel.slint"
 entry_component = "Panel"
+
+[environment]
+version = ">=0.4.1"
 "#
         );
         fs::write(dir.join("plugin.toml"), manifest).unwrap();
@@ -609,6 +612,9 @@ name = "Test Plugin {id}"
 version = "{version}"
 entry_ui = "ui/panel.slint"
 entry_component = "Panel"
+
+[environment]
+version = ">=0.4.1"
 "#
             ),
         )

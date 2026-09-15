@@ -185,6 +185,9 @@ version = "1.0.0"
 entry_ui = "ui/panel.slint"
 entry_component = "Panel"
 
+[environment]
+version = ">=0.4.1"
+
 [icon]
 kind = "svg"
 data = "<svg/>"
@@ -213,6 +216,9 @@ name = "Test"
 version = "1.0.0"
 entry_ui = "ui/p.slint"
 entry_component = "P"
+
+[environment]
+version = ">=0.4.1"
 "#;
         let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
         assert!(err.to_string().contains("TOML parse error"));
@@ -226,6 +232,9 @@ name = "Test"
 version = "1.0.0"
 entry_ui = "ui/p.slint"
 entry_component = "P"
+
+[environment]
+version = ">=0.4.1"
 "#;
         let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
         assert!(err.to_string().contains("'id' must not be empty"));
@@ -239,6 +248,9 @@ name = "Test"
 version = "1.0.0"
 entry_ui = "/etc/evil.slint"
 entry_component = "Evil"
+
+[environment]
+version = ">=0.4.1"
 "#;
         let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
         assert!(err.to_string().contains("relative path"));
@@ -252,6 +264,9 @@ name = "Test"
 version = "1.0.0"
 entry_ui = "../escape/evil.slint"
 entry_component = "Evil"
+
+[environment]
+version = ">=0.4.1"
 "#;
         let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
         assert!(err.to_string().contains(".."));
@@ -289,6 +304,9 @@ name = "No Icon Plugin"
 version = "0.1.0"
 entry_ui = "ui/panel.slint"
 entry_component = "Panel"
+
+[environment]
+version = ">=0.4.1"
 "#;
         let m = PluginManifest::from_toml(toml, "no_icon").unwrap();
         assert!(m.icon.is_none());
@@ -302,6 +320,9 @@ name = "Test"
 version = "1.0.0"
 entry_ui = "ui/p.slint"
 entry_component = "P"
+
+[environment]
+version = ">=0.4.1"
 
 [icon]
 kind = "file"

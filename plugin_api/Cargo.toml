@@ -1,6 +1,6 @@
 [package]
 name = "eov-plugin-api"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 description = "Shared plugin API for EOV plugins"
 license = "MIT OR Apache-2.0 OR GPL-3.0"

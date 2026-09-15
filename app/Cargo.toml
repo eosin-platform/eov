@@ -1,6 +1,6 @@
 [package]
 name = "eov"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0"
