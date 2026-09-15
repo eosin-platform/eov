@@ -61,8 +61,9 @@ fn bench_read_tiles(c: &mut Criterion) {
     // Benchmark tiles at different levels
     for level in 0..wsi.level_count().min(4) {
         let level_info = wsi.level(level).unwrap();
-        let max_x = level_info.tiles_x(256).saturating_sub(1);
-        let max_y = level_info.tiles_y(256).saturating_sub(1);
+        let tile_size = manager.tile_size_for_level(level);
+        let max_x = level_info.tiles_x(tile_size).saturating_sub(1);
+        let max_y = level_info.tiles_y(tile_size).saturating_sub(1);
 
         // Origin tile
         group.bench_with_input(
@@ -71,7 +72,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, tile_size))
                         .unwrap()
                 })
             },
@@ -86,7 +87,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, tile_size))
                         .unwrap()
                 })
             },
@@ -99,7 +100,7 @@ fn bench_read_tiles(c: &mut Criterion) {
             |b, &(l, x, y)| {
                 b.iter(|| {
                     manager
-                        .load_tile_sync(TileCoord::new(0, l, x, y, manager.tile_size_for_level(l)))
+                        .load_tile_sync(TileCoord::new(0, l, x, y, tile_size))
                         .unwrap()
                 })
             },
