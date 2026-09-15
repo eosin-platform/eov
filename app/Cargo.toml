@@ -16,10 +16,10 @@ path = "src/main.rs"
 
 [dependencies]
 # Common crate
-eov-common = { path = "../common" }
+eov-common = { path = "../common", version = "0.4.4" }
 
 # Plugin API
-eov-plugin-api = { path = "../plugin_api" }
+eov-plugin-api = { path = "../plugin_api", version = "0.4.4" }
 
 # Stable ABI for dynamic plugin loading
 abi_stable = { version = "0.11", default-features = false }
