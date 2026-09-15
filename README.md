@@ -34,11 +34,11 @@ The `.app` file is available. For Intel-based Macs, download the release with `x
 Download and open the `.app` file to run it. The app is not signed and you'll see an error message about the app being from an unidentified developer. To fix this, go to System Preferences → Privacy & Security and hit the "Open Anyway" button. Expect to repeat this process whenever you download a new version. 
 
 #### Homebrew
-Installation through Homebrew is managed through a [community-maintained cask](https://github.com/brendisurfs/homebrew-eov). 
+Installation through Homebrew uses the [official cask](https://github.com/eosin-platform/eov/blob/main/Casks/eov.rb).
 
 To install via Homebrew: 
 ```bash
-brew tap brendisurfs/eov
+brew tap eosin-platform/eov
 brew install --cask eov
 ``` 
 

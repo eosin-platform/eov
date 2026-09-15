@@ -12,3 +12,4 @@ fixtures/
 dist
 .flatpak-builder
 build
+__pycache__

@@ -33,6 +33,7 @@ class ReleaseError(Exception):
 
 EOV_REPOSITORY = "eosin-platform/eov"
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "release.toml"
+CASK_OUTPUT_PATH = OUTPUT_PATH.parent / "Casks" / "eov.rb"
 
 PLATFORMS = (
     Platform("platform.windows.x86_64", "eov-v{version}-windows-x86_64.zip"),
@@ -238,6 +239,56 @@ def render_release_toml(
     return "\n".join(lines) + "\n"
 
 
+def render_cask(version: str, platforms: list[tuple[Platform, str, str]]) -> str:
+    assets = {
+        platform.section: (digest.removeprefix("sha256:"), download_url)
+        for platform, digest, download_url in platforms
+    }
+    try:
+        arm64_sha256, arm64_url = assets["platform.macos.arm64"]
+        x86_64_sha256, x86_64_url = assets["platform.macos.x86_64"]
+    except KeyError as error:
+        raise ReleaseError(
+            "Latest eov release is missing a required macOS cask asset."
+        ) from error
+
+    return f"""cask "eov" do
+    version "{version}"
+
+    on_arm do
+        sha256 "{arm64_sha256}"
+
+        url "{arm64_url}"
+    end
+    on_intel do
+        sha256 "{x86_64_sha256}"
+
+        url "{x86_64_url}"
+    end
+
+    name "eov"
+    desc "Lightweight, cross-platform Whole Slide Image (WSI) viewer for digital pathology"
+    homepage "https://eov.sh/"
+
+    depends_on macos: :big_sur
+
+    app "eov.app"
+    binary "#{{appdir}}/eov.app/Contents/MacOS/eov"
+
+    zap trash: [
+        "~/Library/Application Support/io.eosin.eov",
+        "~/Library/Caches/io.eosin.eov",
+        "~/Library/Preferences/io.eosin.eov.plist",
+    ]
+
+    caveats <<~EOS
+        eov is not notarized by Apple. If macOS prevents it from opening, go to:
+            System Settings → Privacy & Security → Open Anyway
+    EOS
+end
+"""
+
+
 def write_atomically(path: Path, content: str) -> None:
     temporary_path: Path | None = None
     try:
@@ -285,6 +336,7 @@ def main() -> int:
 
         content = render_release_toml(eov_version, platforms, plugin_versions)
         write_atomically(OUTPUT_PATH, content)
+        write_atomically(CASK_OUTPUT_PATH, render_cask(eov_version, platforms))
     except ReleaseError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
