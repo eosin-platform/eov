@@ -38,12 +38,12 @@ PLATFORMS = (
     Platform("platform.windows.x86_64", "eov-v{version}-windows-x86_64.zip"),
     Platform("platform.windows.arm64", "eov-v{version}-windows-arm64.zip"),
     Platform(
-        "platform.linux.appimage.aarch64",
-        "eov-v{version}-linux-aarch64.AppImage",
+        "platform.linux.appimage.arm64",
+        "eov-v{version}-linux-arm64.AppImage",
     ),
     Platform(
-        "platform.linux.flatpak.aarch64",
-        "eov-v{version}-linux-aarch64.flatpak",
+        "platform.linux.flatpak.arm64",
+        "eov-v{version}-linux-arm64.flatpak",
     ),
     Platform(
         "platform.linux.appimage.x86_64",

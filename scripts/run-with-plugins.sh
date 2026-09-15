@@ -62,7 +62,7 @@ package_eovae() {
 
 echo "Building eov with annotation plugin..."
 
-cargo build -p app
+cargo build -p eov
 
 PLUGINS=(annotations eovae gamepad)
 

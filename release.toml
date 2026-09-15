@@ -1,42 +1,42 @@
 [platform.windows.x86_64]
-version = "0.4.2"
-sha256 = "20ae2e4336aa47208576391a3acc96d237079fcda7faa83c31452baee40e0a66"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-windows-x86_64.zip"
+version = "0.4.4"
+sha256 = "9f564a1754a28c31cd73c3e0ef9c58ca0b9b9ad3e7219b39f0297f21b1bd5654"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-windows-x86_64.zip"
 
 [platform.windows.arm64]
-version = "0.4.2"
-sha256 = "06439bbd204fc006cd6a3ff27c717b8caf78005e318962d68d2c36e7ee5a0c12"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-windows-arm64.zip"
+version = "0.4.4"
+sha256 = "3ad1d0ae423a573e08251c914843e1dc08eca062d8ed1e698f5dc4511a016875"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-windows-arm64.zip"
 
 [platform.linux.appimage.arm64]
-version = "0.4.2"
-sha256 = "483196666f68fccbc19daf71eb4661c508082cfb37992890cea246bef873804f"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-arm64.AppImage"
+version = "0.4.4"
+sha256 = "9db08ca8dca95c2e912612069f7617e394b532dc199aa7917413107d98edc592"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-linux-arm64.AppImage"
 
 [platform.linux.flatpak.arm64]
-version = "0.4.2"
-sha256 = "4dbc9579358933c4c49b0d4b554acbdd85ce3ca45f2813fbda49955cd99e67fa"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-arm64.flatpak"
+version = "0.4.4"
+sha256 = "f0449948dda4fd9d2541d13fb6a964ae2f4ad9249b23f2c16c86ec97d91333f1"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-linux-arm64.flatpak"
 
 [platform.linux.appimage.x86_64]
-version = "0.4.2"
-sha256 = "0abb1188424519e5f3ec5005257853f5ee6bdeae87551c9034cf2e93d6fd2502"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-x86_64.AppImage"
+version = "0.4.4"
+sha256 = "32f7d9e3dac40133172e8045eb2baa88382d10c37e3c52a70e822ba4d92632b7"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-linux-x86_64.AppImage"
 
 [platform.linux.flatpak.x86_64]
-version = "0.4.2"
-sha256 = "e627b610d8f85bd8ad17442ca47980be35568320e4739509da6ba235aee2e052"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-x86_64.flatpak"
+version = "0.4.4"
+sha256 = "01c13362d6c0cb7f8d3acca5a1255ca76f2c87dc0576a2e2b283da65b341e0e7"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-linux-x86_64.flatpak"
 
 [platform.macos.arm64]
-version = "0.4.2"
-sha256 = "924038aac561482c81c15cfb3eeed9be4de2d45dd6a8aa24cdbd39a4c8c3b475"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-macos-arm64.zip"
+version = "0.4.4"
+sha256 = "b1fb727b0d1f2daf3af3e3071c0011f0db9fd80f81ac553e61fb4c6db7e75c58"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-arm64.zip"
 
 [platform.macos.x86_64]
-version = "0.4.2"
-sha256 = "28f937797f8f11588069035c67e7ff1c57bb837b01abe7528b25a820ee521279"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-macos-x86_64.zip"
+version = "0.4.4"
+sha256 = "7aa3a4646e4086549276a979b5f219857a661784a926f432fcff22abb9d6052d"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-x86_64.zip"
 
 # =================================================================
 # Plugins section
@@ -44,10 +44,10 @@ url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2
 
 [plugins.annotations]
 repository = "https://github.com/eosin-platform/eov-annotations-plugin"
-version = "0.2.0"
+version = "0.2.1"
 description = "Official annotations plugin"
 
 [plugins.gamepad]
 repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
-version = "0.2.1"
+version = "0.2.2"
 description = "Provides support for using gamepads as input devices"
