@@ -8,15 +8,15 @@ version = "0.4.2"
 sha256 = "06439bbd204fc006cd6a3ff27c717b8caf78005e318962d68d2c36e7ee5a0c12"
 url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-windows-arm64.zip"
 
-[platform.linux.appimage.aarch64]
+[platform.linux.appimage.arm64]
 version = "0.4.2"
 sha256 = "483196666f68fccbc19daf71eb4661c508082cfb37992890cea246bef873804f"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-aarch64.AppImage"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-arm64.AppImage"
 
-[platform.linux.flatpak.aarch64]
+[platform.linux.flatpak.arm64]
 version = "0.4.2"
 sha256 = "4dbc9579358933c4c49b0d4b554acbdd85ce3ca45f2813fbda49955cd99e67fa"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-aarch64.flatpak"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.2/eov-v0.4.2-linux-arm64.flatpak"
 
 [platform.linux.appimage.x86_64]
 version = "0.4.2"

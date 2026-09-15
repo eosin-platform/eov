@@ -34,14 +34,16 @@ jobs:
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
             appimage_arch: x86_64
+            artifact_arch: x86_64
 
           # NOTE: Requires GitHub Actions ARM runner access.
-          # If unavailable, remove this entry and build aarch64 AppImages
+          # If unavailable, remove this entry and build arm64 AppImages
           # on a self-hosted ARM64 runner or via QEMU (significantly slower).
           - arch: aarch64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
             appimage_arch: aarch64
+            artifact_arch: arm64
 
     steps:
       - name: Check out repository
@@ -139,7 +141,8 @@ jobs:
 
           # Architecture comes from the matrix, not uname.
           arch="${{ matrix.arch }}"
-          artifact_name="eov-${tag}-linux-${arch}.AppImage"
+          artifact_arch="${{ matrix.artifact_arch }}"
+          artifact_name="eov-${tag}-linux-${artifact_arch}.AppImage"
           checksum_name="${artifact_name}.sha256"
 
           {

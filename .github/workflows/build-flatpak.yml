@@ -32,12 +32,14 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
+            artifact_arch: x86_64
 
           # NOTE: Requires GitHub Actions ARM runner access.
           # If unavailable, remove this entry and build on a self-hosted
           # ARM64 runner or investigate QEMU-based cross-build.
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            artifact_arch: arm64
 
     env:
       APP_ID: io.eosin.eov
@@ -125,7 +127,8 @@ jobs:
           # Architecture comes from the matrix; on native runners this
           # matches what flatpak --default-arch would return.
           arch="${{ matrix.arch }}"
-          bundle_name="eov-${tag}-linux-${arch}.flatpak"
+          artifact_arch="${{ matrix.artifact_arch }}"
+          bundle_name="eov-${tag}-linux-${artifact_arch}.flatpak"
           checksum_name="${bundle_name}.sha256"
 
           {
