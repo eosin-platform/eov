@@ -1,6 +1,7 @@
 # eov — A lightweight WSI viewer
 
 [![CI Status](https://github.com/eosin-platform/eov/actions/workflows/ci.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/eov.svg)](https://crates.io/crates/eov)
 [![Release Status](https://github.com/eosin-platform/eov/actions/workflows/release.yml/badge.svg)](https://github.com/eosin-platform/eov/actions/workflows/release.yml)
 ![Multi-Arch](https://img.shields.io/badge/arch-x86__64%20%7C%20arm64-blue)
 [![License: MIT OR Apache-2.0 OR GPL-3.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0%20OR%20GPL--3.0-0366d6)](https://github.com/eosin-platform/eov#license)
@@ -25,6 +26,13 @@ The name `eov` has no canonical expansion.
 Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.4.4).
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
+
+### Cargo
+If you have the Rust toolchain installed, the application is available on all platforms through Cargo:
+
+```
+cargo install eov
+```
 
 ### macOS
 The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
