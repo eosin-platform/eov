@@ -1,6 +1,6 @@
 [package]
 name = "eov"
-version = "0.4.4"
+version = "0.4.5"
 edition = "2024"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0"
@@ -17,10 +17,10 @@ path = "src/main.rs"
 
 [dependencies]
 # Common crate
-eov-common = { path = "../common", version = "0.4.4" }
+eov-common = { path = "../common", version = "0.4.5" }
 
 # Plugin API
-eov-plugin-api = { path = "../plugin_api", version = "0.4.4" }
+eov-plugin-api = { path = "../plugin_api", version = "0.4.5" }
 
 # Stable ABI for dynamic plugin loading
 abi_stable = { version = "0.11", default-features = false }
