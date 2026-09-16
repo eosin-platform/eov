@@ -17,7 +17,7 @@
 
 eov is a cross-platform desktop viewer for whole-slide images built with [Rust](https://rust-lang.org/) and [Slint](https://slint.dev/). It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine. The feature scope is intentionally narrow with its design principle of "small Linux-style utility for WSI". However, eov is highly extensible, and a proper WSI workbench experience (e.g. annotations) can be achieved with [plugins](https://github.com/eosin-platform/eov-annotations-plugin).
 
-Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solves the institution-scale WSI problem, eov aims to provide researchers - and anyone else interested in WSI - with frictionless viewer capabilities free of extraneous dependencies (e.g. servers, cloud infrastructure).
+Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solves the institution-scale WSI problem, eov aims to provide researchers - and anyone else interested in WSI - with frictionless viewer capabilities free of extraneous dependencies (e.g. servers, cloud infrastructure). Outside of *explicit* actions by the user to update the app, eov **does not** "phone home", collect usage metrics, or make network requests of any kind. 
 
 The name `eov` has no canonical expansion.
 
@@ -39,7 +39,7 @@ cargo install eov
 **Note:** `eov` is not notarized by Apple. If macOS prevents it from opening, go to: System Settings → Privacy & Security → Open Anyway
 
 #### Homebrew
-Installation through Homebrew uses the [official cask](./Casks/eov.rb).
+Installation through Homebrew uses the [official cask](https://github.com/eosin-platform/homebrew-eov).
 
 To install via Homebrew: 
 ```bash
