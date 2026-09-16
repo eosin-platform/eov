@@ -10,3 +10,6 @@
 [submodule "plugins/eov-gamepad-plugin"]
 	path = plugins/gamepad
 	url = https://github.com/eosin-platform/eov-gamepad-plugin.git
+[submodule "packaging/homebrew-eov"]
+	path = packaging/homebrew-eov
+	url = https://github.com/eosin-platform/homebrew-eov.git
