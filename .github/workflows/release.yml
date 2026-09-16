@@ -27,6 +27,7 @@ jobs:
       default_branch: ${{ steps.meta.outputs.default_branch }}
       annotations_version: ${{ steps.meta.outputs.annotations_version }}
       gamepad_version: ${{ steps.meta.outputs.gamepad_version }}
+      reuse_draft: ${{ steps.meta.outputs.reuse_draft }}
     steps:
       - name: Check out dispatched source
         uses: actions/checkout@v5
@@ -61,17 +62,25 @@ jobs:
             exit 1
           fi
 
-          release_check_error="$RUNNER_TEMP/release-check-error"
-          set +e
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$tag" >/dev/null 2>"$release_check_error"
-          release_status=$?
-          set -e
-          if [[ "$release_status" -eq 0 ]]; then
-            echo "GitHub Release '$tag' already exists" >&2
+          existing_releases="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$tag\")]")"
+          existing_count="$(jq 'length' <<<"$existing_releases")"
+          reuse_draft="false"
+          if [[ "$existing_count" -gt 1 ]]; then
+            echo "multiple GitHub Releases exist for '$tag'" >&2
             exit 1
-          elif ! grep -q '404' "$release_check_error"; then
-            cat "$release_check_error" >&2
-            exit 1
+          elif [[ "$existing_count" -eq 1 ]]; then
+            existing_draft="$(jq -r '.[0].draft' <<<"$existing_releases")"
+            existing_target="$(jq -r '.[0].target_commitish' <<<"$existing_releases")"
+            if [[ "$existing_draft" != "true" ]]; then
+              echo "published GitHub Release '$tag' already exists" >&2
+              exit 1
+            fi
+            if [[ "$existing_target" != "$source_sha" ]]; then
+              echo "existing draft '$tag' targets $existing_target, expected $source_sha" >&2
+              exit 1
+            fi
+            reuse_draft="true"
           fi
 
           annotations_version="$(gh api 'repos/eosin-platform/eov-annotations-plugin/releases?per_page=100' --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name')"
@@ -102,6 +111,7 @@ jobs:
             echo "default_branch=$default_branch"
             echo "annotations_version=$annotations_version"
             echo "gamepad_version=$gamepad_version"
+            echo "reuse_draft=$reuse_draft"
           } >> "$GITHUB_OUTPUT"
 
   build-appimage:
@@ -214,20 +224,62 @@ jobs:
           path: release-files
           merge-multiple: true
 
-      - name: Create draft release at SOURCE_SHA
+      - name: Create or update draft release at SOURCE_SHA
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release create '${{ needs.prepare.outputs.tag }}' \
-            --target '${{ needs.prepare.outputs.source_sha }}' \
-            --title '${{ needs.prepare.outputs.tag }}' \
-            --generate-notes \
-            --draft \
-            release-files/*
+          if [[ '${{ needs.prepare.outputs.reuse_draft }}' == 'true' ]]; then
+            gh release upload '${{ needs.prepare.outputs.tag }}' release-files/* --clobber
+          else
+            gh release create '${{ needs.prepare.outputs.tag }}' \
+              --target '${{ needs.prepare.outputs.source_sha }}' \
+              --title '${{ needs.prepare.outputs.tag }}' \
+              --generate-notes \
+              --draft \
+              release-files/*
+          fi
 
-      - name: Verify tag target and draft assets
+      - name: Verify draft release target and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ needs.prepare.outputs.tag }}'
+          source_sha='${{ needs.prepare.outputs.source_sha }}'
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$tag\")][0]")"
+          [[ "$release_json" != "null" ]] || {
+            echo "draft release $tag was not found" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.tag_name' <<<"$release_json")" == "$tag" ]] || {
+            echo "draft release has an unexpected tag name" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.draft' <<<"$release_json")" == "true" ]] || {
+            echo "release $tag is not a draft" >&2
+            exit 1
+          }
+          draft_target="$(jq -r '.target_commitish' <<<"$release_json")"
+          [[ "$draft_target" == "$source_sha" ]] || {
+            echo "draft release $tag targets $draft_target, expected $source_sha" >&2
+            exit 1
+          }
+
+          expected="$(find release-files -maxdepth 1 -type f -printf '%f\n' | sort)"
+          actual="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
+          diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual")
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release edit '${{ needs.prepare.outputs.tag }}' --draft=false
+
+      - name: Verify published tag target
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -242,19 +294,9 @@ jobs:
             object_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/$object_sha" --jq .object.sha)"
           fi
           [[ "$object_sha" == "$source_sha" ]] || {
-            echo "tag $tag points at $object_sha, expected $source_sha" >&2
+            echo "published tag $tag points at $object_sha, expected $source_sha" >&2
             exit 1
           }
-
-          expected="$(find release-files -maxdepth 1 -type f -printf '%f\n' | sort)"
-          actual="$(gh release view "$tag" --json assets --jq '.assets[].name' | sort)"
-          diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual")
-
-      - name: Publish verified release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: gh release edit '${{ needs.prepare.outputs.tag }}' --draft=false
 
       - name: Verify published asset URLs and hashes
         env:
