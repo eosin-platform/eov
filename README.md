@@ -35,11 +35,8 @@ cargo install eov
 ```
 
 ### macOS
-The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
-- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-arm64.zip) (all Macs released since June 2023)
-- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
-Download and open the `.app` file to run it. The app is not signed and you'll see an error message about the app being from an unidentified developer. To fix this, go to System Preferences → Privacy & Security and hit the "Open Anyway" button. Expect to repeat this process whenever you download a new version. 
+**Note:** `eov` is not notarized by Apple. If macOS prevents it from opening, go to: System Settings → Privacy & Security → Open Anyway
 
 #### Homebrew
 Installation through Homebrew uses the [official cask](./Casks/eov.rb).
@@ -50,8 +47,10 @@ brew tap eosin-platform/eov
 brew install --cask eov
 ``` 
 
-**Note:** `eov` is not notarized by Apple. If macOS prevents it from opening, go to: System Settings → Privacy & Security → Open Anyway
-
+#### Manual Installation (macOS)
+The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
+- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-arm64.zip) (all Macs released since June 2023)
+- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.4/eov-v0.4.4-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
 ### Windows
 A zip file containing a portable Windows build is available:
