@@ -18,6 +18,7 @@ The name `eov` has no canonical expansion.
 
 ## Installation
 
+<!-- release-install-links:start -->
 Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.4.4).
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
@@ -40,7 +41,12 @@ To install via Homebrew:
 ```bash
 brew tap eosin-platform/eov
 brew install --cask eov
-``` 
+```
+
+The `eov` cask tracks the latest stable release. Versioned casks remain pinned to an immutable release:
+```bash
+brew install --cask eov@0.4.4
+```
 
 #### Manual Installation (macOS)
 The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
@@ -80,6 +86,7 @@ sudo mv eov /usr/local/bin/eov
 # Start the installed app with a nice, short command from any directory:
 eov
 ```
+<!-- release-install-links:end -->
 
 ### Example WSI Files
 

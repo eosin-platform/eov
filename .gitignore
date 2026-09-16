@@ -13,3 +13,5 @@ dist
 .flatpak-builder
 build
 __pycache__
+release.toml
+release-files/
