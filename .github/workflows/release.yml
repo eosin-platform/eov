@@ -354,7 +354,9 @@ jobs:
           registry_version_status() {
             local crate="$1"
             local status
-            status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            status="$(curl --silent --show-error \
+              --user-agent "eov-release/${VERSION} (https://github.com/eosin-platform/eov)" \
+              --output /dev/null --write-out '%{http_code}' \
               "https://crates.io/api/v1/crates/${crate}/${VERSION}")" || {
               echo "could not query crates.io for ${crate} ${VERSION}" >&2
               return 1
