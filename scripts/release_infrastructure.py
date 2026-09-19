@@ -354,6 +354,12 @@ def published_plugin_candidates(repository: str) -> list[tuple[str, str]]:
             )
             with urllib.request.urlopen(request, timeout=60) as response:
                 data = tomllib.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                continue
+            raise ReleaseError(
+                f"could not read plugin release manifest {manifest_url}: {error}"
+            ) from error
         except (
             OSError,
             urllib.error.URLError,

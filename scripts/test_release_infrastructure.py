@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 from release_infrastructure import (
     EOV_MANIFEST_END,
@@ -14,6 +17,7 @@ from release_infrastructure import (
     ReleaseError,
     artifact_specs,
     cask_content,
+    published_plugin_candidates,
     render_manifest,
     select_compatible_plugin_release,
     semver_requirement_satisfied,
@@ -167,6 +171,33 @@ Exact: brew install --cask eov@0.4.4
     def test_plugin_selection_fails_when_no_release_is_compatible(self) -> None:
         with self.assertRaisesRegex(ReleaseError, "no stable plugin release"):
             select_compatible_plugin_release("0.4.6", [("0.3.0", ">=0.5.0")])
+
+    def test_legacy_plugin_releases_without_manifests_are_ignored(self) -> None:
+        releases = [
+            {"tag_name": "v0.2.1", "draft": False, "prerelease": False},
+            {"tag_name": "v0.2.3", "draft": False, "prerelease": False},
+        ]
+        missing_manifest = urllib.error.HTTPError(
+            "https://example.test/release.toml",
+            404,
+            "Not Found",
+            {},
+            io.BytesIO(),
+        )
+        manifest = io.BytesIO(
+            b'[plugin]\nversion = "0.2.3"\nenvironment = ">=0.4.0, <0.5.0"\n'
+        )
+        with (
+            patch("release_infrastructure._github_json", return_value=releases),
+            patch(
+                "release_infrastructure.urllib.request.urlopen",
+                side_effect=[missing_manifest, manifest],
+            ),
+        ):
+            candidates = published_plugin_candidates("example/plugin")
+
+        self.assertEqual(candidates, [("0.2.3", ">=0.4.0, <0.5.0")])
+        self.assertEqual(select_compatible_plugin_release("0.4.6", candidates), "0.2.3")
 
     def test_prerelease_requirements_follow_semver_rules(self) -> None:
         self.assertFalse(semver_requirement_satisfied(">=0.4.6", "0.4.6-alpha"))
