@@ -1,13 +1,13 @@
 [manifest]
 schema = 1
 kind = "eov"
-version = "0.4.6"
+version = "0.4.8"
 repository = "https://github.com/eosin-platform/eov"
 
 [platform.windows.x86_64]
-version = "0.4.6"
+version = "0.4.8"
 sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-url = "https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-windows-x86_64.zip"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.8/eov-v0.4.8-windows-x86_64.zip"
 
 [plugins.gamepad]
 name = "Gamepad"

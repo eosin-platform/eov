@@ -1226,8 +1226,8 @@ mod tests {
     fn classifies_exact_app_downgrade() {
         assert_eq!(
             classify_versions(
-                &Version::parse("0.4.6").unwrap(),
-                &Version::parse("0.4.5").unwrap()
+                &Version::parse("0.4.8").unwrap(),
+                &Version::parse("0.4.7").unwrap()
             ),
             UpdateAction::Downgrade
         );
@@ -1237,14 +1237,14 @@ mod tests {
     fn appimage_artifact_uses_linux_appimage_namespace() {
         let manifest = EovReleaseManifest {
             metadata: None,
-            version: Version::parse("0.4.6").unwrap(),
+            version: Version::parse("0.4.8").unwrap(),
             repository: super::super::manifest::EOV_REPOSITORY.into(),
             artifacts: std::collections::BTreeMap::from([(
                 format!("platform.linux.appimage.{}", super::super::manifest::Architecture::current().unwrap().as_str()),
                 PlatformArtifact {
-                    version: "0.4.6".into(),
+                    version: "0.4.8".into(),
                     sha256: "a".repeat(64),
-                    url: "https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov.AppImage".into(),
+                    url: "https://github.com/eosin-platform/eov/releases/download/v0.4.8/eov.AppImage".into(),
                     environment: None,
                 },
             )]),

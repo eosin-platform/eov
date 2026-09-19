@@ -246,7 +246,7 @@ Updates are explicit CLI actions. EOV does not check GitHub at startup, run back
 
 ```bash
 eov update
-eov update --release v0.4.6
+eov update --release v0.4.8
 eov update --app-only
 
 eov plugin ls
@@ -263,13 +263,13 @@ eov plugin info gamepad -o toml
 
 Any command that needs GitHub release metadata asks for network permission before its first request. Pass `--allow-network` for automation. `-y` only skips the later mutation confirmation; it never grants network permission. Local `.eop` installation, `plugin info`, and `plugin remove` do not use the network.
 
-Unqualified official plugin installs use the versions pinned by the currently installed EOV release manifest. `eov update` uses the target release manifest, so an exact downgrade can intentionally downgrade official plugins as well. Application self-update metadata is supported beginning with EOV `v0.4.6`; older releases must be installed manually.
+Unqualified official plugin installs use the versions pinned by the currently installed EOV release manifest. `eov update` uses the target release manifest, so an exact downgrade can intentionally downgrade official plugins as well. Application self-update metadata is supported beginning with EOV `v0.4.8`; older releases must be installed manually.
 
 Plugins contain native executable code and run with EOV's permissions. EOV warns before installing non-official plugins, including local packages. Package inspection does not load native code, and installed packages remain visible to management commands even when their EOV requirement is incompatible.
 
 Platform update behavior is distribution-specific. AppImages are hash-verified and atomically replaced for the next launch. Windows portable and manually managed macOS bundles stage a verified archive, exit, and use the bundled `eov-update-helper` to swap the application tree. macOS Homebrew ownership is detected locally and Homebrew remains the owner when a cask is used. Cargo updates are delegated only when the running executable can be proven to be Cargo-installed. Standalone Flatpak updates are downloaded for host-side installation; EOV does not broaden its sandbox or invoke privilege escalation.
 
-Release assets use schema 1 for new releases. The `[manifest]` table identifies the kind, version, and GitHub repository; platform tables retain `version`, `sha256`, and immutable `url` fields. Plugin release manifests also carry `[plugin]` metadata and keep the artifact-level `environment` field for compatibility. EOV accepts the legacy manifest without `[manifest]` used by `v0.4.6` and by older official plugin releases; no pre-`v0.4.6` EOV self-update metadata is inferred.
+Release assets use schema 1 for new releases. The `[manifest]` table identifies the kind, version, and GitHub repository; platform tables retain `version`, `sha256`, and immutable `url` fields. Plugin release manifests also carry `[plugin]` metadata and keep the artifact-level `environment` field for compatibility. EOV accepts the legacy manifest without `[manifest]` used by `v0.4.8` and by older official plugin releases; no pre-`v0.4.8` EOV self-update metadata is inferred.
 
 ## Dataset Patch Extraction
 
