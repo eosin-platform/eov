@@ -21,7 +21,7 @@ The name `eov` has no canonical expansion.
 ## Installation
 
 <!-- release-install-links:start -->
-Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.4.5).
+Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.4.6).
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
 
@@ -47,18 +47,18 @@ brew install --cask eov
 
 The `eov` cask tracks the latest stable release. Versioned casks remain pinned to an immutable release:
 ```bash
-brew install --cask eov@0.4.5
+brew install --cask eov@0.4.6
 ```
 
 #### Manual Installation (macOS)
 The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
-- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-macos-arm64.zip) (all Macs released since June 2023)
-- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
+- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-macos-arm64.zip) (all Macs released since June 2023)
+- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
 ### Windows
 A zip file containing a portable Windows build is available:
-- [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-windows-x86_64.zip) (most Windows machines)
-- [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-windows-arm64.zip) (rarer)
+- [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-windows-x86_64.zip) (most Windows machines)
+- [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-windows-arm64.zip) (rarer)
 
 Extract the zip and run `eov.exe` to start the program. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
@@ -67,14 +67,14 @@ If you want the `eov` command to be available via PATH (e.g. for command prompt 
 ### Linux
 There are two methods of installation.
 
-- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-arm64.AppImage)
-- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-arm64.flatpak)
+- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-linux-arm64.AppImage)
+- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-linux-arm64.flatpak)
 
 The AppImage is directly executable:
 
 ```bash
 # Download the binary
-curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-x86_64.AppImage
+curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-linux-x86_64.AppImage
 
 # Make it executable
 chmod +x ./eov
@@ -246,7 +246,7 @@ Updates are explicit CLI actions. EOV does not check GitHub at startup, run back
 
 ```bash
 eov update
-eov update --release v0.4.5
+eov update --release v0.4.6
 eov update --app-only
 
 eov plugin ls
@@ -263,13 +263,13 @@ eov plugin info gamepad -o toml
 
 Any command that needs GitHub release metadata asks for network permission before its first request. Pass `--allow-network` for automation. `-y` only skips the later mutation confirmation; it never grants network permission. Local `.eop` installation, `plugin info`, and `plugin remove` do not use the network.
 
-Unqualified official plugin installs use the versions pinned by the currently installed EOV release manifest. `eov update` uses the target release manifest, so an exact downgrade can intentionally downgrade official plugins as well. Application self-update metadata is supported beginning with EOV `v0.4.5`; older releases must be installed manually.
+Unqualified official plugin installs use the versions pinned by the currently installed EOV release manifest. `eov update` uses the target release manifest, so an exact downgrade can intentionally downgrade official plugins as well. Application self-update metadata is supported beginning with EOV `v0.4.6`; older releases must be installed manually.
 
 Plugins contain native executable code and run with EOV's permissions. EOV warns before installing non-official plugins, including local packages. Package inspection does not load native code, and installed packages remain visible to management commands even when their EOV requirement is incompatible.
 
 Platform update behavior is distribution-specific. AppImages are hash-verified and atomically replaced for the next launch. Windows portable and manually managed macOS bundles stage a verified archive, exit, and use the bundled `eov-update-helper` to swap the application tree. macOS Homebrew ownership is detected locally and Homebrew remains the owner when a cask is used. Cargo updates are delegated only when the running executable can be proven to be Cargo-installed. Standalone Flatpak updates are downloaded for host-side installation; EOV does not broaden its sandbox or invoke privilege escalation.
 
-Release assets use schema 1 for new releases. The `[manifest]` table identifies the kind, version, and GitHub repository; platform tables retain `version`, `sha256`, and immutable `url` fields. Plugin release manifests also carry `[plugin]` metadata and keep the artifact-level `environment` field for compatibility. EOV accepts the legacy manifest without `[manifest]` used by `v0.4.5` and by older official plugin releases; no pre-`v0.4.5` EOV self-update metadata is inferred.
+Release assets use schema 1 for new releases. The `[manifest]` table identifies the kind, version, and GitHub repository; platform tables retain `version`, `sha256`, and immutable `url` fields. Plugin release manifests also carry `[plugin]` metadata and keep the artifact-level `environment` field for compatibility. EOV accepts the legacy manifest without `[manifest]` used by `v0.4.6` and by older official plugin releases; no pre-`v0.4.6` EOV self-update metadata is inferred.
 
 ## Dataset Patch Extraction
 

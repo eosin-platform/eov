@@ -19,7 +19,7 @@ plugin:
 
 ```toml
 [dependencies]
-eov-plugin-api = "0.4.5"
+eov-plugin-api = "0.4.6"
 abi_stable = "0.11"
 ```
 
