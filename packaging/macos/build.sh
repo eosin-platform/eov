@@ -292,9 +292,9 @@ codesign_bundle() {
         codesign --force --sign "$CODESIGN_IDENTITY" "$fw"
     done
 
-    codesign --force --sign "$CODESIGN_IDENTITY" "$MACOS_BINARY_PATH"
     codesign --force --sign "$CODESIGN_IDENTITY" "$MACOS_HELPER_PATH"
-    codesign --force --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE_PATH"
+    codesign --force --sign "$CODESIGN_IDENTITY" "$MACOS_BINARY_PATH"
+    codesign --force --deep --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE_PATH"
 }
 
 create_zip_archive() {
