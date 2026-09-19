@@ -273,7 +273,7 @@ jobs:
         run: |
           $libDir = Join-Path (Get-Location) "openslide-msvc"
           $env:RUSTFLAGS = "-L native=$libDir"
-          cargo build --release --target ${{ matrix.rust_target }} --bin eov --no-default-features --features "distribution-windows-portable"
+          cargo build --release --target ${{ matrix.rust_target }} --bin eov --bin eov-update-helper --no-default-features --features "distribution-windows-portable"
 
       - name: Collect runtime DLLs
         shell: msys2 {0}
@@ -313,6 +313,12 @@ jobs:
 
           # Copy the release binary into staging
           Copy-Item "target\${{ matrix.rust_target }}\release\eov.exe" "staging\eov\"
+          Copy-Item "target\${{ matrix.rust_target }}\release\eov-update-helper.exe" "staging\eov\"
+
+          if (-not (Test-Path "staging\eov\eov-update-helper.exe")) {
+            Write-Error "eov-update-helper.exe was not built"
+            exit 1
+          }
 
           Write-Host "Zip contents:"
           Get-ChildItem -Path staging\eov | Format-Table Name, Length

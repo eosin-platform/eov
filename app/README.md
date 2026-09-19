@@ -52,6 +52,12 @@ eov probe <FILE>
 eov recent list
 eov config-path
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov update [--release <VERSION>] [--app-only] [--allow-network] [-y]
+eov plugin ls|list
+eov plugin install|add <SOURCE> [--allow-network] [-y]
+eov plugin update|upgrade <SOURCE> [--allow-network] [-y]
+eov plugin remove|rm|uninstall <PLUGIN> [-y]
+eov plugin info|inspect <PLUGIN> [-o plain|toml]
 ```
 
 Useful options include:
@@ -66,6 +72,8 @@ Useful options include:
 - `--plugin-dir <PATH>` to choose where packaged plugins are discovered.
 
 Run `eov --help` or `eov dataset patches --help` for the complete, version-specific help text.
+
+Update commands are always explicit. EOV makes no network requests during normal startup. GitHub metadata requires interactive consent or `--allow-network`; `-y` only skips mutation confirmation. Official plugin versions are locked by the installed or target EOV release manifest. Self-update metadata support begins at `v0.4.5`.
 
 ### Dataset patches
 

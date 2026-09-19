@@ -31,11 +31,12 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MACOS_BINARY_PATH="$MACOS_DIR/$EXECUTABLE_NAME"
+MACOS_HELPER_PATH="$MACOS_DIR/eov-update-helper"
 ICON_OUTPUT_PATH="$RESOURCES_DIR/$BUNDLE_ICON_NAME"
 
 # The Cargo feature to enable when building the macOS bundle.
 # Recommended distribution for macOS is via Homebrew.
-DISTRIBUTION_FEATURE_TARGET="${DISTRIBUTION_FEATURE_TARGET:-distribution-homebrew}"
+DISTRIBUTION_FEATURE_TARGET="${DISTRIBUTION_FEATURE_TARGET:-distribution-macos-bundle}"
 
 log() {
     echo "[macos] $*"
@@ -136,6 +137,14 @@ binary_source_path() {
     fi
 }
 
+helper_source_path() {
+    if [[ -n "$RUST_TARGET" ]]; then
+        printf '%s\n' "$REPO_ROOT/target/$RUST_TARGET/$BUILD_PROFILE/eov-update-helper"
+    else
+        printf '%s\n' "$REPO_ROOT/target/$BUILD_PROFILE/eov-update-helper"
+    fi
+}
+
 prepare_layout() {
     log "Preparing bundle layout at $APP_BUNDLE_PATH"
     rm -rf "$APP_BUNDLE_PATH"
@@ -143,7 +152,7 @@ prepare_layout() {
 }
 
 build_binary() {
-    local -a cargo_cmd=(cargo build --bin "$APP_NAME" --no-default-features --features "$DISTRIBUTION_FEATURE_TARGET")
+    local -a cargo_cmd=(cargo build --bin "$APP_NAME" --bin eov-update-helper --no-default-features --features "$DISTRIBUTION_FEATURE_TARGET")
     if [[ "$BUILD_PROFILE" == "release" ]]; then
         cargo_cmd+=(--release)
     else
@@ -165,6 +174,12 @@ build_binary() {
     require_file "$source_binary"
     cp "$source_binary" "$MACOS_BINARY_PATH"
     chmod 755 "$MACOS_BINARY_PATH"
+
+    local source_helper
+    source_helper="$(helper_source_path)"
+    require_file "$source_helper"
+    cp "$source_helper" "$MACOS_HELPER_PATH"
+    chmod 755 "$MACOS_HELPER_PATH"
 }
 
 generate_bundle_icon() {
@@ -278,6 +293,7 @@ codesign_bundle() {
     done
 
     codesign --force --sign "$CODESIGN_IDENTITY" "$MACOS_BINARY_PATH"
+    codesign --force --sign "$CODESIGN_IDENTITY" "$MACOS_HELPER_PATH"
     codesign --force --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE_PATH"
 }
 
@@ -300,6 +316,7 @@ create_zip_archive() {
 print_summary() {
     log "Bundle contents:"
     ls -la "$CONTENTS_DIR"
+    require_file "$MACOS_HELPER_PATH"
 
     if compgen -G "$DIST_DIR/${ARCHIVE_BASENAME}*" >/dev/null; then
         log "Artifacts:"

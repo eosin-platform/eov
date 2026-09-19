@@ -29,6 +29,12 @@ pub struct PluginManifest {
     pub name: String,
     /// Semantic version string.
     pub version: String,
+    /// Optional human-readable description for management interfaces.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Optional source repository for management and provenance display.
+    #[serde(default)]
+    pub repository: Option<String>,
     /// Relative path to the `.slint` UI file (from the plugin root).
     /// Optional — plugins that are pure viewport filters may omit this.
     #[serde(default)]
@@ -182,6 +188,8 @@ mod tests {
 id = "test_plugin"
 name = "Test Plugin"
 version = "1.0.0"
+description = "A test plugin"
+repository = "https://github.com/example/test-plugin"
 entry_ui = "ui/panel.slint"
 entry_component = "Panel"
 
@@ -199,6 +207,11 @@ data = "<svg/>"
         assert_eq!(m.id, "test_plugin");
         assert_eq!(m.name, "Test Plugin");
         assert_eq!(m.version, "1.0.0");
+        assert_eq!(m.description.as_deref(), Some("A test plugin"));
+        assert_eq!(
+            m.repository.as_deref(),
+            Some("https://github.com/example/test-plugin")
+        );
         assert_eq!(m.entry_ui.as_deref(), Some("ui/panel.slint"));
         assert_eq!(m.entry_component.as_deref(), Some("Panel"));
         assert_eq!(
@@ -310,6 +323,24 @@ version = ">=0.4.1"
 "#;
         let m = PluginManifest::from_toml(toml, "no_icon").unwrap();
         assert!(m.icon.is_none());
+    }
+
+    #[test]
+    fn parse_manifest_without_optional_metadata() {
+        let m = PluginManifest::from_toml(
+            r#"
+id = "legacy"
+name = "Legacy"
+version = "0.1.0"
+
+[environment]
+version = ">=0.4.1"
+"#,
+            "legacy",
+        )
+        .unwrap();
+        assert!(m.description.is_none());
+        assert!(m.repository.is_none());
     }
 
     #[test]

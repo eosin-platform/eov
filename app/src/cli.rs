@@ -1,6 +1,7 @@
 use crate::backend::WindowGeometry;
 use crate::config;
 use crate::state::AppState;
+use crate::update;
 use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use eov_common::{
@@ -162,8 +163,66 @@ enum DatasetCommand {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliPluginOutputFormat {
+    Plain,
+    Toml,
+}
+
+#[derive(Debug, Subcommand)]
+enum PluginCommand {
+    #[command(alias = "list")]
+    Ls {
+        #[arg(long)]
+        allow_network: bool,
+    },
+    #[command(alias = "add")]
+    Install {
+        source: String,
+        #[arg(short = 'y', long)]
+        yes: bool,
+        #[arg(long)]
+        allow_network: bool,
+    },
+    #[command(alias = "upgrade")]
+    Update {
+        source: String,
+        #[arg(short = 'y', long)]
+        yes: bool,
+        #[arg(long)]
+        allow_network: bool,
+    },
+    #[command(alias = "rm", alias = "uninstall")]
+    Remove {
+        plugin: String,
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    #[command(alias = "inspect")]
+    Info {
+        plugin: String,
+        #[arg(short = 'o', long, value_enum, default_value_t = CliPluginOutputFormat::Plain)]
+        output: CliPluginOutputFormat,
+    },
+}
+
 #[derive(Debug, Subcommand)]
 enum CliCommand {
+    #[command(alias = "upgrade")]
+    Update {
+        #[arg(long)]
+        release: Option<String>,
+        #[arg(long)]
+        app_only: bool,
+        #[arg(short = 'y', long)]
+        yes: bool,
+        #[arg(long)]
+        allow_network: bool,
+    },
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommand,
+    },
     Probe {
         file: PathBuf,
     },
@@ -283,6 +342,28 @@ struct Cli {
 
 enum CommandAction {
     LaunchUi,
+    ApplicationUpdate(update::ApplicationUpdateOptions),
+    PluginList {
+        allow_network: bool,
+    },
+    PluginInstall {
+        source: String,
+        allow_network: bool,
+        yes: bool,
+    },
+    PluginUpdate {
+        source: String,
+        allow_network: bool,
+        yes: bool,
+    },
+    PluginRemove {
+        plugin: String,
+        yes: bool,
+    },
+    PluginInfo {
+        plugin: String,
+        output: update::PluginOutputFormat,
+    },
     Probe(PathBuf),
     RecentList,
     ConfigPath,
@@ -367,6 +448,46 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         .collect::<Result<Vec<_>>>()?;
 
     let command = match cli.command {
+        Some(CliCommand::Update {
+            release,
+            app_only,
+            yes,
+            allow_network,
+        }) => CommandAction::ApplicationUpdate(update::ApplicationUpdateOptions {
+            release,
+            app_only,
+            yes,
+            allow_network,
+        }),
+        Some(CliCommand::Plugin { command }) => match command {
+            PluginCommand::Ls { allow_network } => CommandAction::PluginList { allow_network },
+            PluginCommand::Install {
+                source,
+                allow_network,
+                yes,
+            } => CommandAction::PluginInstall {
+                source,
+                allow_network,
+                yes,
+            },
+            PluginCommand::Update {
+                source,
+                allow_network,
+                yes,
+            } => CommandAction::PluginUpdate {
+                source,
+                allow_network,
+                yes,
+            },
+            PluginCommand::Remove { plugin, yes } => CommandAction::PluginRemove { plugin, yes },
+            PluginCommand::Info { plugin, output } => CommandAction::PluginInfo {
+                plugin,
+                output: match output {
+                    CliPluginOutputFormat::Plain => update::PluginOutputFormat::Plain,
+                    CliPluginOutputFormat::Toml => update::PluginOutputFormat::Toml,
+                },
+            },
+        },
         Some(CliCommand::Probe { file }) => {
             validate_input_file(&file)?;
             CommandAction::Probe(file)
@@ -481,6 +602,50 @@ pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()>
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
     match &launch_options.command {
         CommandAction::LaunchUi => Ok(false),
+        CommandAction::ApplicationUpdate(options) => {
+            update::application_update(&launch_options.plugin_dir, options.clone())?;
+            Ok(true)
+        }
+        CommandAction::PluginList { allow_network } => {
+            update::plugin_list(&launch_options.plugin_dir, *allow_network)?;
+            Ok(true)
+        }
+        CommandAction::PluginInstall {
+            source,
+            allow_network,
+            yes,
+        } => {
+            update::plugin_install(
+                &launch_options.plugin_dir,
+                source,
+                *allow_network,
+                *yes,
+                false,
+            )?;
+            Ok(true)
+        }
+        CommandAction::PluginUpdate {
+            source,
+            allow_network,
+            yes,
+        } => {
+            update::plugin_install(
+                &launch_options.plugin_dir,
+                source,
+                *allow_network,
+                *yes,
+                true,
+            )?;
+            Ok(true)
+        }
+        CommandAction::PluginRemove { plugin, yes } => {
+            update::plugin_remove(&launch_options.plugin_dir, plugin, *yes)?;
+            Ok(true)
+        }
+        CommandAction::PluginInfo { plugin, output } => {
+            update::plugin_info(&launch_options.plugin_dir, plugin, *output)?;
+            Ok(true)
+        }
         CommandAction::Probe(path) => {
             probe_file(path)?;
             Ok(true)

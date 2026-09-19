@@ -18,6 +18,8 @@
 //! id = "example_plugin"
 //! name = "Example Plugin"
 //! version = "0.1.0"
+//! description = "Optional plugin description"
+//! repository = "https://github.com/example/example-plugin"
 //! entry_ui = "ui/my_panel.slint"
 //! entry_component = "MyPanel"
 //!
@@ -291,6 +293,8 @@ mod tests {
                 id: "my_plugin".into(),
                 name: "My Plugin".into(),
                 version: "0.1.0".into(),
+                description: None,
+                repository: None,
                 entry_ui: Some("ui/panel.slint".into()),
                 entry_component: Some("Panel".into()),
                 icon: None,

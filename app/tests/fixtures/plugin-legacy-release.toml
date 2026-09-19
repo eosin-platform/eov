@@ -1,0 +1,5 @@
+[platform.linux.x86_64]
+version = "0.2.3"
+sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v0.2.3/gamepad-v0.2.3-linux-x86_64.eop"
+environment = ">=0.4.1"

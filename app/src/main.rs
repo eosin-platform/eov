@@ -23,6 +23,7 @@ mod test_support;
 mod tile_loader;
 mod tools;
 mod ui_update;
+mod update;
 mod version;
 mod viewport_filter;
 mod zoom_display;

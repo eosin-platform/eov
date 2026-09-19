@@ -5,12 +5,14 @@
 
 use eov_plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
 use semver::{Version, VersionReq};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::time::UNIX_EPOCH;
@@ -27,6 +29,92 @@ pub struct PluginDiscoveryResult {
 struct ScannedPluginPackage {
     descriptor: PluginDescriptor,
     package_path: PathBuf,
+}
+
+/// Parsed package information for management operations.
+///
+/// Inspection only extracts and parses the manifest. It never loads the
+/// package's native library or executes plugin code.
+#[derive(Debug, Clone)]
+pub struct InspectedPluginPackage {
+    pub package_path: PathBuf,
+    pub manifest: PluginManifest,
+    pub raw_manifest: String,
+    pub sha256: Option<String>,
+    #[allow(dead_code)]
+    pub extracted_root: PathBuf,
+}
+
+/// Inspect one `.eop` package regardless of host compatibility.
+pub fn inspect_plugin_package(
+    package_path: &Path,
+    calculate_sha256: bool,
+) -> PluginResult<InspectedPluginPackage> {
+    if !is_plugin_package(package_path) {
+        return Err(PluginError::Other(format!(
+            "plugin package must have a .eop extension: {}",
+            package_path.display()
+        )));
+    }
+    inspect_plugin_archive(package_path, calculate_sha256)
+}
+
+/// Inspect a package staged outside the discoverable `.eop` namespace.
+pub(crate) fn inspect_staged_plugin_package(
+    package_path: &Path,
+    calculate_sha256: bool,
+) -> PluginResult<InspectedPluginPackage> {
+    inspect_plugin_archive(package_path, calculate_sha256)
+}
+
+fn inspect_plugin_archive(
+    package_path: &Path,
+    calculate_sha256: bool,
+) -> PluginResult<InspectedPluginPackage> {
+    let cache_dir = plugin_cache_dir(package_path.parent().unwrap_or_else(|| Path::new(".")));
+    fs::create_dir_all(&cache_dir)?;
+    let extracted_root = ensure_extracted_plugin_root(package_path, &cache_dir)?;
+    let manifest_path = extracted_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME);
+    let raw_manifest = fs::read_to_string(&manifest_path)?;
+    let manifest = PluginManifest::from_toml(&raw_manifest, "<package>")?;
+    let sha256 = calculate_sha256
+        .then(|| sha256_file(package_path))
+        .transpose()?;
+    Ok(InspectedPluginPackage {
+        package_path: package_path.to_path_buf(),
+        manifest,
+        raw_manifest,
+        sha256,
+        extracted_root,
+    })
+}
+
+/// Remove cached extraction data for one package when it is replaced or
+/// removed. A later inspection will rebuild only this package's extraction.
+pub fn invalidate_plugin_package_cache(package_path: &Path) -> PluginResult<()> {
+    let cache_dir = plugin_cache_dir(package_path.parent().unwrap_or_else(|| Path::new(".")));
+    if !cache_dir.is_dir() {
+        return Ok(());
+    }
+    let prefix = package_path
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .map(sanitize_cache_component)
+        .unwrap_or_else(|| "plugin".to_string());
+    for entry in fs::read_dir(cache_dir)? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(&format!("{prefix}-"))
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(path)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Scan `plugin_dir` for plugin package tarballs.
@@ -337,11 +425,29 @@ fn sanitize_cache_component(value: &str) -> String {
 fn extract_plugin_package(package_path: &Path, destination: &Path) -> PluginResult<()> {
     let file = File::open(package_path)?;
     let mut archive = tar::Archive::new(file);
+    let mut manifest_paths = std::collections::HashSet::new();
 
     for entry in archive.entries()? {
         let mut entry = entry?;
         let archive_path = entry.path()?.into_owned();
         validate_archive_path(package_path, &archive_path)?;
+        let entry_type = entry.header().entry_type();
+        if !(entry_type.is_file() || entry_type.is_dir()) {
+            return Err(PluginError::Other(format!(
+                "plugin package '{}' contains unsupported archive entry '{}'",
+                package_path.display(),
+                archive_path.display()
+            )));
+        }
+        if archive_path.file_name() == Some(OsStr::new(eov_plugin_api::manifest::MANIFEST_FILENAME))
+            && !manifest_paths.insert(archive_path.clone())
+        {
+            return Err(PluginError::Other(format!(
+                "plugin package '{}' contains duplicate {} entries",
+                package_path.display(),
+                eov_plugin_api::manifest::MANIFEST_FILENAME
+            )));
+        }
         let unpacked = entry.unpack_in(destination)?;
         if !unpacked {
             return Err(PluginError::Other(format!(
@@ -363,6 +469,18 @@ fn validate_archive_path(package_path: &Path, archive_path: &Path) -> PluginResu
         )));
     }
 
+    let raw_path = archive_path.to_string_lossy();
+    let has_windows_prefix = raw_path.len() >= 2 && raw_path.as_bytes().get(1) == Some(&b':')
+        || raw_path.starts_with("\\\\")
+        || raw_path.starts_with('\\');
+    if has_windows_prefix {
+        return Err(PluginError::Other(format!(
+            "plugin package '{}' contains an unsafe Windows path '{}'",
+            package_path.display(),
+            archive_path.display()
+        )));
+    }
+
     for component in archive_path.components() {
         match component {
             Component::Normal(_) | Component::CurDir => {}
@@ -377,6 +495,20 @@ fn validate_archive_path(package_path: &Path, archive_path: &Path) -> PluginResu
     }
 
     Ok(())
+}
+
+fn sha256_file(path: &Path) -> PluginResult<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn find_manifest_root(extracted_dir: &Path) -> PluginResult<PathBuf> {
@@ -532,6 +664,27 @@ version = ">=0.4.1"
         package_path
     }
 
+    fn write_unsafe_package(
+        base: &Path,
+        package_name: &str,
+        path: &str,
+        entry_type: tar::EntryType,
+    ) -> PathBuf {
+        let package_path = base.join(format!("{package_name}.eop"));
+        let file = File::create(&package_path).unwrap();
+        let mut builder = tar::Builder::new(file);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(entry_type);
+        header.set_size(0);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, std::io::empty())
+            .unwrap();
+        builder.finish().unwrap();
+        package_path
+    }
+
     #[test]
     fn discover_from_nonexistent_dir() {
         let result = discover_plugins(Path::new("/nonexistent/plugin/dir/12345xyz"));
@@ -615,6 +768,54 @@ version = ">=0.4.1"
         let result = discover_plugins(tmp.path());
         assert_eq!(result.descriptors.len(), 1);
         assert_eq!(result.descriptors[0].manifest.id, "good");
+    }
+
+    #[test]
+    fn reject_traversal_and_absolute_archive_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        for path in [Path::new("../escape"), Path::new("/escape")] {
+            let error = validate_archive_path(tmp.path(), path).unwrap_err();
+            assert!(error.to_string().contains("unsafe"));
+        }
+    }
+
+    #[test]
+    fn reject_symlink_hardlink_and_special_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, entry_type) in [
+            ("symlink", tar::EntryType::symlink()),
+            ("hardlink", tar::EntryType::hard_link()),
+            ("block", tar::EntryType::block_special()),
+            ("char", tar::EntryType::character_special()),
+            ("fifo", tar::EntryType::fifo()),
+        ] {
+            let package = write_unsafe_package(tmp.path(), name, "plugin.toml", entry_type);
+            assert!(
+                inspect_plugin_package(&package, false).is_err(),
+                "{name} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn reject_duplicate_manifest_roots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let package = tmp.path().join("duplicate.eop");
+        let file = File::create(&package).unwrap();
+        let mut builder = tar::Builder::new(file);
+        for _ in 0..2 {
+            let mut header = tar::Header::new_gnu();
+            let contents = b"id = \"duplicate\"\nname = \"Duplicate\"\nversion = \"1.0.0\"\n[environment]\nversion = \">=0.4.1\"\n";
+            header.set_entry_type(tar::EntryType::file());
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "plugin.toml", &contents[..])
+                .unwrap();
+        }
+        builder.finish().unwrap();
+        assert!(inspect_plugin_package(&package, false).is_err());
     }
 
     #[test]

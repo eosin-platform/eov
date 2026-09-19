@@ -83,10 +83,12 @@ jobs:
             reuse_draft="true"
           fi
 
-          annotations_version="$(gh api 'repos/eosin-platform/eov-annotations-plugin/releases?per_page=100' --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name')"
-          gamepad_version="$(gh api 'repos/eosin-platform/eov-gamepad-plugin/releases?per_page=100' --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name')"
-          annotations_version="${annotations_version#v}"
-          gamepad_version="${gamepad_version#v}"
+          compatible_plugins="$(python3 scripts/release.py resolve-plugin-versions \
+            --eov-version "$version" \
+            --plugin annotations=eosin-platform/eov-annotations-plugin \
+            --plugin gamepad=eosin-platform/eov-gamepad-plugin)"
+          annotations_version="$(awk -F= '$1 == "annotations" { print $2 }' <<<"$compatible_plugins")"
+          gamepad_version="$(awk -F= '$1 == "gamepad" { print $2 }' <<<"$compatible_plugins")"
           semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
           [[ "$annotations_version" =~ $semver_re ]] || {
             echo "latest annotations release has invalid version '$annotations_version'" >&2
@@ -170,6 +172,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
+          submodules: recursive
           token: ${{ github.token }}
 
       - name: Download build artifacts
@@ -184,6 +187,7 @@ jobs:
           rm -rf release-files
           python3 scripts/release.py manifest \
             --kind eov \
+            --root . \
             --version '${{ needs.prepare.outputs.version }}' \
             --repository eosin-platform/eov \
             --artifacts-dir artifacts \

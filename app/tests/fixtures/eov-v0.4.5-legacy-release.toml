@@ -1,0 +1,19 @@
+[platform.windows.x86_64]
+version = "0.4.5"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-windows-x86_64.zip"
+
+[platform.linux.appimage.x86_64]
+version = "0.4.5"
+sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.5/eov-v0.4.5-linux-x86_64.AppImage"
+
+[plugins.annotations]
+repository = "https://github.com/eosin-platform/eov-annotations-plugin"
+version = "0.2.1"
+description = "Official annotations plugin"
+
+[plugins.gamepad]
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+version = "0.2.2"
+description = "Provides support for using gamepads as input devices"

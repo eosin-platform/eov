@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -97,10 +98,12 @@ PLUGIN_ARTIFACTS = {
 PLUGIN_METADATA = {
     "annotations": (
         "https://github.com/eosin-platform/eov-annotations-plugin",
+        "Annotations",
         "Official annotations plugin",
     ),
     "gamepad": (
         "https://github.com/eosin-platform/eov-gamepad-plugin",
+        "Gamepad",
         "Provides support for using gamepads as input devices",
     ),
 }
@@ -123,6 +126,309 @@ def validate_version(version: str, *, stable_only: bool = False) -> str:
         qualifier = "stable " if stable_only else ""
         raise ReleaseError(f"{qualifier}version must be valid SemVer: {version!r}")
     return version
+
+
+@functools.total_ordering
+@dataclass(frozen=True)
+class _SemVer:
+    major: int
+    minor: int
+    patch: int
+    prerelease: tuple[int | str, ...] = ()
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, _SemVer):
+            return NotImplemented
+        core = (self.major, self.minor, self.patch)
+        other_core = (other.major, other.minor, other.patch)
+        if core != other_core:
+            return core < other_core
+        if not self.prerelease and other.prerelease:
+            return False
+        if self.prerelease and not other.prerelease:
+            return True
+        for left, right in zip(self.prerelease, other.prerelease):
+            if left == right:
+                continue
+            if isinstance(left, int) and isinstance(right, str):
+                return True
+            if isinstance(left, str) and isinstance(right, int):
+                return False
+            return left < right
+        return len(self.prerelease) < len(other.prerelease)
+
+
+def _parse_semver(version: str) -> _SemVer:
+    validate_version(version)
+    core_and_pre = version.split("+", 1)[0]
+    core, separator, prerelease = core_and_pre.partition("-")
+    major, minor, patch = (int(part) for part in core.split("."))
+    identifiers: tuple[int | str, ...] = ()
+    if separator:
+        identifiers = tuple(
+            int(identifier) if identifier.isdigit() else identifier
+            for identifier in prerelease.split(".")
+        )
+    return _SemVer(major, minor, patch, identifiers)
+
+
+def _stable_version(version: str) -> _SemVer:
+    parsed = _parse_semver(version)
+    if parsed.prerelease:
+        raise ReleaseError(f"stable version required: {version!r}")
+    return parsed
+
+
+def semver_requirement_satisfied(requirement: str, version: str) -> bool:
+    """Evaluate the release requirements used by official plugin manifests.
+
+    Release preparation only considers stable plugin releases. This evaluator
+    intentionally covers the normal VersionReq forms used by the project:
+    comparators, comma-separated ranges, caret/tilde ranges, exact versions,
+    and wildcard versions.
+    """
+
+    if not requirement.strip():
+        raise ReleaseError("plugin environment requirement must not be empty")
+    candidate = _parse_semver(version)
+    alternatives = [part.strip() for part in requirement.split("||")]
+    for alternative in alternatives:
+        terms = [term for term in re.split(r"\s*,\s*|\s+", alternative) if term]
+        if candidate.prerelease and not any(
+            _term_has_matching_prerelease(term, candidate) for term in terms
+        ):
+            continue
+        if all(_semver_term_satisfied(term, candidate) for term in terms):
+            return True
+    return False
+
+
+def _term_has_matching_prerelease(term: str, candidate: _SemVer) -> bool:
+    match = re.search(
+        r"(\d+)\.(\d+)(?:\.(\d+))?-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)",
+        term,
+    )
+    if match is None:
+        return False
+    major, minor, patch, _ = match.groups()
+    return (
+        int(major) == candidate.major
+        and int(minor) == candidate.minor
+        and int(patch or 0) == candidate.patch
+    )
+
+
+def _semver_term_satisfied(term: str, candidate: _SemVer) -> bool:
+    if term in {"*", "x", "X"}:
+        return True
+    match = re.fullmatch(
+        r"(\^|~|>=|<=|>|<|=)?\s*(\d+)(?:\.(\d+|x|X|\*))?(?:\.(\d+|x|X|\*))?"
+        r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?",
+        term,
+    )
+    if match is None:
+        raise ReleaseError(f"unsupported SemVer requirement term: {term!r}")
+    operator, major_text, minor_text, patch_text, prerelease_text = match.groups()
+    major = int(major_text)
+    wildcard_minor = minor_text in {None, "x", "X", "*"}
+    wildcard_patch = patch_text in {None, "x", "X", "*"}
+    minor = 0 if wildcard_minor else int(minor_text)
+    patch = 0 if wildcard_patch else int(patch_text)
+    prerelease: tuple[int | str, ...] = ()
+    if prerelease_text:
+        prerelease = tuple(
+            int(identifier) if identifier.isdigit() else identifier
+            for identifier in prerelease_text.split(".")
+        )
+    lower = _SemVer(major, minor, patch, prerelease)
+    if candidate.prerelease and not prerelease:
+        return False
+    if operator == "^":
+        if major > 0:
+            upper = _SemVer(major + 1, 0, 0)
+        elif minor > 0:
+            upper = _SemVer(0, minor + 1, 0)
+        else:
+            upper = _SemVer(0, 0, patch + 1)
+        return lower <= candidate < upper
+    if operator == "~":
+        return lower <= candidate < _SemVer(major, minor + 1, 0)
+    if operator in {None, "="} and (wildcard_minor or wildcard_patch):
+        return (
+            candidate.major == major
+            and (wildcard_minor or candidate.minor == minor)
+            and (wildcard_patch or candidate.patch == patch)
+        )
+    if operator in {None, "="}:
+        return candidate == lower
+    return {
+        ">=": candidate >= lower,
+        "<=": candidate <= lower,
+        ">": candidate > lower,
+        "<": candidate < lower,
+    }[operator]
+
+
+def select_compatible_plugin_release(
+    eov_version: str, candidates: list[tuple[str, str]]
+) -> str:
+    """Return the newest stable candidate whose environment accepts EOV."""
+
+    eov = _parse_semver(eov_version)
+    compatible: list[tuple[_SemVer, str]] = []
+    for version, environment in candidates:
+        parsed = _stable_version(version.removeprefix("v"))
+        if semver_requirement_satisfied(environment, eov_version):
+            compatible.append((parsed, version.removeprefix("v")))
+    if not compatible:
+        raise ReleaseError(
+            f"no stable plugin release is compatible with EOV {eov_version}"
+        )
+    compatible.sort(reverse=True)
+    return compatible[0][1]
+
+
+def _github_json(url: str) -> object:
+    headers = {
+        "User-Agent": "eov-release-infrastructure",
+        "Accept": "application/vnd.github+json",
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            if response.status != 200:
+                raise ReleaseError(
+                    f"GitHub API returned HTTP {response.status} for {url}"
+                )
+            return json.loads(response.read())
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
+        raise ReleaseError(
+            f"could not read GitHub API response {url}: {error}"
+        ) from error
+
+
+def published_plugin_candidates(repository: str) -> list[tuple[str, str]]:
+    """Read stable plugin release manifests in descending release order."""
+
+    releases: list[object] = []
+    for page in range(1, 101):
+        page_value = _github_json(
+            f"https://api.github.com/repos/{repository}/releases?per_page=100&page={page}"
+        )
+        if not isinstance(page_value, list):
+            raise ReleaseError(
+                f"GitHub releases response for {repository} is not a list"
+            )
+        releases.extend(page_value)
+        if len(page_value) < 100:
+            break
+    candidates: list[tuple[str, str]] = []
+    for release in releases:
+        if (
+            not isinstance(release, dict)
+            or release.get("draft")
+            or release.get("prerelease")
+        ):
+            continue
+        tag = release.get("tag_name")
+        if not isinstance(tag, str):
+            continue
+        version = tag.removeprefix("v")
+        try:
+            validate_version(version, stable_only=True)
+        except ReleaseError:
+            continue
+        manifest_url = (
+            f"https://github.com/{repository}/releases/download/{tag}/release.toml"
+        )
+        try:
+            request = urllib.request.Request(
+                manifest_url,
+                headers={
+                    "User-Agent": "eov-release-infrastructure",
+                    "Accept": "text/plain",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=60) as response:
+                data = tomllib.loads(response.read().decode("utf-8"))
+        except (
+            OSError,
+            urllib.error.URLError,
+            UnicodeDecodeError,
+            tomllib.TOMLDecodeError,
+        ) as error:
+            raise ReleaseError(
+                f"could not read plugin release manifest {manifest_url}: {error}"
+            ) from error
+        plugin_data = data.get("plugin")
+        manifest_version = (
+            plugin_data.get("version")
+            if isinstance(plugin_data, dict)
+            else _first_artifact_version(data)
+        )
+        if manifest_version != version:
+            raise ReleaseError(
+                f"plugin release {tag} declares version {manifest_version!r}, expected {version!r}"
+            )
+        environment = None
+        if isinstance(plugin_data, dict) and isinstance(
+            plugin_data.get("environment"), str
+        ):
+            environment = plugin_data["environment"]
+        if environment is None:
+            environment = _first_artifact_environment(data)
+        if not isinstance(environment, str):
+            raise ReleaseError(
+                f"plugin release {tag} has no EOV environment requirement"
+            )
+        candidates.append((version, environment))
+    return candidates
+
+
+def _first_artifact_environment(data: dict[str, object]) -> str | None:
+    def visit(value: object) -> str | None:
+        if isinstance(value, dict):
+            environment = value.get("environment")
+            if isinstance(environment, str):
+                return environment
+            for child in value.values():
+                found = visit(child)
+                if found is not None:
+                    return found
+        return None
+
+    platform = data.get("platform")
+    return visit(platform)
+
+
+def _first_artifact_version(data: dict[str, object]) -> str | None:
+    def visit(value: object) -> str | None:
+        if isinstance(value, dict):
+            version = value.get("version")
+            if isinstance(version, str) and "sha256" in value and "url" in value:
+                return version
+            for child in value.values():
+                found = visit(child)
+                if found is not None:
+                    return found
+        return None
+
+    return visit(data.get("platform"))
+
+
+def command_resolve_plugin_versions(args: argparse.Namespace) -> None:
+    eov_version = validate_version(args.eov_version)
+    for value in args.plugin:
+        name, separator, repository = value.partition("=")
+        if not separator or not name or not repository:
+            raise ReleaseError(f"plugin must be NAME=OWNER/REPOSITORY: {value!r}")
+        selected = select_compatible_plugin_release(
+            eov_version, published_plugin_candidates(repository)
+        )
+        print(f"{name}={selected}")
 
 
 def validate_sha256(value: str, description: str) -> str:
@@ -333,6 +639,18 @@ def validate_plugin_source(root: Path, requested_version: str) -> None:
             f"plugin versions disagree with requested {requested_version}: "
             f"Cargo.toml={cargo_version!r}, plugin.toml={manifest_version!r}"
         )
+    plugin_id = plugin_data.get("id")
+    plugin_name = plugin_data.get("name")
+    if not isinstance(plugin_id, str) or not plugin_id:
+        raise ReleaseError("plugin.toml has no valid id")
+    if not isinstance(plugin_name, str) or not plugin_name:
+        raise ReleaseError("plugin.toml has no valid name")
+    description = plugin_data.get("description")
+    if description is not None and not isinstance(description, str):
+        raise ReleaseError("plugin.toml description must be a string")
+    repository = plugin_data.get("repository")
+    if repository is not None and not isinstance(repository, str):
+        raise ReleaseError("plugin.toml repository must be a string")
     environment = plugin_data.get("environment")
     if not isinstance(environment, dict) or not isinstance(
         environment.get("version"), str
@@ -347,8 +665,37 @@ def render_manifest(
     staged: dict[str, Path],
     plugin_versions: dict[str, str] | None = None,
     environment: str | None = None,
+    plugin_metadata: tuple[str, str, str | None, str | None] | None = None,
+    official_metadata: dict[str, tuple[str, str, str]] | None = None,
 ) -> str:
     lines: list[str] = []
+    kind = "eov" if plugin_versions is not None else "plugin"
+    lines.extend(
+        (
+            "[manifest]",
+            "schema = 1",
+            f"kind = {json.dumps(kind)}",
+            f"version = {json.dumps(version)}",
+            f"repository = {json.dumps(f'https://github.com/{repository}')}",
+            "",
+        )
+    )
+    if plugin_metadata is not None:
+        plugin_id, plugin_name, description, plugin_repository = plugin_metadata
+        lines.extend(
+            (
+                "[plugin]",
+                f"id = {json.dumps(plugin_id)}",
+                f"name = {json.dumps(plugin_name)}",
+                f"version = {json.dumps(version)}",
+                f"repository = {json.dumps(plugin_repository or f'https://github.com/{repository}')}",
+            )
+        )
+        if description is not None:
+            lines.append(f"description = {json.dumps(description)}")
+        if environment is not None:
+            lines.append(f"environment = {json.dumps(environment)}")
+        lines.append("")
     for spec in specs:
         digest = hashlib.sha256(staged[spec.filename].read_bytes()).hexdigest()
         lines.extend(
@@ -375,10 +722,13 @@ def render_manifest(
         for name in ("annotations", "gamepad"):
             if name not in plugin_versions:
                 continue
-            plugin_repository, description = PLUGIN_METADATA[name]
+            plugin_repository, plugin_name, description = (
+                official_metadata or PLUGIN_METADATA
+            )[name]
             lines.extend(
                 (
                     f"[plugins.{name}]",
+                    f"name = {json.dumps(plugin_name)}",
                     f"repository = {json.dumps(plugin_repository)}",
                     f"version = {json.dumps(plugin_versions[name])}",
                     f"description = {json.dumps(description)}",
@@ -397,8 +747,21 @@ def validate_manifest_data(
     repository: str,
     specs: tuple[ArtifactSpec, ...],
     environment: str | None = None,
+    kind: str = "eov",
 ) -> None:
     validate_version(version)
+    metadata = data.get("manifest")
+    if metadata is not None:
+        if not isinstance(metadata, dict) or metadata.get("schema") != 1:
+            raise ReleaseError("manifest metadata must declare schema = 1")
+        expected_kind = kind
+        if metadata.get("kind") != expected_kind:
+            raise ReleaseError("manifest metadata has the wrong kind")
+        if metadata.get("version") != version:
+            raise ReleaseError("manifest metadata has the wrong version")
+        expected_repository = f"https://github.com/{repository}"
+        if metadata.get("repository") != expected_repository:
+            raise ReleaseError("manifest metadata has the wrong repository")
     for spec in specs:
         entry = nested_table(data, spec.section)
         if entry.get("version") != version:
@@ -414,6 +777,44 @@ def validate_manifest_data(
             )
         if environment is not None and entry.get("environment") != environment:
             raise ReleaseError(f"[{spec.section}] has the wrong plugin environment")
+    if kind == "eov":
+        plugins = data.get("plugins", {})
+        if not isinstance(plugins, dict):
+            raise ReleaseError("[plugins] must be a table")
+        for plugin_id, plugin in plugins.items():
+            if not isinstance(plugin_id, str) or not isinstance(plugin, dict):
+                raise ReleaseError("official plugin catalog entries must be tables")
+            required_fields = ["repository", "version"]
+            if isinstance(metadata, dict):
+                required_fields.extend(("name", "description"))
+            for field in required_fields:
+                if not isinstance(plugin.get(field), str) or not plugin[field]:
+                    raise ReleaseError(
+                        f"official plugin catalog entry '{plugin_id}' is missing {field}"
+                    )
+            validate_version(plugin["version"])
+            repository_url = urllib.parse.urlparse(plugin["repository"])
+            if (
+                repository_url.scheme != "https"
+                or repository_url.netloc != "github.com"
+                or len([part for part in repository_url.path.split("/") if part]) != 2
+            ):
+                raise ReleaseError(
+                    f"official plugin catalog entry '{plugin_id}' has an invalid repository"
+                )
+    elif kind == "plugin" and isinstance(metadata, dict):
+        plugin = data.get("plugin")
+        if not isinstance(plugin, dict):
+            raise ReleaseError("schema-1 plugin manifest is missing [plugin]")
+        for field in ("id", "name", "repository", "version", "environment"):
+            if not isinstance(plugin.get(field), str) or not plugin[field]:
+                raise ReleaseError(f"[plugin] is missing {field}")
+        if plugin["version"] != version or plugin["environment"] != environment:
+            raise ReleaseError("[plugin] metadata does not match the release")
+        if plugin["repository"] != f"https://github.com/{repository}":
+            raise ReleaseError(
+                "[plugin] repository does not match the release repository"
+            )
 
 
 def load_and_validate_manifest(
@@ -434,7 +835,7 @@ def load_and_validate_manifest(
             environment_data.get("version"), str
         ):
             environment = environment_data["version"]
-    validate_manifest_data(data, version, repository, specs, environment)
+    validate_manifest_data(data, version, repository, specs, environment, kind)
     return data, specs
 
 
@@ -453,6 +854,8 @@ def command_manifest(args: argparse.Namespace) -> None:
     version = validate_version(args.version)
     specs = artifact_specs(args.kind, args.plugin_name, version)
     environment = None
+    plugin_metadata = None
+    official_metadata = None
     if args.kind == "plugin":
         if args.plugin_toml is None:
             raise ReleaseError("plugin manifest generation requires --plugin-toml")
@@ -466,7 +869,43 @@ def command_manifest(args: argparse.Namespace) -> None:
             environment_data.get("version"), str
         ):
             raise ReleaseError("plugin.toml has no valid [environment].version")
+        plugin_id = plugin_data.get("id")
+        plugin_name = plugin_data.get("name")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ReleaseError("plugin.toml has no valid id")
+        if not isinstance(plugin_name, str) or not plugin_name:
+            raise ReleaseError("plugin.toml has no valid name")
         environment = environment_data["version"]
+        plugin_id = plugin_data.get("id")
+        plugin_name = plugin_data.get("name")
+        description = plugin_data.get("description")
+        plugin_repository = plugin_data.get("repository")
+        if not isinstance(plugin_id, str) or not isinstance(plugin_name, str):
+            raise ReleaseError("plugin.toml must define id and name")
+        if description is not None and not isinstance(description, str):
+            raise ReleaseError("plugin.toml description must be a string")
+        if plugin_repository is not None and not isinstance(plugin_repository, str):
+            raise ReleaseError("plugin.toml repository must be a string")
+        plugin_metadata = (plugin_id, plugin_name, description, plugin_repository)
+    elif args.kind == "eov":
+        official_metadata = {}
+        for plugin_id in PLUGIN_METADATA:
+            plugin_data = read_toml(args.root / "plugins" / plugin_id / "plugin.toml")
+            plugin_repository = plugin_data.get("repository")
+            plugin_name = plugin_data.get("name")
+            description = plugin_data.get("description")
+            if not all(
+                isinstance(value, str) and value
+                for value in (plugin_repository, plugin_name, description)
+            ):
+                raise ReleaseError(
+                    f"official plugin {plugin_id} metadata is incomplete in plugin.toml"
+                )
+            official_metadata[plugin_id] = (
+                plugin_repository,
+                plugin_name,
+                description,
+            )
 
     staged = stage_artifacts(args.artifacts_dir, args.staging_dir, specs)
     plugin_versions = parse_plugin_versions(args.plugin_version)
@@ -477,6 +916,8 @@ def command_manifest(args: argparse.Namespace) -> None:
         staged,
         plugin_versions if args.kind == "eov" else None,
         environment,
+        plugin_metadata,
+        official_metadata,
     )
     write_atomically(args.output, content)
     data, _ = load_and_validate_manifest(
@@ -875,6 +1316,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     manifest = subparsers.add_parser("manifest")
     manifest.add_argument("--kind", choices=("eov", "plugin"), required=True)
+    manifest.add_argument("--root", type=Path, required=True)
     manifest.add_argument("--version", required=True)
     manifest.add_argument("--repository", required=True)
     manifest.add_argument("--artifacts-dir", type=Path, required=True)
@@ -918,6 +1360,14 @@ def build_parser() -> argparse.ArgumentParser:
     verify_assets.add_argument("--plugin-name", choices=tuple(PLUGIN_ARTIFACTS))
     verify_assets.add_argument("--plugin-toml", type=Path)
     verify_assets.set_defaults(function=command_verify_assets)
+
+    resolve_plugins = subparsers.add_parser(
+        "resolve-plugin-versions",
+        help="select newest stable official plugin releases compatible with an EOV version",
+    )
+    resolve_plugins.add_argument("--eov-version", required=True)
+    resolve_plugins.add_argument("--plugin", action="append", default=[])
+    resolve_plugins.set_defaults(function=command_resolve_plugin_versions)
     return parser
 
 

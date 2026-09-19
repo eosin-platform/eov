@@ -2,6 +2,7 @@
 name = "eov"
 version = "0.4.5"
 edition = "2024"
+default-run = "eov"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0"
 description = "Main application for the EOV project, providing a Slint user interface and integrating various functionalities from the common crate."
@@ -14,6 +15,10 @@ publish = true
 [[bin]]
 name = "eov"
 path = "src/main.rs"
+
+[[bin]]
+name = "eov-update-helper"
+path = "src/update_helper.rs"
 
 [dependencies]
 # Common crate
@@ -95,6 +100,9 @@ serde_json = "1"
 toml = "0.8"
 tar = "0.4"
 semver = "1"
+url = "2"
+ureq = { version = "2.12", default-features = false, features = ["tls"] }
+zip = "2"
 
 # GPU vertex buffer casting
 bytemuck = { version = "1", features = ["derive"] }
@@ -108,6 +116,7 @@ ash = "0.38"
 [target.'cfg(unix)'.dependencies]
 # Unix domain socket fd passing (SCM_RIGHTS) for DMA-BUF
 nix = { version = "0.29", features = ["socket", "uio"] }
+libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11-dl = "2"
@@ -117,6 +126,7 @@ raw-window-handle = "0.6"
 windows-sys = { version = "0.48", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
 raw-window-handle = "0.6"
@@ -137,5 +147,5 @@ default = ["distribution-cargo"]
 distribution-cargo = []
 distribution-appimage = []
 distribution-flatpak = []
-distribution-homebrew = []
+distribution-macos-bundle = []
 distribution-windows-portable = []

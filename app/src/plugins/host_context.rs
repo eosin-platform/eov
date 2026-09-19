@@ -185,6 +185,8 @@ mod tests {
                 id: "example_plugin".into(),
                 name: "Example Plugin".into(),
                 version: "0.1.0".into(),
+                description: None,
+                repository: None,
                 entry_ui: Some("ui/my_panel.slint".into()),
                 entry_component: Some("MyPanel".into()),
                 icon: Some(IconDescriptor::Svg {

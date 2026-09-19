@@ -8,6 +8,8 @@ notes.txt.*
 !.env.test.example
 lean/.lake
 fixtures/
+!app/tests/fixtures/
+!app/tests/fixtures/*.toml
 .venv
 dist
 .flatpak-builder

@@ -15,6 +15,8 @@ from release_infrastructure import (
     artifact_specs,
     cask_content,
     render_manifest,
+    select_compatible_plugin_release,
+    semver_requirement_satisfied,
     stage_artifacts,
     transform_readme,
     validate_manifest_data,
@@ -147,6 +149,28 @@ Exact: brew install --cask eov@0.4.4
 """
             with self.assertRaisesRegex(ReleaseError, "could not map README artifact"):
                 transform_readme(readme, "0.4.5", data)
+
+    def test_plugin_selection_uses_newest_compatible_release(self) -> None:
+        self.assertTrue(semver_requirement_satisfied(">=0.4.0, <0.5.0", "0.4.6"))
+        self.assertEqual(
+            select_compatible_plugin_release(
+                "0.4.6",
+                [
+                    ("0.3.0", ">=0.5.0"),
+                    ("0.2.5", ">=0.4.0"),
+                    ("0.2.4", ">=0.3.0"),
+                ],
+            ),
+            "0.2.5",
+        )
+
+    def test_plugin_selection_fails_when_no_release_is_compatible(self) -> None:
+        with self.assertRaisesRegex(ReleaseError, "no stable plugin release"):
+            select_compatible_plugin_release("0.4.6", [("0.3.0", ">=0.5.0")])
+
+    def test_prerelease_requirements_follow_semver_rules(self) -> None:
+        self.assertFalse(semver_requirement_satisfied(">=0.4.6", "0.4.6-alpha"))
+        self.assertTrue(semver_requirement_satisfied(">=0.4.6-alpha", "0.4.6-alpha.1"))
 
 
 if __name__ == "__main__":

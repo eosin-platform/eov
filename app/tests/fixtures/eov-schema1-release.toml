@@ -1,0 +1,16 @@
+[manifest]
+schema = 1
+kind = "eov"
+version = "0.4.6"
+repository = "https://github.com/eosin-platform/eov"
+
+[platform.windows.x86_64]
+version = "0.4.6"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+url = "https://github.com/eosin-platform/eov/releases/download/v0.4.6/eov-v0.4.6-windows-x86_64.zip"
+
+[plugins.gamepad]
+name = "Gamepad"
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+version = "0.2.3"
+description = "Provides support for using gamepads as input devices"

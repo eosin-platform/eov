@@ -1,0 +1,19 @@
+[manifest]
+schema = 1
+kind = "plugin"
+version = "0.2.3"
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+
+[plugin]
+id = "gamepad"
+name = "Gamepad"
+version = "0.2.3"
+description = "Provides support for using gamepads as input devices"
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+environment = ">=0.4.1"
+
+[platform.linux.x86_64]
+version = "0.2.3"
+sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v0.2.3/gamepad-v0.2.3-linux-x86_64.eop"
+environment = ">=0.4.1"

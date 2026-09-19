@@ -56,6 +56,8 @@ the fields understood by `PluginManifest`:
 id = "example_plugin"
 name = "Example Plugin"
 version = "0.1.0"
+description = "Optional plugin description"
+repository = "https://github.com/example/example-plugin"
 entry_ui = "ui/example-panel.slint"
 entry_component = "ExamplePanel"
 
