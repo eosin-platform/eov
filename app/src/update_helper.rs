@@ -208,7 +208,7 @@ fn process_is_running(pid: u32) -> bool {
             OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-        if handle.is_null() {
+        if handle == 0 {
             return false;
         }
         unsafe { CloseHandle(handle) };
