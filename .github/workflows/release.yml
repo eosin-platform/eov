@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 0.4.7"
+        description: "Version to release, e.g. 0.4.8"
         required: true
         type: string
 
@@ -219,6 +219,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
+          submodules: recursive
           token: ${{ github.token }}
 
       - name: Download validated release staging
@@ -336,6 +337,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
+          submodules: recursive
           token: ${{ github.token }}
 
       - name: Publish crates in dependency order
