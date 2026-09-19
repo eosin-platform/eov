@@ -44,7 +44,15 @@ mod tests {
         assert_eq!(distribution(), Distribution::Cargo);
     }
 
-    #[cfg(feature = "distribution-macos-bundle")]
+    #[cfg(all(
+        feature = "distribution-macos-bundle",
+        not(any(
+            feature = "distribution-cargo",
+            feature = "distribution-appimage",
+            feature = "distribution-flatpak",
+            feature = "distribution-windows-portable"
+        ))
+    ))]
     #[test]
     fn macos_bundle_feature_maps_to_macos_bundle() {
         assert_eq!(distribution(), Distribution::MacosBundle);
