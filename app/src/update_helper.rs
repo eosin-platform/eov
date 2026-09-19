@@ -330,12 +330,12 @@ fn cargo_install(transaction: &Transaction) -> Result<()> {
             return Err(error);
         }
     };
-    if let Some(registry) = &transaction.registry {
-        if let Err(error) = apply_registry(Some(registry)) {
-            restore_cleanup_backups(&cleanup_backups);
-            rollback_plugins(applied);
-            return Err(error);
-        }
+    if let Some(registry) = &transaction.registry
+        && let Err(error) = apply_registry(Some(registry))
+    {
+        restore_cleanup_backups(&cleanup_backups);
+        rollback_plugins(applied);
+        return Err(error);
     }
     remove_cleanup_backups(&cleanup_backups);
     cleanup_plugin_backups(&transaction.plugins);

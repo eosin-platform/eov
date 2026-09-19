@@ -191,11 +191,4 @@ mod tests {
         );
         assert!(validate_request_url(&Url::parse("http://github.com/release").unwrap()).is_err());
     }
-
-    #[test]
-    fn no_request_api_exists_without_permission() {
-        let _client = ReleaseClient::new("eov/test");
-        // The only request methods require NetworkPermission in their signature.
-        assert!(true);
-    }
 }

@@ -5,7 +5,9 @@ use super::manifest::{
     release_manifest_url, release_tag, validate_self_update_target,
 };
 use super::network::{NetworkPermission, ReleaseClient, require_permission};
-use super::plugins::{self, RegistryReplacement, RemotePackagePlan, install_verified_stage};
+use super::plugins::{
+    self, RegistryReplacement, RemotePackagePlan, RemotePluginRequest, install_verified_stage,
+};
 use super::prompt::confirm;
 use crate::distribution::{self, Distribution};
 use crate::plugins::discovery::{
@@ -181,41 +183,35 @@ pub fn resolve_plan(
             if !app_only
                 && let Some(managed) = registry.plugins.get(&id)
                 && managed.source == "github"
-                && managed.repository.is_some()
+                && let Some(repository) = managed.repository.as_deref()
             {
-                if let Some(repository) = managed.repository.as_deref() {
-                    match resolve_third_party_target(
-                        client,
-                        permission,
-                        repository,
-                        &manifest.version,
-                    ) {
-                        Ok(Some(remote)) => {
-                            plugins.push(PluginUpdatePlan {
-                                id,
-                                name: remote.name.unwrap_or_else(|| {
-                                    super::manifest::title_case_id(&package.manifest.id)
-                                }),
-                                current_version: current,
-                                target_version: Some(remote.version.to_string()),
-                                action: classify_versions(
-                                    &normalize_version(&package.manifest.version)?,
-                                    &remote.version,
-                                ),
-                                repository: Some(remote.repository),
-                                release_tag: Some(remote.release_tag),
-                                environment: remote.environment,
-                                artifact: Some(remote.artifact),
-                                official: false,
-                            });
-                            continue;
-                        }
-                        Ok(None) => {}
-                        Err(error) => eprintln!(
-                            "warning: could not resolve managed plugin {}: {error}",
-                            package.manifest.id
-                        ),
+                match resolve_third_party_target(client, permission, repository, &manifest.version)
+                {
+                    Ok(Some(remote)) => {
+                        plugins.push(PluginUpdatePlan {
+                            id,
+                            name: remote.name.unwrap_or_else(|| {
+                                super::manifest::title_case_id(&package.manifest.id)
+                            }),
+                            current_version: current,
+                            target_version: Some(remote.version.to_string()),
+                            action: classify_versions(
+                                &normalize_version(&package.manifest.version)?,
+                                &remote.version,
+                            ),
+                            repository: Some(remote.repository),
+                            release_tag: Some(remote.release_tag),
+                            environment: remote.environment,
+                            artifact: Some(remote.artifact),
+                            official: false,
+                        });
+                        continue;
                     }
+                    Ok(None) => {}
+                    Err(error) => eprintln!(
+                        "warning: could not resolve managed plugin {}: {error}",
+                        package.manifest.id
+                    ),
                 }
             }
             plugins.push(PluginUpdatePlan {
@@ -432,29 +428,29 @@ fn execute_plan(
                 return Ok(());
             }
             Distribution::MacosBundle | Distribution::WindowsPortable => {
-                if plan.app.distribution == Distribution::MacosBundle {
-                    if let Some(bundle) = macos_bundle_path().ok() {
-                        match super::homebrew::probe(&bundle)? {
-                            super::homebrew::MacosInstallation::Homebrew(installation) => {
-                                if let Err(error) = super::homebrew::update_owned(
-                                    &installation,
-                                    exact_target.then_some(&plan.app.target_version),
-                                ) {
-                                    discard_staged_plugins(&mut staged_plugins);
-                                    return Err(error);
-                                }
-                                apply_staged_plugins(plugin_dir, &mut staged_plugins)?;
-                                println!("Homebrew updated EOV to {}.", plan.app.target_version);
-                                return Ok(());
-                            }
-                            super::homebrew::MacosInstallation::Ambiguous(reason) => {
+                if plan.app.distribution == Distribution::MacosBundle
+                    && let Ok(bundle) = macos_bundle_path()
+                {
+                    match super::homebrew::probe(&bundle)? {
+                        super::homebrew::MacosInstallation::Homebrew(installation) => {
+                            if let Err(error) = super::homebrew::update_owned(
+                                &installation,
+                                exact_target.then_some(&plan.app.target_version),
+                            ) {
                                 discard_staged_plugins(&mut staged_plugins);
-                                bail!(
-                                    "Homebrew ownership is ambiguous: {reason}. No application files were changed."
-                                );
+                                return Err(error);
                             }
-                            super::homebrew::MacosInstallation::ManualBundle => {}
+                            apply_staged_plugins(plugin_dir, &mut staged_plugins)?;
+                            println!("Homebrew updated EOV to {}.", plan.app.target_version);
+                            return Ok(());
                         }
+                        super::homebrew::MacosInstallation::Ambiguous(reason) => {
+                            discard_staged_plugins(&mut staged_plugins);
+                            bail!(
+                                "Homebrew ownership is ambiguous: {reason}. No application files were changed."
+                            );
+                        }
+                        super::homebrew::MacosInstallation::ManualBundle => {}
                     }
                 }
                 let artifact = plan
@@ -500,10 +496,10 @@ fn execute_plan(
         return Ok(());
     }
 
-    if let Some(stage) = app_stage {
-        if plan.app.distribution == Distribution::AppImage {
-            apply_appimage_stage(&stage)?;
-        }
+    if let Some(stage) = app_stage
+        && plan.app.distribution == Distribution::AppImage
+    {
+        apply_appimage_stage(&stage)?;
     }
     apply_staged_plugins(plugin_dir, &mut staged_plugins)?;
     println!("Update applied successfully. Restart EOV if it did not relaunch automatically.");
@@ -936,7 +932,16 @@ fn resolve_third_party_target(
 ) -> Result<Option<RemotePackagePlan>> {
     let mut candidates = Vec::new();
     if let Ok(latest) = plugins::fetch_remote_plugin_plan(
-        client, permission, repository, None, None, None, false, false,
+        client,
+        permission,
+        RemotePluginRequest {
+            repository,
+            tag: None,
+            expected_id: None,
+            catalog_entry: None,
+            official: false,
+            require_catalog_version: false,
+        },
     ) {
         candidates.push(latest);
     }
@@ -965,12 +970,14 @@ fn resolve_third_party_target(
         if let Ok(candidate) = plugins::fetch_remote_plugin_plan(
             client,
             permission,
-            repository,
-            Some(tag),
-            None,
-            None,
-            false,
-            false,
+            RemotePluginRequest {
+                repository,
+                tag: Some(tag),
+                expected_id: None,
+                catalog_entry: None,
+                official: false,
+                require_catalog_version: false,
+            },
         ) {
             candidates.push(candidate);
         }
@@ -1105,14 +1112,14 @@ fn apply_appimage_stage(stage: &Path) -> Result<()> {
 
 fn atomic_replace_file(current: &Path, stage: &Path) -> Result<()> {
     let backup = current.with_file_name(format!(".eov.AppImage.backup-{}", unique_suffix()));
-    fs::rename(&current, &backup).with_context(|| {
+    fs::rename(current, &backup).with_context(|| {
         format!(
             "EOV cannot replace {} as the current user",
             current.display()
         )
     })?;
-    if let Err(error) = fs::rename(stage, &current) {
-        let _ = fs::rename(&backup, &current);
+    if let Err(error) = fs::rename(stage, current) {
+        let _ = fs::rename(&backup, current);
         return Err(error.into());
     }
     let _ = fs::remove_file(backup);

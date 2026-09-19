@@ -28,8 +28,6 @@ pub fn distribution() -> Distribution {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[cfg(all(
         feature = "distribution-cargo",
         not(any(
@@ -41,6 +39,8 @@ mod tests {
     ))]
     #[test]
     fn default_feature_maps_to_cargo() {
+        use super::{Distribution, distribution};
+
         assert_eq!(distribution(), Distribution::Cargo);
     }
 
@@ -55,6 +55,8 @@ mod tests {
     ))]
     #[test]
     fn macos_bundle_feature_maps_to_macos_bundle() {
+        use super::{Distribution, distribution};
+
         assert_eq!(distribution(), Distribution::MacosBundle);
     }
 }

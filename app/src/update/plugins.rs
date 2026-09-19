@@ -102,6 +102,15 @@ pub(crate) struct RemotePackagePlan {
     pub(crate) official: bool,
 }
 
+pub(crate) struct RemotePluginRequest<'a> {
+    pub(crate) repository: &'a str,
+    pub(crate) tag: Option<&'a str>,
+    pub(crate) expected_id: Option<&'a str>,
+    pub(crate) catalog_entry: Option<&'a OfficialPluginCatalogEntry>,
+    pub(crate) official: bool,
+    pub(crate) require_catalog_version: bool,
+}
+
 #[derive(Debug, Clone)]
 struct InstallPlan {
     source: PluginSource,
@@ -303,12 +312,14 @@ fn resolve_install_plan(
             let remote = fetch_remote_plugin_plan(
                 client,
                 permission,
-                &repository,
-                Some(&tag),
-                Some(id),
-                Some(catalog_entry),
-                true,
-                version.is_none(),
+                RemotePluginRequest {
+                    repository: &repository,
+                    tag: Some(&tag),
+                    expected_id: Some(id),
+                    catalog_entry: Some(catalog_entry),
+                    official: true,
+                    require_catalog_version: version.is_none(),
+                },
             )?;
             if remote.version != target_version {
                 bail!(
@@ -345,12 +356,14 @@ fn resolve_install_plan(
             let remote = fetch_remote_plugin_plan(
                 client,
                 permission,
-                repository,
-                tag.as_deref(),
-                None,
-                None,
-                false,
-                false,
+                RemotePluginRequest {
+                    repository,
+                    tag: tag.as_deref(),
+                    expected_id: None,
+                    catalog_entry: None,
+                    official: false,
+                    require_catalog_version: false,
+                },
             )?;
             let installed = remote
                 .id
@@ -554,13 +567,16 @@ fn fetch_current_catalog(
 pub(crate) fn fetch_remote_plugin_plan(
     client: &ReleaseClient,
     permission: &NetworkPermission,
-    repository: &str,
-    tag: Option<&str>,
-    expected_id: Option<&str>,
-    catalog_entry: Option<&OfficialPluginCatalogEntry>,
-    official: bool,
-    require_catalog_version: bool,
+    request: RemotePluginRequest<'_>,
 ) -> Result<RemotePackagePlan> {
+    let RemotePluginRequest {
+        repository,
+        tag,
+        expected_id,
+        catalog_entry,
+        official,
+        require_catalog_version,
+    } = request;
     let manifest_url = release_manifest_url(repository, tag)?;
     let text = client.get_text(permission, &manifest_url)?;
     let manifest = PluginReleaseManifest::parse(&text, repository)?;
@@ -680,16 +696,17 @@ fn parse_source(value: &str) -> Result<PluginSource> {
     {
         return Ok(PluginSource::Local(PathBuf::from(value)));
     }
-    let (repository_value, tag) = if value.starts_with("github.com/") {
-        match value.rsplit_once('@') {
+    let repository_value = value.strip_prefix("https://").unwrap_or(value);
+    if repository_value.starts_with("github.com/") {
+        let (repository, tag) = match repository_value.rsplit_once('@') {
             Some((repository, tag)) => (repository, Some(tag.to_string())),
-            None => (value, None),
-        }
-    } else if value.starts_with("https://github.com/") {
-        match value.rsplit_once('@') {
-            Some((repository, tag)) => (repository, Some(tag.to_string())),
-            None => (value, None),
-        }
+            None => (repository_value, None),
+        };
+        let repository = format!("https://{repository}");
+        Ok(PluginSource::Github {
+            repository: canonical_repository(&repository)?,
+            tag,
+        })
     } else {
         let (id, version) = match value.split_once('@') {
             Some((id, version)) => (id, Some(normalize_version(version)?)),
@@ -698,20 +715,11 @@ fn parse_source(value: &str) -> Result<PluginSource> {
         if id.is_empty() || id.contains('/') {
             bail!("invalid official plugin source '{value}'");
         }
-        return Ok(PluginSource::Official {
+        Ok(PluginSource::Official {
             id: id.to_string(),
             version,
-        });
-    };
-    let repository = if repository_value.starts_with("github.com/") {
-        format!("https://{repository_value}")
-    } else {
-        repository_value.to_string()
-    };
-    Ok(PluginSource::Github {
-        repository: canonical_repository(&repository)?,
-        tag,
-    })
+        })
+    }
 }
 
 fn prepare_update_source(
@@ -816,10 +824,7 @@ fn unique_id(ids: &[String], query: &str) -> Result<String> {
     Ok(id.clone())
 }
 
-fn find_installed<'a>(
-    packages: &'a [InspectedPluginPackage],
-    id: &str,
-) -> Option<InspectedPluginPackage> {
+fn find_installed(packages: &[InspectedPluginPackage], id: &str) -> Option<InspectedPluginPackage> {
     packages
         .iter()
         .filter(|package| package.manifest.id == id)
