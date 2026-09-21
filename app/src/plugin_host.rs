@@ -7,7 +7,7 @@ use eov_plugin_api::IconDescriptor;
 use eov_plugin_api::PluginUndoRedoState;
 use eov_plugin_api::ffi::{
     ActiveSidebarFFI, ConfirmationDialogRequestFFI, HostApiVTable, HostLogLevelFFI,
-    HostSnapshotFFI, HostToolModeFFI, ModalDialogRequestFFI, OpenFileInfoFFI,
+    HostSnapshotFFI, HostToolModeFFI, LevelInfoFFI, ModalDialogRequestFFI, OpenFileInfoFFI,
     PluginUndoRedoStateFFI, PluginVTable, UiPropertyFFI, ViewportContextMenuItemFFI,
     ViewportOverlayPointFFI, ViewportOverlayPolygonFFI, ViewportSnapshotFFI,
 };
@@ -501,6 +501,7 @@ pub(crate) fn build_host_api(
         open_file_dialog: ffi_open_file_dialog,
         save_file_dialog: ffi_save_file_dialog,
         log_message: ffi_log_message,
+        get_level_info: ffi_get_level_info,
     }
 }
 
@@ -1183,6 +1184,28 @@ pub(crate) fn read_region(
     file.wsi
         .read_region(x, y, level, width, height)
         .map_err(|err| err.to_string())
+}
+
+pub(crate) fn level_info(
+    state: &Arc<RwLock<AppState>>,
+    file_id: i32,
+) -> Result<Vec<eov_plugin_api::LevelInfo>, String> {
+    let guard = state.read();
+    let file = guard
+        .get_file(file_id)
+        .ok_or_else(|| format!("file '{file_id}' not found"))?;
+    Ok(file
+        .wsi
+        .properties()
+        .levels
+        .iter()
+        .map(|level| eov_plugin_api::LevelInfo {
+            level: level.level,
+            width: level.width,
+            height: level.height,
+            downsample: level.downsample,
+        })
+        .collect())
 }
 
 pub(crate) fn open_file_path(path: PathBuf) -> Result<(), String> {
@@ -3546,6 +3569,30 @@ extern "C" fn ffi_read_region(
     };
     match read_region(&state, file_id, level, x, y, width, height) {
         Ok(data) => RResult::ROk(RVec::from(data)),
+        Err(err) => RResult::RErr(RString::from(err)),
+    }
+}
+
+extern "C" fn ffi_get_level_info(
+    context: u64,
+    file_id: i32,
+) -> RResult<RVec<LevelInfoFFI>, RString> {
+    let state = match context_state(context) {
+        Ok(state) => state,
+        Err(err) => return RResult::RErr(err),
+    };
+    match level_info(&state, file_id) {
+        Ok(levels) => RResult::ROk(RVec::from(
+            levels
+                .into_iter()
+                .map(|level| LevelInfoFFI {
+                    level: level.level,
+                    width: level.width,
+                    height: level.height,
+                    downsample: level.downsample,
+                })
+                .collect::<Vec<_>>(),
+        )),
         Err(err) => RResult::RErr(RString::from(err)),
     }
 }

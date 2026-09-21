@@ -37,8 +37,9 @@ pub mod manifest;
 pub mod viewport_filter;
 
 pub use host::{
-    ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, ModalDialogRequest, OpenFileInfo,
-    PluginUndoRedoState, SidebarRequest, ViewportOverlayComponentRequest, ViewportSnapshot,
+    ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, LevelInfo, ModalDialogRequest,
+    OpenFileInfo, PluginUndoRedoState, SidebarRequest, ViewportOverlayComponentRequest,
+    ViewportSnapshot,
 };
 pub use manifest::ManifestToolbarButton;
 pub use manifest::PluginManifest;
