@@ -168,6 +168,20 @@ pub struct OpenFileInfoFFI {
     pub scan_date: ROption<RString>,
 }
 
+/// One level of a slide's pyramid.
+///
+/// `downsample` is the level-0 size divided by this level's size, as the format
+/// reports it. It is not always a power of two: Aperio pyramids commonly go
+/// 1, 4, 16, so a plugin that assumes halving reads the wrong region.
+#[repr(C)]
+#[derive(StableAbi, Clone, Copy, Debug)]
+pub struct LevelInfoFFI {
+    pub level: u32,
+    pub width: u64,
+    pub height: u64,
+    pub downsample: f64,
+}
+
 #[repr(C)]
 #[derive(StableAbi, Clone, Debug)]
 pub struct ViewportSnapshotFFI {
@@ -272,6 +286,11 @@ pub struct HostApiVTable {
         extension: RString,
     ) -> RResult<RString, RString>,
     pub log_message: extern "C" fn(context: u64, level: HostLogLevelFFI, message: RString),
+    /// Every pyramid level of an open file, in level order, so a plugin can
+    /// pick a level to read from instead of guessing the downsample factors.
+    /// `OpenFileInfoFFI::level_count` is the length of what this returns.
+    pub get_level_info:
+        extern "C" fn(context: u64, file_id: i32) -> RResult<RVec<LevelInfoFFI>, RString>,
 }
 
 /// VTable of function pointers exported by each plugin shared library.

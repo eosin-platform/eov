@@ -84,6 +84,16 @@ pub struct HostSnapshot {
     pub active_sidebar: Option<ActiveSidebar>,
 }
 
+/// One level of a slide's pyramid. See [`crate::ffi::LevelInfoFFI`] for what
+/// `downsample` means and why it is not always a power of two.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct LevelInfo {
+    pub level: u32,
+    pub width: u64,
+    pub height: u64,
+    pub downsample: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OpenFileInfo {
     pub file_id: i32,
