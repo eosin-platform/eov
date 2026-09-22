@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn parses_schema_one_and_catalog_name() {
         let text = format!(
-            "[manifest]\nschema = 1\nkind = \"eov\"\nversion = \"0.4.8\"\nrepository = \"{EOV_REPOSITORY}\"\n\n[platform.windows.x86_64]\nversion = \"0.4.8\"\nsha256 = \"{}\"\nurl = \"https://github.com/eosin-platform/eov/releases/download/v0.4.8/eov.zip\"\n\n[plugins.gamepad]\nrepository = \"https://github.com/eosin-platform/eov-gamepad-plugin\"\nversion = \"0.2.3\"\ndescription = \"Gamepad\"\n",
+            "[manifest]\nschema = 1\nkind = \"eov\"\nversion = \"0.4.9\"\nrepository = \"{EOV_REPOSITORY}\"\n\n[platform.windows.x86_64]\nversion = \"0.4.9\"\nsha256 = \"{}\"\nurl = \"https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov.zip\"\n\n[plugins.gamepad]\nrepository = \"https://github.com/eosin-platform/eov-gamepad-plugin\"\nversion = \"0.2.3\"\ndescription = \"Gamepad\"\n",
             "b".repeat(64)
         );
         let manifest = EovReleaseManifest::parse(&text, None).unwrap();
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn rejects_wrong_kind_and_old_self_update_target() {
         let text = format!(
-            "[manifest]\nschema = 1\nkind = \"plugin\"\nversion = \"0.4.8\"\nrepository = \"{EOV_REPOSITORY}\"\n\n{}",
+            "[manifest]\nschema = 1\nkind = \"plugin\"\nversion = \"0.4.9\"\nrepository = \"{EOV_REPOSITORY}\"\n\n{}",
             artifact("windows.x86_64", "eov.zip")
         );
         assert!(EovReleaseManifest::parse(&text, None).is_err());
@@ -648,7 +648,7 @@ mod tests {
             "https://github.com/eosin-platform/eov-gamepad-plugin",
         )
         .unwrap();
-        assert_eq!(eov.version, Version::parse("0.4.8").unwrap());
+        assert_eq!(eov.version, Version::parse("0.4.9").unwrap());
         assert_eq!(plugin.plugin_id(), Some("gamepad"));
         assert_eq!(legacy_plugin.environment(), Some(">=0.4.1"));
     }

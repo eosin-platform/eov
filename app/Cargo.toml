@@ -1,6 +1,6 @@
 [package]
 name = "eov"
-version = "0.4.8"
+version = "0.4.9"
 edition = "2024"
 default-run = "eov"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
@@ -22,10 +22,10 @@ path = "src/update_helper.rs"
 
 [dependencies]
 # Common crate
-eov-common = { path = "../common", version = "0.4.8" }
+eov-common = { path = "../common", version = "0.4.9" }
 
 # Plugin API
-eov-plugin-api = { path = "../plugin_api", version = "0.4.8" }
+eov-plugin-api = { path = "../plugin_api", version = "0.4.9" }
 
 # Stable ABI for dynamic plugin loading
 abi_stable = { version = "0.11", default-features = false }
