@@ -347,7 +347,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libfontconfig-dev \
-            pkg-config
+            pkg-config \
+            libopenslide-dev
 
       - name: Publish crates in dependency order
         env:

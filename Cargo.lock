@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "annotations"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "abi_stable",
  "dirs",
@@ -2220,7 +2220,7 @@ dependencies = [
 
 [[package]]
 name = "gamepad"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "abi_stable",
  "ashpd",
