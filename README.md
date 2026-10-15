@@ -32,6 +32,8 @@ If you have the Rust toolchain installed, the application is available on all pl
 cargo install eov
 ```
 
+The Cargo build links OpenSlide 4 (see [Building](#building)).
+
 ### macOS
 
 **Note:** `eov` is not notarized by Apple. If macOS prevents it from opening, go to: System Settings → Privacy & Security → Open Anyway
@@ -50,8 +52,10 @@ The `eov` cask tracks the latest stable release. Versioned casks remain pinned t
 brew install --cask eov@0.4.9
 ```
 
+`brew uninstall --zap --cask eov` also removes eov's settings, plugins and caches (`~/.eov`, `~/Library/Application Support/eov`, `~/Library/Caches/eov`).
+
 #### Manual Installation (macOS)
-The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle:
+The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle (the bundle declares the oldest macOS it runs on; macOS and Homebrew enforce it):
 - [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-arm64.zip) (all Macs released since June 2023)
 - [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
@@ -60,15 +64,17 @@ A zip file containing a portable Windows build is available:
 - [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-x86_64.zip) (most Windows machines)
 - [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-arm64.zip) (rarer)
 
-Extract the zip; it contains a single `eov` folder. Keep that folder dedicated to eov (the self-updater replaces it as a whole and refuses to run if it contains unrelated files), then run `eov.exe` inside it. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
+Extract the zip; it contains a single `eov` folder. Keep that folder dedicated to eov (the self-updater replaces it as a whole and refuses to run if it contains unrelated files), then run `eov.exe` inside it. Only the portable version is available; no Windows installer is planned. Unless the release is code-signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
-If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure).
+If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure). In a terminal, `eov` then runs `eov.com`, a small console launcher shipped next to `eov.exe`: command output, `--help` and the prompts of `eov update` appear in the terminal, and the terminal waits for the command to finish. Errors that stop the viewer from starting are shown in a dialog.
 
 ### Linux
 There are two methods of installation.
 
 - AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-arm64.AppImage)
 - Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-arm64.flatpak)
+
+The AppImage runs on any distribution with glibc 2.28 or newer (RHEL/Rocky/AlmaLinux 8 and later, Debian 10 and later, Ubuntu 18.10 and later). The Flatpak is installed with `flatpak install --user <file>.flatpak` (or `--system`); it can read slides in your home directory and, read-only, on drives under `/media`, `/run/media` and `/mnt`. See [packaging/flatpak](packaging/flatpak/README.md) to grant access to other locations or, on Flatpak older than 1.15.6, to game controllers.
 
 The AppImage is directly executable:
 
@@ -207,12 +213,16 @@ eov [OPTIONS] [FILES]...
 eov probe <FILE>
 eov recent list
 eov config-path
-eov update [--release <VERSION>] [--app-only] [--allow-network] [-y]
-eov plugin ls|list
-eov plugin install|add <SOURCE> [--allow-network] [-y]
-eov plugin update|upgrade <SOURCE> [--allow-network] [-y]
-eov plugin remove|rm|uninstall <PLUGIN> [-y]
-eov plugin info|inspect <PLUGIN> [--output plain|toml]
+eov update [--release <VERSION>] [--app-only] [--from <DIR>] [--rollback] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin ls|list [--json] [--allow-network]
+eov plugin install|add <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin update|upgrade <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin remove|rm|uninstall <PLUGIN|FILE> [--dry-run] [--json] [-y]
+eov plugin info|inspect <PLUGIN> [--output plain|toml|json]
+eov plugin disable|enable <PLUGIN>
+eov plugin lock [-o <FILE>]
+eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
+eov plugin gc
 ```
 
 Examples:
@@ -239,37 +249,77 @@ Notable options:
 - `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
 - `--config <PATH>` to override the active config file path for the current process
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
+- `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
 
 ### Application and plugin updates
 
-Updates are explicit CLI actions. EOV does not check GitHub at startup, run background update checks, or collect telemetry.
+Updates are explicit CLI actions. eov does not check GitHub at startup, run background update checks, or collect telemetry.
 
 ```bash
-eov update
-eov update --release v0.4.8
+eov update                       # newest release, with the official plugins it pins
+eov update --dry-run             # show the plan only (add --json for scripts)
+eov update --release 1.0.1       # exactly this release; downgrades are allowed
 eov update --app-only
+eov update --rollback            # restore what the last update replaced (run again to undo)
+eov update --from /media/usb/eov-1.0.1   # offline bundle, see below
 
-eov plugin ls
+eov plugin ls                    # installed plugins; with network access, compared with the catalog
 eov plugin install gamepad
-eov plugin install gamepad@v0.2.2
+eov plugin install gamepad@1.0.1
 eov plugin install github.com/foo/bar
 eov plugin install github.com/foo/bar@some-tag
 eov plugin install ./example.eop
 eov plugin update gamepad
-eov plugin remove gamepad
-eov plugin info gamepad
-eov plugin info gamepad -o toml
+eov plugin disable gamepad       # keep it installed, but do not load it
+eov plugin enable gamepad
+eov plugin remove gamepad        # also removes broken packages, by file name
+eov plugin info gamepad -o json
+eov plugin lock -o eov-plugins.lock
+eov plugin sync eov-plugins.lock --prune
+eov plugin gc
 ```
 
-Any command that needs GitHub release metadata asks for network permission before its first request. Pass `--allow-network` for automation. `-y` only skips the later mutation confirmation; it never grants network permission. Local `.eop` installation, `plugin info`, and `plugin remove` do not use the network.
+**Consent.** Any command that needs GitHub asks for network permission before its first request; in a non-interactive shell it fails instead, unless `--allow-network` is given. `-y` only skips the confirmation of the planned changes; it never grants network permission. End of input (Ctrl-D) answers "no". `plugin ls` without network access lists the installed plugins only. Local `.eop` installs, `info`, `remove`, `disable`, `enable`, `lock` and `gc` never use the network. A command that has nothing to do says so and exits without asking anything.
 
-Unqualified official plugin installs use the versions pinned by the currently installed EOV release manifest. `eov update` uses the target release manifest, so an exact downgrade can intentionally downgrade official plugins as well. Application self-update metadata is supported beginning with EOV `v0.4.8`; older releases must be installed manually.
+**The plan.** `eov update` shows how the installation will be updated (AppImage replacement, update helper, Homebrew, Cargo, Flatpak bundle, or "managed elsewhere") and groups plugin changes into official, third-party and unmanaged plugins, with the reason for every plugin that is skipped. A plugin that cannot be updated never blocks the application update. Self-update metadata exists from eov 0.4.5 on; older releases must be installed manually.
 
-Plugins contain native executable code and run with EOV's permissions. EOV warns before installing non-official plugins, including local packages. Package inspection does not load native code, and installed packages remain visible to management commands even when their EOV requirement is incompatible.
+**Integrity.** Every download is streamed to a temporary file and checked against the SHA-256 in the release's `release.toml` before it is used. From eov 1.0.1 on, the eov release also pins the SHA-256 of every official plugin artifact. The release workflow signs `release.toml` with [minisign](https://jedisct1.github.io/minisign/) when the signing key is configured; eov verifies a declared signature against keys compiled into the binary and refuses tampered metadata, and builds that embed a key also refuse unsigned metadata for newer releases (see `app/src/update/keys.rs`).
 
-Platform update behavior is distribution-specific. AppImages are hash-verified and atomically replaced for the next launch. Windows portable and manually managed macOS bundles stage a verified archive, exit, and use the bundled `eov-update-helper` to swap the application tree. macOS Homebrew ownership is detected locally and Homebrew remains the owner when a cask is used. Cargo updates are delegated only when the running executable can be proven to be Cargo-installed. Standalone Flatpak updates are downloaded for host-side installation; EOV does not broaden its sandbox or invoke privilege escalation.
+**Per platform.**
+- *AppImage:* the new image is downloaded next to the running one and renamed over it in one atomic step; the previous image is kept for `--rollback`.
+- *Windows portable folder and manually installed macOS bundle:* the verified archive is unpacked next to the installation; after eov exits, `eov-update-helper` swaps the folders (retrying while antivirus or Explorer holds a file), keeps the previous one for `--rollback`, restarts eov and records the result, which the next `eov update` prints. On macOS an update that needs a newer macOS than the Mac runs is refused before anything changes.
+- *Homebrew:* when the app belongs to a cask (`brew info --cask --json=v2 --installed`, including the official tap's `eosin-platform/eov/eov`), eov runs `brew upgrade` (or installs the exact `eov@X.Y.Z` cask) and reads back the installed version before aligning plugins. Without Homebrew, a bundle in `/Applications` is updated manually as above.
+- *Cargo:* `cargo install eov --version X` when the running binary is the one Cargo installed (`.crates2.json`, `CARGO_INSTALL_ROOT`).
+- *Flatpak:* the bundle is downloaded and verified, and eov prints the `flatpak install --user|--system --bundle ...` command for your installation.
 
-Release assets use schema 1 for new releases. The `[manifest]` table identifies the kind, version, and GitHub repository; platform tables retain `version`, `sha256`, and immutable `url` fields. Plugin release manifests also carry `[plugin]` metadata and keep the artifact-level `environment` field for compatibility. EOV accepts the legacy manifest without `[manifest]` used by `v0.4.8` and by older official plugin releases; no pre-`v0.4.8` EOV self-update metadata is inferred.
+**Offline and air-gapped machines.** Copy a release's `release.toml`, `release.toml.minisig` and the artifacts you need (for plugins, the `.eop` files, optionally in a `plugins/` subdirectory) to a directory or drive, and run `eov update --from <dir>`. Everything is verified as for a download; a bundle without a valid signature is refused unless `--allow-unsigned` is given. `eov plugin sync <lockfile> --from <dir>` installs plugins from such a directory by SHA-256.
+
+**Reproducible workstations.** `eov plugin lock` records every installed plugin's id, version, source and SHA-256; `eov plugin sync` makes another machine match (`--prune` also removes unlisted plugins).
+
+**Managed deployment.** A system-wide policy file, which users cannot edit, restricts what eov does:
+
+| Platform | Location |
+|---|---|
+| Linux | `/etc/eov/policy.toml` |
+| macOS | `/Library/Application Support/eov/policy.toml` |
+| Windows | `%ProgramData%\eov\policy.toml` |
+
+```toml
+disable_self_update = true           # updates come from IT (software centre, MDM, ...)
+allow_third_party_plugins = false    # only plugins from the official catalog
+allow_network = false                # only offline updates (eov update --from)
+require_signatures = true            # refuse unsigned release metadata
+plugin_dirs = ["/opt/eov/plugins"]   # read-only plugin directories for every user
+message = "Contact the service desk to request changes."
+```
+
+`EOV_POLICY=<file>` selects another policy file. A policy file that cannot be read or parsed blocks everything it could restrict ("fails closed").
+
+**Networks.** Proxies are taken from `HTTPS_PROXY` / `ALL_PROXY` (and `NO_PROXY`). The operating system's certificate store is trusted in addition to the bundled Mozilla roots, so TLS-inspecting firewalls work once their root certificate is installed; `SSL_CERT_FILE` / `SSL_CERT_DIR` select a CA bundle instead. `EOV_GITHUB_TOKEN` raises the GitHub API rate limit for third-party plugin lookups (it is only sent to api.github.com).
+
+**Plugins are native code** and run with eov's permissions. eov asks before installing non-official plugins, including local packages. A third-party package cannot silently replace a plugin from another source, and may not use an official plugin's id, without `--force`. Packages are inspected without loading their native code, and installed packages remain visible to the management commands even when broken or incompatible.
+
+Release assets use schema 1. The `[manifest]` table identifies the kind, version and GitHub repository (and `signature = "minisign"` when a signature is published); platform tables carry `version`, `sha256` and an immutable `url`. Plugin release manifests also carry `[plugin]` metadata, including a bounded `environment` requirement. eov still accepts the legacy manifests of v0.4.5 to v0.4.8 and of older official plugin releases.
 
 ## Dataset Patch Extraction
 
@@ -349,7 +399,7 @@ By default, eov looks for plugins in `~/.eov/plugins/`. Override this with the `
 eov --plugin-dir /path/to/my/plugins slide.svs
 ```
 
-Each `.eop` package in that directory is treated as a plugin package. eov extracts the package into its plugin cache and loads the contained `plugin.toml` manifest from the extracted plugin root.
+Each `.eop` package in that directory is treated as a plugin package: a tar archive, optionally zstd-compressed (detected from its content, not its name). eov extracts each package once, when it is installed or first seen, into a cache keyed by the package's SHA-256, so an update never touches the files a running eov uses; unused extractions are removed in the background (or with `eov plugin gc`). Plugins disabled with `eov plugin disable` stay installed but are not loaded, and `--safe-mode` loads none. Administrators can add read-only plugin directories with `plugin_dirs` in the [policy file](#application-and-plugin-updates).
 
 ### Manifest Format
 
@@ -417,9 +467,9 @@ impl Plugin for MyPlugin {
 
 The in-tree plugins under `plugins/` demonstrate the supported native pattern. To try them:
 
-1. Build, package, and launch the native plugins with `./scripts/run-with-plugins.sh slide.svs`
-2. Inspect the generated `.eop` packages in `~/.eov/plugins/` if you want to load them manually later
-3. Use `eov --plugin-dir ~/.eov/plugins slide.svs` to point the app at the packaged plugin directory explicitly if needed
+1. Build, package, and launch the native plugins with `./scripts/run-with-plugins.sh slide.svs`. It uses a separate development home (`target/dev-eov-home`, or `EOV_HOME`), so your installed plugins and settings are left alone; set `CUDA_HOME` to use a specific CUDA toolkit for eovae.
+2. Inspect the generated `.eop` packages in `target/dev-eov-home/plugins/` if you want to load them manually later
+3. Use `eov --plugin-dir target/dev-eov-home/plugins slide.svs` to point the app at the packaged plugin directory explicitly if needed
 
 The packaged plugin buttons should appear in the toolbar, and the plugin sidebars/windows can then be opened from the app UI.
 
@@ -508,18 +558,18 @@ cargo build --bin eov --release
 
 ## Packaging
 
-Packaging assets live under `assets/` and `packaging/`.
+Packaging assets live under `assets/` and `packaging/`; the release workflow (`.github/workflows/release.yml`) builds every package from the same commit after the full CI run for that commit has passed.
 
-- AppImage is the first-class direct-download Linux artifact.
-- Flatpak support is included for sandboxed distribution.
-- macOS packaging is source-controlled via `packaging/macos/` and produces a bundled `.app` archive.
-- All built packages use the OpenSlide shared library and required runtime shared libraries into the AppDir/AppImage instead of statically linking them (pursuant to LGPL compliance).
+| Package | Entry point | Notes |
+|---|---|---|
+| AppImage | `packaging/appimage/build.sh` | Built in an AlmaLinux 8 container; checked against glibc 2.28; bundled libraries found through `RUNPATH`, never `LD_LIBRARY_PATH`. |
+| Flatpak | `packaging/flatpak/build.sh` | Freedesktop 25.08; network, input devices, home and read-only removable drives. |
+| macOS app | `packaging/macos/build.sh` | `otool -L` and deployment-target checks, helper smoke test, optional Developer ID signing and notarization. |
+| Windows zip | `.github/workflows/build-windows-zip.yml` | `eov.exe`, `eov.com`, `eov-update-helper.exe` and DLLs, smoke-tested; optional Authenticode signing. |
 
-Current packaging entry points:
-
-- `./packaging/appimage/build.sh`
-- `./packaging/macos/build.sh`
-- `./packaging/flatpak/build.sh`
+- Every package ships OpenSlide as a separate shared library (LGPL-2.1), built from a pinned commit of the [Yanstart fork](https://github.com/Yanstart/openslide) by `packaging/shared/build-openslide.sh`, whose inputs are all verified by checksum. The OpenSlide source of each release is published with it.
+- Every package contains eov's licences, `COPYING.third-party` (which names the fork, its commit and the other bundled libraries), the LGPL-2.1 text, and the licence files of the bundled libraries.
+- Release tooling: `scripts/release_infrastructure.py` (manifests, catalog, casks, README links; tested by `scripts/test_release_*.py`), `scripts/release_signing.py` (minisign-compatible signing; its docstring explains how to create the signing key and the `EOV_RELEASE_SIGNING_KEY` secret), and `scripts/check_packaging.py` (consistency checks run by CI).
 
 ## Repository Layout
 
