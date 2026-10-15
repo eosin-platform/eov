@@ -95,7 +95,6 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 - §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
 - §14.3 **Z-stacks / focal planes** (not done)
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
-- §14.3 **Writing slides; de-identified copies** (in progress)
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
 - §14.4 **Accessibility** (in progress): Final sweep after the other changes land.
 - §14.4 **Localisation** (in progress): Final sweep after the other changes land.
@@ -105,7 +104,6 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 - §14.5 **Headless and batch mode** (in progress): `eov batch run` with run manifests; the eovae and cellaris commands are in progress.
 - §14.5 **Scripting** (in progress)
 - §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
-- §14.6 **De-identification** (in progress): Hideable label, de-identified datasets, no paths in logs at info level, annotation exports or the audit log; de-identified slide copies are in progress.
 
 ### Per-finding status
 
@@ -332,7 +330,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
 | Z-stacks / focal planes | **Not done** |  |  |
 | Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
-| Writing slides; de-identified copies | **In progress** |  |  |
+| Writing slides; de-identified copies | Done | `e565a9e` `272d9f4` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or a region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles, the pixel size, objective, stain and ICC profile. De-identified copies have no label, macro or thumbnail and keep an allow-list of metadata. |
 
 **§14.4 Platform, plugins and administration**
 
@@ -367,7 +365,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 |---|---|---|---|
 | Intended use stated | Done | `3620def` + cellaris | README, the Home screen and the AI plugins' badges. |
 | Synthetic colour obvious; provenance in exports | Done | `c5a942a` `bbe4d29` |  |
-| De-identification | **In progress** | `0359c50` `877fcf0` | Hideable label, de-identified datasets, no paths in logs at info level, annotation exports or the audit log; de-identified slide copies are in progress. |
+| De-identification | Done | `0359c50` `877fcf0` `e565a9e` | Hideable label, de-identified datasets and slide copies, no paths in logs at info level, annotation exports or the audit log. Burned-in text in the scanned image is not removed. |
 | Audit trail | Done | `0b9ce2b` `21b6894` + annotations | `audit.jsonl` (sessions, plugins, updates, rollbacks) and the annotations audit table. |
 
 ---
