@@ -48,7 +48,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
 
-use backend::{UiRenderer, select_backend};
+use backend::select_backend;
 use cli::{apply_config_override, init_tracing, maybe_run_cli_command, parse_launch_options};
 pub(crate) use pane_ui::{
     PaneRenderCacheEntry, PaneUiModels, clear_cached_pane, insert_pane_ui_state, pane_from_index,
@@ -214,10 +214,10 @@ fn main() -> Result<()> {
     info!("Installing GPU renderer");
     // Slides can be drawn on the GPU only when the window is drawn with wgpu.
     let gpu_unavailable = match &ui_renderer {
-        UiRenderer::Gpu => GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))
+        backend::UiRenderer::Gpu => GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))
             .err()
             .map(|err| format!("the window does not support GPU rendering ({err})")),
-        UiRenderer::Software(reason) => Some(reason.clone()),
+        backend::UiRenderer::Software(reason) => Some(reason.clone()),
     };
     set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
     info!("GPU renderer installed");
