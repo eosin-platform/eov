@@ -16,6 +16,7 @@ mod desktop;
 mod distribution;
 mod export_dialog;
 mod file_ops;
+mod file_types;
 mod gpu;
 mod history;
 mod host_ui;
@@ -23,6 +24,8 @@ mod instance;
 mod interaction;
 mod launch;
 mod logging;
+#[cfg(target_os = "macos")]
+mod macos_open;
 mod overlay;
 mod pane_ui;
 mod paths;
@@ -339,6 +342,10 @@ fn main() -> Result<()> {
             });
         });
     }
+    // Slides opened from the Finder and eov:// links arrive as Apple
+    // events, also while the event loop starts (SH-8).
+    #[cfg(target_os = "macos")]
+    macos_open::install();
 
     info!("Entering Slint UI event loop");
 

@@ -9,6 +9,8 @@
   saving its launch value for the programs eov starts (SH-15), and the
   desktop entry's StartupWMClass matches the app id eov sets (SH-19).
 - The Flatpak grants network and input access (UPD-5).
+- The AppImage and the Flatpak ship the MIME package of the slide formats,
+  and the desktop entry declares them and eov:// links (SH-8).
 
 Exit status 1 lists every problem found.
 """
@@ -121,6 +123,20 @@ def check_linux_metadata(problems: list[str]) -> None:
     for permission in ("--share=network", "--device=input"):
         if f"- {permission}" not in flatpak:
             problems.append(f"packaging/flatpak/io.eosin.eov.yml: missing {permission}")
+    if "/app/share/mime/packages/io.eosin.eov.xml" not in flatpak:
+        problems.append("packaging/flatpak/io.eosin.eov.yml: does not install the MIME package")
+    appimage = read("packaging/appimage/build.sh")
+    if '"$MIME_FILE" "$APPDIR_MIME_DIR/$APP_ID.xml"' not in appimage:
+        problems.append("packaging/appimage/build.sh: does not install the MIME package")
+    mime_types = re.findall(r'<mime-type type="([^"]+)">', read("assets/linux/io.eosin.eov.xml"))
+    declared = re.search(r"^MimeType=(.*)$", desktop, re.MULTILINE)
+    declared = set(filter(None, declared.group(1).split(";"))) if declared else set()
+    for mime in mime_types + ["image/tiff", "application/dicom", "x-scheme-handler/eov"]:
+        if mime not in declared:
+            problems.append(f"assets/linux/io.eosin.eov.desktop: MimeType= lacks {mime}")
+    exec_line = re.search(r"^Exec=(.*)$", desktop, re.MULTILINE)
+    if exec_line is None or not exec_line.group(1).endswith("%U"):
+        problems.append("assets/linux/io.eosin.eov.desktop: Exec= must take %U (eov:// links)")
 
 
 def main() -> int:

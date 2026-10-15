@@ -135,7 +135,10 @@ pub(crate) fn apply_launch_environment(command: &mut Command) {
 
 /// A command for a desktop program, with eov's launch environment and no
 /// standard input or output.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
     apply_launch_environment(&mut command);

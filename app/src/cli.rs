@@ -601,6 +601,21 @@ enum CliCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Offer eov for slide files and eov:// links in this user account: the
+    /// registry on Windows, the desktop's MIME and application databases on
+    /// Linux (for the AppImage and cargo install). The macOS app and the
+    /// Flatpak declare them already.
+    RegisterFileTypes {
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo `eov register-file-types`.
+    UnregisterFileTypes {
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Dataset generation utilities for ML workflows.
     Dataset {
         #[command(subcommand)]
@@ -783,6 +798,7 @@ enum CommandAction {
     RecentList,
     ConfigPath,
     Paths { json: bool },
+    FileTypes { register: bool, dry_run: bool },
     DatasetPatches(Box<DatasetJob>),
 }
 
@@ -914,6 +930,14 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
         }) => CommandAction::RecentList,
         Some(CliCommand::ConfigPath) => CommandAction::ConfigPath,
         Some(CliCommand::Paths { json }) => CommandAction::Paths { json },
+        Some(CliCommand::RegisterFileTypes { dry_run }) => CommandAction::FileTypes {
+            register: true,
+            dry_run,
+        },
+        Some(CliCommand::UnregisterFileTypes { dry_run }) => CommandAction::FileTypes {
+            register: false,
+            dry_run,
+        },
 
         Some(CliCommand::Dataset { command }) => match command {
             DatasetCommand::Patches(args) => {
@@ -1038,6 +1062,10 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
         }
         CommandAction::Paths { json } => {
             print_storage_locations(&launch_options.plugin_dir, *json)?;
+            Ok(true)
+        }
+        CommandAction::FileTypes { register, dry_run } => {
+            crate::file_types::run_cli(*register, *dry_run)?;
             Ok(true)
         }
         CommandAction::DatasetPatches(job) => {

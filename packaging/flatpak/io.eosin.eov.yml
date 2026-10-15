@@ -102,6 +102,9 @@ modules:
       - install -Dm755 target/release/eov /app/bin/eov
       - install -Dm644 assets/linux/io.eosin.eov.desktop /app/share/applications/io.eosin.eov.desktop
       - install -Dm644 assets/linux/io.eosin.eov.metainfo.xml /app/share/metainfo/io.eosin.eov.metainfo.xml
+      # Slide formats for file managers; Flatpak exports it with the desktop
+      # entry, whose MimeType= also lists eov:// links.
+      - install -Dm644 assets/linux/io.eosin.eov.xml /app/share/mime/packages/io.eosin.eov.xml
       - |
         for dir in /app/share/doc/eov /app/share/licenses/io.eosin.eov; do
           install -Dm644 -t "$dir" LICENSE-MIT LICENSE-APACHE-2.0 LICENSE-GPLv3 assets/COPYING.third-party
