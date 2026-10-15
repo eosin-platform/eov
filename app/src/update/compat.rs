@@ -293,6 +293,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_bounded_table_matches_this_implementation() {
+        // The release tooling evaluates the same table
+        // (scripts/test_release_infrastructure.py).
+        let table: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/data/semver-cases.json")).unwrap();
+        for case in table["bounded_cases"].as_array().unwrap() {
+            let requirement = case["requirement"].as_str().unwrap();
+            let version = v(case["version"].as_str().unwrap());
+            assert_eq!(
+                environment_matches(requirement, &version),
+                case["compatible"].as_bool().unwrap(),
+                "{requirement} on {version}"
+            );
+        }
+    }
+
+    #[test]
     fn plugin_ids_are_safe_file_and_library_names() {
         for id in ["annotations", "eovae", "a", "plugin_2", "0x"] {
             validate_plugin_id(id).unwrap();

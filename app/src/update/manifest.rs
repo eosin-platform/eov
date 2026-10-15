@@ -846,4 +846,42 @@ mod tests {
         assert_eq!(plugin.plugin_id(), Some("gamepad"));
         assert_eq!(legacy_plugin.environment(), Some(">=0.4.1"));
     }
+
+    /// The release tooling writes these two files from deterministic inputs
+    /// (`scripts/test_release_infrastructure.py` fails when they are stale),
+    /// so this checks that what CI publishes is what eov accepts.
+    #[test]
+    fn parses_manifests_generated_by_the_release_tooling() {
+        let plugin = PluginReleaseManifest::parse(
+            include_str!("../../tests/fixtures/generated-gamepad-release.toml"),
+            "https://github.com/eosin-platform/eov-gamepad-plugin",
+        )
+        .unwrap();
+        assert!(
+            plugin
+                .metadata
+                .as_ref()
+                .is_some_and(ManifestMetadata::declares_signature)
+        );
+        assert_eq!(plugin.environment(), Some(">=1.0.0, <2.0.0"));
+
+        let eov = EovReleaseManifest::parse(
+            include_str!("../../tests/fixtures/generated-eov-catalog-release.toml"),
+            Some(&Version::parse("1.0.1").unwrap()),
+        )
+        .unwrap();
+        assert!(eov.declares_signature());
+        assert_eq!(eov.artifacts.len(), 8);
+        let gamepad = &eov.plugins["gamepad"];
+        assert_eq!(gamepad.tag(), "v1.0.1");
+        assert_eq!(gamepad.environment.as_deref(), plugin.environment());
+        // Every per-platform hash in the catalog is the plugin release's own.
+        assert_eq!(gamepad.artifacts.len(), plugin.artifacts.len());
+        for (key, artifact) in &gamepad.artifacts {
+            assert_eq!(artifact.sha256, plugin.artifacts[key].sha256, "{key}");
+            assert_eq!(artifact.url, plugin.artifacts[key].url, "{key}");
+        }
+        // A plugin without a release manifest keeps the version-only entry.
+        assert!(eov.plugins["annotations"].artifacts.is_empty());
+    }
 }

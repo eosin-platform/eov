@@ -1,0 +1,94 @@
+[manifest]
+schema = 1
+kind = "eov"
+version = "1.0.1"
+repository = "https://github.com/eosin-platform/eov"
+signature = "minisign"
+
+[platform.windows.x86_64]
+version = "1.0.1"
+sha256 = "01c210a02cc89628783a3dd7322ebe5a05fa0b7f44166f9d7c210b7a313e985a"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-windows-x86_64.zip"
+
+[platform.windows.arm64]
+version = "1.0.1"
+sha256 = "d7fc5b6dc8a341ddb09c41da51d8dfd5dfaea0918320d92e06b7e8d5356ee56e"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-windows-arm64.zip"
+
+[platform.linux.appimage.arm64]
+version = "1.0.1"
+sha256 = "87ca27ad8b18c8bc93512bebfceea02e3f12d91145e1323eb2d5747751c1ada2"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-arm64.AppImage"
+
+[platform.linux.flatpak.arm64]
+version = "1.0.1"
+sha256 = "b195e026d04c9b3343b61376f9b764a9955d8c3182fe03aeebe7e571c5aa658c"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-arm64.flatpak"
+
+[platform.linux.appimage.x86_64]
+version = "1.0.1"
+sha256 = "be71045c15edc67ba343b6075d565964da13a28372b952a73c86e363526f288d"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-x86_64.AppImage"
+
+[platform.linux.flatpak.x86_64]
+version = "1.0.1"
+sha256 = "a1dc38f19718b8d97b7e1d1f22bc6b719c2008eeb7841712cca47bc0383c3bea"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-x86_64.flatpak"
+
+[platform.macos.arm64]
+version = "1.0.1"
+sha256 = "5f300fb10239e1494be81b7f2b4b2162f1162f356ba6ffa2687baaab07ae824f"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-macos-arm64.zip"
+
+[platform.macos.x86_64]
+version = "1.0.1"
+sha256 = "100d6c7846074fd38ef7043323b2521872f8f9f22cfa2d180095cb7f5351e25e"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-macos-x86_64.zip"
+
+# =================================================================
+# Plugins section
+# =================================================================
+
+[plugins.annotations]
+name = "Annotations"
+repository = "https://github.com/eosin-platform/eov-annotations-plugin"
+version = "1.0.1"
+description = "Official annotations plugin"
+
+[plugins.gamepad]
+name = "Gamepad"
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+version = "1.0.1"
+description = "Provides support for using gamepads as input devices"
+release_tag = "v1.0.1"
+environment = ">=1.0.0, <2.0.0"
+
+[plugins.gamepad.platform.windows.x86_64]
+version = "1.0.1"
+sha256 = "f52668bf0c68591976a4d38d0e26ebbf27c291b3d6fbfb473118b18ea3a776ac"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-windows-x86_64.eop"
+
+[plugins.gamepad.platform.windows.arm64]
+version = "1.0.1"
+sha256 = "1c84c867e8e98ced9636802aa1c9ad78de7fbeb829f8758ff7ce3190b7a84763"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-windows-arm64.eop"
+
+[plugins.gamepad.platform.linux.x86_64]
+version = "1.0.1"
+sha256 = "3432e63c3b7b0b90d78a0bee64ad1800b3769334cdf037c0777bc09539e7c45b"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-linux-x86_64.eop"
+
+[plugins.gamepad.platform.linux.arm64]
+version = "1.0.1"
+sha256 = "d822129d73afe9b0468ee30b368e2b9d6bae0506faf26ecbd7c70350f19ce9b6"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-linux-arm64.eop"
+
+[plugins.gamepad.platform.macos.x86_64]
+version = "1.0.1"
+sha256 = "f75d474bfb856f91563e15397df1b9eb0a769f348ada7eb1fb5ec01e263e4441"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-x86_64.eop"
+
+[plugins.gamepad.platform.macos.arm64]
+version = "1.0.1"
+sha256 = "cb3265b149fd3747827ca6bff0bfd3068c86a753e77b346c648c2e388df80efe"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-arm64.eop"
