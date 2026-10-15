@@ -759,3 +759,39 @@ fn partial_files_are_named_next_to_the_output() {
         SlideFormat::Tiff
     );
 }
+
+#[test]
+fn copies_record_their_objective_power_for_readers() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = aperio_slide(dir.path());
+    for deidentify in [false, true] {
+        let output = dir.path().join(format!("copy-{deidentify}.tif"));
+        let options = ConvertOptions {
+            deidentify,
+            resolution: OutputResolution::Level(1),
+            ..ConvertOptions::default()
+        };
+        convert(&source, &output, &options);
+        let copy = WsiFile::open(&output).unwrap();
+        // OpenSlide's generic TIFF driver reports none itself.
+        assert_eq!(copy.properties().objective_power, None);
+        let comment = copy.properties().comment.clone().unwrap();
+        // 20× at level 0; level 1 is 4× smaller.
+        assert_eq!(
+            objective_power_from_description(&comment),
+            Some(5.0),
+            "{comment}"
+        );
+    }
+    assert_eq!(
+        objective_power_from_description("Objective power = 20"),
+        None
+    );
+    assert_eq!(
+        objective_power_from_description(
+            "Slide copy made by eov 1.0.0 on 2026-10-15\nSource properties:\nObjective power = 7"
+        ),
+        None,
+        "a source property is not the copy's"
+    );
+}

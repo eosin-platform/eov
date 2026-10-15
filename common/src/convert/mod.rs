@@ -308,6 +308,26 @@ impl ConvertReport {
     }
 }
 
+/// The objective power an eov copy records in its description
+/// (`Objective power = 20`), for slides whose reader only exposes the
+/// description: OpenSlide's generic TIFF driver reports the pixel size of a
+/// copy but no `openslide.objective-power`. `None` for descriptions eov did
+/// not write.
+pub fn objective_power_from_description(description: &str) -> Option<f64> {
+    let mut lines = description.lines();
+    let headline = lines.next()?;
+    if !(headline.starts_with("Slide copy made by eov ")
+        || headline.starts_with("De-identified slide copy made by eov "))
+    {
+        return None;
+    }
+    lines
+        .take_while(|line| *line != "Source properties:")
+        .find_map(|line| line.strip_prefix("Objective power = "))
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value > 0.0)
+}
+
 /// The temporary file a conversion to `output` writes before renaming it:
 /// `<name>.<process id>.eov-partial` in the same folder.
 pub fn partial_path(output: &Path) -> PathBuf {
