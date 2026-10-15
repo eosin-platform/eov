@@ -474,15 +474,20 @@ pub fn open_file(
             state_guard.add_to_recent(&normalized_path);
         }
 
-        let state_guard = state.read();
-        update_tabs(
-            ui,
-            &state_guard,
-            pane_render_cache,
-            pane_ui_models,
-            pane_view_model,
-        );
-        update_recent_files(ui, &state_guard);
+        {
+            let state_guard = state.read();
+            update_tabs(
+                ui,
+                &state_guard,
+                pane_render_cache,
+                pane_ui_models,
+                pane_view_model,
+            );
+            update_recent_files(ui, &state_guard);
+        }
+        // Everything below may take the state lock itself; the read guard
+        // above must be released first (parking_lot locks are not
+        // re-entrant).
         let _ = crate::plugin_host::refresh_active_sidebar();
         ui.set_is_loading(false);
         ui.set_status_text(SharedString::from(status_text));
