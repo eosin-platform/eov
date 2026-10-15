@@ -3,6 +3,7 @@
 import { Theme } from "theme.slint";
 import {
     BottomPanelKind,
+    ChannelRow,
     ContextMenuItem,
     DatasetExportSettings,
     MeasurementRow,
@@ -43,6 +44,7 @@ import { SlideInfoPanel } from "slide-info-panel.slint";
 import { BookmarkDialog } from "bookmark-dialog.slint";
 import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
+import { ChannelsPanel } from "channels-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -206,6 +208,29 @@ export component AppWindow inherits Window {
     callback slide-info-filter-edited(string);
     callback slide-info-copy-all();
     callback slide-info-copy-row(int);
+    in-out property <string> slide-info-summary;
+    in-out property <bool> slide-info-multichannel: false;
+    callback slide-info-channels-requested();
+
+    // Channels of a multichannel slide
+    in-out property <bool> channels-panel-visible: false;
+    in-out property <string> channels-title;
+    in-out property <string> channels-summary;
+    in-out property <[ChannelRow]> channel-rows: [];
+    in-out property <[color]> channel-chip-colors: [];
+    callback channels-closed();
+    callback channels-visibility-toggled(int, bool);
+    callback channels-solo-toggled(int);
+    callback channels-color-chosen(int, color);
+    callback channels-window-moved(int, bool, float);
+    callback channels-min-entered(int, string);
+    callback channels-max-entered(int, string);
+    callback channels-gamma-moved(int, float);
+    callback channels-gamma-entered(int, string);
+    callback channels-auto-contrast();
+    callback channels-reset();
+    callback channels-show-all();
+    callback channels-palette(string);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
     in-out property <string> measure-mode-label: "Distance";
@@ -445,6 +470,11 @@ export component AppWindow inherits Window {
                 root.measurements-panel-visible = false;
                 accept
             }
+            if e.text == Key.Escape && root.channels-panel-visible {
+                root.channels-panel-visible = false;
+                root.channels-closed();
+                accept
+            }
             if e.text == Key.Escape && root.show-plugin-modal {
                 root.plugin-modal-dismiss-requested();
                 accept
@@ -464,7 +494,8 @@ export component AppWindow inherits Window {
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
-                || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible {
+                || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
+                || root.channels-panel-visible {
                 reject
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -1658,6 +1689,11 @@ export component AppWindow inherits Window {
         pixel-size-text: root.slide-info-pixel-size;
         pixel-size-manual: root.slide-info-pixel-size-manual;
         pixel-size-input <=> root.slide-info-pixel-size-input;
+        summary: root.slide-info-summary;
+        multichannel: root.slide-info-multichannel;
+        channels-requested => {
+            root.slide-info-channels-requested();
+        }
         pixel-size-set(text) => {
             root.slide-info-pixel-size-set(text);
         }
@@ -1678,6 +1714,58 @@ export component AppWindow inherits Window {
         }
         copy-row-requested(index) => {
             root.slide-info-copy-row(index);
+        }
+    }
+
+    if root.channels-panel-visible: ChannelsPanel {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        title: root.channels-title;
+        summary: root.channels-summary;
+        rows: root.channel-rows;
+        chip-colors: root.channel-chip-colors;
+        close-requested => {
+            root.channels-panel-visible = false;
+            root.channels-closed();
+            root.focus-keyboard();
+        }
+        visibility-toggled(index, visible) => {
+            root.channels-visibility-toggled(index, visible);
+        }
+        solo-toggled(index) => {
+            root.channels-solo-toggled(index);
+        }
+        color-chosen(index, color) => {
+            root.channels-color-chosen(index, color);
+        }
+        window-moved(index, high, position) => {
+            root.channels-window-moved(index, high, position);
+        }
+        min-entered(index, text) => {
+            root.channels-min-entered(index, text);
+        }
+        max-entered(index, text) => {
+            root.channels-max-entered(index, text);
+        }
+        gamma-moved(index, position) => {
+            root.channels-gamma-moved(index, position);
+        }
+        gamma-entered(index, text) => {
+            root.channels-gamma-entered(index, text);
+        }
+        auto-contrast-requested => {
+            root.channels-auto-contrast();
+        }
+        reset-requested => {
+            root.channels-reset();
+        }
+        show-all-requested => {
+            root.channels-show-all();
+        }
+        palette-requested(id) => {
+            root.channels-palette(id);
         }
     }
 

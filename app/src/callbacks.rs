@@ -654,7 +654,7 @@ pub fn setup_callbacks(
                     "WSI Files",
                     &[
                         "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
-                        "svslide", "bif", "czi",
+                        "svslide", "bif", "czi", "btf", "tf2", "tf8",
                     ],
                 )
                 .add_filter("All Files", &["*"]);

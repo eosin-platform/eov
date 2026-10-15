@@ -72,6 +72,10 @@ pub use synthetic::{
 };
 pub use thumbnail::{Thumbnail, ThumbnailOptions, ThumbnailRegion, ThumbnailSource};
 
+/// [`WsiProperties::vendor`] (and `openslide.vendor`) of slides read by
+/// eov's OME-TIFF reader.
+pub use crate::ome_tiff::VENDOR as OME_TIFF_VENDOR;
+
 #[cfg(test)]
 pub(crate) use metadata::{extract_stain_from_text, parse_stain_value_from_token};
 

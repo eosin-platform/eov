@@ -971,6 +971,87 @@ fn reads_files_written_by_an_independent_encoder() {
     }
 }
 
+/// Reads a real OME-TIFF named by `EOV_OME_TIFF` (an Orion, CyCIF or
+/// Bio-Formats export): the centre of every level, a thumbnail, and for
+/// multichannel files the channels with their statistics.
+#[test]
+#[ignore = "needs a real OME-TIFF: EOV_OME_TIFF=/path/to/slide.ome.tif"]
+fn reads_a_real_ome_tiff() {
+    let Some(path) = std::env::var_os("EOV_OME_TIFF") else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    let wsi = WsiFile::open(&path).unwrap();
+    eprintln!("opened in {:?}", started.elapsed());
+    let props = wsi.properties().clone();
+    assert_eq!(props.vendor.as_deref(), Some(VENDOR));
+    eprintln!(
+        "{} x {}, {} levels, {:?} µm/px, objective {:?}",
+        props.width,
+        props.height,
+        props.levels.len(),
+        props.mpp(),
+        props.objective_power
+    );
+    for level in &props.levels {
+        let started = std::time::Instant::now();
+        let (w, h) = (
+            512u32.min(level.width as u32),
+            512u32.min(level.height as u32),
+        );
+        let x = (props.width as f64 / 2.0) as i64 - (f64::from(w) * level.downsample / 2.0) as i64;
+        let y = (props.height as f64 / 2.0) as i64 - (f64::from(h) * level.downsample / 2.0) as i64;
+        let pixels = wsi.read_region(x, y, level.level, w, h).unwrap();
+        let mean: [f64; 3] = std::array::from_fn(|c| {
+            pixels
+                .iter()
+                .skip(c)
+                .step_by(4)
+                .map(|&v| f64::from(v))
+                .sum::<f64>()
+                / f64::from(w * h)
+        });
+        eprintln!(
+            "level {}: {} x {} (downsample {:.2}) read {w} x {h} in {:?}, mean RGB {:.0?}",
+            level.level,
+            level.width,
+            level.height,
+            level.downsample,
+            started.elapsed(),
+            mean
+        );
+    }
+    let thumbnail = wsi.thumbnail(256).unwrap();
+    assert!(thumbnail.width.max(thumbnail.height) <= 256);
+    // EOV_OME_TIFF_PNG=/path/out.png saves a 1024-px overview to look at.
+    if let Some(png) = std::env::var_os("EOV_OME_TIFF_PNG") {
+        let overview = wsi.thumbnail(1024).unwrap();
+        image::RgbaImage::from_raw(
+            overview.width as u32,
+            overview.height as u32,
+            overview.pixels,
+        )
+        .unwrap()
+        .save(&png)
+        .unwrap();
+    }
+    if let Some(set) = wsi.channels() {
+        for channel in &set.channels {
+            eprintln!(
+                "channel {} {:?}: colour {:?}, values {}..{}, window {}..{}",
+                channel.index,
+                channel.name,
+                channel.color,
+                channel.stats.min,
+                channel.stats.max,
+                channel.stats.low,
+                channel.stats.high
+            );
+        }
+    }
+    assert_eq!(wsi.health().bad_regions, 0, "{:?}", wsi.health().last_error);
+}
+
 #[test]
 fn level_coordinates_round_trip_truncated_and_rounded_positions() {
     for downsample in [1.0, 1.6, 2.0, 2.0004, 3.99, 4.0, 8.002, 16.0, 31.7] {

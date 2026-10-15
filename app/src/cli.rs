@@ -6,7 +6,7 @@ use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use eov_common::{
     FilteringMode, RenderBackend, WsiFile,
     dataset::{self, DatasetPatchesConfig, MetadataFormat},
-    format_optional_decimal,
+    format_decimal, format_optional_decimal,
 };
 use std::path::{Path, PathBuf};
 
@@ -1289,6 +1289,24 @@ fn probe_file(path: &Path) -> Result<()> {
             tile_height,
             wsi.tile_size_for_level(level.level)
         );
+    }
+
+    if let (Some(set), Some(display)) = (wsi.channels(), wsi.channel_display()) {
+        println!();
+        println!("Channels: {} ({})", set.len(), set.sample_type.name());
+        for (info, settings) in set.channels.iter().zip(&display.channels) {
+            let [r, g, b] = settings.color;
+            println!(
+                "  C{}: {} colour #{r:02X}{g:02X}{b:02X} window {}-{} values {}-{}{}",
+                info.index,
+                info.name,
+                format_decimal(settings.min),
+                format_decimal(settings.max),
+                format_decimal(info.stats.min),
+                format_decimal(info.stats.max),
+                if settings.visible { "" } else { " (hidden)" }
+            );
+        }
     }
 
     Ok(())

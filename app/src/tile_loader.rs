@@ -166,13 +166,22 @@ impl TileLoader {
     pub fn loaded_epoch(&self) -> u64 {
         self.loaded_epoch.load(Ordering::Relaxed)
     }
+
+    /// Stops loading for this slide and frees its cached tiles now, even
+    /// while render jobs still hold the loader. Retire the tile manager
+    /// first ([`TileManager::retire`]), so that loads already running cannot
+    /// cache tiles again afterwards. Used when a new loader with a new tile
+    /// file id takes over (a multichannel slide's display changed).
+    pub fn retire(&self) {
+        pool().state.lock().files.remove(&self.id);
+        self.cache.remove_file(self.file_id);
+    }
 }
 
 impl Drop for TileLoader {
     fn drop(&mut self) {
         // In-flight loads finish on their worker and are discarded.
-        pool().state.lock().files.remove(&self.id);
-        self.cache.remove_file(self.file_id);
+        self.retire();
     }
 }
 
@@ -212,8 +221,8 @@ fn worker_loop(pool: &'static Pool) {
         match result {
             Ok(tile) => {
                 // `load_tile_cached` already inserted it when the manager
-                // has the cache attached.
-                if !file.cache.contains(&coord) {
+                // has the cache attached (and must not when it is retired).
+                if !file.cache.contains(&coord) && !file.manager.is_retired() {
                     file.cache.insert_arc(tile);
                 }
                 file.loaded_epoch.fetch_add(1, Ordering::Relaxed);

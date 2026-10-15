@@ -55,6 +55,27 @@ export struct MeasurementRow {
     value: string,
 }
 
+// One channel of a multichannel slide in the Channels panel.
+export struct ChannelRow {
+    index: int,
+    name: string,
+    // Fluorophore and emission wavelength, if the file records them.
+    detail: string,
+    color: color,
+    visible: bool,
+    // Shown alone.
+    solo: bool,
+    min-text: string,
+    max-text: string,
+    gamma-text: string,
+    // Window ends and gamma as slider positions (0..1).
+    low: float,
+    high: float,
+    gamma-position: float,
+    // The channel's histogram over the slider's range.
+    histogram: image,
+}
+
 // One line of the Keyboard Shortcuts panel: a section heading, or an
 // action with its keys.
 export struct ShortcutRow {

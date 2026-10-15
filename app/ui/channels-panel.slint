@@ -1,0 +1,597 @@
+// The Channels panel: how each channel of a multichannel slide is shown
+// (visibility, colour, display window, gamma), with auto contrast, colour
+// palettes and one channel alone (AUDIT §14.3). It sits at the right so the
+// slide stays visible while it changes.
+
+import { Theme } from "theme.slint";
+import { ChannelRow } from "types.slint";
+
+component SmallButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    callback clicked();
+
+    width: label.preferred-width + 14px;
+    height: 22px;
+    border-radius: 4px;
+    background: root.active ? Theme.accent : touch.has-hover ? Theme.surface-hover : transparent;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.border;
+
+    label := Text {
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component Check inherits Rectangle {
+    in property <bool> checked;
+    callback toggled(bool);
+
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: root.checked ? Theme.accent : Theme.border;
+    background: root.checked ? Theme.accent : transparent;
+
+    if root.checked: Text {
+        width: 100%;
+        height: 100%;
+        text: "✓";
+        color: #ffffff;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => {
+            root.toggled(!root.checked);
+        }
+    }
+}
+
+// A number shown as text; clicking it edits it, Enter applies. (A field
+// created per edit starts from the current value, whatever was typed
+// before.)
+component ValueField inherits Rectangle {
+    in property <string> text;
+    callback entered(string);
+    property <bool> editing: false;
+
+    width: 58px;
+    height: 22px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: root.editing ? Theme.accent : Theme.border;
+    background: #0a0c10;
+
+    if !root.editing: Text {
+        x: 6px;
+        width: parent.width - 12px;
+        height: 100%;
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 11px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    if !root.editing: TouchArea {
+        clicked => {
+            root.editing = true;
+        }
+    }
+
+    if root.editing: TextInput {
+        x: 6px;
+        width: parent.width - 12px;
+        height: 100%;
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 11px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        single-line: true;
+        init => {
+            self.focus();
+            self.select-all();
+        }
+        accepted => {
+            root.entered(self.text);
+            root.editing = false;
+        }
+        changed has-focus => {
+            if !self.has-focus {
+                root.editing = false;
+            }
+        }
+    }
+}
+
+// The display window over the channel's histogram: two handles, the
+// nearer one follows the pointer.
+component WindowSlider inherits Rectangle {
+    in property <float> low;
+    in property <float> high;
+    in property <image> histogram;
+    in property <color> accent;
+    callback moved(/* high */ bool, /* position */ float);
+    property <length> pad: 5px;
+    property <length> track: self.width - 2 * self.pad;
+    property <bool> high-handle: false;
+
+    height: 30px;
+
+    Rectangle {
+        x: root.pad;
+        y: 0px;
+        width: root.track;
+        height: root.height - 6px;
+        border-radius: 2px;
+        background: #ffffff08;
+        clip: true;
+
+        Image {
+            width: 100%;
+            height: 100%;
+            source: root.histogram;
+            image-fit: fill;
+        }
+    }
+
+    Rectangle {
+        x: root.pad;
+        y: root.height - 4px;
+        width: root.track;
+        height: 2px;
+        background: #ffffff20;
+    }
+
+    Rectangle {
+        x: root.pad + root.low * root.track;
+        y: root.height - 4px;
+        width: max(1px, (root.high - root.low) * root.track);
+        height: 2px;
+        background: root.accent;
+    }
+
+    for position in [root.low, root.high]: Rectangle {
+        x: root.pad + position * root.track - 2px;
+        y: 0px;
+        width: 4px;
+        height: root.height;
+        border-radius: 2px;
+        background: #ffffffd0;
+    }
+
+    TouchArea {
+        mouse-cursor: ew-resize;
+        pointer-event(e) => {
+            let position = max(0.0, min(1.0, (self.mouse-x - root.pad) / max(root.track, 1px)));
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.high-handle = abs(position - root.high) < abs(position - root.low)
+                    || (abs(root.high - root.low) < 0.001 && position > root.high);
+                root.moved(root.high-handle, position);
+            } else if e.kind == PointerEventKind.move && self.pressed {
+                root.moved(root.high-handle, position);
+            }
+        }
+    }
+}
+
+// Gamma on a logarithmic slider, 1 in the middle; double-click resets.
+component GammaSlider inherits Rectangle {
+    in property <float> position;
+    callback moved(float);
+    property <length> pad: 5px;
+    property <length> track: self.width - 2 * self.pad;
+
+    height: 22px;
+
+    Rectangle {
+        x: root.pad;
+        y: (parent.height - 3px) / 2;
+        width: root.track;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff20;
+    }
+
+    // The middle mark: gamma 1.
+    Rectangle {
+        x: root.pad + 0.5 * root.track - 0.5px;
+        y: (parent.height - 9px) / 2;
+        width: 1px;
+        height: 9px;
+        background: #ffffff40;
+    }
+
+    Rectangle {
+        x: root.pad + root.position * root.track - 5px;
+        y: (parent.height - 10px) / 2;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: #ffffff;
+        border-width: 1px;
+        border-color: Theme.accent;
+    }
+
+    TouchArea {
+        double-clicked => {
+            root.moved(0.5);
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                root.moved(max(0.0, min(1.0, (self.mouse-x - root.pad) / max(root.track, 1px))));
+            }
+        }
+    }
+}
+
+export component ChannelsPanel inherits Rectangle {
+    in property <string> title;
+    in property <string> summary;
+    in property <[ChannelRow]> rows;
+    // The colours offered for a channel (every palette's).
+    in property <[color]> chip-colors;
+    // The row whose colour choices are open (-1: none).
+    in-out property <int> picker-row: -1;
+    callback close-requested();
+    callback visibility-toggled(int, bool);
+    callback solo-toggled(int);
+    callback color-chosen(int, color);
+    callback window-moved(int, bool, float);
+    callback min-entered(int, string);
+    callback max-entered(int, string);
+    callback gamma-moved(int, float);
+    callback gamma-entered(int, string);
+    callback auto-contrast-requested();
+    callback reset-requested();
+    callback show-all-requested();
+    callback palette-requested(string);
+
+    background: #00000030;
+
+    TouchArea {
+        clicked => {
+            root.close-requested();
+        }
+    }
+
+    FocusScope {
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.close-requested();
+                return accept;
+            }
+            reject
+        }
+
+        Rectangle {
+            x: parent.width - self.width - 16px;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - 32px, 700px);
+            height: min(parent.height - 48px, 680px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    spacing: 8px;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.title;
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+                        Text {
+                            text: "✕";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.close-requested();
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    vertical-stretch: 0;
+                    text: root.summary;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                }
+
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    spacing: 6px;
+                    height: 24px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        SmallButton {
+                            text: "Auto contrast";
+                            clicked => {
+                                root.auto-contrast-requested();
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        SmallButton {
+                            text: "Show all";
+                            clicked => {
+                                root.show-all-requested();
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        SmallButton {
+                            text: "Reset";
+                            clicked => {
+                                root.picker-row = -1;
+                                root.reset-requested();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    Text {
+                        text: "Colours:";
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+
+                    for palette in [
+                        { id: "standard", name: "Standard" },
+                        { id: "colour-blind-safe", name: "Colour-blind safe" },
+                        { id: "okabe-ito", name: "Okabe–Ito" },
+                    ]: VerticalLayout {
+                        alignment: center;
+                        SmallButton {
+                            text: palette.name;
+                            clicked => {
+                                root.palette-requested(palette.id);
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    min-height: 80px;
+
+                    Flickable {
+                        width: parent.width;
+                        height: parent.height;
+                        viewport-height: list.preferred-height;
+
+                        list := VerticalLayout {
+                            spacing: 4px;
+
+                            for row in root.rows: Rectangle {
+                                border-radius: 4px;
+                                background: Math.mod(row.index, 2) == 0 ? transparent : #ffffff05;
+
+                                VerticalLayout {
+                                    padding: 4px;
+                                    spacing: 4px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        height: 22px;
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Check {
+                                                checked: row.visible;
+                                                toggled(visible) => {
+                                                    root.visibility-toggled(row.index, visible);
+                                                }
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 20px;
+                                                height: 16px;
+                                                border-radius: 3px;
+                                                background: row.color;
+                                                border-width: 1px;
+                                                border-color: root.picker-row == row.index ? #ffffff : #ffffff40;
+
+                                                TouchArea {
+                                                    clicked => {
+                                                        root.picker-row = root.picker-row == row.index ? -1 : row.index;
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            horizontal-stretch: 1;
+                                            text: row.name;
+                                            color: row.visible ? Theme.text-primary : Theme.text-secondary;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: row.detail;
+                                            color: Theme.text-secondary;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            SmallButton {
+                                                text: "Solo";
+                                                active: row.solo;
+                                                clicked => {
+                                                    root.solo-toggled(row.index);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        height: 30px;
+
+                                        WindowSlider {
+                                            horizontal-stretch: 1;
+                                            low: row.low;
+                                            high: row.high;
+                                            histogram: row.histogram;
+                                            accent: row.color;
+                                            moved(high, position) => {
+                                                root.window-moved(row.index, high, position);
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            ValueField {
+                                                text: row.min-text;
+                                                entered(text) => {
+                                                    root.min-entered(row.index, text);
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "–";
+                                            color: Theme.text-secondary;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            ValueField {
+                                                text: row.max-text;
+                                                entered(text) => {
+                                                    root.max-entered(row.index, text);
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "γ";
+                                            color: Theme.text-secondary;
+                                            font-size: 12px;
+                                            vertical-alignment: center;
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            GammaSlider {
+                                                width: 72px;
+                                                position: row.gamma-position;
+                                                moved(position) => {
+                                                    root.gamma-moved(row.index, position);
+                                                }
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            ValueField {
+                                                width: 42px;
+                                                text: row.gamma-text;
+                                                entered(text) => {
+                                                    root.gamma-entered(row.index, text);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if root.picker-row == row.index: HorizontalLayout {
+                                        spacing: 4px;
+                                        height: 22px;
+                                        alignment: start;
+
+                                        for chip in root.chip-colors: Rectangle {
+                                            width: 22px;
+                                            height: 20px;
+                                            border-radius: 3px;
+                                            background: chip;
+                                            border-width: 1px;
+                                            border-color: chip-touch.has-hover ? #ffffff : #ffffff30;
+
+                                            chip-touch := TouchArea {
+                                                clicked => {
+                                                    root.color-chosen(row.index, chip);
+                                                    root.picker-row = -1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    vertical-stretch: 0;
+                    text: "Windows are in the file's sample values: at the lower end a channel is black, at the upper end its full colour. γ above 1 brightens dim signal. Settings are kept for this slide; exports and plugins see the same picture.";
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

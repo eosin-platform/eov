@@ -339,6 +339,7 @@ impl UiHost {
                 let pane = self.state.read().focused_pane;
                 crate::slide_info::open_for_pane(&ui, &self.state, pane);
             }
+            Action::Channels => crate::channels::open_for_focused_pane(self),
             Action::CopyView | Action::ExportView => {
                 let pane = self.state.read().active_viewport_pane();
                 if action == Action::CopyView {

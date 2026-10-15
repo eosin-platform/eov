@@ -7,6 +7,8 @@ mod bookmarks;
 mod cache_budget;
 mod calibration_store;
 mod callbacks;
+mod channel_store;
+mod channels;
 mod cli;
 mod clipboard;
 mod color;

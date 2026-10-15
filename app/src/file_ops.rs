@@ -25,8 +25,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
+/// Slide file extensions (`.ome.tif` and `.ome.tiff` end in `tif` and
+/// `tiff`; `btf`, `tf2` and `tf8` are BigTIFF, as OME-TIFF uses them).
 const WSI_EXTENSIONS: &[&str] = &[
     "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide", "bif", "czi",
+    "btf", "tf2", "tf8",
 ];
 
 pub struct OpenFileUiContext<'a> {
@@ -647,14 +650,14 @@ fn display_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-/// Opens a slide and builds its minimap thumbnail (worker thread).
-fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
-    let wsi = WsiFile::open(path)?;
+/// The minimap thumbnail of a slide (worker thread: it reads the slide).
+/// Multichannel slides show their current channel display.
+pub(crate) fn minimap_thumbnail(wsi: &WsiFile) -> Option<MinimapThumbnail> {
     let options = ThumbnailOptions {
         region: ThumbnailRegion::ContentBounds,
         ..ThumbnailOptions::new(MINIMAP_THUMBNAIL_SIZE)
     };
-    let thumbnail = match wsi.thumbnail_with(&options) {
+    match wsi.thumbnail_with(&options) {
         Ok(thumbnail) => Some(MinimapThumbnail {
             width: thumbnail.image.width as u32,
             height: thumbnail.image.height as u32,
@@ -662,10 +665,22 @@ fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
             region: thumbnail.region,
         }),
         Err(err) => {
-            warn!("No minimap thumbnail for {}: {err}", path.display());
+            warn!(
+                "No minimap thumbnail for {}: {err}",
+                wsi.properties().path.display()
+            );
             None
         }
-    };
+    }
+}
+
+/// Opens a slide and builds its minimap thumbnail (worker thread). A
+/// multichannel slide gets the channel display saved for it first, so it
+/// never shows the defaults for a moment.
+fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
+    let wsi = WsiFile::open(path)?;
+    crate::channels::restore_saved_display(&wsi);
+    let thumbnail = minimap_thumbnail(&wsi);
     Ok(OpenedSlide { wsi, thumbnail })
 }
 
