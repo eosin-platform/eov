@@ -319,7 +319,9 @@ mod tests {
         assert!(!wanted.is_empty());
         loader.set_wanted_tiles(wanted.clone());
         let deadline = Instant::now() + Duration::from_secs(10);
-        while wanted.iter().any(|coord| !cache.contains(coord)) {
+        // A worker caches a tile before it marks the load done, so wait for
+        // both (under load the gap is long enough to see).
+        while wanted.iter().any(|coord| !cache.contains(coord)) || loader.pending_count() > 0 {
             assert!(Instant::now() < deadline, "tiles did not load");
             std::thread::sleep(Duration::from_millis(5));
         }
