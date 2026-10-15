@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "annotations"
-version = "0.2.4"
+version = "1.0.0"
 dependencies = [
  "abi_stable",
  "dirs",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "eov"
-version = "0.4.9"
+version = "1.0.0"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -1754,7 +1754,7 @@ dependencies = [
 
 [[package]]
 name = "eov-common"
-version = "0.4.9"
+version = "1.0.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -1780,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "eov-plugin-api"
-version = "0.4.9"
+version = "1.0.0"
 dependencies = [
  "abi_stable",
  "serde",
@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "eovae"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "abi_stable",
  "chrono",
@@ -2222,7 +2222,7 @@ dependencies = [
 
 [[package]]
 name = "gamepad"
-version = "0.2.5"
+version = "1.0.0"
 dependencies = [
  "abi_stable",
  "ashpd",

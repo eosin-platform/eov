@@ -28,7 +28,7 @@ Add the crate to your project:
 
 ```toml
 [dependencies]
-eov-common = "0.4"
+eov-common = "1.0"
 ```
 
 `eov-common` uses [`openslide-rs`](https://crates.io/crates/openslide-rs), so
