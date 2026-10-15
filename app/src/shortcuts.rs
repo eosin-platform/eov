@@ -36,6 +36,9 @@ pub(crate) enum Action {
     /// Objective-equivalent magnification; `None` is one screen pixel per
     /// slide pixel.
     Magnify(Option<Magnification>),
+    RotateLeft,
+    RotateRight,
+    Flip,
     HistoryBack,
     HistoryForward,
     BookmarkAdd,
@@ -157,6 +160,9 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::Magnify(Some(M::X20)), "zoom-20x", "Zoom to 20×", G::Navigation, false, &["5"]),
     info(A::Magnify(Some(M::X40)), "zoom-40x", "Zoom to 40×", G::Navigation, false, &["6"]),
     info(A::Magnify(None), "zoom-1-to-1", "Zoom to one screen pixel per slide pixel", G::Navigation, false, &["0"]),
+    info(A::RotateLeft, "rotate-left", "Rotate the view 90° to the left", G::Navigation, false, &["["]),
+    info(A::RotateRight, "rotate-right", "Rotate the view 90° to the right", G::Navigation, false, &["]"]),
+    info(A::Flip, "flip", "Mirror the view left to right", G::Navigation, false, &["Shift+H"]),
     info(A::HistoryBack, "back", "Back to the previous view", G::Navigation, false, &["Alt+ArrowLeft"]),
     info(A::HistoryForward, "forward", "Forward to the next view", G::Navigation, false, &["Alt+ArrowRight"]),
     info(A::BookmarkAdd, "bookmark-add", "Bookmark the view", G::Navigation, false, &["Ctrl+B"]),

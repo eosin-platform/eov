@@ -374,6 +374,11 @@ impl UiHost {
             Action::Magnify(magnification) => {
                 self.magnify(magnification.map(crate::shortcuts::Magnification::value))
             }
+            Action::RotateLeft => self
+                .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, -1)),
+            Action::RotateRight => self
+                .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, 1)),
+            Action::Flip => self.with_focused_viewport(crate::callbacks::flip_active_viewport),
             Action::HistoryBack => self.history_step(true),
             Action::HistoryForward => self.history_step(false),
             Action::BookmarkAdd => self.begin_bookmark(),
