@@ -74,16 +74,21 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
             })
             .map(|item| item.thumbnail.clone())
             .unwrap_or_else(|| series_thumbnail_image(entry.thumbnail.as_ref()));
-        let series_label = if entry.is_directory {
-            SharedString::default()
+        // In the Case order a card shows its case and what follows it.
+        let (series_label, name) = if entry.is_directory {
+            (SharedString::default(), entry.filename.clone())
+        } else if series.sort == crate::state::SeriesSort::Case {
+            let case = crate::series_case::case_of(&entry.filename);
+            let name = crate::series_case::name_within(&entry.filename, &case);
+            (SharedString::from(case), name)
         } else {
             let label = series_index_label(file_index);
             file_index += 1;
-            SharedString::from(label)
+            (SharedString::from(label), entry.filename.clone())
         };
         let next = SeriesItemData {
             path: entry_path,
-            name: SharedString::from(entry.filename.clone()),
+            name: SharedString::from(name),
             series_label,
             objective_label: SharedString::from(entry.objective_label.clone().unwrap_or_default()),
             stain_label: SharedString::from(entry.stain_label.clone().unwrap_or_default()),

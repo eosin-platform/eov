@@ -86,6 +86,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 natord = "1"
+# The series bar's case pattern (`series_case_pattern`).
+regex = "1"
 
 # File dialogs
 rfd = "0.17.2"

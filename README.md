@@ -141,7 +141,7 @@ Current capabilities include:
 - A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
 - Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
 - Heat maps from other tools over a slide (a model's probabilities, an attention map), from PNG, JPEG or TIFF, coloured, placed and kept per slide (see [Heat Maps](#heat-maps)).
-- A series bar for the slides of a folder (a case): filter, order by name, date or stain, one entry per DICOM series, and PageUp/PageDown to step through them.
+- A series bar for the slides of a folder: filter, order by name, date, stain or case (the case is read from the file name: `C3L-00011-21.svs` belongs to `C3L-00011`, a TCGA barcode to its participant, or what `series_case_pattern` in `config.toml` captures), one entry per DICOM series, and PageUp/PageDown to step through them.
 - Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
 - Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
 - Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
@@ -841,6 +841,7 @@ restore_session = true
 single_instance = true         # false: every launch starts its own eov
 scripting = true               # false: refuse every call from scripts (see Scripting)
 trusted_link_servers = ["slides01", "pacs.example.org"]   # Windows: network paths eov:// links and scripts may open
+series_case_pattern = '^(S\d{2}-\d+)'   # the series bar's Case order: the first group is the case
 
 [shortcuts]                    # see Keyboard Shortcuts
 bookmark-add = "Ctrl+D"
