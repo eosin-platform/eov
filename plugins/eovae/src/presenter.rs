@@ -64,7 +64,13 @@ struct FileOverlay {
     mosaics: HashMap<PaneId, (Arc<str>, u64, Mode, MosaicFrame)>,
     grid: Option<String>,
     mark: Option<TileCoord>,
+    /// When a raster was last uploaded.
+    uploaded: Option<Instant>,
 }
+
+/// While a job writes a slide's results, its rasters are refreshed at most
+/// this often (they are megabytes); the final state follows the job's end.
+const RUNNING_UPLOAD_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Default)]
 pub struct Memo {
@@ -269,11 +275,15 @@ fn refresh_file<B: Backend>(
     file_id: FileId,
     snapshot: Option<&HostSnapshot>,
 ) {
-    let (mode, grid_on, ctx, mark, views) = {
+    let (mode, grid_on, ctx, mark, views, busy) = {
         let state = lock(&core.state);
         let Some(FileState { mode, grid, .. }) = state.files.get(&file_id) else {
             return;
         };
+        let busy = state
+            .job
+            .as_ref()
+            .is_some_and(|j| j.request.file_id == file_id);
         let ctx = run_context(&state, file_id).ok();
         let mark = match (state.pulse, state.hover) {
             (Some((f, coord, _)), _) if f == file_id => Some(coord),
@@ -296,7 +306,7 @@ fn refresh_file<B: Backend>(
                 .filter(|view| view.file_id == file_id)
                 .collect(),
         };
-        (*mode, *grid, ctx, mark, views)
+        (*mode, *grid, ctx, mark, views, busy)
     };
     let overlay = memo.files.entry(file_id).or_default();
     let host = &core.host;
@@ -330,6 +340,10 @@ fn refresh_file<B: Backend>(
     }
     let stats = ctx.as_ref().and_then(|ctx| memo.stats(core, &ctx.key));
     let overlay = memo.files.entry(file_id).or_default();
+    let throttled = busy
+        && overlay
+            .uploaded
+            .is_some_and(|at| at.elapsed() < RUNNING_UPLOAD_INTERVAL);
     match (mode, &ctx) {
         (Mode::ErrorMap, Some(ctx)) => {
             remove_mosaics(&raster, overlay, |_| true);
@@ -337,10 +351,11 @@ fn refresh_file<B: Backend>(
             let range = stats.heat_range();
             let revision = stats.revision;
             let current = overlay.heat.as_ref();
+            let same_run = current.is_some_and(|(run, _, _)| **run == *ctx.key.run);
             let stale = current.is_none_or(|(run, rev, old_range)| {
                 **run != *ctx.key.run || *rev != revision || *old_range != range
             });
-            if stale {
+            if stale && !(same_run && throttled) {
                 let tiles: Vec<(TileCoord, crate::results::TileState)> = lock(&core.results)
                     .run(&ctx.key)
                     .map(|run| run.iter().collect())
@@ -348,6 +363,7 @@ fn refresh_file<B: Backend>(
                 let (image, rect) = render::heat_raster(&ctx.grid, &tiles, range.0, range.1);
                 if raster.put_raster("heat", rect, image, false).is_ok() {
                     overlay.heat = Some((Arc::clone(&ctx.key.run), revision, range));
+                    overlay.uploaded = Some(Instant::now());
                 }
             }
         }
@@ -372,7 +388,14 @@ fn refresh_file<B: Backend>(
                             && *m == mode
                             && old.covers(&frame)
                     });
-                if fresh {
+                let only_newer_tiles =
+                    overlay
+                        .mosaics
+                        .get(&view.pane)
+                        .is_some_and(|(run, _, m, old)| {
+                            **run == *ctx.key.run && *m == mode && old.covers(&frame)
+                        });
+                if fresh || (only_newer_tiles && throttled) {
                     continue;
                 }
                 let image = build_mosaic(core, ctx, &frame, mode, error_hi);
@@ -383,6 +406,7 @@ fn refresh_file<B: Backend>(
                     overlay
                         .mosaics
                         .insert(view.pane, (Arc::clone(&ctx.key.run), revision, mode, frame));
+                    overlay.uploaded = Some(Instant::now());
                 }
             }
         }

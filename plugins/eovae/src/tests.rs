@@ -77,6 +77,7 @@ struct Setup {
     harness: Harness,
     requests: Arc<Mutex<Vec<RegionRequest>>>,
     dir: tempfile::TempDir,
+    init: PluginInit,
 }
 
 /// What the region reader does.
@@ -86,10 +87,9 @@ enum Reads {
     Fail,
 }
 
-fn setup_with(model_name: &str, config: Value, reads: Reads) -> Setup {
-    let dir = tempfile::tempdir().unwrap();
+fn write_fixtures(dir: &Path, model_name: &str) -> PathBuf {
     // A small model: 32-px tiles, fixed batch 4, trained at 2 µm/px.
-    let model_path = dir.path().join(model_name);
+    let model_path = dir.join(model_name);
     std::fs::write(
         &model_path,
         model(&ModelSpec {
@@ -101,16 +101,21 @@ fn setup_with(model_name: &str, config: Value, reads: Reads) -> Setup {
         }),
     )
     .unwrap();
-    let slide_path = dir.path().join("slide-a.svs");
-    std::fs::write(&slide_path, vec![1u8; 4096]).unwrap();
-    let other_path = dir.path().join("slide-b.svs");
-    std::fs::write(&other_path, vec![2u8; 4096]).unwrap();
+    std::fs::write(dir.join("slide-a.svs"), vec![1u8; 4096]).unwrap();
+    std::fs::write(dir.join("slide-b.svs"), vec![2u8; 4096]).unwrap();
+    model_path
+}
 
+/// A mock host showing slide A in one pane, serving synthetic pixels.
+fn mock_host(dir: &Path, reads: Reads) -> (MockHost, Arc<Mutex<Vec<RegionRequest>>>) {
     let host = MockHost::new();
     let requests = Arc::new(Mutex::new(Vec::new()));
     {
         let mut state = host.state();
-        state.snapshot.files.push(slide_info(1, &slide_path));
+        state
+            .snapshot
+            .files
+            .push(slide_info(1, &dir.join("slide-a.svs")));
         state.snapshot.panes.push(PaneInfo {
             pane: PANE,
             index: 0,
@@ -143,6 +148,12 @@ fn setup_with(model_name: &str, config: Value, reads: Reads) -> Setup {
             })
         }));
     }
+    (host, requests)
+}
+
+fn setup_with(model_name: &str, config: Value, reads: Reads) -> Setup {
+    let dir = tempfile::tempdir().unwrap();
+    let model_path = write_fixtures(dir.path(), model_name);
     let mut init = test_init("eovae");
     let mut config = config;
     config
@@ -150,11 +161,13 @@ fn setup_with(model_name: &str, config: Value, reads: Reads) -> Setup {
         .unwrap()
         .insert("model_path".into(), json!(model_path.to_string_lossy()));
     init.settings.insert("config".into(), config);
-    let harness = Harness::with_host(host, init).unwrap();
+    let (host, requests) = mock_host(dir.path(), reads);
+    let harness = Harness::with_host(host, init.clone()).unwrap();
     Setup {
         harness,
         requests,
         dir,
+        init,
     }
 }
 
@@ -639,5 +652,51 @@ fn shutting_down_stops_every_thread() {
     assert!(
         started.elapsed() < Duration::from_secs(5),
         "shutdown joined promptly"
+    );
+}
+
+#[test]
+fn changing_what_results_mean_cancels_the_running_job() {
+    let s = setup_with("hang-vae.onnx", json!({"device": "cpu"}), Reads::Slide);
+    let surface = s.start();
+    s.callback(&surface, "analyze-slide", vec![]);
+    s.wait_property("the job", "job-running", |v| v == &json!(true));
+    // Picking level 0 changes which tiles exist: the job ends (VAE-12).
+    s.callback(&surface, "resolution-selected", vec![json!(1)]);
+    s.wait_finished();
+    let result = s.property("last-result");
+    assert!(result.as_str().unwrap().contains("cancelled"), "{result}");
+}
+
+#[test]
+fn results_persist_across_restarts_without_new_reads() {
+    let s = setup();
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    let Setup {
+        harness, dir, init, ..
+    } = s;
+    // Shutting down flushes the cache.
+    drop(harness);
+    let (host, requests) = mock_host(dir.path(), Reads::Slide);
+    let again = Setup {
+        harness: Harness::with_host(host, init.clone()).unwrap(),
+        requests,
+        dir,
+        init,
+    };
+    let surface = again.start();
+    again.wait_property("stored results", "coverage-text", |v| {
+        v.as_str().is_some_and(|t| t.contains("32 tissue tiles"))
+    });
+    again.analyse_viewport(&surface);
+    assert!(
+        again.reads().is_empty(),
+        "everything came from the disk cache"
+    );
+    let result = again.property("last-result");
+    assert!(
+        result.as_str().unwrap().contains("already analysed"),
+        "{result}"
     );
 }

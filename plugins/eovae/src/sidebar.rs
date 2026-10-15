@@ -668,6 +668,24 @@ fn clear_stats(set: &mut impl FnMut(&str, Value)) {
     set("legend-hi", json!(""));
 }
 
+/// Everything in the settings that changes analysis results.
+fn result_config<B: Backend>(
+    core: &Arc<Core<B>>,
+) -> (
+    Option<String>,
+    Option<crate::contract::Contract>,
+    Resolution,
+) {
+    let state = lock(&core.state);
+    (
+        state
+            .engine_request()
+            .map(|request| crate::plugin::results_signature(&request)),
+        state.model_info().map(|m| state.config.contract_for(m)),
+        state.config.resolution,
+    )
+}
+
 fn arg_int(args: &[Value]) -> Option<i64> {
     args.first().and_then(Value::as_i64)
 }
@@ -686,6 +704,7 @@ pub fn callback<B: Backend>(
     name: &str,
     args: &[Value],
 ) -> Result<Value, String> {
+    let before = result_config(core);
     let mut reply = Value::Null;
     let mut rebuild_engine = false;
     let mut refresh_overlays = false;
@@ -1070,6 +1089,14 @@ pub fn callback<B: Backend>(
             state.touch_config();
         }
         _ => {}
+    }
+    // A change that alters results ends the running job: its tiles would
+    // belong to the old configuration (VAE-12).
+    if result_config(core) != before {
+        let state = lock(&core.state);
+        if let Some(job) = &state.job {
+            job.control.cancel();
+        }
     }
     if rebuild_engine {
         let has_model = lock(&core.state).model_info().is_some();
