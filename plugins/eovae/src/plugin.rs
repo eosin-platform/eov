@@ -54,8 +54,15 @@ pub const AUTO_MAX_TILES: u64 = 400;
 /// …or when tiles are smaller than this on screen.
 pub const AUTO_MIN_TILE_PX: f64 = 24.0;
 
-pub fn raster_layer(file_id: FileId) -> String {
+/// The error map of a slide (chunked rasters), shown in the panes whose
+/// overlay is the error map.
+pub fn heat_layer(file_id: FileId) -> String {
     format!("vae-{file_id}")
+}
+
+/// One pane's reconstruction or difference mosaic, shown only in that pane.
+pub fn mosaic_layer(file_id: FileId, pane: PaneId) -> String {
+    format!("vae-{file_id}-pane-{pane}")
 }
 
 pub fn grid_layer(file_id: FileId) -> String {
@@ -93,13 +100,62 @@ pub struct EngineStatus {
     pub error: Option<(String, String)>,
 }
 
+/// What one pane shows of a slide.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PaneOverlay {
+    pub mode: Mode,
+    pub grid: bool,
+}
+
 pub struct FileState {
     pub info: FileInfo,
     pub geometry: SlideGeometry,
     /// `None` while being resolved.
     pub identity: Option<SlideIdentity>,
-    pub mode: Mode,
-    pub grid: bool,
+    /// Each pane's overlay of this slide (panes are the host's stable ids).
+    pub panes: BTreeMap<PaneId, PaneOverlay>,
+    /// The last overlay chosen in any pane: what every pane shows when the
+    /// host cannot show layers in some panes only.
+    pub shared: PaneOverlay,
+    /// The host's region of interest on this slide.
+    pub roi: Option<Rect>,
+}
+
+impl FileState {
+    fn new(file: &FileInfo) -> Self {
+        Self {
+            geometry: SlideGeometry::from_file_info(file),
+            info: file.clone(),
+            identity: None,
+            panes: BTreeMap::new(),
+            shared: PaneOverlay::default(),
+            roi: None,
+        }
+    }
+
+    /// What `pane` shows of this slide. `per_pane` is false when the host
+    /// draws a slide's layers in all its panes alike.
+    pub fn overlay(&self, pane: Option<PaneId>, per_pane: bool) -> PaneOverlay {
+        match pane.filter(|_| per_pane) {
+            Some(pane) => self.panes.get(&pane).copied().unwrap_or_default(),
+            None => self.shared,
+        }
+    }
+
+    /// Changes what `pane` shows of this slide.
+    pub fn update_overlay(
+        &mut self,
+        pane: Option<PaneId>,
+        per_pane: bool,
+        change: impl FnOnce(&mut PaneOverlay),
+    ) {
+        let mut overlay = self.overlay(pane, per_pane);
+        change(&mut overlay);
+        if let Some(pane) = pane.filter(|_| per_pane) {
+            self.panes.insert(pane, overlay);
+        }
+        self.shared = overlay;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -171,6 +227,10 @@ pub struct State {
     pub clear_confirm: Option<String>,
     pub hover: Option<(FileId, TileCoord)>,
     pub pulse: Option<(FileId, TileCoord, Instant)>,
+    /// Whether the host can show a layer in some panes only
+    /// (`layer.set_pane_visibility`); without it every pane of a slide shows
+    /// the same overlay.
+    pub pane_layers: bool,
 }
 
 impl State {
@@ -196,7 +256,16 @@ impl State {
             clear_confirm: None,
             hover: None,
             pulse: None,
+            pane_layers: true,
         }
+    }
+
+    /// What `pane` shows of `file_id`.
+    pub fn overlay(&self, file_id: FileId, pane: Option<PaneId>) -> PaneOverlay {
+        self.files
+            .get(&file_id)
+            .map(|file| file.overlay(pane, self.pane_layers))
+            .unwrap_or_default()
     }
 
     pub fn model_info(&self) -> Option<&Arc<ModelInfo>> {
@@ -558,6 +627,13 @@ impl<B: Backend> Core<B> {
                 }
                 Ok(())
             }
+            HostEvent::RoiChanged { file_id, roi } => {
+                if let Some(file) = lock(&self.state).files.get_mut(&file_id) {
+                    file.roi = roi;
+                }
+                self.dirty.mark(|d| d.sidebar = true);
+                Ok(())
+            }
             HostEvent::SurfaceClosed { surface_id } => {
                 let mut state = lock(&self.state);
                 if state.sidebar.as_ref().is_some_and(|s| s.id() == surface_id) {
@@ -613,16 +689,13 @@ impl<B: Backend> Core<B> {
             if state.files.contains_key(&file_id) {
                 return Ok(());
             }
-            state.files.insert(
-                file_id,
-                FileState {
-                    geometry: SlideGeometry::from_file_info(&file),
-                    info: file.clone(),
-                    identity: None,
-                    mode: Mode::Original,
-                    grid: false,
-                },
-            );
+            state.files.insert(file_id, FileState::new(&file));
+        }
+        // Later changes arrive as `RoiChanged` events (on this thread, so
+        // none can be missed in between).
+        let roi = self.host.roi(file_id).ok().flatten();
+        if let Some(entry) = lock(&self.state).files.get_mut(&file_id) {
+            entry.roi = roi;
         }
         self.spawn("identity", move |core| {
             let identity = slide::resolve(&file);
@@ -698,12 +771,20 @@ impl<B: Backend> Core<B> {
         pane: Option<PaneId>,
         file_id: Option<FileId>,
     ) -> Result<(), String> {
-        if let Some(file_id) = file_id {
+        let roi = file_id.map(|file_id| {
             self.ensure_file(file_id);
             self.refresh_identity(file_id);
-        }
+            // `RoiChanged` keeps it current; hosts without the event are
+            // caught up when the focus changes.
+            (file_id, self.host.roi(file_id))
+        });
         {
             let mut state = lock(&self.state);
+            if let Some((file_id, Ok(roi))) = roi
+                && let Some(file) = state.files.get_mut(&file_id)
+            {
+                file.roi = roi;
+            }
             state.focused_pane = pane;
             state.active_file = file_id;
             if let Some(pane) = pane {
@@ -714,11 +795,34 @@ impl<B: Backend> Core<B> {
                 entry.file_id = file_id;
             }
         }
+        // A pane that switched slides drops what it showed of the old one.
         self.dirty.mark(|d| {
             d.sidebar = true;
             d.hud = true;
+            d.all_overlays = true;
         });
         Ok(())
+    }
+
+    /// Forgets panes the host no longer has.
+    pub fn retain_panes(&self, live: &BTreeSet<PaneId>) {
+        let mut state = lock(&self.state);
+        state.panes.retain(|pane, _| live.contains(pane));
+        for file in state.files.values_mut() {
+            file.panes.retain(|pane, _| live.contains(pane));
+        }
+    }
+
+    /// The host cannot show layers per pane: every pane of a slide shows
+    /// the overlay chosen last.
+    pub fn without_pane_layers(&self) {
+        let changed = std::mem::replace(&mut lock(&self.state).pane_layers, false);
+        if changed {
+            self.host.warn(
+                "This eov cannot show layers in some panes only: every pane of a slide shows the same VAE overlay.",
+            );
+            self.dirty.everything();
+        }
     }
 
     /// Adopts a slide identity the host provides after the slide was
@@ -813,15 +917,16 @@ impl<B: Backend> Core<B> {
         match (button_id, item_id) {
             (HUD_GRID, _) => {
                 let mut state = lock(&self.state);
+                let per_pane = state.pane_layers;
                 if let Some(file) = state.files.get_mut(&file_id) {
-                    file.grid = !file.grid;
+                    file.update_overlay(Some(pane), per_pane, |o| o.grid = !o.grid);
                 }
             }
             (HUD_VIEW, Some(item)) => {
                 let Some(mode) = Mode::from_id(item) else {
                     return Ok(());
                 };
-                self.set_mode(file_id, mode, view)?;
+                self.set_mode(file_id, Some(pane), mode, view)?;
             }
             _ => return Ok(()),
         }
@@ -833,17 +938,19 @@ impl<B: Backend> Core<B> {
         Ok(())
     }
 
-    /// Changes what a slide's overlay shows.
+    /// Changes what a pane's overlay of a slide shows.
     pub fn set_mode(
         self: &Arc<Self>,
         file_id: FileId,
+        pane: Option<PaneId>,
         mode: Mode,
         view: Option<ViewInfo>,
     ) -> Result<(), String> {
         let needs_model = {
             let mut state = lock(&self.state);
+            let per_pane = state.pane_layers;
             if let Some(file) = state.files.get_mut(&file_id) {
-                file.mode = mode;
+                file.update_overlay(pane, per_pane, |o| o.mode = mode);
             }
             mode != Mode::Original
                 && matches!(state.model, ModelState::None | ModelState::Failed { .. })
@@ -864,8 +971,7 @@ impl<B: Backend> Core<B> {
         });
         let view = view.or_else(|| {
             let state = lock(&self.state);
-            state
-                .focused_pane
+            pane.or(state.focused_pane)
                 .and_then(|pane| state.panes.get(&pane))
                 .and_then(|pane| pane.view)
                 .filter(|view| view.file_id == file_id)
@@ -1190,9 +1296,9 @@ impl<B: Backend> Core<B> {
     pub fn maybe_auto(self: &Arc<Self>, view: ViewInfo) {
         let start = {
             let mut state = lock(&self.state);
-            let mode = state.files.get(&view.file_id).map(|f| f.mode);
+            let mode = state.overlay(view.file_id, Some(view.pane)).mode;
             if !state.config.auto_analyze
-                || mode.is_none_or(|m| m == Mode::Original)
+                || mode == Mode::Original
                 || !matches!(state.model, ModelState::Ready { .. })
                 || state
                     .job
@@ -1338,11 +1444,7 @@ impl<B: Backend> Core<B> {
             let attempt = {
                 let state = lock(&self.state);
                 run_context(&state, request.file_id).map(|ctx| {
-                    let mode = state
-                        .files
-                        .get(&request.file_id)
-                        .map(|f| f.mode)
-                        .unwrap_or_default();
+                    let mode = state.overlay(request.file_id, request.pane).mode;
                     (ctx, state.config.clone(), mode)
                 })
             };

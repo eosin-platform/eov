@@ -249,6 +249,49 @@ impl Setup {
         self.requests.lock().unwrap().clone()
     }
 
+    /// Picks an overlay in a pane's HUD menu.
+    fn hud_view(&self, pane: PaneId, item: &str) {
+        let state = self.harness.state();
+        let view = state
+            .snapshot
+            .panes
+            .iter()
+            .find(|p| p.pane == pane)
+            .and_then(|p| p.view);
+        drop(state);
+        self.harness
+            .send(HostEvent::HudButtonClicked {
+                button_id: crate::plugin::HUD_VIEW.into(),
+                item_id: Some(item.into()),
+                pane,
+                view,
+            })
+            .unwrap();
+    }
+
+    /// Shows slide `file_id` in a second pane, side by side.
+    fn add_pane(&self, pane: PaneId, file_id: FileId) {
+        let view = ViewInfo {
+            pane,
+            ..view(file_id, 0.0, 0.0, 1024.0, 512.0)
+        };
+        self.harness.state().snapshot.panes.push(PaneInfo {
+            pane,
+            index: 1,
+            file_id: Some(file_id),
+            view: Some(view),
+        });
+    }
+
+    fn hidden_in(&self, layer: &str) -> Vec<PaneId> {
+        self.harness
+            .state()
+            .layers
+            .get(layer)
+            .map(|l| l.hidden_panes.iter().copied().collect())
+            .unwrap_or_default()
+    }
+
     fn layer_raster_ids(&self, layer: &str) -> Vec<String> {
         self.harness
             .state()
@@ -351,20 +394,14 @@ fn background_is_recorded_and_never_inferred_or_retried() {
 }
 
 #[test]
-fn overlays_are_host_rasters_and_grid_lines_per_slide() {
+fn overlays_are_host_rasters_and_grid_lines() {
     let s = setup();
     let surface = s.start();
     s.analyse_viewport(&surface);
-    let layer = crate::plugin::raster_layer(1);
-    s.harness
-        .send(HostEvent::HudButtonClicked {
-            button_id: crate::plugin::HUD_VIEW.into(),
-            item_id: Some("error_map".into()),
-            pane: PANE,
-            view: Some(view(1, 0.0, 0.0, 1024.0, 512.0)),
-        })
-        .unwrap();
-    wait_until("the heat map", || s.layer_raster_ids(&layer) == ["heat"]);
+    let heat = crate::plugin::heat_layer(1);
+    s.hud_view(PANE, "error_map");
+    // The analysed 8×4 tiles fall in the first 64-px chunk of the heat map.
+    wait_until("the heat map", || s.layer_raster_ids(&heat) == ["heat-0-0"]);
     // The HUD menu of that pane shows the mode, pushed by the plugin.
     wait_until("the HUD state", || {
         let state = s.harness.state();
@@ -373,20 +410,15 @@ fn overlays_are_host_rasters_and_grid_lines_per_slide() {
             .iter()
             .any(|call| call["pane"] == json!(PANE) && call["active"] == json!(true))
     });
-    s.harness
-        .send(HostEvent::HudButtonClicked {
-            button_id: crate::plugin::HUD_VIEW.into(),
-            item_id: Some("reconstruction".into()),
-            pane: PANE,
-            view: Some(view(1, 0.0, 0.0, 1024.0, 512.0)),
-        })
-        .unwrap();
-    wait_until("the mosaic", || {
-        s.layer_raster_ids(&layer) == [format!("mosaic-{PANE}")]
+    s.hud_view(PANE, "reconstruction");
+    let mosaic = crate::plugin::mosaic_layer(1, PANE);
+    wait_until("the mosaic", || s.layer_raster_ids(&mosaic) == ["mosaic"]);
+    wait_until("the heat map to go", || {
+        s.layer_raster_ids(&heat).is_empty()
     });
     {
         let state = s.harness.state();
-        let raster = &state.layers[&layer].rasters[&format!("mosaic-{PANE}")];
+        let raster = &state.layers[&mosaic].rasters["mosaic"];
         // Reconstructed pixels are opaque where tiles were analysed.
         let data = &raster.pixels.data;
         assert!(data.as_chunks::<4>().0.iter().any(|px| px[3] == 255));
@@ -413,17 +445,10 @@ fn overlays_are_host_rasters_and_grid_lines_per_slide() {
     );
     assert!(state.layers[&grid].spec.min_zoom.is_some());
     drop(state);
-    // Back to the original: the rasters go.
-    s.harness
-        .send(HostEvent::HudButtonClicked {
-            button_id: crate::plugin::HUD_VIEW.into(),
-            item_id: Some("original".into()),
-            pane: PANE,
-            view: Some(view(1, 0.0, 0.0, 1024.0, 512.0)),
-        })
-        .unwrap();
-    wait_until("the rasters to go", || {
-        s.layer_raster_ids(&layer).is_empty()
+    // Back to the original: the pane's mosaic layer goes.
+    s.hud_view(PANE, "original");
+    wait_until("the mosaic to go", || {
+        !s.harness.state().layers.contains_key(&mosaic)
     });
 }
 
@@ -808,4 +833,275 @@ fn a_host_identity_arriving_later_keeps_the_results() {
     });
     again.analyse_viewport(&surface);
     assert!(again.reads().is_empty(), "{:?}", again.reads());
+}
+
+#[test]
+fn each_pane_shows_its_own_overlay() {
+    const OTHER: PaneId = 8;
+    let s = setup();
+    s.add_pane(OTHER, 1);
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    let heat = crate::plugin::heat_layer(1);
+    s.hud_view(PANE, "error_map");
+    wait_until("the heat map", || !s.layer_raster_ids(&heat).is_empty());
+    // Only the pane that chose it shows the error map.
+    wait_until("hidden in the other pane", || s.hidden_in(&heat) == [OTHER]);
+    // The other pane shows reconstructions, in a layer of its own.
+    s.hud_view(OTHER, "reconstruction");
+    let mosaic = crate::plugin::mosaic_layer(1, OTHER);
+    wait_until("the other pane's mosaic", || {
+        s.layer_raster_ids(&mosaic) == ["mosaic"]
+    });
+    assert_eq!(s.hidden_in(&mosaic), [PANE]);
+    assert_eq!(s.hidden_in(&heat), [OTHER], "the error map stays");
+    assert!(
+        !s.harness
+            .state()
+            .layers
+            .contains_key(&crate::plugin::mosaic_layer(1, PANE))
+    );
+    // The grid of one pane is not drawn in the other.
+    s.harness
+        .send(HostEvent::HudButtonClicked {
+            button_id: crate::plugin::HUD_GRID.into(),
+            item_id: None,
+            pane: OTHER,
+            view: None,
+        })
+        .unwrap();
+    let grid = crate::plugin::grid_layer(1);
+    wait_until("the grid", || !s.harness.state().objects(&grid).is_empty());
+    assert_eq!(s.hidden_in(&grid), [PANE]);
+    // Each pane's HUD shows its own overlay.
+    wait_until("both HUDs", || {
+        let calls = s.harness.calls_to("hud.update");
+        let checked = |pane: PaneId, item: &str| {
+            calls.iter().any(|call| {
+                call["pane"] == json!(pane)
+                    && call["menu"].as_array().is_some_and(|menu| {
+                        menu.iter()
+                            .any(|m| m["item_id"] == json!(item) && m["checked"] == json!(true))
+                    })
+            })
+        };
+        checked(PANE, "error_map") && checked(OTHER, "reconstruction")
+    });
+    // The sidebar follows the focused pane.
+    s.wait_property("focused pane's overlay", "view-index", |v| v == &json!(2));
+    s.harness
+        .send(HostEvent::ActiveChanged {
+            pane: Some(OTHER),
+            file_id: Some(1),
+        })
+        .unwrap();
+    s.wait_property("other pane's overlay", "view-index", |v| v == &json!(1));
+}
+
+#[test]
+fn hosts_without_pane_visibility_share_overlays() {
+    const OTHER: PaneId = 8;
+    let s = setup();
+    s.add_pane(OTHER, 1);
+    s.harness
+        .state()
+        .unsupported
+        .push("layer.set_pane_visibility".into());
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    s.hud_view(PANE, "error_map");
+    // The plugin notices and shows the overlay in every pane of the slide.
+    wait_until("the shared overlay in the other pane's HUD", || {
+        s.harness.calls_to("hud.update").iter().any(|call| {
+            call["pane"] == json!(OTHER)
+                && call["button_id"] == json!(crate::plugin::HUD_VIEW)
+                && call["active"] == json!(true)
+        })
+    });
+    let logs = s.harness.calls_to("log");
+    assert!(
+        logs.iter().any(|l| l["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("same VAE overlay"))),
+        "{logs:?}"
+    );
+}
+
+#[test]
+fn the_heat_map_resends_only_chunks_with_new_results() {
+    let s = setup();
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    let heat = crate::plugin::heat_layer(1);
+    s.hud_view(PANE, "error_map");
+    wait_until("the first chunk", || {
+        s.layer_raster_ids(&heat) == ["heat-0-0"]
+    });
+    // Mark the chunk as the host stores it: re-sending it would undo this.
+    s.harness
+        .state()
+        .layers
+        .get_mut(&heat)
+        .unwrap()
+        .rasters
+        .get_mut("heat-0-0")
+        .unwrap()
+        .pixels
+        .data[3] = 1;
+    // The next 8 tile columns (x 1024–2048) are analysed automatically in
+    // the error-map view and fall in the second chunk.
+    s.harness
+        .send(HostEvent::ViewChanged {
+            view: view(1, 1024.0, 0.0, 1024.0, 512.0),
+        })
+        .unwrap();
+    wait_until("the second chunk", || {
+        s.layer_raster_ids(&heat) == ["heat-0-0", "heat-1-0"]
+    });
+    s.wait_property("the job to stop", "job-running", |v| v == &json!(false));
+    s.wait_property("all results", "coverage-text", |v| {
+        v.as_str().is_some_and(|t| t.contains("64 tissue tiles"))
+    });
+    std::thread::sleep(Duration::from_millis(600));
+    let state = s.harness.state();
+    assert_eq!(
+        state.layers[&heat].rasters["heat-0-0"].pixels.data[3], 1,
+        "the unchanged chunk was not sent again"
+    );
+    // The chunks tile the heat map without overlapping.
+    let a = &state.layers[&heat].rasters["heat-0-0"];
+    let b = &state.layers[&heat].rasters["heat-1-0"];
+    assert_eq!(a.x + a.width, b.x);
+}
+
+#[test]
+fn reconstructions_follow_the_panes_display_adjustments() {
+    let s = setup();
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    s.hud_view(PANE, "reconstruction");
+    let mosaic = crate::plugin::mosaic_layer(1, PANE);
+    wait_until("the mosaic", || s.layer_raster_ids(&mosaic) == ["mosaic"]);
+    let (index, plain) = {
+        let state = s.harness.state();
+        let data = &state.layers[&mosaic].rasters["mosaic"].pixels.data;
+        let index = data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .position(|px| px[3] == 255)
+            .expect("an analysed pixel");
+        let px = &data[index * 4..index * 4 + 4];
+        (index, [px[0], px[1], px[2]])
+    };
+    assert_eq!(s.property("adjustment-note"), json!(""));
+    // The user raises the pane's gamma: the reconstruction follows (there
+    // is no event; the plugin re-reads the pane's display).
+    s.harness.state().display = DisplayAdjustments {
+        gamma: 2.0,
+        modified: true,
+        badge: "Display-adjusted".into(),
+        ..Default::default()
+    };
+    let tone = crate::render::DisplayTone {
+        gamma: 2.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        sharpness: 0.0,
+    };
+    let expected = plain.map(|v| (tone.apply_unit(f32::from(v) / 255.0) * 255.0).round() as u8);
+    wait_until("the adjusted mosaic", || {
+        let state = s.harness.state();
+        let data = &state.layers[&mosaic].rasters["mosaic"].pixels.data;
+        data[index * 4..index * 4 + 3] == expected
+    });
+    s.wait_property("the note", "adjustment-note", |v| {
+        v.as_str()
+            .is_some_and(|t| t.contains("display adjustments"))
+    });
+    assert_eq!(s.property("adjustment-warning"), json!(false));
+    // Stain normalisation cannot be reproduced: the note says so.
+    s.harness.state().display = DisplayAdjustments {
+        stain_normalization: Some("macenko".into()),
+        modified: true,
+        badge: "Colour-normalised (Macenko)".into(),
+        ..Default::default()
+    };
+    s.wait_property("the warning", "adjustment-note", |v| {
+        v.as_str()
+            .is_some_and(|t| t.contains("Macenko normalisation"))
+    });
+    assert_eq!(s.property("adjustment-warning"), json!(true));
+}
+
+#[test]
+fn roi_changes_arrive_as_events_without_polling() {
+    let s = setup();
+    let surface = s.start();
+    assert_eq!(s.property("has-roi"), json!(false));
+    let polls = s.harness.calls_to("roi.get").len();
+    let roi = Rect {
+        x: 300.0,
+        y: 140.0,
+        width: 200.0,
+        height: 100.0,
+    };
+    s.harness.state().roi.insert(1, roi);
+    s.harness
+        .send(HostEvent::RoiChanged {
+            file_id: 1,
+            roi: Some(roi),
+        })
+        .unwrap();
+    s.wait_property("ROI button", "has-roi", |v| v == &json!(true));
+    // Sidebar refreshes do not ask the host for the ROI.
+    for _ in 0..3 {
+        s.callback(
+            &surface,
+            "section-toggled",
+            vec![json!("cache"), json!(true)],
+        );
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    assert_eq!(s.harness.calls_to("roi.get").len(), polls);
+    s.harness.state().roi.clear();
+    s.harness
+        .send(HostEvent::RoiChanged {
+            file_id: 1,
+            roi: None,
+        })
+        .unwrap();
+    s.wait_property("no ROI button", "has-roi", |v| v == &json!(false));
+}
+
+#[test]
+fn a_new_grid_changes_the_layers_min_zoom_in_place() {
+    let s = setup();
+    let surface = s.start();
+    s.harness
+        .send(HostEvent::HudButtonClicked {
+            button_id: crate::plugin::HUD_GRID.into(),
+            item_id: None,
+            pane: PANE,
+            view: Some(view(1, 0.0, 0.0, 1024.0, 512.0)),
+        })
+        .unwrap();
+    let grid = crate::plugin::grid_layer(1);
+    wait_until("the grid", || !s.harness.state().objects(&grid).is_empty());
+    let first = s.harness.state().layers[&grid].spec.min_zoom.unwrap();
+    // Level 2 (16.004×) instead of level 1: other lines, another min zoom.
+    s.callback(&surface, "resolution-selected", vec![json!(3)]);
+    wait_until("the new lines", || {
+        s.harness.state().objects(&grid).len() == (8 + 1) + (4 + 1)
+    });
+    let state = s.harness.state();
+    let min_zoom = state.layers[&grid].spec.min_zoom.unwrap();
+    assert!(min_zoom < first, "{min_zoom} vs {first}");
+    assert_eq!(state.calls_to("layer.set_min_zoom").len(), 1);
+    let created = state
+        .calls_to("layer.create")
+        .iter()
+        .filter(|call| call["layer_id"] == json!(grid))
+        .count();
+    assert_eq!(created, 1, "the layer was not recreated");
 }
