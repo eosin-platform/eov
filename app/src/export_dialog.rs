@@ -688,6 +688,92 @@ fn run_export(
     result
 }
 
+// -- scripted exports (`export.view`) ------------------------------------------
+
+/// What a script's export (`export.view`, [`crate::scripting`]) changes
+/// from the dialog's defaults for the slide; `None` keeps a default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScriptedOptions {
+    pub(crate) format: ExportFormat,
+    pub(crate) dpi: Option<u32>,
+    pub(crate) scale_bar: Option<bool>,
+    pub(crate) roi: Option<bool>,
+    pub(crate) measurements: Option<bool>,
+    pub(crate) processing_note: Option<bool>,
+}
+
+/// A pane's view to export for a script, captured on the UI thread with
+/// the dialog's default settings (the pane's colour processing, its ROI,
+/// measurements and overlay layers); [`Self::run`] renders it on a worker
+/// as the dialog's Export does.
+pub(crate) struct ScriptedExport {
+    capture: Capture,
+    settings: SlintExportSettings,
+    format: ExportFormat,
+}
+
+impl ScriptedExport {
+    /// The slide shown in `pane`, or `None` when it shows none.
+    pub(crate) fn capture(
+        state: &AppState,
+        tile_cache: &Arc<TileCache>,
+        pane: PaneId,
+        options: &ScriptedOptions,
+    ) -> Option<Self> {
+        let capture = capture(state, tile_cache, pane, None, false)?;
+        let mut settings = default_settings(state, pane);
+        if let Some(dpi) = options.dpi {
+            settings.dpi = i32::try_from(dpi).unwrap_or(i32::MAX);
+        }
+        if let Some(show) = options.scale_bar {
+            settings.show_scale_bar = show;
+        }
+        if let Some(show) = options.roi {
+            settings.show_roi_outline = show && settings.has_roi;
+        }
+        if let Some(show) = options.measurements {
+            settings.show_measurement = show && settings.has_measurement;
+        }
+        if let Some(show) = options.processing_note {
+            settings.show_processing_note = show;
+        }
+        Some(Self {
+            capture,
+            settings,
+            format: options.format,
+        })
+    }
+
+    /// The image's size in pixels.
+    pub(crate) fn output_size(&self) -> (u32, u32) {
+        ExportRequest::new(
+            self.capture.viewport.clone(),
+            f64::from(self.settings.dpi.max(1)),
+        )
+        .output_size()
+    }
+
+    /// The exported slide's file name.
+    pub(crate) fn file_name(&self) -> &str {
+        &self.capture.file_name
+    }
+
+    /// The exported slide's file id.
+    pub(crate) fn file_id(&self) -> i32 {
+        self.capture.file_id
+    }
+
+    /// Renders the export to `path` (a worker thread); a failed or
+    /// cancelled export leaves no file.
+    pub(crate) fn run(
+        &self,
+        path: &Path,
+        control: &JobControl,
+    ) -> Result<ExportReport, ExportError> {
+        run_export(&self.capture, &self.settings, path, self.format, control)
+    }
+}
+
 // -- the dialog (UI thread) ---------------------------------------------------
 
 /// Opens the export dialog for the slide shown in `pane`.

@@ -43,6 +43,7 @@ mod recent;
 mod render;
 mod render_pool;
 mod save_copy;
+mod scripting;
 mod series_case;
 mod session;
 mod shortcuts;
@@ -179,19 +180,33 @@ fn main() -> Result<()> {
 
     // One eov per user and setup (SH-8): hand the request to the running
     // eov, before this one loads plugins, opens a window or a log file.
+    // An eov that does not hand over still takes the endpoint for scripts
+    // when no other eov holds it.
     let mut instance_server = None;
-    if launch_options.may_forward() && config::load_single_instance() {
+    let forwards = launch_options.may_forward() && config::load_single_instance();
+    let scripting_enabled = config::load_scripting();
+    if forwards || scripting_enabled {
         let endpoint = instance::Endpoint::for_setup(
             &config::resolve_config_path()?,
             &launch_options.plugin_dir,
         );
-        match instance::claim(&endpoint, &open_request, instance::Timing::default()) {
-            instance::Claim::Forwarded => {
-                info!("Handed the files to the running eov");
-                return Ok(());
+        if forwards {
+            match instance::claim(&endpoint, &open_request, instance::Timing::default()) {
+                instance::Claim::Forwarded => {
+                    info!("Handed the files to the running eov");
+                    return Ok(());
+                }
+                instance::Claim::Primary(server) => instance_server = Some(server),
+                instance::Claim::Standalone(reason) => warn!("{reason}"),
             }
-            instance::Claim::Primary(server) => instance_server = Some(server),
-            instance::Claim::Standalone(reason) => warn!("{reason}"),
+        } else {
+            match instance::Server::bind(&endpoint) {
+                Ok(server) => instance_server = server,
+                Err(error) => warn!("Scripts cannot reach this eov: {error}"),
+            }
+            if instance_server.is_none() {
+                info!("Another eov serves scripts for this setup");
+            }
         }
     }
     logging::start_session_log();
@@ -365,14 +380,24 @@ fn main() -> Result<()> {
     host.ready();
     launch::report_problems(&problems);
 
-    // Files handed over by eovs started from now on open here (the
-    // listener only queues them; the event loop opens them).
+    // Files handed over by eovs started from now on open here, and scripts'
+    // calls are answered (the listener only queues them; the event loop
+    // handles them).
     if let Some(server) = instance_server.as_mut() {
-        server.serve(instance::Timing::default(), |request, answer| {
-            let _ = slint::invoke_from_event_loop(move || {
-                let _ = answer.send(launch::open_handed_over(request));
-            });
-        });
+        server.serve(
+            instance::Timing::default(),
+            instance::Handlers {
+                open: Arc::new(|request, answer| {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        let _ = answer.send(launch::open_handed_over(request));
+                    });
+                }),
+                script: Some(scripting::handler(
+                    scripting_enabled,
+                    Arc::clone(&host.shared),
+                )),
+            },
+        );
     }
     // Slides opened from the Finder and eov:// links arrive as Apple
     // events, also while the event loop starts (SH-8).

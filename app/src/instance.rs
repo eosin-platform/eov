@@ -24,10 +24,20 @@
 //!   loop with no lock held, and answers. The second eov exits once the
 //!   files are taken; if the running eov does not answer in time, the
 //!   second one starts on its own instead.
+//! - **Scripts.** The same endpoint serves the scripting interface
+//!   ([`crate::scripting`]) under a second protocol name, `eov-rpc1`: the
+//!   same proof of the secret (for other roles, so that neither handshake
+//!   can be relayed into the other protocol), then any number of calls,
+//!   each a frame of at most 1 MiB answered by a frame of at most 64 MiB
+//!   (pixels). Every
+//!   connection is served on a thread of its own (at most
+//!   [`MAX_CONNECTIONS`]), so a script that keeps its connection open never
+//!   holds up a second eov.
 //! - Subcommands never forward, and neither do `--new-instance`,
 //!   `single_instance = false` in `config.toml` or options that configure
 //!   the process (`--cpu`, `--debug`, ...): see
-//!   [`crate::cli::LaunchOptions::may_forward`].
+//!   [`crate::cli::LaunchOptions::may_forward`]. Such an eov still takes
+//!   the endpoint for scripts when no other eov holds it.
 
 use crate::launch::{OpenRequest, Problem, ViewRequest};
 use hmac::{Hmac, Mac};
@@ -38,7 +48,7 @@ use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -47,12 +57,25 @@ use std::os::unix::net::{UnixListener, UnixStream};
 
 /// Protocol name and version: the first bytes a client sends.
 const MAGIC: &[u8; 8] = b"eov-ipc1";
+/// The scripting protocol's name and version ([`crate::scripting`]).
+pub(crate) const SCRIPT_MAGIC: &[u8; 8] = b"eov-rpc1";
 const SECRET_BYTES: usize = 32;
 const NONCE_BYTES: usize = 32;
 const PROOF_BYTES: usize = 32;
 const MAX_REQUEST_BYTES: u32 = 1 << 20;
 const MAX_REPLY_BYTES: u32 = 64 * 1024;
 const MAX_PATHS: usize = 4096;
+/// Largest call a script may send (its arguments: paths, numbers, shapes).
+pub(crate) const MAX_SCRIPT_REQUEST_BYTES: u32 = 1 << 20;
+/// Largest answer to a script (pixels travel in answers).
+pub(crate) const MAX_SCRIPT_REPLY_BYTES: u32 = 64 << 20;
+/// Connections served at once, each on its own thread; more are refused.
+/// Scripts may hold at most [`crate::scripting::MAX_SESSIONS`] of them,
+/// so hand-overs from other eovs always find a place.
+pub(crate) const MAX_CONNECTIONS: usize = 64;
+/// Most bytes of an oversized call read (and dropped) before it is
+/// answered, so the answer is not lost to a connection reset.
+const MAX_DISCARDED_BYTES: u64 = 64 << 20;
 
 /// How long the two sides wait for each other.
 #[derive(Debug, Clone, Copy)]
@@ -63,6 +86,9 @@ pub(crate) struct Timing {
     pub(crate) answer: Duration,
     /// For a running eov that is starting or exiting to become reachable.
     pub(crate) patience: Duration,
+    /// For a script's next call; after that eov hangs up (scripts
+    /// reconnect).
+    pub(crate) idle: Duration,
 }
 
 impl Default for Timing {
@@ -71,6 +97,7 @@ impl Default for Timing {
             io: Duration::from_secs(5),
             answer: Duration::from_secs(20),
             patience: Duration::from_secs(3),
+            idle: Duration::from_secs(120),
         }
     }
 }
@@ -138,6 +165,61 @@ impl Endpoint {
     fn file(&self, extension: &str) -> PathBuf {
         self.dir.join(format!("{}.{extension}", self.name))
     }
+
+    /// `<name>.info`: where the running eov registers its port, process id
+    /// and secret.
+    pub(crate) fn info_file(&self) -> PathBuf {
+        self.file("info")
+    }
+
+    /// Where this endpoint is, and whether an eov answers there (it is
+    /// asked to prove the secret, nothing more): `eov script-endpoint`.
+    pub(crate) fn status(&self, timing: Timing) -> EndpointStatus {
+        let info = read_info(self).ok();
+        let running = info.as_ref().is_some_and(|info| {
+            open_session(self, info, timing, SCRIPT_MAGIC)
+                .map(drop)
+                .is_ok()
+        });
+        EndpointStatus {
+            name: self.name.clone(),
+            dir: self.dir.clone(),
+            info: self.file("info"),
+            socket: match self.transport {
+                #[cfg(unix)]
+                Transport::Unix => Some(self.file("sock")),
+                Transport::Tcp => None,
+            },
+            port: info
+                .as_ref()
+                .map(|info| info.port)
+                .filter(|_| self.transport == Transport::Tcp),
+            pid: info.as_ref().map(|info| info.pid),
+            running,
+        }
+    }
+}
+
+/// What [`Endpoint::status`] found.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct EndpointStatus {
+    /// `eov-` and 16 hex digits of a hash of eov's home, configuration
+    /// file and plugin folder.
+    pub(crate) name: String,
+    /// The private runtime folder ([`crate::paths::runtime_dir`]).
+    pub(crate) dir: PathBuf,
+    /// `<name>.info`: port, process id and secret, readable by the user
+    /// only.
+    pub(crate) info: PathBuf,
+    /// `<name>.sock`, for a Unix-domain socket (`None`: a localhost port).
+    pub(crate) socket: Option<PathBuf>,
+    /// The localhost port, when that is the transport and an eov
+    /// registered one.
+    pub(crate) port: Option<u16>,
+    /// The process id the endpoint's registration names.
+    pub(crate) pid: Option<u32>,
+    /// Whether an eov proved the secret there just now.
+    pub(crate) running: bool,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -268,16 +350,23 @@ enum Connection {
 
 impl Connection {
     fn set_timeout(&self, timeout: Duration) -> io::Result<()> {
+        self.set_read_timeout(timeout)?;
+        self.set_write_timeout(timeout)
+    }
+
+    fn set_read_timeout(&self, timeout: Duration) -> io::Result<()> {
         match self {
             #[cfg(unix)]
-            Connection::Unix(stream) => {
-                stream.set_read_timeout(Some(timeout))?;
-                stream.set_write_timeout(Some(timeout))
-            }
-            Connection::Tcp(stream) => {
-                stream.set_read_timeout(Some(timeout))?;
-                stream.set_write_timeout(Some(timeout))
-            }
+            Connection::Unix(stream) => stream.set_read_timeout(Some(timeout)),
+            Connection::Tcp(stream) => stream.set_read_timeout(Some(timeout)),
+        }
+    }
+
+    fn set_write_timeout(&self, timeout: Duration) -> io::Result<()> {
+        match self {
+            #[cfg(unix)]
+            Connection::Unix(stream) => stream.set_write_timeout(Some(timeout)),
+            Connection::Tcp(stream) => stream.set_write_timeout(Some(timeout)),
         }
     }
 }
@@ -323,7 +412,12 @@ impl Listener {
             Listener::Unix(listener) => listener
                 .accept()
                 .map(|(stream, _)| Connection::Unix(stream)),
-            Listener::Tcp(listener) => listener.accept().map(|(stream, _)| Connection::Tcp(stream)),
+            Listener::Tcp(listener) => listener.accept().map(|(stream, _)| {
+                // A frame's length and body go out as two writes: without
+                // this, the body waits for the peer's delayed ACK (~40 ms).
+                let _ = stream.set_nodelay(true);
+                Connection::Tcp(stream)
+            }),
         }
     }
 }
@@ -334,7 +428,10 @@ fn connect(endpoint: &Endpoint, info: &Info, timeout: Duration) -> io::Result<Co
         Transport::Unix => UnixStream::connect(endpoint.file("sock")).map(Connection::Unix),
         Transport::Tcp => {
             TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, info.port)), timeout)
-                .map(Connection::Tcp)
+                .map(|stream| {
+                    let _ = stream.set_nodelay(true);
+                    Connection::Tcp(stream)
+                })
         }
     }
 }
@@ -474,6 +571,93 @@ struct Reply {
 /// How the running eov answers a request: `Ok` once the files are taken.
 pub(crate) type Answer = mpsc::Sender<Result<(), String>>;
 
+/// Gets each open request with the channel to answer on; it must not
+/// block (it hands the request to the UI thread).
+pub(crate) type OpenHandler = dyn Fn(OpenRequest, Answer) + Send + Sync;
+
+/// Serves one authenticated scripting connection until the script hangs up
+/// (on the connection's own thread).
+pub(crate) type ScriptHandler = dyn Fn(ScriptConnection) + Send + Sync;
+
+/// What the running eov does with what arrives.
+pub(crate) struct Handlers {
+    pub(crate) open: Arc<OpenHandler>,
+    /// `None` hangs up on scripts once they proved the secret.
+    pub(crate) script: Option<Arc<ScriptHandler>>,
+}
+
+/// An authenticated scripting connection (`eov-rpc1`): calls arrive as
+/// frames of at most [`MAX_SCRIPT_REQUEST_BYTES`], each answered by a frame
+/// of at most [`MAX_SCRIPT_REPLY_BYTES`].
+pub(crate) struct ScriptConnection {
+    connection: Connection,
+    timing: Timing,
+    closing: Arc<AtomicBool>,
+}
+
+/// Why [`ScriptConnection::next_call`] has no call.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CallError {
+    /// A call of this many bytes, more than [`MAX_SCRIPT_REQUEST_BYTES`]:
+    /// answer it, then hang up (its bytes are not read).
+    TooLarge(u32),
+    /// The script hung up, broke off, stayed silent longer than
+    /// [`Timing::idle`], or eov is closing.
+    Closed,
+}
+
+impl ScriptConnection {
+    /// Waits for the script's next call.
+    pub(crate) fn next_call(&mut self) -> Result<Vec<u8>, CallError> {
+        if self.closing() {
+            return Err(CallError::Closed);
+        }
+        let closed = |_| CallError::Closed;
+        self.connection
+            .set_read_timeout(self.timing.idle)
+            .map_err(closed)?;
+        let mut length = [0; 4];
+        self.connection.read_exact(&mut length).map_err(closed)?;
+        let length = u32::from_be_bytes(length);
+        if length > MAX_SCRIPT_REQUEST_BYTES {
+            // Hanging up on unread bytes resets the connection, which can
+            // take the answer with it: read them first (within reason).
+            let _ = self.connection.set_read_timeout(self.timing.io);
+            let _ = io::copy(
+                &mut (&mut self.connection).take(u64::from(length).min(MAX_DISCARDED_BYTES)),
+                &mut io::sink(),
+            );
+            return Err(CallError::TooLarge(length));
+        }
+        // The rest of a call follows at once.
+        self.connection
+            .set_read_timeout(self.timing.io)
+            .map_err(closed)?;
+        let mut body = vec![0; length as usize];
+        self.connection.read_exact(&mut body).map_err(closed)?;
+        Ok(body)
+    }
+
+    /// Sends the answer to the last call.
+    pub(crate) fn answer(&mut self, body: &[u8]) -> io::Result<()> {
+        if body.len() > MAX_SCRIPT_REPLY_BYTES as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the answer is larger than the protocol allows",
+            ));
+        }
+        // Pixels may take a moment for a busy script to read.
+        self.connection
+            .set_write_timeout(self.timing.io.max(Duration::from_secs(60)))?;
+        write_frame(&mut self.connection, body)
+    }
+
+    /// Whether eov is shutting down (the session should end).
+    pub(crate) fn closing(&self) -> bool {
+        self.closing.load(Ordering::Acquire)
+    }
+}
+
 /// The endpoint of the running eov. Dropping it stops serving, removes the
 /// endpoint's files and releases the lock, so the next eov can take over.
 pub(crate) struct Server {
@@ -488,7 +672,7 @@ pub(crate) struct Server {
 
 impl Server {
     /// Takes the endpoint, unless another eov holds it (`Ok(None)`).
-    fn bind(endpoint: &Endpoint) -> io::Result<Option<Self>> {
+    pub(crate) fn bind(endpoint: &Endpoint) -> io::Result<Option<Self>> {
         private_dir(&endpoint.dir)?;
         let lock = OpenOptions::new()
             .create(true)
@@ -537,19 +721,16 @@ impl Server {
         }))
     }
 
-    /// Serves requests on a thread. `deliver` gets each request with the
-    /// channel to answer on; it must not block (it hands the request to
-    /// the UI thread).
-    pub(crate) fn serve(
-        &mut self,
-        timing: Timing,
-        deliver: impl Fn(OpenRequest, Answer) + Send + 'static,
-    ) {
+    /// Serves connections on a thread, each on a thread of its own (at most
+    /// [`MAX_CONNECTIONS`] at once).
+    pub(crate) fn serve(&mut self, timing: Timing, handlers: Handlers) {
         let Some(listener) = self.listener.take() else {
             return;
         };
         let secret = self.secret;
         let closing = Arc::clone(&self.closing);
+        let handlers = Arc::new(handlers);
+        let active = Arc::new(AtomicUsize::new(0));
         let spawned = std::thread::Builder::new()
             .name("eov-instance".to_string())
             .spawn(move || {
@@ -565,13 +746,41 @@ impl Server {
                             continue;
                         }
                     };
-                    if let Err(error) = handle(connection, &secret, timing, &closing, &deliver) {
-                        tracing::debug!("Refused a request from another eov: {error}");
+                    if active.fetch_add(1, Ordering::AcqRel) >= MAX_CONNECTIONS {
+                        active.fetch_sub(1, Ordering::AcqRel);
+                        tracing::debug!("Hung up on a connection: {MAX_CONNECTIONS} are open");
+                        continue;
+                    }
+                    let (handlers, closing, served) = (
+                        Arc::clone(&handlers),
+                        Arc::clone(&closing),
+                        Arc::clone(&active),
+                    );
+                    let spawned = std::thread::Builder::new()
+                        .name("eov-connection".to_string())
+                        .spawn(move || {
+                            // Frees the place however the thread ends.
+                            struct Served(Arc<AtomicUsize>);
+                            impl Drop for Served {
+                                fn drop(&mut self) {
+                                    self.0.fetch_sub(1, Ordering::AcqRel);
+                                }
+                            }
+                            let _served = Served(served);
+                            if let Err(error) =
+                                handle(connection, &secret, timing, &closing, &handlers)
+                            {
+                                tracing::debug!("Refused a connection: {error}");
+                            }
+                        });
+                    if let Err(error) = spawned {
+                        active.fetch_sub(1, Ordering::AcqRel);
+                        tracing::warn!("Cannot serve a connection: {error}");
                     }
                 }
             });
         if let Err(error) = spawned {
-            tracing::warn!("Other eovs cannot hand files to this one: {error}");
+            tracing::warn!("Other eovs and scripts cannot reach this one: {error}");
         }
     }
 }
@@ -587,35 +796,76 @@ impl Drop for Server {
     }
 }
 
-/// Serves one connection: mutual proof of the secret, the request, the
-/// answer.
-fn handle(
-    mut connection: Connection,
-    secret: &[u8; SECRET_BYTES],
-    timing: Timing,
-    closing: &AtomicBool,
-    deliver: &impl Fn(OpenRequest, Answer),
-) -> io::Result<()> {
-    connection.set_timeout(timing.io)?;
-    let mut magic = [0; MAGIC.len()];
-    connection.read_exact(&mut magic)?;
-    if &magic != MAGIC {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "not an eov"));
+/// The roles the server and the client prove the secret as in protocol
+/// `magic`. Scripts prove other roles than eovs handing over files, so a
+/// handshake of one protocol can never be relayed into the other. The
+/// single-instance roles are unchanged, so eovs of other versions still
+/// hand files to each other.
+fn roles(magic: &[u8; 8]) -> (&'static [u8], &'static [u8]) {
+    if magic == SCRIPT_MAGIC {
+        (b"rpc-server", b"rpc-client")
+    } else {
+        (b"server", b"client")
     }
+}
+
+/// Proves the secret to a client of protocol `magic` and has it prove the
+/// secret back (the client's nonce follows the protocol name it sent).
+fn authenticate(
+    connection: &mut Connection,
+    secret: &[u8; SECRET_BYTES],
+    magic: &[u8; 8],
+) -> io::Result<()> {
+    let (server, client) = roles(magic);
     let mut client_nonce = [0; NONCE_BYTES];
     connection.read_exact(&mut client_nonce)?;
     let server_nonce = random_bytes::<NONCE_BYTES>();
-    connection.write_all(&proof(secret, b"server", &client_nonce))?;
+    connection.write_all(&proof(secret, server, &client_nonce))?;
     connection.write_all(&server_nonce)?;
     connection.flush()?;
     let mut client_proof = [0; PROOF_BYTES];
     connection.read_exact(&mut client_proof)?;
-    if !proof_holds(secret, b"client", &server_nonce, &client_proof) {
+    if !proof_holds(secret, client, &server_nonce, &client_proof) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "the client does not know the secret",
         ));
     }
+    Ok(())
+}
+
+/// Serves one connection: the protocol name, mutual proof of the secret,
+/// then the request and its answer, or a scripting session.
+fn handle(
+    mut connection: Connection,
+    secret: &[u8; SECRET_BYTES],
+    timing: Timing,
+    closing: &Arc<AtomicBool>,
+    handlers: &Handlers,
+) -> io::Result<()> {
+    connection.set_timeout(timing.io)?;
+    let mut magic = [0; MAGIC.len()];
+    connection.read_exact(&mut magic)?;
+    let script = if &magic == MAGIC {
+        false
+    } else if &magic == SCRIPT_MAGIC {
+        true
+    } else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "not an eov"));
+    };
+    authenticate(&mut connection, secret, &magic)?;
+    if script {
+        let Some(serve) = &handlers.script else {
+            return Err(io::Error::other("scripts are not served"));
+        };
+        serve(ScriptConnection {
+            connection,
+            timing,
+            closing: Arc::clone(closing),
+        });
+        return Ok(());
+    }
+    let deliver = &handlers.open;
     let outcome = match read_frame(&mut connection, MAX_REQUEST_BYTES) {
         Err(error) if error.kind() == io::ErrorKind::InvalidData => Err(error.to_string()),
         Err(error) => return Err(error),
@@ -668,35 +918,38 @@ impl std::fmt::Display for ForwardError {
     }
 }
 
-/// Opens an authenticated connection to the running eov: it must prove
-/// the secret before this side does, and before any path is sent.
+/// Opens an authenticated connection to the running eov for protocol
+/// `magic`: it must prove the secret before this side does, and before
+/// any path is sent.
 fn open_session(
     endpoint: &Endpoint,
     info: &Info,
     timing: Timing,
+    magic: &[u8; 8],
 ) -> Result<Connection, ForwardError> {
     let mut connection = connect(endpoint, info, timing.io).map_err(ForwardError::Unreachable)?;
     connection
         .set_timeout(timing.io)
         .map_err(ForwardError::Unreachable)?;
+    let (server, client) = roles(magic);
     let client_nonce = random_bytes::<NONCE_BYTES>();
     let mut server_proof = [0; PROOF_BYTES];
     let mut server_nonce = [0; NONCE_BYTES];
     connection
-        .write_all(MAGIC)
+        .write_all(magic)
         .and_then(|()| connection.write_all(&client_nonce))
         .and_then(|()| connection.flush())
         .and_then(|()| connection.read_exact(&mut server_proof))
         .and_then(|()| connection.read_exact(&mut server_nonce))
         .map_err(ForwardError::Unreachable)?;
-    if !proof_holds(&info.secret, b"server", &client_nonce, &server_proof) {
+    if !proof_holds(&info.secret, server, &client_nonce, &server_proof) {
         return Err(ForwardError::Failed(format!(
             "the program listening at {} is not the eov that registered there",
             endpoint.dir.display()
         )));
     }
     connection
-        .write_all(&proof(&info.secret, b"client", &server_nonce))
+        .write_all(&proof(&info.secret, client, &server_nonce))
         .map_err(|error| ForwardError::Failed(error.to_string()))?;
     Ok(connection)
 }
@@ -711,7 +964,7 @@ fn forward(endpoint: &Endpoint, request: &OpenRequest, timing: Timing) -> Result
         ));
     }
     allow_to_come_forward(info.pid);
-    let mut connection = open_session(endpoint, &info, timing)?;
+    let mut connection = open_session(endpoint, &info, timing, MAGIC)?;
     write_frame(&mut connection, &body).map_err(|error| ForwardError::Failed(error.to_string()))?;
     connection
         .set_timeout(timing.answer + timing.io)
@@ -726,6 +979,68 @@ fn forward(endpoint: &Endpoint, request: &OpenRequest, timing: Timing) -> Result
         Err(ForwardError::Refused(
             reply.message.unwrap_or_else(|| "refused".to_string()),
         ))
+    }
+}
+
+/// Why `eov call` could not reach the running eov.
+#[derive(Debug)]
+pub(crate) enum ScriptConnectError {
+    /// No eov runs for this setup (nothing registered, or nothing answers).
+    NotRunning(String),
+    /// Something answered that is not the eov that registered there, or
+    /// the exchange broke off.
+    Failed(String),
+}
+
+impl std::fmt::Display for ScriptConnectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptConnectError::NotRunning(message) | ScriptConnectError::Failed(message) => {
+                f.write_str(message)
+            }
+        }
+    }
+}
+
+/// A scripting connection to the running eov (`eov call`).
+pub(crate) struct ScriptClient {
+    connection: Connection,
+}
+
+/// Connects to the scripting interface of the eov running at `endpoint`.
+pub(crate) fn connect_script(
+    endpoint: &Endpoint,
+    timing: Timing,
+) -> Result<ScriptClient, ScriptConnectError> {
+    let not_running = |error: &dyn std::fmt::Display| {
+        ScriptConnectError::NotRunning(format!(
+            "no eov is running for this setup (nothing answers at {}: {error})",
+            endpoint.file("info").display()
+        ))
+    };
+    let info = read_info(endpoint).map_err(|error| not_running(&error))?;
+    match open_session(endpoint, &info, timing, SCRIPT_MAGIC) {
+        Ok(connection) => Ok(ScriptClient { connection }),
+        Err(ForwardError::Unreachable(error)) => Err(not_running(&error)),
+        Err(error) => Err(ScriptConnectError::Failed(error.to_string())),
+    }
+}
+
+impl ScriptClient {
+    /// Sends one call and waits up to `timeout` for its answer.
+    pub(crate) fn call(&mut self, request: &[u8], timeout: Duration) -> io::Result<Vec<u8>> {
+        if request.len() > MAX_SCRIPT_REQUEST_BYTES as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "the call is {} bytes, more than the {MAX_SCRIPT_REQUEST_BYTES} eov accepts",
+                    request.len()
+                ),
+            ));
+        }
+        write_frame(&mut self.connection, request)?;
+        self.connection.set_read_timeout(timeout)?;
+        read_frame(&mut self.connection, MAX_SCRIPT_REPLY_BYTES)
     }
 }
 
@@ -804,6 +1119,7 @@ mod tests {
             io: Duration::from_millis(500),
             answer: Duration::from_secs(5),
             patience: Duration::from_millis(300),
+            idle: Duration::from_secs(5),
         }
     }
 
@@ -834,15 +1150,55 @@ mod tests {
 
     /// A running eov that records what it is handed.
     fn running(endpoint: &Endpoint) -> (Server, mpsc::Receiver<OpenRequest>) {
-        let Claim::Primary(mut server) = claim(endpoint, &OpenRequest::default(), fast()) else {
+        running_with(endpoint, fast(), None)
+    }
+
+    fn running_with(
+        endpoint: &Endpoint,
+        timing: Timing,
+        script: Option<Arc<ScriptHandler>>,
+    ) -> (Server, mpsc::Receiver<OpenRequest>) {
+        let Claim::Primary(mut server) = claim(endpoint, &OpenRequest::default(), timing) else {
             panic!("the first eov must serve the endpoint");
         };
         let (sender, received) = mpsc::channel();
-        server.serve(fast(), move |request, answer| {
-            sender.send(request).unwrap();
-            answer.send(Ok(())).unwrap();
-        });
+        server.serve(
+            timing,
+            Handlers {
+                open: Arc::new(move |request, answer| {
+                    sender.send(request).unwrap();
+                    answer.send(Ok(())).unwrap();
+                }),
+                script,
+            },
+        );
         (server, received)
+    }
+
+    /// A scripting handler that answers every call with `echo:` and the
+    /// call, and reports how its sessions ended.
+    fn echo_scripts() -> (Arc<ScriptHandler>, mpsc::Receiver<CallError>) {
+        let (sender, ended) = mpsc::channel();
+        let sender = parking_lot::Mutex::new(sender);
+        let handler: Arc<ScriptHandler> = Arc::new(move |mut connection: ScriptConnection| {
+            loop {
+                match connection.next_call() {
+                    Ok(call) => {
+                        let mut answer = b"echo:".to_vec();
+                        answer.extend_from_slice(&call);
+                        connection.answer(&answer).unwrap();
+                    }
+                    Err(error) => {
+                        if matches!(error, CallError::TooLarge(_)) {
+                            let _ = connection.answer(b"too large");
+                        }
+                        let _ = sender.lock().send(error);
+                        return;
+                    }
+                }
+            }
+        });
+        (handler, ended)
     }
 
     #[test]
@@ -955,7 +1311,7 @@ mod tests {
             info.secret = [9; SECRET_BYTES];
             // The server's proof does not hold for the wrong secret: the
             // client stops before sending anything.
-            let error = open_session(&endpoint, &info, fast()).err().unwrap();
+            let error = open_session(&endpoint, &info, fast(), MAGIC).err().unwrap();
             assert!(matches!(error, ForwardError::Failed(_)), "{error}");
 
             // A client that skips the proof is cut off.
@@ -981,7 +1337,7 @@ mod tests {
             let (_server, received) = running(&endpoint);
             let info = read_info(&endpoint).unwrap();
 
-            let mut connection = open_session(&endpoint, &info, fast()).unwrap();
+            let mut connection = open_session(&endpoint, &info, fast(), MAGIC).unwrap();
             connection
                 .write_all(&(MAX_REQUEST_BYTES + 1).to_be_bytes())
                 .unwrap();
@@ -990,7 +1346,7 @@ mod tests {
                     .unwrap();
             assert!(!reply.ok);
 
-            let mut connection = open_session(&endpoint, &info, fast()).unwrap();
+            let mut connection = open_session(&endpoint, &info, fast(), MAGIC).unwrap();
             write_frame(&mut connection, br#"{"tabs":[{"path":"relative.svs"}]}"#).unwrap();
             let reply: Reply =
                 serde_json::from_slice(&read_frame(&mut connection, MAX_REPLY_BYTES).unwrap())
@@ -1072,5 +1428,243 @@ mod tests {
         let b = Endpoint::for_setup(&absolute("b.toml"), &absolute("plugins"));
         assert_ne!(a.name, b.name);
         assert!(a.dir.starts_with(crate::paths::isolate_for_tests()));
+    }
+
+    // -- scripts -------------------------------------------------------------------
+
+    #[test]
+    fn scripts_make_many_calls_over_one_connection() {
+        for transport in transports() {
+            let dir = tempfile::tempdir().unwrap();
+            let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), transport);
+            let (handler, ended) = echo_scripts();
+            let (_server, _) = running_with(&endpoint, fast(), Some(handler));
+            let mut client = connect_script(&endpoint, fast()).unwrap();
+            for call in [&b"{\"method\":\"version\"}"[..], b"second", b""] {
+                let answer = client.call(call, fast().io).unwrap();
+                assert_eq!(answer, [b"echo:", call].concat());
+            }
+            drop(client);
+            assert_eq!(
+                ended.recv_timeout(Duration::from_secs(5)).unwrap(),
+                CallError::Closed
+            );
+        }
+    }
+
+    /// Frames go out as two writes (length, body): over TCP, Nagle's
+    /// algorithm would hold each answer for the peer's delayed ACK (~40 ms).
+    #[test]
+    fn calls_over_a_port_answer_without_delay() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let (handler, _ended) = echo_scripts();
+        let (_server, _) = running_with(&endpoint, fast(), Some(handler));
+        let mut client = connect_script(&endpoint, fast()).unwrap();
+        client.call(b"warm up", fast().io).unwrap();
+        let started = Instant::now();
+        for _ in 0..20 {
+            client.call(b"{}", fast().io).unwrap();
+        }
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(400),
+            "20 calls took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn scripts_must_prove_the_secret() {
+        for transport in transports() {
+            let dir = tempfile::tempdir().unwrap();
+            let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), transport);
+            let (handler, ended) = echo_scripts();
+            let (_server, _) = running_with(&endpoint, fast(), Some(handler));
+
+            // The server's proof does not hold for the wrong secret.
+            let mut info = read_info(&endpoint).unwrap();
+            info.secret = [3; SECRET_BYTES];
+            assert!(matches!(
+                open_session(&endpoint, &info, fast(), SCRIPT_MAGIC),
+                Err(ForwardError::Failed(_))
+            ));
+
+            // A script that does not know the secret is cut off before its
+            // call reaches the handler.
+            let info = read_info(&endpoint).unwrap();
+            let mut connection = connect(&endpoint, &info, fast().io).unwrap();
+            connection.set_timeout(fast().io).unwrap();
+            connection.write_all(SCRIPT_MAGIC).unwrap();
+            connection.write_all(&[0; NONCE_BYTES]).unwrap();
+            let mut answer = [0; PROOF_BYTES + NONCE_BYTES];
+            connection.read_exact(&mut answer).unwrap();
+            connection.write_all(&[0; PROOF_BYTES]).unwrap();
+            let _ = write_frame(&mut connection, b"{\"method\":\"slides\"}");
+            assert!(read_frame(&mut connection, MAX_SCRIPT_REPLY_BYTES).is_err());
+            assert!(ended.recv_timeout(Duration::from_millis(300)).is_err());
+        }
+    }
+
+    /// A program a client mistakes for eov (a hijacked port) relays the
+    /// client's handshake to the real eov under the other protocol: the
+    /// client sees through it, and no session opens.
+    #[test]
+    fn handshakes_cannot_be_relayed_into_the_other_protocol() {
+        for (client_protocol, relayed_as) in [(MAGIC, SCRIPT_MAGIC), (SCRIPT_MAGIC, MAGIC)] {
+            let dir = tempfile::tempdir().unwrap();
+            let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+            let (handler, ended) = echo_scripts();
+            let (_server, received) = running_with(&endpoint, fast(), Some(handler));
+            let real = read_info(&endpoint).unwrap();
+            let relay = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let relay_port = relay.local_addr().unwrap().port();
+            std::thread::spawn(move || {
+                let (mut client, _) = relay.accept().unwrap();
+                let mut eov = TcpStream::connect((Ipv4Addr::LOCALHOST, real.port)).unwrap();
+                let mut magic = [0; 8];
+                client.read_exact(&mut magic).unwrap();
+                eov.write_all(relayed_as).unwrap();
+                let (mut client_in, mut eov_out) =
+                    (client.try_clone().unwrap(), eov.try_clone().unwrap());
+                std::thread::spawn(move || {
+                    let _ = io::copy(&mut client_in, &mut eov_out);
+                });
+                let _ = io::copy(&mut eov, &mut client);
+            });
+            let decoy = Info {
+                port: relay_port,
+                ..read_info(&endpoint).unwrap()
+            };
+            let relayed = open_session(&endpoint, &decoy, fast(), client_protocol);
+            assert!(
+                matches!(relayed, Err(ForwardError::Failed(_))),
+                "the client must refuse the relayed proof"
+            );
+            assert!(ended.recv_timeout(Duration::from_millis(300)).is_err());
+            assert!(received.recv_timeout(Duration::from_millis(100)).is_err());
+        }
+        assert_ne!(roles(MAGIC), roles(SCRIPT_MAGIC));
+    }
+
+    #[test]
+    fn oversized_script_calls_are_answered_and_hung_up_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let (handler, ended) = echo_scripts();
+        let (_server, _) = running_with(&endpoint, fast(), Some(handler));
+        let info = read_info(&endpoint).unwrap();
+        let mut connection = open_session(&endpoint, &info, fast(), SCRIPT_MAGIC).unwrap();
+        // The whole call: hanging up on its unread bytes would reset the
+        // connection and lose the answer.
+        connection
+            .write_all(&(MAX_SCRIPT_REQUEST_BYTES + 1).to_be_bytes())
+            .unwrap();
+        connection
+            .write_all(&vec![b' '; MAX_SCRIPT_REQUEST_BYTES as usize + 1])
+            .unwrap();
+        assert_eq!(
+            read_frame(&mut connection, MAX_SCRIPT_REPLY_BYTES).unwrap(),
+            b"too large"
+        );
+        assert_eq!(
+            ended.recv_timeout(Duration::from_secs(5)).unwrap(),
+            CallError::TooLarge(MAX_SCRIPT_REQUEST_BYTES + 1)
+        );
+        // And a client refuses to send one.
+        let mut client = connect_script(&endpoint, fast()).unwrap();
+        let huge = vec![b' '; MAX_SCRIPT_REQUEST_BYTES as usize + 1];
+        assert!(client.call(&huge, fast().io).is_err());
+    }
+
+    #[test]
+    fn idle_scripts_are_hung_up_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let timing = Timing {
+            idle: Duration::from_millis(200),
+            ..fast()
+        };
+        let (handler, ended) = echo_scripts();
+        let (_server, _) = running_with(&endpoint, timing, Some(handler));
+        let _client = connect_script(&endpoint, timing).unwrap();
+        assert_eq!(
+            ended.recv_timeout(Duration::from_secs(5)).unwrap(),
+            CallError::Closed
+        );
+    }
+
+    #[test]
+    fn open_scripts_do_not_hold_up_a_second_eov() {
+        for transport in transports() {
+            let dir = tempfile::tempdir().unwrap();
+            let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), transport);
+            let (handler, _ended) = echo_scripts();
+            let (_server, received) = running_with(&endpoint, fast(), Some(handler));
+            let mut scripts: Vec<ScriptClient> = (0..4)
+                .map(|_| connect_script(&endpoint, fast()).unwrap())
+                .collect();
+            assert!(matches!(
+                claim(&endpoint, &sample_request(), fast()),
+                Claim::Forwarded
+            ));
+            assert_eq!(
+                received.recv_timeout(Duration::from_secs(5)).unwrap(),
+                sample_request()
+            );
+            for script in &mut scripts {
+                assert_eq!(script.call(b"x", fast().io).unwrap(), b"echo:x");
+            }
+        }
+    }
+
+    #[test]
+    fn connections_beyond_the_limit_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let (handler, _ended) = echo_scripts();
+        let (_server, _) = running_with(&endpoint, fast(), Some(handler));
+        let open: Vec<ScriptClient> = (0..MAX_CONNECTIONS)
+            .map(|_| connect_script(&endpoint, fast()).unwrap())
+            .collect();
+        assert!(connect_script(&endpoint, fast()).is_err());
+        drop(open);
+        // Closed sessions free their places.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while connect_script(&endpoint, fast()).is_err() {
+            assert!(Instant::now() < deadline, "no place came free");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn scripts_are_turned_away_without_a_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let (_server, _) = running(&endpoint);
+        // Authenticated, then hung up on.
+        let mut client = connect_script(&endpoint, fast()).unwrap();
+        assert!(client.call(b"{}", fast().io).is_err());
+    }
+
+    #[test]
+    fn the_status_says_whether_an_eov_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let status = endpoint.status(fast());
+        assert!(!status.running);
+        assert_eq!(status.pid, None);
+        assert!(matches!(
+            connect_script(&endpoint, fast()),
+            Err(ScriptConnectError::NotRunning(_))
+        ));
+        let (handler, _ended) = echo_scripts();
+        let (server, _) = running_with(&endpoint, fast(), Some(handler));
+        let status = endpoint.status(fast());
+        assert!(status.running);
+        assert_eq!(status.pid, Some(std::process::id()));
+        assert!(status.port.is_some_and(|port| port > 0));
+        assert_eq!(status.info, endpoint.file("info"));
+        drop(server);
+        assert!(!endpoint.status(fast()).running);
     }
 }

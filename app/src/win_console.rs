@@ -31,7 +31,7 @@ use std::path::Path;
 pub const LAUNCHER_ENV: &str = "EOV_CONSOLE_LAUNCHER";
 
 /// Subcommands (and aliases) that produce console output.
-const SUBCOMMANDS: &[&str] = &[
+pub(crate) const SUBCOMMANDS: &[&str] = &[
     "update",
     "upgrade",
     "plugin",
@@ -42,6 +42,11 @@ const SUBCOMMANDS: &[&str] = &[
     "register-file-types",
     "unregister-file-types",
     "dataset",
+    "qc",
+    "convert",
+    "batch",
+    "call",
+    "script-endpoint",
     "help",
     "plugin-window",
 ];

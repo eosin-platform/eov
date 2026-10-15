@@ -703,6 +703,38 @@ enum CliCommand {
         #[command(subcommand)]
         command: BatchCommand,
     },
+    /// Call a method of the running eov's scripting interface and print
+    /// the result as JSON.
+    ///
+    /// PARAMS is a JSON object, `-` to read it from standard input, or
+    /// @FILE; a relative "path" is taken from the current folder.
+    ///
+    /// Examples:
+    ///   eov call slides
+    ///   eov call open '{"path": "slide.svs", "view": {"zoom": "20x"}}'
+    ///   eov call region.read '{"x": 1000, "y": 2000, "width": 512, "height": 512}' --out tile.png
+    #[command(after_help = "EXIT STATUS:\n  \
+    0    the call succeeded\n  \
+    1    the call failed (the message says why)\n  \
+    2    invalid arguments, parameters or method (nothing was done)\n  \
+    3    no eov is running for this setup")]
+    Call {
+        /// The method, e.g. `slides` (`eov call version` lists them all).
+        method: String,
+        /// The parameters: a JSON object, `-` (standard input) or @FILE.
+        params: Option<String>,
+        /// Write the answer's binary data (region.read) to this file instead
+        /// of printing it.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
+    /// Show where scripts reach the eov of this setup (socket or port, and
+    /// the file with the secret that only you can read).
+    ScriptEndpoint {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -969,7 +1001,12 @@ SINGLE INSTANCE:
   While eov runs, `eov FILES` hands the files to it, which opens them as
   tabs, and exits. Options that configure the viewer itself (--cpu,
   --debug, --window-x, ...) start a separate eov, as do --new-instance and
-  single_instance = false in config.toml.";
+  single_instance = false in config.toml.
+
+SCRIPTING:
+  Scripts drive the running eov through the same local endpoint: see
+  `eov call --help`, `eov script-endpoint` and clients/python in the
+  source. scripting = false in config.toml turns it off.";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -1125,6 +1162,15 @@ enum CommandAction {
     Convert(Box<ConvertArgs>),
     BatchList { json: bool },
     BatchRun(Box<crate::batch::RunOptions>),
+    Call(ScriptCall),
+    ScriptEndpoint { json: bool },
+}
+
+/// A parsed `eov call`.
+struct ScriptCall {
+    method: String,
+    params: Option<String>,
+    out: Option<PathBuf>,
 }
 
 pub(crate) struct LaunchOptions {
@@ -1300,6 +1346,16 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
                 }))
             }
         },
+        Some(CliCommand::Call {
+            method,
+            params,
+            out,
+        }) => CommandAction::Call(ScriptCall {
+            method,
+            params,
+            out,
+        }),
+        Some(CliCommand::ScriptEndpoint { json }) => CommandAction::ScriptEndpoint { json },
         None => CommandAction::LaunchUi,
     };
 
@@ -1482,6 +1538,41 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
                 std::process::exit(1);
             }
             Ok(true)
+        }
+        CommandAction::Call(call) => {
+            run_call(&launch_options.plugin_dir, call)?;
+            Ok(true)
+        }
+        CommandAction::ScriptEndpoint { json } => {
+            let endpoint = crate::instance::Endpoint::for_setup(
+                &config::resolve_config_path()?,
+                &launch_options.plugin_dir,
+            );
+            println!(
+                "{}",
+                crate::scripting::client::describe(&endpoint, config::load_scripting(), *json)
+            );
+            Ok(true)
+        }
+    }
+}
+
+/// `eov call`: prints the result, or the error and exits with the status
+/// `eov call --help` lists.
+fn run_call(plugin_dir: &Path, call: &ScriptCall) -> Result<()> {
+    use crate::scripting::client;
+    let endpoint =
+        crate::instance::Endpoint::for_setup(&config::resolve_config_path()?, plugin_dir);
+    let outcome = client::parse_params(call.params.as_deref(), &client::current_dir())
+        .and_then(|params| client::call(&endpoint, &call.method, params, call.out.as_deref()));
+    match outcome {
+        Ok(result) => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        Err(failure) => {
+            eprintln!("eov: {}", failure.message);
+            dataset_exit(failure.status)
         }
     }
 }
@@ -2235,6 +2326,38 @@ mod tests {
         let options = parse(&["--window-x", "-200", "--window-y", "40"]).unwrap();
         assert_eq!(options.window_geometry.x, Some(-200));
         assert_eq!(options.window_geometry.y, Some(40));
+    }
+
+    /// The Windows GUI build attaches to the console only for the
+    /// subcommands `win_console` knows; any other would print nothing.
+    #[test]
+    fn every_subcommand_gets_the_console_on_windows() {
+        use clap::CommandFactory;
+        for subcommand in Cli::command().get_subcommands() {
+            for name in std::iter::once(subcommand.get_name()).chain(subcommand.get_all_aliases()) {
+                assert!(
+                    crate::win_console::SUBCOMMANDS.contains(&name),
+                    "`{name}` is missing from win_console::SUBCOMMANDS"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn scripting_calls_parse() {
+        let options = parse(&["call", "region.read", "{\"x\": 1}", "--out", "tile.png"]).unwrap();
+        assert!(!options.launches_ui() && !options.may_forward());
+        let CommandAction::Call(call) = &options.command else {
+            panic!("not a call");
+        };
+        assert_eq!(call.method, "region.read");
+        assert_eq!(call.params.as_deref(), Some("{\"x\": 1}"));
+        assert_eq!(call.out.as_deref(), Some(Path::new("tile.png")));
+        assert!(matches!(
+            parse(&["script-endpoint", "--json"]).unwrap().command,
+            CommandAction::ScriptEndpoint { json: true }
+        ));
+        assert!(parse(&["call"]).is_err(), "a call names its method");
     }
 
     #[test]

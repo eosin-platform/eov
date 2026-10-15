@@ -249,6 +249,12 @@ pub(crate) fn storage_locations(
         runtime_dir(),
         Folder,
     );
+    add(
+        "script-endpoint",
+        "How scripts reach the running eov: port, process id and secret (only you can read it)",
+        crate::instance::Endpoint::for_setup(config_file, plugin_dir).info_file(),
+        File,
+    );
     if let Some(policy_file) = policy_file {
         add(
             "policy",
@@ -342,6 +348,7 @@ mod tests {
             "plugin-packages-cache",
             "thumbnail-cache",
             "plugin-caches",
+            "script-endpoint",
         ] {
             assert!(ids.contains(&id), "{id} is not listed");
         }
