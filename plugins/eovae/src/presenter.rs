@@ -677,8 +677,14 @@ fn refresh_file<B: Backend>(
     match ctx.as_ref().filter(|_| !grid_panes.is_empty()) {
         Some(ctx) => {
             let grid = ctx.grid;
-            let descriptor = format!("{}x{}@{:.6}", grid.cols, grid.rows, grid.step0());
-            let min_zoom = Some(6.0 / grid.step0());
+            let descriptor = format!(
+                "{}x{}@{:.6}x{:.6}",
+                grid.cols,
+                grid.rows,
+                grid.step_x(),
+                grid.step_y()
+            );
+            let min_zoom = Some(6.0 / grid.step_min());
             if !overlay.grid_layer {
                 if host.create_layer(grid_spec(file_id, min_zoom)).is_ok() {
                     overlay.grid_layer = true;
@@ -770,11 +776,11 @@ fn grid_spec(file_id: FileId, min_zoom: Option<f64>) -> LayerSpec {
 }
 
 fn grid_lines(grid: &TileGrid) -> Vec<OverlayObject> {
-    let step = grid.step0();
+    let (step_x, step_y) = (grid.step_x(), grid.step_y());
     let (w, h) = (grid.width0 as f64, grid.height0 as f64);
     let mut lines = Vec::with_capacity((grid.cols + grid.rows + 2) as usize);
     for col in 0..=grid.cols {
-        let x = (f64::from(col) * step).min(w);
+        let x = (f64::from(col) * step_x).min(w);
         lines.push(OverlayObject::new(
             format!("v{col}"),
             Shape::Polyline {
@@ -783,7 +789,7 @@ fn grid_lines(grid: &TileGrid) -> Vec<OverlayObject> {
         ));
     }
     for row in 0..=grid.rows {
-        let y = (f64::from(row) * step).min(h);
+        let y = (f64::from(row) * step_y).min(h);
         lines.push(OverlayObject::new(
             format!("h{row}"),
             Shape::Polyline {

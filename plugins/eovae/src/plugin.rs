@@ -281,22 +281,26 @@ impl State {
 
     /// The engine the current settings ask for.
     pub fn engine_request(&self) -> Option<EngineRequest> {
-        let model = self.model_info()?;
-        Some(EngineRequest {
-            output: self.config.output_for(model),
-            latent: model.latent.as_ref().map(|l| l.name.clone()),
-            model: Arc::clone(model),
-            device: self.config.device,
-            threads: self.config.effective_threads(),
-            tf32: self.config.tf32,
-            batch_size: self.config.batch_size,
-            runtime_path: self.config.runtime_path.as_ref().map(PathBuf::from),
-        })
+        Some(engine_request_for(&self.config, self.model_info()?))
     }
 
     /// The file a pane shows.
     pub fn pane_file(&self, pane: PaneId) -> Option<FileId> {
         self.panes.get(&pane).and_then(|p| p.file_id)
+    }
+}
+
+/// The engine `config` asks for to run `model`.
+pub fn engine_request_for(config: &Config, model: &Arc<ModelInfo>) -> EngineRequest {
+    EngineRequest {
+        output: config.output_for(model),
+        latent: model.latent.as_ref().map(|l| l.name.clone()),
+        model: Arc::clone(model),
+        device: config.device,
+        threads: config.effective_threads(),
+        tf32: config.tf32,
+        batch_size: config.batch_size,
+        runtime_path: config.runtime_path.as_ref().map(PathBuf::from),
     }
 }
 
@@ -374,7 +378,7 @@ pub fn run_context(state: &State, file_id: FileId) -> Result<RunContext, NoRun> 
     let contract = state.config.contract_for(&model);
     let choice = choose_level(&file.geometry, state.config.resolution, contract.mpp)
         .ok_or(NoRun::NoLevels)?;
-    let grid = TileGrid::new(&file.geometry, &choice.level, model.tile_size);
+    let grid = TileGrid::for_choice(&file.geometry, &choice, model.tile_size);
     let output = state.config.output_for(&model);
     let spec = RunSpec::new(&model, &output, &contract, &grid, choice.mpp, info);
     let key = ResultKey::new(&identity.key, &spec.key());
@@ -499,6 +503,10 @@ pub struct Core<B: Backend> {
     pub host: Host,
     pub backend: B,
     pub plugin_root: PathBuf,
+    /// Started for `eov batch` (no window).
+    pub headless: bool,
+    /// The headless batch run in progress.
+    pub batch: crate::batch::BatchRunner,
     pub state: Mutex<State>,
     pub results: Mutex<ResultStore>,
     pub cache: ResultCache,
@@ -516,28 +524,33 @@ impl<B: Backend> Core<B> {
         let (config, warning) = Config::from_settings(&init.settings);
         let plugin_root = PathBuf::from(&init.plugin_root);
         let cache = ResultCache::open(&PathBuf::from(&init.cache_dir), config.cache_limit_bytes());
-        host.add_toolbar_button(ToolbarButtonSpec {
-            button_id: TOOLBAR_BUTTON.into(),
-            tooltip: "VAE reconstruction analysis".into(),
-            icon_svg: TOOL_ICON.into(),
-            ..Default::default()
-        })
-        .map_err(String::from)?;
-        host.add_hud_button(HudButtonSpec {
-            button_id: HUD_GRID.into(),
-            tooltip: "VAE tile grid".into(),
-            icon_svg: GRID_ICON.into(),
-            ..Default::default()
-        })
-        .map_err(String::from)?;
-        host.add_hud_button(HudButtonSpec {
-            button_id: HUD_VIEW.into(),
-            tooltip: "VAE overlay".into(),
-            icon_svg: VIEW_ICON.into(),
-            menu: view_menu(Mode::Original),
-            ..Default::default()
-        })
-        .map_err(String::from)?;
+        // Without a window there is nothing to show.
+        if !init.headless {
+            host.add_toolbar_button(ToolbarButtonSpec {
+                button_id: TOOLBAR_BUTTON.into(),
+                tooltip: "VAE reconstruction analysis".into(),
+                icon_svg: TOOL_ICON.into(),
+                ..Default::default()
+            })
+            .map_err(String::from)?;
+            host.add_hud_button(HudButtonSpec {
+                button_id: HUD_GRID.into(),
+                tooltip: "VAE tile grid".into(),
+                icon_svg: GRID_ICON.into(),
+                ..Default::default()
+            })
+            .map_err(String::from)?;
+            host.add_hud_button(HudButtonSpec {
+                button_id: HUD_VIEW.into(),
+                tooltip: "VAE overlay".into(),
+                icon_svg: VIEW_ICON.into(),
+                menu: view_menu(Mode::Original),
+                ..Default::default()
+            })
+            .map_err(String::from)?;
+        }
+        // `eov batch run eovae:analyze` (hosts without batch runs refuse it).
+        let _ = host.register_batch_command(crate::batch::command_spec(&config));
         if let Some(warning) = warning {
             host.warn(warning);
         }
@@ -545,6 +558,8 @@ impl<B: Backend> Core<B> {
         let core = Arc::new(Self {
             backend: B::new(&plugin_root),
             plugin_root,
+            headless: init.headless,
+            batch: crate::batch::BatchRunner::default(),
             state: Mutex::new(State::new(config)),
             results: Mutex::new(results),
             cache,
@@ -557,12 +572,14 @@ impl<B: Backend> Core<B> {
             next_id: AtomicU64::new(1),
             host,
         });
-        let presenter = Arc::clone(&core);
-        let handle = std::thread::Builder::new()
-            .name("eovae-presenter".into())
-            .spawn(move || crate::presenter::run(presenter))
-            .map_err(|e| e.to_string())?;
-        *lock(&core.presenter) = Some(handle);
+        if !core.headless {
+            let presenter = Arc::clone(&core);
+            let handle = std::thread::Builder::new()
+                .name("eovae-presenter".into())
+                .spawn(move || crate::presenter::run(presenter))
+                .map_err(|e| e.to_string())?;
+            *lock(&core.presenter) = Some(handle);
+        }
         Ok(core)
     }
 
@@ -627,6 +644,25 @@ impl<B: Backend> Core<B> {
                 }
                 Ok(())
             }
+            HostEvent::BatchRun {
+                run_id,
+                command_id,
+                file,
+                output_dir,
+                params,
+            } => {
+                crate::batch::start(
+                    self,
+                    crate::batch::BatchRequest {
+                        run_id,
+                        command_id,
+                        file,
+                        output_dir: PathBuf::from(output_dir),
+                        params,
+                    },
+                );
+                Ok(())
+            }
             HostEvent::RoiChanged { file_id, roi } => {
                 if let Some(file) = lock(&self.state).files.get_mut(&file_id) {
                     file.roi = roi;
@@ -668,9 +704,10 @@ impl<B: Backend> Core<B> {
         if restore_sidebar {
             self.open_sidebar()?;
         }
+        // Batch runs load the model they are asked for.
         let model_path = {
             let state = lock(&self.state);
-            matches!(state.model, ModelState::None)
+            (matches!(state.model, ModelState::None) && !self.headless)
                 .then(|| state.config.model_path.clone())
                 .flatten()
         };
@@ -1730,7 +1767,14 @@ impl<B: Backend> Core<B> {
                 "width": ctx.grid.width0,
                 "height": ctx.grid.height0,
             },
-            "grid": {"tile": ctx.grid.tile, "cols": ctx.grid.cols, "rows": ctx.grid.rows, "level": ctx.grid.level, "downsample": ctx.grid.downsample},
+            "grid": {
+                "tile": ctx.grid.tile,
+                "cols": ctx.grid.cols,
+                "rows": ctx.grid.rows,
+                "level": ctx.grid.level,
+                "downsample": ctx.grid.downsample,
+                "level0_px_per_model_px": [ctx.grid.scale_x, ctx.grid.scale_y],
+            },
             "coordinates": "level-0 pixels of the slide",
             "mae": "mean absolute error over in-slide pixels and RGB channels, 0-1",
         });
@@ -1777,6 +1821,7 @@ impl<B: Backend> Core<B> {
                 job.control.cancel();
             }
         }
+        self.batch.cancel();
         self.dirty.wake();
         self.engine.changed.notify_all();
         if let Some(handle) = lock(&self.job_thread).take() {
@@ -1877,8 +1922,8 @@ fn summarize_outcome(kind: JobKind, outcome: &JobOutcome, elapsed: Duration) -> 
 // ---------------------------------------------------------------------------
 
 /// Slide pixels through the host (any thread, never blocks the UI).
-struct HostPixels {
-    host: Host,
+pub(crate) struct HostPixels {
+    pub host: Host,
 }
 
 impl PixelSource for HostPixels {
