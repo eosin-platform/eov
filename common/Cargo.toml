@@ -2,6 +2,7 @@
 name = "eov-common"
 version = "1.0.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0"
 description = "Common utilities and abstractions for the EOV project, including WSI handling, image processing, caching, and math utilities."
@@ -11,6 +12,8 @@ homepage = "https://eov.sh"
 readme = "README.md"
 publish = true
 build = "build.rs"
+# Links libopenslide (>= 4.0) itself; see build.rs.
+links = "openslide"
 
 [lib]
 name = "eov_common"
