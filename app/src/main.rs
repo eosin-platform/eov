@@ -11,6 +11,11 @@ mod distribution;
 mod file_ops;
 mod gpu;
 mod gpu_interop;
+// Integrated into the viewport by the plugin runtime switch-over.
+#[allow(dead_code)]
+mod interaction;
+#[allow(dead_code)]
+mod overlay;
 mod pane_ui;
 mod paths;
 mod plugin_host;
