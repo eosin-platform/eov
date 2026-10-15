@@ -9,15 +9,45 @@
 //!
 //! `x`/`y` arguments of region reads are **level-0** pixel coordinates;
 //! `width`/`height` are pixels **of the requested level**. This matches
-//! OpenSlide's `openslide_read_region`.
+//! OpenSlide's `openslide_read_region`. Negative coordinates and areas
+//! outside the slide are allowed and read as "no data".
+//!
+//! # Sharing and threads
+//!
+//! A `WsiFile` is a cheap handle (`Clone` is an `Arc` clone) to one shared,
+//! thread-safe OpenSlide handle per slide, and [`WsiFile::open`] reuses the
+//! slide when the same unchanged file is already open anywhere in the
+//! process (see [`registry`]). Give every worker thread a clone instead of
+//! opening the slide again; all handles use one process-wide OpenSlide tile
+//! cache ([`set_openslide_cache_capacity`]).
+//!
+//! # Errors and recovery
+//!
+//! OpenSlide errors are sticky. A `WsiFile` detects a poisoned handle,
+//! re-runs the failed read on a freshly opened handle and only reports
+//! [`Error::CorruptRegion`] when the data is bad on both; the poisoned
+//! handle is replaced either way, with rate-limited reopening. Reads that
+//! cannot be served while recovery is rate-limited fail with the transient
+//! [`Error::HandlePoisoned`]. [`WsiFile::health`] reports what happened so
+//! a UI can tell the user.
 
+mod health;
 mod metadata;
+pub mod registry;
 
 use crate::openslide::OpenSlide;
 use crate::{Error, Result};
+use health::{BadKey, Geometry, HandleCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tracing::{debug, info};
+
+pub use health::{HealthState, SlideHealth};
+pub use registry::{
+    DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
+    set_openslide_cache_capacity,
+};
 
 #[cfg(test)]
 pub(crate) use metadata::{extract_stain_from_text, parse_stain_value_from_token};
@@ -226,16 +256,48 @@ pub fn best_level_for_downsample(levels: &[WsiLevel], downsample: f64) -> u32 {
 
 /// State shared by every [`WsiFile`] that refers to the same open slide.
 pub(crate) struct SharedSlide {
-    slide: OpenSlide,
+    pub(crate) handle: HandleCell,
+    pub(crate) canonical_path: PathBuf,
+    pub(crate) stamp: registry::FileStamp,
+    /// Whether [`WsiFile::open`] may hand this slide to other callers.
+    pub(crate) shareable: bool,
     properties: WsiProperties,
     property_map: BTreeMap<String, String>,
 }
 
-/// WSI file wrapper.
+/// How [`WsiFile::open_with`] opens a slide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenOptions {
+    /// Reuse (and offer for reuse) the handle of an identical slide that is
+    /// already open in this process. Default `true`.
+    pub share: bool,
+}
+
+impl Default for OpenOptions {
+    fn default() -> Self {
+        Self { share: true }
+    }
+}
+
+/// An open whole-slide image.
+///
+/// Cloning is cheap and shares the underlying OpenSlide handle; see the
+/// [module documentation](self) for the threading and recovery model.
+#[derive(Clone)]
 pub struct WsiFile {
-    shared: std::sync::Arc<SharedSlide>,
+    shared: Arc<SharedSlide>,
     /// Tile size to use
     tile_size: u32,
+}
+
+impl std::fmt::Debug for WsiFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WsiFile")
+            .field("path", &self.shared.properties.path)
+            .field("levels", &self.shared.properties.levels.len())
+            .field("tile_size", &self.tile_size)
+            .finish_non_exhaustive()
+    }
 }
 
 fn read_metadata(path: &Path, slide: &OpenSlide) -> Result<(WsiProperties, BTreeMap<String, String>)> {
@@ -304,18 +366,41 @@ fn read_metadata(path: &Path, slide: &OpenSlide) -> Result<(WsiProperties, BTree
 }
 
 impl WsiFile {
-    /// Open a WSI file from the given path
+    /// Opens a slide, reusing the shared handle if the same unchanged file
+    /// is already open in this process.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
+        Self::open_with(path, &OpenOptions::default())
+    }
 
+    /// Opens a slide with a handle of its own that is never shared with
+    /// other `open` calls (clones of the result still share it).
+    pub fn open_exclusive<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_with(path, &OpenOptions { share: false })
+    }
+
+    /// Opens a slide with explicit [`OpenOptions`].
+    pub fn open_with<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<Self> {
+        let path = path.as_ref();
         if !path.exists() {
-            return Err(Error::FileNotFound(path.display().to_string()));
+            return Err(registry::not_found(path));
+        }
+        let stamp = registry::FileStamp::of(path)?;
+        let canonical_path = registry::canonical(path);
+
+        if options.share
+            && let Some(shared) = registry::find_shared(&canonical_path, &stamp)
+        {
+            debug!("Reusing open slide handle for {}", path.display());
+            return Ok(Self {
+                shared,
+                tile_size: DEFAULT_TILE_SIZE,
+            });
         }
 
         info!("Opening WSI file: {}", path.display());
-
         let slide = OpenSlide::open(path)?;
         let (properties, property_map) = read_metadata(path, &slide)?;
+        let geometry = Geometry::of(&slide)?;
 
         info!(
             "Opened {} ({}x{}, {} levels, vendor: {:?})",
@@ -326,21 +411,53 @@ impl WsiFile {
             properties.vendor
         );
 
-        Ok(Self {
-            shared: std::sync::Arc::new(SharedSlide {
+        let shared = Arc::new(SharedSlide {
+            handle: HandleCell::new(
+                path.to_path_buf(),
                 slide,
-                properties,
-                property_map,
-            }),
+                geometry,
+                registry::attach_global_cache,
+            ),
+            canonical_path,
+            stamp,
+            shareable: options.share,
+            properties,
+            property_map,
+        });
+        Ok(Self {
+            shared: registry::register(shared),
             tile_size: DEFAULT_TILE_SIZE,
         })
     }
 
-    /// Open a fresh handle to the same underlying file.
+    /// Returns a handle to the same slide, re-validating the file: if it is
+    /// unchanged this shares the open handle (like [`Clone`]); if it changed
+    /// on disk, the new file is opened.
     pub fn reopen(&self) -> Result<Self> {
-        let mut reopened = Self::open(&self.shared.properties.path)?;
+        let mut reopened = Self::open_with(
+            &self.shared.properties.path,
+            &OpenOptions {
+                share: self.shared.shareable,
+            },
+        )?;
         reopened.tile_size = self.tile_size;
         Ok(reopened)
+    }
+
+    /// Whether two `WsiFile`s share the same OpenSlide handle.
+    pub fn shares_handle_with(&self, other: &WsiFile) -> bool {
+        Arc::ptr_eq(&self.shared, &other.shared)
+    }
+
+    /// A snapshot of the health of the slide's OpenSlide handle.
+    pub fn health(&self) -> SlideHealth {
+        self.shared.handle.health()
+    }
+
+    /// Forgets the regions remembered as unreadable, so they are tried again
+    /// (for example after the user restored the file or the network).
+    pub fn clear_bad_regions(&self) {
+        self.shared.handle.clear_bad_regions();
     }
 
     /// Get file properties
@@ -442,15 +559,16 @@ impl WsiFile {
         }
 
         let mut argb = vec![0u32; pixels as usize];
-        self.shared
-            .slide
-            .read_region_argb(&mut argb, x, y, level, width, height)
-            .map_err(|e| Error::ReadTile {
-                level,
-                x: x.max(0) as u64,
-                y: y.max(0) as u64,
-                message: e.to_string(),
-            })?;
+        let key = BadKey::Region {
+            level,
+            x,
+            y,
+            width,
+            height,
+        };
+        self.shared.handle.run(Some(key), |slide| {
+            slide.read_region_argb(&mut argb, x, y, level, width, height)
+        })?;
 
         // OpenSlide returns native-endian ARGB; emit RGBA bytes.
         let mut data = Vec::with_capacity(argb.len() * 4);
@@ -674,6 +792,164 @@ mod tests {
         let text = dir.path().join("notes.txt");
         std::fs::write(&text, "not a slide").unwrap();
         assert!(matches!(WsiFile::open(&text), Err(Error::UnsupportedFormat(_))));
+    }
+
+    /// A 128x128 two-level pyramid whose level-0 tile (1, 1) is unreadable.
+    fn broken_file(dir: &Path) -> PathBuf {
+        let path = dir.join("broken.tiff");
+        let spec = TiffSpec {
+            levels: vec![
+                TiffLevel::new(128, 128, 32).with_broken_tile(1, 1),
+                TiffLevel::new(64, 64, 32),
+            ],
+            ..TiffSpec::default()
+        };
+        write_tiff(&path, &spec, gradient).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_bad_tile_poisons_nothing_but_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = WsiFile::open(broken_file(dir.path())).unwrap();
+        let good = wsi.read_region(0, 0, 0, 32, 32).unwrap();
+
+        let err = wsi.read_region(32, 32, 0, 32, 32).unwrap_err();
+        assert!(matches!(err, Error::CorruptRegion { level: 0, x: 32, y: 32, .. }), "{err:?}");
+        assert!(!err.is_transient());
+
+        // The shared handle was replaced: good tiles read again, correctly.
+        assert_eq!(wsi.read_region(0, 0, 0, 32, 32).unwrap(), good);
+        assert!(wsi.read_region(0, 0, 1, 64, 64).is_ok());
+        assert_eq!(wsi.best_level_for_downsample(32.0), 1);
+
+        let health = wsi.health();
+        assert_eq!(health.state, HealthState::Healthy);
+        assert_eq!(health.poison_events, 1);
+        assert_eq!(health.bad_regions, 1);
+        assert!(health.reopens >= 1);
+        assert!(health.last_error.is_some());
+
+        // The bad region now fails fast without poisoning the handle again.
+        assert!(matches!(
+            wsi.read_region(32, 32, 0, 32, 32),
+            Err(Error::CorruptRegion { .. })
+        ));
+        assert_eq!(wsi.health().poison_events, 1);
+
+        // After clearing, the region is retried (and found bad again).
+        wsi.clear_bad_regions();
+        assert_eq!(wsi.health().bad_regions, 0);
+        assert!(wsi.read_region(32, 32, 0, 32, 32).is_err());
+        assert_eq!(wsi.health().poison_events, 2);
+    }
+
+    #[test]
+    fn collateral_failures_on_shared_handles_are_retried_transparently() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = broken_file(dir.path());
+        let a = WsiFile::open(&path).unwrap();
+        let b = WsiFile::open(&path).unwrap();
+        assert!(a.shares_handle_with(&b));
+
+        // Poison the shared handle behind `b`'s back, as another worker would.
+        {
+            let slot = a.shared.handle.current();
+            let mut buf = vec![0u32; 32 * 32];
+            assert!(slot.slide.read_region_argb(&mut buf, 32, 32, 0, 32, 32).is_err());
+            assert!(slot.slide.is_poisoned());
+        }
+        assert_eq!(b.health().state, HealthState::Recovering);
+        assert!(b.read_region(64, 0, 0, 32, 32).is_ok());
+        assert_eq!(a.health().state, HealthState::Healthy);
+    }
+
+    #[test]
+    fn concurrent_readers_survive_a_bad_tile() {
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = WsiFile::open(broken_file(dir.path())).unwrap();
+        let expected = wsi.read_region(96, 96, 0, 32, 32).unwrap();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let wsi = wsi.clone();
+                let expected = &expected;
+                scope.spawn(move || {
+                    for _ in 0..40 {
+                        assert_eq!(&wsi.read_region(96, 96, 0, 32, 32).unwrap(), expected);
+                    }
+                });
+            }
+            let wsi = wsi.clone();
+            scope.spawn(move || {
+                for _ in 0..5 {
+                    assert!(wsi.read_region(32, 32, 0, 32, 32).is_err());
+                }
+            });
+        });
+        assert_eq!(wsi.health().bad_regions, 1);
+        assert_eq!(wsi.health().state, HealthState::Healthy);
+    }
+
+    #[test]
+    fn reopening_backs_off_when_the_file_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = broken_file(dir.path());
+        let wsi = WsiFile::open_exclusive(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let err = wsi.read_region(32, 32, 0, 32, 32).unwrap_err();
+        assert!(matches!(err, Error::HandlePoisoned(_)), "{err:?}");
+        assert!(err.is_transient());
+        let health = wsi.health();
+        assert_eq!(health.state, HealthState::Failing);
+        assert_eq!(health.failed_reopens, 1);
+
+        // Within the backoff window nothing is reopened.
+        assert!(matches!(
+            wsi.read_region(0, 0, 0, 32, 32),
+            Err(Error::HandlePoisoned(_))
+        ));
+        assert_eq!(wsi.health().failed_reopens, 1);
+        // Metadata stays available.
+        assert_eq!(wsi.level_count(), 2);
+        assert_eq!(wsi.best_level_for_downsample(2.0), 1);
+    }
+
+    #[test]
+    fn open_shares_handles_of_unchanged_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = pyramid_file(dir.path());
+        let a = WsiFile::open(&path).unwrap();
+        let b = WsiFile::open(&path).unwrap();
+        assert!(a.shares_handle_with(&b));
+        assert!(a.shares_handle_with(&a.clone()));
+        assert!(a.shares_handle_with(&a.reopen().unwrap()));
+
+        let exclusive = WsiFile::open_exclusive(&path).unwrap();
+        assert!(!exclusive.shares_handle_with(&a));
+        assert!(!WsiFile::open(&path).unwrap().shares_handle_with(&exclusive));
+
+        // Replace the file: a new open must not reuse the stale handle.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_tiff(&path, &TiffSpec::pyramid(256, 256, 64, 2), gradient).unwrap();
+        let fresh = WsiFile::open(&path).unwrap();
+        assert!(!fresh.shares_handle_with(&a));
+        assert_eq!(fresh.properties().width, 256);
+        assert_eq!(a.properties().width, 512);
+    }
+
+    #[test]
+    fn handles_use_the_resizable_global_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = WsiFile::open(pyramid_file(dir.path())).unwrap();
+        let before = wsi.read_region(0, 0, 0, 128, 128).unwrap();
+        let capacity = openslide_cache_capacity();
+        set_openslide_cache_capacity(8 * 1024 * 1024).unwrap();
+        assert_eq!(openslide_cache_capacity(), 8 * 1024 * 1024);
+        assert_eq!(wsi.read_region(0, 0, 0, 128, 128).unwrap(), before);
+        set_openslide_cache_capacity(capacity).unwrap();
+        assert_eq!(recommended_openslide_cache_bytes(0), 32 * 1024 * 1024);
+        assert_eq!(recommended_openslide_cache_bytes(1 << 30), 128 * 1024 * 1024);
     }
 
     #[test]
