@@ -1,4 +1,9 @@
-#![allow(dead_code)]
+//! How this eov build was packaged, which decides how it updates itself.
+//!
+//! Exactly one `distribution-*` Cargo feature is enabled per build: release
+//! packaging selects its own (`--no-default-features --features
+//! distribution-appimage`, ...), and `cargo install eov` gets the default,
+//! `distribution-cargo`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Distribution {
@@ -8,6 +13,20 @@ pub enum Distribution {
     AppImage,
     WindowsPortable,
     Unknown,
+}
+
+impl Distribution {
+    /// A human-readable name.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::MacosBundle => "macOS app bundle",
+            Self::Cargo => "cargo install",
+            Self::Flatpak => "Flatpak",
+            Self::AppImage => "AppImage",
+            Self::WindowsPortable => "Windows portable folder",
+            Self::Unknown => "unknown packaging",
+        }
+    }
 }
 
 pub fn distribution() -> Distribution {
@@ -58,5 +77,13 @@ mod tests {
         use super::{Distribution, distribution};
 
         assert_eq!(distribution(), Distribution::MacosBundle);
+    }
+
+    #[test]
+    fn display_names_are_not_debug_names() {
+        assert_eq!(
+            super::Distribution::MacosBundle.display_name(),
+            "macOS app bundle"
+        );
     }
 }

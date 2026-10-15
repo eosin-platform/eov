@@ -9,10 +9,29 @@ sdk-extensions:
 
 finish-args:
   - --share=ipc
+  # `eov update` and `eov plugin install`; both ask before going online.
+  - --share=network
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
+  # Game controllers for the gamepad plugin (Flatpak 1.15.6 or newer; older
+  # versions ignore it, see packaging/flatpak/README.md).
+  - --device=input
   - --filesystem=home
+  # Slides on removable and network drives, read-only. Slide formats with
+  # sidecar files (MIRAX) and folder series need the whole directory, which
+  # the file-chooser portal does not grant. Other locations: see README.md.
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/mnt:ro
+
+# Build-only files: headers, pkg-config data and static libraries.
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - '*.a'
+  - '*.la'
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
@@ -59,29 +78,6 @@ modules:
         url: https://github.com/Yanstart/openslide.git
         commit: 00bebfb6a412485f7fbfe7fdb5919a3868594c13
 
-  - name: protobuf
-    buildsystem: simple
-    only-arches:
-      - x86_64
-      - aarch64
-    build-commands:
-      - install -Dm755 bin/protoc /app/bin/protoc
-      - mkdir -p /app/include
-      - cp -a include/. /app/include/
-    sources:
-      - type: archive
-        url: https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-linux-x86_64.zip
-        sha256: 96553041f1a91ea0efee963cb16f462f5985b4d65365f3907414c360044d8065
-        strip-components: 0
-        only-arches:
-          - x86_64
-      - type: archive
-        url: https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-linux-aarch_64.zip
-        sha256: 6c554de11cea04c56ebf8e45b54434019b1cd85223d4bbd25c282425e306ecc2
-        strip-components: 0
-        only-arches:
-          - aarch64
-
   - name: eov
     buildsystem: simple
     build-options:
@@ -92,7 +88,7 @@ modules:
         LIBRARY_PATH: /app/lib
         LD_LIBRARY_PATH: /app/lib
         PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
-        PROTOC: /app/bin/protoc
+        OPENSLIDE_LIB_DIR: /app/lib
         RUSTFLAGS: -L native=/app/lib
 
     build-commands:
@@ -103,8 +99,11 @@ modules:
       - install -Dm755 target/release/eov /app/bin/eov
       - install -Dm644 assets/linux/io.eosin.eov.desktop /app/share/applications/io.eosin.eov.desktop
       - install -Dm644 assets/linux/io.eosin.eov.metainfo.xml /app/share/metainfo/io.eosin.eov.metainfo.xml
-      - install -Dm644 assets/linux/COPYING.third-party /app/share/doc/eov/COPYING.third-party
-      - install -Dm644 assets/linux/licenses/LGPL-2.1.txt /app/share/doc/eov/licenses/LGPL-2.1.txt
+      - |
+        for dir in /app/share/doc/eov /app/share/licenses/io.eosin.eov; do
+          install -Dm644 -t "$dir" LICENSE-MIT LICENSE-APACHE-2.0 LICENSE-GPLv3 assets/COPYING.third-party
+          install -Dm644 assets/licenses/LGPL-2.1.txt "$dir/licenses/LGPL-2.1.txt"
+        done
       - install -Dm644 images/logo_256.png /app/share/icons/hicolor/256x256/apps/io.eosin.eov.png
 
     sources:

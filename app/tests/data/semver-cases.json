@@ -1,0 +1,1131 @@
+{
+  "about": "Shared SemVer test table. 'cases' is ground truth from the Rust semver crate (VersionReq::parse / matches), checked against the crate by app/tests/semver_cross.rs and against scripts/release_infrastructure.py by scripts/test_release_infrastructure.py. 'bounded_cases' describe eov's plugin compatibility rule (update/compat.rs: open-ended ranges are capped at the next breaking release, prerelease hosts are evaluated as their release) and are checked against both implementations. Add cases freely: the tests report any that disagree with the real crate.",
+  "cases": [
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": "*",
+      "valid": true
+    },
+    {
+      "requirement": "",
+      "valid": false
+    },
+    {
+      "requirement": " ",
+      "valid": false
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": "x",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": "X",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.0",
+        "1.2.3",
+        "1.2.4"
+      ],
+      "requirement": "1.2.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "1.x",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.0",
+        "1.2.3",
+        "1.2.4"
+      ],
+      "requirement": "1.2.x",
+      "valid": true
+    },
+    {
+      "requirement": "*.1",
+      "valid": false
+    },
+    {
+      "requirement": "1.*.3",
+      "valid": false
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">= 0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": ">=0.4.1, <0.5.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": ">=0.4.1,<0.5.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": ">=0.4.1 , <0.5.0",
+      "valid": true
+    },
+    {
+      "requirement": ">=0.4.1 <0.5.0",
+      "valid": false
+    },
+    {
+      "matches": [
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">0.4",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "<0.5",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "<=0.4",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1"
+      ],
+      "requirement": "<=0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0"
+      ],
+      "requirement": "<1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1"
+      ],
+      "requirement": "=0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1"
+      ],
+      "requirement": "= 0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.0",
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "0.4",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0"
+      ],
+      "requirement": "0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "^0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.0",
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "^0.4",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0"
+      ],
+      "requirement": "^0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4"
+      ],
+      "requirement": "^0.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.3"
+      ],
+      "requirement": "^0.0.3",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1.2.3",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1.2",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "~1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.0",
+        "1.2.3",
+        "1.2.4"
+      ],
+      "requirement": "~1.2",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.3",
+        "1.2.4"
+      ],
+      "requirement": "~1.2.3",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9"
+      ],
+      "requirement": "~0.4.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.2.0",
+        "1.2.3",
+        "1.2.4"
+      ],
+      "requirement": "~ 1.2",
+      "valid": true
+    },
+    {
+      "requirement": "~>1.2",
+      "valid": false
+    },
+    {
+      "requirement": ">=0.4.1 || >=0.5",
+      "valid": false
+    },
+    {
+      "requirement": "1.2.3 - 2.3.4",
+      "valid": false
+    },
+    {
+      "requirement": "v1.2.3",
+      "valid": false
+    },
+    {
+      "requirement": ">=v1.0",
+      "valid": false
+    },
+    {
+      "matches": [
+        "1.0.0-alpha",
+        "1.0.0-alpha.1",
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=1.0.0-alpha",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.1.0-rc.2",
+        "1.1.0-rc.3",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": ">=1.1.0-rc.2, <2",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0-rc.1"
+      ],
+      "requirement": "=1.0.0-rc.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1.0.0-beta",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1"
+      ],
+      "requirement": "~1.0.0-beta.2",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0-alpha",
+        "1.0.0-alpha.1",
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11"
+      ],
+      "requirement": "<1.0.0-rc.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": ">=1.0.0, <2.0.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": ">=1, <2",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">1.0.0-alpha.1",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0-alpha",
+        "1.0.0-alpha.1",
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "1.0.0-alpha",
+      "valid": true
+    },
+    {
+      "requirement": ">=01.0.0",
+      "valid": false
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=1.0.0+build",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1.0.0+build.1",
+      "valid": true
+    },
+    {
+      "requirement": ">=1.0.0,",
+      "valid": false
+    },
+    {
+      "requirement": ",>=1.0.0",
+      "valid": false
+    },
+    {
+      "requirement": ">=1.0.0,,<2",
+      "valid": false
+    },
+    {
+      "requirement": ">=*",
+      "valid": false
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "<=1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "^1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "~1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "=1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0"
+      ],
+      "requirement": "<1.*",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": " >=1.0.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=1.0.0 ",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.0.0",
+        "0.0.3",
+        "0.0.4",
+        "0.1.0",
+        "0.4.0",
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": "  *  ",
+      "valid": true
+    },
+    {
+      "requirement": "* , 1.0",
+      "valid": false
+    },
+    {
+      "requirement": "*,",
+      "valid": false
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": ">=1.0.0 ,<2.0.0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": ">=1.0.0, < 2.0.0",
+      "valid": true
+    },
+    {
+      "requirement": "1.0-alpha",
+      "valid": false
+    },
+    {
+      "requirement": "1.0.0-01",
+      "valid": false
+    },
+    {
+      "requirement": "1.0.0-alpha..1",
+      "valid": false
+    },
+    {
+      "matches": [
+        "1.0.0-alpha",
+        "1.0.0-alpha.1",
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9"
+      ],
+      "requirement": "1.0.0-0",
+      "valid": true
+    },
+    {
+      "matches": [
+        "0.4.1",
+        "0.4.9",
+        "0.5.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1.0",
+        "1.2.0",
+        "1.2.3",
+        "1.2.4",
+        "1.3.0",
+        "1.9.9",
+        "2.0.0",
+        "2.3.4",
+        "3.0.0"
+      ],
+      "requirement": ">=0.4.1-0",
+      "valid": true
+    },
+    {
+      "requirement": "\t>=1.0.0",
+      "valid": false
+    },
+    {
+      "requirement": ">=1.0.0\t",
+      "valid": false
+    }
+  ],
+  "versions": [
+    "0.0.0",
+    "0.0.3",
+    "0.0.4",
+    "0.1.0",
+    "0.4.0",
+    "0.4.1",
+    "0.4.9",
+    "0.5.0",
+    "0.5.0-rc.1",
+    "1.0.0-alpha",
+    "1.0.0-alpha.1",
+    "1.0.0-beta",
+    "1.0.0-beta.2",
+    "1.0.0-beta.11",
+    "1.0.0-rc.1",
+    "1.0.0",
+    "1.0.1",
+    "1.1.0-rc.1",
+    "1.1.0-rc.2",
+    "1.1.0-rc.3",
+    "1.1.0",
+    "1.2.0",
+    "1.2.3",
+    "1.2.4",
+    "1.3.0",
+    "1.9.9",
+    "2.0.0-rc.1",
+    "2.0.0",
+    "2.3.4",
+    "3.0.0"
+  ],
+  "bounded_cases": [
+    {
+      "requirement": ">=0.4.1",
+      "version": "0.4.9",
+      "compatible": true
+    },
+    {
+      "requirement": ">=0.4.1",
+      "version": "0.5.0",
+      "compatible": false
+    },
+    {
+      "requirement": ">=0.4.1",
+      "version": "1.0.0",
+      "compatible": false
+    },
+    {
+      "requirement": ">=1.0.0",
+      "version": "1.9.3",
+      "compatible": true
+    },
+    {
+      "requirement": ">=1.0.0",
+      "version": "2.0.0",
+      "compatible": false
+    },
+    {
+      "requirement": ">0.0.3",
+      "version": "0.0.5",
+      "compatible": false
+    },
+    {
+      "requirement": ">= 0.4.1",
+      "version": "0.4.5",
+      "compatible": true
+    },
+    {
+      "requirement": "*",
+      "version": "1.0.0",
+      "compatible": false
+    },
+    {
+      "requirement": "not semver",
+      "version": "1.0.0",
+      "compatible": false
+    },
+    {
+      "requirement": ">=1.0.0, <3.0.0",
+      "version": "2.5.0",
+      "compatible": true
+    },
+    {
+      "requirement": "^1.2",
+      "version": "1.9.0",
+      "compatible": true
+    },
+    {
+      "requirement": "1.*",
+      "version": "1.4.0",
+      "compatible": true
+    },
+    {
+      "requirement": "~1.2",
+      "version": "1.3.0",
+      "compatible": false
+    },
+    {
+      "requirement": "0.4.1",
+      "version": "0.4.9",
+      "compatible": true
+    },
+    {
+      "requirement": "0.4.1",
+      "version": "0.5.0",
+      "compatible": false
+    },
+    {
+      "requirement": "=0.4.1",
+      "version": "0.4.1",
+      "compatible": true
+    },
+    {
+      "requirement": ">=1.0.0, <2.0.0",
+      "version": "1.1.0-rc.1",
+      "compatible": true
+    },
+    {
+      "requirement": ">=1.1.0, <2.0.0",
+      "version": "1.1.0-rc.1",
+      "compatible": true
+    },
+    {
+      "requirement": ">=1.0.0, <1.1.0",
+      "version": "1.1.0-rc.1",
+      "compatible": false
+    },
+    {
+      "requirement": ">=1.0.0, <2.0.0",
+      "version": "2.0.0-rc.1",
+      "compatible": false
+    },
+    {
+      "requirement": ">=1.1.0-rc.2, <2",
+      "version": "1.1.0-rc.3",
+      "compatible": true
+    },
+    {
+      "requirement": ">=1.1.0-rc.2, <2",
+      "version": "1.1.0-rc.1",
+      "compatible": false
+    },
+    {
+      "requirement": ">=1.0.0 || >=2.0.0",
+      "version": "1.0.0",
+      "compatible": false
+    }
+  ]
+}

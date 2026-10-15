@@ -1,14 +1,10 @@
 #!/bin/sh
+# eov's bundled libraries are found through the RUNPATH that build.sh sets on
+# usr/bin/eov ($ORIGIN/../lib) and on every bundled library ($ORIGIN), not
+# through LD_LIBRARY_PATH: that would leak into every program eov starts
+# (xdg-open, file managers, browsers) and make them load eov's copies.
 set -eu
 
-HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-
-if [ -d "$HERE/usr/lib" ]; then
-    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-        export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-    else
-        export LD_LIBRARY_PATH="$HERE/usr/lib"
-    fi
-fi
+HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 
 exec "$HERE/usr/bin/eov" "$@"

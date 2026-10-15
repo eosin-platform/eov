@@ -1,0 +1,147 @@
+{
+  "formulae": [],
+  "casks": [
+    {
+      "token": "eov",
+      "full_token": "eosin-platform/eov/eov",
+      "old_tokens": [],
+      "tap": "eosin-platform/eov",
+      "name": [
+        "eov"
+      ],
+      "desc": "Lightweight, cross-platform Whole Slide Image (WSI) viewer for digital pathology",
+      "homepage": "https://eov.sh/",
+      "url": "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-macos-arm64.zip",
+      "url_specs": {},
+      "version": "1.0.1",
+      "autobump": false,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": "1.0.0",
+      "installed_time": 1760518923,
+      "bundle_version": null,
+      "bundle_short_version": null,
+      "outdated": true,
+      "sha256": "5f24a3692458fb6239d95ac88f2f903bc9b6d1b2377802345a99e537dd85a53c",
+      "artifacts": [
+        {
+          "app": [
+            "eov.app"
+          ]
+        },
+        {
+          "binary": [
+            "$APPDIR/eov.app/Contents/MacOS/eov"
+          ]
+        },
+        {
+          "zap": [
+            {
+              "trash": [
+                "~/.eov",
+                "~/Library/Application Support/eov",
+                "~/Library/Caches/eov"
+              ]
+            }
+          ]
+        }
+      ],
+      "caveats": "eov is not notarized by Apple. If macOS prevents it from opening, go to:\n    System Settings → Privacy & Security → Open Anyway\n",
+      "depends_on": {
+        "macos": {
+          ">=": [
+            "11"
+          ]
+        }
+      },
+      "conflicts_with": null,
+      "container": null,
+      "rename": [],
+      "auto_updates": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "tap_git_head": "5efbc6bf1b1d5d35e4a582103f96ada77065d3ed",
+      "languages": [],
+      "ruby_source_path": "Casks/eov.rb",
+      "ruby_source_checksum": {
+        "sha256": "0f5d4a1f0a3ee0e8b4f2e6f8a8b9c6f1d2e3a4b5c6d7e8f9a0b1c2d3e4f5a6b7"
+      }
+    },
+    {
+      "token": "firefox",
+      "full_token": "firefox",
+      "old_tokens": [],
+      "tap": "homebrew/cask",
+      "name": [
+        "Mozilla Firefox"
+      ],
+      "desc": "Web browser",
+      "homepage": "https://www.mozilla.org/firefox/",
+      "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/144.0/mac/en-US/Firefox%20144.0.dmg",
+      "url_specs": {
+        "verified": "download-installer.cdn.mozilla.net/pub/firefox/releases/"
+      },
+      "version": "144.0",
+      "installed": "144.0",
+      "installed_time": 1760000000,
+      "outdated": false,
+      "sha256": "1c1f7ba2f6f1c1b09d8c1c5f2c0c4c0f7c2a9b2a2f2d8f9a6a1c2b3d4e5f6a7b",
+      "artifacts": [
+        {
+          "uninstall": [
+            {
+              "quit": "org.mozilla.firefox"
+            }
+          ]
+        },
+        {
+          "app": [
+            "Firefox.app"
+          ]
+        },
+        {
+          "zap": [
+            {
+              "trash": [
+                "~/Library/Application Support/Firefox"
+              ]
+            }
+          ]
+        }
+      ],
+      "caveats": null,
+      "depends_on": {
+        "macos": {
+          ">=": [
+            "10.15"
+          ]
+        }
+      },
+      "conflicts_with": {
+        "cask": [
+          "firefox@beta"
+        ]
+      },
+      "container": null,
+      "auto_updates": true,
+      "deprecated": false,
+      "disabled": false,
+      "tap_git_head": "8d1c0f9a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e",
+      "languages": [
+        "en-US"
+      ],
+      "ruby_source_path": "Casks/f/firefox.rb",
+      "ruby_source_checksum": {
+        "sha256": "2b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c"
+      }
+    }
+  ]
+}

@@ -1,25 +1,22 @@
 //! Plugin package scanning.
 //!
-//! Discovers `.eop` tarballs, extracts them into a cache directory, and loads
+//! Discovers `.eop` packages (plain or zstd-compressed tar archives), extracts
+//! them into the content-addressed package cache ([`package_cache`]), and loads
 //! plugin manifests from the extracted plugin root.
+
+#[path = "package_cache.rs"]
+pub(crate) mod package_cache;
 
 use eov_plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
 use semver::{Version, VersionReq};
-use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
-use std::collections::hash_map::DefaultHasher;
 use std::ffi::OsStr;
-use std::fs::{self, File};
-use std::hash::{Hash, Hasher};
-use std::io::Read;
-use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::time::UNIX_EPOCH;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
-const PLUGIN_PACKAGE_EXTENSION: &str = "eop";
-static EXTRACT_ATTEMPT_COUNTER: AtomicU64 = AtomicU64::new(0);
+const PLUGIN_PACKAGE_EXTENSION: &str = package_cache::PACKAGE_EXTENSION;
 
 pub struct PluginDiscoveryResult {
     pub descriptors: Vec<PluginDescriptor>,
@@ -71,49 +68,29 @@ fn inspect_plugin_archive(
     package_path: &Path,
     calculate_sha256: bool,
 ) -> PluginResult<InspectedPluginPackage> {
-    let cache_dir = plugin_cache_dir(package_path.parent().unwrap_or_else(|| Path::new(".")));
-    fs::create_dir_all(&cache_dir)?;
-    let extracted_root = ensure_extracted_plugin_root(package_path, &cache_dir)?;
-    let manifest_path = extracted_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME);
+    // Extraction is content-addressed, so the package hash is always known.
+    let extracted = package_cache::ensure_extracted(package_path)?;
+    let manifest_path = extracted
+        .root
+        .join(eov_plugin_api::manifest::MANIFEST_FILENAME);
     let raw_manifest = fs::read_to_string(&manifest_path)?;
     let manifest = PluginManifest::from_toml(&raw_manifest, "<package>")?;
-    let sha256 = calculate_sha256
-        .then(|| sha256_file(package_path))
-        .transpose()?;
     Ok(InspectedPluginPackage {
         package_path: package_path.to_path_buf(),
         manifest,
         raw_manifest,
-        sha256,
-        extracted_root,
+        sha256: calculate_sha256.then_some(extracted.sha256),
+        extracted_root: extracted.root,
     })
 }
 
-/// Remove cached extraction data for one package when it is replaced or
-/// removed. A later inspection will rebuild only this package's extraction.
+/// Forget cached metadata for a package that was replaced or removed.
+///
+/// Extractions are keyed by content and may still be used by a running eov
+/// instance, so nothing is deleted here; the package cache's garbage
+/// collector removes unreferenced, unlocked extractions at a later startup.
 pub fn invalidate_plugin_package_cache(package_path: &Path) -> PluginResult<()> {
-    let cache_dir = plugin_cache_dir(package_path.parent().unwrap_or_else(|| Path::new(".")));
-    if !cache_dir.is_dir() {
-        return Ok(());
-    }
-    let prefix = package_path
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .map(sanitize_cache_component)
-        .unwrap_or_else(|| "plugin".to_string());
-    for entry in fs::read_dir(cache_dir)? {
-        let entry = entry?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with(&format!("{prefix}-"))
-        {
-            let path = entry.path();
-            if path.is_dir() {
-                fs::remove_dir_all(path)?;
-            }
-        }
-    }
+    package_cache::PackageCache::default().forget(package_path);
     Ok(())
 }
 
@@ -313,7 +290,10 @@ fn is_plugin_package(path: &Path) -> bool {
 }
 
 fn plugin_cache_dir(_plugin_dir: &Path) -> PathBuf {
-    crate::paths::plugin_package_cache_dir()
+    // Discovery runs once at GUI startup: collect unused extractions in the
+    // background (entries in use by any running eov stay locked and are kept).
+    package_cache::schedule_startup_gc();
+    package_cache::PackageCache::default().root().to_path_buf()
 }
 
 /// Try to load a single plugin descriptor from a plugin package tarball.
@@ -331,245 +311,15 @@ fn try_load_descriptor_from_package(
 }
 
 fn ensure_extracted_plugin_root(package_path: &Path, cache_dir: &Path) -> PluginResult<PathBuf> {
-    let extract_dir = cache_dir.join(package_cache_key(package_path)?);
-
-    if extract_dir.exists() {
-        match find_manifest_root(&extract_dir) {
-            Ok(root) => return Ok(root),
-            Err(err) => {
-                warn!(
-                    "Discarding invalid cached plugin extraction {}: {err}",
-                    extract_dir.display()
-                );
-                fs::remove_dir_all(&extract_dir)?;
-            }
-        }
-    }
-
-    let tmp_dir = extract_dir.with_extension(format!(
-        "tmp-{}-{}",
-        std::process::id(),
-        EXTRACT_ATTEMPT_COUNTER.fetch_add(1, AtomicOrdering::Relaxed)
-    ));
-    if tmp_dir.exists() {
-        fs::remove_dir_all(&tmp_dir)?;
-    }
-    fs::create_dir_all(&tmp_dir)?;
-
-    if let Err(err) = extract_plugin_package(package_path, &tmp_dir) {
-        let _ = fs::remove_dir_all(&tmp_dir);
-        return Err(err);
-    }
-
-    let relative_root = match find_manifest_root_relative(&tmp_dir) {
-        Ok(root) => root,
-        Err(err) => {
-            let _ = fs::remove_dir_all(&tmp_dir);
-            return Err(err);
-        }
-    };
-
-    if extract_dir.exists() {
-        fs::remove_dir_all(&extract_dir)?;
-    }
-    fs::rename(&tmp_dir, &extract_dir)?;
-
-    Ok(join_root(&extract_dir, &relative_root))
-}
-
-fn package_cache_key(package_path: &Path) -> PluginResult<String> {
-    let metadata = fs::metadata(package_path)?;
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .unwrap_or_default();
-    let stem = package_path
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .unwrap_or("plugin");
-    let path_hash = hash_path_for_cache(package_path);
-
-    Ok(format!(
-        "{}-{}-{}-{}-{:016x}",
-        sanitize_cache_component(stem),
-        metadata.len(),
-        modified.as_secs(),
-        modified.subsec_nanos(),
-        path_hash
-    ))
-}
-
-fn hash_path_for_cache(package_path: &Path) -> u64 {
-    let stable_path = package_path
-        .canonicalize()
-        .unwrap_or_else(|_| package_path.to_path_buf());
-    let mut hasher = DefaultHasher::new();
-    stable_path.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn sanitize_cache_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => ch,
-            _ => '_',
-        })
-        .collect()
-}
-
-fn extract_plugin_package(package_path: &Path, destination: &Path) -> PluginResult<()> {
-    let file = File::open(package_path)?;
-    let mut archive = tar::Archive::new(file);
-    let mut manifest_paths = std::collections::HashSet::new();
-
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let archive_path = entry.path()?.into_owned();
-        validate_archive_path(package_path, &archive_path)?;
-        let entry_type = entry.header().entry_type();
-        if !(entry_type.is_file() || entry_type.is_dir()) {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains unsupported archive entry '{}'",
-                package_path.display(),
-                archive_path.display()
-            )));
-        }
-        if archive_path.file_name() == Some(OsStr::new(eov_plugin_api::manifest::MANIFEST_FILENAME))
-            && !manifest_paths.insert(archive_path.clone())
-        {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains duplicate {} entries",
-                package_path.display(),
-                eov_plugin_api::manifest::MANIFEST_FILENAME
-            )));
-        }
-        let unpacked = entry.unpack_in(destination)?;
-        if !unpacked {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains an invalid path '{}'",
-                package_path.display(),
-                archive_path.display()
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_archive_path(package_path: &Path, archive_path: &Path) -> PluginResult<()> {
-    if archive_path.as_os_str().is_empty() {
-        return Err(PluginError::Other(format!(
-            "plugin package '{}' contains an empty path",
-            package_path.display()
-        )));
-    }
-
-    let raw_path = archive_path.to_string_lossy();
-    let has_windows_prefix = raw_path.len() >= 2 && raw_path.as_bytes().get(1) == Some(&b':')
-        || raw_path.starts_with("\\\\")
-        || raw_path.starts_with('\\');
-    if has_windows_prefix {
-        return Err(PluginError::Other(format!(
-            "plugin package '{}' contains an unsafe Windows path '{}'",
-            package_path.display(),
-            archive_path.display()
-        )));
-    }
-
-    for component in archive_path.components() {
-        match component {
-            Component::Normal(_) | Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(PluginError::Other(format!(
-                    "plugin package '{}' contains an unsafe path '{}'",
-                    package_path.display(),
-                    archive_path.display()
-                )));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn sha256_file(path: &Path) -> PluginResult<String> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn find_manifest_root(extracted_dir: &Path) -> PluginResult<PathBuf> {
-    let relative_root = find_manifest_root_relative(extracted_dir)?;
-    Ok(join_root(extracted_dir, &relative_root))
-}
-
-fn join_root(base: &Path, relative_root: &Path) -> PathBuf {
-    if relative_root.as_os_str().is_empty() {
-        base.to_path_buf()
-    } else {
-        base.join(relative_root)
-    }
-}
-
-fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
-    let mut dirs_to_visit = vec![extracted_dir.to_path_buf()];
-    let mut manifest_roots = Vec::new();
-
-    while let Some(dir) = dirs_to_visit.pop() {
-        for entry in fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                dirs_to_visit.push(path);
-                continue;
-            }
-
-            if path.file_name() == Some(OsStr::new(eov_plugin_api::manifest::MANIFEST_FILENAME)) {
-                manifest_roots.push(
-                    path.parent()
-                        .unwrap_or(extracted_dir)
-                        .strip_prefix(extracted_dir)
-                        .map(Path::to_path_buf)
-                        .map_err(|err| {
-                            PluginError::Other(format!(
-                                "failed to resolve plugin manifest root in {}: {err}",
-                                extracted_dir.display()
-                            ))
-                        })?,
-                );
-            }
-        }
-    }
-
-    match manifest_roots.len() {
-        0 => Err(PluginError::Other(format!(
-            "plugin package extraction '{}' does not contain {}",
-            extracted_dir.display(),
-            eov_plugin_api::manifest::MANIFEST_FILENAME
-        ))),
-        1 => Ok(manifest_roots.pop().unwrap_or_default()),
-        _ => Err(PluginError::Other(format!(
-            "plugin package extraction '{}' contains multiple {} files",
-            extracted_dir.display(),
-            eov_plugin_api::manifest::MANIFEST_FILENAME
-        ))),
-    }
+    package_cache::PackageCache::at(cache_dir)
+        .ensure_extracted(package_path)
+        .map(|extracted| extracted.root)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use std::fs::{self, File};
 
     fn write_valid_manifest(dir: &Path, id: &str) {
         let manifest = format!(
@@ -771,7 +521,7 @@ version = ">=0.4.1"
     fn reject_traversal_and_absolute_archive_paths() {
         let tmp = tempfile::tempdir().unwrap();
         for path in [Path::new("../escape"), Path::new("/escape")] {
-            let error = validate_archive_path(tmp.path(), path).unwrap_err();
+            let error = package_cache::validate_archive_path(tmp.path(), path).unwrap_err();
             assert!(error.to_string().contains("unsafe"));
         }
     }

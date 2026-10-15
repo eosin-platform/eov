@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2024"
 default-run = "eov"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
-license = "MIT OR Apache-2.0 OR GPL-3.0"
+license = "MIT OR Apache-2.0 OR GPL-3.0-only"
 description = "Main application for the EOV project, providing a Slint user interface and integrating various functionalities from the common crate."
 keywords = ["wsi", "biology", "pathology", "medical", "histology"]
 homepage = "https://eov.sh"
@@ -19,6 +19,13 @@ path = "src/main.rs"
 [[bin]]
 name = "eov-update-helper"
 path = "src/update_helper.rs"
+
+# The Windows console launcher, shipped as `eov.com` next to `eov.exe` in the
+# portable release (see src/win_console_launcher.rs).
+[[bin]]
+name = "eov-console"
+path = "src/win_console_launcher.rs"
+required-features = ["windows-console-launcher"]
 
 [dependencies]
 # Common crate
@@ -103,9 +110,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 tar = "0.4"
-semver = "1"
+# zstd-compressed `.eop` plugin packages (decoder only).
+zstd = { version = "0.13", default-features = false }
+# Random, race-free temporary files and directories for staging.
+tempfile = "3"
+# Verification of minisign signatures on release manifests.
+minisign-verify = "0.3"
+semver = { version = "1", features = ["serde"] }
 url = "2"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
+# TLS roots for the updater: Mozilla's bundle plus the OS certificate store
+# (enterprise TLS inspection), see update/transport.rs.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+rustls-native-certs = "0.8"
 zip = "2"
 
 # Overlay layers: spatial index, rasterisation, lock-free snapshots
@@ -136,6 +154,11 @@ raw-window-handle = "0.6"
 windows-sys = { version = "0.48", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -148,7 +171,6 @@ objc = "0.2"
 slint-build = "1.17.1"
 
 [dev-dependencies]
-tempfile = "3"
 eov-common = { path = "../common", features = ["test-support"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.17.1" }
@@ -160,3 +182,5 @@ distribution-appimage = []
 distribution-flatpak = []
 distribution-macos-bundle = []
 distribution-windows-portable = []
+# Builds the `eov-console` launcher binary (Windows release packaging).
+windows-console-launcher = []

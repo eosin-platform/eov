@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -117,7 +118,32 @@ MACOS_CASK_SYMBOLS = {
     "13.0": "ventura",
     "14.0": "sonoma",
     "15.0": "sequoia",
+    "26.0": "tahoe",
 }
+
+# Where eov keeps state on macOS (eov_common::paths): the eov home, the
+# platform data and cache directories (the pre-1.0 config directory is the
+# same "Application Support/eov"), and what macOS keeps per bundle id.
+CASK_ZAP_PATHS = (
+    "~/.eov",
+    "~/Library/Application Support/eov",
+    "~/Library/Caches/eov",
+    "~/Library/Application Support/io.eosin.eov",
+    "~/Library/Caches/io.eosin.eov",
+    "~/Library/HTTPStorages/io.eosin.eov",
+    "~/Library/Preferences/io.eosin.eov.plist",
+    "~/Library/Saved Application State/io.eosin.eov.savedState",
+)
+
+# Platform sections of per-platform plugin artifacts in plugin manifests.
+PLUGIN_PLATFORM_SECTIONS = (
+    "platform.windows.x86_64",
+    "platform.windows.arm64",
+    "platform.linux.x86_64",
+    "platform.linux.arm64",
+    "platform.macos.x86_64",
+    "platform.macos.arm64",
+)
 
 
 def validate_version(version: str, *, stable_only: bool = False) -> str:
@@ -179,94 +205,318 @@ def _stable_version(version: str) -> _SemVer:
     return parsed
 
 
-def semver_requirement_satisfied(requirement: str, version: str) -> bool:
-    """Evaluate the release requirements used by official plugin manifests.
+@dataclass(frozen=True)
+class _Comparator:
+    """One comparator of a Rust ``semver::VersionReq``."""
 
-    Release preparation only considers stable plugin releases. This evaluator
-    intentionally covers the normal VersionReq forms used by the project:
-    comparators, comma-separated ranges, caret/tilde ranges, exact versions,
-    and wildcard versions.
+    op: str
+    major: int
+    minor: int | None
+    patch: int | None
+    prerelease: tuple[int | str, ...] = ()
+
+
+_IDENTIFIER_RE = re.compile(r"[0-9A-Za-z-]+")
+
+
+def _numeric_identifier(text: str) -> tuple[int, str]:
+    match = re.match(r"[0-9]+", text)
+    if match is None:
+        raise ReleaseError("expected a number")
+    digits = match.group(0)
+    if len(digits) > 1 and digits.startswith("0"):
+        raise ReleaseError("numbers must not have leading zeros")
+    value = int(digits)
+    if value > 2**64 - 1:
+        raise ReleaseError("number too large")
+    return value, text[len(digits) :]
+
+
+def _dotted_identifiers(text: str, *, numeric_rules: bool) -> tuple[tuple[str, ...], str]:
+    identifiers = []
+    while True:
+        match = _IDENTIFIER_RE.match(text)
+        if match is None:
+            raise ReleaseError("empty identifier")
+        identifier = match.group(0)
+        if (
+            numeric_rules
+            and identifier.isdigit()
+            and len(identifier) > 1
+            and identifier.startswith("0")
+        ):
+            raise ReleaseError("numeric identifiers must not have leading zeros")
+        identifiers.append(identifier)
+        text = text[len(identifier) :]
+        if not text.startswith("."):
+            return tuple(identifiers), text
+        text = text[1:]
+
+
+def _wildcard(text: str) -> tuple[str, str] | None:
+    if text[:1] in {"*", "x", "X"}:
+        return text[0], text[1:]
+    return None
+
+
+def _parse_comparator(text: str) -> tuple[_Comparator, str]:
+    op = None
+    for candidate in (">=", "<=", "=", ">", "<", "~", "^"):
+        if text.startswith(candidate):
+            op = candidate
+            text = text[len(candidate) :]
+            break
+    default_op = op is None
+    op = op or "^"
+    text = text.lstrip(" ")
+    major, text = _numeric_identifier(text)
+    minor: int | None = None
+    patch: int | None = None
+    has_wildcard = False
+    if text.startswith("."):
+        text = text[1:]
+        wildcard = _wildcard(text)
+        if wildcard is not None:
+            has_wildcard = True
+            if default_op:
+                op = "*"
+            text = wildcard[1]
+        else:
+            minor, text = _numeric_identifier(text)
+    if text.startswith("."):
+        text = text[1:]
+        wildcard = _wildcard(text)
+        if wildcard is not None:
+            if default_op:
+                op = "*"
+            text = wildcard[1]
+        elif has_wildcard:
+            raise ReleaseError("unexpected character after wildcard")
+        else:
+            patch, text = _numeric_identifier(text)
+    prerelease: tuple[int | str, ...] = ()
+    if patch is not None and text.startswith("-"):
+        identifiers, text = _dotted_identifiers(text[1:], numeric_rules=True)
+        prerelease = tuple(int(part) if part.isdigit() else part for part in identifiers)
+    if patch is not None and text.startswith("+"):
+        _, text = _dotted_identifiers(text[1:], numeric_rules=False)
+    return _Comparator(op, major, minor, patch, prerelease), text.lstrip(" ")
+
+
+def parse_requirement(requirement: str) -> tuple[_Comparator, ...]:
+    """Parse a requirement exactly like Rust's ``semver::VersionReq::parse``.
+
+    Returns the comparators (empty for ``*``). Raises ``ReleaseError`` for
+    everything the Rust crate rejects: ``||``, hyphen ranges, space-separated
+    comparators, ``v`` prefixes, leading zeros, empty strings and more.
     """
 
-    if not requirement.strip():
-        raise ReleaseError("plugin environment requirement must not be empty")
-    candidate = _parse_semver(version)
-    alternatives = [part.strip() for part in requirement.split("||")]
-    for alternative in alternatives:
-        terms = [term for term in re.split(r"\s*,\s*|\s+", alternative) if term]
-        if candidate.prerelease and not any(
-            _term_has_matching_prerelease(term, candidate) for term in terms
-        ):
-            continue
-        if all(_semver_term_satisfied(term, candidate) for term in terms):
-            return True
-    return False
+    text = requirement.lstrip(" ")
+    wildcard = _wildcard(text)
+    if wildcard is not None:
+        rest = wildcard[1].lstrip(" ")
+        if not rest:
+            return ()
+        raise ReleaseError(f"invalid SemVer requirement {requirement!r}: wildcard must stand alone")
+    comparators = []
+    try:
+        while True:
+            comparator, text = _parse_comparator(text)
+            comparators.append(comparator)
+            if not text:
+                break
+            if not text.startswith(","):
+                raise ReleaseError("expected a comma between comparators")
+            text = text[1:].lstrip(" ")
+            if len(comparators) >= 32:
+                raise ReleaseError("too many comparators")
+    except ReleaseError as error:
+        raise ReleaseError(f"invalid SemVer requirement {requirement!r}: {error}") from error
+    return tuple(comparators)
 
 
-def _term_has_matching_prerelease(term: str, candidate: _SemVer) -> bool:
-    match = re.search(
-        r"(\d+)\.(\d+)(?:\.(\d+))?-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)",
-        term,
-    )
-    if match is None:
+def _pre_key(prerelease: tuple[int | str, ...]) -> _SemVer:
+    return _SemVer(0, 0, 0, prerelease)
+
+
+def _pre_cmp(left: tuple[int | str, ...], right: tuple[int | str, ...]) -> int:
+    # A release (empty prerelease) sorts after every prerelease.
+    if not left and not right:
+        return 0
+    if not left:
+        return 1
+    if not right:
+        return -1
+    left_key, right_key = _pre_key(left), _pre_key(right)
+    return (left_key > right_key) - (left_key < right_key)
+
+
+def _matches_exact(cmp: _Comparator, ver: _SemVer) -> bool:
+    if ver.major != cmp.major:
         return False
-    major, minor, patch, _ = match.groups()
-    return (
-        int(major) == candidate.major
-        and int(minor) == candidate.minor
-        and int(patch or 0) == candidate.patch
-    )
+    if cmp.minor is not None and ver.minor != cmp.minor:
+        return False
+    if cmp.patch is not None and ver.patch != cmp.patch:
+        return False
+    return ver.prerelease == cmp.prerelease
 
 
-def _semver_term_satisfied(term: str, candidate: _SemVer) -> bool:
-    if term in {"*", "x", "X"}:
+def _matches_greater(cmp: _Comparator, ver: _SemVer) -> bool:
+    if ver.major != cmp.major:
+        return ver.major > cmp.major
+    if cmp.minor is None:
+        return False
+    if ver.minor != cmp.minor:
+        return ver.minor > cmp.minor
+    if cmp.patch is None:
+        return False
+    if ver.patch != cmp.patch:
+        return ver.patch > cmp.patch
+    return _pre_cmp(ver.prerelease, cmp.prerelease) > 0
+
+
+def _matches_less(cmp: _Comparator, ver: _SemVer) -> bool:
+    if ver.major != cmp.major:
+        return ver.major < cmp.major
+    if cmp.minor is None:
+        return False
+    if ver.minor != cmp.minor:
+        return ver.minor < cmp.minor
+    if cmp.patch is None:
+        return False
+    if ver.patch != cmp.patch:
+        return ver.patch < cmp.patch
+    return _pre_cmp(ver.prerelease, cmp.prerelease) < 0
+
+
+def _matches_tilde(cmp: _Comparator, ver: _SemVer) -> bool:
+    if ver.major != cmp.major:
+        return False
+    if cmp.minor is not None and ver.minor != cmp.minor:
+        return False
+    if cmp.patch is not None and ver.patch != cmp.patch:
+        return ver.patch > cmp.patch
+    return _pre_cmp(ver.prerelease, cmp.prerelease) >= 0
+
+
+def _matches_caret(cmp: _Comparator, ver: _SemVer) -> bool:
+    if ver.major != cmp.major:
+        return False
+    if cmp.minor is None:
         return True
-    match = re.fullmatch(
-        r"(\^|~|>=|<=|>|<|=)?\s*(\d+)(?:\.(\d+|x|X|\*))?(?:\.(\d+|x|X|\*))?"
-        r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?",
-        term,
-    )
-    if match is None:
-        raise ReleaseError(f"unsupported SemVer requirement term: {term!r}")
-    operator, major_text, minor_text, patch_text, prerelease_text = match.groups()
-    major = int(major_text)
-    wildcard_minor = minor_text in {None, "x", "X", "*"}
-    wildcard_patch = patch_text in {None, "x", "X", "*"}
-    minor = 0 if wildcard_minor else int(minor_text)
-    patch = 0 if wildcard_patch else int(patch_text)
-    prerelease: tuple[int | str, ...] = ()
-    if prerelease_text:
-        prerelease = tuple(
-            int(identifier) if identifier.isdigit() else identifier
-            for identifier in prerelease_text.split(".")
-        )
-    lower = _SemVer(major, minor, patch, prerelease)
-    if candidate.prerelease and not prerelease:
+    if cmp.patch is None:
+        return ver.minor >= cmp.minor if cmp.major > 0 else ver.minor == cmp.minor
+    if cmp.major > 0:
+        if ver.minor != cmp.minor:
+            return ver.minor > cmp.minor
+        if ver.patch != cmp.patch:
+            return ver.patch > cmp.patch
+    elif cmp.minor > 0:
+        if ver.minor != cmp.minor:
+            return False
+        if ver.patch != cmp.patch:
+            return ver.patch > cmp.patch
+    elif ver.minor != cmp.minor or ver.patch != cmp.patch:
         return False
-    if operator == "^":
-        if major > 0:
-            upper = _SemVer(major + 1, 0, 0)
-        elif minor > 0:
-            upper = _SemVer(0, minor + 1, 0)
-        else:
-            upper = _SemVer(0, 0, patch + 1)
-        return lower <= candidate < upper
-    if operator == "~":
-        return lower <= candidate < _SemVer(major, minor + 1, 0)
-    if operator in {None, "="} and (wildcard_minor or wildcard_patch):
-        return (
-            candidate.major == major
-            and (wildcard_minor or candidate.minor == minor)
-            and (wildcard_patch or candidate.patch == patch)
+    return _pre_cmp(ver.prerelease, cmp.prerelease) >= 0
+
+
+def _matches_comparator(cmp: _Comparator, ver: _SemVer) -> bool:
+    if cmp.op in {"=", "*"}:
+        return _matches_exact(cmp, ver)
+    if cmp.op == ">":
+        return _matches_greater(cmp, ver)
+    if cmp.op == ">=":
+        return _matches_exact(cmp, ver) or _matches_greater(cmp, ver)
+    if cmp.op == "<":
+        return _matches_less(cmp, ver)
+    if cmp.op == "<=":
+        return _matches_exact(cmp, ver) or _matches_less(cmp, ver)
+    if cmp.op == "~":
+        return _matches_tilde(cmp, ver)
+    return _matches_caret(cmp, ver)
+
+
+def _requirement_matches(comparators: tuple[_Comparator, ...], ver: _SemVer) -> bool:
+    if not all(_matches_comparator(cmp, ver) for cmp in comparators):
+        return False
+    if not ver.prerelease:
+        return True
+    # A prerelease only satisfies a requirement when a comparator names a
+    # prerelease of the same major.minor.patch.
+    return any(
+        cmp.major == ver.major
+        and cmp.minor == ver.minor
+        and cmp.patch == ver.patch
+        and cmp.prerelease
+        for cmp in comparators
+    )
+
+
+def semver_requirement_satisfied(requirement: str, version: str) -> bool:
+    """Evaluate a requirement exactly like Rust's ``VersionReq::matches``.
+
+    Cross-tested against the Rust crate through
+    ``app/tests/data/semver-cases.json``.
+    """
+
+    return _requirement_matches(parse_requirement(requirement), _parse_semver(version))
+
+
+def bounded_requirement(requirement: str) -> tuple[_Comparator, ...]:
+    """eov's bounded form of a plugin requirement (``update/compat.rs``).
+
+    A requirement without an upper bound is capped at the next breaking
+    release of its highest lower bound (``>=0.4.1`` means ``<0.5.0``); a
+    requirement with no lower bound either (``*``) is rejected.
+    """
+
+    comparators = parse_requirement(requirement)
+    if any(cmp.op in {"=", "<", "<=", "~", "^", "*"} for cmp in comparators):
+        return comparators
+    lower_bounds = [
+        (cmp.major, cmp.minor or 0, cmp.patch or 0)
+        for cmp in comparators
+        if cmp.op in {">", ">="}
+    ]
+    if not lower_bounds:
+        raise ReleaseError(
+            f"requirement {requirement!r} has no lower bound; "
+            'declare a range such as ">=1.0.0, <2.0.0"'
         )
-    if operator in {None, "="}:
-        return candidate == lower
-    return {
-        ">=": candidate >= lower,
-        "<=": candidate <= lower,
-        ">": candidate > lower,
-        "<": candidate < lower,
-    }[operator]
+    major, minor, patch = max(lower_bounds)
+    if major > 0:
+        cap = (major + 1, 0, 0)
+    elif minor > 0:
+        cap = (0, minor + 1, 0)
+    else:
+        cap = (0, 0, patch + 1)
+    return comparators + (_Comparator("<", *cap),)
+
+
+def host_compatible(requirement: str, version: str) -> bool:
+    """Whether eov ``version`` loads a plugin declaring ``requirement``,
+    with the same bounded and prerelease rules as ``update/compat.rs``."""
+
+    try:
+        comparators = bounded_requirement(requirement)
+    except ReleaseError:
+        return False
+    host = _parse_semver(version)
+    if _requirement_matches(comparators, host):
+        return True
+    mentions_prerelease = any(cmp.prerelease for cmp in comparators)
+    return (
+        bool(host.prerelease)
+        and not mentions_prerelease
+        and _requirement_matches(comparators, _SemVer(host.major, host.minor, host.patch))
+    )
+
+
+def requirement_is_bounded(requirement: str) -> bool:
+    """Whether a requirement declares an explicit upper bound."""
+
+    return any(cmp.op in {"=", "<", "<=", "~", "^", "*"} for cmp in parse_requirement(requirement))
 
 
 def select_compatible_plugin_release(
@@ -274,11 +524,11 @@ def select_compatible_plugin_release(
 ) -> str:
     """Return the newest stable candidate whose environment accepts EOV."""
 
-    eov = _parse_semver(eov_version)
+    _parse_semver(eov_version)
     compatible: list[tuple[_SemVer, str]] = []
     for version, environment in candidates:
         parsed = _stable_version(version.removeprefix("v"))
-        if semver_requirement_satisfied(environment, eov_version):
+        if host_compatible(environment, eov_version):
             compatible.append((parsed, version.removeprefix("v")))
     if not compatible:
         raise ReleaseError(
@@ -664,6 +914,73 @@ def validate_plugin_source(root: Path, requested_version: str) -> None:
         raise ReleaseError("plugin.toml has no valid [environment].version")
 
 
+@dataclass(frozen=True)
+class PluginRelease:
+    """An official plugin release, read from its published release.toml."""
+
+    version: str
+    environment: str
+    release_tag: str
+    artifacts: dict[str, dict[str, str]]
+
+
+def read_plugin_release(
+    path: Path, plugin_id: str, repository: str, version: str, eov_version: str
+) -> PluginRelease:
+    """Read and validate an official plugin's release.toml for the catalog.
+
+    The catalog pins every per-platform artifact's SHA-256, so the eov release
+    (which is signed) vouches for the plugin bytes, not just their version.
+    """
+
+    data = read_toml(path)
+    plugin = data.get("plugin")
+    plugin = plugin if isinstance(plugin, dict) else {}
+    declared_id = plugin.get("id")
+    if declared_id is not None and declared_id != plugin_id:
+        raise ReleaseError(f"{path} declares plugin {declared_id!r}, expected {plugin_id!r}")
+    environment = plugin.get("environment") or _first_artifact_environment(data)
+    if not isinstance(environment, str):
+        raise ReleaseError(f"{path} has no EOV environment requirement")
+    if not requirement_is_bounded(environment):
+        raise ReleaseError(
+            f"plugin {plugin_id} {version} declares the open-ended requirement {environment!r}; "
+            "official plugins must declare an upper bound such as \">=1.0.0, <2.0.0\""
+        )
+    if not host_compatible(environment, eov_version):
+        raise ReleaseError(
+            f"plugin {plugin_id} {version} requires eov {environment!r}, "
+            f"which excludes {eov_version}"
+        )
+    artifacts: dict[str, dict[str, str]] = {}
+    tags = set()
+    for section in PLUGIN_PLATFORM_SECTIONS:
+        try:
+            entry = nested_table(data, section)
+        except ReleaseError:
+            continue
+        if entry.get("version") != version:
+            raise ReleaseError(f"{path} [{section}] is not version {version}")
+        sha256 = entry.get("sha256")
+        url = entry.get("url")
+        if not isinstance(sha256, str) or not isinstance(url, str):
+            raise ReleaseError(f"{path} [{section}] is missing sha256 or url")
+        validate_sha256(sha256, f"{path} [{section}].sha256")
+        prefix = f"{repository}/releases/download/"
+        if not url.startswith(prefix):
+            raise ReleaseError(f"{path} [{section}] URL does not belong to {repository}")
+        tag, _, file_name = url[len(prefix) :].rpartition("/")
+        if not tag or not file_name:
+            raise ReleaseError(f"{path} [{section}] URL is not a release asset URL")
+        tags.add(tag)
+        artifacts[section] = {"sha256": sha256.lower(), "url": url}
+    if not artifacts:
+        raise ReleaseError(f"{path} lists no per-platform plugin artifacts")
+    if len(tags) != 1:
+        raise ReleaseError(f"{path} artifacts point at several releases: {sorted(tags)}")
+    return PluginRelease(version, environment, tags.pop(), artifacts)
+
+
 def render_manifest(
     version: str,
     repository: str,
@@ -673,6 +990,8 @@ def render_manifest(
     environment: str | None = None,
     plugin_metadata: tuple[str, str, str | None, str | None] | None = None,
     official_metadata: dict[str, tuple[str, str, str]] | None = None,
+    plugin_releases: dict[str, PluginRelease] | None = None,
+    signed: bool = False,
 ) -> str:
     lines: list[str] = []
     kind = "eov" if plugin_versions is not None else "plugin"
@@ -683,9 +1002,11 @@ def render_manifest(
             f"kind = {json.dumps(kind)}",
             f"version = {json.dumps(version)}",
             f"repository = {json.dumps(f'https://github.com/{repository}')}",
-            "",
         )
     )
+    if signed:
+        lines.append('signature = "minisign"')
+    lines.append("")
     if plugin_metadata is not None:
         plugin_id, plugin_name, description, plugin_repository = plugin_metadata
         lines.extend(
@@ -738,9 +1059,28 @@ def render_manifest(
                     f"repository = {json.dumps(plugin_repository)}",
                     f"version = {json.dumps(plugin_versions[name])}",
                     f"description = {json.dumps(description)}",
-                    "",
                 )
             )
+            release = (plugin_releases or {}).get(name)
+            if release is not None:
+                lines.extend(
+                    (
+                        f"release_tag = {json.dumps(release.release_tag)}",
+                        f"environment = {json.dumps(release.environment)}",
+                    )
+                )
+            lines.append("")
+            if release is not None:
+                for section, artifact in release.artifacts.items():
+                    lines.extend(
+                        (
+                            f"[plugins.{name}.{section}]",
+                            f"version = {json.dumps(release.version)}",
+                            f"sha256 = {json.dumps(artifact['sha256'])}",
+                            f"url = {json.dumps(artifact['url'])}",
+                            "",
+                        )
+                    )
         while lines and lines[-1] == "":
             lines.pop()
         lines.append("")
@@ -799,6 +1139,36 @@ def validate_manifest_data(
                         f"official plugin catalog entry '{plugin_id}' is missing {field}"
                     )
             validate_version(plugin["version"])
+            plugin_environment = plugin.get("environment")
+            if plugin_environment is not None:
+                if not isinstance(plugin_environment, str) or not requirement_is_bounded(
+                    plugin_environment
+                ):
+                    raise ReleaseError(
+                        f"official plugin catalog entry '{plugin_id}' needs a bounded environment"
+                    )
+            plugin_tag = plugin.get("release_tag", f"v{plugin['version']}")
+            platforms = plugin.get("platform", {})
+            if not isinstance(platforms, dict):
+                raise ReleaseError(f"official plugin '{plugin_id}' platform entries must be tables")
+            for section in PLUGIN_PLATFORM_SECTIONS:
+                try:
+                    artifact = nested_table({"platform": platforms}, section)
+                except ReleaseError:
+                    continue
+                if artifact.get("version") != plugin["version"]:
+                    raise ReleaseError(
+                        f"official plugin '{plugin_id}' [{section}] has the wrong version"
+                    )
+                validate_sha256(
+                    str(artifact.get("sha256")), f"plugin '{plugin_id}' [{section}].sha256"
+                )
+                expected_prefix = f"{plugin['repository']}/releases/download/{plugin_tag}/"
+                if not str(artifact.get("url", "")).startswith(expected_prefix):
+                    raise ReleaseError(
+                        f"official plugin '{plugin_id}' [{section}] URL is not part of "
+                        f"release {plugin_tag}"
+                    )
             repository_url = urllib.parse.urlparse(plugin["repository"])
             if (
                 repository_url.scheme != "https"
@@ -915,6 +1285,20 @@ def command_manifest(args: argparse.Namespace) -> None:
 
     staged = stage_artifacts(args.artifacts_dir, args.staging_dir, specs)
     plugin_versions = parse_plugin_versions(args.plugin_version)
+    plugin_releases: dict[str, PluginRelease] = {}
+    for value in args.plugin_manifest:
+        name, separator, path = value.partition("=")
+        if not separator or name not in plugin_versions:
+            raise ReleaseError(
+                f"--plugin-manifest must be NAME=PATH for a --plugin-version plugin: {value!r}"
+            )
+        plugin_releases[name] = read_plugin_release(
+            Path(path),
+            name,
+            (official_metadata or PLUGIN_METADATA)[name][0],
+            plugin_versions[name],
+            version,
+        )
     content = render_manifest(
         version,
         args.repository,
@@ -924,6 +1308,8 @@ def command_manifest(args: argparse.Namespace) -> None:
         environment,
         plugin_metadata,
         official_metadata,
+        plugin_releases,
+        args.signed,
     )
     write_atomically(args.output, content)
     data, _ = load_and_validate_manifest(
@@ -944,21 +1330,56 @@ def command_manifest(args: argparse.Namespace) -> None:
     print(f"generated {args.output}")
 
 
-def macos_cask_symbol(info_plist_path: Path) -> str:
-    try:
-        with info_plist_path.open("rb") as plist_file:
-            info_plist = plistlib.load(plist_file)
-    except (OSError, ValueError, plistlib.InvalidFileException) as error:
-        raise ReleaseError(f"could not read {info_plist_path}: {error}") from error
-    if not isinstance(info_plist, dict):
-        raise ReleaseError(f"{info_plist_path} is not a property list object")
-    minimum_version = info_plist.get("LSMinimumSystemVersion")
-    if (
-        not isinstance(minimum_version, str)
-        or minimum_version not in MACOS_CASK_SYMBOLS
-    ):
-        raise ReleaseError(f"unsupported LSMinimumSystemVersion: {minimum_version!r}")
-    return MACOS_CASK_SYMBOLS[minimum_version]
+def _macos_symbol_for(minimum_version: object, source: str) -> str:
+    if not isinstance(minimum_version, str):
+        raise ReleaseError(f"{source} has no LSMinimumSystemVersion")
+    parts = minimum_version.split(".")
+    major = parts[0]
+    key = f"{major}.0" if major != "10" else ".".join(parts[:2])
+    if key not in MACOS_CASK_SYMBOLS:
+        raise ReleaseError(f"unsupported LSMinimumSystemVersion {minimum_version!r} in {source}")
+    return key
+
+
+def macos_cask_symbol(info_plist_path: Path, app_archives: tuple[Path, ...] = ()) -> str:
+    """The cask's ``depends_on macos:`` symbol.
+
+    With ``app_archives`` (the built macOS zips), the highest
+    ``LSMinimumSystemVersion`` of the bundles that are actually shipped wins,
+    so the cask never promises an older macOS than the binaries support.
+    """
+
+    keys = []
+    for archive in app_archives:
+        try:
+            with zipfile.ZipFile(archive) as bundle:
+                info_plist = plistlib.loads(bundle.read("eov.app/Contents/Info.plist"))
+        except (
+            OSError,
+            KeyError,
+            ValueError,
+            zipfile.BadZipFile,
+            plistlib.InvalidFileException,
+        ) as error:
+            raise ReleaseError(f"could not read Info.plist from {archive}: {error}") from error
+        if not isinstance(info_plist, dict):
+            raise ReleaseError(f"{archive} has an invalid Info.plist")
+        keys.append(_macos_symbol_for(info_plist.get("LSMinimumSystemVersion"), str(archive)))
+    if not keys:
+        try:
+            with info_plist_path.open("rb") as plist_file:
+                info_plist = plistlib.load(plist_file)
+        except (OSError, ValueError, plistlib.InvalidFileException) as error:
+            raise ReleaseError(f"could not read {info_plist_path}: {error}") from error
+        if not isinstance(info_plist, dict):
+            raise ReleaseError(f"{info_plist_path} is not a property list object")
+        keys.append(
+            _macos_symbol_for(
+                info_plist.get("LSMinimumSystemVersion"), str(info_plist_path)
+            )
+        )
+    key = max(keys, key=lambda value: tuple(int(part) for part in value.split(".")))
+    return MACOS_CASK_SYMBOLS[key]
 
 
 def cask_content(
@@ -970,6 +1391,7 @@ def cask_content(
     x86_64_url: str,
     macos_symbol: str,
 ) -> str:
+    zap_lines = "\n".join(f"        {json.dumps(path)}," for path in CASK_ZAP_PATHS)
     return f"""cask "{token}" do
     version "{version}"
 
@@ -994,9 +1416,7 @@ def cask_content(
     binary "#{{appdir}}/eov.app/Contents/MacOS/eov"
 
     zap trash: [
-        "~/Library/Application Support/io.eosin.eov",
-        "~/Library/Caches/io.eosin.eov",
-        "~/Library/Preferences/io.eosin.eov.plist",
+{zap_lines}
     ]
 
     caveats <<~EOS
@@ -1053,7 +1473,7 @@ def command_cask(args: argparse.Namespace) -> None:
         "eov",
     )
     arm_sha, arm_url, intel_sha, intel_url = cask_values(data, version)
-    symbol = macos_cask_symbol(args.info_plist)
+    symbol = macos_cask_symbol(args.info_plist, tuple(args.app_archive))
     casks_dir = args.tap_root / "Casks"
     casks_dir.mkdir(parents=True, exist_ok=True)
     exact_path = casks_dir / f"eov@{version}.rb"
@@ -1331,6 +1751,17 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--plugin-name", choices=tuple(PLUGIN_ARTIFACTS))
     manifest.add_argument("--plugin-toml", type=Path)
     manifest.add_argument("--plugin-version", action="append", default=[])
+    manifest.add_argument(
+        "--plugin-manifest",
+        action="append",
+        default=[],
+        help="NAME=PATH of the plugin's published release.toml; pins its per-platform hashes",
+    )
+    manifest.add_argument(
+        "--signed",
+        action="store_true",
+        help="declare that release.toml.minisig will be published",
+    )
     manifest.set_defaults(function=command_manifest)
 
     cask = subparsers.add_parser("generate-cask")
@@ -1338,6 +1769,13 @@ def build_parser() -> argparse.ArgumentParser:
     cask.add_argument("--manifest", type=Path, required=True)
     cask.add_argument("--tap-root", type=Path, required=True)
     cask.add_argument("--info-plist", type=Path, required=True)
+    cask.add_argument(
+        "--app-archive",
+        type=Path,
+        action="append",
+        default=[],
+        help="built macOS zip; its Info.plist decides depends_on macos",
+    )
     cask.set_defaults(function=command_cask)
 
     validate_casks = subparsers.add_parser("validate-casks")

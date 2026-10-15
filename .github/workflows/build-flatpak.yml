@@ -37,20 +37,11 @@ jobs:
   release-flatpak:
     name: Release Flatpak (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
 
     # ---------------------------------------------------------------
-    # Architecture matrix
-    #
-    # Each entry maps a target architecture to a GitHub-hosted runner.
-    # flatpak-builder builds for the host architecture by default, so
-    # native runners are the simplest path — no QEMU, no --arch flag.
-    #
-    # To add a new architecture, append another include entry with the
-    # corresponding runner label.
-    #
-    # Alternative for aarch64 without a native runner:
-    #   flatpak-builder --arch=aarch64 with QEMU binfmt_misc, but
-    #   Rust compilation under user-mode emulation is extremely slow.
+    # Architecture matrix: flatpak-builder builds for the host
+    # architecture, so native runners are used.
     # ---------------------------------------------------------------
     strategy:
       fail-fast: false
@@ -61,8 +52,6 @@ jobs:
             artifact_arch: x86_64
 
           # NOTE: Requires GitHub Actions ARM runner access.
-          # If unavailable, remove this entry and build on a self-hosted
-          # ARM64 runner or investigate QEMU-based cross-build.
           - arch: aarch64
             runner: ubuntu-24.04-arm
             artifact_arch: arm64
@@ -72,32 +61,38 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_sha }}
           submodules: recursive
+          persist-credentials: false
 
-      - name: Install system dependencies
+      # The manifest requests --device=input, which `flatpak build-finish`
+      # only accepts from Flatpak 1.15.6; Ubuntu 24.04 ships 1.14. The
+      # Flatpak maintainers' PPA provides current releases.
+      - name: Install Flatpak tooling
         shell: bash
         run: |
           set -euo pipefail
+          sudo add-apt-repository -y ppa:flatpak/stable
           sudo apt-get update
           sudo apt-get install -y \
             flatpak \
             flatpak-builder \
             python3 \
             python3-venv
+          version="$(flatpak --version | awk '{print $2}')"
+          echo "Flatpak $version"
+          if [[ "$(printf '%s\n%s\n' 1.15.6 "$version" | sort -V | head -n 1)" != "1.15.6" ]]; then
+            echo "Flatpak $version is older than 1.15.6 and rejects --device=input" >&2
+            exit 1
+          fi
 
       - name: Create Python virtual environment
         shell: bash
         run: |
           set -euo pipefail
           python3 -m venv .venv
-
-      - name: Install Python dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
           source .venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install aiohttp PyYAML tomlkit
@@ -126,19 +121,10 @@ jobs:
             exit 1
           }
 
-          # Architecture comes from the matrix; on native runners this
-          # matches what flatpak --default-arch would return.
-          arch="${{ matrix.arch }}"
-          artifact_arch="${{ matrix.artifact_arch }}"
-          bundle_name="eov-${tag}-linux-${artifact_arch}.flatpak"
-          checksum_name="${bundle_name}.sha256"
-
+          bundle_name="eov-${tag}-linux-${{ matrix.artifact_arch }}.flatpak"
           {
-            echo "tag=$tag"
-            echo "version=$version"
-            echo "arch=$arch"
             echo "bundle_name=$bundle_name"
-            echo "checksum_name=$checksum_name"
+            echo "checksum_name=${bundle_name}.sha256"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build Flatpak
@@ -146,6 +132,16 @@ jobs:
         run: |
           set -euo pipefail
           ./packaging/flatpak/build.sh
+
+      - name: Check the exported permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build/metadata
+          grep -Eq '^shared=.*network' build/metadata || { echo "network is not shared" >&2; exit 1; }
+          grep -Eq '^devices=.*input' build/metadata || { echo "input devices are not granted" >&2; exit 1; }
+          test -f build/files/share/licenses/io.eosin.eov/licenses/LGPL-2.1.txt
+          test -f build/files/share/doc/eov/COPYING.third-party
 
       - name: Create Flatpak bundle
         id: bundle
@@ -160,13 +156,11 @@ jobs:
             stable
           sha256sum "${{ steps.meta.outputs.bundle_name }}" > "${{ steps.meta.outputs.checksum_name }}"
 
-          echo "bundle_path=${{ steps.meta.outputs.bundle_name }}" >> "$GITHUB_OUTPUT"
-          echo "checksum_path=${{ steps.meta.outputs.checksum_name }}" >> "$GITHUB_OUTPUT"
-
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.meta.outputs.bundle_name }}
           path: |
-            ${{ steps.bundle.outputs.bundle_path }}
-            ${{ steps.bundle.outputs.checksum_path }}
+            ${{ steps.meta.outputs.bundle_name }}
+            ${{ steps.meta.outputs.checksum_name }}
+          if-no-files-found: error

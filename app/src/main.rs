@@ -31,6 +31,7 @@ mod tile_loader;
 mod ui_update;
 mod update;
 mod version;
+mod win_console;
 mod zoom_display;
 
 use anyhow::Result;
@@ -129,6 +130,9 @@ fn request_render_loop(
 }
 
 fn main() -> Result<()> {
+    // Windows GUI build: attach to the terminal for CLI use, or show fatal
+    // errors in a message box (SH-2). No-op elsewhere.
+    win_console::init();
     let launch_options = parse_launch_options()?;
     apply_config_override(launch_options.config_path.as_ref())?;
     init_tracing(launch_options.log_level);

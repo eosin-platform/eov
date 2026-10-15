@@ -1,0 +1,4 @@
+==> App
+/Applications/eov.app (2,345 files, 48.2MB)
+==> Binary
+/opt/homebrew/bin/eov -> /Applications/eov.app/Contents/MacOS/eov (1 file, 13.5MB)

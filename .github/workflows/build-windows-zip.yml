@@ -15,6 +15,13 @@ on:
         description: "Release tag"
         required: true
         type: string
+    secrets:
+      WINDOWS_CERTIFICATE_PFX:
+        description: "Base64 of the Authenticode code-signing certificate (.pfx); optional"
+        required: false
+      WINDOWS_CERTIFICATE_PASSWORD:
+        description: "Password of the .pfx; optional"
+        required: false
   workflow_dispatch:
     inputs:
       source_sha:
@@ -35,8 +42,9 @@ permissions:
 
 jobs:
   release-windows:
-    name: Build and release Windows zip (${{ matrix.arch }})
+    name: Build Windows zip (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
 
     # ---------------------------------------------------------------
     # Architecture matrix
@@ -50,8 +58,6 @@ jobs:
     #   rust_target      – Rust target triple
     #   ntldd_filter     – grep pattern for ntldd output to find
     #                      non-system DLLs from the MSYS2 environment
-    #
-    # To add a new architecture, append another include entry.
     # ---------------------------------------------------------------
     strategy:
       fail-fast: false
@@ -67,8 +73,6 @@ jobs:
             ntldd_filter: clang64
 
           # NOTE: Requires GitHub Actions ARM64 Windows runner access.
-          # If unavailable, remove this entry and build on a self-hosted
-          # ARM64 Windows runner instead.
           - arch: arm64
             runner: windows-11-arm
             msvc_arch: arm64
@@ -78,67 +82,29 @@ jobs:
             rust_target: aarch64-pc-windows-msvc
             ntldd_filter: clangarm64
 
-    env:
-      OPENSLIDE_REPO_URL: "https://github.com/Yanstart/openslide.git"
-      OPENSLIDE_COMMIT: "00bebfb6a412485f7fbfe7fdb5919a3868594c13"
-
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_sha }}
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_target }}
 
       - name: Set up MSVC dev environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: ${{ matrix.msvc_arch }}
 
       - name: Cache Rust build outputs
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.arch }}
-
-      - name: Set up MSYS2 (${{ matrix.msystem }})
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: ${{ matrix.msystem }}
-          update: true
-          install: >-
-            ${{ matrix.msys2_prefix }}-clang
-            ${{ matrix.msys2_prefix }}-meson
-            ${{ matrix.msys2_prefix }}-ninja
-            ${{ matrix.msys2_prefix }}-pkg-config
-            ${{ matrix.msys2_prefix }}-cairo
-            ${{ matrix.msys2_prefix }}-gdk-pixbuf2
-            ${{ matrix.msys2_prefix }}-glib2
-            ${{ matrix.msys2_prefix }}-libjpeg-turbo
-            ${{ matrix.msys2_prefix }}-libpng
-            ${{ matrix.msys2_prefix }}-libtiff
-            ${{ matrix.msys2_prefix }}-libxml2
-            ${{ matrix.msys2_prefix }}-openjpeg2
-            ${{ matrix.msys2_prefix }}-protobuf
-            ${{ matrix.msys2_prefix }}-sqlite3
-            ${{ matrix.msys2_prefix }}-zlib
-            ${{ matrix.msys2_prefix }}-ntldd
-            ${{ matrix.msys2_prefix }}-tools
-            git
-
-      - name: Export protoc path
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          protoc_path="$(cygpath -w "$MSYSTEM_PREFIX/bin/protoc.exe")"
-          [[ -x "$MSYSTEM_PREFIX/bin/protoc.exe" ]] || {
-            echo "protoc not found at $MSYSTEM_PREFIX/bin/protoc.exe" >&2
-            exit 1
-          }
-          echo "PROTOC=$protoc_path" >> "$GITHUB_ENV"
 
       - name: Derive release metadata
         id: meta
@@ -163,167 +129,151 @@ jobs:
             echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Install uthash headers
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/troydhanson/uthash/archive/v2.3.0.tar.gz | tar xz --exclude='uthash-2.3.0/include'
-          install -Dm644 uthash-2.3.0/src/uthash.h "$MSYSTEM_PREFIX/include/uthash.h"
-          install -Dm644 uthash-2.3.0/src/utarray.h "$MSYSTEM_PREFIX/include/utarray.h"
-          install -Dm644 uthash-2.3.0/src/utlist.h "$MSYSTEM_PREFIX/include/utlist.h"
-          install -Dm644 uthash-2.3.0/src/utringbuffer.h "$MSYSTEM_PREFIX/include/utringbuffer.h"
-          install -Dm644 uthash-2.3.0/src/utstack.h "$MSYSTEM_PREFIX/include/utstack.h"
-          rm -rf uthash-2.3.0
-
-      - name: Build libdicom
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/ImagingDataCommons/libdicom/releases/download/v1.2.0/libdicom-1.2.0.tar.xz | tar xJ
-          cd libdicom-1.2.0
-          meson setup _build \
-            --prefix="$MSYSTEM_PREFIX" \
-            --libdir=lib \
-            -Dtests=false \
-            --wrap-mode=nofallback
-          meson compile -C _build
-          meson install -C _build
-
-      - name: Build OpenSlide from source
+      - name: Build OpenSlide and its MSVC import library
         id: openslide
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          git init openslide-src
-          git -C openslide-src remote add origin "$OPENSLIDE_REPO_URL"
-          git -C openslide-src fetch --depth 1 origin "$OPENSLIDE_COMMIT"
-          git -C openslide-src checkout --detach FETCH_HEAD
-          cd openslide-src
-          meson setup _build \
-            --prefix="$MSYSTEM_PREFIX" \
-            --libdir=lib \
-            -Dtest=disabled \
-            --wrap-mode=nofallback
-          meson compile -C _build
-          meson install -C _build
+        uses: ./.github/actions/openslide-windows
+        with:
+          msystem: ${{ matrix.msystem }}
+          msys2-prefix: ${{ matrix.msys2_prefix }}
+          lib-machine: ${{ matrix.lib_machine }}
 
-          # Export the MSYS2 prefix as a Windows path for later steps
-          echo "msys_prefix=$(cygpath -w "$MSYSTEM_PREFIX")" >> "$GITHUB_OUTPUT"
-          echo "Installed OpenSlide DLLs:"
-          ls -la "$MSYSTEM_PREFIX"/bin/libopenslide*
-
-      # ---------------------------------------------------------------
-      # Generate an MSVC-compatible import library for OpenSlide.
-      #
-      # gendef (from mingw-w64-tools) reliably extracts DLL exports
-      # into a .def file.  MSVC lib.exe then creates the import
-      # library from that .def — guaranteed linker-compatible.
-      # ---------------------------------------------------------------
-      - name: Generate OpenSlide .def file
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          dll=$(find "$MSYSTEM_PREFIX/bin" -maxdepth 1 -name 'libopenslide-*.dll' -type f | head -1)
-          [[ -n "$dll" ]] || { echo "No OpenSlide DLL found in $MSYSTEM_PREFIX/bin" >&2; exit 1; }
-          echo "Generating .def from: $dll"
-
-          mkdir -p openslide-msvc
-          gendef - "$dll" > openslide-msvc/openslide.def
-
-          echo "=== openslide.def ==="
-          cat openslide-msvc/openslide.def
-
-          export_count=$(grep -c '^openslide_' openslide-msvc/openslide.def || true)
-          echo "Exports found: $export_count"
-          if [[ "$export_count" -lt 1 ]]; then
-            echo "ERROR: .def contains no openslide exports" >&2
-            exit 1
-          fi
-
-      - name: Create MSVC import library for OpenSlide
+      - name: Build release binaries
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $defPath = "openslide-msvc\openslide.def"
-          $libPath = "openslide-msvc\openslide.lib"
-
-          # Create the import library that matches #[link(name = "openslide")]
-          lib /def:$defPath /out:$libPath /machine:${{ matrix.lib_machine }}
-
-          if (-not (Test-Path $libPath)) {
-            Write-Error "lib.exe failed to create $libPath"
-            exit 1
-          }
-
-          $size = (Get-Item $libPath).Length
-          Write-Host "Created $libPath ($size bytes)"
-
-          # Verify the import library contains expected symbols
-          $symbols = & dumpbin /linkermember:1 $libPath 2>&1 | Out-String
-          if ($symbols -notmatch 'openslide_') {
-            Write-Host "=== dumpbin /linkermember:1 ==="
-            Write-Host $symbols
-            Write-Error "Import library does not contain openslide symbols"
-            exit 1
-          }
-          Write-Host "Verified: openslide symbols present in import library"
-
-      - name: Build release binary
-        shell: pwsh
-        run: |
-          $libDir = Join-Path (Get-Location) "openslide-msvc"
+          $libDir = "${{ steps.openslide.outputs.lib-dir }}"
           $env:RUSTFLAGS = "-L native=$libDir"
-          cargo build --release --target ${{ matrix.rust_target }} --bin eov --bin eov-update-helper --no-default-features --features "distribution-windows-portable"
+          $env:OPENSLIDE_LIB_DIR = $libDir
+          cargo build --release --locked --target ${{ matrix.rust_target }} `
+            --bin eov --bin eov-update-helper --bin eov-console `
+            --no-default-features --features "distribution-windows-portable windows-console-launcher"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Collect runtime DLLs
+      - name: Collect runtime DLLs and their licences
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          mkdir -p staging/eov
+          mkdir -p staging/eov/licenses/third-party
 
-          # Find the built OpenSlide DLL
           openslide_dll=$(find "$MSYSTEM_PREFIX/bin" -maxdepth 1 -name 'libopenslide-*.dll' -type f | head -1)
-          if [[ -z "$openslide_dll" ]]; then
-            echo "No OpenSlide DLL found in $MSYSTEM_PREFIX/bin" >&2
-            exit 1
-          fi
+          [[ -n "$openslide_dll" ]] || { echo "No OpenSlide DLL found in $MSYSTEM_PREFIX/bin" >&2; exit 1; }
           echo "Resolving dependencies for: $openslide_dll"
-
-          # Copy the OpenSlide DLL itself
           cp "$openslide_dll" staging/eov/
 
-          # Use ntldd to recursively find all non-system DLL dependencies
-          ntldd -R "$openslide_dll" | \
-            grep -i "${{ matrix.ntldd_filter }}" | \
-            awk '{print $3}' | \
-            sort -u | \
-            while IFS= read -r dep; do
-              echo "  copying: $(basename "$dep")"
-              cp "$dep" staging/eov/
-            done
+          # ntldd: every non-system DLL OpenSlide needs, recursively.
+          mapfile -t dependencies < <(
+            ntldd -R "$openslide_dll" \
+              | grep -i "${{ matrix.ntldd_filter }}" \
+              | awk '{print $3}' \
+              | sort -u
+          )
+          for dep in "${dependencies[@]}"; do
+            dep="$(cygpath -u "$dep")"
+            echo "  copying: $(basename "$dep")"
+            cp "$dep" staging/eov/
+            # The MSYS2 package's licence files (share/licenses/<package>).
+            package="$(pacman -Qoq "$dep" 2>/dev/null || true)"
+            if [[ -n "$package" && -d "$MSYSTEM_PREFIX/share/licenses/${package#${{ matrix.msys2_prefix }}-}" ]]; then
+              cp -r "$MSYSTEM_PREFIX/share/licenses/${package#${{ matrix.msys2_prefix }}-}" \
+                "staging/eov/licenses/third-party/"
+            elif [[ -n "$package" ]]; then
+              echo "  note: $package ships no licence directory"
+            fi
+          done
+          build_root="$(cygpath -u "$RUNNER_TEMP")/openslide-build"
+          for source in "$build_root/openslide-src" "$build_root"/libdicom-src/libdicom-*; do
+            [[ -d "$source" ]] || continue
+            name="$(basename "$source")"
+            mkdir -p "staging/eov/licenses/third-party/${name%-src}"
+            cp "$source"/COPYING* "$source"/LICENSE* "staging/eov/licenses/third-party/${name%-src}/" 2>/dev/null || true
+          done
 
-          echo ""
           echo "DLLs collected:"
           ls -1 staging/eov/*.dll
+          echo "Licence directories:"
+          ls -1 staging/eov/licenses/third-party
+
+      - name: Stage binaries, licences and notices
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = "target\${{ matrix.rust_target }}\release"
+          Copy-Item "$out\eov.exe" "staging\eov\"
+          Copy-Item "$out\eov-update-helper.exe" "staging\eov\"
+          # The console launcher: `eov ...` in a terminal resolves to eov.com
+          # (PATHEXT lists .COM before .EXE), which runs eov.exe attached to
+          # the console and waits for it (app/src/win_console_launcher.rs).
+          Copy-Item "$out\eov-console.exe" "staging\eov\eov.com"
+
+          # Licence texts next to the binaries (LGPL compliance for the
+          # bundled OpenSlide and its dependencies).
+          Copy-Item "LICENSE-MIT","LICENSE-APACHE-2.0","LICENSE-GPLv3" "staging\eov\"
+          Copy-Item "assets\COPYING.third-party" "staging\eov\THIRD-PARTY-NOTICES.txt"
+          Copy-Item "assets\licenses\LGPL-2.1.txt" "staging\eov\licenses\"
+
+      - name: Sign binaries (Authenticode)
+        env:
+          WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:WINDOWS_CERTIFICATE_PFX) {
+            Write-Host "No WINDOWS_CERTIFICATE_PFX secret; the binaries stay unsigned."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX))
+          try {
+            # signtool picks the signing format from the file extension, so
+            # eov.com is signed under its build name and copied again.
+            $out = "target\${{ matrix.rust_target }}\release"
+            Copy-Item "$out\eov-console.exe" "$env:RUNNER_TEMP\eov-console.exe"
+            $files = @("staging\eov\eov.exe", "staging\eov\eov-update-helper.exe", "$env:RUNNER_TEMP\eov-console.exe")
+            signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+              /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD $files
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            signtool verify /pa /all $files
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Copy-Item "$env:RUNNER_TEMP\eov-console.exe" "staging\eov\eov.com" -Force
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      # A missing DLL or a helper that cannot run on its own would only show
+      # up on users' machines otherwise. eov.exe runs with redirected
+      # handles (so errors go to stderr, not a dialog) and a timeout.
+      - name: Smoke-test the staged binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-Checked([string]$exe, [string[]]$arguments) {
+            $stdout = Join-Path $env:RUNNER_TEMP "smoke-out.txt"
+            $stderr = Join-Path $env:RUNNER_TEMP "smoke-err.txt"
+            $process = Start-Process -FilePath $exe -ArgumentList $arguments -NoNewWindow -PassThru `
+              -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            if (-not $process.WaitForExit(120000)) {
+              $process.Kill()
+              throw "$exe $arguments timed out"
+            }
+            Get-Content $stdout, $stderr | Write-Host
+            if ($process.ExitCode -ne 0) {
+              throw "$exe $arguments exited with $($process.ExitCode)"
+            }
+          }
+          Invoke-Checked (Resolve-Path "staging\eov\eov.exe") @("--version")
+          Invoke-Checked (Resolve-Path "staging\eov\eov.com") @("--version")
+          # The updater copies the helper into a private temporary directory
+          # and runs it from there.
+          $helperDir = Join-Path $env:RUNNER_TEMP "helper-smoke"
+          New-Item -ItemType Directory -Force $helperDir | Out-Null
+          Copy-Item "staging\eov\eov-update-helper.exe" $helperDir
+          Invoke-Checked (Join-Path $helperDir "eov-update-helper.exe") @("--self-test")
 
       - name: Create zip archive
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
-          # Copy the release binary into staging
-          Copy-Item "target\${{ matrix.rust_target }}\release\eov.exe" "staging\eov\"
-          Copy-Item "target\${{ matrix.rust_target }}\release\eov-update-helper.exe" "staging\eov\"
-
-          if (-not (Test-Path "staging\eov\eov-update-helper.exe")) {
-            Write-Error "eov-update-helper.exe was not built"
-            exit 1
-          }
-
-          # Ship the license texts next to the binaries (LGPL compliance for
-          # the bundled OpenSlide and its dependencies).
-          Copy-Item "LICENSE-MIT","LICENSE-APACHE-2.0","LICENSE-GPLv3" "staging\eov\"
-          Copy-Item "assets\linux\COPYING.third-party" "staging\eov\THIRD-PARTY-NOTICES.txt"
 
           # Manifest of every shipped file. The self-updater refuses to replace
           # a folder that contains anything not listed here, so extracting eov
@@ -346,14 +296,14 @@ jobs:
           }
           Compress-Archive -Path $archiveSource -DestinationPath "${{ steps.meta.outputs.artifact_name }}"
 
-          # Generate checksum
           $hash = (Get-FileHash "${{ steps.meta.outputs.artifact_name }}" -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ steps.meta.outputs.artifact_name }}" | Set-Content "${{ steps.meta.outputs.checksum_name }}" -Encoding ASCII -NoNewline
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-release-files-${{ matrix.arch }}
           path: |
             ${{ steps.meta.outputs.artifact_name }}
             ${{ steps.meta.outputs.checksum_name }}
+          if-no-files-found: error

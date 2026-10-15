@@ -19,13 +19,16 @@ Install the application from [crates.io](https://crates.io/crates/eov):
 cargo install eov
 ```
 
-The Cargo build requires OpenSlide and the native dependencies used by Slint and the platform graphics stack. On Debian or Ubuntu, the OpenSlide development package is:
+The Cargo build requires OpenSlide 4 and the native dependencies used by Slint and the platform graphics stack. Where the distribution packages OpenSlide 4 (for example Debian 13 or Homebrew), install its development package:
 
 ```bash
-sudo apt-get install libopenslide-dev
+sudo apt-get install libopenslide-dev   # Debian/Ubuntu
+brew install openslide                  # macOS
 ```
 
-You may also need the usual X11 or Wayland, Vulkan, font, and `pkg-config` development packages for your distribution.
+Older distributions ship OpenSlide 3; build OpenSlide 4 with the repository's [`packaging/shared/build-openslide.sh`](https://github.com/eosin-platform/eov/blob/master/packaging/shared/build-openslide.sh) and point `PKG_CONFIG_PATH` (or `OPENSLIDE_LIB_DIR`) at it. You may also need the usual X11 or Wayland, Vulkan, font, and `pkg-config` development packages for your distribution.
+
+A Cargo installation updates itself with `eov update` (which runs `cargo install eov --version ...`) when the running binary is the one Cargo installed.
 
 For prebuilt AppImage, Flatpak, macOS, and Windows packages, see the [latest releases](https://github.com/eosin-platform/eov/releases/latest).
 
@@ -52,12 +55,16 @@ eov probe <FILE>
 eov recent list
 eov config-path
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
-eov update [--release <VERSION>] [--app-only] [--allow-network] [-y]
-eov plugin ls|list
-eov plugin install|add <SOURCE> [--allow-network] [-y]
-eov plugin update|upgrade <SOURCE> [--allow-network] [-y]
-eov plugin remove|rm|uninstall <PLUGIN> [-y]
-eov plugin info|inspect <PLUGIN> [-o plain|toml]
+eov update [--release <VERSION>] [--app-only] [--from <DIR>] [--rollback] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin ls|list [--json] [--allow-network]
+eov plugin install|add <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin update|upgrade <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
+eov plugin remove|rm|uninstall <PLUGIN|FILE> [--dry-run] [--json] [-y]
+eov plugin info|inspect <PLUGIN> [-o plain|toml|json]
+eov plugin disable|enable <PLUGIN>
+eov plugin lock [-o <FILE>]
+eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
+eov plugin gc
 ```
 
 Useful options include:
@@ -70,10 +77,11 @@ Useful options include:
 - `--cache-size <MB>` and `--max-tiles <COUNT>` to tune the tile cache.
 - `--config <PATH>` to override the configuration file for the current process.
 - `--plugin-dir <PATH>` to choose where packaged plugins are discovered.
+- `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin.
 
 Run `eov --help` or `eov dataset patches --help` for the complete, version-specific help text.
 
-Update commands are always explicit. EOV makes no network requests during normal startup. GitHub metadata requires interactive consent or `--allow-network`; `-y` only skips mutation confirmation. Official plugin versions are locked by the installed or target EOV release manifest. Self-update metadata support begins at `v0.4.5`.
+Update commands are always explicit. eov makes no network requests during normal startup. GitHub metadata requires interactive consent or `--allow-network`; `-y` only skips the confirmation of the planned changes, and end of input counts as "no". `--dry-run` and `--json` show the plan without changing anything. Official plugin versions and hashes are pinned by the installed or target eov release manifest, and a signed manifest is verified against release keys built into eov. `eov update --rollback` restores what the last update replaced, `eov update --from <dir>` installs a verified offline bundle, and administrators can restrict updates and plugins with a policy file (`/etc/eov/policy.toml`, `/Library/Application Support/eov/policy.toml` or `%ProgramData%\eov\policy.toml`; see the [repository documentation](https://github.com/eosin-platform/eov#application-and-plugin-updates)). Proxies (`HTTPS_PROXY`, `NO_PROXY`) and the operating system's certificate store are used. Self-update metadata support begins at `v0.4.5`.
 
 ### Dataset patches
 
@@ -109,7 +117,7 @@ render_backend = "gpu"
 filtering_mode = "trilinear"
 ```
 
-Native plugins are discovered from `~/.eov/plugins/` by default. The `--plugin-dir` option can point to another directory. The [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds point and polygon annotations, while the [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller support.
+Native plugins are discovered from `~/.eov/plugins/` by default. The `--plugin-dir` option can point to another directory. The [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds point and polygon annotations, while the [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller support. Manage them with `eov plugin` (install, update, remove, disable, enable, lock and sync); packages are `.eop` files (tar, optionally zstd-compressed) that eov extracts into a content-addressed cache.
 
 ## Links
 

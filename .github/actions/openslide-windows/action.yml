@@ -1,0 +1,96 @@
+name: OpenSlide for MSVC builds
+description: >-
+  Installs the MSYS2 toolchain and libraries, builds the pinned OpenSlide fork
+  with packaging/shared/build-openslide.sh, and creates an MSVC import library
+  for it. Used by the Windows release build and the Windows CI job, so both
+  link exactly the same OpenSlide.
+
+inputs:
+  msystem:
+    description: MSYS2 environment (CLANG64 or CLANGARM64)
+    required: true
+  msys2-prefix:
+    description: MSYS2 package prefix (mingw-w64-clang-x86_64 or mingw-w64-clang-aarch64)
+    required: true
+  lib-machine:
+    description: lib.exe /machine value (x64 or arm64)
+    required: true
+
+outputs:
+  msys-prefix:
+    description: Windows path of the MSYS2 prefix (its bin directory holds the DLLs)
+    value: ${{ steps.openslide.outputs.msys_prefix }}
+  lib-dir:
+    description: Directory containing openslide.lib for `-L native=`
+    value: ${{ steps.import-lib.outputs.lib_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up MSYS2 (${{ inputs.msystem }})
+      uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+      with:
+        msystem: ${{ inputs.msystem }}
+        update: true
+        install: >-
+          ${{ inputs.msys2-prefix }}-clang
+          ${{ inputs.msys2-prefix }}-meson
+          ${{ inputs.msys2-prefix }}-ninja
+          ${{ inputs.msys2-prefix }}-pkg-config
+          ${{ inputs.msys2-prefix }}-cairo
+          ${{ inputs.msys2-prefix }}-gdk-pixbuf2
+          ${{ inputs.msys2-prefix }}-glib2
+          ${{ inputs.msys2-prefix }}-libjpeg-turbo
+          ${{ inputs.msys2-prefix }}-libpng
+          ${{ inputs.msys2-prefix }}-libtiff
+          ${{ inputs.msys2-prefix }}-libxml2
+          ${{ inputs.msys2-prefix }}-openjpeg2
+          ${{ inputs.msys2-prefix }}-sqlite3
+          ${{ inputs.msys2-prefix }}-zlib
+          ${{ inputs.msys2-prefix }}-zstd
+          ${{ inputs.msys2-prefix }}-ntldd
+          ${{ inputs.msys2-prefix }}-tools
+          git
+
+    # The same pinned, checksum-verified sources as every other package
+    # (OpenSlide fork commit, libdicom, uthash), installed into the MSYS2
+    # prefix so pkg-config finds them.
+    - name: Build OpenSlide from source
+      id: openslide
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        OPENSLIDE_PREFIX="$MSYSTEM_PREFIX" \
+        OPENSLIDE_BUILD_ROOT="$(cygpath -u "$RUNNER_TEMP")/openslide-build" \
+          bash packaging/shared/build-openslide.sh
+        echo "msys_prefix=$(cygpath -w "$MSYSTEM_PREFIX")" >> "$GITHUB_OUTPUT"
+        ls -la "$MSYSTEM_PREFIX"/bin/libopenslide*
+
+    # gendef extracts the DLL's exports into a .def file; lib.exe turns it
+    # into an import library matching #[link(name = "openslide")].
+    - name: Generate the OpenSlide .def file
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        dll=$(find "$MSYSTEM_PREFIX/bin" -maxdepth 1 -name 'libopenslide-*.dll' -type f | head -1)
+        [[ -n "$dll" ]] || { echo "No OpenSlide DLL found in $MSYSTEM_PREFIX/bin" >&2; exit 1; }
+        mkdir -p openslide-msvc
+        gendef - "$dll" > openslide-msvc/openslide.def
+        export_count=$(grep -c '^openslide_' openslide-msvc/openslide.def || true)
+        echo "OpenSlide exports: $export_count"
+        [[ "$export_count" -ge 1 ]] || { echo "the .def file has no openslide exports" >&2; exit 1; }
+
+    - name: Create the MSVC import library
+      id: import-lib
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $libDir = Join-Path (Get-Location) "openslide-msvc"
+        lib /def:"$libDir\openslide.def" /out:"$libDir\openslide.lib" /machine:${{ inputs.lib-machine }}
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $symbols = & dumpbin /linkermember:1 "$libDir\openslide.lib" 2>&1 | Out-String
+        if ($symbols -notmatch 'openslide_') {
+          Write-Host $symbols
+          Write-Error "The import library has no openslide symbols"
+        }
+        "lib_dir=$libDir" >> $env:GITHUB_OUTPUT

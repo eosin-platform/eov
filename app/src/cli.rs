@@ -385,61 +385,181 @@ impl DatasetPatchesArgs {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-enum CliPluginOutputFormat {
+pub(crate) enum CliPluginOutputFormat {
     Plain,
     Toml,
+    Json,
 }
 
-#[derive(Debug, Subcommand)]
-enum PluginCommand {
+/// Options shared by plugin commands that install packages.
+#[derive(Clone, Debug, clap::Args)]
+pub(crate) struct PluginInstallArgs {
+    /// An official plugin id (`gamepad`, `gamepad@1.0.1`), a GitHub
+    /// repository (`github.com/owner/repo[@tag]`) or a local `.eop` file.
+    source: String,
+    /// Skip the confirmation prompt (network access still needs
+    /// --allow-network or interactive consent).
+    #[arg(short = 'y', long)]
+    yes: bool,
+    /// Allow GitHub requests without asking.
+    #[arg(long)]
+    allow_network: bool,
+    /// The plugin id a GitHub release must contain (required when the
+    /// release does not declare one).
+    #[arg(long, value_name = "ID")]
+    id: Option<String>,
+    /// Replace a plugin installed from a different source, or install a
+    /// third-party package that uses an official plugin id.
+    #[arg(long)]
+    force: bool,
+    /// Show what would be installed without changing anything.
+    #[arg(long)]
+    dry_run: bool,
+    /// Print machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub(crate) enum PluginCommand {
+    /// List installed plugins, compared with the official catalog when
+    /// network access is allowed.
     #[command(alias = "list")]
     Ls {
+        /// Fetch the official catalog without asking.
         #[arg(long)]
         allow_network: bool,
+        /// Never contact GitHub; list installed plugins only.
+        #[arg(long, conflicts_with = "allow_network")]
+        offline: bool,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
+    /// Install a plugin.
     #[command(alias = "add")]
-    Install {
-        source: String,
-        #[arg(short = 'y', long)]
-        yes: bool,
-        #[arg(long)]
-        allow_network: bool,
-    },
+    Install(PluginInstallArgs),
+    /// Update an installed plugin from its recorded source.
     #[command(alias = "upgrade")]
-    Update {
-        source: String,
-        #[arg(short = 'y', long)]
-        yes: bool,
-        #[arg(long)]
-        allow_network: bool,
-    },
+    Update(PluginInstallArgs),
+    /// Remove a plugin (every package with its id), or a broken package by
+    /// file name or path.
     #[command(alias = "rm", alias = "uninstall")]
     Remove {
         plugin: String,
         #[arg(short = 'y', long)]
         yes: bool,
+        /// Show what would be removed without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
+    /// Show a plugin's metadata, provenance and compatibility.
     #[command(alias = "inspect")]
     Info {
         plugin: String,
         #[arg(short = 'o', long, value_enum, default_value_t = CliPluginOutputFormat::Plain)]
         output: CliPluginOutputFormat,
     },
-}
-
-#[derive(Debug, Subcommand)]
-enum CliCommand {
-    #[command(alias = "upgrade")]
-    Update {
+    /// Keep a plugin installed but do not load it.
+    Disable {
+        id: String,
+        /// Print machine-readable JSON.
         #[arg(long)]
-        release: Option<String>,
+        json: bool,
+    },
+    /// Load a previously disabled plugin again.
+    Enable {
+        id: String,
+        /// Print machine-readable JSON.
         #[arg(long)]
-        app_only: bool,
+        json: bool,
+    },
+    /// Write a lockfile of the installed plugins (ids, versions, sources and
+    /// SHA-256 hashes), e.g. `eov plugin lock > eov-plugins.lock`.
+    Lock {
+        /// Write to this file instead of standard output.
+        #[arg(short = 'o', long, value_name = "FILE")]
+        output: Option<PathBuf>,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install and replace plugins so they match a lockfile.
+    Sync {
+        lockfile: PathBuf,
+        /// Take packages with matching SHA-256 from this directory instead
+        /// of downloading them.
+        #[arg(long, value_name = "DIR")]
+        from: Option<PathBuf>,
+        /// Also remove installed plugins the lockfile does not list.
+        #[arg(long)]
+        prune: bool,
         #[arg(short = 'y', long)]
         yes: bool,
         #[arg(long)]
         allow_network: bool,
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
+    /// Delete unused extracted plugin packages from the cache now.
+    Gc {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// Options of `eov update`.
+#[derive(Clone, Debug, clap::Args)]
+pub(crate) struct UpdateArgs {
+    /// Install exactly this release (allows downgrades), e.g. 1.0.1.
+    #[arg(long, value_name = "VERSION")]
+    release: Option<String>,
+    /// Update eov only, not its plugins.
+    #[arg(long)]
+    app_only: bool,
+    /// Skip the confirmation prompt (network access still needs
+    /// --allow-network or interactive consent).
+    #[arg(short = 'y', long)]
+    yes: bool,
+    /// Allow GitHub requests without asking.
+    #[arg(long)]
+    allow_network: bool,
+    /// Update from an offline bundle (a directory with release.toml and the
+    /// release artifacts) instead of GitHub.
+    #[arg(long, value_name = "DIR_OR_FILE", conflicts_with = "allow_network")]
+    from: Option<PathBuf>,
+    /// Trust an offline bundle whose release.toml is not signed with a
+    /// trusted eov release key.
+    #[arg(long, requires = "from")]
+    allow_unsigned: bool,
+    /// Restore the installation (and plugins) that the last update replaced.
+    #[arg(long, conflicts_with_all = ["release", "from", "app_only"])]
+    rollback: bool,
+    /// Show the plan without changing anything.
+    #[arg(long)]
+    dry_run: bool,
+    /// Print machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+    /// Do not start eov again after a helper-based update.
+    #[arg(long)]
+    no_relaunch: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum CliCommand {
+    /// Update eov and its plugins (or roll back the last update).
+    #[command(alias = "upgrade")]
+    Update(UpdateArgs),
+    /// Install, update, remove, enable, disable and inspect plugins.
     Plugin {
         #[command(subcommand)]
         command: PluginCommand,
@@ -549,32 +669,17 @@ struct Cli {
 
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     viewport_lock: bool,
+
+    /// Start without loading any plugins, for example after a plugin made
+    /// eov crash at startup (also enabled by EOV_SAFE_MODE=1).
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    safe_mode: bool,
 }
 
 enum CommandAction {
     LaunchUi,
-    ApplicationUpdate(update::ApplicationUpdateOptions),
-    PluginList {
-        allow_network: bool,
-    },
-    PluginInstall {
-        source: String,
-        allow_network: bool,
-        yes: bool,
-    },
-    PluginUpdate {
-        source: String,
-        allow_network: bool,
-        yes: bool,
-    },
-    PluginRemove {
-        plugin: String,
-        yes: bool,
-    },
-    PluginInfo {
-        plugin: String,
-        output: update::PluginOutputFormat,
-    },
+    ApplicationUpdate(UpdateArgs),
+    Plugin(PluginCommand),
     Probe(PathBuf),
     RecentList,
     ConfigPath,
@@ -598,6 +703,10 @@ pub(crate) struct LaunchOptions {
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) window_geometry: WindowGeometry,
     pub(crate) plugin_dir: PathBuf,
+    /// `--safe-mode` / `EOV_SAFE_MODE=1`: the GUI must not discover, extract
+    /// or load any plugin (and should say so in the window).
+    #[allow(dead_code)] // honoured by main() once the plugin host checks it
+    pub(crate) safe_mode: bool,
     command: CommandAction,
 }
 
@@ -667,46 +776,8 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         .collect::<Result<Vec<_>>>()?;
 
     let command = match cli.command {
-        Some(CliCommand::Update {
-            release,
-            app_only,
-            yes,
-            allow_network,
-        }) => CommandAction::ApplicationUpdate(update::ApplicationUpdateOptions {
-            release,
-            app_only,
-            yes,
-            allow_network,
-        }),
-        Some(CliCommand::Plugin { command }) => match command {
-            PluginCommand::Ls { allow_network } => CommandAction::PluginList { allow_network },
-            PluginCommand::Install {
-                source,
-                allow_network,
-                yes,
-            } => CommandAction::PluginInstall {
-                source,
-                allow_network,
-                yes,
-            },
-            PluginCommand::Update {
-                source,
-                allow_network,
-                yes,
-            } => CommandAction::PluginUpdate {
-                source,
-                allow_network,
-                yes,
-            },
-            PluginCommand::Remove { plugin, yes } => CommandAction::PluginRemove { plugin, yes },
-            PluginCommand::Info { plugin, output } => CommandAction::PluginInfo {
-                plugin,
-                output: match output {
-                    CliPluginOutputFormat::Plain => update::PluginOutputFormat::Plain,
-                    CliPluginOutputFormat::Toml => update::PluginOutputFormat::Toml,
-                },
-            },
-        },
+        Some(CliCommand::Update(args)) => CommandAction::ApplicationUpdate(args),
+        Some(CliCommand::Plugin { command }) => CommandAction::Plugin(command),
         Some(CliCommand::Probe { file }) => {
             validate_input_file(&file)?;
             CommandAction::Probe(file)
@@ -742,8 +813,14 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             y: cli.window_y,
         },
         plugin_dir,
+        safe_mode: cli.safe_mode || safe_mode_from_env(),
         command,
     })
+}
+
+/// Whether `EOV_SAFE_MODE` asks for safe mode (any value but empty or `0`).
+fn safe_mode_from_env() -> bool {
+    std::env::var_os("EOV_SAFE_MODE").is_some_and(|value| !value.is_empty() && value != "0")
 }
 
 pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {
@@ -790,48 +867,12 @@ pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()>
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
     match &launch_options.command {
         CommandAction::LaunchUi => Ok(false),
-        CommandAction::ApplicationUpdate(options) => {
-            update::application_update(&launch_options.plugin_dir, options.clone())?;
+        CommandAction::ApplicationUpdate(args) => {
+            run_update_command(&launch_options.plugin_dir, args)?;
             Ok(true)
         }
-        CommandAction::PluginList { allow_network } => {
-            update::plugin_list(&launch_options.plugin_dir, *allow_network)?;
-            Ok(true)
-        }
-        CommandAction::PluginInstall {
-            source,
-            allow_network,
-            yes,
-        } => {
-            update::plugin_install(
-                &launch_options.plugin_dir,
-                source,
-                *allow_network,
-                *yes,
-                false,
-            )?;
-            Ok(true)
-        }
-        CommandAction::PluginUpdate {
-            source,
-            allow_network,
-            yes,
-        } => {
-            update::plugin_install(
-                &launch_options.plugin_dir,
-                source,
-                *allow_network,
-                *yes,
-                true,
-            )?;
-            Ok(true)
-        }
-        CommandAction::PluginRemove { plugin, yes } => {
-            update::plugin_remove(&launch_options.plugin_dir, plugin, *yes)?;
-            Ok(true)
-        }
-        CommandAction::PluginInfo { plugin, output } => {
-            update::plugin_info(&launch_options.plugin_dir, plugin, *output)?;
+        CommandAction::Plugin(command) => {
+            run_plugin_command(&launch_options.plugin_dir, command)?;
             Ok(true)
         }
         CommandAction::Probe(path) => {
@@ -851,6 +892,107 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
     }
+}
+
+/// Runs `eov update`. With `--json`, failures are reported as a JSON object
+/// on standard output as well.
+fn run_update_command(plugin_dir: &Path, args: &UpdateArgs) -> Result<()> {
+    let options = update::UpdateOptions {
+        request: update::UpdateRequest {
+            release: args.release.clone(),
+            app_only: args.app_only,
+            from: args.from.clone(),
+            allow_unsigned: args.allow_unsigned,
+            allow_network: args.allow_network,
+        },
+        yes: args.yes,
+        dry_run: args.dry_run,
+        json: args.json,
+        rollback: args.rollback,
+        relaunch: !args.no_relaunch,
+    };
+    let result = update::run_update_cli(plugin_dir, &options);
+    if args.json
+        && let Err(error) = &result
+    {
+        println!("{}", serde_json::json!({ "error": format!("{error:#}") }));
+    }
+    // A helper-based update continues after this process exits.
+    result.map(|_| ())
+}
+
+/// Runs an `eov plugin` subcommand. With `--json`, failures are reported as
+/// a JSON object on standard output as well.
+fn run_plugin_command(plugin_dir: &Path, command: &PluginCommand) -> Result<()> {
+    use update::plugins::{self, InstallOptions, PluginContext, RemoveOptions, SyncOptions};
+
+    let (yes, json) = match command {
+        PluginCommand::Ls { json, .. }
+        | PluginCommand::Disable { json, .. }
+        | PluginCommand::Enable { json, .. }
+        | PluginCommand::Lock { json, .. }
+        | PluginCommand::Gc { json } => (false, *json),
+        PluginCommand::Install(args) | PluginCommand::Update(args) => (args.yes, args.json),
+        PluginCommand::Remove { yes, json, .. } | PluginCommand::Sync { yes, json, .. } => {
+            (*yes, *json)
+        }
+        PluginCommand::Info { output, .. } => (false, *output == CliPluginOutputFormat::Json),
+    };
+    let result = PluginContext::for_cli(plugin_dir, yes, json).and_then(|mut ctx| match command {
+        PluginCommand::Ls {
+            allow_network,
+            offline,
+            ..
+        } => plugins::list(&mut ctx, *allow_network, *offline),
+        PluginCommand::Install(args) | PluginCommand::Update(args) => plugins::install(
+            &mut ctx,
+            &args.source,
+            &InstallOptions {
+                allow_network: args.allow_network,
+                dry_run: args.dry_run,
+                force: args.force,
+                id: args.id.clone(),
+                require_existing: matches!(command, PluginCommand::Update(_)),
+            },
+        ),
+        PluginCommand::Remove {
+            plugin, dry_run, ..
+        } => plugins::remove(&mut ctx, plugin, &RemoveOptions { dry_run: *dry_run }),
+        PluginCommand::Info { plugin, output } => plugins::info(
+            &ctx,
+            plugin,
+            match output {
+                CliPluginOutputFormat::Plain => update::PluginOutputFormat::Plain,
+                CliPluginOutputFormat::Toml => update::PluginOutputFormat::Toml,
+                CliPluginOutputFormat::Json => update::PluginOutputFormat::Json,
+            },
+        ),
+        PluginCommand::Disable { id, .. } => plugins::set_enabled(&ctx, id, false),
+        PluginCommand::Enable { id, .. } => plugins::set_enabled(&ctx, id, true),
+        PluginCommand::Lock { output, .. } => plugins::lock(&ctx, output.as_deref()),
+        PluginCommand::Sync {
+            lockfile,
+            from,
+            prune,
+            allow_network,
+            dry_run,
+            ..
+        } => plugins::sync(
+            &mut ctx,
+            lockfile,
+            &SyncOptions {
+                allow_network: *allow_network,
+                dry_run: *dry_run,
+                prune: *prune,
+                from: from.clone(),
+            },
+        ),
+        PluginCommand::Gc { .. } => plugins::collect_garbage(&ctx),
+    });
+    if json && let Err(error) = &result {
+        println!("{}", serde_json::json!({ "error": format!("{error:#}") }));
+    }
+    result
 }
 
 /// `eov dataset patches` exit statuses (see the subcommand help).

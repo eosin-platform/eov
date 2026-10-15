@@ -1,0 +1,84 @@
+[manifest]
+schema = 1
+kind = "eov"
+version = "1.0.1"
+repository = "https://github.com/eosin-platform/eov"
+signature = "minisign"
+
+[platform.windows.x86_64]
+version = "1.0.1"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-windows-x86_64.zip"
+
+[platform.windows.arm64]
+version = "1.0.1"
+sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-windows-arm64.zip"
+
+[platform.linux.appimage.arm64]
+version = "1.0.1"
+sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-arm64.AppImage"
+
+[platform.linux.flatpak.arm64]
+version = "1.0.1"
+sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-arm64.flatpak"
+
+[platform.linux.appimage.x86_64]
+version = "1.0.1"
+sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-x86_64.AppImage"
+
+[platform.linux.flatpak.x86_64]
+version = "1.0.1"
+sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-linux-x86_64.flatpak"
+
+[platform.macos.arm64]
+version = "1.0.1"
+sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-macos-arm64.zip"
+
+[platform.macos.x86_64]
+version = "1.0.1"
+sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+url = "https://github.com/eosin-platform/eov/releases/download/v1.0.1/eov-v1.0.1-macos-x86_64.zip"
+
+[plugins.gamepad]
+name = "Gamepad"
+repository = "https://github.com/eosin-platform/eov-gamepad-plugin"
+version = "1.0.1"
+description = "Provides support for using gamepads as input devices"
+release_tag = "v1.0.1"
+environment = ">=1.0.0, <2.0.0"
+
+[plugins.gamepad.platform.linux.x86_64]
+version = "1.0.1"
+sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-linux-x86_64.eop"
+
+[plugins.gamepad.platform.linux.arm64]
+version = "1.0.1"
+sha256 = "4444444444444444444444444444444444444444444444444444444444444444"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-linux-arm64.eop"
+
+[plugins.gamepad.platform.macos.arm64]
+version = "1.0.1"
+sha256 = "5555555555555555555555555555555555555555555555555555555555555555"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-arm64.eop"
+
+[plugins.gamepad.platform.macos.x86_64]
+version = "1.0.1"
+sha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-x86_64.eop"
+
+[plugins.gamepad.platform.windows.x86_64]
+version = "1.0.1"
+sha256 = "7777777777777777777777777777777777777777777777777777777777777777"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-windows-x86_64.eop"
+
+[plugins.gamepad.platform.windows.arm64]
+version = "1.0.1"
+sha256 = "8888888888888888888888888888888888888888888888888888888888888888"
+url = "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-windows-arm64.eop"

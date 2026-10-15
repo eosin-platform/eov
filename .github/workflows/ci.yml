@@ -7,97 +7,115 @@ on:
   pull_request:
   schedule:
     - cron: '0 6 * * 1'
+  # The release workflow runs this for the exact source commit and only
+  # publishes when every job passed. It builds the packages itself, so it
+  # sets build_packages to false.
+  workflow_call:
+    inputs:
+      build_packages:
+        description: "Also build the AppImage, macOS and Windows packages"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
-jobs:
-  skip-check:
-    name: Check /noci
-    runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.check.outputs.skip }}
-    steps:
-      - name: Check commit message for /noci
-        id: check
-        shell: bash
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          if [[ "${{ github.event_name }}" == "push" ]] && echo "$COMMIT_MSG" | grep -qF '/noci'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
   fmt:
     name: Rustfmt
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
         with:
+          toolchain: stable
           components: rustfmt
       - run: cargo fmt --all -- --check
-  
-  # slint_lsp:
-  #     name: Slint LSP Check
-  #     needs: skip-check
-  #     if: needs.skip-check.outputs.skip != 'true'
-  #     runs-on: ubuntu-latest
-  #     steps:
-  #       - uses: actions/checkout@v5
-  #       - uses: dtolnay/rust-toolchain@stable
-  #         with:
-  #           components: rustfmt
-  #       - name: Install cargo-binstall
-  #         run: |
-  #           curl -L https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-gnu.tgz \
-  #             | tar -xz
-  #           sudo mv cargo-binstall /usr/local/bin/
-  #       - name: Install slint-lsp
-  #         run: |
-  #           if ! command -v slint-lsp >/dev/null; then
-  #             cargo install --git https://github.com/slint-ui/slint slint-lsp
-  #           fi
-  #       - name: Check Slint formatting
-  #         run: |
-  #           set -euo pipefail
-  #           # shellcheck disable=SC2046
-  #           slint-lsp format -i $(git ls-files '*.slint')
-  #           git diff --exit-code
 
-  actionlint:
-    name: Actionlint
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+  lint-workflows:
+    name: Workflows, scripts and packaging metadata
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - name: Install actionlint
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned linters
         shell: bash
         run: |
           set -euo pipefail
-          version="1.7.12"
-          curl -fsSL -o /tmp/actionlint.tgz \
-            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
-          tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
-          sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
-      - run: actionlint
+          tools="$RUNNER_TEMP/tools"
+          mkdir -p "$tools"
+          fetch() {
+            curl -fsSL --retry 3 -o "$tools/$3" "$1"
+            echo "$2  $tools/$3" | sha256sum --check --status || {
+              echo "checksum mismatch for $1" >&2
+              exit 1
+            }
+          }
+          fetch https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 actionlint.tar.gz
+          fetch https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198 shellcheck.tar.xz
+          tar -xzf "$tools/actionlint.tar.gz" -C "$tools" actionlint
+          tar -xJf "$tools/shellcheck.tar.xz" -C "$tools" --strip-components=1 shellcheck-v0.11.0/shellcheck
+          echo "$tools" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y appstream desktop-file-utils
+      - name: actionlint
+        run: actionlint
+      - name: shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          shellcheck --severity=warning \
+            packaging/appimage/AppRun \
+            packaging/appimage/*.sh \
+            packaging/macos/build.sh \
+            packaging/flatpak/build.sh \
+            packaging/shared/build-openslide.sh \
+            scripts/*.sh
+      - name: Pins, notices and permissions
+        run: python3 scripts/check_packaging.py
+      - name: Desktop entry and AppStream metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          desktop-file-validate assets/linux/io.eosin.eov.desktop
+          appstreamcli validate --no-net assets/linux/io.eosin.eov.metainfo.xml
 
-  check:
-    name: Cargo Clippy, & Test
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+  python:
+    name: Release tooling tests (Python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        working-directory: scripts
+        run: python -m unittest discover -p 'test_*.py' -v
+
+  check:
+    name: Clippy and tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
+          persist-credentials: false
       - name: Install system dependencies
         shell: bash
         run: |
@@ -120,6 +138,7 @@ jobs:
             libfontconfig-dev \
             libfreetype6-dev \
             libxml2-dev \
+            libzstd-dev \
             meson \
             ninja-build \
             protobuf-compiler \
@@ -145,45 +164,169 @@ jobs:
             echo "LIBRARY_PATH=$openslide_prefix/lib${LIBRARY_PATH+:$LIBRARY_PATH}"
             echo "RUSTFLAGS=-L native=$openslide_prefix/lib ${RUSTFLAGS:-}"
           } >> "$GITHUB_ENV"
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Cargo Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Cargo Test
-        run: cargo test --workspace --all-targets
+        env:
+          # Every plugins/*/plugin.toml must be present and valid.
+          EOV_REQUIRE_PLUGIN_MANIFESTS: '1'
+        run: cargo test --locked --workspace --all-targets
+
+  # The platform-specific updater code (the Windows helper hand-off, console
+  # attach, Homebrew and bundle handling) is compiled and tested on its own
+  # platform, not first at release time.
+  test-windows:
+    name: Tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build OpenSlide and its MSVC import library
+        id: openslide
+        uses: ./.github/actions/openslide-windows
+        with:
+          msystem: CLANG64
+          msys2-prefix: mingw-w64-clang-x86_64
+          lib-machine: x64
+      - name: Test eov and eov-update-helper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:RUSTFLAGS = "-L native=${{ steps.openslide.outputs.lib-dir }}"
+          $env:OPENSLIDE_LIB_DIR = "${{ steps.openslide.outputs.lib-dir }}"
+          # The OpenSlide DLL and its dependencies, for the test binaries.
+          $env:PATH = "${{ steps.openslide.outputs.msys-prefix }}\bin;$env:PATH"
+          cargo test --locked -p eov --bins --tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --locked --release -p eov --bin eov-console --features windows-console-launcher
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --locked -p eov --all-targets --features windows-console-launcher
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  test-macos:
+    name: Tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install OpenSlide
+        run: brew install openslide pkg-config
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Test eov and eov-update-helper
+        run: cargo test --locked -p eov --bins --tests
+      - name: Clippy
+        run: cargo clippy --locked -p eov --all-targets
 
   audit:
     name: Cargo Audit
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-audit
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+      # install-action verifies the downloaded binaries against its own
+      # checksum manifests.
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-audit@0.22.2
       - run: cargo audit
 
-  packaging-smoke:
-    name: Packaging Smoke Checks
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+  deny:
+    name: Licences, bans and sources (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
-      - name: Validate packaging entrypoints
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-deny@0.20.2
+      - run: cargo deny --all-features --config .github/deny.toml check licenses bans sources
+
+  # The release packages, built exactly as a release builds them, with their
+  # own checks: the AppImage's glibc floor and RUNPATH resolution, the macOS
+  # bundle's otool linkage, minimum-version and helper smoke tests, and the
+  # Windows zip's DLL and helper smoke tests.
+  package-version:
+    name: Package version
+    if: inputs.build_packages != false
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - id: version
         shell: bash
         run: |
           set -euo pipefail
-          bash -n packaging/appimage/build.sh
-          bash -n packaging/macos/build.sh
-          bash -n packaging/flatpak/build.sh
-          bash -n packaging/shared/build-openslide.sh
-          test -f packaging/appimage/AppRun
-          test -f assets/macos/Info.plist
-          test -f assets/linux/io.eosin.eov.desktop
-          test -f assets/linux/io.eosin.eov.metainfo.xml
-          test -d assets/linux/licenses
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("app/Cargo.toml", "rb"))["package"]["version"])')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  appimage:
+    name: AppImage
+    needs: package-version
+    if: inputs.build_packages != false
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-appimage.yml
+    with:
+      source_sha: ${{ github.sha }}
+      version: ${{ needs.package-version.outputs.version }}
+      tag: v${{ needs.package-version.outputs.version }}
+
+  macos-bundle:
+    name: macOS bundle
+    needs: package-version
+    if: inputs.build_packages != false
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-macos-app.yml
+    with:
+      source_sha: ${{ github.sha }}
+      version: ${{ needs.package-version.outputs.version }}
+      tag: v${{ needs.package-version.outputs.version }}
+
+  windows-zip:
+    name: Windows zip
+    needs: package-version
+    if: inputs.build_packages != false
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-windows-zip.yml
+    with:
+      source_sha: ${{ github.sha }}
+      version: ${{ needs.package-version.outputs.version }}
+      tag: v${{ needs.package-version.outputs.version }}

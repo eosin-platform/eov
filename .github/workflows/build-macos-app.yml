@@ -15,6 +15,21 @@ on:
         description: "Release tag"
         required: true
         type: string
+    secrets:
+      MACOS_CERTIFICATE_P12:
+        description: "Base64 of the Developer ID Application certificate (.p12); optional"
+        required: false
+      MACOS_CERTIFICATE_PASSWORD:
+        required: false
+      MACOS_CODESIGN_IDENTITY:
+        required: false
+      APPLE_API_KEY_P8:
+        description: "Base64 of the App Store Connect API key used for notarization; optional"
+        required: false
+      APPLE_API_KEY_ID:
+        required: false
+      APPLE_API_ISSUER:
+        required: false
   workflow_dispatch:
     inputs:
       source_sha:
@@ -37,16 +52,14 @@ jobs:
   release-macos:
     name: Build macOS .app (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
 
     # ---------------------------------------------------------------
     # Architecture matrix
     #
-    # Each entry maps a target architecture to:
     #   runner           – GitHub-hosted runner label
     #   rust_target      – Rust target triple
     #   arch_label       – human-readable arch for artifact naming
-    #
-    # To add a new architecture, append another include entry.
     # ---------------------------------------------------------------
     strategy:
       fail-fast: false
@@ -64,24 +77,26 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_sha }}
           submodules: recursive
+          persist-credentials: false
 
       - name: Install system dependencies
         shell: bash
         run: |
           set -euo pipefail
-          brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config protobuf sqlite
+          brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite zstd
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust build outputs
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.arch }}
 
@@ -108,6 +123,51 @@ jobs:
             echo "checksum_name=$checksum_name"
           } >> "$GITHUB_OUTPUT"
 
+      # Developer ID signing and notarization run only when the secrets
+      # exist (see packaging/macos/README.md); otherwise the bundle is
+      # signed ad hoc.
+      - name: Import signing certificate
+        id: signing
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERTIFICATE_P12:-}" || -z "${MACOS_CODESIGN_IDENTITY:-}" ]]; then
+            echo "No Developer ID secrets; the bundle is signed ad hoc."
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            echo "notarize=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/eov-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          # Keep the existing keychains in the search list (bash 3.2: no mapfile).
+          existing=()
+          while IFS= read -r line; do
+            line="${line//\"/}"
+            line="${line#"${line%%[![:space:]]*}"}"
+            [[ -n "$line" ]] && existing+=("$line")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain" ${existing[@]+"${existing[@]}"}
+          rm -f "$certificate"
+          echo "identity=$MACOS_CODESIGN_IDENTITY" >> "$GITHUB_OUTPUT"
+          if [[ -n "${APPLE_API_KEY_P8:-}" ]]; then
+            printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+            echo "notarize=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarize=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Package macOS app
         shell: bash
         run: |
@@ -120,12 +180,26 @@ jobs:
           ARCHIVE_BASENAME: eov-${{ steps.meta.outputs.tag }}-macos-${{ matrix.arch_label }}
           DIST_DIR: ${{ github.workspace }}
           CREATE_ZIP: "1"
-          CREATE_DMG: "0"
+          CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+          NOTARIZE: ${{ steps.signing.outputs.notarize }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/notary-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/notary-key.p8"
+          if [[ -f "$RUNNER_TEMP/eov-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/eov-signing.keychain-db" || true
+          fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.meta.outputs.artifact_name }}
           path: |
             ${{ steps.meta.outputs.artifact_name }}
             ${{ steps.meta.outputs.checksum_name }}
+          if-no-files-found: error

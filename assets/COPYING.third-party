@@ -1,0 +1,59 @@
+Third-party software in eov packages
+====================================
+
+eov itself is available under the MIT, Apache-2.0 or GPL-3.0 licence, at your
+option (LICENSE-MIT, LICENSE-APACHE-2.0 and LICENSE-GPLv3, shipped next to
+this file). Every eov package (the AppImage, the Flatpak, the macOS app bundle
+and the Windows zip) also contains the third-party libraries listed below.
+
+OpenSlide
+---------
+
+eov reads whole-slide images with OpenSlide, which is licensed under the GNU
+Lesser General Public License, version 2.1 (LGPL-2.1). The full licence text
+is in licenses/LGPL-2.1.txt next to this file.
+
+The OpenSlide in eov packages is not an upstream release. It is built from a
+fork, at a fixed commit:
+
+  Fork:     https://github.com/Yanstart/openslide
+  Commit:   00bebfb6a412485f7fbfe7fdb5919a3868594c13
+  Upstream: https://openslide.org/ (https://github.com/openslide/openslide)
+
+The complete source of that commit is published with every eov release, next
+to the packages, as
+openslide-00bebfb6a412485f7fbfe7fdb5919a3868594c13-source.tar.gz
+(https://github.com/eosin-platform/eov/releases). The build recipe is
+packaging/shared/build-openslide.sh (and, for the Flatpak,
+packaging/flatpak/io.eosin.eov.yml) in the eov source of the same release.
+
+OpenSlide is shipped as a separate shared library and is never linked
+statically into eov:
+
+  AppImage   usr/lib/libopenslide.so.1
+  Flatpak    /app/lib/libopenslide.so.1
+  macOS      eov.app/Contents/Frameworks/libopenslide.1.dylib
+  Windows    libopenslide-1.dll next to eov.exe
+
+You may replace that file with your own build of OpenSlide that keeps the same
+interface. On macOS, re-sign the bundle afterwards
+(codesign --force --deep --sign - eov.app).
+
+Other libraries
+---------------
+
+OpenSlide is built with libdicom 1.2.0 (MIT licence,
+https://github.com/ImagingDataCommons/libdicom) and the uthash 2.3.0 headers
+(BSD licence, https://troydhanson.github.io/uthash/).
+
+The packages also contain the shared libraries OpenSlide and eov depend on, as
+built by the platform the package is made on (AlmaLinux 8 for the AppImage,
+the Freedesktop SDK for the Flatpak, Homebrew for macOS and MSYS2 for
+Windows). Depending on the platform these include GLib, gdk-pixbuf and cairo
+(LGPL-2.1 or later; cairo alternatively MPL-1.1), pixman, libxml2, libffi and
+libdeflate (MIT), libjpeg-turbo (IJG, BSD-3-Clause and zlib licences),
+OpenJPEG (BSD-2-Clause), libtiff (libtiff licence), libpng (libpng licence),
+zlib (zlib licence), PCRE2 and zstd (BSD-3-Clause), SQLite and xz/liblzma
+(public domain). Each of these libraries ships unmodified, as a separate file
+in the locations listed above; its source is available from its upstream
+project and from the platform's package repository for the version shipped.

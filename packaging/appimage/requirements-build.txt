@@ -1,0 +1,4 @@
+# Python build tools for the AppImage baseline container
+# (packaging/appimage/install-build-deps-el8.sh), pinned by hash.
+meson==1.9.1 \
+    --hash=sha256:f824ab770c041a202f532f69e114c971918ed2daff7ea56583d80642564598d0

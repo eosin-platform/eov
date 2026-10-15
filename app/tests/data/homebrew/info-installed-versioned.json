@@ -1,0 +1,54 @@
+{
+  "formulae": [],
+  "casks": [
+    {
+      "token": "eov@0.4.9",
+      "full_token": "eosin-platform/eov/eov@0.4.9",
+      "old_tokens": [],
+      "tap": "eosin-platform/eov",
+      "name": [
+        "eov"
+      ],
+      "desc": "Lightweight, cross-platform Whole Slide Image (WSI) viewer for digital pathology",
+      "homepage": "https://eov.sh/",
+      "url": "https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-arm64.zip",
+      "url_specs": {},
+      "version": "0.4.9",
+      "installed": "0.4.9",
+      "installed_time": 1758500000,
+      "outdated": false,
+      "sha256": "5f24a3692458fb6239d95ac88f2f903bc9b6d1b2377802345a99e537dd85a53c",
+      "artifacts": [
+        {
+          "app": [
+            "eov.app",
+            {
+              "target": "eov 0.4.9.app"
+            }
+          ]
+        },
+        {
+          "binary": [
+            "$APPDIR/eov 0.4.9.app/Contents/MacOS/eov"
+          ]
+        }
+      ],
+      "caveats": null,
+      "depends_on": {
+        "macos": {
+          ">=": [
+            "11"
+          ]
+        }
+      },
+      "conflicts_with": null,
+      "container": null,
+      "auto_updates": null,
+      "deprecated": false,
+      "disabled": false,
+      "tap_git_head": "5efbc6bf1b1d5d35e4a582103f96ada77065d3ed",
+      "languages": [],
+      "ruby_source_path": "Casks/eov@0.4.9.rb"
+    }
+  ]
+}

@@ -1,10 +1,23 @@
 name: Release
 
+# Order of a release (UPD-8, UPD-11, UPD-14, UPD-15):
+#   1. prepare        validate the source, resolve compatible plugin releases
+#   2. ci + builds    the full CI workflow for this commit, and the packages
+#   3. aggregate      release.toml with pinned plugin hashes, signature,
+#                     OpenSlide source archive (needs green CI)
+#   4. draft          upload everything to a draft release and verify it
+#   5. crates         verify, then publish with crates.io trusted publishing
+#   6. homebrew       update the tap (stable releases)
+#   7. publish        un-draft, verify the tag and every published asset
+#   8. post-release   README install links and the tap gitlink
+# Users can only see the release in step 7, when crates.io and the tap
+# already serve it.
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 0.4.9"
+        description: "Version to release, e.g. 1.0.1"
         required: true
         type: string
 
@@ -30,7 +43,7 @@ jobs:
       reuse_draft: ${{ steps.meta.outputs.reuse_draft }}
     steps:
       - name: Check out dispatched source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -40,11 +53,12 @@ jobs:
         id: meta
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
 
-          version="${{ inputs.version }}"
+          version="$RELEASE_VERSION"
           python3 scripts/release.py validate-source --kind eov --root . --version "$version"
           tag="v$version"
           source_sha="$GITHUB_SHA"
@@ -116,6 +130,17 @@ jobs:
             echo "reuse_draft=$reuse_draft"
           } >> "$GITHUB_OUTPUT"
 
+  # The complete CI workflow for the exact source commit. Nothing is
+  # published unless it passes.
+  ci:
+    name: CI
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_packages: false
+
   build-appimage:
     name: AppImage
     needs: prepare
@@ -148,6 +173,9 @@ jobs:
       source_sha: ${{ needs.prepare.outputs.source_sha }}
       version: ${{ needs.prepare.outputs.version }}
       tag: ${{ needs.prepare.outputs.tag }}
+    secrets:
+      WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
   build-macos:
     name: macOS
@@ -159,71 +187,158 @@ jobs:
       source_sha: ${{ needs.prepare.outputs.source_sha }}
       version: ${{ needs.prepare.outputs.version }}
       tag: ${{ needs.prepare.outputs.tag }}
+    secrets:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
   aggregate:
-    name: Aggregate and validate artifacts
-    needs: [prepare, build-appimage, build-flatpak, build-windows, build-macos]
+    name: Aggregate, sign and validate artifacts
+    needs: [prepare, ci, build-appimage, build-flatpak, build-windows, build-macos]
     runs-on: ubuntu-latest
+    # Holds the release signing key; protect it with required reviewers.
+    environment: release
     permissions:
       contents: read
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
           submodules: recursive
-          token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 
-      - name: Stage artifacts and generate release.toml
+      # The catalog pins every official plugin artifact's SHA-256, so the
+      # (signed) eov release vouches for the plugin bytes too.
+      - name: Download official plugin release manifests
+        env:
+          ANNOTATIONS_VERSION: ${{ needs.prepare.outputs.annotations_version }}
+          GAMEPAD_VERSION: ${{ needs.prepare.outputs.gamepad_version }}
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p plugin-manifests
+          curl -fsSL --retry 3 -o plugin-manifests/annotations.toml \
+            "https://github.com/eosin-platform/eov-annotations-plugin/releases/download/v${ANNOTATIONS_VERSION}/release.toml"
+          curl -fsSL --retry 3 -o plugin-manifests/gamepad.toml \
+            "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v${GAMEPAD_VERSION}/release.toml"
+
+      - name: Stage artifacts and generate release.toml
+        env:
+          EOV_RELEASE_SIGNING_KEY: ${{ secrets.EOV_RELEASE_SIGNING_KEY }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ANNOTATIONS_VERSION: ${{ needs.prepare.outputs.annotations_version }}
+          GAMEPAD_VERSION: ${{ needs.prepare.outputs.gamepad_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          signed=()
+          if [[ -n "${EOV_RELEASE_SIGNING_KEY:-}" ]]; then
+            signed=(--signed)
+          elif grep -q 'public_key: "' app/src/update/keys.rs; then
+            echo "app/src/update/keys.rs embeds release keys, so eov $VERSION refuses unsigned metadata;" >&2
+            echo "configure the EOV_RELEASE_SIGNING_KEY secret (scripts/release_signing.py)." >&2
+            exit 1
+          else
+            echo "::warning title=Unsigned release::EOV_RELEASE_SIGNING_KEY is not configured; release.toml is not signed."
+          fi
           rm -rf release-files
           python3 scripts/release.py manifest \
             --kind eov \
             --root . \
-            --version '${{ needs.prepare.outputs.version }}' \
+            --version "$VERSION" \
             --repository eosin-platform/eov \
             --artifacts-dir artifacts \
             --staging-dir release-files \
             --output release-files/release.toml \
-            --plugin-version annotations=${{ needs.prepare.outputs.annotations_version }} \
-            --plugin-version gamepad=${{ needs.prepare.outputs.gamepad_version }}
+            --plugin-version "annotations=$ANNOTATIONS_VERSION" \
+            --plugin-version "gamepad=$GAMEPAD_VERSION" \
+            --plugin-manifest annotations=plugin-manifests/annotations.toml \
+            --plugin-manifest gamepad=plugin-manifests/gamepad.toml \
+            ${signed[@]+"${signed[@]}"}
+
+      - name: Sign release.toml
+        env:
+          EOV_RELEASE_SIGNING_KEY: ${{ secrets.EOV_RELEASE_SIGNING_KEY }}
+          EOV_RELEASE_SIGNING_KEY_PASSWORD: ${{ secrets.EOV_RELEASE_SIGNING_KEY_PASSWORD }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${EOV_RELEASE_SIGNING_KEY:-}" ]]; then
+            echo "No signing key; skipping."
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y python3-cryptography
+          python3 scripts/release_signing.py sign \
+            --secret-key - \
+            --kind eov \
+            --version "$VERSION" \
+            --repository https://github.com/eosin-platform/eov \
+            release-files/release.toml
+          # The signature must verify with a key this eov build trusts.
+          verified=false
+          while IFS= read -r key; do
+            if python3 scripts/release_signing.py verify --public-key "$key" release-files/release.toml; then
+              verified=true
+            fi
+          done < <(grep -o 'public_key: "[^"]*"' app/src/update/keys.rs | cut -d'"' -f2)
+          if grep -q 'public_key: "' app/src/update/keys.rs && [[ "$verified" != true ]]; then
+            echo "release.toml.minisig does not verify with any key in app/src/update/keys.rs" >&2
+            exit 1
+          fi
+
+      # LGPL-2.1: the corresponding source of the bundled OpenSlide, from the
+      # same place as the packages (assets/COPYING.third-party).
+      - name: Add the OpenSlide source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(sed -n 's/^DEFAULT_OPENSLIDE_REPO_URL="\(.*\)"$/\1/p' packaging/shared/build-openslide.sh)"
+          commit="$(sed -n 's/^DEFAULT_OPENSLIDE_COMMIT="\(.*\)"$/\1/p' packaging/shared/build-openslide.sh)"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid OpenSlide commit '$commit'" >&2; exit 1; }
+          source="$RUNNER_TEMP/openslide-source"
+          git init -q "$source"
+          git -C "$source" fetch -q --depth 1 "$url" "$commit"
+          [[ "$(git -C "$source" rev-parse FETCH_HEAD)" == "$commit" ]]
+          git -C "$source" archive --format=tar.gz --prefix="openslide-$commit/" \
+            -o "$PWD/release-files/openslide-$commit-source.tar.gz" FETCH_HEAD
           echo "Staged release files:"
           find release-files -maxdepth 1 -type f -printf '%f\n' | sort
 
       - name: Upload validated release staging
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: eov-release-staging-${{ github.run_id }}
           path: release-files
           if-no-files-found: error
 
-  publish-release:
-    name: Publish GitHub Release
+  draft:
+    name: Upload draft release
     needs: [prepare, aggregate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      manifest_artifact: eov-published-metadata-${{ github.run_id }}
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
-          submodules: recursive
-          token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Download validated release staging
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: eov-release-staging-${{ github.run_id }}
           path: release-files
@@ -232,136 +347,140 @@ jobs:
       - name: Create or update draft release at SOURCE_SHA
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          IS_STABLE: ${{ needs.prepare.outputs.is_stable }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ '${{ needs.prepare.outputs.reuse_draft }}' == 'true' ]]; then
-            gh release upload '${{ needs.prepare.outputs.tag }}' release-files/* --clobber
+            gh release upload "$TAG" release-files/* --clobber
           else
-            gh release create '${{ needs.prepare.outputs.tag }}' \
-              --target '${{ needs.prepare.outputs.source_sha }}' \
-              --title '${{ needs.prepare.outputs.tag }}' \
+            prerelease=()
+            [[ "$IS_STABLE" == "true" ]] || prerelease=(--prerelease)
+            gh release create "$TAG" \
+              --target "$SOURCE_SHA" \
+              --title "$TAG" \
               --generate-notes \
               --draft \
+              ${prerelease[@]+"${prerelease[@]}"} \
               release-files/*
           fi
 
       - name: Verify draft release target and assets
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          tag='${{ needs.prepare.outputs.tag }}'
-          source_sha='${{ needs.prepare.outputs.source_sha }}'
           release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq "[.[] | select(.tag_name == \"$tag\")][0]")"
+            --jq "[.[] | select(.tag_name == \"$TAG\")][0]")"
           [[ "$release_json" != "null" ]] || {
-            echo "draft release $tag was not found" >&2
-            exit 1
-          }
-          [[ "$(jq -r '.tag_name' <<<"$release_json")" == "$tag" ]] || {
-            echo "draft release has an unexpected tag name" >&2
+            echo "draft release $TAG was not found" >&2
             exit 1
           }
           [[ "$(jq -r '.draft' <<<"$release_json")" == "true" ]] || {
-            echo "release $tag is not a draft" >&2
+            echo "release $TAG is not a draft" >&2
             exit 1
           }
           draft_target="$(jq -r '.target_commitish' <<<"$release_json")"
-          [[ "$draft_target" == "$source_sha" ]] || {
-            echo "draft release $tag targets $draft_target, expected $source_sha" >&2
+          [[ "$draft_target" == "$SOURCE_SHA" ]] || {
+            echo "draft release $TAG targets $draft_target, expected $SOURCE_SHA" >&2
             exit 1
           }
-
           expected="$(find release-files -maxdepth 1 -type f -printf '%f\n' | sort)"
           actual="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
           diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual")
+          # Every asset's digest must match the staged file.
+          while IFS=$'\t' read -r name digest; do
+            expected_digest="sha256:$(sha256sum "release-files/$name" | cut -d' ' -f1)"
+            [[ "$digest" == "$expected_digest" ]] || {
+              echo "uploaded $name has digest $digest, expected $expected_digest" >&2
+              exit 1
+            }
+          done < <(jq -r '.assets[] | [.name, (.digest // "")] | @tsv' <<<"$release_json" | awk -F'\t' '$2 != ""')
 
-      - name: Publish verified release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: gh release edit '${{ needs.prepare.outputs.tag }}' --draft=false
-
-      - name: Verify published tag target
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag='${{ needs.prepare.outputs.tag }}'
-          source_sha='${{ needs.prepare.outputs.source_sha }}'
-          ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/$tag")"
-          object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
-          object_type="$(jq -r '.object.type' <<<"$ref_json")"
-          if [[ "$object_type" == "tag" ]]; then
-            object_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/$object_sha" --jq .object.sha)"
-          fi
-          [[ "$object_sha" == "$source_sha" ]] || {
-            echo "published tag $tag points at $object_sha, expected $source_sha" >&2
-            exit 1
-          }
-
-      - name: Verify published asset URLs and hashes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/release.py verify-assets \
-            --kind eov \
-            --version '${{ needs.prepare.outputs.version }}' \
-            --repository eosin-platform/eov \
-            --manifest release-files/release.toml
-          curl --fail --location --silent --show-error \
-            "https://github.com/eosin-platform/eov/releases/download/${{ needs.prepare.outputs.tag }}/release.toml" \
-            | cmp - release-files/release.toml
-
-      - name: Export published manifest for downstream jobs
-        uses: actions/upload-artifact@v7
-        with:
-          name: eov-published-metadata-${{ github.run_id }}
-          path: release-files/release.toml
-          if-no-files-found: error
-
-  publish-crates:
-    name: Publish crates.io packages
-    needs: [prepare, publish-release]
+  # `cargo package` builds each crate (running build scripts) without any
+  # registry credential; publishing then uploads with --no-verify, so no
+  # build script ever runs next to the token.
+  verify-crates:
+    name: Verify crates.io packages
+    needs: [prepare, aggregate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 1
           submodules: recursive
-          token: ${{ github.token }}
-
-      - name: Install native dependencies for crate verification
+          persist-credentials: false
+      - name: Install native dependencies
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
-            libfontconfig-dev \
-            pkg-config \
-            libopenslide-dev
+            build-essential curl git libcairo2-dev libfontconfig-dev libgdk-pixbuf-2.0-dev \
+            libglib2.0-dev libjpeg-turbo8-dev libopenjp2-7-dev libpng-dev libsqlite3-dev \
+            libtiff-dev libxml2-dev libzstd-dev meson ninja-build pkg-config zlib1g-dev
+      - name: Build OpenSlide from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/openslide-prefix"
+          OPENSLIDE_PREFIX="$prefix" OPENSLIDE_BUILD_ROOT="$RUNNER_TEMP/openslide-build" \
+            bash packaging/shared/build-openslide.sh
+          {
+            echo "OPENSLIDE_LIB_DIR=$prefix/lib"
+            echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig"
+            echo "LD_LIBRARY_PATH=$prefix/lib"
+            echo "RUSTFLAGS=-L native=$prefix/lib"
+          } >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+      - name: Package and verify the crates
+        run: cargo package --locked -p eov-common -p eov-plugin-api -p eov
+
+  publish-crates:
+    name: Publish crates.io packages
+    needs: [prepare, draft, verify-crates]
+    runs-on: ubuntu-latest
+    # crates.io trusted publishing: configure this repository, workflow
+    # (release.yml) and environment on crates.io for each crate.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+
+      - name: Obtain a short-lived crates.io token
+        id: crates-io
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
       - name: Publish crates in dependency order
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io.outputs.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-
-          [[ -n "$CARGO_REGISTRY_TOKEN" ]] || {
-            echo "CARGO_REGISTRY_TOKEN is not configured" >&2
-            exit 1
-          }
 
           registry_version_status() {
             local crate="$1"
@@ -374,9 +493,7 @@ jobs:
               return 1
             }
             case "$status" in
-              200|404)
-                printf '%s\n' "$status"
-                ;;
+              200|404) printf '%s\n' "$status" ;;
               *)
                 echo "crates.io returned HTTP ${status} for ${crate} ${VERSION}" >&2
                 return 1
@@ -384,45 +501,31 @@ jobs:
             esac
           }
 
-          publish_crate() {
-            local crate="$1"
-            local status
-            status="$(registry_version_status "$crate")"
-            if [[ "$status" == "200" ]]; then
+          # --no-verify: verify-crates already built every package, and
+          # nothing may run build scripts while the token is present.
+          for crate in eov-common eov-plugin-api eov; do
+            if [[ "$(registry_version_status "$crate")" == "200" ]]; then
               echo "${crate} ${VERSION} is already published; skipping"
-              return 0
+              continue
             fi
-            echo "Publishing ${crate} ${VERSION}"
-            cargo publish --locked --package "$crate"
-          }
-
-          publish_crate eov-common
-          publish_crate eov-plugin-api
-
-          status="$(registry_version_status eov)"
-          if [[ "$status" == "200" ]]; then
-            echo "eov ${VERSION} is already published; skipping"
-            exit 0
-          fi
-
-          for attempt in 1 2 3 4 5; do
-            echo "Publishing eov ${VERSION} (attempt ${attempt}/5)"
-            if cargo publish --locked --package eov; then
-              exit 0
-            fi
-            if [[ "$attempt" -lt 5 ]]; then
-              echo "The eov-common/eov-plugin-api versions may still be propagating through the crates.io index; retrying."
+            for attempt in 1 2 3 4 5; do
+              echo "Publishing ${crate} ${VERSION} (attempt ${attempt}/5)"
+              if cargo publish --locked --no-verify --package "$crate"; then
+                break
+              fi
+              if [[ "$attempt" -eq 5 ]]; then
+                echo "failed to publish ${crate} ${VERSION}" >&2
+                exit 1
+              fi
+              echo "The index may still be propagating earlier crates; retrying."
               sleep 20
-            fi
+            done
           done
-
-          echo "failed to publish eov ${VERSION} after 5 attempts" >&2
-          exit 1
 
   update-homebrew:
     name: Update Homebrew tap
     if: needs.prepare.outputs.is_stable == 'true'
-    needs: [prepare, publish-release]
+    needs: [prepare, draft, publish-crates]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -430,131 +533,205 @@ jobs:
       homebrew_tap_sha: ${{ steps.tap.outputs.homebrew_tap_sha }}
     steps:
       - name: Check out EOV release tooling
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           path: eov-source
           fetch-depth: 1
-          token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Check out Homebrew tap
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: eosin-platform/homebrew-eov
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
           fetch-depth: 0
 
-      - name: Download published manifest
-        uses: actions/download-artifact@v8
+      - name: Download validated release staging
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: eov-published-metadata-${{ github.run_id }}
-          path: release-metadata
+          name: eov-release-staging-${{ github.run_id }}
+          path: release-files
           merge-multiple: true
 
+      # depends_on macos comes from the Info.plist of the bundles actually
+      # shipped (build.sh raises it to what the binaries need).
       - name: Generate and validate casks
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           python3 eov-source/scripts/release.py generate-cask \
-            --version '${{ needs.prepare.outputs.version }}' \
-            --manifest release-metadata/release.toml \
+            --version "$VERSION" \
+            --manifest release-files/release.toml \
             --tap-root homebrew-tap \
-            --info-plist eov-source/assets/macos/Info.plist
+            --info-plist eov-source/assets/macos/Info.plist \
+            --app-archive "release-files/eov-v${VERSION}-macos-arm64.zip" \
+            --app-archive "release-files/eov-v${VERSION}-macos-x86_64.zip"
           python3 eov-source/scripts/release.py validate-casks \
-            --version '${{ needs.prepare.outputs.version }}' \
-            --manifest release-metadata/release.toml \
+            --version "$VERSION" \
+            --manifest release-files/release.toml \
             --tap-root homebrew-tap
           ruby -c homebrew-tap/Casks/eov.rb
-          ruby -c "homebrew-tap/Casks/eov@${{ needs.prepare.outputs.version }}.rb"
-
-      - name: Audit casks with Homebrew when available
-        working-directory: homebrew-tap
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v brew >/dev/null 2>&1; then
-            brew audit --cask --strict --online \
-              ./Casks/eov.rb \
-              "./Casks/eov@${{ needs.prepare.outputs.version }}.rb"
-          else
-            echo "Homebrew is unavailable on this runner; Ruby validation was used."
-          fi
+          ruby -c "homebrew-tap/Casks/eov@${VERSION}.rb"
 
       - name: Commit and push tap changes
         id: tap
         shell: bash
         working-directory: homebrew-tap
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          version='${{ needs.prepare.outputs.version }}'
-          git add -- Casks/eov.rb "Casks/eov@${version}.rb"
+          git add -- Casks/eov.rb "Casks/eov@${VERSION}.rb"
           staged="$(git diff --cached --name-only)"
           if [[ -n "$staged" ]]; then
             while IFS= read -r path; do
               case "$path" in
-                Casks/eov.rb|"Casks/eov@${version}.rb") ;;
+                Casks/eov.rb|"Casks/eov@${VERSION}.rb") ;;
                 *) echo "unexpected staged tap path: $path" >&2; exit 1 ;;
               esac
             done <<< "$staged"
-            git commit -m "eov: update to ${version}"
+            git commit -m "eov: update to ${VERSION}"
             branch="$(git branch --show-current)"
             git push origin "HEAD:${branch}"
           fi
           HOMEBREW_TAP_SHA="$(git rev-parse HEAD)"
           echo "homebrew_tap_sha=$HOMEBREW_TAP_SHA" >> "$GITHUB_OUTPUT"
 
+  publish-release:
+    name: Publish GitHub Release
+    needs: [prepare, draft, publish-crates, update-homebrew]
+    # Prereleases skip the tap.
+    if: >-
+      always() &&
+      needs.draft.result == 'success' &&
+      needs.publish-crates.result == 'success' &&
+      (needs.update-homebrew.result == 'success' ||
+       (needs.update-homebrew.result == 'skipped' && needs.prepare.outputs.is_stable != 'true'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download validated release staging
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: eov-release-staging-${{ github.run_id }}
+          path: release-files
+          merge-multiple: true
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: gh release edit "$TAG" --draft=false
+
+      - name: Verify published tag target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/$TAG")"
+          object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+          object_type="$(jq -r '.object.type' <<<"$ref_json")"
+          if [[ "$object_type" == "tag" ]]; then
+            object_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/$object_sha" --jq .object.sha)"
+          fi
+          [[ "$object_sha" == "$SOURCE_SHA" ]] || {
+            echo "published tag $TAG points at $object_sha, expected $SOURCE_SHA" >&2
+            exit 1
+          }
+
+      - name: Verify published asset URLs and hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release.py verify-assets \
+            --kind eov \
+            --version "$VERSION" \
+            --repository eosin-platform/eov \
+            --manifest release-files/release.toml
+          for file in release.toml release.toml.minisig; do
+            [[ -f "release-files/$file" ]] || continue
+            curl --fail --location --silent --show-error \
+              "https://github.com/eosin-platform/eov/releases/download/${TAG}/${file}" \
+              | cmp - "release-files/$file"
+          done
+
   post-release:
     name: Commit EOV install metadata
     if: needs.prepare.outputs.is_stable == 'true'
-    needs: [prepare, update-homebrew]
+    needs: [prepare, update-homebrew, publish-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Check out current EOV default branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.prepare.outputs.default_branch }}
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Download published manifest
-        uses: actions/download-artifact@v8
+      - name: Download validated release staging
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: eov-published-metadata-${{ github.run_id }}
+          name: eov-release-staging-${{ github.run_id }}
           path: release-metadata
           merge-multiple: true
 
       - name: Update and validate README
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/release.py update-readme \
-            --version '${{ needs.prepare.outputs.version }}' \
+            --version "$VERSION" \
             --manifest release-metadata/release.toml \
             --readme README.md
           python3 scripts/release.py validate-readme \
-            --version '${{ needs.prepare.outputs.version }}' \
+            --version "$VERSION" \
             --manifest release-metadata/release.toml \
             --readme README.md
 
       - name: Advance Homebrew submodule gitlink
+        env:
+          TAP_SHA: ${{ needs.update-homebrew.outputs.homebrew_tap_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          tap_sha='${{ needs.update-homebrew.outputs.homebrew_tap_sha }}'
           git submodule update --init packaging/homebrew-eov
           git -C packaging/homebrew-eov fetch --no-tags origin
-          if ! git -C packaging/homebrew-eov cat-file -e "${tap_sha}^{commit}"; then
-            git -C packaging/homebrew-eov fetch --no-tags origin "$tap_sha"
+          if ! git -C packaging/homebrew-eov cat-file -e "${TAP_SHA}^{commit}"; then
+            git -C packaging/homebrew-eov fetch --no-tags origin "$TAP_SHA"
           fi
-          git -C packaging/homebrew-eov checkout --detach "$tap_sha"
+          git -C packaging/homebrew-eov checkout --detach "$TAP_SHA"
           git add -- README.md packaging/homebrew-eov
 
       - name: Commit and push post-release metadata
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          BRANCH: ${{ needs.prepare.outputs.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -568,12 +745,11 @@ jobs:
             done <<< "$staged"
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "release: update install metadata for ${{ needs.prepare.outputs.version }}"
-            branch='${{ needs.prepare.outputs.default_branch }}'
-            if ! git push origin "HEAD:${branch}"; then
-              git fetch origin "$branch"
-              git rebase "origin/$branch"
-              git push origin "HEAD:${branch}"
+            git commit -m "release: update install metadata for ${VERSION}"
+            if ! git push origin "HEAD:${BRANCH}"; then
+              git fetch origin "$BRANCH"
+              git rebase "origin/$BRANCH"
+              git push origin "HEAD:${BRANCH}"
             fi
           else
             echo "README and Homebrew gitlink already match; no post-release commit needed"

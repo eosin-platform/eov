@@ -1,0 +1,53 @@
+# cargo-deny policy for licences, banned crates and dependency sources
+# (https://embarkstudios.github.io/cargo-deny/). Security advisories are
+# checked by `cargo audit` (.cargo/audit.toml) in the same CI workflow.
+#
+#   cargo deny --all-features check --config .github/deny.toml licenses bans sources
+
+[graph]
+# The platforms eov is released for.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# eov is distributed under MIT OR Apache-2.0 OR GPL-3.0; every dependency
+# must be usable under terms compatible with that. A new licence here is a
+# decision, not a formality: check its obligations first.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-only",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Workspace path dependencies (plugins as dev-dependencies) are not
+# published, so they need no version.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
