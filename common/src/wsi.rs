@@ -1290,6 +1290,54 @@ mod tests {
     }
 
     #[test]
+    fn unverified_failures_fail_fast_until_a_probe_confirms_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("truncated.tiff");
+        let mut level0 = TiffLevel::new(256, 256, 32);
+        for ty in 3..8 {
+            for tx in 0..8 {
+                level0 = level0.with_broken_tile(tx, ty);
+            }
+        }
+        let spec = TiffSpec {
+            levels: vec![level0, TiffLevel::new(128, 128, 32)],
+            ..TiffSpec::default()
+        };
+        write_tiff(&path, &spec, gradient).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        let read = |tx: i64, ty: i64| wsi.read_region(tx * 32, ty * 32, 0, 32, 32);
+
+        // 40 distinct bad tiles use up the probe budget (32 tokens).
+        let mut confirmed = 0;
+        let mut provisional = Vec::new();
+        for ty in 3..8 {
+            for tx in 0..8 {
+                match read(tx, ty) {
+                    Err(Error::CorruptRegion { .. }) => confirmed += 1,
+                    Err(Error::HandlePoisoned(_)) => provisional.push((tx, ty)),
+                    other => panic!("unexpected {other:?}"),
+                }
+                // The shared handle is restored every time.
+                assert!(read(0, 0).is_ok());
+            }
+        }
+        assert!(confirmed >= 32, "{confirmed}");
+        assert!(!provisional.is_empty());
+        let (tx, ty) = provisional[0];
+        // While provisional, the region fails fast (no reopen) and the error
+        // stays transient.
+        let reopens = wsi.health().reopens;
+        assert!(matches!(read(tx, ty), Err(Error::HandlePoisoned(_))));
+        assert_eq!(wsi.health().reopens, reopens, "fail-fast must not reopen");
+        // Later, with probe budget again, the region is read, probed and
+        // confirmed.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(matches!(read(tx, ty), Err(Error::CorruptRegion { .. })));
+        assert!(matches!(read(tx, ty), Err(Error::CorruptRegion { .. })));
+        assert!(read(0, 0).is_ok());
+    }
+
+    #[test]
     fn reopening_backs_off_when_the_file_is_gone() {
         let dir = tempfile::tempdir().unwrap();
         let path = broken_file(dir.path());
