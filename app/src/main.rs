@@ -41,6 +41,7 @@ mod render_pool;
 mod session;
 mod shortcuts;
 mod slide_info;
+mod slide_link;
 mod state;
 #[cfg(test)]
 mod test_support;

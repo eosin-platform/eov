@@ -123,6 +123,7 @@ Current capabilities include:
 - One eov window: opening more slides while eov runs adds them as tabs instead of starting another eov.
 - A tab- and pane-based layout
 - Duplicate tabs into additional panes for side-by-side comparison.
+- Link panes that show different slides (H&E next to IHC, serial sections): they pan, zoom and turn together, at equal µm per screen pixel when both slides record a pixel size. Align them by moving one pane alone (adjust mode, next to the link button) or from two landmarks placed on each slide (viewport menu); alignments are kept per slide pair.
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
 - Show a slide in the file manager: **Open Containing Folder** opens its folder with the slide selected.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
@@ -560,7 +561,8 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 
 - `measurements/`: the region of interest and the measurements (list them with Ctrl+Shift+M; `remember_measurements = false` in `config.toml` turns this off);
 - `bookmarks.toml`: named views (Ctrl+B);
-- `calibrations.toml`: pixel sizes set by hand in Slide Information.
+- `calibrations.toml`: pixel sizes set by hand in Slide Information;
+- `alignments.toml`: how two linked slides are aligned to each other (per slide pair).
 
 The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
 

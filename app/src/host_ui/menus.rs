@@ -24,8 +24,9 @@ const MAX_PLUGIN_ITEMS: usize = 20;
 pub(super) struct OpenMenu {
     contexts: Vec<(Arc<str>, MenuContext)>,
     file_id: Option<FileId>,
-    /// The pane the menu was opened on.
+    /// The pane the menu was opened on, and the level-0 point under it.
     pane: usize,
+    image: Point,
 }
 
 fn item(id: impl Into<String>, label: &str, icon: &str) -> ContextMenuItem {
@@ -72,6 +73,14 @@ impl UiHost {
         let Some(ui) = self.ui() else {
             return;
         };
+        let (linked, can_align, has_landmarks) = {
+            let state = self.state.read();
+            (
+                state.slide_link.enabled && state.split_enabled,
+                crate::slide_link::can_align_from_landmarks(&state, PaneId(pane)),
+                !state.slide_link.landmarks.is_empty(),
+            )
+        };
         let (file_id, view, has_roi, has_measurements, turned) = {
             let state = self.state.read();
             let file = state
@@ -104,12 +113,42 @@ impl UiHost {
         ];
         mark_last_separator(&mut items);
         if file_id.is_some() {
-            items.push(item("host:view-rotate-right", "Rotate Right 90°", ""));
-            items.push(item("host:view-rotate-left", "Rotate Left 90°", ""));
-            items.push(item("host:view-flip", "Flip Horizontally", ""));
+            items.push(with_key(
+                item("host:view-rotate-right", "Rotate Right 90°", ""),
+                Action::RotateRight,
+            ));
+            items.push(with_key(
+                item("host:view-rotate-left", "Rotate Left 90°", ""),
+                Action::RotateLeft,
+            ));
+            items.push(with_key(
+                item("host:view-flip", "Flip Horizontally", ""),
+                Action::Flip,
+            ));
             if turned {
                 items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
             }
+            mark_last_separator(&mut items);
+        }
+        // Linked navigation: align this slide to the others (Phase 3 #5).
+        if linked && file_id.is_some() {
+            items.push(item(
+                "host:link-landmark-1",
+                "Place Alignment Landmark 1",
+                "",
+            ));
+            items.push(item(
+                "host:link-landmark-2",
+                "Place Alignment Landmark 2",
+                "",
+            ));
+            if can_align {
+                items.push(item("host:link-align", "Align from Landmarks", ""));
+            }
+            if has_landmarks {
+                items.push(item("host:link-clear-landmarks", "Clear Landmarks", ""));
+            }
+            items.push(item("host:link-reset", "Reset Alignment", ""));
             mark_last_separator(&mut items);
         }
         if let Some(file_id) = file_id {
@@ -239,6 +278,7 @@ impl UiHost {
             contexts,
             file_id,
             pane,
+            image,
         });
 
         ui.set_context_menu_tab_id(-1);
@@ -283,6 +323,16 @@ impl UiHost {
             return false;
         };
         if self.bookmark_command(host_command) {
+            return true;
+        }
+        let opened_at = self
+            .menu
+            .borrow()
+            .as_ref()
+            .map(|menu| (menu.pane, menu.image));
+        if let Some((pane, image)) = opened_at
+            && self.link_command(host_command, pane, image)
+        {
             return true;
         }
         if host_command == "measurements-panel" {
