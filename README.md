@@ -136,6 +136,7 @@ Current capabilities include:
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
 - Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
+- Scripting: drive the running viewer and read slide regions from Python or the shell, over a local, authenticated endpoint (see [Scripting](#scripting)).
 - Various quality of life enhancements expected from modern software packages
 
 ## Keyboard Shortcuts
@@ -281,6 +282,8 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov call <METHOD> [PARAMS] [--out <FILE>]
+eov script-endpoint [--json]
 ```
 
 Examples:
@@ -318,7 +321,7 @@ eov recent list
 - `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
 
-`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash and every OpenSlide property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)).
+`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash and every OpenSlide property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)).
 
 ### Opening slides
 
@@ -336,7 +339,7 @@ eov://open?path=C%3A%5Cslides%5CS12-3456%20A1.svs&x=14000&y=9000&zoom=10x
 
 Percent-encode the path (in a spreadsheet, `=HYPERLINK("eov://open?path=" & ENCODEURL(A2) & "&x=" & B2 & "&y=" & C2 & "&zoom=20x", "Open")`); `+` means a space. `x` and `y` take the values of `--goto`, `zoom` those of `--zoom`, and both are optional; unknown parameters are ignored. Clicking a link starts eov, or hands the link to the eov that runs. On Windows, a link to a network path (`\\server\share\...`) is only followed if the server is listed in `trusted_link_servers` in `config.toml`: merely looking at such a path makes Windows sign in to that server with your credentials, which a link on a web page could abuse. Mapped drive letters need no setting.
 
-**Single instance.** While eov runs, `eov FILES` (from a terminal, a file manager or a link) hands the files to it: they open as tabs, the window comes to the front (on Wayland, which lets no program raise itself, it asks for attention instead) and the second eov exits. `eov` without files just brings the running one forward. Options that configure the viewer itself (`--cpu`, `--gpu`, `--backend`, `--filtering-mode`, `--debug`, `--log-level`, `--cache-size`, `--max-tiles`, `--window-*`, `--viewport-lock`, `--safe-mode`) start a separate eov, as do `--new-instance` and `single_instance = false` in `config.toml`; subcommands never hand anything over. eovs with a different home, configuration file or plugin folder (`EOV_HOME`, `--config`, `--plugin-dir`) run separately.
+**Single instance.** While eov runs, `eov FILES` (from a terminal, a file manager or a link) hands the files to it: they open as tabs, the window comes to the front (on Wayland, which lets no program raise itself, it asks for attention instead) and the second eov exits. `eov` without files just brings the running one forward. Options that configure the viewer itself (`--cpu`, `--gpu`, `--backend`, `--filtering-mode`, `--debug`, `--log-level`, `--cache-size`, `--max-tiles`, `--window-*`, `--viewport-lock`, `--safe-mode`) start a separate eov, as do `--new-instance` and `single_instance = false` in `config.toml`; subcommands never hand anything over. Such an eov still takes the endpoint described below when no other eov holds it: it serves [scripts](#scripting), and files handed over by later launches open in it. eovs with a different home, configuration file or plugin folder (`EOV_HOME`, `--config`, `--plugin-dir`) run separately.
 
 The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost port (Windows, or where the socket's path would be too long) in a folder only you can use: `$XDG_RUNTIME_DIR/eov` on Linux (`$XDG_RUNTIME_DIR/app/io.eosin.eov` in the Flatpak), `$TMPDIR/eov` on macOS, `%LOCALAPPDATA%\eov\run` on Windows, or `$EOV_RUNTIME_DIR`. Both sides prove that they know a secret stored there before any path is exchanged, so other users and programs that merely squat on the port learn nothing. If eov crashed, the next start takes over its leftovers; if the running eov does not answer within 20 seconds, the new one starts on its own.
 
@@ -477,6 +480,169 @@ When `--metadata csv` or `--metadata json` is provided, a single metadata file i
 
 This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
 
+## Scripting
+
+Scripts drive the running eov: they list the open slides, open slides, move views, read regions of any slide (open or not) as PNG or raw pixels, set the region of interest, add measurements and bookmarks, quantify a stain and export figures. Python (with a small client that needs only the standard library), shell scripts and any language that can open a socket can do this; no native plugin is needed. Start eov first: scripts talk to the eov that runs.
+
+```bash
+eov call slides
+eov call region.read '{"x": 20000, "y": 14000, "width": 512, "height": 512}' --out tile.png
+```
+
+```python
+from eov_client import Client                  # clients/python/eov_client.py
+
+with Client() as eov:
+    slide = eov.slides()[0]
+    tile = eov.read_region(slide=slide["file_id"], x=20000, y=14000, width=512, height=512, mpp=0.5)
+    open("tile.png", "wb").write(tile["data"])
+    eov.set_view(x="5000um", y="3500um", magnification=20)
+    eov.add_bookmark(name="Invasive front")
+```
+
+### Security
+
+- **Local only.** Scripts use the endpoint of [single instance](#opening-slides): a Unix-domain socket in a folder only you can open (Linux, macOS), or a port on 127.0.0.1 (Windows, and where the socket's path would be too long). Nothing listens on the network.
+- **The secret.** At start-up eov writes a random 256-bit secret to the endpoint's `.info` file, which only you can read. A script proves it knows the secret, and eov proves it too (HMAC-SHA256 over fresh challenges), before any call: a program that cannot read the file cannot call eov, and a program that took over the port learns nothing. `eov call` and the Python client read the file themselves.
+- **No special trust.** Scripts can do what you can do in eov, nothing more. Paths must be absolute, and follow the rules of `eov://` links: on Windows, network paths (`\\server\...`) only for servers in `trusted_link_servers`. Slides must be regular files (never a device or a pipe). `export.view` writes a new file in an existing folder and replaces a file only when asked. Edits go through the same code as the tools: Ctrl+Z undoes them, they are kept for the slide, and plugins hear of them.
+- **Bounded.** A call is at most 1 MiB and an answer at most 64 MiB; a region at most 16384 pixels wide or high and 8 Mi pixels in all (4096 × 2048); exports at most 65535 pixels per side, 2400 DPI and a gigapixel. At most 4 pixel-heavy calls (`region.read`, `quantify`, `export.view`) run at once, at most 32 connections are open, and eov hangs up on a connection that stays silent for two minutes (the Python client reconnects). Slide reads, quantifications and exports run on the connection's own thread, never on the window's.
+- **Off switch.** `scripting = false` in `config.toml` refuses every call (error kind `disabled`); with `single_instance = false` as well, eov does not listen at all.
+
+Scripts reach the eov of a setup (eov's home, configuration file and plugin folder, as for single instance). An eov started with `--new-instance` or options such as `--debug` serves scripts when no other eov does.
+
+Calls that only read (`slides`, `panes`, `view.get`, `roi.get`, `measurements.list`, `bookmarks.list`, `region.read`) answer from the state the viewer publishes for plugins, refreshed with every frame and after every edit, so they never wait for the window. Calls that change something run on the window's thread, one after the other with what you do in the window; if it cannot take one within 20 seconds (a modal dialog, such as a file chooser, is open), the call fails with `busy` and nothing is done.
+
+### From the shell: `eov call`
+
+```text
+eov call <METHOD> [PARAMS] [--out FILE]
+eov script-endpoint [--json]
+```
+
+`PARAMS` is a JSON object, `-` to read it from standard input, or `@FILE`; a relative `path` is taken from the current folder. The result is printed as JSON; with `--out`, the pixel data of `region.read` is written to `FILE` instead of printed. The exit status is 0 on success, 1 when the call failed (the message says why), 2 for invalid arguments and 3 when no eov runs. `eov script-endpoint` prints where the eov of this setup listens (`--json` for scripts): the socket or port, the `.info` file and whether an eov answers. `--config` and `--plugin-dir` select another setup, as for the viewer; `eov paths` lists the `.info` file as `script-endpoint`.
+
+```bash
+eov call open '{"path": "S12-3456.svs", "view": {"zoom": "fit"}}'
+eov call view.set '{"x": "1500um", "y": "900um", "magnification": 10}'
+eov call roi.set '{"x": 30000, "y": 20000, "width": 4000, "height": 3000}'
+eov call quantify '{"model": "h-dab", "stain": "DAB"}' | jq .h_score
+eov call export.view '{"path": "figure.png", "dpi": 300, "scale_bar": true}'
+```
+
+### From Python
+
+`clients/python/eov_client.py` is a single file without dependencies: copy it next to your script, or put its folder on `PYTHONPATH`. `Client()` finds the running eov; every method is `Client.call(method, params)`, and wrappers (`slides()`, `open_slide()`, `view()`, `set_view()`, `read_region()`, `roi()`, `set_roi()`, `measurements()`, `add_measurement()`, `remove_measurements()`, `bookmarks()`, `add_bookmark()`, `quantify()`, `export_view()`, `close_slide()`) leave out the parameters you do not give. Errors raise `EovError`, whose `kind` is the error's kind below (or `not_running`). `read_region()` returns the answer with `data` decoded to bytes: with numpy, `numpy.frombuffer(r["data"], numpy.uint8).reshape(r["height"], r["width"], 4)` for `format="rgba"`. `clients/python/example.py` walks through most methods; `python3 eov_client.py METHOD [PARAMS]` calls one method from a shell.
+
+The client finds eov as eov does: in `$EOV_RUNTIME_DIR`, else `$XDG_RUNTIME_DIR/eov` on Linux (`$XDG_RUNTIME_DIR/app/io.eosin.eov` for the Flatpak), `$TMPDIR/eov` on macOS, or `<data folder>/run` (`%LOCALAPPDATA%\eov\run` on Windows), it looks for `eov-<hash>.info`, where the hash is the first 8 bytes, in hex, of SHA-256 over eov's home, configuration file and plugin folder, each followed by a NUL byte (`$EOV_HOME`, else `~/.eov`; `$EOV_CONFIG`, else `<home>/config.toml`; `$EOV_PLUGIN_DIR`, else `<home>/plugins`). Pass `config=` and `plugin_dir=` when eov runs with `--config` or `--plugin-dir`. Without them, the only endpoint registered there is used, and last `eov script-endpoint --json` is asked; `Client(info=path)` takes an `.info` file directly.
+
+### The protocol
+
+For other languages:
+
+1. Read the `.info` file: `PORT PID SECRET`, where `SECRET` is 64 hex digits. With port 0, connect to the Unix-domain socket next to it (`<name>.sock`); otherwise to `127.0.0.1:PORT`.
+2. Send the 8 bytes `eov-rpc1` and 32 random bytes `N1`.
+3. Read 32 bytes `P` and 32 bytes `N2`. `P` must be HMAC-SHA256(secret, `server` ‖ `N1`); if it is not, the program is not eov: send nothing more.
+4. Send HMAC-SHA256(secret, `client` ‖ `N2`).
+5. Then each call is a frame, a 4-byte big-endian length and that many bytes of UTF-8 JSON, answered by a frame. Make as many calls as you like, one at a time; open more connections to work in parallel.
+
+Calls are JSON-RPC 2.0 style: `{"jsonrpc": "2.0", "id": 1, "method": "view.get", "params": {"pane": 1}}` (`jsonrpc` and `params` may be left out) is answered by `{"jsonrpc": "2.0", "id": 1, "result": ...}` or by `{"jsonrpc": "2.0", "id": 1, "error": {"code": -32001, "message": "there is no pane 7 (see panes)", "data": {"kind": "not_found"}}}`. Every call is answered, parameters are named, unknown parameters are refused, and batches are not supported.
+
+| Code | Kind | Meaning |
+|---|---|---|
+| -32700 | `parse_error` | The call is not JSON. |
+| -32600 | `invalid_request` | Not a call: no method, a batch, an id that is not a number or text. |
+| -32601 | `method_not_found` | No such method (`version` lists them). |
+| -32602 | `invalid_params` | Missing, unknown or invalid parameters. |
+| -32603 | `internal` | A fault in eov (see its log). |
+| -32001 | `not_found` | No such slide, pane, measurement or file. |
+| -32002 | `refused` | Not allowed: a path the rules exclude, a file that would be replaced. |
+| -32003 | `too_large` | Beyond a limit (region size, answer size). |
+| -32004 | `busy` | The window did not take an edit within 20 seconds (a modal dialog?), and nothing was done; or a slide took longer than two minutes to open (it may still open). |
+| -32005 | `failed` | The work failed: an unreadable slide, a failed export. |
+| -32006 | `unavailable` | eov is starting or closing. |
+| -32007 | `cancelled` | Cancelled in eov's status bar. |
+| -32008 | `disabled` | `scripting = false` in `config.toml`. |
+
+### Methods
+
+Coordinates are level-0 pixels, as OpenSlide's (x to the right, y down, from the top-left corner). Where a method takes a position, `x` and `y` may also be text with a unit, as `--goto` takes (`"300um"`, `"1200px"`). `slide` is a `file_id` from `slides` and defaults to the slide in the focused pane; `pane` is a `pane` from `panes` and defaults to the focused pane. `zoom` is screen pixels per level-0 pixel (or text as `--zoom` takes: `"20x"`, `"0.5"`, `"fit"`); `magnification` is objective-equivalent, from the slide's objective or about 10 µm ÷ its pixel size. Results use the vocabulary of the plugin API (`plugin_api/src/protocol.rs`: `FileInfo`, `ViewInfo`, `Rect`, `Shape`).
+
+| Method | Parameters | Result |
+|---|---|---|
+| `version` | none | eov's version, `protocol` (1), `plugin_api`, `methods`, `limits` |
+| `slides` | none | the open slides |
+| `panes` | none | the panes, left to right |
+| `open` | `path`, `pane`, `new_pane`, `view` | the slide's `file_id`, `pane` and `view`, once shown |
+| `close` | `slide` (required) | `closed` |
+| `view.get` | `pane` | the pane's view |
+| `view.set` | `pane`, `x`, `y`, `zoom` or `magnification`, `rotation`, `flipped`, `animate` | the view now shown |
+| `region.read` | `slide` or `path`, `x`, `y`, `width`, `height`, `level` or `downsample` or `mpp`, `format`, `alpha` | the pixels |
+| `roi.get` | `slide` | `file_id`, `roi` |
+| `roi.set` | `slide`, `x`, `y`, `width`, `height` (or `roi`; `null` clears it) | `file_id`, `roi` |
+| `measurements.list` | `slide` | the measurements |
+| `measurements.add` | `slide`, `mode`, `points` (or `x`, `y`, `width`, `height`, or `shape`) | the measurement |
+| `measurements.remove` | `slide`, `ids` (or `"all": true`) | `removed` |
+| `bookmarks.list` | `slide` | the bookmarks |
+| `bookmarks.add` | `slide`, `name`, `x`, `y`, `zoom` or `magnification`, `rotation`, `flipped` | the bookmark |
+| `quantify` | `slide`, `model`, `stain`, `thresholds`, `region` | positive pixels and H-score |
+| `export.view` | `path`, `pane`, `format`, `dpi`, `jpeg_quality`, `scale_bar`, `roi`, `measurements`, `processing_note`, `overwrite` | the image's size and path |
+
+```bash
+eov call version                               # eov's version, the methods and the limits
+eov call panes                                 # which pane shows which slide, and how
+eov call view.get '{"pane": 2}'
+eov call roi.get '{"slide": 3}'
+eov call measurements.list
+eov call bookmarks.add '{"name": "Mitosis", "x": 41200, "y": 23800, "magnification": 40}'
+eov call bookmarks.list
+eov call close '{"slide": 3}'
+```
+
+**`slides`** lists the open slides as the plugin API's `FileInfo`: `file_id`, `path`, `filename`, `width` and `height` (level 0), `levels` (`level`, `width`, `height`, `downsample`), `mpp_x` and `mpp_y` (a pixel size set by hand in Slide Information wins; `mpp_set_by_hand` says so), `objective_power`, `vendor`, `scan_date`, `bounds`, `identity` (the key bookmarks and measurements are kept under), `associated_images`, `has_icc_profile` and `stain`, plus `file_size`, `native_magnification` and `panes` (the panes showing it).
+
+**`panes`** lists the panes left to right: `pane` (a stable id), `index`, `focused`, `file_id` (the slide shown, or `null`), `tabs` (the `file_id`s of its tabs) and `view`.
+
+**`open`** opens the slide at `path` (`eov call` and the Python client make relative paths absolute) in the focused pane, or `pane`, or a new pane on the right with `"new_pane": true`, and answers once it is shown (a slide that is open already is shown, in a new tab if it is in another pane). `view` places it: `{"x": "300um", "y": "200um", "zoom": "20x"}`; what cannot be applied (micrometres on a slide without a pixel size) is listed in `warnings`. A path that is not valid Unicode can be given as `os_path`, the hex of its bytes (UTF-16 units on Windows), here and in `region.read` and `export.view`.
+
+```bash
+eov call open '{"path": "/slides/S12-3456 A1.svs", "new_pane": true, "view": {"magnification": 2.5}}'
+```
+
+**`close`** closes every tab of `slide`.
+
+**`view.get`** returns `pane`, `file_id`, `center_x`, `center_y`, `zoom`, `width` and `height` (the pane in logical pixels), `scale_factor`, `rotation_deg`, `flipped`, `visible` (the level-0 rectangle shown) and `magnification`. **`view.set`** centres the view on `x`, `y`, zooms to `zoom` or `magnification`, and turns it by `rotation` (0, 90, 180, 270) and `flipped`; anything left out stays. It applies at once (with `"animate": true`, it glides there as the viewer does, and the answer shows where it starts), panes locked to the focused one follow, and the answer is the view now shown, with `warnings`.
+
+```bash
+eov call view.set '{"x": 41000, "y": 23500, "zoom": 1}'
+eov call view.set '{"pane": 2, "magnification": 40, "rotation": 90}'
+```
+
+**`region.read`** reads `width` × `height` pixels whose top-left corner is `x`, `y`, from an open `slide`, or from a slide file at `path` that need not be open in eov (each connection keeps up to four such slides open). The resolution is a stored `level`, read as it is; or a `downsample` (level-0 pixels per result pixel), read from the finest level at or below it and resampled (Lanczos-3) when it falls between levels; or `mpp`, micrometres per pixel, from the slide's pixel size. The default is level 0. `format` is `png` (default; RGB, or RGBA with `alpha`), `rgba` or `rgb` (raw rows, top to bottom). Areas without image data take the slide's background colour, or stay transparent with `"alpha": true`. The answer has `x`, `y`, `width`, `height`, the `level` read, the `downsample` and `mpp` of the result, `format`, `alpha` and `data` (base64). Read larger areas in tiles.
+
+```bash
+eov call region.read '{"path": "/slides/a.svs", "x": 0, "y": 0, "width": 1024, "height": 1024, "level": 2}' --out overview.png
+eov call region.read '{"x": 30000, "y": 20000, "width": 256, "height": 256, "mpp": 0.5, "format": "rgba"}'
+```
+
+**`roi.get`** and **`roi.set`** read and set the slide's region of interest, a level-0 rectangle; `{"roi": null}` clears it. **`measurements.list`** gives each measurement's `measurement_id`, `mode`, `shape`, `length_px`, `area_px2`, `length_um`, `area_um2`, `angle_deg`, `approximate` (the pixel size is known for one axis only) and the `label` eov shows. **`measurements.add`** adds one: `mode` is `line` (2 `points`), `polyline` (2 or more), `polygon` (3 or more), `angle` (3: arm, vertex, arm), `rectangle` or `ellipse` (`x`, `y`, `width`, `height` of the box); or give the plugin API's `shape`. A measurement has at most 10 000 points, and scripts add measurements to a slide that has fewer than 10 000. **`measurements.remove`** deletes measurements by `ids`, or `"all": true`. These edits are made as with the ROI and Measure tools: Ctrl+Z undoes them, they are kept with the slide (unless `remember_measurements = false`), and plugins get `RoiChanged` and see the measurements.
+
+```bash
+eov call roi.set '{"roi": {"x": 30000, "y": 20000, "width": 4000, "height": 3000}}'
+eov call measurements.add '{"mode": "line", "points": [[30000, 20000], [30400, 20000]]}'
+eov call measurements.add '{"mode": "ellipse", "x": 31000, "y": 21000, "width": 200, "height": 120}'
+eov call measurements.remove '{"all": true}'
+```
+
+**`bookmarks.list`** gives the slide's bookmarks (`index`, `name`, `center_x`, `center_y`, `zoom`, `rotation`, `flipped`, `magnification`); **`bookmarks.add`** adds one, as Ctrl+B does: the view shown, or the one `x`, `y`, `zoom` or `magnification`, `rotation` and `flipped` give; `name` defaults to "Bookmark N" and has at most 120 characters. A slide has at most 50 bookmarks; they are kept in `bookmarks.toml`, by slide identity.
+
+**`quantify`** measures one stain in the region of interest (or `region`) as the Quantify Stain panel does: `model` is a stain model (`h-dab`, `he`, `h-e-dab`, `h-aec`, `h-pas`, `masson-trichrome`; by default the one the slide's stain label suggests, else `h-dab`), `stain` its stain by index or name (default: the chromogen, `DAB` or `AEC`, else the last stain), `thresholds` the weak, moderate and strong concentrations (default `[0.15, 0.5, 1.0]`). The region is read at the finest level that keeps it under 16 megapixels. The answer has `analysed_pixels` (tissue), `positive_pixels`, `positive_fraction`, `bins` and `weak_fraction`, `moderate_fraction`, `strong_fraction`, `h_score` (0–300), `mean_concentration`, the `level` and `downsample` read, and the model, stain, thresholds and region used. It runs as a job in the status bar, where it can be cancelled.
+
+```bash
+eov call quantify '{"model": "h-dab", "stain": "DAB", "thresholds": [0.2, 0.6, 1.2]}'
+```
+
+**`export.view`** exports a pane's view as the export dialog does, with the pane's colour processing, its overlay layers, and by default the dialog's choices: the ROI outline, measurements and a scale bar when there are any, and the processing note when the colours are processed; `scale_bar`, `roi`, `measurements` and `processing_note` change them. `format` is `png`, `jpeg` or `tiff` (default: from the file's extension), `dpi` 1 to 2400 (default 150; 96 is one pixel per screen pixel), `jpeg_quality` 1 to 100 (default 92). The file is written only once complete and replaces an existing one only with `"overwrite": true`. The answer has `path`, `width`, `height`, the `level` rendered, `tiles_failed`, `complete` and a `warning` when tiles could not be read. It runs as a job in the status bar, where it can be cancelled.
+
 ## Plugins
 
 eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
@@ -612,7 +778,8 @@ filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
 remember_recent_files = true
 restore_session = true
 single_instance = true         # false: every launch starts its own eov
-trusted_link_servers = ["slides01", "pacs.example.org"]   # Windows: network paths eov:// links may open
+scripting = true               # false: refuse every call from scripts (see Scripting)
+trusted_link_servers = ["slides01", "pacs.example.org"]   # Windows: network paths eov:// links and scripts may open
 
 [shortcuts]                    # see Keyboard Shortcuts
 bookmark-add = "Ctrl+D"
@@ -713,6 +880,7 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 │   └── benches/          # Benchmarks for various core functions
 ├── plugin_api/           # Shared plugin trait definitions and manifest types
 │   └── src/
+├── clients/python/       # Scripting client (standard library only) and an example
 ├── plugins/              # In-tree native plugins
 │   ├── annotations/
 │   ├── eovae/
