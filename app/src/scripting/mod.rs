@@ -832,6 +832,81 @@ mod session_tests {
         assert_eq!(kind(&read), "not_found");
     }
 
+    /// Multichannel slides are read as eov draws them: a slide eov has open
+    /// (by id or by path) with the display its Channels panel set, other
+    /// slides with the defaults they open with.
+    #[test]
+    fn multichannel_slides_are_read_as_drawn() {
+        use crate::host_ui::publish::FileReader;
+        use crate::plugin_runtime::shared::PublishedFile;
+        use base64::Engine;
+        use eov_common::test_support::{OmeTiffSpec, write_ome_tiff};
+        use eov_plugin_api::protocol::FileInfo;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("multiplex.ome.tif");
+        let spec = OmeTiffSpec::channels(
+            64,
+            32,
+            32,
+            1,
+            &[("DAPI", [0, 0, 255]), ("CD8", [255, 0, 0])],
+        );
+        write_ome_tiff(&path, &spec, |c, x, _| f64::from(x) * (c + 1) as f64).unwrap();
+        // The same slide, not open in eov.
+        let other = dir.path().join("copy.ome.tif");
+        std::fs::copy(&path, &other).unwrap();
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        let shared = shared();
+        shared.set_reader(3, Arc::new(FileReader::new(wsi.clone())));
+        let mut published = Published::default();
+        let info = FileInfo {
+            file_id: 3,
+            ..Default::default()
+        };
+        published.files.insert(
+            3,
+            PublishedFile {
+                info,
+                ..Default::default()
+            },
+        );
+        shared.publish(published);
+        // As the Channels panel does: CD8 alone, in white.
+        let mut display = wsi.channel_display().unwrap();
+        display.channels[0].visible = false;
+        display.channels[1].color = [255, 255, 255];
+        wsi.set_channel_display(display).unwrap();
+
+        let service = service_with(true, shared);
+        let read = |source: String| {
+            let call = json!({
+                "id": 1,
+                "method": "region.read",
+                "params": {
+                    "slide": if source.is_empty() { json!(3) } else { Value::Null },
+                    "path": if source.is_empty() { Value::Null } else { json!(source) },
+                    "x": 0, "y": 0, "width": 64, "height": 32, "format": "rgba",
+                },
+            });
+            let answer = answer(&service, &call.to_string());
+            let data = answer["result"]["data"].as_str().expect("pixels");
+            base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .unwrap()
+        };
+        let shown = wsi.read_region(0, 0, 0, 64, 32).unwrap();
+        let defaults = eov_common::WsiFile::open(&other)
+            .unwrap()
+            .read_region(0, 0, 0, 64, 32)
+            .unwrap();
+        assert_ne!(shown, defaults, "the display changed what is drawn");
+        assert_eq!(read(String::new()), shown, "an open slide, as shown");
+        let by_path = read(path.to_string_lossy().into_owned());
+        assert_eq!(by_path, shown, "the open slide by path, as shown");
+        let closed = read(other.to_string_lossy().into_owned());
+        assert_eq!(closed, defaults, "another slide, as it opens");
+    }
+
     #[test]
     fn scripting_can_be_turned_off() {
         let service = service(false);
