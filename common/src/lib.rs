@@ -15,9 +15,12 @@
 //! * [`render`], [`blitter`], [`viewport`]: level selection, pixel-centre
 //!   CPU resampling and viewport math.
 //! * [`file_id`]: [`SlideIdentity`], the stable key for per-slide data.
+//! * [`convert`]: pyramidal TIFF and OME-TIFF copies of a slide or a
+//!   region, optionally de-identified.
 
 pub mod blitter;
 pub mod cache;
+pub mod convert;
 pub mod dataset;
 pub mod error;
 pub mod export;

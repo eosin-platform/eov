@@ -91,7 +91,7 @@ const LATIN: &[(&str, char)] = &[
 /// so the typographic characters eov's descriptions use (`µ`, `×`, `·`,
 /// `°`, dashes, quotes) and common accented Latin letters (from file names)
 /// are transliterated, anything else becomes `?`, and NULs are dropped.
-fn ascii_value(text: &str) -> Vec<u8> {
+pub(crate) fn ascii_value(text: &str) -> Vec<u8> {
     let mut out = String::with_capacity(text.len() + 1);
     for c in text.chars() {
         if c.is_ascii() {

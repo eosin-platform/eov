@@ -6,6 +6,11 @@
 //! (COM) segment, quality-scaled Annex K quantisation tables and the
 //! Annex K Huffman tables. Chroma is either full resolution (4:4:4) or
 //! subsampled 2×2 (4:2:0).
+//!
+//! [`JpegTileEncoder`] writes the same data the way JPEG-in-TIFF needs it
+//! (TIFF Technical Note 2, compression 7): one tables-only stream for the
+//! `JPEGTables` tag and an abbreviated stream (frame and scan only, no
+//! JFIF marker) per tile.
 
 use std::io::Write;
 
@@ -129,6 +134,73 @@ fn scaled_table(base: &[u16; 64], quality: u8) -> [u16; 64] {
     base.map(|v| ((v as u32 * scale + 50) / 100).clamp(1, 255) as u16)
 }
 
+/// DQT with both quantisation tables (zigzag order).
+fn write_dqt(
+    out: &mut impl Write,
+    q_luma: &[u16; 64],
+    q_chroma: &[u16; 64],
+) -> std::io::Result<()> {
+    out.write_all(&[0xFF, 0xDB, 0x00, 132])?;
+    for (id, table) in [(0u8, q_luma), (1u8, q_chroma)] {
+        out.write_all(&[id])?;
+        for &natural in &ZIGZAG {
+            out.write_all(&[table[natural] as u8])?;
+        }
+    }
+    Ok(())
+}
+
+/// DHT with the four Annex K Huffman tables.
+fn write_dht(out: &mut impl Write) -> std::io::Result<()> {
+    let tables: [(u8, &[u8; 16], &[u8]); 4] = [
+        (0x00, &DC_LUMA_BITS, &DC_VALUES),
+        (0x10, &AC_LUMA_BITS, &AC_LUMA_VALUES),
+        (0x01, &DC_CHROMA_BITS, &DC_VALUES),
+        (0x11, &AC_CHROMA_BITS, &AC_CHROMA_VALUES),
+    ];
+    let length: usize = 2 + tables.iter().map(|t| 17 + t.2.len()).sum::<usize>();
+    out.write_all(&[0xFF, 0xC4])?;
+    out.write_all(&(length as u16).to_be_bytes())?;
+    for (class_id, bits, values) in tables {
+        out.write_all(&[class_id])?;
+        out.write_all(bits)?;
+        out.write_all(values)?;
+    }
+    Ok(())
+}
+
+/// SOF0 for a three-component (Y, Cb, Cr) baseline frame.
+fn write_sof0(
+    out: &mut impl Write,
+    width: u32,
+    height: u32,
+    subsampling: Subsampling,
+) -> std::io::Result<()> {
+    let y_sampling = match subsampling {
+        Subsampling::None => 0x11,
+        Subsampling::Half => 0x22,
+    };
+    out.write_all(&[0xFF, 0xC0, 0x00, 17, 8])?;
+    out.write_all(&(height as u16).to_be_bytes())?;
+    out.write_all(&(width as u16).to_be_bytes())?;
+    out.write_all(&[3, 1, y_sampling, 0, 2, 0x11, 1, 3, 0x11, 1])
+}
+
+/// SOS for the interleaved scan of all three components.
+fn write_sos(out: &mut impl Write) -> std::io::Result<()> {
+    out.write_all(&[0xFF, 0xDA, 0x00, 12, 3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0])
+}
+
+/// Which segments a [`JpegWriter`] stream carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamKind {
+    /// A complete JFIF file: APP0, COM, DQT, SOF0, DHT, SOS.
+    Interchange,
+    /// SOF0 and SOS only; the decoder gets the tables from a separate
+    /// tables-only stream (TIFF `JPEGTables`).
+    Abbreviated,
+}
+
 struct BitWriter {
     acc: u64,
     bits: u32,
@@ -239,16 +311,24 @@ pub struct JpegWriter<W: Write> {
     pending_rows: u32,
     prev_dc: [i32; 3],
     bits: BitWriter,
+    /// Transform the MCUs of a row on the rayon pool (whole images), or on
+    /// the calling thread (tiles, which are encoded in parallel already).
+    parallel: bool,
 }
 
 impl<W: Write> JpegWriter<W> {
     /// Writes the headers and returns a writer expecting `height` rows of
     /// `width` RGB pixels.
-    pub fn new(
+    pub fn new(out: W, width: u32, height: u32, options: &JpegOptions) -> std::io::Result<Self> {
+        Self::with_kind(out, width, height, options, StreamKind::Interchange)
+    }
+
+    fn with_kind(
         mut out: W,
         width: u32,
         height: u32,
         options: &JpegOptions,
+        kind: StreamKind,
     ) -> std::io::Result<Self> {
         if width == 0 || height == 0 || width > 65_535 || height > 65_535 {
             return Err(std::io::Error::new(
@@ -259,58 +339,32 @@ impl<W: Write> JpegWriter<W> {
         let q_luma = scaled_table(&LUMA_Q, options.quality);
         let q_chroma = scaled_table(&CHROMA_Q, options.quality);
         out.write_all(&[0xFF, 0xD8])?;
-        // JFIF APP0.
-        let (units, density) = match options.dpi {
-            Some(dpi) if dpi > 0 => (1u8, dpi),
-            _ => (0u8, 1u16),
-        };
-        out.write_all(&[
-            0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, units,
-        ])?;
-        out.write_all(&density.to_be_bytes())?;
-        out.write_all(&density.to_be_bytes())?;
-        out.write_all(&[0x00, 0x00])?;
-        if let Some(comment) = options.comment.as_deref().filter(|c| !c.is_empty()) {
-            for chunk in comment.as_bytes().chunks(65_533) {
-                out.write_all(&[0xFF, 0xFE])?;
-                out.write_all(&((chunk.len() + 2) as u16).to_be_bytes())?;
-                out.write_all(chunk)?;
+        if kind == StreamKind::Interchange {
+            // JFIF APP0.
+            let (units, density) = match options.dpi {
+                Some(dpi) if dpi > 0 => (1u8, dpi),
+                _ => (0u8, 1u16),
+            };
+            out.write_all(&[
+                0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, units,
+            ])?;
+            out.write_all(&density.to_be_bytes())?;
+            out.write_all(&density.to_be_bytes())?;
+            out.write_all(&[0x00, 0x00])?;
+            if let Some(comment) = options.comment.as_deref().filter(|c| !c.is_empty()) {
+                for chunk in comment.as_bytes().chunks(65_533) {
+                    out.write_all(&[0xFF, 0xFE])?;
+                    out.write_all(&((chunk.len() + 2) as u16).to_be_bytes())?;
+                    out.write_all(chunk)?;
+                }
             }
+            write_dqt(&mut out, &q_luma, &q_chroma)?;
+            write_sof0(&mut out, width, height, options.subsampling)?;
+            write_dht(&mut out)?;
+        } else {
+            write_sof0(&mut out, width, height, options.subsampling)?;
         }
-        // DQT (both tables, zigzag order).
-        out.write_all(&[0xFF, 0xDB, 0x00, 132])?;
-        for (id, table) in [(0u8, &q_luma), (1u8, &q_chroma)] {
-            out.write_all(&[id])?;
-            for &natural in &ZIGZAG {
-                out.write_all(&[table[natural] as u8])?;
-            }
-        }
-        // SOF0.
-        let y_sampling = match options.subsampling {
-            Subsampling::None => 0x11,
-            Subsampling::Half => 0x22,
-        };
-        out.write_all(&[0xFF, 0xC0, 0x00, 17, 8])?;
-        out.write_all(&(height as u16).to_be_bytes())?;
-        out.write_all(&(width as u16).to_be_bytes())?;
-        out.write_all(&[3, 1, y_sampling, 0, 2, 0x11, 1, 3, 0x11, 1])?;
-        // DHT.
-        let tables: [(u8, &[u8; 16], &[u8]); 4] = [
-            (0x00, &DC_LUMA_BITS, &DC_VALUES),
-            (0x10, &AC_LUMA_BITS, &AC_LUMA_VALUES),
-            (0x01, &DC_CHROMA_BITS, &DC_VALUES),
-            (0x11, &AC_CHROMA_BITS, &AC_CHROMA_VALUES),
-        ];
-        let length: usize = 2 + tables.iter().map(|t| 17 + t.2.len()).sum::<usize>();
-        out.write_all(&[0xFF, 0xC4])?;
-        out.write_all(&(length as u16).to_be_bytes())?;
-        for (class_id, bits, values) in tables {
-            out.write_all(&[class_id])?;
-            out.write_all(bits)?;
-            out.write_all(values)?;
-        }
-        // SOS.
-        out.write_all(&[0xFF, 0xDA, 0x00, 12, 3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0])?;
+        write_sos(&mut out)?;
         let mcu_rows = match options.subsampling {
             Subsampling::None => 8,
             Subsampling::Half => 16,
@@ -333,6 +387,7 @@ impl<W: Write> JpegWriter<W> {
             pending_rows: 0,
             prev_dc: [0; 3],
             bits: BitWriter::new(),
+            parallel: kind == StreamKind::Interchange,
         })
     }
 
@@ -407,57 +462,59 @@ impl<W: Write> JpegWriter<W> {
         let (basis, q_luma, q_chroma, subsampling) =
             (&self.basis, &self.q_luma, &self.q_chroma, self.subsampling);
         // Blocks per MCU in scan order: Y blocks, then Cb, then Cr.
-        let blocks: Vec<Vec<[i16; 64]>> = (0..mcus)
-            .into_par_iter()
-            .map(|m| {
-                let x0 = m * mcu_w;
-                let mut out = Vec::with_capacity(6);
-                match subsampling {
-                    Subsampling::None => {
-                        let mut planes = [[0.0f32; 64]; 3];
-                        for y in 0..8 {
-                            for x in 0..8 {
-                                let p = pixel(x0 + x, y);
-                                for c in 0..3 {
-                                    planes[c][y * 8 + x] = p[c];
-                                }
+        let transform = |m: usize| {
+            let x0 = m * mcu_w;
+            let mut out = Vec::with_capacity(6);
+            match subsampling {
+                Subsampling::None => {
+                    let mut planes = [[0.0f32; 64]; 3];
+                    for y in 0..8 {
+                        for x in 0..8 {
+                            let p = pixel(x0 + x, y);
+                            for c in 0..3 {
+                                planes[c][y * 8 + x] = p[c];
                             }
                         }
-                        out.push(fdct_quantize(&planes[0], basis, q_luma));
-                        out.push(fdct_quantize(&planes[1], basis, q_chroma));
-                        out.push(fdct_quantize(&planes[2], basis, q_chroma));
                     }
-                    Subsampling::Half => {
-                        for (by, bx) in [(0, 0), (0, 8), (8, 0), (8, 8)] {
-                            let mut plane = [0.0f32; 64];
-                            for y in 0..8 {
-                                for x in 0..8 {
-                                    plane[y * 8 + x] = pixel(x0 + bx + x, by + y)[0];
-                                }
-                            }
-                            out.push(fdct_quantize(&plane, basis, q_luma));
-                        }
-                        let mut cb = [0.0f32; 64];
-                        let mut cr = [0.0f32; 64];
-                        for y in 0..8 {
-                            for x in 0..8 {
-                                let mut acc = [0.0f32; 3];
-                                for (dy, dx) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
-                                    let p = pixel(x0 + 2 * x + dx, 2 * y + dy);
-                                    acc[1] += p[1];
-                                    acc[2] += p[2];
-                                }
-                                cb[y * 8 + x] = acc[1] / 4.0;
-                                cr[y * 8 + x] = acc[2] / 4.0;
-                            }
-                        }
-                        out.push(fdct_quantize(&cb, basis, q_chroma));
-                        out.push(fdct_quantize(&cr, basis, q_chroma));
-                    }
+                    out.push(fdct_quantize(&planes[0], basis, q_luma));
+                    out.push(fdct_quantize(&planes[1], basis, q_chroma));
+                    out.push(fdct_quantize(&planes[2], basis, q_chroma));
                 }
-                out
-            })
-            .collect();
+                Subsampling::Half => {
+                    for (by, bx) in [(0, 0), (0, 8), (8, 0), (8, 8)] {
+                        let mut plane = [0.0f32; 64];
+                        for y in 0..8 {
+                            for x in 0..8 {
+                                plane[y * 8 + x] = pixel(x0 + bx + x, by + y)[0];
+                            }
+                        }
+                        out.push(fdct_quantize(&plane, basis, q_luma));
+                    }
+                    let mut cb = [0.0f32; 64];
+                    let mut cr = [0.0f32; 64];
+                    for y in 0..8 {
+                        for x in 0..8 {
+                            let mut acc = [0.0f32; 3];
+                            for (dy, dx) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+                                let p = pixel(x0 + 2 * x + dx, 2 * y + dy);
+                                acc[1] += p[1];
+                                acc[2] += p[2];
+                            }
+                            cb[y * 8 + x] = acc[1] / 4.0;
+                            cr[y * 8 + x] = acc[2] / 4.0;
+                        }
+                    }
+                    out.push(fdct_quantize(&cb, basis, q_chroma));
+                    out.push(fdct_quantize(&cr, basis, q_chroma));
+                }
+            }
+            out
+        };
+        let blocks: Vec<Vec<[i16; 64]>> = if self.parallel {
+            (0..mcus).into_par_iter().map(transform).collect()
+        } else {
+            (0..mcus).map(transform).collect()
+        };
         let luma_blocks = match self.subsampling {
             Subsampling::None => 1,
             Subsampling::Half => 4,
@@ -516,6 +573,83 @@ impl<W: Write> JpegWriter<W> {
         if run > 0 {
             self.bits.put(ac.code[0x00] as u32, ac.size[0x00]);
         }
+    }
+}
+
+/// JPEG compression for TIFF tiles ("new-style" JPEG, compression 7).
+///
+/// [`tables`](Self::tables) is the tables-only stream (SOI, DQT, DHT, EOI)
+/// for the `JPEGTables` tag; [`encode`](Self::encode) returns one tile as
+/// an abbreviated stream (SOI, SOF0, SOS, scan, EOI) that refers to those
+/// tables, as libtiff writes them. The samples are YCbCr (component ids 1,
+/// 2 and 3, no JFIF or Adobe marker): store the tiles with
+/// `PhotometricInterpretation` YCbCr (6) and `YCbCrSubSampling`
+/// [`ycbcr_subsampling`](Self::ycbcr_subsampling).
+#[derive(Debug, Clone)]
+pub struct JpegTileEncoder {
+    options: JpegOptions,
+}
+
+impl JpegTileEncoder {
+    /// `quality` 1–100 (IJG scale).
+    pub fn new(quality: u8, subsampling: Subsampling) -> Self {
+        Self {
+            options: JpegOptions {
+                quality: quality.clamp(1, 100),
+                subsampling,
+                dpi: None,
+                comment: None,
+            },
+        }
+    }
+
+    pub fn quality(&self) -> u8 {
+        self.options.quality
+    }
+
+    pub fn subsampling(&self) -> Subsampling {
+        self.options.subsampling
+    }
+
+    /// The `YCbCrSubSampling` tag value matching the tiles.
+    pub fn ycbcr_subsampling(&self) -> [u16; 2] {
+        match self.options.subsampling {
+            Subsampling::None => [1, 1],
+            Subsampling::Half => [2, 2],
+        }
+    }
+
+    /// The tables-only stream for the `JPEGTables` tag.
+    pub fn tables(&self) -> Vec<u8> {
+        let q_luma = scaled_table(&LUMA_Q, self.options.quality);
+        let q_chroma = scaled_table(&CHROMA_Q, self.options.quality);
+        let mut out = vec![0xFF, 0xD8];
+        // Writing to a Vec cannot fail.
+        let _ = write_dqt(&mut out, &q_luma, &q_chroma);
+        let _ = write_dht(&mut out);
+        out.extend_from_slice(&[0xFF, 0xD9]);
+        out
+    }
+
+    /// Encodes `width × height` packed RGB pixels (a whole tile, padding
+    /// included) as an abbreviated stream. Runs on the calling thread.
+    pub fn encode(&self, rgb: &[u8], width: u32, height: u32) -> std::io::Result<Vec<u8>> {
+        let stride = width as usize * 3;
+        if rgb.len() < stride * height as usize {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "RGB data is too short",
+            ));
+        }
+        let mut writer = JpegWriter::with_kind(
+            Vec::with_capacity(stride * height as usize / 8),
+            width,
+            height,
+            &self.options,
+            StreamKind::Abbreviated,
+        )?;
+        writer.write_rows(rgb, height)?;
+        writer.finish()
     }
 }
 
@@ -676,5 +810,54 @@ mod tests {
         let writer = JpegWriter::new(Vec::new(), 8, 8, &JpegOptions::default()).unwrap();
         assert!(writer.finish().is_err());
         assert!(JpegWriter::new(Vec::new(), 70_000, 8, &JpegOptions::default()).is_err());
+    }
+
+    #[test]
+    fn tiff_tiles_decode_with_their_tables() {
+        let (w, h) = (64, 48);
+        let rgb = test_image(w, h);
+        for subsampling in [Subsampling::None, Subsampling::Half] {
+            let encoder = JpegTileEncoder::new(95, subsampling);
+            let tables = encoder.tables();
+            assert_eq!(&tables[..4], &[0xFF, 0xD8, 0xFF, 0xDB]);
+            assert_eq!(&tables[tables.len() - 2..], &[0xFF, 0xD9]);
+            let tile = encoder.encode(&rgb, w, h).unwrap();
+            // SOI then SOF0: no JFIF marker, no tables of its own.
+            assert_eq!(&tile[..4], &[0xFF, 0xD8, 0xFF, 0xC0]);
+            assert!(
+                !tile
+                    .windows(2)
+                    .any(|m| m == [0xFF, 0xDB] || m == [0xFF, 0xC4])
+            );
+            assert_eq!(&tile[tile.len() - 2..], &[0xFF, 0xD9]);
+            // Spliced as libtiff and the tiff crate do: the tables without
+            // EOI, then the tile without SOI.
+            let mut joined = tables[..tables.len() - 2].to_vec();
+            joined.extend_from_slice(&tile[2..]);
+            let decoded = image::load_from_memory_with_format(&joined, image::ImageFormat::Jpeg)
+                .unwrap()
+                .to_rgb8();
+            assert_eq!(decoded.dimensions(), (w, h));
+            let floor = if subsampling == Subsampling::None {
+                34.0
+            } else {
+                20.0
+            };
+            let p = psnr(decoded.as_raw(), &rgb);
+            assert!(p > floor, "{subsampling:?}: PSNR {p:.1}");
+            assert_eq!(
+                encoder.ycbcr_subsampling(),
+                if subsampling == Subsampling::None {
+                    [1, 1]
+                } else {
+                    [2, 2]
+                }
+            );
+        }
+        assert!(
+            JpegTileEncoder::new(90, Subsampling::None)
+                .encode(&rgb[..10], w, h)
+                .is_err()
+        );
     }
 }
