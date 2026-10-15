@@ -378,8 +378,9 @@ pub fn update_tabs(
                 let props = file.wsi.properties();
                 let mpp_x = props.mpp_x.unwrap_or(0.0) as f32;
                 let mpp_y = props.mpp_y.unwrap_or(0.0) as f32;
+                let color = crate::color::hud_color_info(file, pane);
                 file.pane_state(pane)
-                    .map(|ps| ui_hud_settings(&ps.hud, mpp_x, mpp_y))
+                    .map(|ps| ui_hud_settings(&ps.hud, mpp_x, mpp_y, &color))
                     .unwrap_or_default()
             } else {
                 SlintHudSettings::default()
@@ -667,8 +668,14 @@ fn ui_stain_normalization(sn: StainNormalization) -> SlintStainNormalization {
     }
 }
 
-/// Convert HudSettings to Slint HudSettings
-fn ui_hud_settings(hud: &HudSettings, mpp_x: f32, mpp_y: f32) -> SlintHudSettings {
+/// Convert HudSettings (and what the colour pipeline makes of them) to
+/// Slint HudSettings
+fn ui_hud_settings(
+    hud: &HudSettings,
+    mpp_x: f32,
+    mpp_y: f32,
+    color: &crate::color::HudColorInfo,
+) -> SlintHudSettings {
     SlintHudSettings {
         show_hud_toolbar: hud.show_hud_toolbar,
         hud_dropdown_open: hud.hud_dropdown_open,
@@ -685,6 +692,9 @@ fn ui_hud_settings(hud: &HudSettings, mpp_x: f32, mpp_y: f32) -> SlintHudSetting
         deconv_eosin_intensity: hud.deconv_eosin_intensity,
         deconv_eosin_visible: hud.deconv_eosin_visible,
         deconv_isolated_channel: ui_isolated_channel(hud.deconv_isolated_channel),
+        modified: color.modified,
+        color_badge: SharedString::from(color.badge.as_str()),
+        color_warning: SharedString::from(color.warnings.join("\n")),
     }
 }
 
@@ -703,7 +713,29 @@ pub fn update_filtering_mode(ui: &crate::AppWindow, state: &AppState) {
 
 #[cfg(test)]
 mod tests {
-    use super::series_index_label;
+    use super::{series_index_label, ui_hud_settings};
+
+    #[test]
+    fn hud_settings_carry_the_colour_state() {
+        let color = crate::color::HudColorInfo {
+            modified: true,
+            badge: "Colour-normalised (Macenko) · Sharpened".into(),
+            warnings: vec!["first".into(), "second".into()],
+        };
+        let hud = ui_hud_settings(&crate::state::HudSettings::default(), 0.25, 0.5, &color);
+        assert!(hud.modified);
+        assert_eq!(hud.color_badge, "Colour-normalised (Macenko) · Sharpened");
+        assert_eq!(hud.color_warning, "first\nsecond");
+        assert_eq!((hud.mpp_x, hud.mpp_y), (0.25, 0.5));
+
+        let plain = ui_hud_settings(
+            &crate::state::HudSettings::default(),
+            0.0,
+            0.0,
+            &crate::color::HudColorInfo::default(),
+        );
+        assert!(!plain.modified && plain.color_badge.is_empty() && plain.color_warning.is_empty());
+    }
 
     #[test]
     fn series_index_label_uses_excel_style_letters() {

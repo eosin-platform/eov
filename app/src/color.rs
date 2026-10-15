@@ -231,6 +231,11 @@ struct CachedPipeline {
 pub(crate) struct PaneColor {
     /// What the pane applies (stages 2–6).
     pub(crate) pipeline: Arc<ProcessingPipeline>,
+    /// The settings the user chose (they may ask for more than is applied
+    /// while a fit is pending or after it failed).
+    pub(crate) settings: ColorSettings,
+    /// Why stain normalisation is unavailable for this slide, if it is.
+    pub(crate) fit_error: Option<Arc<str>>,
 }
 
 /// Resolves the colour processing of `pane` showing `file`, starting the
@@ -250,7 +255,8 @@ fn resolve(file_id: i32, wsi: &WsiFile, pane: PaneId, settings: &ColorSettings) 
         // While pending, the summary says so ("normalisation pending").
         Some(SlideFit::Pending) | None => (None, None),
     };
-    // Without a usable fit the slide is shown un-normalised.
+    // Without a usable fit the slide is shown un-normalised; the HUD says
+    // why (see `hud_color_info`).
     let applied = if fit_error.is_some() {
         ColorSettings {
             normalization: None,
@@ -279,7 +285,11 @@ fn resolve(file_id: i32, wsi: &WsiFile, pane: PaneId, settings: &ColorSettings) 
         );
         pipeline
     });
-    PaneColor { pipeline }
+    PaneColor {
+        pipeline,
+        settings: settings.clone(),
+        fit_error,
+    }
 }
 
 fn same_estimate(a: Option<&Arc<StainEstimate>>, b: Option<&Arc<StainEstimate>>) -> bool {
@@ -287,6 +297,42 @@ fn same_estimate(a: Option<&Arc<StainEstimate>>, b: Option<&Arc<StainEstimate>>)
         (None, None) => true,
         (Some(a), Some(b)) => Arc::ptr_eq(a, b),
         _ => false,
+    }
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+
+/// What the HUD shows about a pane's colours (CLR-9).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct HudColorInfo {
+    /// Any processing is requested (lights the adjustments indicator).
+    pub(crate) modified: bool,
+    /// Persistent badge, e.g. "Colour-normalised (Macenko) · Sharpened";
+    /// empty when the colours are as scanned.
+    pub(crate) badge: String,
+    /// Problems: stain-label mismatches, unavailable normalisation, …
+    pub(crate) warnings: Vec<String>,
+}
+
+/// The HUD's view of `pane` showing `file`.
+pub(crate) fn hud_color_info(file: &OpenFile, pane: PaneId) -> HudColorInfo {
+    describe(
+        &pane_color(file, pane),
+        file.wsi.properties().stain.as_deref(),
+    )
+}
+
+fn describe(color: &PaneColor, stain_label: Option<&str>) -> HudColorInfo {
+    let mut warnings = color.settings.warnings(stain_label);
+    if let Some(error) = &color.fit_error {
+        warnings.push(format!(
+            "Colour normalisation is unavailable for this slide: {error}"
+        ));
+    }
+    HudColorInfo {
+        modified: color.settings.is_modified(),
+        badge: color.pipeline.summary().badge().unwrap_or_default(),
+        warnings,
     }
 }
 
@@ -414,21 +460,30 @@ mod tests {
         // Normalisation is pending until the fit lands, then applied.
         settings.normalization = Some(StainFitMethod::Macenko);
         let first = resolve(file_id, &wsi, PaneId(0), &settings);
-        let badge = first.pipeline.summary().badge().unwrap_or_default();
+        let info = describe(&first, None);
+        assert!(info.modified);
         assert!(
-            badge.contains("pending") || badge.contains("Colour-normalised"),
-            "{badge}"
+            info.badge.contains("pending") || info.badge.contains("Colour-normalised"),
+            "{}",
+            info.badge
         );
         wait_for_fit(file_id, &wsi, StainFitMethod::Macenko);
         let ready = resolve(file_id, &wsi, PaneId(0), &settings);
         assert!(ready.pipeline.summary().estimate.is_some());
-        let badge = ready.pipeline.summary().badge().unwrap_or_default();
-        assert!(badge.starts_with("Colour-normalised (Macenko"), "{badge}");
+        let info = describe(&ready, Some("H&E"));
+        assert!(
+            info.badge.starts_with("Colour-normalised (Macenko"),
+            "{}",
+            info.badge
+        );
+        assert!(info.warnings.is_empty(), "{:?}", info.warnings);
+        // An IHC label warns that the H&E model is being used.
+        assert_eq!(describe(&ready, Some("IHC")).warnings.len(), 1);
         retain_files(&HashSet::new());
     }
 
     #[test]
-    fn failed_fits_show_the_slide_unnormalised() {
+    fn failed_fits_show_the_slide_unnormalised_and_say_why() {
         let dir = tempfile::tempdir().unwrap();
         // Uniform glass: no tissue to fit.
         let path = dir.path().join("glass.tif");
@@ -444,15 +499,16 @@ mod tests {
         let file_id = 9003;
         let fit = wait_for_fit(file_id, &wsi, StainFitMethod::Macenko);
         let color = resolve(file_id, &wsi, PaneId(0), &settings);
-        let badge = color.pipeline.summary().badge().unwrap_or_default();
+        let info = describe(&color, None);
         match fit {
             SlideFit::Failed(_) => {
-                assert!(color.pipeline.is_identity());
-                assert!(!badge.contains("Colour-normalised"), "{badge}");
+                assert!(color.fit_error.is_some());
+                assert!(!info.badge.contains("Colour-normalised"), "{}", info.badge);
+                assert!(info.warnings.iter().any(|w| w.contains("unavailable")));
             }
             SlideFit::Ready(estimate) => {
                 assert!(estimate.fallback.is_some(), "glass has no tissue to fit");
-                assert!(badge.contains("reference vectors"), "{badge}");
+                assert!(info.badge.contains("reference vectors"), "{}", info.badge);
             }
             SlideFit::Pending => panic!("the fit did not finish"),
         }

@@ -189,6 +189,11 @@ export struct HudSettings {
     deconv-eosin-intensity: float,
     deconv-eosin-visible: bool,
     deconv-isolated-channel: IsolatedChannel,
+    // Colour processing (CLR-9): whether anything alters the colours, the
+    // persistent badge describing it, and colour warnings (one per line).
+    modified: bool,
+    color-badge: string,
+    color-warning: string,
 }
 
 export struct PaneViewData {
