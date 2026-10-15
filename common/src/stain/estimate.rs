@@ -206,6 +206,7 @@ pub enum FitFallback {
     /// The fitted vectors were (nearly) collinear.
     IllConditioned {
         min_angle_deg: f32,
+        #[serde(with = "finite_or_null")]
         condition_number: f32,
     },
     /// A fitted vector was implausibly far from the reference.
@@ -262,6 +263,24 @@ pub enum EstimateSource {
     },
 }
 
+/// JSON has no infinity: a non-finite value is written as `null` and read
+/// back as infinity.
+mod finite_or_null {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &f32, serializer: S) -> Result<S::Ok, S::Error> {
+        if value.is_finite() {
+            serializer.serialize_f32(*value)
+        } else {
+            serializer.serialize_none()
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+        Ok(Option::<f32>::deserialize(deserializer)?.unwrap_or(f32::INFINITY))
+    }
+}
+
 /// Current [`StainEstimate`] file format version.
 pub const STAIN_ESTIMATE_FORMAT_VERSION: u32 = 1;
 
@@ -293,7 +312,9 @@ pub struct StainEstimate {
     pub samples: u64,
     /// Smallest angle between the fitted vectors (before any fallback).
     pub min_angle_deg: f32,
-    /// Condition number of the fitted matrix (before any fallback).
+    /// Condition number of the fitted matrix (before any fallback);
+    /// infinite when there was nothing to fit (saved as `null`).
+    #[serde(with = "finite_or_null")]
     pub condition_number: f32,
     /// Set when the fit was rejected and reference vectors are used.
     pub fallback: Option<FitFallback>,
@@ -1101,5 +1122,19 @@ pub(crate) mod tests {
         let mut bad = est.clone();
         bad.format_version = STAIN_ESTIMATE_FORMAT_VERSION + 1;
         assert!(StainEstimate::from_json(&bad.to_json()).is_err());
+
+        // A rejected fit (nothing to fit: glass only) round-trips too, its
+        // infinite condition number as null.
+        let glass = vec![245u8; 4 * 10_000];
+        let fallback = estimate_stain_from_rgba(
+            &[&glass],
+            StainFitMethod::Macenko,
+            &StainEstimateOptions::default(),
+        );
+        assert!(fallback.is_fallback());
+        assert!(fallback.to_json().contains("\"condition_number\": null"));
+        let back = StainEstimate::from_json(&fallback.to_json()).unwrap();
+        assert!(back.condition_number.is_infinite());
+        assert_eq!(back.basis, fallback.basis);
     }
 }
