@@ -1256,13 +1256,14 @@ fn render_cpu_pane_from_snapshot(
 
     let loaded_tile_epoch = snapshot.tile_loader.loaded_epoch();
     let tile_epoch_advanced = loaded_tile_epoch > snapshot.last_seen_tile_epoch;
+    // Newly arrived tiles (fine or coarse) always advance the loader epoch;
+    // merely *having* coarse tiles cached must not keep the loop running.
     let new_tiles_loaded = cached_count
         > if level_changed {
             0
         } else {
             snapshot.previous_tiles_loaded
         }
-        || !cached_tiles.coarse_tiles.is_empty()
         || tile_epoch_advanced;
     let tiles_pending = snapshot.tile_loader.pending_count() > 0;
     let keep_running = is_moving || new_tiles_loaded || tiles_pending;
@@ -1827,7 +1828,6 @@ fn render_pane_to_image(
         } else {
             previous_tiles_loaded
         }
-        || !cached_tiles.coarse_tiles.is_empty()
         || tile_epoch_advanced;
     let tiles_pending = file.tile_loader.pending_count() > 0;
 
