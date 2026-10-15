@@ -626,6 +626,51 @@ impl UiHost {
 mod tests {
     use super::*;
 
+    /// Every `.slint` file of the in-tree plugins compiles with this eov's
+    /// Slint, the way surfaces are compiled (so a Slint upgrade cannot break
+    /// plugin panels unnoticed). Plugins whose submodule is not checked out
+    /// are skipped.
+    #[test]
+    fn in_tree_plugin_surfaces_compile() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let roots = std::fs::read_dir(repo.join("plugins"))
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .chain(std::iter::once(repo.join("plugin_api/example-plugin")));
+        let mut compiled = 0;
+        for root in roots {
+            let Ok(files) = std::fs::read_dir(root.join("ui")) else {
+                continue;
+            };
+            for path in files.filter_map(Result::ok).map(|entry| entry.path()) {
+                if path.extension().and_then(|e| e.to_str()) != Some("slint") {
+                    continue;
+                }
+                let mut compiler = slint_interpreter::Compiler::default();
+                compiler.set_include_paths(vec![root.clone()]);
+                let result = spin_on(compiler.build_from_path(&path));
+                // Files of globals and widgets (no component of their own)
+                // are compiled through the files that import them.
+                let errors: Vec<String> = result
+                    .diagnostics()
+                    .filter(|d| d.level() == slint_interpreter::DiagnosticLevel::Error)
+                    .map(|d| d.to_string())
+                    .filter(|message| !message.contains("No component found"))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "{}:\n{}",
+                    path.display(),
+                    errors.join("\n")
+                );
+                compiled += 1;
+            }
+        }
+        assert!(compiled > 0, "the example plugin's sidebar at least");
+    }
+
     #[test]
     fn slint_version_matches_the_lockfile() {
         let lock = include_str!("../../../Cargo.lock");
