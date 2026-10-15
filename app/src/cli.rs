@@ -85,8 +85,12 @@ enum RecentCommand {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum CliMetadataFormat {
+    /// metadata.csv only.
     Csv,
+    /// metadata.jsonl (written as tiles complete) and metadata.json (an array, written at the end).
     Json,
+    /// metadata.jsonl only.
+    Jsonl,
 }
 
 impl CliMetadataFormat {
@@ -94,72 +98,290 @@ impl CliMetadataFormat {
         match self {
             Self::Csv => MetadataFormat::Csv,
             Self::Json => MetadataFormat::Json,
+            Self::Jsonl => MetadataFormat::JsonLines,
         }
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliTissueMethod {
+    /// Otsu threshold on the slide's saturation histogram.
+    Otsu,
+    /// A fixed saturation threshold (--tissue-threshold).
+    Saturation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliStainMethod {
+    Macenko,
+    Vahadane,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliMaskKind {
+    /// 255 inside selected annotations, 0 elsewhere.
+    Binary,
+    /// Class index per pixel (see classes.json; 0 = background).
+    Multiclass,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliPatchFormat {
+    Png,
+    Jpeg,
+}
+
 #[derive(Debug, Subcommand)]
 enum DatasetCommand {
-    /// Extract fixed-grid image patches from whole-slide images.
+    /// Extract image patches from whole-slide images.
     ///
     /// Reads one or more slide files (or directories of slide files) and
-    /// writes a deterministic grid of tile images to the output directory.
-    /// Only full tiles are emitted; partial edge tiles that would extend
-    /// beyond the slide bounds are skipped.
+    /// writes a deterministic grid of RGB patches to the output directory.
+    /// Only full patches are emitted. Metadata is written as patches
+    /// complete, so an interrupted run can be resumed by running the same
+    /// command again.
     ///
     /// Supported slide formats: .svs, .tif, .tiff, .ndpi, .vms, .vmu,
-    /// .scn, .mrxs, .svslide, .bif, .czi, .dcm
+    /// .scn, .mrxs, .svslide, .bif, .czi, .dcm (DICOM instances of one
+    /// series are treated as one slide).
     ///
     /// Examples:
     ///   eov dataset patches slide.svs --out ds/ --tile-size 512 --stride 512
-    ///   eov dataset patches slide1.svs slide2.svs --out ds/ --tile-size 512 --stride 512 --metadata csv
-    ///   eov dataset patches path/to/slides/ --out ds/ --tile-size 512 --stride 512 --metadata json
+    ///   eov dataset patches slides/ --out ds/ --tile-size 256 --stride 256 --target-mpp 0.5 --min-tissue 0.5
+    ///   eov dataset patches a.svs --out ds/ --tile-size 512 --stride 256 --annotations sidecar --include-class Tumor --masks binary
+    ///   eov dataset patches slides/ --out ds/ --tile-size 224 --stride 224 --max-tiles-per-slide 500 --seed 1 --normalize macenko
     #[command(after_help = "OUTPUT LAYOUT:\n  \
     ds/\n    \
-      slides/\n        \
-        <slide-stem>/\n          \
-        <slide-stem>_x000000_y000000_s512.png\n          \
-        <slide-stem>_x000512_y000000_s512.png\n          \
-        ...\n    \
-      metadata.csv\n    \
-      metadata.json\n\n  \
-  If --metadata is specified, only that format is written.\n  \
-  If omitted, both CSV and JSON are written.")]
-    Patches {
-        /// One or more slide files or directories containing slides.
-        /// Directories are searched recursively for supported slide formats.
-        #[arg(required = true, num_args = 1..)]
-        inputs: Vec<PathBuf>,
+      slides/<slide-id>/<slide-id>_x000000_y000000_s512.png   (X, Y = level-0 origin)\n    \
+      masks/<slide-id>/...png                                (with --masks)\n    \
+      metadata.csv, metadata.jsonl, metadata.json             (one record per patch)\n    \
+      slides.csv, slides.jsonl                                (one record per slide)\n    \
+      dataset.json                                            (parameters, status, totals)\n    \
+      classes.json                                            (with annotations)\n\n  \
+  If --metadata is given, only that format is written; otherwise CSV and JSON are.\n\n\
+EXIT STATUS:\n  \
+  0    every slide was processed\n  \
+  1    some slides or patches failed (see the summary and slides.csv)\n  \
+  2    invalid arguments, no slides found, or an incompatible output directory\n  \
+  130  cancelled with Ctrl-C (metadata so far is kept; re-run to resume)")]
+    Patches(Box<DatasetPatchesArgs>),
+}
 
-        /// Output directory for extracted tiles and metadata.
-        #[arg(long, required = true)]
-        out: PathBuf,
+#[derive(Debug, clap::Args)]
+struct DatasetPatchesArgs {
+    /// One or more slide files or directories containing slides.
+    /// Directories are searched recursively for supported slide formats.
+    #[arg(required = true, num_args = 1..)]
+    inputs: Vec<PathBuf>,
 
-        /// Tile width and height in pixels (tiles are square).
-        #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
-        tile_size: u32,
+    /// Output directory for patches and metadata.
+    #[arg(long, required = true)]
+    out: PathBuf,
 
-        /// Step size between tile origins in pixels.
-        #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
-        stride: u32,
+    /// Patch width and height in output pixels (8–8192).
+    #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(8..=8192))]
+    tile_size: u32,
 
-        /// Emit per-tile metadata in only the given format (csv or json).
-        /// If omitted, both CSV and JSON metadata files are written.
-        #[arg(long, value_enum)]
-        metadata: Option<CliMetadataFormat>,
+    /// Step between patch origins in output pixels (1–65536).
+    #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..=65536))]
+    stride: u32,
 
-        /// Number of worker threads for parallel tile extraction.
-        /// Each thread opens its own slide file handle for maximum throughput.
-        /// Defaults to the number of available CPU cores.
-        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
-        threads: Option<u32>,
+    /// Write per-patch metadata in only this format.
+    #[arg(long, value_enum)]
+    metadata: Option<CliMetadataFormat>,
 
-        /// Skip tiles where the fraction of nearly-white pixels exceeds this
-        /// threshold (0.0–1.0). For example, 0.9 skips tiles that are ≥90%
-        /// white. Omit to keep all tiles.
-        #[arg(long, value_parser = clap::value_parser!(f32))]
-        white_threshold: Option<f32>,
-    },
+    /// Worker threads (1–512). Defaults to the number of CPU cores.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=512))]
+    threads: Option<u32>,
+
+    /// Skip patches whose fraction of nearly-white or transparent pixels is
+    /// at least this value, in (0, 1]. For example, 0.9 skips patches that
+    /// are 90 % white or more. Omit to keep all patches.
+    #[arg(long)]
+    white_threshold: Option<f32>,
+
+    /// Extract at this resolution in micrometres per pixel (read from the
+    /// best pyramid level and resampled).
+    #[arg(long, conflicts_with = "target_magnification")]
+    target_mpp: Option<f64>,
+
+    /// Extract at this objective-equivalent magnification (e.g. 20).
+    #[arg(long)]
+    target_magnification: Option<f64>,
+
+    /// Keep only patches with at least this fraction of tissue, in [0, 1]
+    /// (enables tissue detection).
+    #[arg(long)]
+    min_tissue: Option<f32>,
+
+    /// How tissue is detected.
+    #[arg(long, value_enum, default_value_t = CliTissueMethod::Otsu)]
+    tissue_method: CliTissueMethod,
+
+    /// Saturation threshold in (0, 1) for --tissue-method saturation.
+    #[arg(long, default_value_t = 0.08)]
+    tissue_threshold: f32,
+
+    /// Stain-normalise patches (one slide-level fit per slide).
+    #[arg(long, value_enum)]
+    normalize: Option<CliStainMethod>,
+
+    /// GeoJSON annotations (QuPath FeatureCollection, level-0 pixels): a
+    /// file, a directory with <stem>.geojson per slide, or "sidecar" for
+    /// files next to the slides. Patches are restricted to annotations
+    /// unless --label-all is given.
+    #[arg(long)]
+    annotations: Option<String>,
+
+    /// Annotation classes to use (repeatable; default: all).
+    #[arg(long = "include-class")]
+    include_class: Vec<String>,
+
+    /// Annotation classes to ignore (repeatable).
+    #[arg(long = "exclude-class")]
+    exclude_class: Vec<String>,
+
+    /// Minimum fraction of a patch inside selected annotations, in (0, 1].
+    #[arg(long, default_value_t = 0.5)]
+    min_coverage: f32,
+
+    /// Keep every patch (not only annotated ones) and label it with the
+    /// majority annotation class.
+    #[arg(long)]
+    label_all: bool,
+
+    /// Write a mask image per patch.
+    #[arg(long, value_enum)]
+    masks: Option<CliMaskKind>,
+
+    /// Write at most this many patches per slide.
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    max_tiles_per_slide: Option<u64>,
+
+    /// Sample patch positions randomly with this seed (with
+    /// --max-tiles-per-slide); otherwise positions are spread evenly.
+    #[arg(long, requires = "max_tiles_per_slide")]
+    seed: Option<u64>,
+
+    /// Patch image format (always RGB).
+    #[arg(long, value_enum, default_value_t = CliPatchFormat::Png)]
+    format: CliPatchFormat,
+
+    /// JPEG quality (1–100).
+    #[arg(long, default_value_t = 90, value_parser = clap::value_parser!(u8).range(1..=100))]
+    jpeg_quality: u8,
+
+    /// Replace an existing dataset in the output directory instead of
+    /// resuming it.
+    #[arg(long)]
+    overwrite: bool,
+
+    /// Skip the full-file SHA-256 of each slide.
+    #[arg(long)]
+    no_hash: bool,
+
+    /// Refuse slides with more candidate positions than this.
+    #[arg(long, default_value_t = 10_000_000, value_parser = clap::value_parser!(u64).range(1..))]
+    max_candidates: u64,
+
+    /// Plan only: open the slides and report the patch counts without
+    /// writing anything.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+/// A parsed `eov dataset patches` invocation.
+struct DatasetJob {
+    config: DatasetPatchesConfig,
+    options: dataset::DatasetPatchesOptions,
+}
+
+impl DatasetPatchesArgs {
+    fn into_job(self) -> DatasetJob {
+        let threads = self.threads.map(|n| n as usize).unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                .min(dataset::THREADS_RANGE.1)
+        });
+        let resolution = match (self.target_mpp, self.target_magnification) {
+            (Some(mpp), _) => Some(dataset::TargetResolution::Mpp(mpp)),
+            (None, Some(mag)) => Some(dataset::TargetResolution::Magnification(mag)),
+            (None, None) => None,
+        };
+        let tissue_filter = self.min_tissue.map(|min_fraction| dataset::TissueFilter {
+            method: match self.tissue_method {
+                CliTissueMethod::Otsu => eov_common::tissue::TissueMethod::Otsu,
+                CliTissueMethod::Saturation => eov_common::tissue::TissueMethod::Saturation {
+                    threshold: self.tissue_threshold,
+                },
+            },
+            min_fraction,
+            ..dataset::TissueFilter::default()
+        });
+        let annotations = self.annotations.map(|source| {
+            let source = if source.eq_ignore_ascii_case("sidecar") {
+                dataset::AnnotationSource::Sidecar
+            } else {
+                let path = PathBuf::from(source);
+                if path.is_dir() {
+                    dataset::AnnotationSource::Directory(path)
+                } else {
+                    dataset::AnnotationSource::File(path)
+                }
+            };
+            dataset::AnnotationOptions {
+                source,
+                include_classes: self.include_class,
+                exclude_classes: self.exclude_class,
+                restrict_to_annotations: !self.label_all,
+                min_coverage: self.min_coverage,
+                masks: self.masks.map(|m| match m {
+                    CliMaskKind::Binary => dataset::MaskOutput::Binary,
+                    CliMaskKind::Multiclass => dataset::MaskOutput::Multiclass,
+                }),
+            }
+        });
+        DatasetJob {
+            config: DatasetPatchesConfig {
+                inputs: self.inputs,
+                output_dir: self.out,
+                tile_size: self.tile_size,
+                stride: self.stride,
+                metadata_format: self.metadata.map(|m| m.to_common()),
+                threads,
+                white_threshold: self.white_threshold,
+            },
+            options: dataset::DatasetPatchesOptions {
+                resolution,
+                tissue_filter,
+                stain_normalization: self.normalize.map(|m| dataset::PatchNormalization {
+                    method: match m {
+                        CliStainMethod::Macenko => eov_common::stain::StainFitMethod::Macenko,
+                        CliStainMethod::Vahadane => eov_common::stain::StainFitMethod::Vahadane,
+                    },
+                    target: None,
+                }),
+                annotations,
+                max_tiles_per_slide: self.max_tiles_per_slide,
+                seed: self.seed,
+                image_format: match self.format {
+                    CliPatchFormat::Png => dataset::PatchImageFormat::Png,
+                    CliPatchFormat::Jpeg => dataset::PatchImageFormat::Jpeg {
+                        quality: self.jpeg_quality,
+                    },
+                },
+                existing: if self.overwrite {
+                    dataset::ExistingOutput::Overwrite
+                } else {
+                    dataset::ExistingOutput::Resume
+                },
+                hash_files: !self.no_hash,
+                max_candidates_per_slide: self.max_candidates,
+                dry_run: self.dry_run,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -356,7 +578,7 @@ enum CommandAction {
     Probe(PathBuf),
     RecentList,
     ConfigPath,
-    DatasetPatches(DatasetPatchesConfig),
+    DatasetPatches(Box<DatasetJob>),
 }
 
 pub(crate) struct PaneSpec {
@@ -494,29 +716,8 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         }) => CommandAction::RecentList,
         Some(CliCommand::ConfigPath) => CommandAction::ConfigPath,
         Some(CliCommand::Dataset { command }) => match command {
-            DatasetCommand::Patches {
-                inputs,
-                out,
-                tile_size,
-                stride,
-                metadata,
-                threads,
-                white_threshold,
-            } => {
-                let threads = threads.map(|n| n as usize).unwrap_or_else(|| {
-                    std::thread::available_parallelism()
-                        .map(|n| n.get())
-                        .unwrap_or(4)
-                });
-                CommandAction::DatasetPatches(DatasetPatchesConfig {
-                    inputs,
-                    output_dir: out,
-                    tile_size,
-                    stride,
-                    metadata_format: metadata.map(|m| m.to_common()),
-                    threads,
-                    white_threshold,
-                })
+            DatasetCommand::Patches(args) => {
+                CommandAction::DatasetPatches(Box::new(args.into_job()))
             }
         },
         None => CommandAction::LaunchUi,
@@ -645,167 +846,229 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             println!("{}", config::resolve_config_path()?.display());
             Ok(true)
         }
-        CommandAction::DatasetPatches(config) => {
-            run_dataset_patches_cli(config)?;
+        CommandAction::DatasetPatches(job) => {
+            run_dataset_patches_cli(job)?;
             Ok(true)
         }
     }
 }
 
-fn run_dataset_patches_cli(config: &DatasetPatchesConfig) -> Result<()> {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+/// `eov dataset patches` exit statuses (see the subcommand help).
+const DATASET_EXIT_FAILURES: i32 = 1;
+const DATASET_EXIT_USAGE: i32 = 2;
+const DATASET_EXIT_INTERRUPTED: i32 = 130;
 
-    let cancel = Arc::new(AtomicBool::new(false));
-    let progress_tiles = Arc::new(AtomicU64::new(0));
-    let progress_current_slide = Arc::new(AtomicU64::new(0));
-    let progress_total_slides = Arc::new(AtomicU64::new(0));
-    let progress_total_tiles_expected = Arc::new(AtomicU64::new(0));
+fn dataset_exit(code: i32) -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    std::process::exit(code)
+}
 
-    // Install Ctrl-C handler for graceful cancellation.
-    {
-        let cancel = Arc::clone(&cancel);
-        let _ = ctrlc::set_handler(move || {
-            cancel.store(true, Ordering::Relaxed);
-            eprintln!("\nCancelling...");
-        });
+fn print_dataset_plan(plan: &dataset::DatasetPlan) {
+    for (path, err) in &plan.input_errors {
+        eprintln!("warning: {}: {}", path.display(), err);
     }
-
-    let pt = Arc::clone(&progress_tiles);
-
-    let pcs = Arc::clone(&progress_current_slide);
-    let pts = Arc::clone(&progress_total_slides);
-    let ptte = Arc::clone(&progress_total_tiles_expected);
-    let cancel_bg = Arc::clone(&cancel);
-    let config_clone = config.clone();
-
-    // Run the pipeline on a background thread so we can drive the progress bar
-    // on the main thread.
-    let handle = std::thread::Builder::new()
-        .name("dataset-patches".into())
-        .spawn(move || {
-            dataset::run_dataset_patches_with_progress(
-                &config_clone,
-                &cancel_bg,
-                &pt,
-                &pcs,
-                &pts,
-                &ptte,
-            )
-        })
-        .expect("failed to spawn dataset-patches thread");
-
-    // Drive a progress bar on the main thread.
-    let pb = indicatif::ProgressBar::new(0);
-    pb.set_style(
-        indicatif::ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} tiles ({eta} remaining)")
-            .unwrap()
-            .progress_chars("█▓░"),
-    );
-    pb.enable_steady_tick(std::time::Duration::from_millis(200));
-
-    loop {
-        let total = progress_total_tiles_expected.load(Ordering::Relaxed);
-        let done = progress_tiles.load(Ordering::Relaxed);
-        if total > 0 {
-            pb.set_length(total);
-        }
-        pb.set_position(done);
-
-        if handle.is_finished() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-
-    // Final update.
-    let total = progress_total_tiles_expected.load(Ordering::Relaxed);
-    let done = progress_tiles.load(Ordering::Relaxed);
-    if total > 0 {
-        pb.set_length(total);
-    }
-    pb.set_position(done);
-    pb.finish_and_clear();
-
-    let report = handle.join().expect("dataset-patches thread panicked")?;
-
-    if cancel.load(Ordering::Relaxed) {
+    for skipped in &plan.skipped_inputs {
         eprintln!(
-            "Export cancelled. {} tile(s) were written before cancellation.",
-            report.total_tiles
+            "note: skipping {}: {}",
+            skipped.path.display(),
+            skipped.reason
         );
-        return Ok(());
     }
+    for slide in &plan.slides {
+        match &slide.geometry {
+            Ok(g) => println!(
+                "{}: {} patches (level {}, {:.3} level-0 px per output px{})",
+                slide.input.path.display(),
+                slide.planned_tiles,
+                g.level,
+                g.downsample.0,
+                g.output_mpp
+                    .0
+                    .map(|m| format!(", {m:.4} µm/px"))
+                    .unwrap_or_default()
+            ),
+            Err(reason) => eprintln!("warning: {}: {}", slide.input.path.display(), reason),
+        }
+    }
+    println!();
+    println!(
+        "Dry run: {} patch(es) would be extracted from {} slide(s).",
+        plan.planned_tiles,
+        plan.slides.iter().filter(|s| s.geometry.is_ok()).count()
+    );
+}
 
-    // Print input-level errors.
+fn print_dataset_report(report: &dataset::DatasetPatchesReport) {
     for (path, err) in &report.input_errors {
         eprintln!("warning: {}: {}", path.display(), err);
     }
-
-    // Print per-slide results.
+    for skipped in &report.skipped_inputs {
+        eprintln!(
+            "note: skipped {}: {}",
+            skipped.path.display(),
+            skipped.reason
+        );
+    }
     for slide in &report.slides {
         match &slide.skipped {
-            Some(dataset::SlideSkipReason::OpenError(msg)) => {
-                eprintln!("warning: skipped {}: {}", slide.path.display(), msg);
-            }
-            Some(dataset::SlideSkipReason::TooSmall { width, height }) => {
-                eprintln!(
-                    "warning: skipped {} ({}×{} is smaller than tile size)",
-                    slide.path.display(),
-                    width,
-                    height,
-                );
+            Some(reason) => {
+                let level = if matches!(slide.status, dataset::SlideStatus::Failed) {
+                    "error"
+                } else {
+                    "warning"
+                };
+                eprintln!("{level}: {}: {}", slide.path.display(), reason);
             }
             None => {
-                if slide.tiles_skipped_white > 0 {
-                    println!(
-                        "{}: {} tile(s) written, {} skipped (white)",
-                        slide.path.display(),
-                        slide.tiles_written,
-                        slide.tiles_skipped_white,
-                    );
-                } else {
-                    println!(
-                        "{}: {} tile(s) written",
-                        slide.path.display(),
-                        slide.tiles_written,
-                    );
+                let mut parts = vec![format!("{} written", slide.tiles_written)];
+                if slide.tiles_existing > 0 {
+                    parts.push(format!("{} already present", slide.tiles_existing));
                 }
+                let skipped = slide.tiles_skipped_white
+                    + slide.tiles_skipped_tissue
+                    + slide.tiles_skipped_annotation;
+                if skipped > 0 {
+                    parts.push(format!("{skipped} skipped"));
+                }
+                if slide.tiles_failed > 0 {
+                    parts.push(format!("{} unreadable", slide.tiles_failed));
+                }
+                println!("{}: {}", slide.path.display(), parts.join(", "));
             }
         }
+        for err in &slide.errors {
+            eprintln!("  error: {err}");
+        }
     }
-
-    // Summary.
     println!();
     println!(
-        "Done: {} slide(s) processed, {} skipped, {} tile(s) written, {} tile(s) skipped (white)",
+        "Done: {} slide(s) processed, {} skipped, {} failed; {} patch(es) written, {} already \
+         present, {} skipped as white, {} as non-tissue, {} outside annotations, {} unreadable.",
         report.processed_slides,
-        report.skipped_slides,
+        report.skipped_slides - report.failed_slides,
+        report.failed_slides,
         report.total_tiles,
+        report.total_tiles_existing,
         report.total_tiles_skipped_white,
+        report.total_tiles_skipped_tissue,
+        report.total_tiles_skipped_annotation,
+        report.total_tiles_failed,
     );
     for meta in &report.metadata_paths {
         println!("Metadata: {}", meta.display());
     }
+    if let Some(manifest) = &report.manifest_path {
+        println!("Manifest: {}", manifest.display());
+    }
+}
 
-    // Non-zero exit if any slides were skipped due to errors.
-    if report
-        .slides
-        .iter()
-        .any(|s| matches!(s.skipped, Some(dataset::SlideSkipReason::OpenError(_))))
-    {
-        bail!(
-            "{} slide(s) could not be opened",
-            report
-                .slides
-                .iter()
-                .filter(|s| matches!(s.skipped, Some(dataset::SlideSkipReason::OpenError(_))))
-                .count()
-        );
+fn run_dataset_patches_cli(job: &DatasetJob) -> Result<()> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    if job.options.dry_run {
+        return match dataset::plan_dataset(&job.config, &job.options) {
+            Ok(plan) => {
+                print_dataset_plan(&plan);
+                Ok(())
+            }
+            Err(err) => report_dataset_error(err),
+        };
     }
 
-    Ok(())
+    let control = Arc::new(dataset::DatasetControl::new());
+    {
+        let control = Arc::clone(&control);
+        let presses = AtomicU32::new(0);
+        let _ = ctrlc::set_handler(move || {
+            if presses.fetch_add(1, Ordering::Relaxed) == 0 {
+                control.cancel();
+                eprintln!(
+                    "\nCancelling after the current batch of patches \
+                     (press Ctrl-C again to stop immediately)..."
+                );
+            } else {
+                dataset_exit(DATASET_EXIT_INTERRUPTED);
+            }
+        });
+    }
+
+    let config = job.config.clone();
+    let options = job.options.clone();
+    let worker_control = Arc::clone(&control);
+    let handle = std::thread::Builder::new()
+        .name("dataset-patches".into())
+        .spawn(move || dataset::run_dataset(&config, &options, &worker_control))
+        .expect("failed to spawn dataset-patches thread");
+
+    let pb = indicatif::ProgressBar::new(0);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} patches \
+                 ({eta} remaining) {msg}",
+            )
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+    pb.enable_steady_tick(std::time::Duration::from_millis(200));
+    let update = |pb: &indicatif::ProgressBar| {
+        let p = control.progress();
+        if p.tiles_total > 0 {
+            pb.set_length(p.tiles_total);
+        }
+        pb.set_position(p.tiles_done);
+        pb.set_message(format!(
+            "slide {}/{} · {} written · {} skipped · {} failed",
+            p.current_slide, p.total_slides, p.tiles_written, p.tiles_skipped, p.tiles_failed
+        ));
+    };
+    while !handle.is_finished() {
+        update(&pb);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    update(&pb);
+    pb.finish_and_clear();
+
+    match handle.join().expect("dataset-patches thread panicked") {
+        Ok(report) => {
+            print_dataset_report(&report);
+            if report.cancelled {
+                eprintln!("Cancelled. Run the same command again to resume.");
+                dataset_exit(DATASET_EXIT_INTERRUPTED);
+            }
+            if report.has_errors() {
+                dataset_exit(DATASET_EXIT_FAILURES);
+            }
+            Ok(())
+        }
+        Err(err) => report_dataset_error(err),
+    }
+}
+
+/// Prints a run-level dataset error and exits with the matching status.
+fn report_dataset_error(err: dataset::DatasetError) -> Result<()> {
+    match err {
+        dataset::DatasetError::Config(e) => {
+            eprintln!("error: {e}");
+            dataset_exit(DATASET_EXIT_USAGE);
+        }
+        dataset::DatasetError::NoSlides { input_errors } => {
+            for (path, e) in &input_errors {
+                eprintln!("error: {}: {}", path.display(), e);
+            }
+            eprintln!("error: no slide files were found in the inputs");
+            dataset_exit(DATASET_EXIT_USAGE);
+        }
+        dataset::DatasetError::OutputConflict(message) => {
+            eprintln!("error: {message}");
+            eprintln!("hint: pass --overwrite to replace it, or choose another --out directory");
+            dataset_exit(DATASET_EXIT_USAGE);
+        }
+        other => Err(other.into()),
+    }
 }
 
 fn validate_input_file(path: &Path) -> Result<()> {

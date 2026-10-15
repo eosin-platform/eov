@@ -24,16 +24,21 @@ pub mod export;
 pub mod file_id;
 pub mod formatting;
 pub mod imaging;
+pub mod job;
 pub mod openslide;
 pub mod overlay;
 pub mod paths;
 pub mod postprocess;
+pub mod processing;
 pub mod render;
 pub mod stain;
 pub mod tile;
+pub mod tissue;
 pub mod viewport;
 pub mod wsi;
 
+#[cfg(test)]
+pub(crate) mod test_slides;
 /// Writers for small synthetic slides (uncompressed TIFF pyramids that
 /// OpenSlide opens), for this crate's tests and, with the `test-support`
 /// feature, for other crates' tests.
