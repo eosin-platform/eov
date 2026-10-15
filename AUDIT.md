@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `21b6894`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `e41ebc9`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -68,40 +68,28 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | App state and interaction | 16 | 16 | – | – | – |
 | Shell, CLI, config, docs | 20 | 19 | 1 | – | – |
 | Install, update, packaging | 15 | 15 | – | – | – |
-| Annotations plugin | 18 | 15 | 3 | – | – |
-| eovae plugin | 17 | 16 | 1 | – | – |
-| Cellaris plugin | 11 | 10 | 1 | – | – |
+| Annotations plugin | 18 | 18 | – | – | – |
+| eovae plugin | 17 | 17 | – | – | – |
+| Cellaris plugin | 11 | 11 | – | – | – |
 | Gamepad plugin | 8 | 8 | – | – | – |
-| **Total** | **169** | **162** | **6** | **1** | **0** |
+| **Total** | **169** | **167** | **1** | **1** | **0** |
 
 ### What is still open
 
 - **RND-10** (in progress): All items but vsync and the residual `set_view` latency.
 - **SH-10** (partly fixed): The UI no longer freezes. Copying under Wayland in the Flatpak still needs arboard's `wayland-data-control` feature, whose crates were not available offline.
-- **ANN-8** (partly fixed): Slides are matched by eov identity, the legacy fingerprint and a fallback key, and orphans can be relinked. Copies of the same file still share annotations.
-- **ANN-12** (partly fixed): Incremental overlays and a bounded, filterable sidebar; the per-class tally is recomputed (prefiltered by bounding box), not cached.
-- **ANN-18** (partly fixed): All but persisting the collapsed state of layers.
-- **VAE-15** (partly fixed): All but resampling to the model's exact training µm/px: eovae uses the nearest pyramid level and warns about a mismatch.
-- **CEL-9** (partly fixed): A research-use badge, model card, colour-blind-safe palette and domain flags are in place; uncertainty is not calibrated unless the model carries a threshold, and display windows are not adjustable.
 - §14.1 **Rotation and flip** (partly): Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented.
 - §14.1 **Colour management (ICC)** (in progress)
 - §14.1 **HiDPI, trackpad pinch/pan, pixel-level view above 1:1** (partly): HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress.
-- §14.1 **Case and slide organisation** (partly): The series bar filters and sorts, and lists a DICOM series once; there is no grouping by case or accession.
-- §14.2 **Cell counting tool** (partly): Per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS); no CPS helper.
 - §14.2 **Interchange formats** (partly): GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported.
-- §14.2 **External analysis results as overlays** (partly): Detections import as GeoJSON annotations into the retained overlay store; aligned heat-map images cannot be loaded.
-- §14.3 **Multichannel fluorescence / OME-TIFF** (in progress)
 - §14.3 **Philips iSyntax** (not done): Needs a reader outside OpenSlide (e.g. libisyntax).
 - §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
-- §14.3 **Z-stacks / focal planes** (not done)
+- §14.3 **Z-stacks / focal planes** (not done): OME-TIFF Z-stacks and time series show their first plane.
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
 - §14.4 **Accessibility** (in progress): Final sweep after the other changes land.
 - §14.4 **Localisation** (in progress): Final sweep after the other changes land.
-- §14.5 **Tissue detection and QC** (partly): Tissue masks drive fit-to-tissue, dataset filtering and stain fits; no blur, fold or pen-mark detection.
 - §14.5 **Stain normalisation as a workflow** (in progress)
-- §14.5 **Dataset extraction** (partly): Target MPP, tissue fraction, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG and JPEG only (no HDF5 or zarr).
-- §14.5 **Headless and batch mode** (in progress): `eov batch run` with run manifests; the eovae and cellaris commands are in progress.
 - §14.5 **Scripting** (in progress)
 - §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
 
@@ -231,17 +219,17 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | ANN-5 | Medium | Import isn't atomic: "Replace" can lose the existing layer, and "Cancel" makes already-… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-6 | Medium | All slides share one undo/redo stack, which can undo edits on a closed slide with nothi… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-7 | Medium | The in-memory cache is keyed by path string and never invalidated, while the DB is keye… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
-| ANN-8 | Medium | Slide identity is a sampled byte hash with no recovery path | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | Slides are matched by eov identity, the legacy fingerprint and a fallback key, and orphans can be relinked. Copies of the same file still share annotations. |
+| ANN-8 | Medium | Slide identity is a sampled byte hash with no recovery path | Fixed | `b62fc71` `f2a12e4` (annotations) | Slides are matched by eov identity (from `openslide.quickhash-1`), the legacy fingerprint and a fallback key, with name, size and MPP stored; orphans can be relinked. Copies still share annotations by design, and the plugin now says so and points to blinded copies for an independent read. |
 | ANN-9 | Medium | An import lands on whichever slide is active when the dialog is answered, not the slide… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-10 | Medium | Uncommitted metadata edits are lost, and global hotkeys can get stuck disabled | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-11 | Medium | The selection "pulse" thread forces about 8 full re-renders per second indefinitely, an… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
-| ANN-12 | Medium | Overlay and sidebar costs grow with the total number of annotations | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | Incremental overlays and a bounded, filterable sidebar; the per-class tally is recomputed (prefiltered by bounding box), not cached. |
+| ANN-12 | Medium | Overlay and sidebar costs grow with the total number of annotations | Fixed | `b62fc71` `f2a12e4` (annotations) | Retained overlays with incremental upserts, a bounded, filterable sidebar, and a cached tally. |
 | ANN-13 | Medium | Failures are retried every frame, a read-only database is unusable, and the sidebar can… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-14 | Medium | The first import or export hashes the whole slide file on the UI thread, while holding… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-15 | Medium | Errors are never shown to the user | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-16 | Medium | The schema has no version, no migrations and no indexes | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
 | ANN-17 | Medium | The export format has no version or image context, and leaks the absolute local path | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
-| ANN-18 | Low | Smaller annotations defects | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | All but persisting the collapsed state of layers. |
+| ANN-18 | Low | Smaller annotations defects | Fixed | `b62fc71` `f2a12e4` (annotations) | Collapsed layers are remembered per slide. |
 | VAE-1 | Critical | See PLG-2 | Fixed | `a334f35` `751a8a6` `3c47144` |  |
 | VAE-2 | High | Lock-order inversion between eovae's global mutex and the host's `AppState` lock | Fixed | `751a8a6` `3c47144` |  |
 | VAE-3 | High | The pyramid is assumed to halve at each level (downsample = 2^mip), which is wrong for… | Fixed | `751a8a6` `3c47144` |  |
@@ -256,18 +244,18 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | VAE-12 | Medium | Persistence and caching correctness | Fixed | `751a8a6` `3c47144` |  |
 | VAE-13 | Medium | Performance: the UI thread is flooded and the per-frame filter cost is high | Fixed | `751a8a6` `3c47144` |  |
 | VAE-14 | Medium | Not portable, and provisioning is neither reproducible nor lean | Fixed | `751a8a6` `3c47144` |  |
-| VAE-15 | Medium | Model handling | **Partly fixed** | `751a8a6` `3c47144` | All but resampling to the model's exact training µm/px: eovae uses the nearest pyramid level and warns about a mismatch. |
+| VAE-15 | Medium | Model handling | Fixed | `751a8a6` `3c47144` `7b39246` | Tiles are resampled per axis to the model's training µm/px; float16 models, named inputs and validation with a real session work. |
 | VAE-16 | Medium | Host integration | Fixed | `751a8a6` `3c47144` |  |
 | VAE-17 | Low | Smaller eovae defects | Fixed | `751a8a6` `3c47144` |  |
 | CEL-1 | High | The current host rejects the plugin: `plugin.toml` has no `[environment]` (PLG-4) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | CEL-2 | High | Once loadable, toggling the overlay hangs eov whenever eovae is also installed (PLG-2) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) | No filter any more; the toggle is a toolbar event. |
 | CEL-3 | High | Inference ignores the slide's pixel size (MPP) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
-| CEL-4 | High | ONNX Runtime loading only works as documented on Windows, and a failure panics the worker | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-4 | High | ONNX Runtime loading only works as documented on Windows, and a failure panics the worker | Fixed | `b62fc71` `c77eec6` (cellaris) | Runtime candidates are checked before `ort` loads one (it can load only once per process); eovae got the same fix (2b529ce). |
 | CEL-5 | High | Region-readout statistics are computed on unblended 256-px windows | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | CEL-6 | Medium | Failures are silent and sticky | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | CEL-7 | Medium | Correctness of what is painted and measured | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | CEL-8 | Medium | The overlay's cost lands on the UI thread, and it forces CPU rendering everywhere | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
-| CEL-9 | Medium | Clinical-safety and labelling gaps | **Partly fixed** | `b62fc71` `eb15de3` `fbfa762` (cellaris) | A research-use badge, model card, colour-blind-safe palette and domain flags are in place; uncertainty is not calibrated unless the model carries a threshold, and display windows are not adjustable. |
+| CEL-9 | Medium | Clinical-safety and labelling gaps | Fixed | `b62fc71` `c77eec6` (cellaris) | Research-use badge and legend, model card, domain flags, tissue mask, colour-blind-safe palette, per-marker toggles, opacity and adjustable display windows. Uncertainty is the model's reconstruction error, calibrated only when the model carries a threshold. |
 | CEL-10 | Medium | Build and release | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | CEL-11 | Low | Smaller cellaris defects | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
 | GPD-1 | High | The worker holds the plugin mutex while blocking on the UI thread, which deadlocks the… | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
@@ -301,7 +289,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Full metadata/property browser | Done | `877fcf0` |  |
 | HiDPI, trackpad pinch/pan, pixel-level view above 1:1 | **Partly** | `33c0775` `383b52c` | HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress. |
 | Copy/snapshot with scale bar and overlays | Done | `bbe4d29` |  |
-| Case and slide organisation | **Partly** | `7849eee` | The series bar filters and sorts, and lists a DICOM series once; there is no grouping by case or accession. |
+| Case and slide organisation | Done | `7849eee` `72abcf3` | The series bar filters, orders by name, date, stain or case (from the file name or `series_case_pattern`), and lists a DICOM series once. |
 | Runs without Vulkan/Metal | Done | `20bff5f` |  |
 | Open from the file manager, single instance, deep links | Done | `3b5904d` `6f0e048` |  |
 
@@ -311,26 +299,26 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 |---|---|---|---|
 | Shape tools | Done | annotations | Point, count, polygon, freehand, rectangle, ellipse, polyline, text, arrow, and a brush with eraser; holes. Multi-part regions are separate annotations (the API has no MultiPolygon). |
 | Classes / ontology | Done | annotations | Colours, hotkeys, visibility, opacity, counts. |
-| Cell counting tool | **Partly** | annotations | Per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS); no CPS helper. |
+| Cell counting tool | Done | annotations | Click, Shift+click and Alt+click classes; per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS) and the PD-L1 combined positive score. |
 | HPF / field-area reticle | Done | annotations | From field number and objective, or mm²; stamping. |
 | Measurements on annotations | Done | annotations | In µm space, with missing or anisotropic MPP stated; CSV export. |
 | Interchange formats | **Partly** | annotations | GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported. |
 | Review and provenance | Done | annotations | Author, timestamps, status, locking, comment threads, an audit table, blinded copies and a second-reader comparison. |
 | Annotation-driven dataset extraction | Done | `bb7fd46` | GeoJSON regions select and label patches; class masks are written. |
-| External analysis results as overlays | **Partly** | `29d9d53` + annotations | Detections import as GeoJSON annotations into the retained overlay store; aligned heat-map images cannot be loaded. |
+| External analysis results as overlays | Done | `29d9d53` `55d9886` + annotations | Detections import as GeoJSON annotations into the retained overlay store; heat maps (PNG, JPEG, TIFF) are placed over the slide by fit, downsample or pixel size, coloured, and kept per slide. |
 | Backup and portability | Done | annotations | Export all, backup, merge, relink, per-slide undo. |
 
 **§14.3 Formats and imaging modalities**
 
 | Feature | Status | Where | Notes |
 |---|---|---|---|
-| Multichannel fluorescence / OME-TIFF | **In progress** |  |  |
+| Multichannel fluorescence / OME-TIFF | Done | `076ae1d` | OME-TIFF (BigTIFF, pyramids, common compressions), additive channel compositing with colour, window and gamma, a Channels panel kept per slide; QPTIFF and CZI fluorescence are not read. |
 | Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
 | Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
-| Z-stacks / focal planes | **Not done** |  |  |
+| Z-stacks / focal planes | **Not done** |  | OME-TIFF Z-stacks and time series show their first plane. |
 | Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
-| Writing slides; de-identified copies | Done | `e565a9e` `272d9f4` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or a region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles, the pixel size, objective, stain and ICC profile. De-identified copies have no label, macro or thumbnail and keep an allow-list of metadata. |
+| Writing slides; de-identified copies | Done | `d64791d` `482fa9c` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles; de-identified copies drop the label, macro and thumbnail and keep an allow-list of metadata. Multichannel slides are copied as their RGB composite. |
 
 **§14.4 Platform, plugins and administration**
 
@@ -352,10 +340,10 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Feature | Status | Where | Notes |
 |---|---|---|---|
 | IHC quantification | Done | `bee393f` `3928774` | H-DAB and other presets, custom vectors, thresholds, positive fraction and H-score in a region. |
-| Tissue detection and QC | **Partly** | `bb7fd46` `64ec600` | Tissue masks drive fit-to-tissue, dataset filtering and stain fits; no blur, fold or pen-mark detection. |
+| Tissue detection and QC | Done | `bb7fd46` `64ec600` `9ce8189` `23a3583` | Tissue masks drive fit-to-tissue, dataset filtering and stain fits; Check Tissue Quality and `eov qc` mark pen, possible folds and possibly out-of-focus cells (relative thresholds, for review), and datasets can leave patches over them out (`--exclude-qc`). |
 | Stain normalisation as a workflow | **In progress** |  |  |
-| Dataset extraction | **Partly** | `bb7fd46` `8c53025` `0359c50` | Target MPP, tissue fraction, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG and JPEG only (no HDF5 or zarr). |
-| Headless and batch mode | **In progress** | `fbf22f5` | `eov batch run` with run manifests; the eovae and cellaris commands are in progress. |
+| Dataset extraction | Done | `bb7fd46` `8c53025` `0359c50` `23a3583` `e41ebc9` | Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr with `eov dataset pack`. HDF5 is not written (no HDF5 library offline). |
+| Headless and batch mode | Done | `fbf22f5` `7b39246` `c77eec6` | `eov batch run` with run manifests; `eovae:analyze` (per-tile scores, heat map) and `cellaris:predict` (per-cell marker means), with model hashes, preprocessing, resolution and device recorded. |
 | Scripting | **In progress** |  |  |
 | Model management | **Partly** | plugins | Model cards and metadata checks in cellaris and eovae; no download-and-verify of models. |
 
@@ -365,7 +353,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 |---|---|---|---|
 | Intended use stated | Done | `3620def` + cellaris | README, the Home screen and the AI plugins' badges. |
 | Synthetic colour obvious; provenance in exports | Done | `c5a942a` `bbe4d29` |  |
-| De-identification | Done | `0359c50` `877fcf0` `e565a9e` | Hideable label, de-identified datasets and slide copies, no paths in logs at info level, annotation exports or the audit log. Burned-in text in the scanned image is not removed. |
+| De-identification | Done | `0359c50` `877fcf0` `d64791d` `13ca4d4` | Hideable label, de-identified datasets, slide copies and batch manifests; no paths in logs at info level, annotation exports or the audit log. The ICC profile stays in de-identified copies unless `--no-icc-profile` (it can name the scanner). |
 | Audit trail | Done | `0b9ce2b` `21b6894` + annotations | `audit.jsonl` (sessions, plugins, updates, rollbacks) and the annotations audit table. |
 
 ---
