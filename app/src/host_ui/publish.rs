@@ -275,6 +275,9 @@ impl UiHost {
             .insert(file_id, identity.clone());
         if let Some(key) = &identity {
             self.restore_host_annotations(file_id, key);
+            if let Ok(id) = i32::try_from(file_id) {
+                self.restore_heatmap(id, key);
+            }
         }
         self.publish_now();
         self.announce_open(file_id);
@@ -406,6 +409,9 @@ impl UiHost {
             tracker.pending_open.retain(|pending| pending != id);
             self.shared.remove_reader(*id);
             self.store.remove_file(*id);
+            if let Ok(file_id) = i32::try_from(*id) {
+                self.heatmap_file_closed(file_id);
+            }
             self.undo.borrow_mut().clear_file(*id);
             tracker.properties.remove(id);
             events.push((EventTarget::All, HostEvent::FileClosed { file_id: *id }));

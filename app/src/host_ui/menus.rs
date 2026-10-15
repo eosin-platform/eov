@@ -170,6 +170,15 @@ impl UiHost {
                     Action::Bookmarks,
                 ));
             }
+            items.push(item(
+                "host:heatmap",
+                if self.has_heatmap(file_id as i32) {
+                    "Heat Map…"
+                } else {
+                    "Show Heat Map…"
+                },
+                "",
+            ));
             mark_last_separator(&mut items);
         }
 
@@ -380,6 +389,10 @@ impl UiHost {
         };
         if host_command == "channels" {
             crate::channels::open(self, file_id as i32);
+            return true;
+        }
+        if host_command == "heatmap" {
+            self.open_heatmap_panel_for(file_id as i32);
             return true;
         }
         if let Some(id) = host_command.strip_prefix("measurement-delete:") {

@@ -385,6 +385,28 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_plugins_check_updates(|| {
         with_host(|host| host.check_plugin_updates());
     });
+    let heatmap = ui.global::<crate::HeatMapPanel>();
+    heatmap.on_placement_chosen(|id| {
+        with_host(|host| host.heatmap_placement_chosen(&id));
+    });
+    heatmap.on_scale_edited(|text| {
+        with_host(|host| host.heatmap_scale_edited(&text));
+    });
+    heatmap.on_color_map_chosen(|id| {
+        with_host(|host| host.heatmap_color_map_chosen(&id));
+    });
+    heatmap.on_style_changed(|| {
+        with_host(|host| host.heatmap_style_changed());
+    });
+    heatmap.on_replace_requested(|| {
+        with_host(|host| host.heatmap_replace());
+    });
+    heatmap.on_remove_requested(|| {
+        with_host(|host| host.heatmap_remove());
+    });
+    heatmap.on_close_requested(|| {
+        with_host(|host| host.heatmap_close());
+    });
     let app_info = ui.global::<crate::AppInfo>();
     app_info.set_version(env!("CARGO_PKG_VERSION").into());
     app_info.on_check_for_updates(|| {

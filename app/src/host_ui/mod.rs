@@ -22,6 +22,8 @@ mod app_update;
 mod bookmarks;
 mod callbacks;
 mod commands;
+mod heatmaps;
+pub(crate) use heatmaps::is_heatmap_layer;
 mod input;
 pub(crate) mod key_help;
 mod link;

@@ -27,6 +27,7 @@ pub mod error;
 pub mod export;
 pub mod file_id;
 pub mod formatting;
+pub mod heatmap;
 pub mod imaging;
 pub mod job;
 pub(crate) mod ome_tiff;

@@ -49,6 +49,8 @@ import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
 import { ChannelsPanel } from "channels-panel.slint";
 import { QuantifyPanel } from "quantify-panel.slint";
+import { HeatMapPanelView, HeatMapPanel } from "heatmap-panel.slint";
+export { HeatMapPanel } from "heatmap-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -1627,6 +1629,12 @@ export component AppWindow inherits Window {
         close-requested => {
             root.quantify-close();
         }
+    }
+
+    // Floats over the slide without dimming it (AUDIT §14.2).
+    if HeatMapPanel.visible: HeatMapPanelView {
+        x: root.width - self.width - 16px;
+        y: root.toolbar-height + 44px;
     }
 
     if root.measurements-panel-visible: MeasurementsPanel {

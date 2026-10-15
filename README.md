@@ -140,6 +140,7 @@ Current capabilities include:
 - Back and forward through the views of a pane (Alt+←/→), named bookmarks of views (Ctrl+B), and the open slides and views restored at the next start.
 - A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
 - Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
+- Heat maps from other tools over a slide (a model's probabilities, an attention map), from PNG, JPEG or TIFF, coloured, placed and kept per slide (see [Heat Maps](#heat-maps)).
 - A series bar for the slides of a folder (a case): filter, order by name, date or stain, one entry per DICOM series, and PageUp/PageDown to step through them.
 - Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
 - Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
@@ -247,6 +248,12 @@ When stain normalization is active, the deconvolution reuses the slide-specific 
 ## Stain Quantification
 
 For brightfield IHC and special stains, **Quantify Stain in Region…** (right-click a slide with a region of interest) measures one stain in the region of interest: the share of tissue pixels positive for it, the weak (1+), moderate (2+) and strong (3+) shares, an H-score (0–300) and the mean concentration. It uses the same colour-deconvolution model as the view, with the H-DAB, H&E, H-E-DAB, H-AEC, H-PAS or Masson trichrome stain vectors (Ruifrok & Johnston), suggested from the slide's stain label; the thresholds are stain concentrations and can be changed. Glass and ink are left out, the region is read at the finest resolution that keeps it under 16 megapixels, and the results can be copied with the model and thresholds used. As everything in eov, this is for research and education, not diagnosis.
+
+## Heat Maps
+
+**Show Heat Map…** (right-click a slide) draws an image made by another tool over the slide, under the annotations: a model's per-patch probabilities, an attention or uncertainty map, a segmentation. PNG, JPEG and TIFF (8- and 16-bit, floating point; the first image of a TIFF) of up to 64 megapixels are read. A single-channel image, or a colour image whose pixels are all grey, holds values: 8-bit pixels become 0–1 by dividing by 255, 16-bit ones by 65 535, and floating-point ones are used as they are when they all lie in 0–1, or scaled from their minimum to their maximum otherwise. Values are drawn through Viridis, Inferno, Jet or grey; zero (and transparent or NaN pixels) is background and not drawn, and **Hide values below** leaves out low values too. Colour images keep their colours.
+
+The panel places the map over the whole slide (the default, for maps made at a fixed downsample of the slide), over its scanned region, from the top-left corner at a given downsample (level-0 pixels per map pixel), or at a given pixel size in µm. Opacity, smoothing and visibility change at once. What was shown is remembered per slide in `<data>/heatmaps.toml` and shown again when the slide opens; **Remove** forgets it. Heat maps appear in viewport copies and exported images.
 
 ## Supported Formats
 
@@ -597,6 +604,7 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 - `measurements/`: the region of interest and the measurements (list them with Ctrl+Shift+M; `remember_measurements = false` in `config.toml` turns this off);
 - `bookmarks.toml`: named views (Ctrl+B);
 - `calibrations.toml`: pixel sizes set by hand in Slide Information;
+- `heatmaps.toml`: the heat map shown over a slide, its placement and colours (the image stays where it is);
 - `channels/`: how the channels of multichannel slides are shown (colours, windows, gamma, visibility);
 - `alignments.toml`: how two linked slides are aligned to each other (per slide pair).
 
