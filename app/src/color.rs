@@ -34,9 +34,10 @@ use crate::state::{HudSettings, IsolatedChannel, OpenFile, PaneId};
 /// Colour of the viewport outside the slide (stage 5 of the pipeline).
 pub(crate) const VIEWPORT_BACKGROUND: [u8; 3] = [30, 30, 30];
 
-/// The colour settings a pane's HUD describes.
+/// The colour settings a pane's HUD describes, normalising to the stain
+/// target in use ([`crate::stain_target`]).
 pub(crate) fn hud_color_settings(hud: &HudSettings) -> ColorSettings {
-    ColorSettings::from_legacy(
+    let mut settings = ColorSettings::from_legacy(
         hud.stain_normalization,
         hud.deconv_hematoxylin_intensity,
         hud.deconv_hematoxylin_visible,
@@ -49,7 +50,12 @@ pub(crate) fn hud_color_settings(hud: &HudSettings) -> ColorSettings {
         },
         ToneAdjustments::new(hud.gamma, hud.brightness, hud.contrast),
         hud.sharpness,
-    )
+    );
+    if settings.normalization.is_some() {
+        settings.target =
+            crate::stain_target::current().map(|target| target.normalization_target());
+    }
+    settings
 }
 
 // ─── Slide-level stain fits ──────────────────────────────────────────────────

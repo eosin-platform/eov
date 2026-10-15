@@ -49,6 +49,7 @@ mod session;
 mod shortcuts;
 mod slide_info;
 mod slide_link;
+mod stain_target;
 mod state;
 #[cfg(test)]
 mod test_support;

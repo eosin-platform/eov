@@ -240,6 +240,12 @@ struct DatasetPatchesArgs {
     #[arg(long, value_enum)]
     normalize: Option<CliStainMethod>,
 
+    /// Normalise onto this stain target (a file saved with Save Stain
+    /// Target… in the viewer, or a saved stain estimate) instead of
+    /// Macenko's reference H&E.
+    #[arg(long, value_name = "FILE", requires = "normalize", value_parser = parse_stain_target)]
+    stain_target: Option<eov_common::stain::NormalizationTarget>,
+
     /// GeoJSON annotations (QuPath FeatureCollection, level-0 pixels): a
     /// file, a directory with <stem>.geojson per slide, or "sidecar" for
     /// files next to the slides. Patches are restricted to annotations
@@ -313,6 +319,19 @@ struct DatasetPatchesArgs {
     /// them): pen, folds, blur, or all. Comma-separated.
     #[arg(long, value_enum, value_delimiter = ',', value_name = "MARKS")]
     exclude_qc: Vec<CliQcMark>,
+}
+
+/// `--stain-target FILE`: the target a saved stain target file describes.
+fn parse_stain_target(path: &str) -> Result<eov_common::stain::NormalizationTarget, String> {
+    let target = crate::stain_target::StainTarget::load(std::path::Path::new(path))
+        .map_err(|error| format!("{path}: {error}"))?;
+    if target.estimate.is_fallback() {
+        return Err(format!(
+            "{path}: the stain fit it holds was rejected ({})",
+            target.estimate.summary()
+        ));
+    }
+    Ok(target.normalization_target())
 }
 
 /// A tissue-QC mark for `--exclude-qc`.
@@ -394,7 +413,7 @@ impl DatasetPatchesArgs {
                         CliStainMethod::Macenko => eov_common::stain::StainFitMethod::Macenko,
                         CliStainMethod::Vahadane => eov_common::stain::StainFitMethod::Vahadane,
                     },
-                    target: None,
+                    target: self.stain_target.clone(),
                 }),
                 annotations,
                 max_tiles_per_slide: self.max_tiles_per_slide,

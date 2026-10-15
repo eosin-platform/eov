@@ -34,6 +34,7 @@ mod overlays;
 mod panel;
 pub(crate) mod publish;
 mod qc;
+mod stain_targets;
 mod surfaces;
 
 use crate::AppWindow;

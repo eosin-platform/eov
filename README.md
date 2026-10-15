@@ -241,6 +241,8 @@ eov includes two H&E stain normalization methods for histology images, selectabl
 
 Both methods share a common normalization pipeline: RGB → optical density conversion, tissue masking, stain matrix estimation, least-squares concentration solve, 99th-percentile concentration scaling to a reference target, and reconstruction. The CPU and GPU backends produce matched output — stain matrix estimation runs on the CPU from raw tile data, while per-pixel normalization runs either as a CPU buffer pass or as a GPU fragment shader transform.
 
+**The target.** By default slides are normalised onto Macenko's reference H&E. With normalisation on, the viewport menu can make **this slide** or its **region of interest** the target instead ("normalise to reference slide"): every pane that normalises, and every export, then maps its slide onto that appearance. **Save Stain Target…** writes the target (its stain vectors, concentrations and where it came from) to a JSON file to share between sites, **Load Stain Target…** reads one, and **Use the Reference Stain Target** goes back to the default. The target in use is kept in `<data>/stain-target.json`. Dataset extraction uses a saved target with `eov dataset patches … --normalize macenko --stain-target reference.json`. A fit that was rejected (too little tissue, collinear stains) cannot be a target.
+
 ## Color Deconvolution
 
 eov supports real-time H&E color deconvolution, which separates a histology image into its constituent hematoxylin and eosin stain channels using the Beer–Lambert optical density model ([Ruifrok & Johnston, 2001](https://pubmed.ncbi.nlm.nih.gov/11531144/)). Controls are available in the HUD settings panel:
@@ -843,6 +845,7 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 - `bookmarks.toml`: named views (Ctrl+B);
 - `calibrations.toml`: pixel sizes set by hand in Slide Information;
 - `heatmaps.toml`: the heat map shown over a slide, its placement and colours (the image stays where it is);
+- `stain-target.json`: the stain normalisation target in use, when it is not the reference;
 - `channels/`: how the channels of multichannel slides are shown (colours, windows, gamma, visibility);
 - `alignments.toml`: how two linked slides are aligned to each other (per slide pair).
 
