@@ -115,7 +115,7 @@ Refer to the [data appropriation guide](./data-guide.md) for details on how to b
 
 ## Overview
 
-eov opens pyramid-based whole-slide image files through OpenSlide and presents them in a desktop viewer designed for fast inspection.
+eov opens pyramid-based whole-slide image files through OpenSlide, and OME-TIFF (brightfield, fluorescence and multiplexed immunofluorescence) through its own reader, and presents them in a desktop viewer designed for fast inspection.
 
 Current capabilities include:
 
@@ -132,6 +132,7 @@ Current capabilities include:
 - Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
 - Color deconvolution: separate and visualize individual H&E stain channels with per-channel intensity control and channel isolation, on both CPU and GPU.
+- Multichannel fluorescence and multiplex OME-TIFF: the channels are composited with a colour, display window and gamma each, set in the Channels panel and kept per slide (see [OME-TIFF, fluorescence and multiplex](#ome-tiff-fluorescence-and-multiplex)).
 - A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available, and a pixel size you can set for slides that lack one (Slide Information, kept per slide).
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Slide Information (I): the label and macro images (with a privacy toggle to hide the label), and every property, searchable and copyable.
@@ -249,7 +250,7 @@ For brightfield IHC and special stains, **Quantify Stain in Region…** (right-c
 
 ## Supported Formats
 
-eov relies on [OpenSlide](https://openslide.org/) for slide access, so the formats it can open are the formats OpenSlide supports on the host system. The application explicitly offers these common extensions in the file picker:
+eov opens slides through [OpenSlide](https://openslide.org/), so it opens the formats OpenSlide supports on the host system, and it reads OME-TIFF itself (see below). The application explicitly offers these common extensions in the file picker:
 
 - `.svs`
 - `.tif`
@@ -263,8 +264,28 @@ eov relies on [OpenSlide](https://openslide.org/) for slide access, so the forma
 - `.svslide`
 - `.bif`
 - `.czi`
+- `.btf`, `.tf2`, `.tf8` (BigTIFF, as in `.ome.btf`)
 
 If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)).
+
+### OME-TIFF, fluorescence and multiplex
+
+OpenSlide reads brightfield RGB slides only, so eov has its own reader for OME-TIFF: files named `.ome.tif`, `.ome.tiff` or `.ome.btf`, and any TIFF or BigTIFF whose first image description is OME-XML. Other TIFFs still open through OpenSlide. The reader handles:
+
+- brightfield RGB, and multichannel fluorescence and multiplexed immunofluorescence (CyCIF, Orion and other OME-TIFF exports) with any number of channels of 8-, 16- or 32-bit integer or 32- or 64-bit float samples, one plane per channel or several channels in one plane;
+- TIFF and BigTIFF in either byte order, tiled or in strips, uncompressed or compressed with LZW, Deflate, PackBits, Zstandard or JPEG;
+- pyramids stored as SubIFDs (the current OME convention), as separate images of decreasing size, or as reduced-resolution images in the main chain;
+- the pixel size (`PhysicalSizeX`/`PhysicalSizeY`, in any length unit) and the objective's nominal magnification; label, macro and thumbnail images; the OME metadata, as `ome.*` properties in Slide Information.
+
+A file eov cannot read, for example one with another compression or with channels stored in other files of a multi-file OME dataset, is refused when it opens, with the reason. Z-stacks and time series show their first focal plane and time point.
+
+Multichannel slides are shown as a composite: each visible channel adds its colour, scaled by where its value lies in the channel's display window and by a gamma. A slide opens with the colours its file gives the channels (else colours from the channel names, DAPI and Hoechst in blue, and emission wavelengths), auto-contrast windows (the 0.1 and 99.9 percentiles of a low-resolution level) and its first six channels shown. **Channels…** (right-click the slide, or the button in Slide Information; the `channels` shortcut action has no key by default) opens the Channels panel:
+
+- show, hide or solo each channel and pick its colour, or colour all of them from a palette: Standard, Colour-blind safe or Okabe–Ito;
+- set a channel's window by dragging its ends over the channel's histogram or by typing values, and set its gamma;
+- Auto contrast, Show all, and Reset to the slide's defaults.
+
+The settings are kept per slide, keyed by its identity, and come back when it opens again. The view, the minimap, copies and exports, and plugins all see the composite; plugins also get the channel names. `eov probe` lists the channels with their colours and windows. Dataset extraction uses the display of a slide that is open in eov and the defaults for other slides; batch runs use the defaults.
 
 ## CLI
 
@@ -326,7 +347,7 @@ eov recent list
 - `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
 
-`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash and every OpenSlide property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)).
+`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash, the channels of multichannel slides and every property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)).
 
 ### Opening slides
 
@@ -357,7 +378,7 @@ The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost po
 | macOS | Automatic: the app declares the formats and the `eov` URL scheme in its `Info.plist`, and macOS registers them when it first sees the app (for example after moving it to Applications). |
 | Windows (portable zip) | Run `eov register-file-types` once. It writes only `HKEY_CURRENT_USER\Software\Classes`: an `eov.Slide` file type, an "Open with" entry for every slide extension, `Applications\eov.exe` and the `eov` URL protocol. eov becomes the default program only for the vendor formats (`.svs`, `.ndpi`, `.mrxs`, ...) that have none; TIFF and DICOM keep theirs. Run it again after moving the eov folder; `eov unregister-file-types` removes exactly these entries. |
 
-`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
+`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`) and for BigTIFF (`image/x-bigtiff`: `.btf`, `.tf2`, `.tf8`, for which eov is only offered, as for TIFF and DICOM); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
 
 On macOS, slides opened from the Finder or the Dock and `eov://` links arrive as Apple events rather than on the command line. winit 0.30, the windowing library under Slint, does not pass these on, so eov adds the `application:openURLs:` handler to winit's application delegate at startup (winit patches AppKit the same way) and opens what arrives like files handed over by a second eov. Two consequences: a slide double-clicked while eov is not running opens as a tab next to the restored last session, because macOS starts the app without arguments first; and if a future winit implements the handler itself, eov keeps winit's and logs a warning (files from the Finder would then be ignored until eov is updated).
 
@@ -574,6 +595,7 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 - `measurements/`: the region of interest and the measurements (list them with Ctrl+Shift+M; `remember_measurements = false` in `config.toml` turns this off);
 - `bookmarks.toml`: named views (Ctrl+B);
 - `calibrations.toml`: pixel sizes set by hand in Slide Information;
+- `channels/`: how the channels of multichannel slides are shown (colours, windows, gamma, visibility);
 - `alignments.toml`: how two linked slides are aligned to each other (per slide pair).
 
 The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
@@ -596,14 +618,14 @@ bookmark-add = "Ctrl+D"
 
 This repository is a Cargo workspace (`common`, `app`, `plugin_api` and `plugin_api/example-plugin`); the plugins under `plugins/` are separate Cargo projects built against the in-tree `plugin_api`, and `annotations`, `gamepad` and `cellaris` are git submodules (`git submodule update --init`):
 
-- `common` (`eov-common`): WSI access through OpenSlide, tile management and caching, viewport math, colour science (stain normalisation, deconvolution, quantification), image export and dataset extraction.
+- `common` (`eov-common`): WSI access through OpenSlide and eov's OME-TIFF reader (with multichannel compositing), tile management and caching, viewport math, colour science (stain normalisation, deconvolution, quantification), image export and dataset extraction.
 - `app` (`eov`): the desktop application (Slint UI, CPU and GPU rendering, the plugin host) and the command line (updates, plugin management, datasets, probing).
 - `plugin_api` (`eov-plugin-api`): the plugin SDK, ABI, protocol, manifest and a mock host for tests.
 - `plugins/*`: the in-tree plugins.
 
 At a high level, the flow is:
 
-1. Open a slide through OpenSlide.
+1. Open a slide through OpenSlide, or eov's OME-TIFF reader.
 2. Read slide metadata and pyramid levels.
 3. Compute visible tiles for each active viewport.
 4. Load tiles in the background and cache them.
