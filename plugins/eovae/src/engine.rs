@@ -172,11 +172,12 @@ pub trait Backend: Send + Sync + 'static {
 
     /// Builds (and warms up) an engine. Runs on a worker thread; `status`
     /// reports progress to the user ("Loading ONNX Runtime", "Warming up
-    /// CUDA").
+    /// CUDA"). Gives up soon after any `stop` flag is set.
     fn create(
         &self,
         request: &EngineRequest,
         status: &dyn Fn(&str),
+        stop: &[Arc<AtomicBool>],
     ) -> Result<Box<dyn InferenceEngine>, String>;
 
     /// Which inference runtime is in use, for the sidebar.
@@ -282,14 +283,20 @@ pub(crate) mod testing {
             &self,
             request: &EngineRequest,
             status: &dyn Fn(&str),
+            _stop: &[Arc<AtomicBool>],
         ) -> Result<Box<dyn InferenceEngine>, String> {
             status("Building test engine");
             let tile = request.model.tile_size as usize;
-            let mut engine = TestEngine::new(
-                tile * tile * 3,
-                request.model.fixed_batch,
-                Behaviour::Offset(0.02),
-            );
+            // The model's file name picks the behaviour.
+            let name = &request.model.file_name;
+            let behaviour = if name.contains("hang") {
+                Behaviour::Hang
+            } else if name.contains("fail") {
+                Behaviour::FailOn(0)
+            } else {
+                Behaviour::Offset(0.02)
+            };
+            let mut engine = TestEngine::new(tile * tile * 3, request.model.fixed_batch, behaviour);
             if request.device == DevicePreference::Cuda {
                 return Err("CUDA is not available in tests".to_string());
             }

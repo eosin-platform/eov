@@ -707,7 +707,7 @@ mod tests {
         let dark = prepare(&solid(8, [6, 5, 9, 255]), 8, (8, 8), &contract).unwrap();
         assert!(is_background(&dark), "near-black becomes white, i.e. glass");
         let mut tissue = solid(8, [200, 120, 180, 255]);
-        for (i, px) in tissue.chunks_exact_mut(4).enumerate() {
+        for (i, px) in tissue.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             if i % 3 == 0 {
                 px[..3].copy_from_slice(&[90, 40, 120]);
             }

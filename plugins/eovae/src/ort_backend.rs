@@ -210,6 +210,7 @@ impl OrtBackend {
         device: Device,
         threads: usize,
         tf32: bool,
+        stop: &[Arc<AtomicBool>],
     ) -> Result<Session, String> {
         let error = |e: ort::Error<_>| e.to_string();
         let mut builder = Session::builder()
@@ -234,10 +235,21 @@ impl OrtBackend {
         } else {
             CPU_BUILD_TIMEOUT
         };
+        // The build can be cancelled: on a timeout, or when the user or eov
+        // gives up (shutdown, another model).
         let (done, wait) = mpsc::channel::<()>();
+        let flags: Vec<Arc<AtomicBool>> = stop.to_vec();
+        let started = std::time::Instant::now();
         let watchdog = std::thread::spawn(move || {
-            if wait.recv_timeout(timeout) == Err(mpsc::RecvTimeoutError::Timeout) {
-                let _ = canceler.cancel();
+            loop {
+                match wait.recv_timeout(Duration::from_millis(50)) {
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    _ => return,
+                }
+                if started.elapsed() >= timeout || any_set(&flags) {
+                    let _ = canceler.cancel();
+                    return;
+                }
             }
         });
         let result = builder
@@ -246,7 +258,9 @@ impl OrtBackend {
         let _ = done.send(());
         let _ = watchdog.join();
         result.map_err(|e| {
-            if e.to_ascii_lowercase().contains("cancel") {
+            if any_set(stop) {
+                "cancelled".to_string()
+            } else if e.to_ascii_lowercase().contains("cancel") {
                 format!(
                     "building the session took longer than {} s",
                     timeout.as_secs()
@@ -262,19 +276,24 @@ impl OrtBackend {
         request: &EngineRequest,
         device: Device,
         status: &dyn Fn(&str),
+        stop: &[Arc<AtomicBool>],
     ) -> Result<OrtEngine, String> {
         let model = &request.model;
         status(match device {
             Device::Cpu => "Building CPU session…",
             Device::Cuda => "Building CUDA session…",
         });
-        let session = self.build_session(model, device, request.threads, request.tf32)?;
-        let input = session
+        let session = self.build_session(model, device, request.threads, request.tf32, stop)?;
+        if !session
             .inputs()
             .iter()
-            .find(|outlet| outlet.name() == model.input.name)
-            .ok_or_else(|| format!("ONNX Runtime does not see input '{}'", model.input.name))?;
-        let _ = input;
+            .any(|outlet| outlet.name() == model.input.name)
+        {
+            return Err(format!(
+                "ONNX Runtime does not see input '{}'",
+                model.input.name
+            ));
+        }
         let output = model
             .output(&request.output)
             .ok_or_else(|| format!("unknown output '{}'", request.output))?
@@ -334,9 +353,8 @@ impl OrtBackend {
         });
         let batch = model.fixed_batch.unwrap_or(request.batch_size.clamp(1, 4));
         let probe = vec![0.25f32; batch * model.item_len()];
-        let stop = Arc::new(AtomicBool::new(false));
         engine
-            .run(&probe, batch, &stop)
+            .run_watched(&probe, batch, stop)
             .map_err(|e| format!("test run failed: {e}"))
             .and_then(|output| {
                 if output.recon.len() == batch * model.item_len() {
@@ -366,6 +384,7 @@ impl Backend for OrtBackend {
         &self,
         request: &EngineRequest,
         status: &dyn Fn(&str),
+        stop: &[Arc<AtomicBool>],
     ) -> Result<Box<dyn InferenceEngine>, String> {
         status("Loading ONNX Runtime…");
         self.ensure_runtime(request.runtime_path.as_deref())?;
@@ -387,7 +406,7 @@ impl Backend for OrtBackend {
                 None => {
                     let notes = self.prepare_cuda();
                     catch_unwind(AssertUnwindSafe(|| {
-                        self.engine_for(request, Device::Cuda, status)
+                        self.engine_for(request, Device::Cuda, status, stop)
                     }))
                     .unwrap_or_else(|payload| Err(panic_text(payload.as_ref())))
                     .map_err(|error| {
@@ -404,11 +423,12 @@ impl Backend for OrtBackend {
                 Err(error) if request.device == DevicePreference::Cuda => {
                     return Err(format!("CUDA is unavailable: {error}"));
                 }
+                Err(error) if any_set(stop) => return Err(error),
                 Err(error) => fallback = Some(error),
             }
         }
         let mut engine = catch_unwind(AssertUnwindSafe(|| {
-            self.engine_for(request, Device::Cpu, status)
+            self.engine_for(request, Device::Cpu, status, stop)
         }))
         .unwrap_or_else(|payload| Err(panic_text(payload.as_ref())))?;
         engine.info.fallback = fallback;
@@ -422,25 +442,14 @@ impl Backend for OrtBackend {
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
         {
-            Some(runtime) => format!(
-                "ONNX Runtime {} ({})",
-                ort_version(),
-                runtime.path.display()
-            ),
-            None => "ONNX Runtime not loaded yet".to_string(),
+            Some(runtime) => format!("ONNX Runtime: {}", runtime.path.display()),
+            None => "ONNX Runtime is loaded with the first model.".to_string(),
         }
     }
 }
 
-fn ort_version() -> String {
-    catch_unwind(|| {
-        let info = ort::info();
-        info.split(',')
-            .find_map(|part| part.trim().strip_prefix("ORT Build Info: git-branch=rel-"))
-            .map(str::to_string)
-            .unwrap_or_else(|| info.chars().take(40).collect())
-    })
-    .unwrap_or_default()
+fn any_set(flags: &[Arc<AtomicBool>]) -> bool {
+    flags.iter().any(|flag| flag.load(Ordering::SeqCst))
 }
 
 /// A session on one device.
@@ -455,18 +464,18 @@ struct OrtEngine {
     latent: Option<(String, TensorType)>,
 }
 
-/// Terminates a run when `stop` is set.
+/// Terminates a run when any stop flag is set.
 struct Watcher {
     done: mpsc::Sender<()>,
     handle: std::thread::JoinHandle<()>,
 }
 
 impl Watcher {
-    fn start(stop: Arc<AtomicBool>, options: Arc<RunOptions>) -> Self {
+    fn start(stop: Vec<Arc<AtomicBool>>, options: Arc<RunOptions>) -> Self {
         let (done, wait) = mpsc::channel::<()>();
         let handle = std::thread::spawn(move || {
             loop {
-                if stop.load(Ordering::SeqCst) {
+                if any_set(&stop) {
                     let _ = options.terminate();
                     return;
                 }
@@ -509,11 +518,22 @@ impl InferenceEngine for OrtEngine {
         batch: usize,
         stop: &Arc<AtomicBool>,
     ) -> Result<EngineOutput, EngineError> {
-        if stop.load(Ordering::SeqCst) {
+        self.run_watched(input, batch, std::slice::from_ref(stop))
+    }
+}
+
+impl OrtEngine {
+    fn run_watched(
+        &mut self,
+        input: &[f32],
+        batch: usize,
+        stop: &[Arc<AtomicBool>],
+    ) -> Result<EngineOutput, EngineError> {
+        if any_set(stop) {
             return Err(EngineError::Stopped);
         }
         let failed = |e: String| {
-            if stop.load(Ordering::SeqCst) {
+            if any_set(stop) {
                 EngineError::Stopped
             } else {
                 EngineError::Failed(e)
@@ -536,7 +556,7 @@ impl InferenceEngine for OrtEngine {
             item_dims[2] as i64,
         ];
         let options = Arc::new(RunOptions::new().map_err(|e| failed(e.to_string()))?);
-        let watcher = Watcher::start(Arc::clone(stop), Arc::clone(&options));
+        let watcher = Watcher::start(stop.to_vec(), Arc::clone(&options));
         let collect_outputs = |outputs: ort::session::SessionOutputs<'_>| {
             collect(&outputs, output_name, *output_elem, latent.as_ref())
         };
@@ -605,7 +625,7 @@ mod tests {
             .unwrap();
         let system_at = candidates
             .iter()
-            .position(|c| *c == PathBuf::from(name))
+            .position(|c| c.as_path() == Path::new(name))
             .unwrap();
         assert!(configured_at < bundled_at && bundled_at < system_at);
     }
@@ -636,7 +656,7 @@ mod tests {
             batch_size: 32,
             runtime_path: None,
         };
-        let mut engine = backend.create(&request, &|_| {}).unwrap();
+        let mut engine = backend.create(&request, &|_| {}, &[]).unwrap();
         let contract = model.contract.clone();
         let mut input = vec![0f32; 32 * model.item_len()];
         let mut tiles = Vec::new();

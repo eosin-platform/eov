@@ -329,7 +329,7 @@ pub fn run_job(
                 || (readers_done && !pending.is_empty())
                 || (idle && fixed.is_none() && !pending.is_empty());
             if run_now {
-                let items: Vec<(TileCoord, PreparedTile)> = pending.drain(..).collect();
+                let items: Vec<(TileCoord, PreparedTile)> = std::mem::take(&mut pending);
                 infer(
                     spec,
                     engine,

@@ -1,41 +1,37 @@
-import { ComboBox } from "std-widgets.slint";
+// The eovae sidebar. Every property is pushed by the plugin (only changed
+// values are applied); callbacks that can reject input return the value to
+// show.
+
+import { ComboBox, CheckBox, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
-component CircularProgressDots inherits Rectangle {
-    in property <float> value: 0;
-    in property <bool> completed: false;
-    in property <bool> error: false;
-
-    width: 16px;
-    height: 16px;
-    background: transparent;
-
-    property <color> active-color: root.error ? #d66e6e : root.completed ? #57b373 : #2f6db5;
-    property <color> inactive-color: #ffffff20;
-
-    Rectangle { x: 6.5px; y: 0px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.125 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 11px; y: 2px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.25 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 13px; y: 6.5px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.375 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 11px; y: 11px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.5 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 6.5px; y: 13px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.625 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 2px; y: 11px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.75 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 0px; y: 6.5px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 0.875 ? root.active-color : root.inactive-color; }
-    Rectangle { x: 2px; y: 2px; width: 3px; height: 3px; border-radius: 1.5px; background: root.completed || root.value >= 1.0 ? root.active-color : root.inactive-color; }
+export struct HistogramBin {
+    label: string,
+    count: int,
+    normalized: float,
 }
 
-component SidebarActionButton inherits Rectangle {
+export struct HotRegion {
+    id: string,
+    label: string,
+    score: string,
+}
+
+component ActionButton inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
-    in property <color> base-color: #3e444c;
-    in property <color> hover-color: #4a5460;
+    in property <color> base: #3e444c;
+    in property <color> hover: #4a5460;
     callback clicked();
 
+    min-width: 64px;
     height: 28px;
     border-radius: 4px;
-    background: root.enabled ? (touch.has-hover ? root.hover-color : root.base-color) : #3e444c;
+    background: root.enabled ? (touch.has-hover ? root.hover : root.base) : #2e3238;
 
     touch := TouchArea {
         enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => { root.clicked(); }
     }
 
@@ -43,216 +39,37 @@ component SidebarActionButton inherits Rectangle {
         width: parent.width;
         height: parent.height;
         text: root.text;
-        color: white;
+        color: root.enabled ? white : #ffffff66;
+        font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 }
 
-component InlineLabeledNumberField inherits Rectangle {
-    in property <string> label: "";
-    in-out property <string> value: "";
-    in property <bool> enabled: true;
-    callback accepted(string);
-    callback edited(string);
-
-    height: 28px;
-    border-radius: 4px;
-    background: root.enabled ? #0a0c10 : #0a0c1055;
-    border-width: 1px;
-    border-color: field.has-focus && root.enabled ? #4da3d9 : Theme.border;
-
-    HorizontalLayout {
-        width: parent.width;
-        height: parent.height;
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 6px;
-
-        Text {
-            text: root.label;
-            color: root.enabled ? Theme.text-secondary : #ffffff55;
-            font-size: 10px;
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-
-        Rectangle {
-            width: 1px;
-            height: 14px;
-            y: (parent.height - self.height) / 2;
-            background: root.enabled ? #ffffff12 : #ffffff08;
-        }
-
-        field := TextInput {
-            horizontal-stretch: 1;
-            text <=> root.value;
-            color: root.enabled ? white : #ffffff70;
-            font-size: 11px;
-            horizontal-alignment: right;
-            vertical-alignment: center;
-            input-type: InputType.number;
-            enabled: root.enabled;
-
-            accepted => {
-                root.accepted(self.text);
-            }
-
-            edited => {
-                root.edited(self.text);
-            }
-        }
-    }
-}
-
-component InlineLabeledSelectField inherits Rectangle {
-    in property <string> label: "";
-    in property <[string]> model: [];
-    in property <int> current-index: 0;
-    in property <bool> enabled: true;
-    in property <bool> popup-open: false;
-    callback clicked(length, length, length);
-
-    private property <int> visual-index: 0;
-    private property <string> current-label:
-        root.visual-index >= 0 && root.visual-index < root.model.length ? root.model[root.visual-index] : "";
-
-    height: 28px;
-    border-radius: 4px;
-    background: root.enabled ? #0a0c10 : #0a0c1055;
-    border-width: 1px;
-    border-color: (root.popup-open || touch.has-hover) && root.enabled ? #4da3d9 : Theme.border;
-
-    changed current-index => {
-        root.visual-index = root.current-index;
-    }
-
-    touch := TouchArea {
-        enabled: root.enabled;
-        width: parent.width;
-        height: parent.height;
-        mouse-cursor: MouseCursor.pointer;
-        clicked => {
-            root.clicked(
-                root.absolute-position.x,
-                root.absolute-position.y + root.height + 4px,
-                root.width,
-            );
-        }
-    }
-
-    HorizontalLayout {
-        width: parent.width;
-        height: parent.height;
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 6px;
-
-        Text {
-            text: root.label;
-            color: root.enabled ? Theme.text-secondary : #ffffff55;
-            font-size: 10px;
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-
-        Rectangle {
-            width: 1px;
-            height: 14px;
-            y: (parent.height - self.height) / 2;
-            background: root.enabled ? #ffffff12 : #ffffff08;
-        }
-
-        Text {
-            horizontal-stretch: 1;
-            text: root.current-label;
-            color: root.enabled ? white : #ffffff70;
-            font-size: 11px;
-            vertical-alignment: center;
-            horizontal-alignment: right;
-            overflow: elide;
-        }
-
-        Text {
-            text: root.popup-open ? "▴" : "▾";
-            color: root.enabled ? Theme.text-secondary : #ffffff55;
-            font-size: 10px;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component HotRegionButton inherits Rectangle {
-    in property <string> label;
-    in property <string> score;
-    callback clicked();
-    callback hover-changed(bool);
-    out property <bool> hovered: region-touch.has-hover;
-
-    min-height: 44px;
-    border-width: 1px;
-    border-color: Theme.border;
-    border-radius: 4px;
-    background: region-touch.has-hover ? Theme.surface-hover : #ffffff08;
-
-    region-touch := TouchArea {
-        clicked => { root.clicked(); }
-    }
-
-    changed hovered => {
-        root.hover-changed(self.hovered);
-    }
-
-    VerticalLayout {
-        width: parent.width - 8px;
-        padding: 4px;
-        spacing: 2px;
-        Text { text: root.label; color: Theme.text-primary; font-size: 11px; wrap: word-wrap; }
-        Text { text: root.score; color: Theme.text-secondary; font-size: 10px; }
-    }
-}
-
-component SidebarSectionHeader inherits Rectangle {
+component SectionHeader inherits Rectangle {
     in property <string> title;
-    in property <bool> expanded: true;
-    in property <string> summary-text: "";
-    in property <color> summary-color: Theme.text-secondary;
-    in property <bool> split-summary: false;
-    in property <string> summary-start-text: "";
-    in property <string> summary-end-text: "";
-    in property <bool> show-leading-status: false;
-    in property <float> leading-progress-value: 0;
-    in property <bool> leading-progress-completed: false;
-    in property <bool> leading-progress-error: false;
-    in property <string> leading-text: "";
+    in property <string> summary;
+    in property <bool> expanded;
     callback toggled();
 
     height: 30px;
     border-radius: 4px;
-    background: section-touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
 
-    section-touch := TouchArea {
+    touch := TouchArea {
         clicked => { root.toggled(); }
     }
 
     HorizontalLayout {
-        width: parent.width;
-        height: parent.height;
         padding-left: 4px;
-        padding-right: 4px;
+        padding-right: 6px;
         spacing: 8px;
 
-        Rectangle {
-            width: 12px;
-            height: parent.height;
-            background: transparent;
-
-            Text {
-                text: root.expanded ? "▾" : "▸";
-                color: Theme.text-secondary;
-                font-size: 12px;
-                vertical-alignment: center;
-            }
+        Text {
+            text: root.expanded ? "▾" : "▸";
+            color: Theme.text-secondary;
+            font-size: 12px;
+            vertical-alignment: center;
         }
 
         Text {
@@ -263,783 +80,664 @@ component SidebarSectionHeader inherits Rectangle {
             vertical-alignment: center;
         }
 
-        if root.show-leading-status: Rectangle {
-            width: leading-status-row.preferred-width;
-            height: parent.height;
-            background: transparent;
-
-            leading-status-row := HorizontalLayout {
-                width: parent.width;
-                height: parent.height;
-                spacing: 6px;
-                alignment: start;
-
-                Rectangle {
-                    width: 16px;
-                    height: parent.height;
-                    background: transparent;
-
-                    CircularProgressDots {
-                        y: (parent.height - self.height) / 2;
-                        value: root.leading-progress-value;
-                        completed: root.leading-progress-completed;
-                        error: root.leading-progress-error;
-                    }
-                }
-
-                Text {
-                    text: root.leading-text;
-                    color: root.leading-progress-error ? #d66e6e : Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                Rectangle {
-                    width: 8px;
-                    height: parent.height;
-                    background: transparent;
-                }
-            }
-        }
-
-        Rectangle {
+        Text {
             horizontal-stretch: 1;
-            height: parent.height;
-            background: transparent;
-
-            if !root.split-summary && root.summary-text != "": Rectangle {
-                width: parent.width;
-                height: parent.height;
-                background: transparent;
-
-                Text {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
-                    text: root.summary-text;
-                    color: root.summary-color;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                    overflow: elide;
-                }
-            }
-
-            if root.split-summary && (root.summary-start-text != "" || root.summary-end-text != ""): Rectangle {
-                width: parent.width;
-                height: parent.height;
-                background: transparent;
-
-                summary-end := Text {
-                    x: max(0px, parent.width - self.width);
-                    y: 0px;
-                    width: min(self.preferred-width, max(0px, parent.width - 20px));
-                    height: parent.height;
-                    text: root.summary-end-text;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                    overflow: elide;
-                }
-
-                summary-icon := Image {
-                    x: max(0px, summary-end.x - self.width - 6px);
-                    y: (parent.height - self.height) / 2;
-                    width: 14px;
-                    height: 14px;
-                    source: @image-url("icons/transforms.svg");
-                    image-fit: contain;
-                    colorize: Theme.text-secondary;
-                }
-
-                Text {
-                    x: 0px;
-                    y: 0px;
-                    width: max(0px, summary-icon.x - 6px);
-                    height: parent.height;
-                    text: root.summary-start-text;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                    overflow: elide;
-                }
-            }
+            text: root.expanded ? "" : root.summary;
+            color: Theme.text-secondary;
+            font-size: 11px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 }
 
-export struct TensorRow {
-    name: string,
-    dtype: string,
-    shape: string,
+component Label inherits Text {
+    color: Theme.text-secondary;
+    font-size: 11px;
+    wrap: word-wrap;
 }
 
-export struct HotRegionRow {
-    id: string,
-    label: string,
-    score: string,
+component Note inherits Text {
+    in property <bool> error: false;
+    in property <bool> warning: false;
+    color: root.error ? #e57373 : (root.warning ? #e0b050 : Theme.text-secondary);
+    font-size: 11px;
+    wrap: word-wrap;
 }
 
-export struct ErrorHistogramBin {
-    label: string,
-    count: int,
-    normalized: float,
+component Field inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 8px;
+
+    Text {
+        min-width: 86px;
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+
+    @children
+}
+
+component RegionRow inherits Rectangle {
+    in property <HotRegion> region;
+    callback clicked();
+    callback hovered(bool);
+
+    height: 40px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : #ffffff08;
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+        changed has-hover => { root.hovered(self.has-hover); }
+    }
+
+    VerticalLayout {
+        padding: 5px;
+        spacing: 2px;
+
+        Text {
+            text: root.region.label;
+            color: Theme.text-primary;
+            font-size: 11px;
+            overflow: elide;
+        }
+
+        Text {
+            text: root.region.score;
+            color: Theme.text-secondary;
+            font-size: 10px;
+            overflow: elide;
+        }
+    }
 }
 
 export component EovaeSidebar inherits Rectangle {
-    in property <string> model-path: "";
-    in property <string> model-summary: "";
-    in property <string> model-status: "No ONNX model loaded.";
-    in property <bool> model-loaded: false;
-    in property <[TensorRow]> input-rows: [];
-    in property <[TensorRow]> output-rows: [];
-    in property <[string]> input-options: [];
-    in property <[string]> output-options: [];
-    in property <int> selected-input-index: 0;
-    in property <int> selected-output-index: 0;
-    in property <string> selected-input-name: "";
-    in property <string> selected-output-name: "";
-    in property <[string]> mode-options: ["Original", "Reconstruction", "Error Map", "Difference"];
-    in property <int> selected-mode-index: 0;
-    in property <[string]> mip-options: ["1x", "2x", "4x", "8x"];
-    in property <int> selected-mip-index: 0;
-    out property <bool> capture-hotkeys: false;
-    in property <string> job-status: "Idle";
-    in property <float> progress-value: 0;
-    in property <bool> job-running: false;
-    in property <bool> model-section-expanded: true;
-    in property <bool> analysis-section-expanded: true;
-    in property <bool> results-section-expanded: true;
-    in property <string> analysis-elapsed-text: "";
-    in property <string> analysis-started-text: "";
-    in property <string> analysis-summary-text: "";
-    in property <bool> analysis-summary-is-error: false;
-    in property <bool> analysis-show-leading-status: false;
-    in property <float> analysis-indicator-value: 0;
-    in property <bool> analysis-completed: false;
-    in property <string> analysis-threads: "1";
-    in property <string> analysis-batch-size: "64";
-    in property <int> max-analysis-threads: 1;
-    in property <bool> gpu-backend-active: false;
-    private property <bool> mip-menu-visible: false;
-    private property <length> mip-menu-x: 0px;
-    private property <length> mip-menu-y: 0px;
-    private property <length> mip-menu-width: 122px;
-    private property <string> analysis-tooltip-text: "";
-    private property <length> analysis-tooltip-center-x: 0px;
-    private property <length> analysis-tooltip-top-y: 0px;
-    in property <string> stats-summary: "No analysis yet.";
-    in property <[ErrorHistogramBin]> error-histogram: [];
-    in property <int> error-histogram-max: 0;
-    in property <[HotRegionRow]> hot-regions: [];
+    // Sections.
+    in-out property <bool> model-expanded: true;
+    in-out property <bool> analysis-expanded: true;
+    in-out property <bool> results-expanded: true;
+    in-out property <bool> cache-expanded: false;
 
+    // Model.
+    in property <int> model-state: 0;
+    in property <string> model-name;
+    in property <string> model-detail;
+    in property <string> model-message: "No model loaded.";
+    in property <bool> model-message-error: false;
+    in property <string> engine-label;
+    in property <string> engine-note;
+    in property <string> runtime-label;
+    in property <string> input-text;
+    in property <[string]> output-options;
+    in-out property <int> output-index: 0;
+    in property <string> latent-text;
+    in property <[string]> warnings;
+    in property <string> contract-source;
+    in property <string> contract-summary;
+    in property <[string]> scaling-options: ["[-1, 1]", "[0, 1]", "[0, 255]", "ImageNet mean/std"];
+    in-out property <int> input-scaling-index: 0;
+    in-out property <int> output-scaling-index: 0;
+    in-out property <bool> composite-white: true;
+    in-out property <bool> black-to-white: true;
+    in property <bool> contract-overridden: false;
+
+    // Analysis.
+    in property <[string]> device-options: ["Auto", "CPU", "CUDA"];
+    in-out property <int> device-index: 0;
+    in property <[string]> resolution-options: ["Auto"];
+    in-out property <int> resolution-index: 0;
+    in property <string> resolution-note;
+    in property <bool> resolution-warning: false;
+    in-out property <string> threads-text: "auto";
+    in property <string> threads-hint;
+    in-out property <string> batch-text: "16";
+    in property <bool> batch-fixed: false;
+    in-out property <bool> tf32: true;
+    in-out property <bool> skip-background: true;
+    in-out property <bool> auto-analyze: true;
+    in property <bool> can-analyze: false;
+    in property <bool> job-running: false;
+    in property <string> job-title;
+    in property <string> job-status;
+    in property <float> job-progress: 0;
+    in property <string> job-detail;
+    in property <string> last-result;
+    in property <bool> last-result-error: false;
+    in property <string> auto-hint;
+
+    // Results.
+    in property <string> slide-name;
+    in property <[string]> view-options: ["Original", "Reconstruction", "Error map", "Difference"];
+    in-out property <int> view-index: 0;
+    in property <string> adjustment-note;
+    in property <string> coverage-text;
+    in property <string> stats-text;
+    in property <[HistogramBin]> histogram;
+    in property <int> histogram-peak: 0;
+    in property <string> histogram-lo;
+    in property <string> histogram-hi;
+    in property <bool> legend-visible: false;
+    in property <string> legend-title;
+    in property <string> legend-lo;
+    in property <string> legend-hi;
+    in property <[HotRegion]> hot-regions;
+    in property <bool> can-export: false;
+
+    // Cache.
+    in property <string> cache-text;
+    in property <string> cache-error;
+    in property <bool> cache-enabled: true;
+    in property <string> memory-text;
+    in-out property <bool> keep-pixels: false;
+
+    private property <string> hovered-bin;
+
+    callback section-toggled(string, bool);
     callback load-model();
     callback clear-model();
+    callback choose-runtime();
+    callback output-selected(int) -> int;
+    callback input-scaling-selected(int) -> int;
+    callback output-scaling-selected(int) -> int;
+    callback composite-white-toggled(bool);
+    callback black-to-white-toggled(bool);
+    callback reset-preprocessing();
+    callback device-selected(int) -> int;
+    callback resolution-selected(int) -> int;
+    callback threads-committed(string) -> string;
+    callback batch-committed(string) -> string;
+    callback tf32-toggled(bool);
+    callback skip-background-toggled(bool);
+    callback auto-analyze-toggled(bool);
     callback analyze-viewport();
     callback analyze-slide();
     callback cancel-job();
+    callback view-selected(int) -> int;
     callback jump-to-region(string);
     callback hover-region(string);
-    callback mode-changed(string);
-    callback mip-changed(string);
-    callback model-section-expanded-changed(bool);
-    callback analysis-section-expanded-changed(bool);
-    callback results-section-expanded-changed(bool);
-    callback analysis-threads-changed(string);
-    callback analysis-batch-size-changed(string);
-    callback input-changed(string);
-    callback output-changed(string);
+    callback export-csv();
+    callback keep-pixels-toggled(bool);
+    callback clear-cache();
 
     background: Theme.surface;
 
-    Rectangle {
+    ScrollView {
         width: parent.width;
         height: parent.height;
-        background: transparent;
-        clip: true;
 
-        Flickable {
-            width: parent.width;
-            height: parent.height;
-            viewport-height: sidebar-content.preferred-height;
-            interactive: sidebar-content.preferred-height > self.height;
+        VerticalLayout {
+            padding: 8px;
+            spacing: 6px;
+            alignment: start;
 
-            sidebar-content := VerticalLayout {
-                width: parent.width - 6px;
-                padding: 3px;
-                spacing: 0px;
+            // ---------------------------------------------------------- Model
+            SectionHeader {
+                title: "Model";
+                summary: root.model-name;
+                expanded: root.model-expanded;
+                toggled => {
+                    root.model-expanded = !root.model-expanded;
+                    root.section-toggled("model", root.model-expanded);
+                }
+            }
 
-                //Text {
-                //    text: "VAE Analysis";
-                //    color: Theme.text-primary;
-                //    font-size: 16px;
-                //    font-weight: 600;
-                //}
+            if root.model-expanded: VerticalLayout {
+                padding-left: 12px;
+                spacing: 6px;
 
-                Rectangle { height: 6px; background: transparent; }
-
-                SidebarSectionHeader {
-                    width: parent.width - 6px;
-                    title: "Model";
-                    expanded: root.model-section-expanded;
-                    summary-text: root.model-section-expanded ? "" : root.model-summary;
-                    toggled => { root.model-section-expanded-changed(!root.model-section-expanded); }
+                Text {
+                    text: root.model-name == "" ? "No model" : root.model-name;
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                    wrap: word-wrap;
                 }
 
-                if root.model-section-expanded: Rectangle {
-                    width: parent.width - 18px;
-                    x: 18px;
-                    background: transparent;
+                if root.model-detail != "": Label { text: root.model-detail; }
 
-                    Rectangle {
-                        x: 0;
-                        y: 0;
-                        width: 1px;
-                        height: parent.height;
-                        background: #ffffff12;
+                if root.model-message != "": Note {
+                    text: root.model-message;
+                    error: root.model-message-error;
+                }
+
+                if root.engine-label != "": Label { text: "Running on " + root.engine-label; }
+                if root.engine-note != "": Note { text: root.engine-note; warning: true; }
+
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    ActionButton {
+                        text: "Load ONNX…";
+                        base: #2f6db5;
+                        hover: #3f82d1;
+                        enabled: root.model-state != 1;
+                        clicked => { root.load-model(); }
                     }
 
-                    VerticalLayout {
-                        width: parent.width - 12px;
-                        padding-left: 10px;
-                        padding-top: 2px;
-                        padding-bottom: 10px;
-                        spacing: 6px;
+                    ActionButton {
+                        text: "Clear";
+                        enabled: root.model-state != 0;
+                        clicked => { root.clear-model(); }
+                    }
 
-                        Text {
-                            text: root.model-path == "" ? "Model" : root.model-path;
-                            color: Theme.text-primary;
-                            wrap: word-wrap;
-                            font-size: 12px;
-                        }
+                    ActionButton {
+                        text: "Runtime…";
+                        clicked => { root.choose-runtime(); }
+                    }
+                }
 
-                        Text {
-                            text: root.model-status;
-                            color: Theme.text-secondary;
-                            wrap: word-wrap;
-                            font-size: 11px;
-                        }
+                Label { text: root.runtime-label; }
 
-                        HorizontalLayout {
-                            spacing: 8px;
+                if root.model-state == 2: VerticalLayout {
+                    spacing: 6px;
 
-                            SidebarActionButton {
-                                min-width: 88px;
-                                text: "Load ONNX";
-                                base-color: #2f6db5;
-                                hover-color: #3f82d1;
-                                clicked => { root.load-model(); }
-                            }
+                    Label { text: "Input: " + root.input-text; }
 
-                            SidebarActionButton {
-                                min-width: 72px;
-                                enabled: root.model-loaded;
-                                text: "Clear";
-                                base-color: #5b6470;
-                                hover-color: #737d8c;
-                                clicked => { root.clear-model(); }
-                            }
-                        }
-
-                        Rectangle { height: 1px; background: Theme.border; }
-
-                        Text { text: "Input"; color: Theme.text-secondary; font-size: 11px; }
-                        if root.input-options.length > 0: ComboBox {
-                            model: root.input-options;
-                            current-index: root.selected-input-index;
-                            selected(value) => { root.input-changed(value); }
-                        }
-                        if root.input-options.length == 0: Text {
-                            text: "No model loaded";
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                        }
-
-                        for row in root.input-rows: Text {
-                            text: row.name + " • " + row.dtype + " • " + row.shape;
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                            wrap: word-wrap;
-                        }
-
-                        Rectangle { height: 1px; background: Theme.border; }
-
-                        Text { text: "Output"; color: Theme.text-secondary; font-size: 11px; }
-                        if root.output-options.length > 0: ComboBox {
+                    Field {
+                        label: "Output";
+                        ComboBox {
+                            horizontal-stretch: 1;
                             model: root.output-options;
-                            current-index: root.selected-output-index;
-                            selected(value) => { root.output-changed(value); }
+                            current-index <=> root.output-index;
+                            enabled: root.output-options.length > 1;
+                            selected(value) => {
+                                root.output-index = root.output-selected(self.current-index);
+                            }
                         }
-                        if root.output-options.length == 0: Text {
-                            text: "No model loaded";
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                        }
+                    }
 
-                        for row in root.output-rows: Text {
-                            text: row.name + " • " + row.dtype + " • " + row.shape;
-                            color: Theme.text-secondary;
-                            font-size: 11px;
-                            wrap: word-wrap;
+                    if root.latent-text != "": Label { text: root.latent-text; }
+
+                    for warning in root.warnings: Note {
+                        text: "⚠ " + warning;
+                        warning: true;
+                    }
+
+                    Rectangle { height: 1px; background: Theme.border; }
+
+                    Text {
+                        text: "Preprocessing";
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+
+                    Label { text: root.contract-source; }
+
+                    Field {
+                        label: "Input range";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: root.scaling-options;
+                            current-index <=> root.input-scaling-index;
+                            selected(value) => {
+                                root.input-scaling-index = root.input-scaling-selected(self.current-index);
+                            }
+                        }
+                    }
+
+                    Field {
+                        label: "Output range";
+                        ComboBox {
+                            horizontal-stretch: 1;
+                            model: root.scaling-options;
+                            current-index <=> root.output-scaling-index;
+                            selected(value) => {
+                                root.output-scaling-index = root.output-scaling-selected(self.current-index);
+                            }
+                        }
+                    }
+
+                    CheckBox {
+                        text: "Composite transparency onto white";
+                        checked <=> root.composite-white;
+                        toggled => { root.composite-white-toggled(self.checked); }
+                    }
+
+                    CheckBox {
+                        text: "Turn near-black pixels white";
+                        checked <=> root.black-to-white;
+                        toggled => { root.black-to-white-toggled(self.checked); }
+                    }
+
+                    if root.contract-overridden: HorizontalLayout {
+                        alignment: start;
+                        ActionButton {
+                            text: "Use the model's preprocessing";
+                            min-width: 200px;
+                            clicked => { root.reset-preprocessing(); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.border; }
+
+            // ------------------------------------------------------- Analysis
+            SectionHeader {
+                title: "Analysis";
+                summary: root.job-running ? root.job-status : root.last-result;
+                expanded: root.analysis-expanded;
+                toggled => {
+                    root.analysis-expanded = !root.analysis-expanded;
+                    root.section-toggled("analysis", root.analysis-expanded);
+                }
+            }
+
+            if root.analysis-expanded: VerticalLayout {
+                padding-left: 12px;
+                spacing: 6px;
+
+                Field {
+                    label: "Device";
+                    ComboBox {
+                        horizontal-stretch: 1;
+                        model: root.device-options;
+                        current-index <=> root.device-index;
+                        selected(value) => {
+                            root.device-index = root.device-selected(self.current-index);
                         }
                     }
                 }
 
-                Rectangle { height: 2px; background: Theme.border; }
-
-                SidebarSectionHeader {
-                    width: parent.width - 6px;
-                    title: "Analysis";
-                    expanded: root.analysis-section-expanded;
-                    show-leading-status: !root.analysis-section-expanded && root.job-running;
-                    leading-progress-value: root.analysis-indicator-value;
-                    leading-progress-completed: root.analysis-completed;
-                    leading-progress-error: root.analysis-summary-is-error;
-                    leading-text: !root.analysis-section-expanded && root.job-running ? root.analysis-elapsed-text : "";
-                    summary-text: root.analysis-section-expanded ? "" : root.analysis-summary-text;
-                    summary-color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
-                    toggled => { root.analysis-section-expanded-changed(!root.analysis-section-expanded); }
+                Field {
+                    label: "Resolution";
+                    ComboBox {
+                        horizontal-stretch: 1;
+                        model: root.resolution-options;
+                        current-index <=> root.resolution-index;
+                        selected(value) => {
+                            root.resolution-index = root.resolution-selected(self.current-index);
+                        }
+                    }
                 }
 
-                if root.analysis-section-expanded: Rectangle {
-                    width: parent.width - 18px;
-                    x: 18px;
-                    background: transparent;
+                if root.resolution-note != "": Note {
+                    text: root.resolution-note;
+                    warning: root.resolution-warning;
+                }
+
+                Field {
+                    label: "Threads";
+                    threads := LineEdit {
+                        horizontal-stretch: 1;
+                        text <=> root.threads-text;
+                        placeholder-text: root.threads-hint;
+                        accepted(text) => { root.threads-text = root.threads-committed(text); }
+                        changed has-focus => {
+                            if !self.has-focus {
+                                root.threads-text = root.threads-committed(self.text);
+                            }
+                        }
+                    }
+                }
+
+                Field {
+                    label: root.batch-fixed ? "Batch (model)" : "Batch";
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        enabled: !root.batch-fixed;
+                        text <=> root.batch-text;
+                        accepted(text) => { root.batch-text = root.batch-committed(text); }
+                        changed has-focus => {
+                            if !self.has-focus {
+                                root.batch-text = root.batch-committed(self.text);
+                            }
+                        }
+                    }
+                }
+
+                CheckBox {
+                    text: "Allow TF32 on CUDA (faster)";
+                    checked <=> root.tf32;
+                    toggled => { root.tf32-toggled(self.checked); }
+                }
+
+                CheckBox {
+                    text: "Skip background tiles";
+                    checked <=> root.skip-background;
+                    toggled => { root.skip-background-toggled(self.checked); }
+                }
+
+                CheckBox {
+                    text: "Analyse visible tiles automatically";
+                    checked <=> root.auto-analyze;
+                    toggled => { root.auto-analyze-toggled(self.checked); }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    ActionButton {
+                        horizontal-stretch: 1;
+                        text: "Viewport";
+                        base: #206a5d;
+                        hover: #2b8777;
+                        enabled: root.can-analyze;
+                        clicked => { root.analyze-viewport(); }
+                    }
+
+                    ActionButton {
+                        horizontal-stretch: 1;
+                        text: "Whole slide";
+                        base: #8a5a12;
+                        hover: #aa711d;
+                        enabled: root.can-analyze;
+                        clicked => { root.analyze-slide(); }
+                    }
+
+                    ActionButton {
+                        horizontal-stretch: 1;
+                        text: "Cancel";
+                        base: #922f2f;
+                        hover: #b33d3d;
+                        enabled: root.job-running;
+                        clicked => { root.cancel-job(); }
+                    }
+                }
+
+                if root.job-running: VerticalLayout {
+                    spacing: 4px;
+
+                    Text {
+                        text: root.job-title;
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                    }
 
                     Rectangle {
-                        x: 0;
-                        y: 0;
-                        width: 1px;
-                        height: parent.height;
-                        background: #ffffff12;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: #23282f;
+
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * clamp(root.job-progress, 0, 1);
+                            height: parent.height;
+                            border-radius: 3px;
+                            background: #2f6db5;
+                        }
                     }
 
-                    VerticalLayout {
-                        width: parent.width - 12px;
-                        padding-left: 10px;
-                        padding-top: 2px;
-                        padding-bottom: 10px;
-                        spacing: 8px;
+                    Label { text: root.job-status; }
+                    if root.job-detail != "": Label { text: root.job-detail; }
+                }
 
-                        analysis-controls-row := HorizontalLayout {
-                            width: parent.width;
-                            spacing: 6px;
+                if root.last-result != "": Note {
+                    text: root.last-result;
+                    error: root.last-result-error;
+                }
 
-                            property <length> available-width: max(0px, self.width - self.spacing * 2);
-                            property <length> mip-width: self.available-width * 0.4;
-                            property <length> numeric-width: self.available-width * 0.3;
+                if root.auto-hint != "": Note { text: root.auto-hint; }
+            }
 
-                            InlineLabeledSelectField {
-                                width: analysis-controls-row.mip-width;
-                                label: "Mip Level";
-                                model: root.mip-options;
-                                current-index: root.selected-mip-index;
-                                popup-open: root.mip-menu-visible;
-                                clicked(menu-x, menu-y, menu-width) => {
-                                    root.mip-menu-x = menu-x - root.absolute-position.x;
-                                    root.mip-menu-y = menu-y - root.absolute-position.y;
-                                    root.mip-menu-width = menu-width;
-                                    root.mip-menu-visible = !root.mip-menu-visible;
-                                }
-                            }
+            Rectangle { height: 1px; background: Theme.border; }
 
-                            InlineLabeledNumberField {
-                                width: analysis-controls-row.numeric-width;
-                                label: "Threads";
-                                value: root.analysis-threads;
-                                accepted(value) => {
-                                    root.analysis-threads-changed(value);
-                                }
-                                edited(value) => {
-                                    root.analysis-threads-changed(value);
-                                }
-                            }
+            // -------------------------------------------------------- Results
+            SectionHeader {
+                title: "Results";
+                summary: root.slide-name;
+                expanded: root.results-expanded;
+                toggled => {
+                    root.results-expanded = !root.results-expanded;
+                    root.section-toggled("results", root.results-expanded);
+                }
+            }
 
-                            InlineLabeledNumberField {
-                                width: analysis-controls-row.numeric-width;
-                                label: "Batch";
-                                value: root.analysis-batch-size;
-                                enabled: root.gpu-backend-active;
-                                accepted(value) => {
-                                    root.analysis-batch-size-changed(value);
-                                }
-                                edited(value) => {
-                                    root.analysis-batch-size-changed(value);
-                                }
-                            }
+            if root.results-expanded: VerticalLayout {
+                padding-left: 12px;
+                spacing: 6px;
+
+                Field {
+                    label: "Overlay";
+                    ComboBox {
+                        horizontal-stretch: 1;
+                        model: root.view-options;
+                        current-index <=> root.view-index;
+                        enabled: root.slide-name != "";
+                        selected(value) => {
+                            root.view-index = root.view-selected(self.current-index);
                         }
+                    }
+                }
+
+                if root.legend-visible: VerticalLayout {
+                    spacing: 2px;
+
+                    Label { text: root.legend-title; }
+
+                    Rectangle {
+                        height: 10px;
+                        border-radius: 2px;
+                        background: @linear-gradient(90deg, #440154 0%, #46327e 14%, #365c8d 29%, #277f8e 43%, #1fa187 57%, #4ac16d 71%, #9fda3a 86%, #fde725 100%);
+                    }
+
+                    HorizontalLayout {
+                        Label { text: root.legend-lo; }
+                        Label { text: root.legend-hi; horizontal-alignment: right; }
+                    }
+                }
+
+                Label { text: root.coverage-text; }
+
+                if root.histogram.length > 0: VerticalLayout {
+                    spacing: 2px;
+
+                    Rectangle {
+                        height: 64px;
+                        border-radius: 4px;
+                        background: #13181f;
 
                         HorizontalLayout {
-                            width: parent.width;
-                            spacing: 6px;
+                            padding: 4px;
+                            spacing: 2px;
 
-                            SidebarActionButton {
+                            for bin in root.histogram: Rectangle {
                                 horizontal-stretch: 1;
-                                enabled: root.model-loaded && !root.job-running;
-                                text: "Viewport";
-                                base-color: #206a5d;
-                                hover-color: #2b8777;
-                                clicked => { root.analyze-viewport(); }
-                            }
 
-                            SidebarActionButton {
-                                horizontal-stretch: 1;
-                                enabled: root.model-loaded && !root.job-running;
-                                text: "Whole Slide";
-                                base-color: #8a5a12;
-                                hover-color: #aa711d;
-                                clicked => { root.analyze-slide(); }
-                            }
-
-                            SidebarActionButton {
-                                horizontal-stretch: 1;
-                                enabled: root.job-running;
-                                text: "Cancel";
-                                base-color: #922f2f;
-                                hover-color: #b33d3d;
-                                clicked => { root.cancel-job(); }
-                            }
-                        }
-
-                        Rectangle {
-                            width: parent.width;
-                            height: 18px;
-                            background: transparent;
-
-                            Text {
-                                width: parent.width;
-                                height: parent.height;
-                                text: root.job-status;
-                                color: root.analysis-summary-is-error ? #d66e6e : Theme.text-secondary;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
-
-                        }
-
-                        Rectangle {
-                            height: 8px;
-                            border-radius: 4px;
-                            background: #23282f;
-
-                            Rectangle {
-                                x: 0;
-                                width: parent.width * root.progress-value;
-                                height: parent.height;
-                                border-radius: 4px;
-                                background: #2f6db5;
-                            }
-                        }
-
-                        Rectangle {
-                            width: parent.width;
-                            height: 18px;
-                            background: transparent;
-
-                            HorizontalLayout {
-                                width: parent.width;
-                                height: parent.height;
-                                spacing: 8px;
-
-                                Text {
-                                    text: root.analysis-elapsed-text == "" ? "" : "Elapsed: " + root.analysis-elapsed-text;
-                                    color: Theme.text-secondary;
-                                    font-size: 11px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
+                                bar := Rectangle {
+                                    y: parent.height - self.height;
+                                    height: max(2px, parent.height * bin.normalized);
+                                    border-radius: 2px;
+                                    background: touch.has-hover ? #f0c850 : #d4aa33;
                                 }
 
-                                Rectangle { horizontal-stretch: 1; background: transparent; }
-
-                                Text {
-                                    visible: root.analysis-started-text != "";
-                                    text: "Started: " + root.analysis-started-text;
-                                    color: Theme.text-secondary;
-                                    font-size: 11px;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
-                                    overflow: elide;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle { height: 2px; background: Theme.border; }
-
-                SidebarSectionHeader {
-                    width: parent.width - 6px;
-                    title: "Results";
-                    expanded: root.results-section-expanded;
-                    toggled => { root.results-section-expanded-changed(!root.results-section-expanded); }
-                }
-
-                if root.results-section-expanded: Rectangle {
-                    width: parent.width - 18px;
-                    x: 18px;
-                    background: transparent;
-
-                    Rectangle {
-                        x: 0;
-                        y: 0;
-                        width: 1px;
-                        height: parent.height;
-                        background: #ffffff12;
-                    }
-
-                    VerticalLayout {
-                        width: parent.width - 12px;
-                        padding-left: 10px;
-                        padding-top: 2px;
-                        padding-bottom: 8px;
-                        spacing: 8px;
-
-                        Rectangle {
-                            width: parent.width;
-                            min-height: 122px;
-                            border-radius: 5px;
-                            border-width: 1px;
-                            border-color: #ffffff10;
-                            background: #13181f;
-                            clip: true;
-
-                            for guide in [0, 1, 2]: Rectangle {
-                                y: 20px + guide * 26px;
-                                x: 10px;
-                                width: parent.width - 20px;
-                                height: 1px;
-                                background: #ffffff10;
-                            }
-
-                            VerticalLayout {
-                                width: parent.width - 16px;
-                                height: parent.height - 14px;
-                                x: 8px;
-                                y: 7px;
-                                spacing: 6px;
-
-                                HorizontalLayout {
-                                    spacing: 0px;
-
-                                    Text {
-                                        text: "Reconstruction error distribution";
-                                        color: Theme.text-primary;
-                                        font-size: 11px;
-                                        font-weight: 600;
-                                    }
-
-                                    Rectangle { horizontal-stretch: 1; background: transparent; }
-
-                                    Text {
-                                        text: root.error-histogram-max > 0 ? "peak " + root.error-histogram-max : "awaiting data";
-                                        color: Theme.text-secondary;
-                                        font-size: 10px;
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: parent.width;
-                                    height: 72px;
-                                    background: transparent;
-
-                                    if root.error-histogram.length == 0: HorizontalLayout {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        spacing: 6px;
-                                        padding-top: 10px;
-                                        padding-bottom: 8px;
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 16px; border-radius: 3px; background: #ffffff12; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 28px; border-radius: 3px; background: #ffffff14; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 22px; border-radius: 3px; background: #ffffff10; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 38px; border-radius: 3px; background: #ffffff16; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 30px; border-radius: 3px; background: #ffffff12; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 18px; border-radius: 3px; background: #ffffff10; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 34px; border-radius: 3px; background: #ffffff14; }
-                                        Rectangle { width: 12px; vertical-stretch: 1; height: 24px; border-radius: 3px; background: #ffffff12; }
-                                    }
-
-                                    if root.error-histogram.length > 0: HorizontalLayout {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        spacing: 4px;
-                                        padding-top: 4px;
-                                        padding-bottom: 2px;
-
-                                        for bin in root.error-histogram: Rectangle {
-                                            vertical-stretch: 1;
-                                            background: transparent;
-
-                                            Rectangle {
-                                                x: 0;
-                                                y: parent.height - (bin.normalized * 60px) - 2px;
-                                                width: parent.width;
-                                                height: (bin.normalized * 60px) + 2px;
-                                                border-radius: 3px;
-                                                background: #d4aa33;
-                                            }
+                                touch := TouchArea {
+                                    changed has-hover => {
+                                        if self.has-hover {
+                                            root.hovered-bin = bin.label + " tiles";
+                                        } else if root.hovered-bin == bin.label + " tiles" {
+                                            root.hovered-bin = "";
                                         }
                                     }
                                 }
-
-                                HorizontalLayout {
-                                    spacing: 0px;
-
-                                    Text {
-                                        text: root.error-histogram.length > 0 ? root.error-histogram[0].label : "lower error";
-                                        color: Theme.text-secondary;
-                                        font-size: 10px;
-                                    }
-
-                                    Rectangle { horizontal-stretch: 1; background: transparent; }
-
-                                    Text {
-                                        text: root.error-histogram.length > 0 ? root.error-histogram[root.error-histogram.length - 1].label : "analyze a viewport or whole slide";
-                                        color: Theme.text-secondary;
-                                        font-size: 10px;
-                                        horizontal-alignment: right;
-                                    }
-                                }
-
-                                if root.error-histogram.length == 0: Text {
-                                    text: "Run an analysis to populate the error histogram and ranked regions.";
-                                    color: Theme.text-secondary;
-                                    font-size: 10px;
-                                    wrap: word-wrap;
-                                }
-                            }
-                        }
-
-                        Text {
-                            text: root.stats-summary;
-                            color: Theme.text-secondary;
-                            wrap: word-wrap;
-                            font-size: 11px;
-                        }
-
-                        VerticalLayout {
-                            width: parent.width - 8px;
-                            spacing: 6px;
-
-                            if root.hot-regions.length == 0: Text {
-                                text: "No high-error regions yet.";
-                                color: Theme.text-secondary;
-                                font-size: 11px;
-                            }
-
-                            for region in root.hot-regions: HotRegionButton {
-                                label: region.label;
-                                score: region.score;
-                                clicked => { root.jump-to-region(region.id); }
-                                hover-changed(hovered) => {
-                                    root.hover-region(hovered ? region.id : "");
-                                }
                             }
                         }
                     }
-                }
 
-                Rectangle { height: 2px; background: Theme.border; }
-            }
-        }
-
-        if root.mip-menu-visible: Rectangle {
-            x: 0px;
-            y: 0px;
-            width: parent.width;
-            height: parent.height;
-            background: transparent;
-            z: 20;
-
-            TouchArea {
-                width: parent.width;
-                height: parent.height;
-                clicked => {
-                    root.mip-menu-visible = false;
-                }
-            }
-
-            Rectangle {
-                x: min(
-                    root.mip-menu-x,
-                    max(0px, root.width - self.width - 8px)
-                );
-                y: min(
-                    root.mip-menu-y,
-                    max(0px, root.height - self.height - 8px)
-                );
-                width: root.mip-menu-width;
-                height: mip-menu-layout.preferred-height;
-                background: #181d24;
-                border-radius: 6px;
-                border-width: 1px;
-                border-color: Theme.border;
-                drop-shadow-blur: 14px;
-                drop-shadow-color: #00000070;
-                clip: true;
-                z: 21;
-
-                mip-menu-layout := VerticalLayout {
-                    width: parent.width;
-                    padding: 4px;
-                    spacing: 2px;
-
-                    for option[index] in root.mip-options: Rectangle {
-                        width: parent.width - 8px;
-                        height: 24px;
-                        border-radius: 4px;
-                        background: option-touch.has-hover ? Theme.surface-hover : index == root.selected-mip-index ? #2f6db522 : transparent;
-
-                        option-touch := TouchArea {
-                            width: parent.width;
-                            height: parent.height;
-                            mouse-cursor: MouseCursor.pointer;
-                            clicked => {
-                                root.mip-menu-visible = false;
-                                root.mip-changed(option);
-                            }
+                    HorizontalLayout {
+                        Label { text: root.histogram-lo; }
+                        Label {
+                            text: root.hovered-bin;
+                            horizontal-alignment: center;
+                            horizontal-stretch: 1;
                         }
-
-                        Text {
-                            x: 8px;
-                            width: parent.width - 16px;
-                            height: parent.height;
-                            text: option;
-                            color: Theme.text-primary;
-                            font-size: 11px;
-                            vertical-alignment: center;
-                            horizontal-alignment: right;
-                        }
+                        Label { text: root.histogram-hi; horizontal-alignment: right; }
                     }
                 }
+
+                if root.stats-text != "": Label { text: root.stats-text; }
+
+                if root.hot-regions.length > 0: Text {
+                    text: "Highest-error regions";
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                for region in root.hot-regions: RegionRow {
+                    region: region;
+                    clicked => { root.jump-to-region(region.id); }
+                    hovered(on) => { root.hover-region(on ? region.id : ""); }
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    ActionButton {
+                        text: "Export CSV…";
+                        min-width: 110px;
+                        enabled: root.can-export;
+                        clicked => { root.export-csv(); }
+                    }
+                }
+
+                Note { text: root.adjustment-note; }
+                Note { text: "Research use only; not for diagnosis."; }
             }
-        }
 
-        if root.analysis-tooltip-text != "": Rectangle {
-            x: max(4px, min(root.width - self.width - 4px, root.analysis-tooltip-center-x - self.width / 2));
-            y: root.analysis-tooltip-top-y;
-            width: root.width - 8px;
-            height: analysis-tooltip-label.preferred-height + 10px;
-            background: #101419f2;
-            border-radius: 6px;
-            border-width: 1px;
-            border-color: Theme.border;
-            z: 30;
+            Rectangle { height: 1px; background: Theme.border; }
 
-            analysis-tooltip-label := Text {
-                x: 6px;
-                y: 5px;
-                width: parent.width - 12px;
-                text: root.analysis-tooltip-text;
-                color: Theme.text-primary;
-                font-size: 11px;
-                wrap: word-wrap;
+            // ---------------------------------------------------------- Cache
+            SectionHeader {
+                title: "Cache";
+                summary: root.cache-text;
+                expanded: root.cache-expanded;
+                toggled => {
+                    root.cache-expanded = !root.cache-expanded;
+                    root.section-toggled("cache", root.cache-expanded);
+                }
+            }
+
+            if root.cache-expanded: VerticalLayout {
+                padding-left: 12px;
+                spacing: 6px;
+
+                Label { text: root.cache-text; }
+                Label { text: root.memory-text; }
+                if root.cache-error != "": Note { text: root.cache-error; error: true; }
+
+                CheckBox {
+                    text: "Keep reconstructions on disk (large)";
+                    enabled: root.cache-enabled;
+                    checked <=> root.keep-pixels;
+                    toggled => { root.keep-pixels-toggled(self.checked); }
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    ActionButton {
+                        text: "Clear cache…";
+                        min-width: 110px;
+                        enabled: root.cache-enabled;
+                        clicked => { root.clear-cache(); }
+                    }
+                }
             }
         }
     }

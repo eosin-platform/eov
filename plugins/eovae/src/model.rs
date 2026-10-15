@@ -155,23 +155,25 @@ fn same_dim(a: &Dim, b: &Dim) -> bool {
 }
 
 /// Checks a scanned model and works out how to feed it.
+/// How a scanned model is fed: its input, layout and outputs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FeedPlan {
+    pub input: TensorInfo,
+    pub input_elem: TensorType,
+    pub layout: Layout,
+    pub tile_size: u32,
+    pub fixed_batch: Option<usize>,
+    pub outputs: Vec<ImageOutput>,
+    pub default_output: usize,
+    pub latent: Option<LatentOutput>,
+    pub warnings: Vec<String>,
+}
+
+/// Checks a scanned model and works out how to feed it.
 pub fn analyse_summary(
     summary: &OnnxSummary,
     tile_size_hint: Option<u32>,
-) -> Result<
-    (
-        TensorInfo,
-        TensorType,
-        Layout,
-        u32,
-        Option<usize>,
-        Vec<ImageOutput>,
-        usize,
-        Option<LatentOutput>,
-        Vec<String>,
-    ),
-    String,
-> {
+) -> Result<FeedPlan, String> {
     let mut warnings = Vec::new();
     let input = match summary.inputs.as_slice() {
         [single] => single.clone(),
@@ -329,7 +331,7 @@ pub fn analyse_summary(
             }
         });
 
-    Ok((
+    Ok(FeedPlan {
         input,
         input_elem,
         layout,
@@ -339,7 +341,7 @@ pub fn analyse_summary(
         default_output,
         latent,
         warnings,
-    ))
+    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -510,7 +512,7 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
         }
     }
 
-    let (
+    let FeedPlan {
         input,
         input_elem,
         layout,
@@ -519,8 +521,8 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
         outputs,
         default_output,
         latent,
-        mut model_warnings,
-    ) = analyse_summary(&summary, contract.tile_size)?;
+        warnings: mut model_warnings,
+    } = analyse_summary(&summary, contract.tile_size)?;
     warnings.append(&mut model_warnings);
     if contract.mpp.is_none() {
         warnings.push(
