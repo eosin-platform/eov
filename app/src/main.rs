@@ -386,6 +386,8 @@ fn main() -> Result<()> {
 
     ui.run()?;
 
+    // Copies still being written are cancelled, so no partial file is left.
+    save_copy::shutdown();
     // A new eov may take over while this one finishes.
     drop(instance_server);
     info!("Application shutting down");

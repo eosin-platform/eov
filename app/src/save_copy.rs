@@ -61,6 +61,8 @@ struct Dialog {
     choices: Choices,
     /// Progress timers of running copies, by job id.
     timers: HashMap<String, Timer>,
+    /// Running copies, by job id, for [`shutdown`].
+    running: HashMap<String, (Arc<JobControl>, std::thread::JoinHandle<()>)>,
 }
 
 thread_local! {
@@ -309,12 +311,10 @@ fn save(ui: &AppWindow) {
         ui.set_save_copy_settings(settings);
         return;
     }
-    let (filter, extensions): (&str, &[&str]) = match options.format {
-        SlideFormat::Tiff => ("Pyramidal TIFF", &["tif", "tiff"]),
-        SlideFormat::OmeTiff => ("OME-TIFF", &["ome.tif", "ome.tiff"]),
-    };
+    // Native dialogs take single extensions; `with_extension` makes the
+    // name end in `.ome.tif` for OME-TIFF.
     let mut dialog = rfd::FileDialog::new()
-        .add_filter(filter, extensions)
+        .add_filter(options.format.label(), &["tif", "tiff"])
         .set_file_name(suggested_name(&file_name, &options));
     if let Some(folder) = folder.filter(|folder| folder.is_dir()) {
         dialog = dialog.set_directory(folder);
@@ -370,6 +370,7 @@ fn start(path: PathBuf, wsi: WsiFile, options: ConvertOptions) {
         .spawn({
             let job_id = job_id.clone();
             let path = path.clone();
+            let control = Arc::clone(&control);
             move || {
                 let result = convert::convert_slide(&wsi, &path, &options, &control);
                 let _ = slint::invoke_from_event_loop(move || {
@@ -377,8 +378,42 @@ fn start(path: PathBuf, wsi: WsiFile, options: ConvertOptions) {
                 });
             }
         });
-    if let Err(err) = spawned {
-        finished(job_id, path, deidentified, Err(ConvertError::Io(err)));
+    match spawned {
+        // `finished` runs on this (the UI) thread, so after this.
+        Ok(handle) => {
+            DIALOG.with(|dialog| {
+                dialog
+                    .borrow_mut()
+                    .running
+                    .insert(job_id, (control, handle))
+            });
+        }
+        Err(err) => finished(job_id, path, deidentified, Err(ConvertError::Io(err))),
+    }
+}
+
+/// Cancels the copies still running when eov quits and waits for them to
+/// remove their partial files (for at most a few seconds).
+pub(crate) fn shutdown() {
+    let jobs: Vec<_> = DIALOG.with(|dialog| {
+        dialog
+            .borrow_mut()
+            .running
+            .drain()
+            .map(|(_, job)| job)
+            .collect()
+    });
+    for (control, _) in &jobs {
+        control.cancel();
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    for (_, handle) in jobs {
+        while !handle.is_finished() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if handle.is_finished() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -388,7 +423,11 @@ fn finished(
     deidentified: bool,
     result: Result<ConvertReport, ConvertError>,
 ) {
-    DIALOG.with(|dialog| dialog.borrow_mut().timers.remove(&job_id));
+    DIALOG.with(|dialog| {
+        let mut dialog = dialog.borrow_mut();
+        dialog.timers.remove(&job_id);
+        dialog.running.remove(&job_id);
+    });
     let name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -553,6 +592,86 @@ mod tests {
                 ui.get_save_copy_settings().summary
             );
             DIALOG.with(|dialog| *dialog.borrow_mut() = Dialog::default());
+        });
+    }
+
+    /// The copy runs as a status-bar job and reports its result.
+    #[test]
+    fn copies_run_as_status_bar_jobs() {
+        use slint::Model;
+
+        struct ClearHost;
+        impl Drop for ClearHost {
+            fn drop(&mut self) {
+                crate::host_ui::clear_for_tests();
+                DIALOG.with(|dialog| *dialog.borrow_mut() = Dialog::default());
+            }
+        }
+
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
+            let dir = tempfile::tempdir().unwrap();
+            let (state, id) = open_slide(dir.path());
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(eov_common::TileCache::with_limits(64, 64 << 20));
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let _host = crate::host_ui::init(
+                &ui,
+                &state,
+                &tile_cache,
+                &std::rc::Rc::new(Timer::default()),
+                crate::host_ui::InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: true,
+                },
+            );
+
+            open(&ui, &state, id);
+            let settings = ui.get_save_copy_settings();
+            let (wsi, options) = DIALOG.with(|dialog| {
+                let dialog = dialog.borrow();
+                let target = dialog.target.as_ref().unwrap();
+                (target.wsi.clone(), options_for(&settings, target))
+            });
+            assert!(options.deidentify && options.threads.is_some());
+            let output = dir.path().join("teaching.tif");
+            start(output.clone(), wsi, options);
+            let jobs = ui.get_jobs();
+            assert_eq!(jobs.row_count(), 1);
+            let job = jobs.row_data(0).unwrap();
+            assert_eq!(job.title.as_str(), "Saving teaching.tif");
+            assert!(job.cancellable);
+
+            // Wait for the worker, then let the event loop deliver its result.
+            let deadline = std::time::Instant::now() + Duration::from_secs(60);
+            while DIALOG.with(|dialog| {
+                dialog
+                    .borrow()
+                    .running
+                    .values()
+                    .any(|(_, handle)| !handle.is_finished())
+            }) {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the copy never finished"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            slint::invoke_from_event_loop(|| {
+                let _ = slint::quit_event_loop();
+            })
+            .unwrap();
+            slint::run_event_loop().unwrap();
+
+            assert_eq!(ui.get_jobs().row_count(), 0, "the job is finished");
+            assert!(DIALOG.with(|dialog| dialog.borrow().running.is_empty()));
+            let notice = ui.get_notifications().row_data(0).unwrap();
+            assert_eq!(notice.message.as_str(), "Saved teaching.tif");
+            assert!(notice.detail.contains("de-identified"), "{}", notice.detail);
+            let copy = WsiFile::open(&output).unwrap();
+            assert_eq!(copy.properties().vendor.as_deref(), Some("generic-tiff"));
+            let comment = copy.properties().comment.clone().unwrap_or_default();
+            assert!(!comment.contains("S12-3456"), "{comment}");
         });
     }
 
