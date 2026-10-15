@@ -97,7 +97,7 @@ The `Host` methods, grouped (see the API docs for every type):
 | Feedback | `log`/`info`/`warn`/`error`, `notify`, `notify_error`, `set_status`, `start_job` (status-bar progress with cancel) |
 | State | `snapshot` (panes, views, files, focus), `file_info`, `file_properties`, `roi`, `measurements`, `subscribe` (limit the events you receive) |
 | Pixels | `read_region` (any level, straight or premultiplied alpha, through a plugin-private handle), `read_associated_image` (label, macro, thumbnail) |
-| Overlays | `create_layer` → `Layer`: `upsert`, `remove_objects`, `clear`, `select`, `put_raster`, `patch_raster`, `set_visible`, `set_visible_in_pane`, `set_min_zoom`, `update` |
+| Overlays | `create_layer` → `Layer`: `upsert`, `remove_objects`, `clear`, `select`, `put_raster` (split large rasters into chunk objects to update parts of them), `set_visible`, `set_visible_in_pane`, `set_min_zoom`, `update` |
 | UI | `add_toolbar_button`, `add_hud_button`, `register_tool` (host-drawn shapes, point placement, momentary hotkeys), `open_surface` (sidebars, modals and windows from `.slint` files with properties and callbacks), `confirm`, `open_file_dialog`, `save_file_dialog`, `copy_text` |
 | Navigation | `set_view`, `pan`, `zoom`, `fit`, `frame`, `display_adjustments`, `cycle_pane`, `cycle_tab`, `series`, `open_file`, `request_render` |
 | Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
@@ -163,9 +163,10 @@ paths, `..`, links or special files.
   `FfiErrorKind::Unsupported`, which the SDK reports as a `HostError` you
   can match on; events a plugin does not know arrive as
   `HostEvent::Unknown` and are ignored.
-- **ABI:** the root module, the plugin object and the host object are
-  `abi_stable` prefix types, so their layouts are checked when the library
-  is loaded and methods can be appended in minor releases.
+- **ABI:** the layouts of the root module, the plugin object and the host
+  object are checked when the library is loaded. Their method tables are
+  frozen for 1.x; new capabilities arrive as JSON methods and events, so a
+  plugin built against 1.0 keeps loading into every 1.x eov.
 - A different major version, or a library that is not an eov plugin, is
   refused with a message in the Plugins panel; it never runs.
 

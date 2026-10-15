@@ -12,10 +12,14 @@
 //!   host loads it with `LibHeader::init_root_module`, which checks the
 //!   `eov-plugin-api` major version and the layout of every type reachable
 //!   from the module before any plugin code runs.
-//! - [`PluginFfi`] and [`HostFfi`] are `#[sabi_trait]` objects whose vtables
-//!   are prefix types too. Methods added in later 1.x releases are appended
-//!   after the `#[sabi(last_prefix_field)]` marker and must have a default
-//!   implementation, which is what an older peer's object answers with.
+//! - [`PluginFfi`] and [`HostFfi`] are `#[sabi_trait]` objects. Their
+//!   vtables are **frozen for 1.x**: abi_stable's load-time layout check
+//!   rejects a plugin whose copy of a vtable is shorter than the host's (a
+//!   1.0 plugin in a host with one more method), so methods cannot be
+//!   appended within a major version. New capabilities are JSON methods on
+//!   [`HostFfi::call`] and new [`crate::protocol::HostEvent`]s, which older
+//!   peers answer with `Unsupported` or receive as `Unknown`; pixel data
+//!   keeps using the existing binary calls.
 //! - [`ABI_VERSION`] is an additional explicit handshake; it only changes
 //!   together with the crate's major version.
 
@@ -172,20 +176,6 @@ pub struct RasterUpload {
     pub smooth: bool,
 }
 
-/// New pixels for part of an existing raster object (see
-/// [`HostFfi::patch_raster`]); offsets are in the raster's own pixels.
-#[repr(C)]
-#[derive(StableAbi, Debug, Clone, PartialEq)]
-pub struct RasterPatch {
-    pub layer_id: RString,
-    pub object_id: RString,
-    /// Top-left pixel of the patch within the raster.
-    pub x: u32,
-    pub y: u32,
-    /// Straight-alpha RGBA8; must fit inside the raster.
-    pub pixels: Pixels,
-}
-
 /// The pane a filter is being applied for.
 #[repr(C)]
 #[derive(StableAbi, Debug, Clone, Copy, PartialEq, Default)]
@@ -275,18 +265,6 @@ pub trait HostFfi: Send + Sync {
     /// Adds or replaces a raster overlay object.
     #[sabi(last_prefix_field)]
     fn put_raster(&self, raster: RasterUpload) -> FfiResult<()>;
-
-    /// Overwrites part of an existing raster object, so plugins that fill a
-    /// heat map incrementally need not re-upload all of it.
-    /// Hosts without it answer [`FfiErrorKind::Unsupported`]; fall back to
-    /// [`put_raster`](Self::put_raster).
-    fn patch_raster(&self, patch: RasterPatch) -> FfiResult<()> {
-        let _ = patch;
-        RResult::RErr(FfiError::new(
-            FfiErrorKind::Unsupported,
-            "this host cannot patch rasters",
-        ))
-    }
 }
 
 /// An owned host API handle.

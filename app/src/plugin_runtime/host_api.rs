@@ -14,7 +14,7 @@ use abi_stable::{
 };
 use eov_plugin_api::abi::{
     FfiError, FfiErrorKind, FfiResult, HostBox, HostFfi, HostFfi_TO, MAX_RASTER_PIXELS,
-    MAX_REGION_PIXELS, Pixels, RasterPatch, RasterUpload, RegionRequest,
+    MAX_REGION_PIXELS, Pixels, RasterUpload, RegionRequest,
 };
 use eov_plugin_api::protocol::{methods, *};
 use serde::de::DeserializeOwned;
@@ -757,32 +757,6 @@ impl HostFfi for HostApi {
         guarded(&self.ctx, || {
             self.check_access()?;
             self.put_raster_inner(raster)
-        })
-    }
-
-    fn patch_raster(&self, patch: RasterPatch) -> FfiResult<()> {
-        guarded(&self.ctx, || {
-            self.check_access()?;
-            if !patch.pixels.is_well_formed() {
-                return Err(invalid("patch size does not match its data"));
-            }
-            let mut data = patch.pixels.data.into_vec();
-            premultiply(&mut data);
-            self.shared
-                .overlays
-                .patch_raster(
-                    &self.owner,
-                    patch.layer_id.as_str(),
-                    patch.object_id.as_str(),
-                    patch.x,
-                    patch.y,
-                    patch.pixels.width,
-                    patch.pixels.height,
-                    &data,
-                )
-                .map_err(invalid)?;
-            self.push(Command::OverlaysChanged);
-            Ok(())
         })
     }
 }

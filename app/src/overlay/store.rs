@@ -788,43 +788,6 @@ impl OverlayStore {
         })
     }
 
-    /// Overwrites a `width` x `height` block of a raster's premultiplied
-    /// pixels at `(x, y)`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn patch_raster(
-        &self,
-        owner: &Owner,
-        layer_id: &str,
-        object_id: &str,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-        premultiplied: &[u8],
-    ) -> Result<(), String> {
-        self.with_layer(owner, layer_id, |layer, _| {
-            let raster = layer
-                .rasters
-                .get_mut(object_id)
-                .ok_or_else(|| format!("unknown raster '{object_id}'"))?;
-            let fits = u64::from(x) + u64::from(width) <= u64::from(raster.width)
-                && u64::from(y) + u64::from(height) <= u64::from(raster.height);
-            if !fits || premultiplied.len() != width as usize * height as usize * 4 {
-                return Err("the patch must fit inside the raster".to_string());
-            }
-            let raster = Arc::make_mut(raster);
-            let pixels = Arc::make_mut(&mut raster.premultiplied);
-            let stride = raster.width as usize * 4;
-            let row_bytes = width as usize * 4;
-            for row in 0..height as usize {
-                let dst = (y as usize + row) * stride + x as usize * 4;
-                pixels[dst..dst + row_bytes]
-                    .copy_from_slice(&premultiplied[row * row_bytes..(row + 1) * row_bytes]);
-            }
-            Ok(())
-        })
-    }
-
     /// Removes every layer shown on `file_id` (the file was closed).
     pub fn remove_file(&self, file_id: FileId) {
         let mut inner = self.inner.write();
@@ -1115,53 +1078,6 @@ mod tests {
         assert!(store.set_min_zoom(&plugin(), "grid", Some(-1.0)).is_err());
         store.set_min_zoom(&plugin(), "grid", None).unwrap();
         assert_eq!(store.layer(&plugin(), "grid").unwrap().spec.min_zoom, None);
-    }
-
-    #[test]
-    fn rasters_can_be_patched_in_place() {
-        let store = OverlayStore::new();
-        store
-            .create_layer(plugin(), LayerSpec::new("heat", 1))
-            .unwrap();
-        store
-            .put_raster(
-                &plugin(),
-                "heat",
-                StoredRaster {
-                    object_id: "map".into(),
-                    rect: Rect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 100.0,
-                        height: 100.0,
-                    },
-                    width: 4,
-                    height: 4,
-                    premultiplied: Arc::new(vec![0; 4 * 4 * 4]),
-                    smooth: false,
-                    seq: 0,
-                },
-            )
-            .unwrap();
-        let patch = [255u8; 2 * 2 * 4];
-        store
-            .patch_raster(&plugin(), "heat", "map", 1, 1, 2, 2, &patch)
-            .unwrap();
-        let layer = store.layer(&plugin(), "heat").unwrap();
-        let raster = layer.rasters().next().unwrap();
-        let px = |x: usize, y: usize| raster.premultiplied[(y * 4 + x) * 4];
-        assert_eq!((px(0, 0), px(1, 1), px(2, 2), px(3, 3)), (0, 255, 255, 0));
-        // Patches must fit.
-        assert!(
-            store
-                .patch_raster(&plugin(), "heat", "map", 3, 3, 2, 2, &patch)
-                .is_err()
-        );
-        assert!(
-            store
-                .patch_raster(&plugin(), "heat", "nope", 0, 0, 2, 2, &patch)
-                .is_err()
-        );
     }
 
     #[test]

@@ -38,8 +38,7 @@
 
 use crate::abi::{
     self, FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostBox, PluginBox,
-    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterPatch, RasterUpload,
-    RegionRequest,
+    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterUpload, RegionRequest,
 };
 use crate::protocol::{methods, *};
 use abi_stable::{
@@ -849,26 +848,6 @@ impl Layer {
             height: rect.height,
             pixels: image.into_pixels(),
             smooth,
-        }))
-    }
-
-    /// Overwrites part of a raster object put with [`put_raster`](Self::put_raster);
-    /// `(x, y)` is the patch's top-left pixel in the raster. On
-    /// hosts without patching this fails with `Unsupported`: upload the
-    /// whole raster instead.
-    pub fn patch_raster(
-        &self,
-        object_id: impl Into<String>,
-        x: u32,
-        y: u32,
-        image: Image,
-    ) -> HostResult<()> {
-        from_ffi(self.host.ffi.patch_raster(RasterPatch {
-            layer_id: RString::from(self.layer_id.as_str()),
-            object_id: RString::from(object_id.into()),
-            x,
-            y,
-            pixels: image.into_pixels(),
         }))
     }
 
