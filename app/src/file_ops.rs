@@ -695,7 +695,13 @@ pub fn open_file(
             let _ = slint::invoke_from_event_loop(move || finish_open(ui_weak, request, result));
         });
     if let Err(err) = spawned {
-        finish_open(ui.as_weak(), request, Err(err.to_string()));
+        // From the event loop: the caller still holds the pane models,
+        // which finishing (an error refreshes the tabs) needs.
+        let ui_weak = ui.as_weak();
+        let error = err.to_string();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            finish_open(ui_weak, request, Err(error))
+        });
     }
 }
 
