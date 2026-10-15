@@ -246,10 +246,48 @@ fn write_ifd(tail: &mut Vec<u8>, base: u64, ifd: &Ifd, next: u64, big: bool) -> 
     Ok(at)
 }
 
+#[cfg(all(test, target_os = "linux"))]
+impl<W: Write + Seek> TiffFile<W> {
+    /// Leaves `bytes` unwritten (a hole, in a sparse file).
+    fn skip(&mut self, bytes: u64) -> io::Result<()> {
+        self.end += bytes;
+        self.out.seek(SeekFrom::Start(self.end))?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    /// A file whose data reaches past 4 GiB is written as a BigTIFF, and
+    /// the image stored there reads back (a sparse file: nothing near 4 GiB
+    /// is actually written).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn files_past_4_gib_become_bigtiff() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse.tif");
+        let mut file = TiffFile::new(std::fs::File::create(&path).unwrap()).unwrap();
+        let pixels: Vec<u8> = (0..4 * 3 * 3).map(|i| i as u8 + 1).collect();
+        let low = file.append(&pixels).unwrap();
+        file.skip(u64::from(u32::MAX)).unwrap();
+        let high = file.append(&pixels).unwrap();
+        assert!(high > u64::from(u32::MAX));
+        let chain = vec![
+            strip_image(4, 3, low, pixels.len() as u64),
+            strip_image(4, 3, high, pixels.len() as u64),
+        ];
+        let (_, big) = file.finish(&chain, false).unwrap();
+        assert!(big);
+        let mut decoder = tiff::decoder::Decoder::new(std::fs::File::open(&path).unwrap()).unwrap();
+        decoder.next_image().unwrap();
+        let tiff::decoder::DecodingResult::U8(far) = decoder.read_image().unwrap() else {
+            panic!("8-bit image expected");
+        };
+        assert_eq!(far, pixels);
+    }
 
     fn strip_image(width: u32, height: u32, data_at: u64, len: u64) -> Ifd {
         let mut ifd = Ifd::default();

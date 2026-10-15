@@ -258,10 +258,13 @@ fn jpeg_copies_read_through_openslide_and_the_tiff_crate() {
         let rgba = copy.read_region(0, 0, 0, 600, 400).unwrap();
         let p = psnr(&rgb_of(&rgba), &original);
         assert!(p > 34.0, "quality {quality}: PSNR {p:.1} through OpenSlide");
-        // The coarsest level through OpenSlide too.
-        let last = report.plan.levels.len() as u32 - 1;
-        let (w, h) = *report.plan.levels.last().unwrap();
-        assert!(copy.read_region(0, 0, last, w, h).is_ok());
+        // Every level through OpenSlide, the ones smaller than a tile too.
+        let reference = reference_pyramid(original.clone(), 600, 400, report.plan.levels.len());
+        for (level, (w, h, pixels)) in reference.iter().enumerate() {
+            let rgba = copy.read_region(0, 0, level as u32, *w, *h).unwrap();
+            let p = psnr(&rgb_of(&rgba), pixels);
+            assert!(p > 34.0, "quality {quality}, level {level}: PSNR {p:.1}");
+        }
 
         // Pure-Rust decoding (the tiff crate leaves YCbCr as it is).
         let bytes = std::fs::read(&output).unwrap();

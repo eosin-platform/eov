@@ -136,6 +136,7 @@ Current capabilities include:
 - Basic "Region of Interest" and "Measure Distance" tools.
 - Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
 - Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
+- Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
 - Various quality of life enhancements expected from modern software packages
 
 ## Keyboard Shortcuts
@@ -281,6 +282,7 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 ```
 
 Examples:
@@ -476,6 +478,48 @@ Tile filenames encode the origin coordinates and tile size with zero-padded valu
 When `--metadata csv` or `--metadata json` is provided, a single metadata file is written at the dataset root. Each record includes the slide path, slide stem, tile path, X/Y origin, tile size, slide dimensions, pyramid level (always 0), and microns-per-pixel when available from slide properties. No metadata file is written unless `--metadata` is explicitly provided.
 
 This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
+
+## Converting and De-identifying Slides
+
+eov writes copies of slides as tiled, pyramidal TIFF or OME-TIFF files: to give a slide to someone whose software cannot read the scanner's format, to build teaching sets, or to keep just a region. A copy can be **de-identified** for sharing outside the institution.
+
+**In the viewer**, right-click a slide's tab (or click **Save a Copy…** in Slide Information) and choose **Save a Copy of the Slide…**. Pick the whole slide or the region of interest, TIFF or OME-TIFF, JPEG (quality 90 or 80) or lossless tiles, and whether to de-identify (on by default), then a file name. The copy is written in the background, with progress and Cancel in the status bar. A de-identified copy never suggests the slide's own file name, and a pixel size you set for the slide (Slide Information) is recorded in the copy.
+
+**From the command line**:
+
+```bash
+eov convert slide.ndpi slide.tif                          # whole slide, JPEG quality 90, 512-px tiles
+eov convert case.svs teaching/case-01.tif --deidentify    # for sharing: no label, macro or identifying metadata
+eov convert slide.mrxs roi.tif --region 20000,15000,8192,8192 --compression deflate
+eov convert slide.svs slide.ome.tif                       # OME-TIFF, chosen by the name
+eov convert slide.svs small.tif --mpp 1.0 --quality 80 --tile-size 256
+eov convert slide.svs level2.tif --level 2
+```
+
+- `--region X,Y,W,H` copies a rectangle in level-0 pixels (as `--goto` and the region tool use). Without it the copy covers the part of the slide that holds image data: the scanned bounds for formats that report them (MIRAX, some Hamamatsu, Leica and Philips slides), else the whole slide. Nothing outside the region is read, not even into the padding of edge tiles.
+- `--level N` copies a stored pyramid level at its own pixels; `--mpp M` copies at M µm per pixel: a level within 1 % of it is used as it is, otherwise the next finer level is resampled with Lanczos-3. Copies are never upsampled.
+- `--compression jpeg` (default) with `--quality Q` (1–100, default 90; chroma is subsampled below 90), or `--compression deflate` for lossless tiles, several times larger.
+- `--tile-size 256|512` (default 512), `--bigtiff` to write a BigTIFF even when the copy fits in 4 GiB, `--no-icc-profile` to leave the colour profile out, `--overwrite` to replace an existing file.
+- The command prints what it will write, shows progress on standard error, and exits with 0 when the copy was written, 1 when it failed (or tiles could not be read from the slide, which show its background colour), 2 for invalid arguments or an existing output, and 130 when cancelled with Ctrl-C. The copy is written to `<OUTPUT>.<pid>.eov-partial` next to the output and renamed when complete, so an error or Ctrl-C never leaves a half-written file, and an existing file is only replaced by a complete copy. eov refuses to write a copy over the slide it reads.
+
+**What is written.**
+
+- *TIFF* (`--format tiff`, the default): a tiled TIFF in which every pyramid level is its own image, full resolution first and the others marked reduced-resolution, halving down to a single tile. This is OpenSlide's "generic tiled TIFF", so the copy opens in eov, OpenSlide, QuPath, libvips and most WSI software. Files that could exceed 4 GiB are written as BigTIFF; smaller ones stay classic TIFF for older readers (the choice is made when the file is complete). Lossless copies stop their pyramid while every level is still at least one tile long, and use smaller tiles for small regions: OpenSlide 4.0 misreads non-JPEG levels smaller than a tile.
+- *OME-TIFF* (`--format ome-tiff`, or an output name ending in `.ome.tif`, `.ome.tiff` or `.ome.btf`): OME-XML in the first image and the reduced levels as SubIFDs, as QuPath, Bio-Formats and OMERO expect. OpenSlide, and so eov 1.0, reads only the full-resolution image of an OME-TIFF; use TIFF for copies you will open in eov.
+- JPEG tiles are baseline JPEG in the YCbCr colour space with shared tables, as libtiff writes them; lossless tiles are Deflate with the horizontal predictor. Lower levels are the 2×2 mean of the level above.
+- The pixel size goes into the TIFF resolution tags (pixels per centimetre), which OpenSlide reports as `openslide.mpp-x`/`-y`, so measurements and the scale bar work on the copy (eov's own pixel-size override included). The pixel size, objective power (scaled to the copy's resolution), stain and source format are also written as `key = value` lines in the description (`openslide.comment`) or the OME-XML. The slide's ICC colour profile is kept.
+- A copy that is not de-identified also keeps the slide's label, macro and thumbnail images (as extra images in the file) and records its file name, the region copied and every vendor property.
+- Memory use does not grow with the slide: tiles are read and compressed in parallel batches and the pyramid is built while level 0 is read (roughly 0.3–1 GB at most, depending on the number of cores and the scanner format). A 500-megapixel Aperio slide copies in about 3 s and an 8.7-gigapixel Ventana BIF in about a minute on a 32-core workstation.
+
+**De-identification** (`--deidentify`, or **De-identify** in the dialog):
+
+- The copy has no associated images: no label, no macro and no thumbnail, any of which can show the label.
+- Its metadata is built from an allow-list, not by deleting known-bad fields: the image geometry, pixel size, objective power and stain, and, only with `--keep-scanner`, the scanner vendor and model. Dates, barcodes, accession and slide ids, file names and paths, user names, comments, device serial numbers and every other vendor property are left out. Kept free text (stain, scanner model) is dropped when it looks like it carries an identifier (long digit runs, dates, e-mail addresses).
+- The description states that it is a de-identified copy made by eov, with eov's version and the date the copy was made.
+- The slide's ICC colour profile is kept, because it describes the scanner's colours; its own name may mention the scanner model. Use `--no-icc-profile` to leave it out.
+- Choose the copy's file name yourself: slide file names often contain an accession number.
+
+> **De-identification covers metadata and associated images, not the image itself.** Text and marks inside the scanned tissue image — a label or barcode that lies inside the scanned area, handwriting or pen marks on the glass, annotations burned into the pixels by other software — are copied as they are. Look at the copy before sharing it, and use a region that leaves such areas out. eov's de-identification is a tool to help, not a certified de-identification process (for example under HIPAA or the GDPR); follow your institution's rules for sharing patient material.
 
 ## Plugins
 

@@ -34,6 +34,14 @@ include the desktop application or its UI.
 - Stain normalization and color deconvolution primitives for histology images.
 - Deterministic fixed-grid dataset patch extraction with optional CSV or JSON
   metadata.
+- Writing slides (`convert`): pyramidal TIFF/BigTIFF (OpenSlide's generic
+  tiled TIFF) and OME-TIFF (SubIFD pyramid) copies of a slide or a region, at
+  full resolution, a stored level or a target pixel size, with JPEG or
+  lossless Deflate tiles, the pixel size, objective power, stain and ICC
+  profile, built in bounded memory and written atomically. Optional
+  de-identification drops the label, macro and thumbnail images and keeps an
+  allow-list of metadata only; it does not alter the image itself, so text
+  or marks inside the scanned area remain.
 
 The supported file formats are the formats available through
 [OpenSlide](https://openslide.org/), including common formats such as SVS,
@@ -117,6 +125,37 @@ fn load_first_tile(path: &str) -> eov_common::Result<()> {
 }
 ```
 
+Copy a slide into a de-identified pyramidal TIFF that OpenSlide, QuPath and
+libvips read (run it on a worker thread; `JobControl` reports progress in
+tiles and cancels):
+
+```rust,no_run
+use eov_common::WsiFile;
+use eov_common::convert::{ConvertOptions, SlideCompression, convert_slide};
+use eov_common::job::JobControl;
+use std::path::Path;
+
+fn share(path: &str) -> Result<(), eov_common::convert::ConvertError> {
+    let slide = WsiFile::open(path)?;
+    let options = ConvertOptions {
+        deidentify: true,
+        compression: SlideCompression::Jpeg { quality: 90 },
+        ..ConvertOptions::default()
+    };
+    let report = convert_slide(&slide, Path::new("case-01.tif"), &options, &JobControl::new())?;
+    println!(
+        "{} levels, {} bytes{}",
+        report.plan.levels.len(),
+        report.bytes,
+        if report.bigtiff { ", BigTIFF" } else { "" }
+    );
+    Ok(())
+}
+```
+
+De-identification covers metadata and associated images, not burned-in text
+in the tissue image.
+
 ## Main API Areas
 
 - [`WsiFile`](https://docs.rs/eov-common/latest/eov_common/struct.WsiFile.html)
@@ -132,6 +171,9 @@ fn load_first_tile(path: &str) -> eov_common::Result<()> {
 	`CacheBudget::for_display` sizes it for a display.
 - The `dataset` module provides fixed-grid patch extraction and metadata types
 	for machine-learning workflows.
+- The `convert` module writes pyramidal TIFF and OME-TIFF copies of slides
+	(`convert_slide`, `plan_conversion`), optionally de-identified; the
+	`export` module renders views and regions to PNG, JPEG and TIFF figures.
 - The `imaging`, `postprocess`, `stain`, `overlay`, `render`, `blitter` and
 	`viewport` modules provide reusable image and viewing primitives.
 
