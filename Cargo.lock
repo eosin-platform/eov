@@ -1668,6 +1668,7 @@ dependencies = [
  "pkg-config",
  "png 0.18.1",
  "rayon",
+ "roxmltree",
  "serde",
  "serde_json",
  "sha2",
@@ -1675,6 +1676,9 @@ dependencies = [
  "thiserror 2.0.20",
  "tiff",
  "tracing",
+ "weezl",
+ "zstd",
+ "zune-jpeg 0.5.15",
 ]
 
 [[package]]

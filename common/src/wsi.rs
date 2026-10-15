@@ -1,6 +1,8 @@
 //! WSI (Whole Slide Image) file handling
 //!
-//! [`WsiFile`] wraps an OpenSlide handle (see [`crate::openslide`]) and
+//! [`WsiFile`] reads a slide through a backend ([`source`]): OpenSlide (see
+//! [`crate::openslide`]) for brightfield formats, or eov's own reader for
+//! OME-TIFF, including multichannel fluorescence ([`crate::channels`]). It
 //! caches everything that does not change while a slide is open: the level
 //! geometry, the full property map and the parsed metadata in
 //! [`WsiProperties`].
@@ -15,11 +17,20 @@
 //! # Sharing and threads
 //!
 //! A `WsiFile` is a cheap handle (`Clone` is an `Arc` clone) to one shared,
-//! thread-safe OpenSlide handle per slide, and [`WsiFile::open`] reuses the
-//! slide when the same unchanged file is already open anywhere in the
-//! process (see [`registry`]). Give every worker thread a clone instead of
-//! opening the slide again; all handles use one process-wide OpenSlide tile
-//! cache ([`set_openslide_cache_capacity`]).
+//! thread-safe backend per slide, and [`WsiFile::open`] reuses the slide
+//! when the same unchanged file is already open anywhere in the process
+//! (see [`registry`]). Give every worker thread a clone instead of opening
+//! the slide again; all slides use one process-wide cache of native tiles
+//! ([`set_openslide_cache_capacity`]).
+//!
+//! # Multichannel slides
+//!
+//! Reads of a multichannel slide return its channels composited to RGB with
+//! the slide's [`ChannelDisplay`], which every clone shares. After
+//! [`WsiFile::set_channel_display`], tiles cached from earlier reads show
+//! the old display: drop them (e.g. [`TileCache::remove_file`]).
+//!
+//! [`TileCache::remove_file`]: crate::TileCache::remove_file
 //!
 //! # Errors and recovery
 //!
@@ -31,17 +42,19 @@
 //! [`Error::HandlePoisoned`]. [`WsiFile::health`] reports what happened so
 //! a UI can tell the user.
 
-mod health;
-mod metadata;
+pub(crate) mod health;
+pub(crate) mod metadata;
+mod openslide_source;
 pub(crate) mod pixels;
 pub mod registry;
+pub(crate) mod source;
 mod synthetic;
 mod thumbnail;
 
+use crate::channels::{ChannelDisplay, ChannelSet};
 use crate::imaging::RgbaImageData;
-use crate::openslide::OpenSlide;
 use crate::{Error, Result};
-use health::{BadKey, Geometry, HandleCell};
+use source::{Region, SlideSource};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -302,7 +315,7 @@ pub fn best_level_for_downsample(levels: &[WsiLevel], downsample: f64) -> u32 {
 
 /// State shared by every [`WsiFile`] that refers to the same open slide.
 pub(crate) struct SharedSlide {
-    pub(crate) handle: HandleCell,
+    pub(crate) source: Box<dyn SlideSource>,
     pub(crate) canonical_path: PathBuf,
     pub(crate) stamp: registry::FileStamp,
     /// Whether [`WsiFile::open`] may hand this slide to other callers.
@@ -355,99 +368,6 @@ impl std::fmt::Debug for WsiFile {
     }
 }
 
-fn read_associated_images(
-    slide: &OpenSlide,
-    property_map: &BTreeMap<String, String>,
-) -> Result<Vec<AssociatedImage>> {
-    let mut names = slide.associated_image_names()?;
-    names.sort();
-    names
-        .into_iter()
-        .map(|name| {
-            let (width, height) = slide.associated_image_dimensions(&name)?;
-            let icc_profile_size = property_map
-                .get(&format!("openslide.associated.{name}.icc-size"))
-                .and_then(|value| value.trim().parse().ok())
-                .filter(|&size: &u64| size > 0);
-            Ok(AssociatedImage {
-                name,
-                width,
-                height,
-                icc_profile_size,
-            })
-        })
-        .collect()
-}
-
-fn read_metadata(
-    path: &Path,
-    slide: &OpenSlide,
-) -> Result<(WsiProperties, BTreeMap<String, String>)> {
-    let property_map = slide.properties()?;
-    let level_count = slide.level_count()?;
-    if level_count == 0 {
-        return Err(Error::InvalidFormat(format!(
-            "{}: slide has no pyramid levels",
-            path.display()
-        )));
-    }
-    debug!("WSI has {} levels", level_count);
-
-    let mut levels = Vec::with_capacity(level_count as usize);
-    for level in 0..level_count {
-        let (width, height) = slide.level_dimensions(level)?;
-        let downsample = slide.level_downsample(level)?;
-        let (tile_width, tile_height) = metadata::level_tile_size(&property_map, level);
-        if width == 0 || height == 0 {
-            return Err(Error::InvalidFormat(format!(
-                "{}: level {level} is empty",
-                path.display()
-            )));
-        }
-        debug!(
-            "Level {}: {}x{} (downsample: {:.2})",
-            level, width, height, downsample
-        );
-        levels.push(WsiLevel {
-            level,
-            width,
-            height,
-            downsample,
-            tile_width,
-            tile_height,
-            synthetic: false,
-        });
-    }
-
-    let (width, height) = (levels[0].width, levels[0].height);
-    let get = |key: &str| property_map.get(key).cloned();
-    let properties = WsiProperties {
-        path: path.to_path_buf(),
-        filename: path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string()),
-        vendor: get("openslide.vendor"),
-        mpp_x: metadata::parse_mpp(&property_map, "openslide.mpp-x"),
-        mpp_y: metadata::parse_mpp(&property_map, "openslide.mpp-y"),
-        objective_power: metadata::parse_objective_power(&property_map),
-        scan_date: metadata::parse_scan_date(&property_map),
-        stain: metadata::extract_stain_metadata(&property_map),
-        bounds: metadata::parse_bounds(&property_map, width, height),
-        regions: metadata::parse_regions(&property_map, width, height),
-        background_color: metadata::parse_background_color(&property_map),
-        quickhash1: get("openslide.quickhash-1"),
-        comment: get("openslide.comment"),
-        icc_profile_size: get("openslide.icc-size")
-            .and_then(|value| value.trim().parse().ok())
-            .filter(|&size: &u64| size > 0),
-        levels,
-        width,
-        height,
-    };
-    Ok((properties, property_map))
-}
-
 impl WsiFile {
     /// Opens a slide, reusing the shared handle if the same unchanged file
     /// is already open in this process.
@@ -487,10 +407,12 @@ impl WsiFile {
             path.file_name().unwrap_or_default().to_string_lossy()
         );
         tracing::debug!("Opening WSI file: {}", path.display());
-        let slide = OpenSlide::open(path)?;
-        let (properties, property_map) = read_metadata(path, &slide)?;
-        let associated_images = read_associated_images(&slide, &property_map)?;
-        let geometry = Geometry::of(&slide)?;
+        let source::Opened {
+            source,
+            properties,
+            property_map,
+            associated_images,
+        } = source::open(path)?;
 
         info!(
             "Opened {} ({}x{}, {} levels, vendor: {:?})",
@@ -502,12 +424,7 @@ impl WsiFile {
         );
 
         let shared = Arc::new(SharedSlide {
-            handle: HandleCell::new(
-                path.to_path_buf(),
-                slide,
-                geometry,
-                registry::attach_global_cache,
-            ),
+            source,
             canonical_path,
             stamp,
             shareable: options.share,
@@ -618,15 +535,47 @@ impl WsiFile {
         Ok(self.shared.identity.get_or_init(|| identity).clone())
     }
 
-    /// A snapshot of the health of the slide's OpenSlide handle.
+    /// A snapshot of the health of the slide's backend (for OpenSlide, its
+    /// shared handle).
     pub fn health(&self) -> SlideHealth {
-        self.shared.handle.health()
+        self.shared.source.health()
     }
 
     /// Forgets the regions remembered as unreadable, so they are tried again
     /// (for example after the user restored the file or the network).
     pub fn clear_bad_regions(&self) {
-        self.shared.handle.clear_bad_regions();
+        self.shared.source.clear_bad_regions();
+    }
+
+    /// The channels of a multichannel slide (OME-TIFF fluorescence), with
+    /// their names, colours and sample statistics; `None` for RGB slides.
+    pub fn channels(&self) -> Option<&ChannelSet> {
+        self.shared.source.channels()
+    }
+
+    /// Whether the slide has channels that are composited for display.
+    pub fn is_multichannel(&self) -> bool {
+        self.channels().is_some()
+    }
+
+    /// How the channels are drawn now; shared by every clone of the slide.
+    pub fn channel_display(&self) -> Option<ChannelDisplay> {
+        self.shared.source.channel_display()
+    }
+
+    /// How the channels are drawn when the slide opens: colours from the
+    /// file or the channel names, auto-contrast windows.
+    pub fn default_channel_display(&self) -> Option<ChannelDisplay> {
+        self.shared.source.default_channel_display()
+    }
+
+    /// Changes how the channels are drawn, for every reader of the slide.
+    /// Windows and gammas are sanitised; the number of channels must match.
+    ///
+    /// Tiles read before the change keep the old display: drop them from
+    /// any cache (see the [module documentation](self)).
+    pub fn set_channel_display(&self, display: ChannelDisplay) -> Result<()> {
+        self.shared.source.set_channel_display(display)
     }
 
     /// Get file properties. `levels` includes synthetic levels when this
@@ -680,24 +629,7 @@ impl WsiFile {
                 max_pixels: MAX_ASSOCIATED_IMAGE_PIXELS,
             });
         }
-        let (width, height, argb) = self
-            .shared
-            .handle
-            .run(Some(BadKey::AssociatedImage(name.to_string())), |slide| {
-                slide.read_associated_image_argb(name, MAX_ASSOCIATED_IMAGE_PIXELS)
-            })?;
-        let mut out = pixels::try_alloc(argb.len() * 4)?;
-        pixels::argb_to_rgba(
-            &argb,
-            &mut out,
-            mode,
-            self.shared.properties.background_color,
-        );
-        Ok(RgbaImageData {
-            width: width as usize,
-            height: height as usize,
-            pixels: out,
-        })
+        self.shared.source.read_associated_image(name, mode)
     }
 
     /// The slide's ICC colour profile, if it has one. Pixels are returned
@@ -710,10 +642,7 @@ impl WsiFile {
         if self.shared.properties.icc_profile_size.is_none() {
             return Ok(None);
         }
-        let profile = self
-            .shared
-            .handle
-            .run(Some(BadKey::IccProfile(None)), |slide| slide.icc_profile())?;
+        let profile = self.shared.source.icc_profile()?;
         *self.shared.icc_profile.lock() = Some(profile.clone());
         Ok(profile)
     }
@@ -726,11 +655,7 @@ impl WsiFile {
         if info.icc_profile_size.is_none() {
             return Ok(None);
         }
-        self.shared
-            .handle
-            .run(Some(BadKey::IccProfile(Some(name.to_string()))), |slide| {
-                slide.associated_image_icc_profile(name)
-            })
+        self.shared.source.associated_image_icc_profile(name)
     }
 
     /// Get tile size
@@ -806,6 +731,10 @@ impl WsiFile {
     /// outside the slide read as glass, never as black or transparent. Use
     /// [`read_region_with`](Self::read_region_with) to keep the alpha channel.
     ///
+    /// Multichannel slides return their visible channels composited with
+    /// the current [`channel_display`](Self::channel_display), over a black
+    /// background.
+    ///
     /// # Arguments
     /// * `x` - X coordinate at level 0 (may be negative)
     /// * `y` - Y coordinate at level 0 (may be negative)
@@ -871,33 +800,14 @@ impl WsiFile {
         if level >= self.real_level_count() {
             return self.read_synthetic_into(x, y, level, width, height, mode, out);
         }
-        let key = BadKey::Region {
-            level,
+        let region = Region {
             x,
             y,
+            level,
             width,
             height,
         };
-        let background = self.shared.properties.background_color;
-
-        // OpenSlide writes native-endian u32 ARGB. Let it write straight into
-        // `out` when the buffer happens to be 4-byte aligned (it practically
-        // always is), then convert in place.
-        // SAFETY: every bit pattern is a valid u32 and u8.
-        let (prefix, aligned, suffix) = unsafe { out.align_to_mut::<u32>() };
-        if prefix.is_empty() && suffix.is_empty() {
-            self.shared.handle.run(Some(key), |slide| {
-                slide.read_region_argb(aligned, x, y, level, width, height)
-            })?;
-            pixels::argb_bytes_to_rgba_in_place(out, mode, background);
-        } else {
-            let mut argb = vec![0u32; len / 4];
-            self.shared.handle.run(Some(key), |slide| {
-                slide.read_region_argb(&mut argb, x, y, level, width, height)
-            })?;
-            pixels::argb_to_rgba(&argb, out, mode, background);
-        }
-        Ok(())
+        self.shared.source.read_region_into(region, mode, out)
     }
 
     /// Validates a region read and returns its size in bytes.
@@ -973,6 +883,7 @@ impl WsiFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openslide::OpenSlide;
     use crate::test_support::{TiffLevel, TiffSpec, write_tiff};
 
     fn gradient(x: u32, y: u32) -> [u8; 3] {
@@ -1222,7 +1133,7 @@ mod tests {
 
         // Poison the shared handle behind `b`'s back, as another worker would.
         {
-            let slot = a.shared.handle.current();
+            let slot = a.shared.source.openslide_handle().unwrap().current();
             let mut buf = vec![0u32; 32 * 32];
             assert!(
                 slot.slide

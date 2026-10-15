@@ -19,6 +19,12 @@ pub enum Error {
     #[error("Unsupported slide format: {0}")]
     UnsupportedFormat(String),
 
+    /// The file is a slide, but it uses something eov cannot decode (a
+    /// compression, a sample type, a file layout). Permanent: the message
+    /// says what, so the user can convert the file.
+    #[error("Unsupported: {0}")]
+    Unsupported(String),
+
     #[error("Failed to read tile at level {level}, x={x}, y={y}: {message}")]
     ReadTile {
         level: u32,
