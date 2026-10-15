@@ -218,6 +218,7 @@ export component EovaeSidebar inherits Rectangle {
     in property <[string]> view-options: ["Original", "Reconstruction", "Error map", "Difference"];
     in-out property <int> view-index: 0;
     in property <string> adjustment-note;
+    in property <bool> adjustment-warning: false;
     in property <string> coverage-text;
     in property <string> stats-text;
     in property <[HistogramBin]> histogram;
@@ -618,6 +619,11 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
+                if root.adjustment-note != "": Note {
+                    text: root.adjustment-note;
+                    warning: root.adjustment-warning;
+                }
+
                 if root.legend-visible: VerticalLayout {
                     spacing: 2px;
 
@@ -708,7 +714,6 @@ export component EovaeSidebar inherits Rectangle {
                     }
                 }
 
-                Note { text: root.adjustment-note; }
                 Note { text: "Research use only; not for diagnosis."; }
             }
 

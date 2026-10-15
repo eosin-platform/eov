@@ -18,9 +18,65 @@ use eov_plugin_api::prelude::*;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Note shown under the overlay selector (VAE-17): the host draws overlays
-/// on top of the adjusted slide.
-const ADJUSTMENT_NOTE: &str = "Overlays show the model's pixels without the viewer's display adjustments (gamma, contrast, stain normalisation); reset them before comparing Original and Reconstruction.";
+/// The note under the overlay selector about the focused pane's display
+/// adjustments (VAE-17): reconstructions get the pane's tone curve and
+/// sharpening, but stain processing cannot be reproduced. Returns the text
+/// and whether it is a warning.
+pub fn adjustment_note(
+    mode: Mode,
+    display: Option<&DisplayAdjustments>,
+    unsupported: bool,
+) -> (String, bool) {
+    match mode {
+        Mode::Reconstruction if unsupported => (
+            "This eov does not report its display adjustments: reconstructions are shown without them, so reset gamma, contrast and stain normalisation before comparing Original and Reconstruction.".to_string(),
+            true,
+        ),
+        Mode::Reconstruction => match display.filter(|d| d.modified) {
+            Some(display) if stain_processing(display) => (
+                format!(
+                    "Reconstructions get this pane's gamma, brightness, contrast and sharpening, but not its stain processing ({}): turn that off before comparing Original and Reconstruction.",
+                    stain_label(display)
+                ),
+                true,
+            ),
+            Some(_) => (
+                "Reconstructions are shown with this pane's display adjustments, like the slide.".to_string(),
+                false,
+            ),
+            None => (String::new(), false),
+        },
+        Mode::ErrorMap | Mode::Difference if display.is_some_and(|d| d.modified) => (
+            "Errors are measured on the slide's own pixels; display adjustments do not change them.".to_string(),
+            false,
+        ),
+        _ => (String::new(), false),
+    }
+}
+
+/// Whether the pane alters stain colours (normalisation, deconvolution
+/// adjustments, an isolated stain), which eovae cannot reproduce.
+fn stain_processing(display: &DisplayAdjustments) -> bool {
+    if display.stain_normalization.is_some() {
+        return true;
+    }
+    let badge = display.badge.to_lowercase();
+    badge.contains("stain") || badge.contains("colour") || badge.contains("color")
+}
+
+fn stain_label(display: &DisplayAdjustments) -> String {
+    match &display.stain_normalization {
+        Some(method) => {
+            let mut chars = method.chars();
+            let method = chars
+                .next()
+                .map(|c| c.to_uppercase().chain(chars).collect::<String>())
+                .unwrap_or_default();
+            format!("{method} normalisation")
+        }
+        None => display.badge.clone(),
+    }
+}
 
 const SCALING_OPTIONS: [&str; 4] = ["[-1, 1]", "[0, 1]", "[0, 255]", "ImageNet mean/std"];
 
@@ -457,9 +513,15 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
         json!(state.auto_hint.clone().unwrap_or_default()),
     );
 
-    // Results of the active slide.
+    // Results of the active slide, as the focused pane shows it.
+    let focused = state.focused_pane;
     let (slide_name, mode) = active
-        .map(|(_, f)| (f.info.filename.clone(), f.mode))
+        .map(|(_, f)| {
+            (
+                f.info.filename.clone(),
+                f.overlay(focused, state.pane_layers).mode,
+            )
+        })
         .unwrap_or_default();
     set("slide-name", json!(slide_name));
     set(
@@ -467,16 +529,20 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
         json!(Mode::ALL.iter().map(|m| m.label()).collect::<Vec<_>>()),
     );
     set("view-index", json!(mode.index() as i32));
-    set("adjustment-note", json!(ADJUSTMENT_NOTE));
+    // Kept current by `RoiChanged` events.
+    set(
+        "has-roi",
+        json!(active.is_some_and(|(_, f)| f.roi.is_some())),
+    );
     let keep_pixels = config.keep_pixels;
     let memory_limit = config.memory_limit_bytes();
     let has_active = active.is_some();
     let active_id = active.map(|(id, _)| id);
     drop(state);
-    let has_roi = active_id
-        .and_then(|id| core.host.roi(id).ok().flatten())
-        .is_some();
-    set("has-roi", json!(has_roi));
+    let display = focused.and_then(|pane| memo.display(core, pane));
+    let (note, warning) = adjustment_note(mode, display.as_ref(), memo.displays_unsupported);
+    set("adjustment-note", json!(note));
+    set("adjustment-warning", json!(warning));
 
     let stats = ctx.as_ref().and_then(|ctx| {
         core.ensure_loaded(ctx);
@@ -581,7 +647,10 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                     );
                     let (legend_visible, title, lo, hi) = match mode {
                         Mode::ErrorMap => {
-                            let (lo, hi) = stats.heat_range();
+                            // The range the map is drawn with.
+                            let (lo, hi) = active_id
+                                .and_then(|id| memo.heat_range(id))
+                                .unwrap_or_else(|| stats.heat_range());
                             (
                                 true,
                                 "Tile MAE (p05–p95)",
@@ -980,19 +1049,22 @@ pub fn callback<B: Backend>(
         }
         "cancel-job" => core.cancel_job(),
         "view-selected" => {
-            let file_id = lock(&core.state).active_file;
+            // The focused pane's overlay.
+            let (file_id, pane) = {
+                let state = lock(&core.state);
+                (state.active_file, state.focused_pane)
+            };
             if let (Some(file_id), Some(mode)) = (
                 file_id,
                 arg_int(args).and_then(|i| Mode::ALL.get(i.max(0) as usize).copied()),
             ) {
-                core.set_mode(file_id, mode, None)?;
+                core.set_mode(file_id, pane, mode, None)?;
             }
             let state = lock(&core.state);
             reply = json!(
                 state
                     .active_file
-                    .and_then(|id| state.files.get(&id))
-                    .map(|f| f.mode.index() as i32)
+                    .map(|id| state.overlay(id, state.focused_pane).mode.index() as i32)
                     .unwrap_or(0)
             );
         }
@@ -1136,6 +1208,44 @@ mod tests {
             assert_eq!(scaling_index(&scaling_at(index).unwrap()), index as i32);
         }
         assert!(scaling_at(9).is_none());
+    }
+
+    #[test]
+    fn the_adjustment_note_says_what_reconstructions_can_follow() {
+        let neutral = DisplayAdjustments::default();
+        assert_eq!(
+            adjustment_note(Mode::Reconstruction, Some(&neutral), false),
+            (String::new(), false)
+        );
+        let tone = DisplayAdjustments {
+            gamma: 1.4,
+            sharpness: 0.3,
+            modified: true,
+            badge: "Display-adjusted · Sharpened".into(),
+            ..Default::default()
+        };
+        let (text, warning) = adjustment_note(Mode::Reconstruction, Some(&tone), false);
+        assert!(text.contains("display adjustments") && !warning, "{text}");
+        // Deconvolution without normalisation shows only in the badge.
+        let deconvolved = DisplayAdjustments {
+            modified: true,
+            badge: "Isolated stain: Hematoxylin · Display-adjusted".into(),
+            ..Default::default()
+        };
+        let (text, warning) = adjustment_note(Mode::Reconstruction, Some(&deconvolved), false);
+        assert!(warning && text.contains("Isolated stain"), "{text}");
+        let normalised = DisplayAdjustments {
+            stain_normalization: Some("vahadane".into()),
+            modified: true,
+            ..Default::default()
+        };
+        let (text, _) = adjustment_note(Mode::Reconstruction, Some(&normalised), false);
+        assert!(text.contains("Vahadane normalisation"), "{text}");
+        // Errors do not depend on the display; old hosts cannot say.
+        let (text, warning) = adjustment_note(Mode::ErrorMap, Some(&tone), false);
+        assert!(text.contains("own pixels") && !warning, "{text}");
+        assert!(adjustment_note(Mode::Reconstruction, None, true).1);
+        assert_eq!(adjustment_note(Mode::Original, Some(&tone), false).0, "");
     }
 
     #[test]

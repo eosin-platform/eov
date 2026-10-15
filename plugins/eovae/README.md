@@ -6,8 +6,9 @@ reconstructs worse. It is a research tool, **not for diagnosis**.
 
 - **Error map**: a whole-slide heat map of per-tile error (colour-blind-safe
   viridis ramp, scaled to the p05–p95 of the analysed tiles, with a legend).
-- **Reconstruction** and **Difference**: the model's reconstruction and the
-  per-pixel error of the visible area, at screen resolution.
+- **Reconstruction** and **Difference**: the model's reconstruction (shown
+  with the pane's display adjustments) and the per-pixel error of the
+  visible area, at screen resolution.
 - **Results**: error histogram, summary statistics, the highest-error
   regions (hover to outline, click to frame), how much of the slide is
   covered, and CSV export with a provenance manifest.
@@ -26,9 +27,12 @@ Open the sidebar with the VAE toolbar button.
 2. **Analysis** sets the **device** (Auto, CPU or CUDA; independent of how eov
    renders), the **resolution** (Auto matches the model's training µm/px when
    both are known; otherwise pick one of the slide's real pyramid levels) and
-   threads/batch size. **Viewport** and **Whole slide** start a job; progress
-   and Cancel are also in eov's job list.
-3. Choose an overlay in the viewport's HUD menu (or under **Results**). In
+   threads/batch size. **Viewport**, **ROI** (the tiles under the slide's
+   region of interest, while it has one) and **Whole slide** start a job;
+   progress and Cancel are also in eov's job list.
+3. Choose an overlay in a pane's HUD menu (or under **Results**, for the
+   focused pane). Each pane has its own overlay and tile grid, so two panes
+   can show the same slide as reconstruction and error map side by side. In
    overlay modes the visible tiles are analysed automatically when you are
    zoomed in far enough (at most 400 tiles, each at least 24 px on screen).
 
@@ -36,10 +40,19 @@ Background (glass) tiles are detected with the rule HistoVAE's training used
 and skipped, on every device. Tiles that cannot be read are marked and
 retried by later runs; a job fails, with the reason, only when many do.
 
-The overlays show the model's pixels **without** eov's display adjustments
-(gamma, contrast, stain normalisation); reset them before comparing Original
-and Reconstruction. The overlay mode and grid apply to a slide, so two panes
-showing the same slide show the same overlay.
+Reconstructions are shown the way their pane shows the slide: eovae applies
+the pane's gamma, brightness and contrast with eov's tone curve, and its
+sharpening while the overlay is at screen resolution (zoomed in past the
+analysed level it is coarser than the screen), and follows changes within
+about a second. Stain
+normalisation, colour deconvolution and isolated stains cannot be reproduced;
+while a pane uses them the sidebar says so, and they should be turned off
+before comparing Original and Reconstruction. The error map and the
+difference are computed on the slide's own pixels, so display adjustments do
+not change them.
+
+With an eov that cannot hide a layer in some panes only, every pane of a
+slide shows the overlay chosen last, and eov's log says so.
 
 ## Models
 
@@ -97,7 +110,10 @@ starts a separate result set; changing one while a job runs cancels the job.
 
 - **Memory**: per-tile scores are small; tile pixels live in an LRU cache
   limited to 512 MB by default (`memory_limit_mb`). Evicted pixels are
-  recomputed when a view needs them.
+  recomputed when a view needs them. The error map is sent to eov in chunks
+  of 64×64 map pixels, and a job re-sends only the chunks its new tiles
+  touch (its colour scale is held steady while the job runs and set exactly
+  when it ends).
 - **Disk**: `results.sqlite` in eov's cache directory for eovae, limited to
   2 GB by default (`cache_limit_mb`), least recently used runs first. It
   stores scores, background markers and embeddings, and the reconstructions
@@ -168,6 +184,10 @@ python3 plugins/eovae/scripts/package_eop.py \
     --library plugins/eovae/target/release/libeovae.so \
     --output dist/eovae-linux-x64.eop --fetch-ort
 ```
+
+`scripts/run-with-plugins.sh` (eov's development launcher) packages the
+debug build with `--ort-dir "$EOVAE_ORT_DIR"` when that is set, else with
+`--no-ort`.
 
 An `.eop` is a tar of `plugin.toml`, the library, `ui/` and an optional
 `onnxruntime/` folder; `--zstd` compresses it (eov 1.0 reads plain and
