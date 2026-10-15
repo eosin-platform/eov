@@ -87,6 +87,8 @@ pub struct CacheStats {
     pub max_bytes: usize,
     /// Configured tile-count limit.
     pub max_tiles: usize,
+    /// Eviction passes run (diagnostic).
+    pub eviction_scans: u64,
 }
 
 impl CacheStats {
@@ -179,7 +181,17 @@ pub struct TileCache {
     misses: AtomicU64,
     evictions: AtomicU64,
     insertions: AtomicU64,
+    eviction_scans: AtomicU64,
     policy: RwLock<Policy>,
+    /// Bumped whenever pins or file visibility change.
+    policy_version: AtomicU64,
+    /// After a pass that could not get below the limits (everything left was
+    /// protected or pinned), further passes are skipped until the cache
+    /// grows past these marks or the frame or policy changes.
+    futile_until_bytes: AtomicUsize,
+    futile_until_tiles: AtomicUsize,
+    futile_frame: AtomicU64,
+    futile_policy: AtomicU64,
     evicting: Mutex<()>,
     last_overshoot_warning: Mutex<Option<Instant>>,
 }
@@ -205,7 +217,13 @@ impl TileCache {
             misses: AtomicU64::new(0),
             evictions: AtomicU64::new(0),
             insertions: AtomicU64::new(0),
+            eviction_scans: AtomicU64::new(0),
             policy: RwLock::new(Policy::default()),
+            policy_version: AtomicU64::new(0),
+            futile_until_bytes: AtomicUsize::new(0),
+            futile_until_tiles: AtomicUsize::new(0),
+            futile_frame: AtomicU64::new(NO_FRAME),
+            futile_policy: AtomicU64::new(0),
             evicting: Mutex::new(()),
             last_overshoot_warning: Mutex::new(None),
         }
@@ -222,7 +240,12 @@ impl TileCache {
         self.max_tiles
             .store(max_tiles.clamp(1, MAX_TILES_LIMIT), Ordering::Relaxed);
         self.max_bytes.store(max_bytes, Ordering::Relaxed);
+        self.policy_changed();
         self.evict_if_needed();
+    }
+
+    fn policy_changed(&self) {
+        self.policy_version.fetch_add(1, Ordering::Relaxed);
     }
 
     /// The byte budget.
@@ -390,6 +413,7 @@ impl TileCache {
             policy.pinned_levels.remove(&file_id);
             policy.hidden_files.remove(&file_id);
         }
+        self.policy_changed();
         let removed = self.retain(|coord, _| coord.file_id != file_id);
         debug!("Dropped {removed} cached tiles of closed file {file_id}");
         removed
@@ -418,6 +442,7 @@ impl TileCache {
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pins| {
                     pins.checked_sub(1)
                 });
+            self.policy_changed();
         }
     }
 
@@ -433,6 +458,7 @@ impl TileCache {
                 .pinned_levels
                 .insert(file_id, levels.iter().copied().collect());
         }
+        self.policy_changed();
     }
 
     /// Marks a file visible (default) or hidden (no pane shows it); tiles of
@@ -444,6 +470,7 @@ impl TileCache {
         } else {
             policy.hidden_files.insert(file_id);
         }
+        self.policy_changed();
     }
 
     /// Get cache statistics
@@ -457,6 +484,7 @@ impl TileCache {
             insertions: self.insertions.load(Ordering::Relaxed),
             max_bytes: self.max_bytes(),
             max_tiles: self.max_tiles(),
+            eviction_scans: self.eviction_scans.load(Ordering::Relaxed),
         }
     }
 
@@ -472,13 +500,29 @@ impl TileCache {
         if !self.over(max_bytes, max_tiles) {
             return;
         }
+        let frame_start = self.frame_start.load(Ordering::Relaxed);
+        let policy_version = self.policy_version.load(Ordering::Relaxed);
+        let hard_bytes = max_bytes.saturating_mul(HARD_LIMIT_FACTOR);
+        let hard_tiles = max_tiles.saturating_mul(HARD_LIMIT_FACTOR);
+        let futile_bytes = self.futile_until_bytes.load(Ordering::Relaxed);
+        if futile_bytes != 0
+            && self.futile_frame.load(Ordering::Relaxed) == frame_start
+            && self.futile_policy.load(Ordering::Relaxed) == policy_version
+            && self.current_bytes() < futile_bytes
+            && self.map.len() < self.futile_until_tiles.load(Ordering::Relaxed)
+            && !self.over(hard_bytes, hard_tiles)
+        {
+            // The last pass could not free anything that is not protected;
+            // scanning again now would only cost time.
+            return;
+        }
         // One evictor at a time; concurrent inserters just add to the batch.
         let Some(_guard) = self.evicting.try_lock() else {
             return;
         };
+        self.eviction_scans.fetch_add(1, Ordering::Relaxed);
         let target_bytes = max_bytes - max_bytes / HEADROOM_DIVISOR;
         let target_tiles = max_tiles - max_tiles / HEADROOM_DIVISOR;
-        let frame_start = self.frame_start.load(Ordering::Relaxed);
 
         // Snapshot candidates: (class, last_used, coord, id, size, protected).
         // class 0 = hidden file, 1 = visible file.
@@ -511,8 +555,6 @@ impl TileCache {
         }
         candidates.sort_unstable_by_key(|&(class, last_used, ..)| (class, last_used));
 
-        let hard_bytes = max_bytes.saturating_mul(HARD_LIMIT_FACTOR);
-        let hard_tiles = max_tiles.saturating_mul(HARD_LIMIT_FACTOR);
         let mut evicted = 0u64;
         let mut stopped_at_protected = false;
         // First pass: unprotected tiles down to the target. Second pass:
@@ -548,8 +590,23 @@ impl TileCache {
         }
         self.evictions.fetch_add(evicted, Ordering::Relaxed);
 
-        if stopped_at_protected && self.over(max_bytes, max_tiles) {
-            self.warn_overshoot(max_bytes);
+        if self.over(max_bytes, max_tiles) {
+            // Everything left is protected or pinned: skip passes until the
+            // cache grows by another 1/16 of its limits (or the frame or the
+            // policy changes).
+            self.futile_until_bytes.store(
+                (self.current_bytes() + max_bytes / 16).max(1),
+                Ordering::Relaxed,
+            );
+            self.futile_until_tiles
+                .store(self.map.len() + max_tiles / 16 + 1, Ordering::Relaxed);
+            self.futile_frame.store(frame_start, Ordering::Relaxed);
+            self.futile_policy.store(policy_version, Ordering::Relaxed);
+            if stopped_at_protected {
+                self.warn_overshoot(max_bytes);
+            }
+        } else {
+            self.futile_until_bytes.store(0, Ordering::Relaxed);
         }
     }
 
@@ -720,6 +777,25 @@ mod tests {
             cache.insert(tile(0, 0, x));
         }
         assert!(cache.current_bytes() <= 2 * 4 * TILE_BYTES);
+    }
+
+    #[test]
+    fn futile_eviction_passes_are_skipped() {
+        let cache = cache_for(64);
+        cache.begin_frame();
+        // A frame whose working set is 1.5x the budget: everything is
+        // protected, so after a futile pass inserts only rescan once the
+        // cache has grown by another 1/16 of the budget (4 tiles here).
+        for x in 0..96 {
+            cache.insert(tile(0, 0, x));
+        }
+        let scans = cache.stats().eviction_scans;
+        assert!(scans <= 9, "{scans} scans for 32 inserts over budget");
+        assert_eq!(cache.len(), 96);
+        // A new frame makes the old tiles evictable again.
+        cache.begin_frame();
+        cache.insert(tile(0, 0, 999));
+        assert!(cache.current_bytes() <= 64 * TILE_BYTES);
     }
 
     #[test]
