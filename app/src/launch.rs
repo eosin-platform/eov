@@ -712,7 +712,9 @@ pub(crate) fn report_problems(problems: &[Problem]) {
     });
 }
 
-/// Opens one pane's files, in order, the first one selected.
+/// Opens one pane's files, in order, the first one selected. Returns the
+/// pane that has the focus once the first slide was handed to the opener
+/// (its own pane, or the one where the slide was already open).
 #[allow(clippy::too_many_arguments)]
 fn open_group(
     ui: &AppWindow,
@@ -724,8 +726,9 @@ fn open_group(
     batch: u64,
     focus: bool,
     new_pane: bool,
-) {
+) -> Option<u32> {
     let mut position = 0;
+    let mut focused = None;
     for path in files {
         let pane = {
             let mut state = state.write();
@@ -756,13 +759,18 @@ fn open_group(
                 let mut state = state.write();
                 let duplicated = state.duplicate_tab_to_pane(tab_id, pane);
                 if select {
-                    state.activate_tab_in_pane(pane, duplicated);
+                    state.show_tab_in_pane(pane, duplicated);
                 }
                 continue;
             }
         }
         crate::open_file_placed(ui, state, tile_cache, render_timer, path.clone(), placement);
+        if placement.focus {
+            let state = state.read();
+            focused = state.pane_uid(state.focused_pane);
+        }
     }
+    focused
 }
 
 /// Opens `request` in the window (UI thread, no lock held).
@@ -810,7 +818,7 @@ pub(crate) fn open(
     }
 
     let batch = crate::file_ops::new_batch();
-    open_group(
+    let focused_uid = open_group(
         ui,
         state,
         tile_cache,
@@ -820,7 +828,8 @@ pub(crate) fn open(
         batch,
         true,
         false,
-    );
+    )
+    .or(current_uid);
     for ((uid, _), files) in added.iter().zip(&panes) {
         open_group(
             ui,
@@ -837,7 +846,7 @@ pub(crate) fn open(
 
     {
         let mut state = state.write();
-        if let Some(pane) = current_uid.and_then(|uid| state.pane_by_uid(uid)) {
+        if let Some(pane) = focused_uid.and_then(|uid| state.pane_by_uid(uid)) {
             state.set_focused_pane(pane);
         }
     }
