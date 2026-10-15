@@ -90,6 +90,7 @@ pub fn export_viewport(viewport: &Viewport, dpi: u32) -> Viewport {
 ///
 /// This function is CPU-only and intended for off-screen export. It
 /// loads any missing tiles synchronously before rendering.
+#[allow(deprecated)] // Migrated to the processing pipeline in the next change.
 pub fn render_export(
     tile_manager: &TileManager,
     tile_cache: &TileCache,

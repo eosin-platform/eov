@@ -21,6 +21,8 @@ pub mod viewport;
 pub mod wsi;
 
 #[cfg(test)]
+pub(crate) mod test_slides;
+#[cfg(test)]
 pub(crate) mod test_support;
 
 pub use cache::TileCache;
