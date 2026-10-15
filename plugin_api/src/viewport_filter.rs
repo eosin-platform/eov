@@ -104,6 +104,14 @@ pub trait ViewportFilter: Send + Sync {
     /// Toggle the filter on or off.
     fn set_enabled(&mut self, enabled: bool);
 
+    /// Record an enabled state that originated from the filter's owner.
+    ///
+    /// Unlike [`set_enabled`](Self::set_enabled) this must not notify the
+    /// owner again; the default implementation forwards to `set_enabled`.
+    fn sync_enabled(&mut self, enabled: bool) {
+        self.set_enabled(enabled);
+    }
+
     /// Whether this filter supports CPU pixel processing.
     fn supports_cpu(&self) -> bool;
 

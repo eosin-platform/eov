@@ -35,10 +35,10 @@ impl ViewportFilterChain {
         self.filters.push(FilterEntry { id, filter });
     }
 
-    /// Toggle a filter on or off by id.
-    pub fn set_enabled(&mut self, id: &str, enabled: bool) -> bool {
+    /// Record a plugin-reported enabled state without notifying the plugin.
+    pub fn sync_enabled(&mut self, id: &str, enabled: bool) -> bool {
         if let Some(entry) = self.filters.iter_mut().find(|f| f.id == id) {
-            entry.filter.set_enabled(enabled);
+            entry.filter.sync_enabled(enabled);
             true
         } else {
             false
@@ -141,8 +141,17 @@ impl ViewportFilter for FfiViewportFilter {
     }
 
     fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled == enabled {
+            return;
+        }
         self.enabled = enabled;
         (self.vtable.set_filter_enabled)(RString::from(&*self.filter_id), enabled);
+    }
+
+    fn sync_enabled(&mut self, enabled: bool) {
+        // The state came from the plugin itself; echoing it back would invite
+        // re-entrant host calls from the plugin's notification handler.
+        self.enabled = enabled;
     }
 
     fn supports_cpu(&self) -> bool {

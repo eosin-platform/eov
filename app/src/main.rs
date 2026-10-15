@@ -640,11 +640,11 @@ fn setup_callbacks(
                         ));
                         return;
                     }
-                    {
-                        let mut s = filter_state.write();
-                        pm.sync_filter_states(&s.filter_chain);
-                        s.bump_filter_revision();
-                    }
+                    // Never call into plugins while holding the AppState lock:
+                    // their notification handlers may call back into the host.
+                    let filter_chain = filter_state.read().filter_chain.clone();
+                    pm.sync_filter_states(&filter_chain);
+                    filter_state.write().bump_filter_revision();
                     if let Some(ui) = rerender_ui.upgrade() {
                         let state = rerender_state.read();
                         update_tool_state(&ui, &state);
@@ -907,16 +907,10 @@ fn setup_callbacks(
 
         let _ = crate::plugin_host::refresh_plugin_buttons();
 
-        if plugin_id == "eovae" {
-            let filter_chain = {
-                let state = filter_state.read();
-                state.filter_chain.clone()
-            };
-            pm.sync_filter_states(&filter_chain);
-
-            let mut state = filter_state.write();
-            state.bump_filter_revision();
-        }
+        // Any plugin may toggle its filters from a HUD action.
+        let filter_chain = filter_state.read().filter_chain.clone();
+        pm.sync_filter_states(&filter_chain);
+        filter_state.write().bump_filter_revision();
 
         request_render_loop(&render_timer, &hud_plugin_ui, &filter_state, &tile_cache);
     });

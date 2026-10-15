@@ -525,13 +525,23 @@ impl PluginManager {
 
     /// Poll all loaded FFI plugins for updated filter enabled states and
     /// sync them into the shared filter chain.
+    ///
+    /// Must be called without holding the `AppState` lock: plugins are
+    /// queried first and the chain is only locked to record their answers.
     pub fn sync_filter_states(&self, filter_chain: &crate::viewport_filter::SharedFilterChain) {
+        let reported: Vec<(String, bool)> = self
+            .loaded_vtables
+            .values()
+            .flat_map(|vtable| {
+                (vtable.get_viewport_filters)()
+                    .into_iter()
+                    .map(|f| (f.filter_id.to_string(), f.enabled))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         let mut chain = filter_chain.write();
-        for vtable in self.loaded_vtables.values() {
-            let filters = (vtable.get_viewport_filters)();
-            for f in filters.iter() {
-                chain.set_enabled(&f.filter_id, f.enabled);
-            }
+        for (filter_id, enabled) in reported {
+            chain.sync_enabled(&filter_id, enabled);
         }
     }
 }
