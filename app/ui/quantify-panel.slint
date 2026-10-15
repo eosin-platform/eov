@@ -4,6 +4,7 @@
 import { Theme } from "theme.slint";
 import { ChoiceItem, ResultRow } from "types.slint";
 import { Chip, NumberField, PanelButton } from "panel-controls.slint";
+import { DialogKeys } from "dialog-keys.slint";
 
 export component QuantifyPanel inherits Rectangle {
     in property <string> title;
@@ -35,16 +36,14 @@ export component QuantifyPanel inherits Rectangle {
         }
     }
 
-    FocusScope {
-        init => {
-            self.focus();
+    DialogKeys {
+        title: root.title;
+        has-default-action: !root.running;
+        cancel => {
+            root.close-requested();
         }
-        key-pressed(e) => {
-            if e.text == Key.Escape {
-                root.close-requested();
-                return accept;
-            }
-            reject
+        default-action => {
+            root.run-requested();
         }
 
         Rectangle {
@@ -154,6 +153,11 @@ export component QuantifyPanel inherits Rectangle {
 
                     NumberField {
                         label: "Weak (1+) from";
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.weak;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);
@@ -162,6 +166,11 @@ export component QuantifyPanel inherits Rectangle {
 
                     NumberField {
                         label: "Moderate (2+) from";
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.moderate;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);
@@ -170,6 +179,11 @@ export component QuantifyPanel inherits Rectangle {
 
                     NumberField {
                         label: "Strong (3+) from";
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.strong;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);

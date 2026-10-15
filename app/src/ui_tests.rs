@@ -12,7 +12,7 @@ use crate::{
     PropertyRow, TabData,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle, ElementQuery};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -375,6 +375,321 @@ fn dialog_controls_act_on_their_actions() {
         tissue.invoke_accessible_default_action();
         assert_eq!(ui.get_dataset_export_settings().tissue_only, !before);
         assert_eq!(tissue.accessible_checked(), Some(!before));
+        ui.hide().unwrap();
+    });
+}
+
+/// Instantiates what was just shown and runs the change handlers, as the
+/// event loop does between events.
+fn settle(ui: &AppWindow) {
+    let _ = ElementQuery::from_root(ui).find_all();
+    slint::platform::update_timers_and_animations();
+}
+
+fn key(ui: &AppWindow, text: impl Into<slint::SharedString>) {
+    let text = text.into();
+    ui.window()
+        .dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.clone() });
+    ui.window()
+        .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
+    settle(ui);
+}
+
+fn shift_tab(ui: &AppWindow) {
+    use slint::platform::Key;
+    ui.window()
+        .dispatch_event(slint::platform::WindowEvent::KeyPressed {
+            text: Key::Shift.into(),
+        });
+    key(ui, Key::Tab);
+    ui.window()
+        .dispatch_event(slint::platform::WindowEvent::KeyReleased {
+            text: Key::Shift.into(),
+        });
+    settle(ui);
+}
+
+/// Counts the calls of a callback.
+fn counter() -> (Rc<Cell<u32>>, impl Fn() + 'static) {
+    let count = Rc::new(Cell::new(0));
+    let tick = {
+        let count = Rc::clone(&count);
+        move || count.set(count.get() + 1)
+    };
+    (count, tick)
+}
+
+/// A slide in the window whose view has the keyboard and, like eov's
+/// interaction controller, takes every key (Escape too).
+fn window_with_slide_keyboard() -> (AppWindow, Rc<Cell<u32>>) {
+    let ui = window();
+    fill(&ui);
+    let mut pane = ui.get_panes().row_data(0).unwrap();
+    pane.hud.hud_dropdown_open = false;
+    // In place, as eov updates its panes (a new model would make new views).
+    ui.get_panes().set_row_data(0, pane);
+    settle(&ui);
+    let (slide_keys, tick) = counter();
+    ui.on_viewport_key(move |_, _, _, _, _, _, pressed, _| {
+        if pressed {
+            tick();
+        }
+        true
+    });
+    find(&ui, AccessibleRole::Image, "Slide view")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+    settle(&ui);
+    key(&ui, "a");
+    assert_eq!(slide_keys.get(), 1, "the slide has the keyboard");
+    (ui, slide_keys)
+}
+
+/// Shows, reads and hides one dialog or panel.
+type Surface = (&'static str, SetVisible, fn(&AppWindow) -> bool);
+
+#[test]
+fn escape_closes_dialogs_and_menus_even_when_the_slide_had_the_keyboard() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let (ui, slide_keys) = window_with_slide_keyboard();
+
+        // A menu opened over the slide.
+        ui.set_context_menu_visible(true);
+        key(&ui, Key::Escape);
+        assert!(!ui.get_context_menu_visible());
+
+        // A dialog takes the keyboard when it opens.
+        let (cancelled, tick) = counter();
+        ui.on_export_dialog_cancel_requested(tick);
+        ui.set_export_dialog_visible(true);
+        settle(&ui);
+        key(&ui, Key::Escape);
+        assert!(!ui.get_export_dialog_visible());
+        assert_eq!(cancelled.get(), 1);
+
+        // The window has the keyboard again (not the slide, and not
+        // nothing).
+        let (global_keys, tick) = counter();
+        ui.on_global_key(move |_, _, _, _, _, pressed, _| {
+            if pressed {
+                tick();
+            }
+            false
+        });
+        let before = slide_keys.get();
+        key(&ui, "a");
+        assert_eq!(global_keys.get(), 1);
+        assert_eq!(slide_keys.get(), before);
+
+        // Every dialog and panel closes on Escape.
+        let surfaces: [Surface; 7] = [
+            (
+                "dataset",
+                AppWindow::set_dataset_export_dialog_visible,
+                AppWindow::get_dataset_export_dialog_visible,
+            ),
+            (
+                "slide info",
+                AppWindow::set_slide_info_visible,
+                AppWindow::get_slide_info_visible,
+            ),
+            (
+                "save copy",
+                AppWindow::set_save_copy_dialog_visible,
+                AppWindow::get_save_copy_dialog_visible,
+            ),
+            (
+                "plugins",
+                AppWindow::set_plugins_panel_visible,
+                AppWindow::get_plugins_panel_visible,
+            ),
+            (
+                "shortcuts",
+                AppWindow::set_shortcuts_panel_visible,
+                AppWindow::get_shortcuts_panel_visible,
+            ),
+            (
+                "measurements",
+                AppWindow::set_measurements_panel_visible,
+                AppWindow::get_measurements_panel_visible,
+            ),
+            (
+                "lanczos",
+                AppWindow::set_lanczos_confirm_visible,
+                AppWindow::get_lanczos_confirm_visible,
+            ),
+        ];
+        for (name, set_visible, visible) in surfaces {
+            set_visible(&ui, true);
+            settle(&ui);
+            key(&ui, Key::Escape);
+            assert!(!visible(&ui), "{name}");
+        }
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn enter_does_the_default_action() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let (exported, tick) = counter();
+        ui.on_export_dialog_export_requested(tick);
+        ui.set_export_dialog_visible(true);
+        settle(&ui);
+        key(&ui, Key::Return);
+        assert_eq!(exported.get(), 1);
+        ui.set_export_dialog_visible(false);
+        settle(&ui);
+
+        let (accepted, tick) = counter();
+        ui.on_lanczos_confirm_accepted(tick);
+        ui.set_lanczos_confirm_visible(true);
+        settle(&ui);
+        key(&ui, Key::Return);
+        assert_eq!(accepted.get(), 1);
+        assert!(!ui.get_lanczos_confirm_visible());
+
+        // A plugin's question is answered with Enter, unless the answer
+        // destroys something.
+        let (confirmed, tick) = counter();
+        ui.on_plugin_confirm_accepted(tick);
+        ui.set_plugin_confirm_destructive(true);
+        ui.set_plugin_confirm_visible(true);
+        settle(&ui);
+        key(&ui, Key::Return);
+        assert_eq!(confirmed.get(), 0);
+        assert!(ui.get_plugin_confirm_visible());
+        ui.set_plugin_confirm_visible(false);
+        settle(&ui);
+        ui.set_plugin_confirm_destructive(false);
+        ui.set_plugin_confirm_visible(true);
+        settle(&ui);
+        key(&ui, Key::Return);
+        assert_eq!(confirmed.get(), 1);
+
+        // Quantify Stain: Enter in a threshold field quantifies.
+        let (runs, tick) = counter();
+        ui.on_quantify_run(tick);
+        ui.set_quantify_visible(true);
+        settle(&ui);
+        key(&ui, Key::Tab);
+        key(&ui, "1");
+        key(&ui, Key::Return);
+        assert_eq!(runs.get(), 1);
+        ui.set_quantify_visible(false);
+        settle(&ui);
+
+        // A channel's value: Enter applies it, and the panel keeps the
+        // keyboard (Escape still closes it).
+        fill(&ui);
+        let minimum = Rc::new(std::cell::RefCell::new(String::new()));
+        ui.on_channels_min_entered({
+            let minimum = Rc::clone(&minimum);
+            move |_, text| *minimum.borrow_mut() = text.to_string()
+        });
+        ui.set_channels_panel_visible(true);
+        settle(&ui);
+        find(&ui, AccessibleRole::Spinbox, "Minimum of DAPI").invoke_accessible_default_action();
+        settle(&ui);
+        key(&ui, "7");
+        key(&ui, Key::Return);
+        assert!(minimum.borrow().ends_with('7'), "{}", minimum.borrow());
+        key(&ui, Key::Escape);
+        assert!(!ui.get_channels_panel_visible());
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn tab_moves_through_a_dialogs_fields_without_leaving_it() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let mut settings = ui.get_dataset_export_settings();
+        settings.tile_size = 1;
+        settings.stride = 1;
+        settings.threads = 1;
+        ui.set_dataset_export_settings(settings);
+        let (exported, tick) = counter();
+        ui.on_dataset_export_requested(tick);
+        ui.set_dataset_export_dialog_visible(true);
+        settle(&ui);
+
+        // The dialog has the keyboard: Enter starts the export.
+        key(&ui, Key::Return);
+        assert_eq!(exported.get(), 1);
+
+        // Tab goes to the tile size, the stride, the threads and the white
+        // threshold, then back to the dialog and round again.
+        key(&ui, Key::Tab);
+        key(&ui, "2");
+        assert_ne!(ui.get_dataset_export_settings().tile_size, 1, "tile size");
+        key(&ui, Key::Tab);
+        key(&ui, "3");
+        assert_ne!(ui.get_dataset_export_settings().stride, 1, "stride");
+        key(&ui, Key::Tab);
+        key(&ui, "4");
+        assert_ne!(ui.get_dataset_export_settings().threads, 1, "threads");
+        key(&ui, Key::Tab);
+        key(&ui, Key::Tab);
+        // Enter on the dialog again (a field would have taken it).
+        key(&ui, Key::Return);
+        assert_eq!(exported.get(), 2);
+        let tile_size = ui.get_dataset_export_settings().tile_size;
+        key(&ui, Key::Tab);
+        key(&ui, "5");
+        assert_ne!(ui.get_dataset_export_settings().tile_size, tile_size);
+
+        // Shift+Tab goes back to the dialog and stops there.
+        shift_tab(&ui);
+        shift_tab(&ui);
+        key(&ui, Key::Return);
+        assert_eq!(exported.get(), 3);
+        assert!(ui.get_dataset_export_dialog_visible());
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn the_slide_gets_the_keyboard_back_from_its_hud() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let (ui, slide_keys) = window_with_slide_keyboard();
+
+        // The zoom field: Enter applies the zoom and the slide has the
+        // keyboard again.
+        let zoom = Rc::new(std::cell::RefCell::new(String::new()));
+        ui.on_hud_zoom_input({
+            let zoom = Rc::clone(&zoom);
+            move |_, text| *zoom.borrow_mut() = text.to_string()
+        });
+        find(&ui, AccessibleRole::Spinbox, "Zoom").invoke_accessible_default_action();
+        settle(&ui);
+        key(&ui, "5");
+        key(&ui, Key::Return);
+        assert_eq!(zoom.borrow().as_str(), "5");
+        let before = slide_keys.get();
+        key(&ui, "a");
+        assert_eq!(slide_keys.get(), before + 1);
+
+        // The adjustments take the keyboard; Escape closes them.
+        let (toggled, tick) = counter();
+        ui.on_hud_toggle_dropdown(move |_| tick());
+        let set_open = |open: bool| {
+            let mut pane = ui.get_panes().row_data(0).unwrap();
+            pane.hud.hud_dropdown_open = open;
+            ui.get_panes().set_row_data(0, pane);
+            settle(&ui);
+        };
+        set_open(true);
+        key(&ui, Key::Escape);
+        assert_eq!(toggled.get(), 1);
+        set_open(false);
+        let before = slide_keys.get();
+        key(&ui, "a");
+        assert_eq!(slide_keys.get(), before + 1, "back on the slide");
         ui.hide().unwrap();
     });
 }

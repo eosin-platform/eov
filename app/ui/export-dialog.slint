@@ -1,6 +1,7 @@
 // EOV WSI Viewer - Export Image Dialog
 
 import { Theme } from "theme.slint";
+import { DialogKeys } from "dialog-keys.slint";
 import {
     CapStyle,
     ExportFilteringMode,
@@ -151,6 +152,7 @@ component ExportSlider inherits Rectangle {
             accessible-label: root.label;
 
             accepted => {
+                keep-keys.focus();
                 root.editing = false;
                 let raw = self.text.to-float() * root.display-divisor;
                 root.changed(max(root.min-value, min(root.max-value, raw)));
@@ -167,6 +169,17 @@ component ExportSlider inherits Rectangle {
                 val-input.select-all();
             }
         }
+    }
+
+    // Holds the keyboard for the dialog once the value is entered (the
+    // field it was typed into goes away).
+    keep-keys := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
     }
 }
 
@@ -1071,1017 +1084,1029 @@ export component ExportDialog inherits Rectangle {
     }
 
     // Dialog card – centered, anchored below toolbar
-    Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: root.toolbar-height + 24px;
-        width: min(560px, parent.width - 48px);
-        height: min(parent.height - root.toolbar-height - 48px, dialog-layout.preferred-height);
-        background: #1e1e1e;
-        border-radius: 10px;
-        border-width: 1px;
-        border-color: #ffffff1a;
-        drop-shadow-blur: 32px;
-        drop-shadow-color: #000000aa;
+    // Escape cancels, Enter exports.
+    DialogKeys {
+        title: "Export Image";
+        has-default-action: true;
+        cancel => {
+            root.cancel-requested();
+        }
+        default-action => {
+            root.export-requested();
+        }
 
-        // Block clicks from dismissing through the card
-        TouchArea { }
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: root.toolbar-height + 24px;
+            width: min(560px, parent.width - 48px);
+            height: min(parent.height - root.toolbar-height - 48px, dialog-layout.preferred-height);
+            background: #1e1e1e;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: #ffffff1a;
+            drop-shadow-blur: 32px;
+            drop-shadow-color: #000000aa;
 
-        dialog-layout := VerticalLayout {
-            padding: 0px;
-            spacing: 0px;
+            // Block clicks from dismissing through the card
+            TouchArea { }
 
-            // ---------------------------------------------------------------
-            // Preview section (fixed, non-scrollable)
-            // ---------------------------------------------------------------
-            Rectangle {
-                height: root.preview-info.note != "" ? 256px : 240px;
-                background: #141414;
-                border-top-left-radius: 10px;
-                border-top-right-radius: 10px;
+            dialog-layout := VerticalLayout {
+                padding: 0px;
+                spacing: 0px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
-                    alignment: center;
+                // ---------------------------------------------------------------
+                // Preview section (fixed, non-scrollable)
+                // ---------------------------------------------------------------
+                Rectangle {
+                    height: root.preview-info.note != "" ? 256px : 240px;
+                    background: #141414;
+                    border-top-left-radius: 10px;
+                    border-top-right-radius: 10px;
 
-                    Text {
-                        text: "Export Preview";
-                        color: white;
-                        font-size: 13px;
-                        font-weight: 600;
-                        horizontal-alignment: center;
-                    }
-
-                    Rectangle {
-                        height: 140px;
-                        background: #0a0a0a;
-                        border-radius: 6px;
-                        border-width: 1px;
-                        border-color: #ffffff10;
-                        clip: true;
-
-                        Image {
-                            width: parent.width;
-                            height: parent.height;
-                            source: @image-url("icons/crosshatch.svg");
-                            horizontal-tiling: repeat;
-                            vertical-tiling: repeat;
-                            image-rendering: pixelated;
-                            accessible-role: none;
-                        }
-
-                        Image {
-                            width: parent.width - 8px;
-                            height: parent.height - 16px;
-                            x: 4px;
-                            y: 8px;
-                            source: root.preview-info.preview-image;
-                            image-fit: contain;
-                            accessible-label: "Export preview";
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 16px;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
                         alignment: center;
 
                         Text {
-                            text: "Estimated Size: " + (Math.round(root.estimated-mb * 100) / 100) + " MB";
-                            color: #8ea0b2;
-                            font-size: 10px;
+                            text: "Export Preview";
+                            color: white;
+                            font-size: 13px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
                         }
 
-                        Text {
-                            text: root.export-width + " × " + root.export-height + " px";
-                            color: #8ea0b2;
-                            font-size: 10px;
+                        Rectangle {
+                            height: 140px;
+                            background: #0a0a0a;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: #ffffff10;
+                            clip: true;
+
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: @image-url("icons/crosshatch.svg");
+                                horizontal-tiling: repeat;
+                                vertical-tiling: repeat;
+                                image-rendering: pixelated;
+                                accessible-role: none;
+                            }
+
+                            Image {
+                                width: parent.width - 8px;
+                                height: parent.height - 16px;
+                                x: 4px;
+                                y: 8px;
+                                source: root.preview-info.preview-image;
+                                image-fit: contain;
+                                accessible-label: "Export preview";
+                            }
                         }
 
-                        if root.preview-info.rendering: Text {
-                            text: "Rendering preview…";
-                            color: #8ea0b2;
-                            font-size: 10px;
-                        }
-                    }
+                        HorizontalLayout {
+                            spacing: 16px;
+                            alignment: center;
 
-                    if root.preview-info.note != "": Text {
-                        text: root.preview-info.note;
-                        color: #e0c080;
-                        font-size: 10px;
-                        horizontal-alignment: center;
-                        wrap: word-wrap;
+                            Text {
+                                text: "Estimated Size: " + (Math.round(root.estimated-mb * 100) / 100) + " MB";
+                                color: #8ea0b2;
+                                font-size: 10px;
+                            }
+
+                            Text {
+                                text: root.export-width + " × " + root.export-height + " px";
+                                color: #8ea0b2;
+                                font-size: 10px;
+                            }
+
+                            if root.preview-info.rendering: Text {
+                                text: "Rendering preview…";
+                                color: #8ea0b2;
+                                font-size: 10px;
+                            }
+                        }
+
+                        if root.preview-info.note != "": Text {
+                            text: root.preview-info.note;
+                            color: #e0c080;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
                     }
                 }
-            }
 
-            SectionDivider { }
+                SectionDivider { }
 
-            // ---------------------------------------------------------------
-            // Scrollable settings area — no Flickable (its gesture
-            // recognition conflicts with slider drags). Instead, a
-            // clipped Rectangle with a parent TouchArea that handles
-            // only scroll-wheel events. Inner slider TouchAreas take
-            // event priority over the parent TouchArea.
-            // ---------------------------------------------------------------
-            scroll-clip := Rectangle {
-                vertical-stretch: 1;
-                clip: true;
-                // Report content height as preferred so the dialog card
-                // allocates full available space for this area.
-                preferred-height: settings-content.preferred-height;
+                // ---------------------------------------------------------------
+                // Scrollable settings area — no Flickable (its gesture
+                // recognition conflicts with slider drags). Instead, a
+                // clipped Rectangle with a parent TouchArea that handles
+                // only scroll-wheel events. Inner slider TouchAreas take
+                // event priority over the parent TouchArea.
+                // ---------------------------------------------------------------
+                scroll-clip := Rectangle {
+                    vertical-stretch: 1;
+                    clip: true;
+                    // Report content height as preferred so the dialog card
+                    // allocates full available space for this area.
+                    preferred-height: settings-content.preferred-height;
 
-                TouchArea {
-                    scroll-event(e) => {
-                        root.scroll-y = clamp(
-                            root.scroll-y + e.delta-y,
-                            min(0px, scroll-clip.height - settings-content.preferred-height),
-                            0px);
-                        accept
-                    }
-
-                    settings-content := VerticalLayout {
-                        y: root.scroll-y;
-                        width: parent.width;
-                        padding: 16px;
-                        spacing: 4px;
-
-                        // ------- Resolution (DPI) -------
-                    SectionHeader {
-                            text: "Resolution (DPI)";
-                            icon-source: @image-url("icons/resolution.svg");
+                    TouchArea {
+                        scroll-event(e) => {
+                            root.scroll-y = clamp(
+                                root.scroll-y + e.delta-y,
+                                min(0px, scroll-clip.height - settings-content.preferred-height),
+                                0px);
+                            accept
                         }
 
-                        HorizontalLayout {
-                            spacing: 8px;
-
-                            ExportSlider {
-                                horizontal-stretch: 1;
-                                label: "Resolution (DPI)";
-                                step: 10;
-                                value: root.settings.dpi;
-                                min-value: 72;
-                                max-value: 600;
-                                default-value: 150;
-                                display-text: Math.round(root.settings.dpi) + "";
-                                changed(v) => {
-                                    root.settings.dpi = Math.round(v);
-                                    root.settings-changed(root.settings);
-                                }
-                                released => {
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        // Quick-select chips
-                    HorizontalLayout {
-                            spacing: 6px;
-                            alignment: start;
-                            padding-top: 2px;
-                            padding-bottom: 4px;
-
-                            DpiChip {
-                                chip-value: 72;
-                                active: root.settings.dpi == 72;
-                                clicked => {
-                                    root.settings.dpi = 72;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            DpiChip {
-                                chip-value: 96;
-                                active: root.settings.dpi == 96;
-                                clicked => {
-                                    root.settings.dpi = 96;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            DpiChip {
-                                chip-value: 150;
-                                active: root.settings.dpi == 150;
-                                clicked => {
-                                    root.settings.dpi = 150;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            DpiChip {
-                                chip-value: 300;
-                                active: root.settings.dpi == 300;
-                                clicked => {
-                                    root.settings.dpi = 300;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Filtering Mode -------
-                    SectionHeader {
-                            text: "Filtering Mode";
-                            icon-source: @image-url("icons/sample-mode.svg");
-                        }
-
-                        HorizontalLayout {
-                            spacing: 4px;
-                            padding-bottom: 4px;
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Bilinear";
-                                group: "Filtering mode";
-                                active: root.settings.filtering-mode == ExportFilteringMode.bilinear;
-                                clicked => {
-                                    root.settings.filtering-mode = ExportFilteringMode.bilinear;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Trilinear";
-                                group: "Filtering mode";
-                                active: root.settings.filtering-mode == ExportFilteringMode.trilinear;
-                                clicked => {
-                                    root.settings.filtering-mode = ExportFilteringMode.trilinear;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Lanczos";
-                                group: "Filtering mode";
-                                active: root.settings.filtering-mode == ExportFilteringMode.lanczos;
-                                clicked => {
-                                    root.settings.filtering-mode = ExportFilteringMode.lanczos;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Image Adjustment -------
-                    SectionHeader {
-                            text: "Image Adjustment";
-                            icon-source: @image-url("icons/settings.svg");
-                        }
-
-                        LabelRow {
-                            label: "Sharpness";
-                        }
-
-                        ExportSlider {
-                            label: "Sharpness";
-                            step: 0.05;
-                            value: root.settings.sharpness;
-                            min-value: 0.0;
-                            max-value: 1.0;
-                            display-text: Math.round(root.settings.sharpness * 100) + "%";
-                            changed(v) => {
-                                root.settings.sharpness = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        LabelRow {
-                            label: "Gamma";
-                        }
-
-                        ExportSlider {
-                            label: "Gamma";
-                            step: 0.05;
-                            value: root.settings.gamma;
-                            min-value: 0.2;
-                            max-value: 3.0;
-                            default-value: 1.0;
-                            display-text: Math.round(root.settings.gamma * 100) / 100 + "";
-                            changed(v) => {
-                                root.settings.gamma = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        LabelRow {
-                            label: "Brightness";
-                        }
-
-                        ExportSlider {
-                            label: "Brightness";
-                            step: 0.05;
-                            value: root.settings.brightness;
-                            min-value: -1.0;
-                            max-value: 1.0;
-                            display-text: (root.settings.brightness >= 0 ? "+" : "") + Math.round(root.settings.brightness * 100) + "%";
-                            changed(v) => {
-                                root.settings.brightness = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        LabelRow {
-                            label: "Contrast";
-                        }
-
-                        ExportSlider {
-                            label: "Contrast";
-                            step: 0.05;
-                            value: root.settings.contrast;
-                            min-value: 0.2;
-                            max-value: 3.0;
-                            default-value: 1.0;
-                            display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
-                            changed(v) => {
-                                root.settings.contrast = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Stain Normalization -------
-                    SectionHeader {
-                            text: "Stain Normalization";
-                            icon-source: @image-url("icons/settings.svg");
-                        }
-
-                        HorizontalLayout {
-                            spacing: 4px;
-                            padding-bottom: 4px;
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "None";
-                                group: "Stain normalization";
-                                active: root.settings.stain-normalization == StainNormalization.none;
-                                clicked => {
-                                    root.settings.stain-normalization = StainNormalization.none;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Macenko";
-                                group: "Stain normalization";
-                                active: root.settings.stain-normalization == StainNormalization.macenko;
-                                clicked => {
-                                    root.settings.stain-normalization = StainNormalization.macenko;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Vahadane";
-                                group: "Stain normalization";
-                                active: root.settings.stain-normalization == StainNormalization.vahadane;
-                                clicked => {
-                                    root.settings.stain-normalization = StainNormalization.vahadane;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Color Deconvolution -------
-                    SectionHeader {
-                            text: "Color Deconvolution";
-                            icon-source: @image-url("icons/settings.svg");
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            padding-left: 4px;
-                            height: 28px;
-
-                            ToggleSwitch {
-                                label: "Hematoxylin";
-                                checked: root.settings.deconv-hematoxylin-visible;
-                                toggled(v) => {
-                                    root.settings.deconv-hematoxylin-visible = v;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        LabelRow {
-                            label: "H Intensity";
-                        }
-
-                        ExportSlider {
-                            label: "Hematoxylin intensity";
-                            step: 0.05;
-                            value: root.settings.deconv-hematoxylin-intensity;
-                            min-value: 0.0;
-                            max-value: 3.0;
-                            default-value: 1.0;
-                            display-text: Math.round(root.settings.deconv-hematoxylin-intensity * 100) / 100 + "x";
-                            changed(v) => {
-                                root.settings.deconv-hematoxylin-intensity = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            padding-left: 4px;
-                            height: 28px;
-
-                            ToggleSwitch {
-                                label: "Eosin";
-                                checked: root.settings.deconv-eosin-visible;
-                                toggled(v) => {
-                                    root.settings.deconv-eosin-visible = v;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        LabelRow {
-                            label: "E Intensity";
-                        }
-
-                        ExportSlider {
-                            label: "Eosin intensity";
-                            step: 0.05;
-                            value: root.settings.deconv-eosin-intensity;
-                            min-value: 0.0;
-                            max-value: 3.0;
-                            default-value: 1.0;
-                            display-text: Math.round(root.settings.deconv-eosin-intensity * 100) / 100 + "x";
-                            changed(v) => {
-                                root.settings.deconv-eosin-intensity = v;
-                                root.settings-changed(root.settings);
-                            }
-                            released => {
-                                root.notify-settings();
-                            }
-                        }
-
-                        LabelRow {
-                            label: "Isolated Channel";
-                        }
-
-                        HorizontalLayout {
-                            spacing: 4px;
-                            padding-bottom: 4px;
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "None";
-                                group: "Isolated channel";
-                                active: root.settings.deconv-isolated-channel == IsolatedChannel.none;
-                                clicked => {
-                                    root.settings.deconv-isolated-channel = IsolatedChannel.none;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Hematoxylin";
-                                group: "Isolated channel";
-                                active: root.settings.deconv-isolated-channel == IsolatedChannel.hematoxylin;
-                                clicked => {
-                                    root.settings.deconv-isolated-channel = IsolatedChannel.hematoxylin;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "Eosin";
-                                group: "Isolated channel";
-                                active: root.settings.deconv-isolated-channel == IsolatedChannel.eosin;
-                                clicked => {
-                                    root.settings.deconv-isolated-channel = IsolatedChannel.eosin;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Measurement -------
-                    SectionHeader {
-                            text: "Measurement";
-                            icon-source: @image-url("icons/measure.svg");
-                        }
-
-                        if !root.settings.has-measurement: Rectangle {
-                            height: 32px;
-                            Text {
-                                x: 8px;
-                                text: "Measure a distance in the viewport to enable these settings.";
-                                color: #8ea0b260;
-                                font-size: 10px;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                            }
-                        }
-
-                        if root.settings.has-measurement: ToggleSwitch {
-                            label: "Show Measurement";
-                            checked: root.settings.show-measurement;
-                            enabled: root.settings.has-measurement;
-                            toggled(v) => {
-                                root.settings.show-measurement = v;
-                                root.notify-settings();
-                            }
-                        }
-
-                        if root.settings.show-measurement && root.settings.has-measurement: VerticalLayout {
+                        settings-content := VerticalLayout {
+                            y: root.scroll-y;
+                            width: parent.width;
+                            padding: 16px;
                             spacing: 4px;
 
-                            LabelRow {
-                                label: "Color";
+                            // ------- Resolution (DPI) -------
+                        SectionHeader {
+                                text: "Resolution (DPI)";
+                                icon-source: @image-url("icons/resolution.svg");
                             }
 
-                            ColorField {
-                                current-color: root.settings.measurement-color;
-                                opacity-pct: root.settings.measurement-opacity;
-                                color-changed(c) => {
-                                    root.settings.measurement-color = c;
-                                    root.notify-settings();
-                                }
-                                opacity-changed(v) => {
-                                    root.settings.measurement-opacity = v;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
-                            }
+                            HorizontalLayout {
+                                spacing: 8px;
 
-                            LabelRow {
-                                label: "Thickness";
-                            }
-
-                            ExportSlider {
-                                label: "Measurement line thickness";
-                                step: 0.5;
-                                value: root.settings.measurement-thickness;
-                                min-value: 0.5;
-                                max-value: 10.0;
-                                default-value: 2.0;
-                                display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
-                                changed(v) => {
-                                    root.settings.measurement-thickness = v;
-                                    root.settings-changed(root.settings);
-                                }
-                                released => {
-                                    root.notify-settings();
+                                ExportSlider {
+                                    horizontal-stretch: 1;
+                                    label: "Resolution (DPI)";
+                                    step: 10;
+                                    value: root.settings.dpi;
+                                    min-value: 72;
+                                    max-value: 600;
+                                    default-value: 150;
+                                    display-text: Math.round(root.settings.dpi) + "";
+                                    changed(v) => {
+                                        root.settings.dpi = Math.round(v);
+                                        root.settings-changed(root.settings);
+                                    }
+                                    released => {
+                                        root.notify-settings();
+                                    }
                                 }
                             }
 
-                            StrokeStyleSelector {
-                                stroke-style: root.settings.measurement-stroke-style;
-                                dash-length: root.settings.measurement-dash-length;
-                                dash-gap: root.settings.measurement-dash-gap;
-                                dot-spacing: root.settings.measurement-dot-spacing;
-                                style-changed(s) => {
-                                    root.settings.measurement-stroke-style = s;
+                            // Quick-select chips
+                        HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+                                padding-top: 2px;
+                                padding-bottom: 4px;
+
+                                DpiChip {
+                                    chip-value: 72;
+                                    active: root.settings.dpi == 72;
+                                    clicked => {
+                                        root.settings.dpi = 72;
+                                        root.notify-settings();
+                                    }
                                 }
-                                dash-length-changed(v) => {
-                                    root.settings.measurement-dash-length = v;
+
+                                DpiChip {
+                                    chip-value: 96;
+                                    active: root.settings.dpi == 96;
+                                    clicked => {
+                                        root.settings.dpi = 96;
+                                        root.notify-settings();
+                                    }
                                 }
-                                dash-gap-changed(v) => {
-                                    root.settings.measurement-dash-gap = v;
+
+                                DpiChip {
+                                    chip-value: 150;
+                                    active: root.settings.dpi == 150;
+                                    clicked => {
+                                        root.settings.dpi = 150;
+                                        root.notify-settings();
+                                    }
                                 }
-                                dot-spacing-changed(v) => {
-                                    root.settings.measurement-dot-spacing = v;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
+
+                                DpiChip {
+                                    chip-value: 300;
+                                    active: root.settings.dpi == 300;
+                                    clicked => {
+                                        root.settings.dpi = 300;
+                                        root.notify-settings();
+                                    }
                                 }
                             }
-
-                            CapStyleSelector {
-                                cap-style: root.settings.measurement-cap-style;
-                                cap-changed(c) => {
-                                    root.settings.measurement-cap-style = c;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
-                            }
-
-                            LabelRow {
-                                label: "Font Size";
-                            }
-
-                            ExportSlider {
-                                label: "Measurement font size";
-                                step: 1;
-                                value: root.settings.measurement-font-size;
-                                min-value: 6;
-                                max-value: 32;
-                                default-value: 12;
-                                display-text: Math.round(root.settings.measurement-font-size) + "pt";
-                                changed(v) => {
-                                    root.settings.measurement-font-size = v;
-                                    root.settings-changed(root.settings);
-                                }
-                                released => {
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Region of Interest -------
-                    SectionHeader {
-                            text: "Region of Interest";
-                        // ROI icon drawn inline (matches toolbar icon)
-                        icon-source: @image-url("icons/navigate.svg");
-                        }
-
-                        if !root.settings.has-roi: Rectangle {
-                            height: 32px;
-                            Text {
-                                x: 8px;
-                                text: "Select a region of interest in the viewport to enable these settings.";
-                                color: #8ea0b260;
-                                font-size: 10px;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                            }
-                        }
-
-                        if root.settings.has-roi: ToggleSwitch {
-                            label: "Show Outline";
-                            checked: root.settings.show-roi-outline;
-                            enabled: root.settings.has-roi;
-                            toggled(v) => {
-                                root.settings.show-roi-outline = v;
-                                root.notify-settings();
-                            }
-                        }
-
-                        if root.settings.show-roi-outline && root.settings.has-roi: VerticalLayout {
-                            spacing: 4px;
-
-                            LabelRow {
-                                label: "Color";
-                            }
-
-                            ColorField {
-                                current-color: root.settings.roi-color;
-                                opacity-pct: root.settings.roi-opacity;
-                                color-changed(c) => {
-                                    root.settings.roi-color = c;
-                                    root.notify-settings();
-                                }
-                                opacity-changed(v) => {
-                                    root.settings.roi-opacity = v;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
-                            }
-
-                            LabelRow {
-                                label: "Thickness";
-                            }
-
-                            ExportSlider {
-                                label: "Region outline thickness";
-                                step: 0.5;
-                                value: root.settings.roi-thickness;
-                                min-value: 0.5;
-                                max-value: 10.0;
-                                default-value: 2.0;
-                                display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
-                                changed(v) => {
-                                    root.settings.roi-thickness = v;
-                                    root.settings-changed(root.settings);
-                                }
-                                released => {
-                                    root.notify-settings();
-                                }
-                            }
-
-                            StrokeStyleSelector {
-                                stroke-style: root.settings.roi-stroke-style;
-                                dash-length: root.settings.roi-dash-length;
-                                dash-gap: root.settings.roi-dash-gap;
-                                dot-spacing: root.settings.roi-dot-spacing;
-                                style-changed(s) => {
-                                    root.settings.roi-stroke-style = s;
-                                }
-                                dash-length-changed(v) => {
-                                    root.settings.roi-dash-length = v;
-                                }
-                                dash-gap-changed(v) => {
-                                    root.settings.roi-dash-gap = v;
-                                }
-                                dot-spacing-changed(v) => {
-                                    root.settings.roi-dot-spacing = v;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
-                            }
-
-                            CapStyleSelector {
-                                cap-style: root.settings.roi-cap-style;
-                                cap-changed(c) => {
-                                    root.settings.roi-cap-style = c;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        // Outside Overlay subsection
-                    if root.settings.has-roi: VerticalLayout {
-                            spacing: 4px;
-                            padding-top: 4px;
 
                             SectionDivider { }
 
-                            LabelRow {
-                                label: "Outside Overlay";
+                            // ------- Filtering Mode -------
+                        SectionHeader {
+                                text: "Filtering Mode";
+                                icon-source: @image-url("icons/sample-mode.svg");
                             }
 
-                            ToggleSwitch {
-                                label: "Enable Overlay";
-                                checked: root.settings.roi-outside-overlay;
-                                toggled(v) => {
-                                    root.settings.roi-outside-overlay = v;
-                                    root.notify-settings();
+                            HorizontalLayout {
+                                spacing: 4px;
+                                padding-bottom: 4px;
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Bilinear";
+                                    group: "Filtering mode";
+                                    active: root.settings.filtering-mode == ExportFilteringMode.bilinear;
+                                    clicked => {
+                                        root.settings.filtering-mode = ExportFilteringMode.bilinear;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Trilinear";
+                                    group: "Filtering mode";
+                                    active: root.settings.filtering-mode == ExportFilteringMode.trilinear;
+                                    clicked => {
+                                        root.settings.filtering-mode = ExportFilteringMode.trilinear;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Lanczos";
+                                    group: "Filtering mode";
+                                    active: root.settings.filtering-mode == ExportFilteringMode.lanczos;
+                                    clicked => {
+                                        root.settings.filtering-mode = ExportFilteringMode.lanczos;
+                                        root.notify-settings();
+                                    }
                                 }
                             }
 
-                            if root.settings.roi-outside-overlay: ColorField {
-                                current-color: root.settings.roi-outside-color;
-                                opacity-pct: root.settings.roi-outside-opacity;
-                                color-changed(c) => {
-                                    root.settings.roi-outside-color = c;
-                                    root.notify-settings();
-                                }
-                                opacity-changed(v) => {
-                                    root.settings.roi-outside-opacity = v;
-                                }
-                                request-preview => {
-                                    root.notify-settings();
-                                }
+                            SectionDivider { }
+
+                            // ------- Image Adjustment -------
+                        SectionHeader {
+                                text: "Image Adjustment";
+                                icon-source: @image-url("icons/settings.svg");
                             }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Figure -------
-                    SectionHeader {
-                            text: "Figure";
-                            icon-source: @image-url("icons/measure.svg");
-                        }
-
-                        ToggleSwitch {
-                            label: "Scale Bar";
-                            checked: root.settings.show-scale-bar;
-                            toggled(v) => {
-                                root.settings.show-scale-bar = v;
-                                root.notify-settings();
-                            }
-                        }
-
-                        ToggleSwitch {
-                            label: "Colour Processing Note";
-                            checked: root.settings.show-processing-note;
-                            toggled(v) => {
-                                root.settings.show-processing-note = v;
-                                root.notify-settings();
-                            }
-                        }
-
-                        SectionDivider { }
-
-                        // ------- Format -------
-                    SectionHeader {
-                            text: "Format";
-                            icon-source: @image-url("icons/export.svg");
-                        }
-
-                        HorizontalLayout {
-                            spacing: 4px;
-                            padding-bottom: 4px;
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "JPEG (Smaller)";
-                                group: "Format";
-                                active: root.settings.format == ExportFormat.jpeg;
-                                clicked => {
-                                    root.settings.format = ExportFormat.jpeg;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "PNG (Lossless)";
-                                group: "Format";
-                                active: root.settings.format == ExportFormat.png;
-                                clicked => {
-                                    root.settings.format = ExportFormat.png;
-                                    root.notify-settings();
-                                }
-                            }
-
-                            SegmentButton {
-                                horizontal-stretch: 1;
-                                text: "TIFF (Lossless)";
-                                group: "Format";
-                                active: root.settings.format == ExportFormat.tiff;
-                                clicked => {
-                                    root.settings.format = ExportFormat.tiff;
-                                    root.notify-settings();
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 4px;
 
                             LabelRow {
-                                label: "Quality";
+                                label: "Sharpness";
                             }
 
                             ExportSlider {
-                                enabled: root.settings.format == ExportFormat.jpeg;
-                                label: "JPEG quality";
-                                step: 5;
-                                value: root.settings.jpeg-quality;
-                                min-value: 1;
-                                max-value: 100;
-                                default-value: 85;
-                                display-text: root.settings.jpeg-quality + "%";
+                                label: "Sharpness";
+                                step: 0.05;
+                                value: root.settings.sharpness;
+                                min-value: 0.0;
+                                max-value: 1.0;
+                                display-text: Math.round(root.settings.sharpness * 100) + "%";
                                 changed(v) => {
-                                    root.settings.jpeg-quality = Math.round(v);
+                                    root.settings.sharpness = v;
                                     root.settings-changed(root.settings);
                                 }
                                 released => {
                                     root.notify-settings();
                                 }
                             }
-                        }
 
-                        // Bottom padding for scroll area
-                    Rectangle {
-                            height: 8px;
+                            LabelRow {
+                                label: "Gamma";
+                            }
+
+                            ExportSlider {
+                                label: "Gamma";
+                                step: 0.05;
+                                value: root.settings.gamma;
+                                min-value: 0.2;
+                                max-value: 3.0;
+                                default-value: 1.0;
+                                display-text: Math.round(root.settings.gamma * 100) / 100 + "";
+                                changed(v) => {
+                                    root.settings.gamma = v;
+                                    root.settings-changed(root.settings);
+                                }
+                                released => {
+                                    root.notify-settings();
+                                }
+                            }
+
+                            LabelRow {
+                                label: "Brightness";
+                            }
+
+                            ExportSlider {
+                                label: "Brightness";
+                                step: 0.05;
+                                value: root.settings.brightness;
+                                min-value: -1.0;
+                                max-value: 1.0;
+                                display-text: (root.settings.brightness >= 0 ? "+" : "") + Math.round(root.settings.brightness * 100) + "%";
+                                changed(v) => {
+                                    root.settings.brightness = v;
+                                    root.settings-changed(root.settings);
+                                }
+                                released => {
+                                    root.notify-settings();
+                                }
+                            }
+
+                            LabelRow {
+                                label: "Contrast";
+                            }
+
+                            ExportSlider {
+                                label: "Contrast";
+                                step: 0.05;
+                                value: root.settings.contrast;
+                                min-value: 0.2;
+                                max-value: 3.0;
+                                default-value: 1.0;
+                                display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
+                                changed(v) => {
+                                    root.settings.contrast = v;
+                                    root.settings-changed(root.settings);
+                                }
+                                released => {
+                                    root.notify-settings();
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Stain Normalization -------
+                        SectionHeader {
+                                text: "Stain Normalization";
+                                icon-source: @image-url("icons/settings.svg");
+                            }
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                padding-bottom: 4px;
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "None";
+                                    group: "Stain normalization";
+                                    active: root.settings.stain-normalization == StainNormalization.none;
+                                    clicked => {
+                                        root.settings.stain-normalization = StainNormalization.none;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Macenko";
+                                    group: "Stain normalization";
+                                    active: root.settings.stain-normalization == StainNormalization.macenko;
+                                    clicked => {
+                                        root.settings.stain-normalization = StainNormalization.macenko;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Vahadane";
+                                    group: "Stain normalization";
+                                    active: root.settings.stain-normalization == StainNormalization.vahadane;
+                                    clicked => {
+                                        root.settings.stain-normalization = StainNormalization.vahadane;
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Color Deconvolution -------
+                        SectionHeader {
+                                text: "Color Deconvolution";
+                                icon-source: @image-url("icons/settings.svg");
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                padding-left: 4px;
+                                height: 28px;
+
+                                ToggleSwitch {
+                                    label: "Hematoxylin";
+                                    checked: root.settings.deconv-hematoxylin-visible;
+                                    toggled(v) => {
+                                        root.settings.deconv-hematoxylin-visible = v;
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            LabelRow {
+                                label: "H Intensity";
+                            }
+
+                            ExportSlider {
+                                label: "Hematoxylin intensity";
+                                step: 0.05;
+                                value: root.settings.deconv-hematoxylin-intensity;
+                                min-value: 0.0;
+                                max-value: 3.0;
+                                default-value: 1.0;
+                                display-text: Math.round(root.settings.deconv-hematoxylin-intensity * 100) / 100 + "x";
+                                changed(v) => {
+                                    root.settings.deconv-hematoxylin-intensity = v;
+                                    root.settings-changed(root.settings);
+                                }
+                                released => {
+                                    root.notify-settings();
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                padding-left: 4px;
+                                height: 28px;
+
+                                ToggleSwitch {
+                                    label: "Eosin";
+                                    checked: root.settings.deconv-eosin-visible;
+                                    toggled(v) => {
+                                        root.settings.deconv-eosin-visible = v;
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            LabelRow {
+                                label: "E Intensity";
+                            }
+
+                            ExportSlider {
+                                label: "Eosin intensity";
+                                step: 0.05;
+                                value: root.settings.deconv-eosin-intensity;
+                                min-value: 0.0;
+                                max-value: 3.0;
+                                default-value: 1.0;
+                                display-text: Math.round(root.settings.deconv-eosin-intensity * 100) / 100 + "x";
+                                changed(v) => {
+                                    root.settings.deconv-eosin-intensity = v;
+                                    root.settings-changed(root.settings);
+                                }
+                                released => {
+                                    root.notify-settings();
+                                }
+                            }
+
+                            LabelRow {
+                                label: "Isolated Channel";
+                            }
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                padding-bottom: 4px;
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "None";
+                                    group: "Isolated channel";
+                                    active: root.settings.deconv-isolated-channel == IsolatedChannel.none;
+                                    clicked => {
+                                        root.settings.deconv-isolated-channel = IsolatedChannel.none;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Hematoxylin";
+                                    group: "Isolated channel";
+                                    active: root.settings.deconv-isolated-channel == IsolatedChannel.hematoxylin;
+                                    clicked => {
+                                        root.settings.deconv-isolated-channel = IsolatedChannel.hematoxylin;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "Eosin";
+                                    group: "Isolated channel";
+                                    active: root.settings.deconv-isolated-channel == IsolatedChannel.eosin;
+                                    clicked => {
+                                        root.settings.deconv-isolated-channel = IsolatedChannel.eosin;
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Measurement -------
+                        SectionHeader {
+                                text: "Measurement";
+                                icon-source: @image-url("icons/measure.svg");
+                            }
+
+                            if !root.settings.has-measurement: Rectangle {
+                                height: 32px;
+                                Text {
+                                    x: 8px;
+                                    text: "Measure a distance in the viewport to enable these settings.";
+                                    color: #8ea0b260;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            if root.settings.has-measurement: ToggleSwitch {
+                                label: "Show Measurement";
+                                checked: root.settings.show-measurement;
+                                enabled: root.settings.has-measurement;
+                                toggled(v) => {
+                                    root.settings.show-measurement = v;
+                                    root.notify-settings();
+                                }
+                            }
+
+                            if root.settings.show-measurement && root.settings.has-measurement: VerticalLayout {
+                                spacing: 4px;
+
+                                LabelRow {
+                                    label: "Color";
+                                }
+
+                                ColorField {
+                                    current-color: root.settings.measurement-color;
+                                    opacity-pct: root.settings.measurement-opacity;
+                                    color-changed(c) => {
+                                        root.settings.measurement-color = c;
+                                        root.notify-settings();
+                                    }
+                                    opacity-changed(v) => {
+                                        root.settings.measurement-opacity = v;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                LabelRow {
+                                    label: "Thickness";
+                                }
+
+                                ExportSlider {
+                                    label: "Measurement line thickness";
+                                    step: 0.5;
+                                    value: root.settings.measurement-thickness;
+                                    min-value: 0.5;
+                                    max-value: 10.0;
+                                    default-value: 2.0;
+                                    display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
+                                    changed(v) => {
+                                        root.settings.measurement-thickness = v;
+                                        root.settings-changed(root.settings);
+                                    }
+                                    released => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                StrokeStyleSelector {
+                                    stroke-style: root.settings.measurement-stroke-style;
+                                    dash-length: root.settings.measurement-dash-length;
+                                    dash-gap: root.settings.measurement-dash-gap;
+                                    dot-spacing: root.settings.measurement-dot-spacing;
+                                    style-changed(s) => {
+                                        root.settings.measurement-stroke-style = s;
+                                    }
+                                    dash-length-changed(v) => {
+                                        root.settings.measurement-dash-length = v;
+                                    }
+                                    dash-gap-changed(v) => {
+                                        root.settings.measurement-dash-gap = v;
+                                    }
+                                    dot-spacing-changed(v) => {
+                                        root.settings.measurement-dot-spacing = v;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                CapStyleSelector {
+                                    cap-style: root.settings.measurement-cap-style;
+                                    cap-changed(c) => {
+                                        root.settings.measurement-cap-style = c;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                LabelRow {
+                                    label: "Font Size";
+                                }
+
+                                ExportSlider {
+                                    label: "Measurement font size";
+                                    step: 1;
+                                    value: root.settings.measurement-font-size;
+                                    min-value: 6;
+                                    max-value: 32;
+                                    default-value: 12;
+                                    display-text: Math.round(root.settings.measurement-font-size) + "pt";
+                                    changed(v) => {
+                                        root.settings.measurement-font-size = v;
+                                        root.settings-changed(root.settings);
+                                    }
+                                    released => {
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Region of Interest -------
+                        SectionHeader {
+                                text: "Region of Interest";
+                            // ROI icon drawn inline (matches toolbar icon)
+                            icon-source: @image-url("icons/navigate.svg");
+                            }
+
+                            if !root.settings.has-roi: Rectangle {
+                                height: 32px;
+                                Text {
+                                    x: 8px;
+                                    text: "Select a region of interest in the viewport to enable these settings.";
+                                    color: #8ea0b260;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            if root.settings.has-roi: ToggleSwitch {
+                                label: "Show Outline";
+                                checked: root.settings.show-roi-outline;
+                                enabled: root.settings.has-roi;
+                                toggled(v) => {
+                                    root.settings.show-roi-outline = v;
+                                    root.notify-settings();
+                                }
+                            }
+
+                            if root.settings.show-roi-outline && root.settings.has-roi: VerticalLayout {
+                                spacing: 4px;
+
+                                LabelRow {
+                                    label: "Color";
+                                }
+
+                                ColorField {
+                                    current-color: root.settings.roi-color;
+                                    opacity-pct: root.settings.roi-opacity;
+                                    color-changed(c) => {
+                                        root.settings.roi-color = c;
+                                        root.notify-settings();
+                                    }
+                                    opacity-changed(v) => {
+                                        root.settings.roi-opacity = v;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                LabelRow {
+                                    label: "Thickness";
+                                }
+
+                                ExportSlider {
+                                    label: "Region outline thickness";
+                                    step: 0.5;
+                                    value: root.settings.roi-thickness;
+                                    min-value: 0.5;
+                                    max-value: 10.0;
+                                    default-value: 2.0;
+                                    display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
+                                    changed(v) => {
+                                        root.settings.roi-thickness = v;
+                                        root.settings-changed(root.settings);
+                                    }
+                                    released => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                StrokeStyleSelector {
+                                    stroke-style: root.settings.roi-stroke-style;
+                                    dash-length: root.settings.roi-dash-length;
+                                    dash-gap: root.settings.roi-dash-gap;
+                                    dot-spacing: root.settings.roi-dot-spacing;
+                                    style-changed(s) => {
+                                        root.settings.roi-stroke-style = s;
+                                    }
+                                    dash-length-changed(v) => {
+                                        root.settings.roi-dash-length = v;
+                                    }
+                                    dash-gap-changed(v) => {
+                                        root.settings.roi-dash-gap = v;
+                                    }
+                                    dot-spacing-changed(v) => {
+                                        root.settings.roi-dot-spacing = v;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                CapStyleSelector {
+                                    cap-style: root.settings.roi-cap-style;
+                                    cap-changed(c) => {
+                                        root.settings.roi-cap-style = c;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            // Outside Overlay subsection
+                        if root.settings.has-roi: VerticalLayout {
+                                spacing: 4px;
+                                padding-top: 4px;
+
+                                SectionDivider { }
+
+                                LabelRow {
+                                    label: "Outside Overlay";
+                                }
+
+                                ToggleSwitch {
+                                    label: "Enable Overlay";
+                                    checked: root.settings.roi-outside-overlay;
+                                    toggled(v) => {
+                                        root.settings.roi-outside-overlay = v;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                if root.settings.roi-outside-overlay: ColorField {
+                                    current-color: root.settings.roi-outside-color;
+                                    opacity-pct: root.settings.roi-outside-opacity;
+                                    color-changed(c) => {
+                                        root.settings.roi-outside-color = c;
+                                        root.notify-settings();
+                                    }
+                                    opacity-changed(v) => {
+                                        root.settings.roi-outside-opacity = v;
+                                    }
+                                    request-preview => {
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Figure -------
+                        SectionHeader {
+                                text: "Figure";
+                                icon-source: @image-url("icons/measure.svg");
+                            }
+
+                            ToggleSwitch {
+                                label: "Scale Bar";
+                                checked: root.settings.show-scale-bar;
+                                toggled(v) => {
+                                    root.settings.show-scale-bar = v;
+                                    root.notify-settings();
+                                }
+                            }
+
+                            ToggleSwitch {
+                                label: "Colour Processing Note";
+                                checked: root.settings.show-processing-note;
+                                toggled(v) => {
+                                    root.settings.show-processing-note = v;
+                                    root.notify-settings();
+                                }
+                            }
+
+                            SectionDivider { }
+
+                            // ------- Format -------
+                        SectionHeader {
+                                text: "Format";
+                                icon-source: @image-url("icons/export.svg");
+                            }
+
+                            HorizontalLayout {
+                                spacing: 4px;
+                                padding-bottom: 4px;
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "JPEG (Smaller)";
+                                    group: "Format";
+                                    active: root.settings.format == ExportFormat.jpeg;
+                                    clicked => {
+                                        root.settings.format = ExportFormat.jpeg;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "PNG (Lossless)";
+                                    group: "Format";
+                                    active: root.settings.format == ExportFormat.png;
+                                    clicked => {
+                                        root.settings.format = ExportFormat.png;
+                                        root.notify-settings();
+                                    }
+                                }
+
+                                SegmentButton {
+                                    horizontal-stretch: 1;
+                                    text: "TIFF (Lossless)";
+                                    group: "Format";
+                                    active: root.settings.format == ExportFormat.tiff;
+                                    clicked => {
+                                        root.settings.format = ExportFormat.tiff;
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+
+                                LabelRow {
+                                    label: "Quality";
+                                }
+
+                                ExportSlider {
+                                    enabled: root.settings.format == ExportFormat.jpeg;
+                                    label: "JPEG quality";
+                                    step: 5;
+                                    value: root.settings.jpeg-quality;
+                                    min-value: 1;
+                                    max-value: 100;
+                                    default-value: 85;
+                                    display-text: root.settings.jpeg-quality + "%";
+                                    changed(v) => {
+                                        root.settings.jpeg-quality = Math.round(v);
+                                        root.settings-changed(root.settings);
+                                    }
+                                    released => {
+                                        root.notify-settings();
+                                    }
+                                }
+                            }
+
+                            // Bottom padding for scroll area
+                        Rectangle {
+                                height: 8px;
+                            }
                         }
                     }
                 }
-            }
 
-            SectionDivider { }
+                SectionDivider { }
 
-            // ---------------------------------------------------------------
-            // Bottom action bar (fixed, non-scrollable)
-            // ---------------------------------------------------------------
-            Rectangle {
-                height: 56px;
-                background: #141414;
-                border-bottom-left-radius: 10px;
-                border-bottom-right-radius: 10px;
+                // ---------------------------------------------------------------
+                // Bottom action bar (fixed, non-scrollable)
+                // ---------------------------------------------------------------
+                Rectangle {
+                    height: 56px;
+                    background: #141414;
+                    border-bottom-left-radius: 10px;
+                    border-bottom-right-radius: 10px;
 
-                HorizontalLayout {
-                    padding: 12px;
-                    padding-left: 16px;
-                    padding-right: 16px;
-                    spacing: 8px;
+                    HorizontalLayout {
+                        padding: 12px;
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 8px;
 
-                    // Reset (left-aligned)
-                    Rectangle {
-                        width: reset-text.preferred-width + 20px;
-                        height: 32px;
-                        border-radius: 4px;
-                        background: reset-touch.has-hover ? #ffffff15 : transparent;
-                        border-width: 1px;
-                        border-color: #ffffff1a;
-                        accessible-role: button;
-                        accessible-label: "Reset";
-                        accessible-description: "Restores the default export settings";
-                        accessible-action-default => {
-                            root.reset-requested();
-                        }
-
-                        reset-touch := TouchArea {
-                            clicked => {
+                        // Reset (left-aligned)
+                        Rectangle {
+                            width: reset-text.preferred-width + 20px;
+                            height: 32px;
+                            border-radius: 4px;
+                            background: reset-touch.has-hover ? #ffffff15 : transparent;
+                            border-width: 1px;
+                            border-color: #ffffff1a;
+                            accessible-role: button;
+                            accessible-label: "Reset";
+                            accessible-description: "Restores the default export settings";
+                            accessible-action-default => {
                                 root.reset-requested();
                             }
+
+                            reset-touch := TouchArea {
+                                clicked => {
+                                    root.reset-requested();
+                                }
+                            }
+
+                            reset-text := Text {
+                                text: "Reset";
+                                accessible-role: none;
+                                color: Theme.error;
+                                font-size: 12px;
+                                font-weight: 500;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
                         }
 
-                        reset-text := Text {
-                            text: "Reset";
-                            accessible-role: none;
-                            color: Theme.error;
-                            font-size: 12px;
-                            font-weight: 500;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    // Spacer
-                    Rectangle {
-                        horizontal-stretch: 1;
-                    }
-
-                    // Cancel
-                    Rectangle {
-                        width: cancel-text.preferred-width + 20px;
-                        height: 32px;
-                        border-radius: 4px;
-                        background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        accessible-role: button;
-                        accessible-label: "Cancel";
-                        accessible-action-default => {
-                            root.cancel-requested();
+                        // Spacer
+                        Rectangle {
+                            horizontal-stretch: 1;
                         }
 
-                        cancel-touch := TouchArea {
-                            clicked => {
+                        // Cancel
+                        Rectangle {
+                            width: cancel-text.preferred-width + 20px;
+                            height: 32px;
+                            border-radius: 4px;
+                            background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: "Cancel";
+                            accessible-action-default => {
                                 root.cancel-requested();
                             }
+
+                            cancel-touch := TouchArea {
+                                clicked => {
+                                    root.cancel-requested();
+                                }
+                            }
+
+                            cancel-text := Text {
+                                text: "Cancel";
+                                accessible-role: none;
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
                         }
 
-                        cancel-text := Text {
-                            text: "Cancel";
-                            accessible-role: none;
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    // Export
-                    Rectangle {
-                        width: export-row.preferred-width + 20px;
-                        height: 32px;
-                        border-radius: 4px;
-                        background: export-touch.has-hover ? #1177bb : Theme.accent;
-                        accessible-role: button;
-                        accessible-label: "Export";
-                        accessible-action-default => {
-                            root.export-requested();
-                        }
-
-                        export-touch := TouchArea {
-                            clicked => {
+                        // Export
+                        Rectangle {
+                            width: export-row.preferred-width + 20px;
+                            height: 32px;
+                            border-radius: 4px;
+                            background: export-touch.has-hover ? #1177bb : Theme.accent;
+                            accessible-role: button;
+                            accessible-label: "Export";
+                            accessible-action-default => {
                                 root.export-requested();
                             }
-                        }
 
-                        export-row := HorizontalLayout {
-                            padding-left: 10px;
-                            padding-right: 10px;
-                            spacing: 6px;
-                            alignment: center;
-
-                            Image {
-                                y: (parent.height - self.height) / 2;
-                                width: 14px;
-                                height: 14px;
-                                source: @image-url("icons/export.svg");
-                                image-fit: contain;
-                                colorize: white;
-                                accessible-role: none;
+                            export-touch := TouchArea {
+                                clicked => {
+                                    root.export-requested();
+                                }
                             }
 
-                            Text {
-                                text: "Export";
-                                accessible-role: none;
-                                color: white;
-                                font-size: 12px;
-                                font-weight: 600;
-                                vertical-alignment: center;
+                            export-row := HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 6px;
+                                alignment: center;
+
+                                Image {
+                                    y: (parent.height - self.height) / 2;
+                                    width: 14px;
+                                    height: 14px;
+                                    source: @image-url("icons/export.svg");
+                                    image-fit: contain;
+                                    colorize: white;
+                                    accessible-role: none;
+                                }
+
+                                Text {
+                                    text: "Export";
+                                    accessible-role: none;
+                                    color: white;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }

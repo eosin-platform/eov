@@ -47,6 +47,8 @@ export component NumberField inherits Rectangle {
     in property <string> label;
     in-out property <string> text;
     callback edited(string);
+    /// Enter was pressed in the field.
+    callback accepted();
 
     width: 120px;
     height: 44px;
@@ -80,6 +82,9 @@ export component NumberField inherits Rectangle {
                 accessible-label: root.label;
                 edited => {
                     root.edited(self.text);
+                }
+                accepted => {
+                    root.accepted();
                 }
             }
         }

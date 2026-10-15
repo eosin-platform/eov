@@ -56,7 +56,7 @@ export component HeatMapPanelView inherits Rectangle {
 
     FocusScope {
         key-pressed(e) => {
-            if e.text == Key.Escape {
+            if e.text == Key.Escape || e.text == Key.Return {
                 HeatMapPanel.close-requested();
                 return accept;
             }

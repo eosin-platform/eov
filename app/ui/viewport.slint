@@ -85,6 +85,14 @@ export component Viewport inherits Rectangle {
     out property <length> viewport-height: self.height;
     property <length> metadata-hud-height: show-metadata && metadata-items.length > 0 ? 52px + metadata-items.length * 22px : 0px;
     private property <float> mouse-wheel-zoom-factor: 1.3225;
+    // The adjustments panel takes the keyboard while it is open; the slide
+    // gets it back when it closes.
+    property <bool> adjustments-open: root.hud.show-hud-toolbar && root.hud.hud-dropdown-open;
+    changed adjustments-open => {
+        if !self.adjustments-open {
+            focus-scope.focus();
+        }
+    }
 
     background: Theme.viewport-bg;
 
@@ -303,6 +311,9 @@ export component Viewport inherits Rectangle {
         plugin-button-clicked(plugin-id, button-id, item-id) => {
             root.hud-plugin-button-clicked(plugin-id, button-id, item-id);
         }
+        release-keyboard => {
+            focus-scope.focus();
+        }
     }
 
     // HUD settings dropdown (below toolbar)
@@ -336,6 +347,9 @@ export component Viewport inherits Rectangle {
         }
         reset-adjustments => {
             root.hud-reset-adjustments();
+        }
+        close-requested => {
+            root.hud-toggle-dropdown();
         }
         deconv-hematoxylin-intensity: root.hud.deconv-hematoxylin-intensity;
         deconv-hematoxylin-visible: root.hud.deconv-hematoxylin-visible;

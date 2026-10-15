@@ -32,6 +32,7 @@ import {
     ViewportInfo,
 } from "types.slint";
 import { ContextMenu } from "tab-controls.slint";
+import { DialogKeys } from "dialog-keys.slint";
 import {
     DatasetExportDialog,
 } from "dataset-export-dialog.slint";
@@ -482,9 +483,48 @@ export component AppWindow inherits Window {
         global-keys.focus();
     }
 
+    // The dialogs and panels that take the keyboard while they are open
+    // (the heat map panel's sliders and fields do when used) give it back
+    // to the window when they close.
+    property <bool> keyboard-surface-open: root.export-dialog-visible || root.dataset-export-dialog-visible
+        || root.slide-info-visible || root.save-copy-dialog-visible || root.plugin-confirm-visible
+        || root.lanczos-confirm-visible || root.plugins-panel-visible || root.bookmark-dialog-visible
+        || root.shortcuts-panel-visible || root.measurements-panel-visible || root.quantify-visible
+        || root.channels-panel-visible || root.show-plugin-modal || HeatMapPanel.visible;
+    changed keyboard-surface-open => {
+        if !self.keyboard-surface-open {
+            global-keys.focus();
+        }
+    }
+
+    function cancel-lanczos-confirm() {
+        root.lanczos-confirm-visible = false;
+        root.lanczos-confirm-cancelled();
+        root.lanczos-confirm-from-backend-switch = false;
+    }
+
     global-keys := FocusScope {
         width: 100%;
         height: 100%;
+
+        // Menus and pop-ups close on Escape whatever has the keyboard (the
+        // slide would take it otherwise).
+        capture-key-pressed(e) => {
+            if e.text == Key.Escape && root.context-menu-visible {
+                root.context-menu-visible = false;
+                root.context-menu-series-path = "";
+                return accept;
+            }
+            if e.text == Key.Escape && root.filter-popup-visible {
+                root.filter-popup-visible = false;
+                return accept;
+            }
+            if e.text == Key.Escape && root.notifications-visible {
+                root.notifications-visible = false;
+                return accept;
+            }
+            reject
+        }
 
         key-pressed(e) => {
             if e.text == Key.Escape && root.save-copy-dialog-visible {
@@ -508,6 +548,10 @@ export component AppWindow inherits Window {
             if e.text == Key.Escape && root.plugin-confirm-visible {
                 root.plugin-confirm-visible = false;
                 root.plugin-confirm-cancelled();
+                accept
+            }
+            if e.text == Key.Escape && root.lanczos-confirm-visible {
+                root.cancel-lanczos-confirm();
                 accept
             }
             if e.text == Key.Escape && root.bookmark-dialog-visible {
@@ -537,6 +581,10 @@ export component AppWindow inherits Window {
             }
             if e.text == Key.Escape && root.plugins-panel-visible {
                 root.plugins-panel-visible = false;
+                accept
+            }
+            if e.text == Key.Escape && HeatMapPanel.visible {
+                HeatMapPanel.close-requested();
                 accept
             }
             if e.text == Key.Escape && root.notifications-visible {
@@ -1397,147 +1445,158 @@ export component AppWindow inherits Window {
 
         TouchArea {
             clicked => {
-                root.lanczos-confirm-visible = false;
-                root.lanczos-confirm-cancelled();
-                root.lanczos-confirm-from-backend-switch = false;
+                root.cancel-lanczos-confirm();
             }
         }
 
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 420px;
-            height: 200px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
+        DialogKeys {
+            title: "Lanczos Filtering (CPU)";
+            has-default-action: true;
+            cancel => {
+                root.cancel-lanczos-confirm();
+            }
+            default-action => {
+                root.lanczos-confirm-visible = false;
+                root.lanczos-confirm-accepted();
+                root.lanczos-confirm-from-backend-switch = false;
+            }
 
-            // Block clicks from dismissing through the card
-            TouchArea { }
+            lanczos-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 420px;
+                height: 200px;
+                background: Theme.surface;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.border;
 
-            VerticalLayout {
-                padding: 20px;
-                spacing: 12px;
+                // Block clicks from dismissing through the card
+                TouchArea { }
 
-                Text {
-                    text: "Lanczos Filtering (CPU)";
-                    color: Theme.text-primary;
-                    font-size: 14px;
-                    font-weight: 600;
-                    horizontal-alignment: left;
-                }
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
 
-                Text {
-                    text: "Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?";
-                    color: Theme.text-secondary;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                    horizontal-alignment: left;
-                }
+                    Text {
+                        text: "Lanczos Filtering (CPU)";
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: left;
+                    }
 
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
+                    Text {
+                        text: "Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?";
+                        color: Theme.text-secondary;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        horizontal-alignment: left;
+                    }
 
                     Rectangle {
-                        width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        accessible-role: button;
-                        accessible-label: "Cancel";
-                        accessible-action-default => {
-                            root.lanczos-confirm-visible = false;
-                            root.lanczos-confirm-cancelled();
-                            root.lanczos-confirm-from-backend-switch = false;
-                        }
+                        vertical-stretch: 1;
+                    }
 
-                        cancel-touch := TouchArea {
-                            clicked => {
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        Rectangle {
+                            width: 72px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: "Cancel";
+                            accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-cancelled();
                                 root.lanczos-confirm-from-backend-switch = false;
                             }
+
+                            cancel-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-cancelled();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            Text {
+                                text: "Cancel";
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
                         }
 
-                        Text {
-                            text: "Cancel";
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
-                        }
-                    }
-
-                    Rectangle {
-                        min-width: use-trilinear-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: use-trilinear-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        accessible-role: button;
-                        accessible-label: "Use Trilinear";
-                        accessible-action-default => {
-                            root.lanczos-confirm-visible = false;
-                            root.lanczos-confirm-use-trilinear();
-                            root.lanczos-confirm-from-backend-switch = false;
-                        }
-
-                        use-trilinear-touch := TouchArea {
-                            clicked => {
+                        Rectangle {
+                            min-width: use-trilinear-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: use-trilinear-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: "Use Trilinear";
+                            accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-use-trilinear();
                                 root.lanczos-confirm-from-backend-switch = false;
                             }
+
+                            use-trilinear-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-use-trilinear();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            use-trilinear-text := Text {
+                                text: "Use Trilinear";
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
                         }
 
-                        use-trilinear-text := Text {
-                            text: "Use Trilinear";
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: confirm-touch.has-hover ? #1177bb : Theme.accent;
-                        accessible-role: button;
-                        accessible-label: "Confirm";
-                        accessible-action-default => {
-                            root.lanczos-confirm-visible = false;
-                            root.lanczos-confirm-accepted();
-                            root.lanczos-confirm-from-backend-switch = false;
-                        }
-
-                        confirm-touch := TouchArea {
-                            clicked => {
+                        Rectangle {
+                            width: 72px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: confirm-touch.has-hover ? #1177bb : Theme.accent;
+                            accessible-role: button;
+                            accessible-label: "Confirm";
+                            accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-accepted();
                                 root.lanczos-confirm-from-backend-switch = false;
                             }
-                        }
 
-                        Text {
-                            text: "Confirm";
-                            color: white;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
+                            confirm-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-accepted();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            Text {
+                                text: "Confirm";
+                                color: white;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
                         }
                     }
                 }
@@ -1559,114 +1618,127 @@ export component AppWindow inherits Window {
             }
         }
 
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 640px;
-            height: 360px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
+        DialogKeys {
+            title: root.plugin-confirm-title;
+            has-default-action: !root.plugin-confirm-destructive;
+            cancel => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
+            }
+            default-action => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-accepted();
+            }
 
-            TouchArea { }
+            plugin-confirm-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 640px;
+                height: 360px;
+                background: Theme.surface;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.border;
 
-            VerticalLayout {
-                padding: 20px;
-                spacing: 12px;
+                TouchArea { }
 
-                Text {
-                    text: root.plugin-confirm-title;
-                    color: Theme.text-primary;
-                    font-size: 14px;
-                    font-weight: 600;
-                    horizontal-alignment: left;
-                }
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
 
-                Flickable {
-                    height: 180px;
-                    viewport-height: plugin-confirm-scroll-content.preferred-height;
+                    Text {
+                        text: root.plugin-confirm-title;
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: left;
+                    }
 
-                    plugin-confirm-scroll-content := VerticalLayout {
-                        padding: 8px;
+                    Flickable {
+                        height: 180px;
+                        viewport-height: plugin-confirm-scroll-content.preferred-height;
 
-                        Text {
-                            text: root.plugin-confirm-message;
-                            color: Theme.text-secondary;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            horizontal-alignment: left;
+                        plugin-confirm-scroll-content := VerticalLayout {
+                            padding: 8px;
+
+                            Text {
+                                text: root.plugin-confirm-message;
+                                color: Theme.text-secondary;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                horizontal-alignment: left;
+                            }
                         }
                     }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
 
                     Rectangle {
-                        min-width: cancel-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        accessible-role: button;
-                        accessible-label: root.plugin-confirm-cancel-label;
-                        accessible-action-default => {
-                            root.plugin-confirm-visible = false;
-                            root.plugin-confirm-cancelled();
-                        }
+                        vertical-stretch: 1;
+                    }
 
-                        plugin-cancel-touch := TouchArea {
-                            clicked => {
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        Rectangle {
+                            min-width: cancel-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: root.plugin-confirm-cancel-label;
+                            accessible-action-default => {
                                 root.plugin-confirm-visible = false;
                                 root.plugin-confirm-cancelled();
                             }
-                        }
 
-                        cancel-text := Text {
-                            text: root.plugin-confirm-cancel-label;
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
-                        }
-                    }
+                            plugin-cancel-touch := TouchArea {
+                                clicked => {
+                                    root.plugin-confirm-visible = false;
+                                    root.plugin-confirm-cancelled();
+                                }
+                            }
 
-                    Rectangle {
-                        min-width: confirm-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.plugin-confirm-destructive
-                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
-                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
-                        accessible-role: button;
-                        accessible-label: root.plugin-confirm-confirm-label;
-                        accessible-action-default => {
-                            root.plugin-confirm-visible = false;
-                            root.plugin-confirm-accepted();
-                        }
-
-                        plugin-confirm-touch := TouchArea {
-                            clicked => {
-                                root.plugin-confirm-visible = false;
-                                root.plugin-confirm-accepted();
+                            cancel-text := Text {
+                                text: root.plugin-confirm-cancel-label;
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
                             }
                         }
 
-                        confirm-text := Text {
-                            text: root.plugin-confirm-confirm-label;
-                            color: white;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
+                        Rectangle {
+                            min-width: confirm-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: root.plugin-confirm-destructive
+                                ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
+                                : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
+                            accessible-role: button;
+                            accessible-label: root.plugin-confirm-confirm-label;
+                            accessible-action-default => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-accepted();
+                            }
+
+                            plugin-confirm-touch := TouchArea {
+                                clicked => {
+                                    root.plugin-confirm-visible = false;
+                                    root.plugin-confirm-accepted();
+                                }
+                            }
+
+                            confirm-text := Text {
+                                text: root.plugin-confirm-confirm-label;
+                                color: white;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
                         }
                     }
                 }

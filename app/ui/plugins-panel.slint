@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { DialogKeys } from "dialog-keys.slint";
 import { PluginRowData } from "types.slint";
 
 // Lists every plugin with its version, origin and state, and lets the user
@@ -29,326 +30,323 @@ export component PluginsPanel inherits Rectangle {
         }
     }
 
-    FocusScope {
-        key-pressed(e) => {
-            if e.text == Key.Escape {
-                root.close-requested();
-                accept
-            }
-            reject
+    DialogKeys {
+        title: "Plugins";
+        cancel => {
+            root.close-requested();
         }
-    }
 
-    Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: min(parent.width - 40px, 720px);
-        height: min(parent.height - 40px, 520px);
-        background: Theme.surface;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.border;
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - 40px, 720px);
+            height: min(parent.height - 40px, 520px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
 
-        TouchArea { }
+            TouchArea { }
 
-        VerticalLayout {
-            padding: 18px;
-            spacing: 10px;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
 
-            HorizontalLayout {
-                spacing: 8px;
-                Text {
-                    horizontal-stretch: 1;
-                    text: "Plugins";
-                    color: Theme.text-primary;
-                    font-size: 15px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-
-                Rectangle {
-                    width: check-text.preferred-width + 16px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: check-touch.has-hover && !root.checking ? Theme.surface-hover : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    accessible-role: button;
-                    accessible-label: check-text.text;
-                    accessible-enabled: !root.checking;
-                    accessible-action-default => {
-                        if !root.checking {
-                            root.check-updates-requested();
-                        }
-                    }
-
-                    check-text := Text {
-                        text: root.checking ? "Checking…" : "Check for updates";
-                        accessible-role: none;
-                        color: root.checking ? Theme.text-secondary : Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-
-                    check-touch := TouchArea {
-                        enabled: !root.checking;
-                        clicked => {
-                            root.check-updates-requested();
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: folder-text.preferred-width + 16px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: folder-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    accessible-role: button;
-                    accessible-label: "Open plugin folder";
-                    accessible-action-default => {
-                        root.open-folder-requested();
-                    }
-
-                    folder-text := Text {
-                        text: "Open plugin folder";
-                        accessible-role: none;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "Plugins";
                         color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
+                        font-size: 15px;
+                        font-weight: 600;
                         vertical-alignment: center;
                     }
 
-                    folder-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: check-text.preferred-width + 16px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: check-touch.has-hover && !root.checking ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: check-text.text;
+                        accessible-enabled: !root.checking;
+                        accessible-action-default => {
+                            if !root.checking {
+                                root.check-updates-requested();
+                            }
+                        }
+
+                        check-text := Text {
+                            text: root.checking ? "Checking…" : "Check for updates";
+                            accessible-role: none;
+                            color: root.checking ? Theme.text-secondary : Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        check-touch := TouchArea {
+                            enabled: !root.checking;
+                            clicked => {
+                                root.check-updates-requested();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: folder-text.preferred-width + 16px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: folder-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Open plugin folder";
+                        accessible-action-default => {
                             root.open-folder-requested();
                         }
-                    }
-                }
 
-                Rectangle {
-                    width: 26px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: close-touch.has-hover ? Theme.surface-hover : transparent;
-                    accessible-role: button;
-                    accessible-label: "Close";
-                    accessible-action-default => {
-                        root.close-requested();
-                    }
+                        folder-text := Text {
+                            text: "Open plugin folder";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
 
-                    Text {
-                        text: "×";
-                        color: Theme.text-secondary;
-                        font-size: 16px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        accessible-role: none;
+                        folder-touch := TouchArea {
+                            clicked => {
+                                root.open-folder-requested();
+                            }
+                        }
                     }
 
-                    close-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: 26px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Close";
+                        accessible-action-default => {
                             root.close-requested();
+                        }
+
+                        Text {
+                            text: "×";
+                            color: Theme.text-secondary;
+                            font-size: 16px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.close-requested();
+                            }
                         }
                     }
                 }
-            }
 
-            Text {
-                text: root.plugin-dir != "" ? "Plugin packages (.eop) are loaded from " + root.plugin-dir : "";
-                color: Theme.text-secondary;
-                font-size: 11px;
-                wrap: word-wrap;
-            }
+                Text {
+                    text: root.plugin-dir != "" ? "Plugin packages (.eop) are loaded from " + root.plugin-dir : "";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
 
-            if root.note != "": Text {
-                text: root.note;
-                color: #f1c40f;
-                font-size: 11px;
-                wrap: word-wrap;
-                height: self.preferred-height;
-            }
+                if root.note != "": Text {
+                    text: root.note;
+                    color: #f1c40f;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    height: self.preferred-height;
+                }
 
-            if root.update-note != "": Text {
-                text: root.update-note;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                wrap: word-wrap;
-                height: self.preferred-height;
-            }
+                if root.update-note != "": Text {
+                    text: root.update-note;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    height: self.preferred-height;
+                }
 
-            Flickable {
-                vertical-stretch: 1;
-                viewport-height: plugin-list.preferred-height;
+                Flickable {
+                    vertical-stretch: 1;
+                    viewport-height: plugin-list.preferred-height;
 
-                plugin-list := VerticalLayout {
-                    spacing: 6px;
+                    plugin-list := VerticalLayout {
+                        spacing: 6px;
 
-                    if root.rows.length == 0: Text {
-                        text: "No plugins are installed.";
-                        color: Theme.text-secondary;
-                        font-size: 12px;
-                    }
+                        if root.rows.length == 0: Text {
+                            text: "No plugins are installed.";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                        }
 
-                    for row in root.rows: Rectangle {
-                        height: row-layout.preferred-height + 16px;
-                        border-radius: 6px;
-                        background: Theme.background;
-                        border-width: 1px;
-                        border-color: row.status-level >= 2 ? #ff6b6b80 : Theme.border-subtle;
+                        for row in root.rows: Rectangle {
+                            height: row-layout.preferred-height + 16px;
+                            border-radius: 6px;
+                            background: Theme.background;
+                            border-width: 1px;
+                            border-color: row.status-level >= 2 ? #ff6b6b80 : Theme.border-subtle;
 
-                        row-layout := HorizontalLayout {
-                            x: 10px;
-                            y: 8px;
-                            width: parent.width - 20px;
-                            spacing: 10px;
+                            row-layout := HorizontalLayout {
+                                x: 10px;
+                                y: 8px;
+                                width: parent.width - 20px;
+                                spacing: 10px;
 
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                spacing: 3px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 3px;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text {
-                                        text: row.name;
-                                        color: Theme.text-primary;
-                                        font-size: 13px;
-                                        font-weight: 600;
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            text: row.name;
+                                            color: Theme.text-primary;
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                        }
+                                        Text {
+                                            text: row.version + (row.api-version != "" ? "  (plugin API " + row.api-version + ")" : "");
+                                            color: Theme.text-secondary;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                        }
                                     }
-                                    Text {
-                                        text: row.version + (row.api-version != "" ? "  (plugin API " + row.api-version + ")" : "");
+
+                                    // Wrapped text in `if`/`for` needs its height
+                                    // set (Slint 1.17).
+                                    if row.description != "": Text {
+                                        text: row.description;
                                         color: Theme.text-secondary;
                                         font-size: 11px;
-                                        vertical-alignment: center;
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                // Wrapped text in `if`/`for` needs its height
-                                // set (Slint 1.17).
-                                if row.description != "": Text {
-                                    text: row.description;
-                                    color: Theme.text-secondary;
-                                    font-size: 11px;
-                                    wrap: word-wrap;
-                                    height: self.preferred-height;
-                                }
-
-                                Text {
-                                    text: row.status + (row.update != "" ? " · version " + row.update + " is available" : "");
-                                    color: row.status-level == 0 ? #2ecc71 : row.status-level == 1 ? Theme.text-secondary : #ff6b6b;
-                                    font-size: 11px;
-                                    wrap: word-wrap;
-                                    height: self.preferred-height;
-                                }
-
-                                if row.detail != "": Text {
-                                    text: row.detail;
-                                    color: #f1c40f;
-                                    font-size: 11px;
-                                    wrap: word-wrap;
-                                    height: self.preferred-height;
-                                }
-
-                                Text {
-                                    text: row.id + (row.origin != "" ? " · " + row.origin : "") + (row.source != "" ? " · " + row.source : "");
-                                    color: Theme.text-secondary;
-                                    font-size: 10px;
-                                    wrap: word-wrap;
-                                    height: self.preferred-height;
-                                }
-                            }
-
-                            VerticalLayout {
-                                alignment: start;
-                                spacing: 6px;
-
-                                if row.update != "": Rectangle {
-                                    width: update-text.preferred-width + 18px;
-                                    height: 26px;
-                                    border-radius: 4px;
-                                    background: update-touch.has-hover ? #1177bb : Theme.accent;
-                                    accessible-role: button;
-                                    accessible-label: "Update " + row.name;
-                                    accessible-description: row.update;
-                                    accessible-action-default => {
-                                        root.update-requested(row.id);
+                                        wrap: word-wrap;
+                                        height: self.preferred-height;
                                     }
 
-                                    update-text := Text {
-                                        text: "Update";
-                                        accessible-role: none;
-                                        color: white;
+                                    Text {
+                                        text: row.status + (row.update != "" ? " · version " + row.update + " is available" : "");
+                                        color: row.status-level == 0 ? #2ecc71 : row.status-level == 1 ? Theme.text-secondary : #ff6b6b;
                                         font-size: 11px;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
+                                        wrap: word-wrap;
+                                        height: self.preferred-height;
                                     }
 
-                                    update-touch := TouchArea {
-                                        clicked => {
+                                    if row.detail != "": Text {
+                                        text: row.detail;
+                                        color: #f1c40f;
+                                        font-size: 11px;
+                                        wrap: word-wrap;
+                                        height: self.preferred-height;
+                                    }
+
+                                    Text {
+                                        text: row.id + (row.origin != "" ? " · " + row.origin : "") + (row.source != "" ? " · " + row.source : "");
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                        wrap: word-wrap;
+                                        height: self.preferred-height;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: start;
+                                    spacing: 6px;
+
+                                    if row.update != "": Rectangle {
+                                        width: update-text.preferred-width + 18px;
+                                        height: 26px;
+                                        border-radius: 4px;
+                                        background: update-touch.has-hover ? #1177bb : Theme.accent;
+                                        accessible-role: button;
+                                        accessible-label: "Update " + row.name;
+                                        accessible-description: row.update;
+                                        accessible-action-default => {
                                             root.update-requested(row.id);
                                         }
-                                    }
-                                }
 
-                                if row.can-enable || row.can-disable: Rectangle {
-                                    width: toggle-text.preferred-width + 18px;
-                                    height: 26px;
-                                    border-radius: 4px;
-                                    background: toggle-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                                    border-width: 1px;
-                                    border-color: Theme.border;
-                                    accessible-role: button;
-                                    accessible-label: (row.can-disable ? "Disable " : "Enable ") + row.name;
-                                    accessible-action-default => {
-                                        root.enable-requested(row.id, !row.can-disable);
-                                    }
+                                        update-text := Text {
+                                            text: "Update";
+                                            accessible-role: none;
+                                            color: white;
+                                            font-size: 11px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
 
-                                    toggle-text := Text {
-                                        text: row.can-disable ? "Disable" : "Enable";
-                                        accessible-role: none;
-                                        color: Theme.text-primary;
-                                        font-size: 11px;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-
-                                    toggle-touch := TouchArea {
-                                        clicked => {
-                                            root.enable-requested(row.id, !row.can-disable);
+                                        update-touch := TouchArea {
+                                            clicked => {
+                                                root.update-requested(row.id);
+                                            }
                                         }
                                     }
-                                }
 
-                                if row.can-remove: Rectangle {
-                                    width: remove-text.preferred-width + 18px;
-                                    height: 26px;
-                                    border-radius: 4px;
-                                    background: remove-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                                    border-width: 1px;
-                                    border-color: Theme.border;
-                                    accessible-role: button;
-                                    accessible-label: "Remove " + row.name;
-                                    accessible-action-default => {
-                                        root.remove-requested(row.id);
+                                    if row.can-enable || row.can-disable: Rectangle {
+                                        width: toggle-text.preferred-width + 18px;
+                                        height: 26px;
+                                        border-radius: 4px;
+                                        background: toggle-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        accessible-role: button;
+                                        accessible-label: (row.can-disable ? "Disable " : "Enable ") + row.name;
+                                        accessible-action-default => {
+                                            root.enable-requested(row.id, !row.can-disable);
+                                        }
+
+                                        toggle-text := Text {
+                                            text: row.can-disable ? "Disable" : "Enable";
+                                            accessible-role: none;
+                                            color: Theme.text-primary;
+                                            font-size: 11px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        toggle-touch := TouchArea {
+                                            clicked => {
+                                                root.enable-requested(row.id, !row.can-disable);
+                                            }
+                                        }
                                     }
 
-                                    remove-text := Text {
-                                        text: "Remove";
-                                        accessible-role: none;
-                                        color: #ff8a8a;
-                                        font-size: 11px;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-
-                                    remove-touch := TouchArea {
-                                        clicked => {
+                                    if row.can-remove: Rectangle {
+                                        width: remove-text.preferred-width + 18px;
+                                        height: 26px;
+                                        border-radius: 4px;
+                                        background: remove-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        accessible-role: button;
+                                        accessible-label: "Remove " + row.name;
+                                        accessible-action-default => {
                                             root.remove-requested(row.id);
+                                        }
+
+                                        remove-text := Text {
+                                            text: "Remove";
+                                            accessible-role: none;
+                                            color: #ff8a8a;
+                                            font-size: 11px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        remove-touch := TouchArea {
+                                            clicked => {
+                                                root.remove-requested(row.id);
+                                            }
                                         }
                                     }
                                 }

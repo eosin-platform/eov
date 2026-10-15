@@ -1,4 +1,5 @@
 import { ContextMenuItem, HudToolbarButtonData } from "types.slint";
+import { DialogKeys } from "dialog-keys.slint";
 
 component HudButton inherits Rectangle {
     in property <image> icon-source;
@@ -90,6 +91,9 @@ export component HudToolbar inherits Rectangle {
     callback dismiss-plugin-menu();
     // 0 rotate left, 1 rotate right, 2 flip, 3 reset the turn.
     callback orientation-changed(int);
+    /// The zoom field or the plugin menu, which had the keyboard, is done
+    /// with it.
+    callback release-keyboard();
 
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
@@ -132,6 +136,12 @@ export component HudToolbar inherits Rectangle {
 
     dismiss-plugin-menu => {
         root.plugin-menu-open = false;
+    }
+
+    changed plugin-menu-open => {
+        if !self.plugin-menu-open {
+            root.release-keyboard();
+        }
     }
 
     function start-zoom-edit() {
@@ -221,6 +231,7 @@ export component HudToolbar inherits Rectangle {
                             root.cancel-zoom-edit = false;
                             root.editing-zoom = false;
                             root.zoom-input(self.text);
+                            root.release-keyboard();
                         }
 
                         changed has-focus => {
@@ -241,6 +252,7 @@ export component HudToolbar inherits Rectangle {
                                 root.cancel-zoom-edit = true;
                                 root.editing-zoom = false;
                                 self.text = root.zoom-input-text;
+                                root.release-keyboard();
                                 accept
                             }
                             reject
@@ -409,6 +421,14 @@ export component HudToolbar inherits Rectangle {
         border-width: 1px;
         border-color: #ffffff24;
         clip: true;
+
+        // The menu takes the keyboard: Escape closes it.
+        DialogKeys {
+            title: "Menu";
+            cancel => {
+                root.plugin-menu-open = false;
+            }
+        }
 
         VerticalLayout {
             width: parent.width;

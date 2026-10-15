@@ -1,0 +1,64 @@
+// The keyboard of the window's dialogs and panels (AUDIT §14.4).
+//
+// Placed around a dialog's content, it takes the keyboard when the dialog
+// opens (so the slide behind no longer gets the keys), Escape cancels the
+// dialog, Enter does its default action when what has the focus does not
+// use Enter itself (a text field applies its value), and Tab moves through
+// the dialog's fields and back to the dialog without leaving it. The window
+// gives the keyboard back to itself when the dialog closes.
+
+export component DialogKeys inherits FocusScope {
+    /// The dialog's title: its name for assistive technology.
+    in property <string> title;
+    /// Enter does `default-action`.
+    in property <bool> has-default-action: false;
+    /// Takes the keyboard when it opens (false for a panel that floats over
+    /// the slide and leaves the keyboard where it is).
+    in property <bool> take-focus: true;
+    callback cancel();
+    callback default-action();
+
+    // A click outside the dialog goes through to its backdrop.
+    focus-on-click: false;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    init => {
+        if root.take-focus {
+            root.focus();
+        }
+    }
+
+    key-pressed(event) => {
+        if event.text == Key.Escape {
+            root.cancel();
+            return accept;
+        }
+        if event.text == Key.Return && root.has-default-action {
+            root.default-action();
+            return accept;
+        }
+        // Nothing comes before the dialog itself in its focus chain.
+        if self.has-focus && (event.text == Key.Backtab || (event.text == Key.Tab && event.modifiers.shift)) {
+            return accept;
+        }
+        reject
+    }
+
+    @children
+
+    // The end of the dialog's focus chain: Tab past its last field comes
+    // back to the dialog.
+    FocusScope {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation {
+                root.focus();
+            }
+        }
+    }
+}

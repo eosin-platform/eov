@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { DialogKeys } from "dialog-keys.slint";
 import { PropertyRow } from "types.slint";
 
 // One associated image (label, macro, overview) with a caption.
@@ -99,424 +100,431 @@ export component SlideInfoPanel inherits Rectangle {
         }
     }
 
-    Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: min(parent.width - 40px, 820px);
-        height: min(parent.height - 40px, 640px);
-        background: Theme.surface;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.border;
+    DialogKeys {
+        title: root.title;
+        cancel => {
+            root.close-requested();
+        }
 
-        TouchArea { }
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - 40px, 820px);
+            height: min(parent.height - 40px, 640px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
 
-        VerticalLayout {
-            padding: 18px;
-            spacing: 10px;
+            TouchArea { }
 
-            HorizontalLayout {
-                spacing: 8px;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
 
-                Text {
-                    horizontal-stretch: 1;
-                    text: root.title;
-                    color: Theme.text-primary;
-                    font-size: 15px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
+                HorizontalLayout {
+                    spacing: 8px;
 
-                Rectangle {
-                    width: save-text.preferred-width + 16px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: save-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Save a Copy…";
-                    accessible-action-default => {
-                        root.save-copy-requested();
-                    }
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    save-text := Text {
-                        text: "Save a Copy…";
-                        accessible-role: none;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.title;
                         color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
+                        font-size: 15px;
+                        font-weight: 600;
                         vertical-alignment: center;
+                        overflow: elide;
                     }
 
-                    save-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: save-text.preferred-width + 16px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: save-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Save a Copy…";
+                        accessible-action-default => {
                             root.save-copy-requested();
                         }
-                    }
-                }
+                        border-width: 1px;
+                        border-color: Theme.border;
 
-                Rectangle {
-                    width: hide-text.preferred-width + 16px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: hide-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Hide label";
-                    accessible-description: "The label and macro images can identify the patient";
-                    accessible-checkable: true;
-                    accessible-checked: root.hide-label;
-                    accessible-action-default => {
-                        root.hide-label-toggled(!root.hide-label);
-                    }
-                    border-width: 1px;
-                    border-color: root.hide-label ? Theme.accent : Theme.border;
+                        save-text := Text {
+                            text: "Save a Copy…";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
 
-                    hide-text := Text {
-                        text: root.hide-label ? "Show label" : "Hide label";
-                        accessible-role: none;
-                        color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                        save-touch := TouchArea {
+                            clicked => {
+                                root.save-copy-requested();
+                            }
+                        }
                     }
 
-                    hide-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: hide-text.preferred-width + 16px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: hide-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Hide label";
+                        accessible-description: "The label and macro images can identify the patient";
+                        accessible-checkable: true;
+                        accessible-checked: root.hide-label;
+                        accessible-action-default => {
                             root.hide-label-toggled(!root.hide-label);
+                        }
+                        border-width: 1px;
+                        border-color: root.hide-label ? Theme.accent : Theme.border;
+
+                        hide-text := Text {
+                            text: root.hide-label ? "Show label" : "Hide label";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        hide-touch := TouchArea {
+                            clicked => {
+                                root.hide-label-toggled(!root.hide-label);
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 26px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Close";
+                        accessible-action-default => {
+                            root.close-requested();
+                        }
+
+                        Text {
+                            text: "×";
+                            color: Theme.text-secondary;
+                            font-size: 16px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.close-requested();
+                            }
                         }
                     }
                 }
 
-                Rectangle {
-                    width: 26px;
-                    height: 26px;
-                    border-radius: 4px;
-                    background: close-touch.has-hover ? Theme.surface-hover : transparent;
-                    accessible-role: button;
-                    accessible-label: "Close";
-                    accessible-action-default => {
-                        root.close-requested();
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    AssociatedImageCard {
+                        horizontal-stretch: 1;
+                        caption: "Label";
+                        source: root.label-image;
+                        available: root.has-label;
+                        hidden: root.hide-label;
+                        hidden-text: "Label hidden";
+                    }
+
+                    // The macro photo of the glass usually shows the label too.
+                    AssociatedImageCard {
+                        horizontal-stretch: 2;
+                        caption: "Macro";
+                        source: root.macro-image;
+                        available: root.has-macro;
+                        hidden: root.hide-label;
+                        hidden-text: "Hidden (shows the label)";
+                    }
+
+                    AssociatedImageCard {
+                        horizontal-stretch: 1;
+                        caption: "Overview";
+                        source: root.overview-image;
+                        available: root.has-overview;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 28px;
+
+                    Text {
+                        text: root.summary;
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+
+                    if root.multichannel: Rectangle {
+                        width: channels-text.preferred-width + 16px;
+                        border-radius: 4px;
+                        background: channels-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Channels…";
+                        accessible-action-default => {
+                            root.channels-requested();
+                        }
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        channels-text := Text {
+                            text: "Channels…";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        channels-touch := TouchArea {
+                            clicked => {
+                                root.channels-requested();
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 28px;
+
+                    Text {
+                        text: "Pixel size: " + root.pixel-size-text;
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+
+                    Rectangle {
+                        width: 110px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: pixel-input.has-focus ? Theme.accent : Theme.border;
+                        background: #0a0c10;
+
+                        pixel-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            text <=> root.pixel-size-input;
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            accessible-label: "Pixel size";
+                            accessible-placeholder-text: "µm/px";
+                            accepted => {
+                                root.pixel-size-set(self.text);
+                            }
+                        }
+
+                        if root.pixel-size-input == "": Text {
+                            x: 8px;
+                            text: "µm/px";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+
+                    Rectangle {
+                        width: set-text.preferred-width + 16px;
+                        border-radius: 4px;
+                        background: set-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Set the pixel size";
+                        accessible-action-default => {
+                            root.pixel-size-set(root.pixel-size-input);
+                        }
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        set-text := Text {
+                            text: "Set";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        set-touch := TouchArea {
+                            clicked => {
+                                root.pixel-size-set(root.pixel-size-input);
+                            }
+                        }
+                    }
+
+                    if root.pixel-size-manual: Rectangle {
+                        width: clear-text.preferred-width + 16px;
+                        border-radius: 4px;
+                        background: clear-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Use the file's pixel size";
+                        accessible-action-default => {
+                            root.pixel-size-cleared();
+                        }
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        clear-text := Text {
+                            text: "Use the file's";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        clear-touch := TouchArea {
+                            clicked => {
+                                root.pixel-size-cleared();
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 28px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: filter-input.has-focus ? Theme.accent : Theme.border;
+                        background: #0a0c10;
+
+                        filter-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            text <=> root.filter;
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            accessible-label: "Filter properties";
+                            accessible-placeholder-text: "Filter properties";
+                            edited => {
+                                root.filter-edited(self.text);
+                            }
+                        }
+
+                        if root.filter == "": Text {
+                            x: 8px;
+                            text: "Filter properties";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
                     }
 
                     Text {
-                        text: "×";
+                        text: root.rows.length + " of " + root.total-rows;
                         color: Theme.text-secondary;
-                        font-size: 16px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        accessible-role: none;
-                    }
-
-                    close-touch := TouchArea {
-                        clicked => {
-                            root.close-requested();
-                        }
-                    }
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 10px;
-
-                AssociatedImageCard {
-                    horizontal-stretch: 1;
-                    caption: "Label";
-                    source: root.label-image;
-                    available: root.has-label;
-                    hidden: root.hide-label;
-                    hidden-text: "Label hidden";
-                }
-
-                // The macro photo of the glass usually shows the label too.
-                AssociatedImageCard {
-                    horizontal-stretch: 2;
-                    caption: "Macro";
-                    source: root.macro-image;
-                    available: root.has-macro;
-                    hidden: root.hide-label;
-                    hidden-text: "Hidden (shows the label)";
-                }
-
-                AssociatedImageCard {
-                    horizontal-stretch: 1;
-                    caption: "Overview";
-                    source: root.overview-image;
-                    available: root.has-overview;
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                height: 28px;
-
-                Text {
-                    text: root.summary;
-                    color: Theme.text-primary;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                    overflow: elide;
-                }
-
-                if root.multichannel: Rectangle {
-                    width: channels-text.preferred-width + 16px;
-                    border-radius: 4px;
-                    background: channels-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Channels…";
-                    accessible-action-default => {
-                        root.channels-requested();
-                    }
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    channels-text := Text {
-                        text: "Channels…";
-                        accessible-role: none;
-                        color: Theme.text-primary;
                         font-size: 11px;
-                        horizontal-alignment: center;
                         vertical-alignment: center;
                     }
 
-                    channels-touch := TouchArea {
-                        clicked => {
-                            root.channels-requested();
-                        }
-                    }
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                height: 28px;
-
-                Text {
-                    text: "Pixel size: " + root.pixel-size-text;
-                    color: Theme.text-primary;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                    overflow: elide;
-                }
-
-                Rectangle {
-                    width: 110px;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: pixel-input.has-focus ? Theme.accent : Theme.border;
-                    background: #0a0c10;
-
-                    pixel-input := TextInput {
-                        x: 8px;
-                        width: parent.width - 16px;
-                        text <=> root.pixel-size-input;
-                        color: Theme.text-primary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        accessible-label: "Pixel size";
-                        accessible-placeholder-text: "µm/px";
-                        accepted => {
-                            root.pixel-size-set(self.text);
-                        }
-                    }
-
-                    if root.pixel-size-input == "": Text {
-                        x: 8px;
-                        text: "µm/px";
-                        color: Theme.text-secondary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        accessible-role: none;
-                    }
-                }
-
-                Rectangle {
-                    width: set-text.preferred-width + 16px;
-                    border-radius: 4px;
-                    background: set-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Set the pixel size";
-                    accessible-action-default => {
-                        root.pixel-size-set(root.pixel-size-input);
-                    }
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    set-text := Text {
-                        text: "Set";
-                        accessible-role: none;
-                        color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-
-                    set-touch := TouchArea {
-                        clicked => {
-                            root.pixel-size-set(root.pixel-size-input);
-                        }
-                    }
-                }
-
-                if root.pixel-size-manual: Rectangle {
-                    width: clear-text.preferred-width + 16px;
-                    border-radius: 4px;
-                    background: clear-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Use the file's pixel size";
-                    accessible-action-default => {
-                        root.pixel-size-cleared();
-                    }
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    clear-text := Text {
-                        text: "Use the file's";
-                        accessible-role: none;
-                        color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-
-                    clear-touch := TouchArea {
-                        clicked => {
-                            root.pixel-size-cleared();
-                        }
-                    }
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                height: 28px;
-
-                Rectangle {
-                    horizontal-stretch: 1;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: filter-input.has-focus ? Theme.accent : Theme.border;
-                    background: #0a0c10;
-
-                    filter-input := TextInput {
-                        x: 8px;
-                        width: parent.width - 16px;
-                        text <=> root.filter;
-                        color: Theme.text-primary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        accessible-label: "Filter properties";
-                        accessible-placeholder-text: "Filter properties";
-                        edited => {
-                            root.filter-edited(self.text);
-                        }
-                    }
-
-                    if root.filter == "": Text {
-                        x: 8px;
-                        text: "Filter properties";
-                        color: Theme.text-secondary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        accessible-role: none;
-                    }
-                }
-
-                Text {
-                    text: root.rows.length + " of " + root.total-rows;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                Rectangle {
-                    width: copy-text.preferred-width + 16px;
-                    border-radius: 4px;
-                    background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    accessible-role: button;
-                    accessible-label: "Copy all properties";
-                    accessible-action-default => {
-                        root.copy-all-requested();
-                    }
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    copy-text := Text {
-                        text: "Copy all";
-                        accessible-role: none;
-                        color: Theme.text-primary;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-
-                    copy-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: copy-text.preferred-width + 16px;
+                        border-radius: 4px;
+                        background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        accessible-role: button;
+                        accessible-label: "Copy all properties";
+                        accessible-action-default => {
                             root.copy-all-requested();
                         }
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        copy-text := Text {
+                            text: "Copy all";
+                            accessible-role: none;
+                            color: Theme.text-primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        copy-touch := TouchArea {
+                            clicked => {
+                                root.copy-all-requested();
+                            }
+                        }
                     }
                 }
-            }
 
-            Flickable {
-                vertical-stretch: 1;
-                viewport-height: table.preferred-height;
+                Flickable {
+                    vertical-stretch: 1;
+                    viewport-height: table.preferred-height;
 
-                table := VerticalLayout {
-                    spacing: 0px;
+                    table := VerticalLayout {
+                        spacing: 0px;
 
-                    for row[index] in root.rows: Rectangle {
-                        height: 22px;
-                        background: row-touch.has-hover ? Theme.surface-hover : Math.mod(index, 2) == 0 ? transparent : #ffffff06;
-                        accessible-role: button;
-                        accessible-label: row.key + ": " + row.value;
-                        accessible-description: "Copies the value";
-                        accessible-action-default => {
-                            root.copy-row-requested(index);
-                        }
-
-                        HorizontalLayout {
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            spacing: 12px;
-
-                            Text {
-                                width: 40%;
-                                text: row.key;
-                                color: Theme.text-secondary;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                accessible-role: none;
-                            }
-
-                            Text {
-                                horizontal-stretch: 1;
-                                text: row.value;
-                                color: Theme.text-primary;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                accessible-role: none;
-                            }
-                        }
-
-                        row-touch := TouchArea {
-                            clicked => {
+                        for row[index] in root.rows: Rectangle {
+                            height: 22px;
+                            background: row-touch.has-hover ? Theme.surface-hover : Math.mod(index, 2) == 0 ? transparent : #ffffff06;
+                            accessible-role: button;
+                            accessible-label: row.key + ": " + row.value;
+                            accessible-description: "Copies the value";
+                            accessible-action-default => {
                                 root.copy-row-requested(index);
                             }
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 12px;
+
+                                Text {
+                                    width: 40%;
+                                    text: row.key;
+                                    color: Theme.text-secondary;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    accessible-role: none;
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: row.value;
+                                    color: Theme.text-primary;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    accessible-role: none;
+                                }
+                            }
+
+                            row-touch := TouchArea {
+                                clicked => {
+                                    root.copy-row-requested(index);
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            Text {
-                text: "Click a row to copy its value. Properties are shown as the scanner wrote them.";
-                color: Theme.text-secondary;
-                font-size: 10px;
+                Text {
+                    text: "Click a row to copy its value. Properties are shown as the scanner wrote them.";
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                }
             }
         }
     }
