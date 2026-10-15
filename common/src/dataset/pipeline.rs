@@ -4,14 +4,12 @@
 //! writing → metadata export. Designed for reuse from both the CLI and a
 //! future GUI dialog.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Instant;
 
 use rayon::prelude::*;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::WsiFile;
 
@@ -120,287 +118,19 @@ pub struct DatasetPatchesProgress {
 /// If a slide cannot be opened, it is skipped and the failure is recorded in
 /// the report. Processing continues with remaining slides.
 pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<DatasetPatchesReport> {
-    let start = Instant::now();
-
-    // Build a dedicated rayon pool with the requested thread count.
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(config.threads)
-        .thread_name(|i| format!("ds-patch-{i}"))
-        .build()
-        .map_err(|e| {
-            crate::Error::Io(std::io::Error::other(format!(
-                "failed to create thread pool: {e}"
-            )))
-        })?;
-
-    // --- 1. Resolve inputs ---
-    let (slide_paths, input_errors) = expand_inputs(&config.inputs);
-
-    if slide_paths.is_empty() && input_errors.is_empty() {
-        return Err(crate::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "no valid slide files found in the provided inputs",
-        )));
-    }
-
-    info!(
-        "Discovered {} slide(s) from {} input path(s) ({} input error(s))",
-        slide_paths.len(),
-        config.inputs.len(),
-        input_errors.len(),
-    );
-
-    // --- 2. Create base output directory ---
-    std::fs::create_dir_all(&config.output_dir).map_err(|e| {
-        crate::Error::Io(std::io::Error::new(
-            e.kind(),
-            format!(
-                "failed to create output directory {}: {e}",
-                config.output_dir.display()
-            ),
-        ))
-    })?;
-
-    let mut all_records: Vec<TileRecord> = Vec::new();
-    let mut slide_reports: Vec<SlideReport> = Vec::new();
-    let mut total_tiles: u64 = 0;
-
-    // --- 3-6. Process each slide ---
-    for slide_path in &slide_paths {
-        let stem = output::slide_stem(slide_path);
-
-        // Open one handle on the main thread to read properties and validate.
-        let wsi = match WsiFile::open(slide_path) {
-            Ok(w) => w,
-            Err(e) => {
-                warn!("Skipping {}: {e}", slide_path.display());
-                slide_reports.push(SlideReport {
-                    path: slide_path.clone(),
-                    tiles_written: 0,
-                    tiles_skipped_white: 0,
-                    skipped: Some(SlideSkipReason::OpenError(e.to_string())),
-                });
-                continue;
-            }
-        };
-
-        let props = wsi.properties().clone();
-        drop(wsi); // closed; workers will each open their own handle
-
-        // Generate patch coordinates.
-        let coords =
-            generate_patch_coords(props.width, props.height, config.tile_size, config.stride);
-
-        if coords.is_empty() {
-            info!(
-                "Slide {} ({}×{}) is smaller than tile_size {}; skipping",
-                stem, props.width, props.height, config.tile_size
-            );
-            slide_reports.push(SlideReport {
-                path: slide_path.clone(),
-                tiles_written: 0,
-                tiles_skipped_white: 0,
-                skipped: Some(SlideSkipReason::TooSmall {
-                    width: props.width,
-                    height: props.height,
-                }),
-            });
-            continue;
-        }
-
-        let (fingerprint, file_sha256) = slide_file_ids(slide_path)?;
-
-        // Create per-slide output directory.
-        let tiles_dir = output::slide_tiles_dir(&config.output_dir, &stem);
-        std::fs::create_dir_all(&tiles_dir).map_err(|e| {
-            crate::Error::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "failed to create tile directory {}: {e}",
-                    tiles_dir.display()
-                ),
-            ))
-        })?;
-
-        info!(
-            "Extracting {} tiles from {} ({}×{}) into {} using {} thread(s)",
-            coords.len(),
-            stem,
-            props.width,
-            props.height,
-            tiles_dir.display(),
-            pool.current_num_threads(),
-        );
-
-        let tile_size = config.tile_size;
-        let output_dir = &config.output_dir;
-        let white_threshold = config.white_threshold;
-        let first_error: Mutex<Option<crate::Error>> = Mutex::new(None);
-        let tile_records: Mutex<Vec<TileRecord>> = Mutex::new(Vec::new());
-        let slide_tile_count = AtomicU64::new(0);
-        let slide_white_count = AtomicU64::new(0);
-
-        pool.install(|| {
-            // Each rayon worker thread lazily opens its own WsiFile handle
-            // via thread-local storage—no cross-thread locking on reads.
-            thread_local! {
-                static TLS_WSI: RefCell<Option<WsiFile>> = const { RefCell::new(None) };
-            }
-
-            coords.par_iter().for_each(|coord| {
-                // Bail early if a previous tile already failed.
-                if first_error.lock().unwrap().is_some() {
-                    return;
-                }
-
-                // Open a per-thread handle on first use.
-                let read_result = TLS_WSI.with(|cell| {
-                    let mut slot = cell.borrow_mut();
-                    if slot.is_none() {
-                        match WsiFile::open(slide_path) {
-                            Ok(w) => *slot = Some(w),
-                            Err(e) => return Err(e),
-                        }
-                    }
-                    let wsi = slot.as_ref().unwrap();
-                    wsi.read_region(coord.x as i64, coord.y as i64, 0, tile_size, tile_size)
-                });
-
-                let data = match read_result {
-                    Ok(d) => d,
-                    Err(e) => {
-                        *first_error.lock().unwrap() = Some(e);
-                        return;
-                    }
-                };
-
-                // Skip tiles that are almost completely white.
-                if let Some(thresh) = white_threshold
-                    && output::is_tile_mostly_white(&data, thresh)
-                {
-                    slide_white_count.fetch_add(1, Ordering::Relaxed);
-                    return;
-                }
-
-                let rel_path = output::tile_relative_path(&stem, coord.x, coord.y, tile_size);
-                let abs_path = output_dir.join(&rel_path);
-
-                if let Err(e) = output::write_tile_png(&abs_path, &data, tile_size, tile_size) {
-                    *first_error.lock().unwrap() = Some(crate::Error::Io(std::io::Error::other(
-                        format!("failed to write tile {}: {e}", abs_path.display()),
-                    )));
-                    return;
-                }
-
-                slide_tile_count.fetch_add(1, Ordering::Relaxed);
-
-                tile_records.lock().unwrap().push(TileRecord {
-                    slide_path: slide_path.display().to_string(),
-                    fingerprint: fingerprint.clone(),
-                    file_sha256: file_sha256.clone(),
-                    slide_stem: stem.clone(),
-                    tile_path: rel_path,
-                    x: coord.x,
-                    y: coord.y,
-                    tile_size,
-                    width: tile_size,
-                    height: tile_size,
-                    slide_width: props.width,
-                    slide_height: props.height,
-                    level: 0,
-                    mpp_x: props.mpp_x,
-                    mpp_y: props.mpp_y,
-                });
-            });
-        });
-
-        // Propagate any error from the parallel section.
-        if let Some(e) = first_error.into_inner().unwrap() {
-            return Err(e);
-        }
-
-        let slide_tiles = slide_tile_count.load(Ordering::Relaxed);
-        let slide_white = slide_white_count.load(Ordering::Relaxed);
-
-        // Sort metadata records by (y, x) to restore deterministic row-major
-        // order regardless of parallel scheduling.
-        let mut records = tile_records.into_inner().unwrap();
-        records.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
-        all_records.append(&mut records);
-
-        total_tiles += slide_tiles;
-        slide_reports.push(SlideReport {
-            path: slide_path.clone(),
-            tiles_written: slide_tiles,
-            tiles_skipped_white: slide_white,
-            skipped: None,
-        });
-    }
-
-    // --- 7. Write metadata ---
-    let mut metadata_paths = Vec::new();
-    let write_csv =
-        config.metadata_format.is_none() || config.metadata_format == Some(MetadataFormat::Csv);
-    let write_json =
-        config.metadata_format.is_none() || config.metadata_format == Some(MetadataFormat::Json);
-
-    if write_csv {
-        let csv_path = config.output_dir.join("metadata.csv");
-        metadata::write_csv(&all_records, &csv_path).map_err(|e| {
-            crate::Error::Io(std::io::Error::new(
-                e.kind(),
-                format!("failed to write metadata CSV {}: {e}", csv_path.display()),
-            ))
-        })?;
-        info!(
-            "Wrote {} tile records to {}",
-            all_records.len(),
-            csv_path.display()
-        );
-        metadata_paths.push(csv_path);
-    }
-
-    if write_json {
-        let json_path = config.output_dir.join("metadata.json");
-        metadata::write_json(&all_records, &json_path).map_err(|e| {
-            crate::Error::Io(std::io::Error::new(
-                e.kind(),
-                format!("failed to write metadata JSON {}: {e}", json_path.display()),
-            ))
-        })?;
-        info!(
-            "Wrote {} tile records to {}",
-            all_records.len(),
-            json_path.display()
-        );
-        metadata_paths.push(json_path);
-    }
-
-    let processed = slide_reports.iter().filter(|r| r.skipped.is_none()).count();
-    let skipped = slide_reports.iter().filter(|r| r.skipped.is_some()).count();
-
-    let total_white: u64 = slide_reports.iter().map(|r| r.tiles_skipped_white).sum();
-
-    info!(
-        "Dataset extraction complete in {:.1}s: {} slide(s) processed, {} skipped, {} tile(s) written, {} tile(s) skipped (white)",
-        start.elapsed().as_secs_f64(),
-        processed,
-        skipped,
-        total_tiles,
-        total_white,
-    );
-
-    Ok(DatasetPatchesReport {
-        input_count: config.inputs.len(),
-        discovered_slides: slide_paths.len(),
-        processed_slides: processed,
-        skipped_slides: skipped,
-        total_tiles,
-        total_tiles_skipped_white: total_white,
-        metadata_paths,
-        slides: slide_reports,
-        input_errors,
-    })
+    let cancel = AtomicBool::new(false);
+    let tiles = AtomicU64::new(0);
+    let current_slide = AtomicU64::new(0);
+    let total_slides = AtomicU64::new(0);
+    let total_tiles_expected = AtomicU64::new(0);
+    run_dataset_patches_with_progress(
+        config,
+        &cancel,
+        &tiles,
+        &current_slide,
+        &total_slides,
+        &total_tiles_expected,
+    )
 }
 
 /// Run the dataset-patches pipeline with cancellation and progress reporting.
@@ -450,6 +180,8 @@ pub fn run_dataset_patches_with_progress(
     let mut slide_reports: Vec<SlideReport> = Vec::new();
     let mut total_tiles: u64 = 0;
 
+    let slide_keys = output::unique_slide_keys(&slide_paths);
+
     for (slide_idx, slide_path) in slide_paths.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             break;
@@ -457,7 +189,7 @@ pub fn run_dataset_patches_with_progress(
 
         progress_current_slide.store((slide_idx + 1) as u64, Ordering::Relaxed);
 
-        let stem = output::slide_stem(slide_path);
+        let stem = slide_keys[slide_idx].clone();
 
         let wsi = match WsiFile::open(slide_path) {
             Ok(w) => w,
@@ -515,27 +247,34 @@ pub fn run_dataset_patches_with_progress(
         let slide_tile_count = AtomicU64::new(0);
         let slide_white_count = AtomicU64::new(0);
 
-        pool.install(|| {
-            thread_local! {
-                static TLS_WSI: RefCell<Option<WsiFile>> = const { RefCell::new(None) };
-            }
+        // One OpenSlide handle per worker thread, scoped to *this* slide.
+        // Worker threads persist across slides, so a thread-local cache would
+        // keep serving the first slide's handle for every later slide.
+        let handle_slots: Vec<Mutex<Option<WsiFile>>> = (0..pool.current_num_threads().max(1))
+            .map(|_| Mutex::new(None))
+            .collect();
 
+        pool.install(|| {
             coords.par_iter().for_each(|coord| {
                 if cancel.load(Ordering::Relaxed) || first_error.lock().unwrap().is_some() {
                     return;
                 }
 
-                let read_result = TLS_WSI.with(|cell| {
-                    let mut slot = cell.borrow_mut();
+                let slot_index = rayon::current_thread_index().unwrap_or(0) % handle_slots.len();
+                let read_result = {
+                    let mut slot = handle_slots[slot_index].lock().unwrap();
                     if slot.is_none() {
                         match WsiFile::open(slide_path) {
                             Ok(w) => *slot = Some(w),
-                            Err(e) => return Err(e),
+                            Err(e) => {
+                                *first_error.lock().unwrap() = Some(e);
+                                return;
+                            }
                         }
                     }
-                    let wsi = slot.as_ref().unwrap();
+                    let wsi = slot.as_ref().expect("slot initialized above");
                     wsi.read_region(coord.x as i64, coord.y as i64, 0, tile_size, tile_size)
-                });
+                };
 
                 let data = match read_result {
                     Ok(d) => d,
@@ -658,4 +397,86 @@ pub fn run_dataset_patches_with_progress(
         slides: slide_reports,
         input_errors,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::write_tiled_tiff;
+
+    fn config(inputs: Vec<PathBuf>, output_dir: PathBuf) -> DatasetPatchesConfig {
+        DatasetPatchesConfig {
+            inputs,
+            output_dir,
+            tile_size: 128,
+            stride: 128,
+            metadata_format: Some(MetadataFormat::Json),
+            threads: 3,
+            white_threshold: None,
+        }
+    }
+
+    fn centre_colour(path: &std::path::Path) -> [u8; 3] {
+        let image = image::open(path).expect("tile image").to_rgba8();
+        let px = image.get_pixel(image.width() / 2, image.height() / 2).0;
+        [px[0], px[1], px[2]]
+    }
+
+    fn tiles_below(dir: &std::path::Path) -> Vec<PathBuf> {
+        let mut tiles: Vec<PathBuf> = std::fs::read_dir(dir)
+            .expect("tile directory")
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        tiles.sort();
+        tiles
+    }
+
+    #[test]
+    fn every_slide_is_read_from_its_own_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let colours = [[200, 40, 40], [40, 40, 200], [40, 160, 40]];
+        let mut inputs = Vec::new();
+        for (index, colour) in colours.iter().enumerate() {
+            let path = temp.path().join(format!("slide{index}.tif"));
+            write_tiled_tiff(&path, 512, 384, 64, |_, _| *colour).unwrap();
+            inputs.push(path);
+        }
+        let out = temp.path().join("out");
+        let report = run_dataset_patches(&config(inputs, out.clone())).unwrap();
+        assert_eq!(report.processed_slides, 3);
+        assert_eq!(report.total_tiles, 3 * 4 * 3);
+        for (index, colour) in colours.iter().enumerate() {
+            let tiles = tiles_below(&out.join("slides").join(format!("slide{index}")));
+            assert_eq!(tiles.len(), 12);
+            for tile in tiles {
+                assert_eq!(&centre_colour(&tile), colour, "{}", tile.display());
+            }
+        }
+    }
+
+    #[test]
+    fn slides_with_the_same_stem_do_not_overwrite_each_other() {
+        let temp = tempfile::tempdir().unwrap();
+        let a = temp.path().join("case1").join("HE.tif");
+        let b = temp.path().join("case2").join("HE.tif");
+        std::fs::create_dir_all(a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+        write_tiled_tiff(&a, 256, 256, 64, |_, _| [220, 30, 30]).unwrap();
+        write_tiled_tiff(&b, 256, 256, 64, |_, _| [30, 30, 220]).unwrap();
+        let out = temp.path().join("out");
+        let report = run_dataset_patches(&config(vec![a, b], out.clone())).unwrap();
+        assert_eq!(report.total_tiles, 8);
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(out.join("slides"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        dirs.sort();
+        assert_eq!(dirs.len(), 2, "each slide needs its own directory: {dirs:?}");
+        let mut seen: Vec<[u8; 3]> = dirs
+            .iter()
+            .map(|dir| centre_colour(&tiles_below(dir)[0]))
+            .collect();
+        seen.sort();
+        assert_eq!(seen, vec![[30, 30, 220], [220, 30, 30]]);
+    }
 }

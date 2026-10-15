@@ -20,6 +20,9 @@ pub mod tile;
 pub mod viewport;
 pub mod wsi;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use cache::TileCache;
 pub use error::{Error, Result};
 pub use export::ExportSettings;

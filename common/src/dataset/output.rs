@@ -83,12 +83,57 @@ pub fn is_tile_mostly_white(data: &[u8], threshold: f32) -> bool {
 
 /// Derive a slide stem from its file path, ensuring it is filesystem-safe.
 ///
-/// Returns the file stem (no extension), or `"unknown"` as a fallback.
+/// Non-UTF-8 names are converted lossily and characters that are unsafe in
+/// file names are replaced with `_`. Returns `"slide"` for empty stems.
 pub fn slide_stem(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string()
+    let raw = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let sanitized: String = raw
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{FFFD}' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    let trimmed = sanitized.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    if trimmed.is_empty() {
+        "slide".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Assigns every slide a unique, filesystem-safe output key.
+///
+/// The key is the slide stem; when several inputs share a stem (compared
+/// case-insensitively, because macOS and Windows file systems are), each of
+/// them gets a short hash of its canonical path appended so their tiles can
+/// never overwrite one another.
+pub fn unique_slide_keys(paths: &[PathBuf]) -> Vec<String> {
+    use sha2::{Digest, Sha256};
+    use std::collections::HashMap;
+
+    let stems: Vec<String> = paths.iter().map(|p| slide_stem(p)).collect();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for stem in &stems {
+        *counts.entry(stem.to_lowercase()).or_default() += 1;
+    }
+    paths
+        .iter()
+        .zip(stems)
+        .map(|(path, stem)| {
+            if counts.get(&stem.to_lowercase()).copied().unwrap_or(0) <= 1 {
+                return stem;
+            }
+            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            let digest = Sha256::digest(canonical.to_string_lossy().as_bytes());
+            let short: String = digest.iter().take(4).map(|b| format!("{b:02x}")).collect();
+            format!("{stem}_{short}")
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -118,6 +163,29 @@ mod tests {
             "C3L-00004-21"
         );
         assert_eq!(slide_stem(Path::new("relative.tif")), "relative");
+    }
+
+    #[test]
+    fn duplicate_stems_get_distinct_keys() {
+        let paths = vec![
+            PathBuf::from("/cases/001/HE.svs"),
+            PathBuf::from("/cases/002/HE.svs"),
+            PathBuf::from("/cases/002/he.ndpi"),
+            PathBuf::from("/cases/003/IHC.svs"),
+        ];
+        let keys = unique_slide_keys(&paths);
+        assert_eq!(keys[3], "IHC");
+        let mut unique = keys.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), keys.len(), "keys must be unique: {keys:?}");
+        assert!(keys[0].starts_with("HE_") && keys[1].starts_with("HE_"));
+    }
+
+    #[test]
+    fn stems_are_filesystem_safe() {
+        assert_eq!(slide_stem(Path::new("/x/a:b*c.svs")), "a_b_c");
+        assert_eq!(slide_stem(Path::new("/x/..tif")), "slide");
     }
 
     #[test]
