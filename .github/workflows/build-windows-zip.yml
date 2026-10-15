@@ -320,10 +320,27 @@ jobs:
             exit 1
           }
 
+          # Ship the license texts next to the binaries (LGPL compliance for
+          # the bundled OpenSlide and its dependencies).
+          Copy-Item "LICENSE-MIT","LICENSE-APACHE-2.0","LICENSE-GPLv3" "staging\eov\"
+          Copy-Item "assets\linux\COPYING.third-party" "staging\eov\THIRD-PARTY-NOTICES.txt"
+
+          # Manifest of every shipped file. The self-updater refuses to replace
+          # a folder that contains anything not listed here, so extracting eov
+          # into a shared folder (Downloads, Desktop) can never lose user files.
+          $files = Get-ChildItem -Path staging\eov -File -Recurse | ForEach-Object {
+            $_.FullName.Substring((Resolve-Path "staging\eov").Path.Length + 1).Replace('\', '/')
+          }
+          $files += "eov-portable.json"
+          @{ version = "${{ steps.meta.outputs.version }}"; files = @($files | Sort-Object) } |
+            ConvertTo-Json -Depth 3 | Set-Content "staging\eov\eov-portable.json" -Encoding UTF8
+
           Write-Host "Zip contents:"
           Get-ChildItem -Path staging\eov | Format-Table Name, Length
 
-          $archiveSource = Join-Path (Resolve-Path "staging\eov").Path '*'
+          # Archive the folder itself so the zip extracts into eov\ instead of
+          # scattering files into the destination directory.
+          $archiveSource = (Resolve-Path "staging\eov").Path
           if (Test-Path "${{ steps.meta.outputs.artifact_name }}") {
             Remove-Item "${{ steps.meta.outputs.artifact_name }}" -Force
           }

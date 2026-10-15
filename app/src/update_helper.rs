@@ -291,7 +291,12 @@ fn replace_tree(transaction: &Transaction) -> Result<()> {
     if let Some(registry) = &transaction.registry {
         let _ = fs::remove_file(&registry.backup);
     }
-    let _ = fs::remove_dir_all(backup_tree);
+    // Defense in depth: only ever delete a backup that is an eov tree.
+    let backup_is_eov = backup_tree.join("eov.exe").is_file()
+        || backup_tree.join("Contents/MacOS/eov").is_file();
+    if backup_is_eov {
+        let _ = fs::remove_dir_all(backup_tree);
+    }
     Ok(())
 }
 

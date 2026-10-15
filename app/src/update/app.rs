@@ -729,19 +729,106 @@ fn stage_archive_update(distribution: Distribution, bytes: &[u8]) -> Result<Path
             candidate
         }
         Distribution::WindowsPortable => {
-            if !staging_root.join("eov.exe").is_file()
-                || !staging_root.join("eov-update-helper.exe").is_file()
-            {
+            // Releases from 1.0 ship their files inside a top-level `eov/`
+            // folder; older archives stored them at the archive root.
+            let nested = staging_root.join("eov");
+            let tree = if nested.join("eov.exe").is_file() {
+                nested
+            } else {
+                staging_root.clone()
+            };
+            if !tree.join("eov.exe").is_file() {
                 let _ = fs::remove_dir_all(&staging_root);
-                bail!(
-                    "staged Windows portable archive does not contain eov.exe and eov-update-helper.exe"
-                );
+                bail!("staged Windows portable archive does not contain eov.exe");
             }
-            staging_root
+            if let Err(error) = verify_portable_folder_is_owned(&current_tree, &tree) {
+                let _ = fs::remove_dir_all(&staging_root);
+                return Err(error);
+            }
+            tree
         }
         _ => unreachable!(),
     };
     Ok(staged_tree)
+}
+
+/// Name of the manifest that lists every file shipped in a Windows portable
+/// release. Written by the release workflow next to `eov.exe`.
+pub(crate) const PORTABLE_MANIFEST: &str = "eov-portable.json";
+
+/// Refuses to replace a Windows portable installation folder unless every
+/// entry in it belongs to eov.
+///
+/// The portable update swaps the whole folder that contains `eov.exe`. When a
+/// user extracted the release straight into a shared folder (Downloads, the
+/// Desktop, a tools directory), that folder also holds unrelated files that a
+/// swap would move away and delete. An entry is accepted when it is part of
+/// the release being installed, is listed in the current installation's
+/// [`PORTABLE_MANIFEST`], or is an artifact earlier eov releases shipped.
+pub(crate) fn verify_portable_folder_is_owned(current: &Path, staged: &Path) -> Result<()> {
+    use std::collections::HashSet;
+    use std::ffi::OsString;
+
+    let lower = |name: &std::ffi::OsStr| name.to_string_lossy().to_ascii_lowercase();
+    let mut owned: HashSet<String> = HashSet::new();
+    for entry in fs::read_dir(staged).context("could not list the staged release")? {
+        owned.insert(lower(&entry?.file_name()));
+    }
+    if let Ok(text) = fs::read_to_string(current.join(PORTABLE_MANIFEST))
+        && let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text)
+        && let Some(files) = manifest.get("files").and_then(|files| files.as_array())
+    {
+        for file in files.iter().filter_map(|file| file.as_str()) {
+            if let Some(first) = Path::new(file).components().next() {
+                owned.insert(lower(first.as_os_str()));
+            }
+        }
+    }
+
+    let is_legacy_artifact = |name: &str| {
+        name == "eov.exe"
+            || name == "eov-update-helper.exe"
+            || name == PORTABLE_MANIFEST
+            || name.ends_with(".dll")
+            || name.starts_with("license")
+            || name.starts_with("copying")
+            || name.starts_with("readme")
+            || name.starts_with("third-party")
+            || name.starts_with(".eov-")
+    };
+
+    if !current.join("eov.exe").is_file() {
+        bail!(
+            "{} does not look like an eov installation folder (no eov.exe); refusing to replace it",
+            current.display()
+        );
+    }
+
+    let mut foreign: Vec<OsString> = Vec::new();
+    for entry in fs::read_dir(current).context("could not list the installation folder")? {
+        let name = entry?.file_name();
+        let key = lower(&name);
+        if !owned.contains(&key) && !is_legacy_artifact(&key) {
+            foreign.push(name);
+        }
+    }
+    if !foreign.is_empty() {
+        foreign.sort();
+        let examples: Vec<String> = foreign
+            .iter()
+            .take(5)
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect();
+        bail!(
+            "{} contains {} item(s) that are not part of eov (for example: {}).\n\
+             A portable update replaces this whole folder, so it is refused to protect those files.\n\
+             Move eov.exe and its files into a folder of their own (for example C:\\Tools\\eov) and run the update again.",
+            current.display(),
+            foreign.len(),
+            examples.join(", ")
+        );
+    }
+    Ok(())
 }
 
 fn extract_zip_safely(bytes: &[u8], destination: &Path) -> Result<()> {
@@ -1219,6 +1306,69 @@ fn run_cargo_install(version: &Version) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn portable_guard_accepts_a_dedicated_eov_folder() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = temp.path().join("eov");
+        let staged = temp.path().join("stage");
+        for name in ["eov.exe", "eov-update-helper.exe", "libopenslide-1.dll", "LICENSE-MIT"] {
+            touch(&current.join(name));
+        }
+        for name in ["eov.exe", "eov-update-helper.exe", "libopenslide-1.dll", "zlib1.dll"] {
+            touch(&staged.join(name));
+        }
+        verify_portable_folder_is_owned(&current, &staged).unwrap();
+    }
+
+    #[test]
+    fn portable_guard_refuses_a_shared_folder() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = temp.path().join("Downloads");
+        let staged = temp.path().join("stage");
+        touch(&current.join("eov.exe"));
+        touch(&current.join("tax-return.pdf"));
+        touch(&current.join("holiday").join("photo.jpg"));
+        touch(&staged.join("eov.exe"));
+        let error = verify_portable_folder_is_owned(&current, &staged)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("not part of eov"), "{error}");
+        assert!(error.contains("tax-return.pdf"), "{error}");
+    }
+
+    #[test]
+    fn portable_guard_honours_the_shipped_manifest() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = temp.path().join("eov");
+        let staged = temp.path().join("stage");
+        touch(&current.join("eov.exe"));
+        touch(&current.join("plugins-readme.md"));
+        fs::write(
+            current.join(PORTABLE_MANIFEST),
+            r#"{"version":"1.0.0","files":["eov.exe","plugins-readme.md","eov-portable.json"]}"#,
+        )
+        .unwrap();
+        touch(&staged.join("eov.exe"));
+        verify_portable_folder_is_owned(&current, &staged).unwrap();
+    }
+
+    #[test]
+    fn portable_guard_requires_eov_exe() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = temp.path().join("somewhere");
+        let staged = temp.path().join("stage");
+        fs::create_dir_all(&current).unwrap();
+        touch(&staged.join("eov.exe"));
+        assert!(verify_portable_folder_is_owned(&current, &staged).is_err());
+    }
+
     use super::*;
 
     #[test]

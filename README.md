@@ -60,7 +60,7 @@ A zip file containing a portable Windows build is available:
 - [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-x86_64.zip) (most Windows machines)
 - [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-arm64.zip) (rarer)
 
-Extract the zip and run `eov.exe` to start the program. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
+Extract the zip; it contains a single `eov` folder. Keep that folder dedicated to eov (the self-updater replaces it as a whole and refuses to run if it contains unrelated files), then run `eov.exe` inside it. Only the portable version is available; no Windows installer is planned. Because the binary is not signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
 If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure).
 
