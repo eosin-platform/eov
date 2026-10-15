@@ -232,6 +232,7 @@ export component Viewport inherits Rectangle {
         y: parent.height - self.height - 16px;
         value: root.zoom-slider-position;
         zoom-level: root.viewport-info.zoom;
+        zoom-text: root.zoom-display-text;
         value-changed(value) => {
             root.zoom-slider-changed(value);
         }

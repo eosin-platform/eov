@@ -1,4 +1,4 @@
-use eov_common::format_decimal;
+use eov_common::{format_decimal, format_significant};
 
 const WHOLE_NUMBER_EPSILON: f64 = 0.05;
 
@@ -81,7 +81,7 @@ pub fn reliable_objective_power(objective_power: Option<f64>) -> Option<f64> {
 }
 
 fn format_optical_value(value: f64) -> String {
-    format_one_decimal_clean(value)
+    format_small_value(value)
 }
 
 fn format_percent_text(digital_zoom: f64) -> String {
@@ -92,7 +92,17 @@ fn format_percent_value(digital_zoom: f64) -> String {
     if digital_zoom >= 1.0 {
         (digital_zoom * 100.0).round().to_string()
     } else {
-        format_one_decimal_clean((digital_zoom * 1000.0).round() / 10.0)
+        format_small_value(digital_zoom * 100.0)
+    }
+}
+
+/// One decimal, or two significant digits below 1, so that small values
+/// never read as 0 (RND-10).
+fn format_small_value(value: f64) -> String {
+    if value > 0.0 && value < 0.95 {
+        format_significant(value, 2)
+    } else {
+        format_one_decimal_clean(value)
     }
 }
 
@@ -148,6 +158,19 @@ mod tests {
     fn formats_20x_slide_at_expected_digital_zooms() {
         assert_eq!(zoom_display_info(1.0, Some(20.0)).text, "20x");
         assert_eq!(zoom_display_info(0.5, Some(20.0)).text, "10x");
+    }
+
+    #[test]
+    fn low_magnifications_never_read_as_zero() {
+        assert_eq!(zoom_display_info(0.001, Some(40.0)).text, "0.04x");
+        assert_eq!(zoom_display_info(0.001, Some(20.0)).text, "0.02x");
+        assert_eq!(zoom_display_info(0.015, Some(40.0)).text, "0.6x");
+        assert_eq!(zoom_display_info(0.03, Some(40.0)).text, "1.2x");
+        assert_eq!(zoom_display_info(0.001, None).text, "0.1%");
+        assert_eq!(zoom_display_info(0.125, None).text, "12.5%");
+        // What is shown parses back to the same zoom.
+        let shown = zoom_display_info(0.001, Some(40.0)).input_text;
+        assert_eq!(parse_zoom_input(&shown, Some(40.0)), Some(0.001));
     }
 
     #[test]
