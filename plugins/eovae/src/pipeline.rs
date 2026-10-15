@@ -19,9 +19,9 @@ use crate::contract::{
     Contract, Layout, PreparedTile, is_background, prepare, score_output, write_input,
 };
 use crate::engine::{EngineError, InferenceEngine};
-use crate::resample::resample;
+use crate::resample::Resampler;
 use crate::results::{Counts, Need, TilePayload, TileState};
-use crate::tiling::{TileCoord, TileGrid};
+use crate::tiling::{ReadPlan, TileCoord, TileGrid};
 use eov_plugin_api::abi::RegionRequest;
 use eov_plugin_api::protocol::FileId;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -178,6 +178,36 @@ enum Item {
 }
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+/// The most pixels asked for at once: larger resampled regions are read in
+/// strips (16 MiB of RGBA each), so memory stays bounded.
+const MAX_READ_PIXELS: u32 = 1 << 22;
+
+/// Reads a resampled tile in strips of whole rows and resamples it.
+fn read_resampled(
+    spec: &JobSpec,
+    source: &dyn PixelSource,
+    plan: &ReadPlan,
+) -> Result<Vec<u8>, String> {
+    let grey = spec.contract.background_rgb();
+    let mut resampler = Resampler::new(plan, spec.grid.tile, [grey; 3]);
+    let strip = (MAX_READ_PIXELS / plan.width.max(1)).clamp(1, plan.height.max(1));
+    let mut done = 0;
+    while done < plan.height {
+        let rows = strip.min(plan.height - done);
+        let rgba = source.read(&RegionRequest {
+            file_id: spec.file_id,
+            level: spec.grid.level,
+            x: plan.x,
+            y: plan.row_y(done, spec.grid.downsample),
+            width: plan.width,
+            height: rows,
+            background: spec.contract.background_rgba(),
+        })?;
+        resampler.add_rows(&rgba)?;
+        done += rows;
+    }
+    resampler.finish()
+}
 const DELIVERY_INTERVAL: Duration = Duration::from_millis(300);
 
 /// Runs a job to completion, cancellation or failure.
@@ -243,24 +273,20 @@ pub fn run_job(
                     return;
                 };
                 let plan = spec.grid.read_plan(coord);
-                let request = RegionRequest {
-                    file_id: spec.file_id,
-                    level: spec.grid.level,
-                    x: plan.x,
-                    y: plan.y,
-                    width: plan.width,
-                    height: plan.height,
-                    background: spec.contract.background_rgba(),
-                };
                 // Resampled grids bring the region to the model's pixels.
-                let read = source.read(&request).and_then(|rgba| {
-                    if spec.grid.resampled() {
-                        let grey = spec.contract.background_rgb();
-                        resample(&rgba, &plan, tile, [grey; 3])
-                    } else {
-                        Ok(rgba)
-                    }
-                });
+                let read = if spec.grid.resampled() {
+                    read_resampled(spec, source, &plan)
+                } else {
+                    source.read(&RegionRequest {
+                        file_id: spec.file_id,
+                        level: spec.grid.level,
+                        x: plan.x,
+                        y: plan.y,
+                        width: plan.width,
+                        height: plan.height,
+                        background: spec.contract.background_rgba(),
+                    })
+                };
                 let item = match read {
                     Ok(rgba) => {
                         match prepare(&rgba, tile, spec.grid.valid_size(coord), &spec.contract) {
@@ -548,6 +574,81 @@ pub(crate) mod tests {
             failing: Vec::new(),
             reads: AtomicUsize::new(0),
         }
+    }
+
+    /// Records requests; every pixel is the same tissue-like colour.
+    #[derive(Default)]
+    struct Uniform {
+        requests: Mutex<Vec<RegionRequest>>,
+    }
+
+    impl PixelSource for Uniform {
+        fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String> {
+            self.requests.lock().unwrap().push(*request);
+            let n = request.width as usize * request.height as usize;
+            Ok((0..n)
+                .flat_map(|i| {
+                    if i % 2 == 0 {
+                        [90, 60, 150, 255]
+                    } else {
+                        [200, 120, 180, 255]
+                    }
+                })
+                .collect())
+        }
+    }
+
+    /// A model at 39 µm/px on a single-level 0.25 µm/px slide: a tile of 16
+    /// model pixels spans 2496 level pixels per axis, more than one request
+    /// may hold, so it is read in strips.
+    #[test]
+    fn large_resampled_regions_are_read_in_strips() {
+        let geometry = SlideGeometry::from_file_info(&FileInfo {
+            width: 6000,
+            height: 6000,
+            mpp_x: Some(0.25),
+            mpp_y: Some(0.25),
+            ..Default::default()
+        });
+        let choice =
+            crate::tiling::choose_level(&geometry, crate::tiling::Resolution::Auto, Some(39.0))
+                .unwrap();
+        let grid = TileGrid::for_choice(&geometry, &choice, 16);
+        assert!(grid.resampled());
+        let coord = TileCoord::new(0, 0);
+        let plan = grid.read_plan(coord);
+        assert!(plan.width * plan.height > MAX_READ_PIXELS, "{plan:?}");
+        let spec = JobSpec {
+            file_id: 1,
+            grid,
+            tiles: vec![(coord, Need::Score)],
+            contract: Contract::histovae(),
+            layout: Layout::Nchw,
+            skip_background: true,
+            batch_size: 1,
+            readers: 1,
+        };
+        let source = Uniform::default();
+        let window = read_resampled(&spec, &source, &plan).unwrap();
+        assert_eq!(window.len(), 16 * 16 * 4);
+        let requests = source.requests.lock().unwrap();
+        assert!(requests.len() >= 2, "{} reads", requests.len());
+        assert!(
+            requests
+                .iter()
+                .all(|r| r.width * r.height <= MAX_READ_PIXELS)
+        );
+        assert_eq!(requests.iter().map(|r| r.height).sum::<u32>(), plan.height);
+        // Each strip starts where the previous one ends.
+        for pair in requests.windows(2) {
+            assert_eq!(pair[1].y, pair[0].y + i64::from(pair[0].height));
+        }
+        // The window is the slide's average colour.
+        let px = &window[..4];
+        assert!(
+            (i32::from(px[0]) - 145).abs() <= 1 && (i32::from(px[1]) - 90).abs() <= 1,
+            "{px:?}"
+        );
     }
 
     #[test]

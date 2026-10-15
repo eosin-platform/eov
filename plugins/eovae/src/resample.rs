@@ -62,9 +62,132 @@ fn axis_taps(origin: f64, step: f64, count: usize, len: usize) -> Vec<Tap> {
         .collect()
 }
 
-/// Resamples `rgba` (the region read for `plan`, straight alpha) onto a
-/// `tile`×`tile` window of opaque RGBA, composited onto `background`
-/// (RGB, 0–255).
+/// Resamples a region onto a `tile`×`tile` model window as its rows
+/// arrive, so that a large region can be read in strips with bounded
+/// memory (one row and the window's sums are kept, not the region).
+pub struct Resampler {
+    width: usize,
+    height: usize,
+    side: usize,
+    taps_x: Vec<Tap>,
+    /// For every region row, the window rows it contributes to, and how
+    /// much.
+    contributions: Vec<Vec<(usize, f32)>>,
+    background: [f32; 3],
+    /// Window sums, planar (3 × side × side).
+    sums: Vec<f32>,
+    /// One region row after the horizontal pass (3 × side).
+    line: Vec<f32>,
+    /// One region row composited onto the background (3 × width).
+    composited: Vec<f32>,
+    added: usize,
+}
+
+impl Resampler {
+    /// `background`: what transparent pixels become (RGB, 0–255).
+    pub fn new(plan: &ReadPlan, tile: u32, background: [u8; 3]) -> Self {
+        let (width, height, side) = (plan.width as usize, plan.height as usize, tile as usize);
+        let taps_x = axis_taps(plan.origin_x, plan.step_x, side, width);
+        let taps_y = axis_taps(plan.origin_y, plan.step_y, side, height);
+        let mut contributions = vec![Vec::new(); height];
+        for (b, tap) in taps_y.iter().enumerate() {
+            for (k, weight) in tap.weights.iter().enumerate() {
+                if *weight != 0.0 {
+                    contributions[tap.first + k].push((b, *weight));
+                }
+            }
+        }
+        Self {
+            width,
+            height,
+            side,
+            taps_x,
+            contributions,
+            background: background.map(f32::from),
+            sums: vec![0.0; 3 * side * side],
+            line: vec![0.0; 3 * side],
+            composited: vec![0.0; 3 * width],
+            added: 0,
+        }
+    }
+
+    /// Adds the region's next whole rows (straight-alpha RGBA).
+    pub fn add_rows(&mut self, rgba: &[u8]) -> Result<(), String> {
+        let stride = self.width * 4;
+        if stride == 0
+            || !rgba.len().is_multiple_of(stride)
+            || self.added + rgba.len() / stride > self.height
+        {
+            return Err(format!(
+                "the host returned {} bytes for rows of a {}×{} region",
+                rgba.len(),
+                self.width,
+                self.height
+            ));
+        }
+        let (width, side) = (self.width, self.side);
+        for row in rgba.chunks_exact(stride) {
+            let y = self.added;
+            self.added += 1;
+            if self.contributions[y].is_empty() {
+                continue;
+            }
+            for (x, px) in row.as_chunks::<4>().0.iter().enumerate() {
+                let alpha = f32::from(px[3]) / 255.0;
+                for (channel, (value, background)) in
+                    px[..3].iter().zip(self.background).enumerate()
+                {
+                    self.composited[channel * width + x] =
+                        f32::from(*value) * alpha + background * (1.0 - alpha);
+                }
+            }
+            for channel in 0..3 {
+                let plane = &self.composited[channel * width..(channel + 1) * width];
+                for (a, tap) in self.taps_x.iter().enumerate() {
+                    self.line[channel * side + a] = tap
+                        .weights
+                        .iter()
+                        .zip(&plane[tap.first..])
+                        .map(|(w, v)| w * v)
+                        .sum();
+                }
+            }
+            for &(b, weight) in &self.contributions[y] {
+                for channel in 0..3 {
+                    let start = (channel * side + b) * side;
+                    let line = &self.line[channel * side..(channel + 1) * side];
+                    for (sum, value) in self.sums[start..start + side].iter_mut().zip(line) {
+                        *sum += weight * value;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The window, once every row is in: opaque RGBA.
+    pub fn finish(self) -> Result<Vec<u8>, String> {
+        if self.added != self.height {
+            return Err(format!("{} of {} rows were read", self.added, self.height));
+        }
+        let side = self.side;
+        let mut window = vec![255u8; side * side * 4];
+        for channel in 0..3 {
+            for b in 0..side {
+                for a in 0..side {
+                    window[(b * side + a) * 4 + channel] =
+                        self.sums[(channel * side + b) * side + a]
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+        Ok(window)
+    }
+}
+
+/// Resamples a whole region read for `plan` (straight-alpha RGBA) onto a
+/// `tile`×`tile` window of opaque RGBA, composited onto `background`.
 pub fn resample(
     rgba: &[u8],
     plan: &ReadPlan,
@@ -78,53 +201,9 @@ pub fn resample(
             rgba.len()
         ));
     }
-    let side = tile as usize;
-    let pixels = width * height;
-    // Composited planes, 0–255.
-    let mut source = vec![0f32; 3 * pixels];
-    for (index, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
-        let alpha = f32::from(px[3]) / 255.0;
-        for channel in 0..3 {
-            source[channel * pixels + index] =
-                f32::from(px[channel]) * alpha + f32::from(background[channel]) * (1.0 - alpha);
-        }
-    }
-    let taps_x = axis_taps(plan.origin_x, plan.step_x, side, width);
-    let taps_y = axis_taps(plan.origin_y, plan.step_y, side, height);
-    // Horizontal pass: 3 × height × side.
-    let mut rows = vec![0f32; 3 * height * side];
-    for channel in 0..3 {
-        let plane = &source[channel * pixels..(channel + 1) * pixels];
-        let out = &mut rows[channel * height * side..(channel + 1) * height * side];
-        for y in 0..height {
-            let line = &plane[y * width..(y + 1) * width];
-            for (a, tap) in taps_x.iter().enumerate() {
-                out[y * side + a] = tap
-                    .weights
-                    .iter()
-                    .zip(&line[tap.first..])
-                    .map(|(w, v)| w * v)
-                    .sum();
-            }
-        }
-    }
-    // Vertical pass into interleaved RGBA.
-    let mut window = vec![255u8; side * side * 4];
-    for channel in 0..3 {
-        let plane = &rows[channel * height * side..(channel + 1) * height * side];
-        for (b, tap) in taps_y.iter().enumerate() {
-            for a in 0..side {
-                let value: f32 = tap
-                    .weights
-                    .iter()
-                    .enumerate()
-                    .map(|(k, w)| w * plane[(tap.first + k) * side + a])
-                    .sum();
-                window[(b * side + a) * 4 + channel] = value.round().clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
-    Ok(window)
+    let mut resampler = Resampler::new(plan, tile, background);
+    resampler.add_rows(rgba)?;
+    resampler.finish()
 }
 
 #[cfg(test)]
@@ -135,6 +214,7 @@ mod tests {
         ReadPlan {
             x: 0,
             y: 0,
+            row: 0,
             width,
             height,
             origin_x: origin.0,
@@ -177,6 +257,30 @@ mod tests {
         // The second row repeats the only source row (clamped).
         assert_eq!(window[0], 33);
         assert_eq!(window[4], 167);
+    }
+
+    #[test]
+    fn rows_added_in_strips_give_the_same_window() {
+        let rgba = image(37, 29, |x, y| {
+            [(x * 7) as u8, (y * 9) as u8, ((x + y) * 3) as u8, 255]
+        });
+        let plan = plan(37, 29, (0.3, 0.7), (4.1, 3.3));
+        let whole = resample(&rgba, &plan, 8, [255; 3]).unwrap();
+        let mut strips = Resampler::new(&plan, 8, [255; 3]);
+        let stride = 37 * 4;
+        for chunk in rgba.chunks(stride * 5) {
+            strips.add_rows(chunk).unwrap();
+        }
+        assert_eq!(strips.finish().unwrap(), whole);
+        // Rows must all arrive, and whole.
+        let mut short = Resampler::new(&plan, 8, [255; 3]);
+        short.add_rows(&rgba[..stride * 3]).unwrap();
+        assert!(short.finish().is_err());
+        assert!(
+            Resampler::new(&plan, 8, [255; 3])
+                .add_rows(&rgba[..5])
+                .is_err()
+        );
     }
 
     #[test]

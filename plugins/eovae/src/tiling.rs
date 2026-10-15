@@ -298,6 +298,8 @@ pub struct ReadPlan {
     /// Level-0 corner of the region.
     pub x: i64,
     pub y: i64,
+    /// The level row of the region's first row.
+    pub row: i64,
     /// Its size in pixels of the level read.
     pub width: u32,
     pub height: u32,
@@ -307,6 +309,20 @@ pub struct ReadPlan {
     /// Region pixels per model pixel.
     pub step_x: f64,
     pub step_y: f64,
+}
+
+impl ReadPlan {
+    /// The level-0 `y` to read the region from its row `offset` on
+    /// (OpenSlide maps it back to level row `row + offset`), for reads in
+    /// strips.
+    pub fn row_y(&self, offset: u32, downsample: f64) -> i64 {
+        if offset == 0 {
+            return self.y;
+        }
+        ((self.row + i64::from(offset)) as f64 * downsample - 1e-6)
+            .ceil()
+            .max(0.0) as i64
+    }
 }
 
 /// A grid of tiles of `tile`×`tile` model pixels, read from one level.
@@ -436,6 +452,7 @@ impl TileGrid {
             return ReadPlan {
                 x,
                 y,
+                row: i64::from(coord.row) * i64::from(self.tile),
                 width: self.tile,
                 height: self.tile,
                 origin_x: 0.0,
@@ -455,13 +472,14 @@ impl TileGrid {
             // The level-0 coordinate OpenSlide maps back to level pixel
             // `first` (see `origin0`).
             let corner = (first * self.downsample - 1e-6).ceil().max(0.0) as i64;
-            (corner, count, start - first, step)
+            (corner, count, start - first, step, first as i64)
         };
-        let (x, width, origin_x, step_x) = axis(coord.col, self.scale_x);
-        let (y, height, origin_y, step_y) = axis(coord.row, self.scale_y);
+        let (x, width, origin_x, step_x, _) = axis(coord.col, self.scale_x);
+        let (y, height, origin_y, step_y, row) = axis(coord.row, self.scale_y);
         ReadPlan {
             x,
             y,
+            row,
             width,
             height,
             origin_x,
@@ -692,6 +710,9 @@ mod tests {
             assert!(
                 (plan.step_y * f64::from(tile) * grid.downsample - footprint.height).abs() < 1e-6
             );
+            // Strips start at the region's rows.
+            let strip = (plan.row_y(7, grid.downsample) as f64 / grid.downsample).floor();
+            assert_eq!(strip as i64, plan.row + 7);
             // Tiles still cover the whole slide.
             assert!(f64::from(grid.cols) * grid.step_x() >= file.width as f64);
             assert!(f64::from(grid.cols - 1) * grid.step_x() < file.width as f64);
