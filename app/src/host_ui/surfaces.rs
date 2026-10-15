@@ -262,6 +262,20 @@ fn spin_on<T>(future: impl std::future::Future<Output = T>) -> T {
 }
 
 impl Surfaces {
+    /// Whether one of the plugin windows has keyboard focus.
+    pub(super) fn window_focused(&self) -> bool {
+        use slint::winit_030::WinitWindowAccessor;
+        self.open
+            .values()
+            .filter_map(|surface| surface.window.as_ref())
+            .any(|window| {
+                window
+                    .window()
+                    .with_winit_window(|window| window.has_focus())
+                    .unwrap_or(false)
+            })
+    }
+
     fn definition(
         &mut self,
         path: &Path,
@@ -443,6 +457,15 @@ impl Surfaces {
                     });
                     slint::CloseRequestResponse::HideWindow
                 });
+                {
+                    use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
+                    instance.window().on_winit_window_event(|_, event| {
+                        if let winit::event::WindowEvent::Focused(_) = event {
+                            super::window_focus_changed();
+                        }
+                        EventResult::Propagate
+                    });
+                }
                 if let Err(error) = instance.show() {
                     tracing::error!("Cannot show plugin window: {error}");
                 }

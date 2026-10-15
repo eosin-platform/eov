@@ -461,12 +461,16 @@ impl UiHost {
             ));
         }
 
+        // The main window or a plugin window.
         let window_focused = self.ui().is_some_and(|ui| {
             use slint::winit_030::WinitWindowAccessor;
             ui.window()
                 .with_winit_window(|window| window.has_focus())
                 .unwrap_or(true)
-        });
+        }) || self
+            .surfaces
+            .try_borrow()
+            .is_ok_and(|surfaces| surfaces.window_focused());
         if tracker.window_focused != Some(window_focused) {
             let first = tracker.window_focused.is_none();
             tracker.window_focused = Some(window_focused);

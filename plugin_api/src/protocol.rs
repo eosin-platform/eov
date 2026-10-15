@@ -944,15 +944,21 @@ pub struct SurfaceSpec {
     pub kind: SurfaceKind,
     pub ui_path: String,
     pub component: String,
+    /// A window's title, like its minimum size, is its component's: inherit
+    /// `Window` and set `title`, `min-width` and `min-height` there. eov 1.x
+    /// only passes this to a `title` property the component declares, if any.
     #[serde(default)]
     pub title: Option<String>,
-    /// Preferred size in logical pixels (sidebar: width only).
+    /// Preferred size in logical pixels (sidebar: width only). Windows are
+    /// never opened larger than eov's main window.
     #[serde(default)]
     pub width: Option<f32>,
     #[serde(default)]
     pub height: Option<f32>,
+    /// Unused by eov 1.x (see `title`).
     #[serde(default)]
     pub min_width: Option<f32>,
+    /// Unused by eov 1.x (see `title`).
     #[serde(default)]
     pub min_height: Option<f32>,
     /// Initial property values (by Slint property name).

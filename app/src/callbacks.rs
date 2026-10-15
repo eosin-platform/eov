@@ -2638,6 +2638,10 @@ pub fn setup_callbacks(
                     modifiers.set(next_modifiers.state());
                     EventResult::Propagate
                 }
+                winit::event::WindowEvent::Focused(_) => {
+                    crate::host_ui::window_focus_changed();
+                    EventResult::Propagate
+                }
                 winit::event::WindowEvent::CursorMoved { position, .. } => {
                     last_cursor.set((position.x, position.y));
 

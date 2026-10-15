@@ -64,6 +64,15 @@ pub(crate) fn with_host<R>(f: impl FnOnce(&Rc<UiHost>) -> R) -> Option<R> {
     Some(f(&host))
 }
 
+/// An eov window gained or lost keyboard focus. Plugins learn of it at once,
+/// not with the next frame, which never comes while nothing is open.
+pub(crate) fn window_focus_changed() {
+    // After winit has delivered the focus events of every window involved.
+    Timer::single_shot(std::time::Duration::ZERO, || {
+        with_host(|host| host.publish_now());
+    });
+}
+
 /// Options for [`init`].
 pub(crate) struct InitOptions {
     pub plugin_dir: PathBuf,
