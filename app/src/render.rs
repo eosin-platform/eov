@@ -925,6 +925,7 @@ fn begin_color_frame(state: &mut AppState) {
     if refitted.is_empty() {
         return;
     }
+    crate::export_dialog::slide_colors_changed(&refitted);
     for file in state
         .open_files
         .iter_mut()
@@ -979,6 +980,7 @@ pub(crate) fn update_and_render(
             state.render_backend,
         )
     };
+    crate::export_dialog::refresh_stale_preview(ui, state, tile_cache);
 
     if render_backend == RenderBackend::Cpu {
         return update_and_render_cpu(ui, state, tile_cache, completed_cpu_frame, cpu_jobs_pending);

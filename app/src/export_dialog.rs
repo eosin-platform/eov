@@ -8,10 +8,16 @@
 //! file. "Copy viewport image" renders the same way at screen resolution,
 //! with every overlay as on screen.
 //!
+//! Stain normalisation uses the viewer's fit of the slide
+//! ([`crate::color::slide_fit`], asked for when the export is set up):
+//! previews show the slide un-normalised while it runs, exports and copies
+//! wait for it on their thread, and a fit that failed is not tried again.
+//!
 //! Overlays, bottom to top: overlay layers (the viewport's rasteriser) and
 //! their labels, then the host's ROI and measurements in the dialog's
 //! styles, the scale bar and the colour-processing note.
 
+use crate::color::SlideFit;
 use crate::host_ui::with_host;
 use crate::interaction::{Calibration, HostMeasurement, measure};
 use crate::overlay::Owner;
@@ -34,6 +40,7 @@ use eov_common::overlay::{
     Canvas, CapStyle, Corner, FontArc, LabelStyle, OverlayColor, OverlayItem, ScaleBarStyle,
     StrokeStyle, embedded_font,
 };
+use eov_common::stain::StainFitMethod;
 use eov_common::{
     ExportSettings, FilteringMode, MeasurementUnit, RgbaImageData, StainNormalization, TileCache,
     TileManager, Viewport, WsiFile,
@@ -66,6 +73,9 @@ struct Dialog {
     preview_running: bool,
     /// Progress timers of running exports, by job id.
     progress_timers: HashMap<String, Timer>,
+    /// The slide's stain fit (or colour profile) finished since the preview
+    /// was rendered.
+    preview_stale: bool,
 }
 
 thread_local! {
@@ -87,19 +97,23 @@ struct Capture {
     unit: MeasurementUnit,
     /// Overlay layers drawn with the viewport's rasteriser.
     layers: Vec<Arc<Layer>>,
+    /// The slide's stain fit for the settings' normalisation, as the viewer
+    /// has it (see [`build_request`]).
+    fit: Option<(StainFitMethod, SlideFit)>,
 }
 
-/// Captures the slide shown in `pane`. With `expected_file`, returns
-/// `None` when the pane shows another slide now. `host_layers` includes the
-/// host's ROI and measurement layers as drawn on screen; otherwise the
-/// export draws those from the dialog's settings. Heat maps are always
-/// included.
+/// Captures the slide shown in `pane` for an export with `settings`. With
+/// `expected_file`, returns `None` when the pane shows another slide now.
+/// `host_layers` includes the host's ROI and measurement layers as drawn on
+/// screen; otherwise the export draws those from the dialog's settings.
+/// Heat maps are always included.
 fn capture(
     state: &AppState,
     tile_cache: &Arc<TileCache>,
     pane: PaneId,
     expected_file: Option<i32>,
     host_layers: bool,
+    settings: &SlintExportSettings,
 ) -> Option<Capture> {
     let file_id = state.active_file_id_for_pane(pane)?;
     if expected_file.is_some_and(|expected| expected != file_id) {
@@ -118,6 +132,11 @@ fn capture(
         })
         .filter(|layer| pane_uid.is_none_or(|uid| layer.shown_in(uid)))
         .collect();
+    // Starts the viewer's fit of the slide if nobody has.
+    let fit = legacy_settings(settings)
+        .color_settings()
+        .required_estimate()
+        .map(|method| (method, crate::color::slide_fit(file_id, &file.wsi, method)));
     Some(Capture {
         file_id,
         wsi: file.wsi.clone(),
@@ -129,7 +148,19 @@ fn capture(
         calibration: crate::host_ui::calibration(file),
         unit: pane_state.hud.measurement_unit,
         layers,
+        fit,
     })
+}
+
+/// Why the stain normalisation the settings ask for is not applied, if it
+/// cannot be.
+fn fit_note(capture: &Capture) -> Option<String> {
+    match &capture.fit {
+        Some((_, SlideFit::Failed(error))) => Some(format!(
+            "Stain normalisation is unavailable for this slide: {error}"
+        )),
+        _ => None,
+    }
 }
 
 // -- settings ---------------------------------------------------------------
@@ -518,17 +549,43 @@ fn host_items(
 }
 
 /// Builds the request for `capture` at `dpi` with `settings`' processing.
+/// A stain fit still running is waited for when `wait_for_fit` says how to
+/// cancel (exports, copies); previews (`None`) show the slide un-normalised
+/// meanwhile, and say so.
 fn build_request(
     capture: &Capture,
     settings: &SlintExportSettings,
-    manager: &TileManager,
     dpi: f64,
+    wait_for_fit: Option<&dyn Fn() -> bool>,
 ) -> ExportRequest {
-    let mut legacy = legacy_settings(settings);
-    legacy.dpi = dpi.round().max(1.0) as u32;
-    let mut request = legacy.request(manager, &capture.viewport);
+    let legacy = legacy_settings(settings);
+    let mut color = legacy.color_settings();
+    let fit = match &capture.fit {
+        Some((method, SlideFit::Pending)) => match wait_for_fit {
+            Some(cancelled) => crate::color::await_slide_fit(&capture.wsi, *method, cancelled),
+            None => SlideFit::Pending,
+        },
+        Some((_, fit)) => fit.clone(),
+        None => SlideFit::Pending,
+    };
+    let estimate = match fit {
+        SlideFit::Ready(estimate) => Some(estimate),
+        SlideFit::Failed(_) => {
+            // As the viewer shows it: not normalised (see `fit_note`).
+            color.normalization = None;
+            None
+        }
+        SlideFit::Pending => None,
+    };
     // Fractional DPI (screen scale factors) is kept exactly.
-    request.scale = dpi / 96.0;
+    let mut request = ExportRequest::new(capture.viewport.clone(), dpi);
+    request.filtering = legacy.filtering_mode;
+    request.processing = color.pipeline(estimate.as_deref());
+    request.background = [
+        legacy.background_rgba[0],
+        legacy.background_rgba[1],
+        legacy.background_rgba[2],
+    ];
     request
 }
 
@@ -632,12 +689,13 @@ fn render_preview(
     settings: &SlintExportSettings,
 ) -> Result<(RgbaImageData, Vec<String>), ExportError> {
     let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
-    let full = build_request(capture, settings, &manager, f64::from(settings.dpi.max(1)));
+    let full = build_request(capture, settings, f64::from(settings.dpi.max(1)), None);
     let (width, height) = full.output_size();
     let factor = (f64::from(PREVIEW_MAX_SIDE) / f64::from(width.max(height))).min(1.0);
     let mut request = full;
     request.scale *= factor;
-    let prepared = prepare(capture, settings, &request, true);
+    let mut prepared = prepare(capture, settings, &request, true);
+    prepared.notes.extend(fit_note(capture));
     let source = ExportSource {
         tile_manager: &manager,
         tile_cache: Some(&capture.tile_cache),
@@ -662,14 +720,23 @@ fn run_export(
 ) -> Result<ExportReport, ExportError> {
     let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
     let dpi = f64::from(settings.dpi.max(1));
-    let request = build_request(capture, settings, &manager, dpi);
+    let request = build_request(capture, settings, dpi, Some(&|| control.is_cancelled()));
+    if control.is_cancelled() {
+        return Err(ExportError::Cancelled);
+    }
     let prepared = prepare(capture, settings, &request, true);
+    let mut provenance = request.processing.summary().provenance();
+    if let Some(note) = fit_note(capture) {
+        provenance.push(' ');
+        provenance.push_str(&note);
+        provenance.push('.');
+    }
     let metadata = ImageMetadata::for_export(
         &request,
         dpi,
         capture.calibration.mpp_x,
         capture.calibration.mpp_y,
-        Some(request.processing.summary().provenance()),
+        Some(provenance),
     );
     let source = ExportSource {
         tile_manager: &manager,
@@ -720,7 +787,6 @@ impl ScriptedExport {
         pane: PaneId,
         options: &ScriptedOptions,
     ) -> Option<Self> {
-        let capture = capture(state, tile_cache, pane, None, false)?;
         let mut settings = default_settings(state, pane);
         if let Some(dpi) = options.dpi {
             settings.dpi = i32::try_from(dpi).unwrap_or(i32::MAX);
@@ -737,6 +803,7 @@ impl ScriptedExport {
         if let Some(show) = options.processing_note {
             settings.show_processing_note = show;
         }
+        let capture = capture(state, tile_cache, pane, None, false, &settings)?;
         Some(Self {
             capture,
             settings,
@@ -823,6 +890,33 @@ pub(crate) fn open(
     request_preview(ui, state, tile_cache);
 }
 
+/// Slides whose stain fit or colour profile has just finished: the preview
+/// of the dialog's slide renders again (see [`refresh_stale_preview`]).
+pub(crate) fn slide_colors_changed(file_ids: &[i32]) {
+    DIALOG.with(|dialog| {
+        let mut dialog = dialog.borrow_mut();
+        if dialog
+            .target
+            .is_some_and(|(_, file)| file_ids.contains(&file))
+        {
+            dialog.preview_stale = true;
+        }
+    });
+}
+
+/// Renders the preview again after [`slide_colors_changed`] (UI thread,
+/// no state lock held).
+pub(crate) fn refresh_stale_preview(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+) {
+    let stale = DIALOG.with(|dialog| std::mem::take(&mut dialog.borrow_mut().preview_stale));
+    if stale && ui.get_export_dialog_visible() {
+        request_preview(ui, state, tile_cache);
+    }
+}
+
 /// Remembers edited settings for the dialog's slide.
 pub(crate) fn settings_changed(settings: SlintExportSettings) {
     DIALOG.with(|dialog| {
@@ -870,13 +964,21 @@ pub(crate) fn request_preview(
 fn spawn_preview(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) {
     let (target, generation) =
         DIALOG.with(|dialog| (dialog.borrow().target, dialog.borrow().previews_wanted));
-    let captured = target
-        .and_then(|(pane, file_id)| capture(&state.read(), tile_cache, pane, Some(file_id), false));
+    let settings = ui.get_export_settings();
+    let captured = target.and_then(|(pane, file_id)| {
+        capture(
+            &state.read(),
+            tile_cache,
+            pane,
+            Some(file_id),
+            false,
+            &settings,
+        )
+    });
     let Some(captured) = captured else {
         DIALOG.with(|dialog| dialog.borrow_mut().preview_running = false);
         return;
     };
-    let settings = ui.get_export_settings();
     let mut info = ui.get_export_preview_info();
     info.rendering = true;
     ui.set_export_preview_info(info);
@@ -945,7 +1047,14 @@ pub(crate) fn export(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         return;
     };
     let settings = ui.get_export_settings();
-    let Some(captured) = capture(&state.read(), tile_cache, pane, Some(file_id), false) else {
+    let Some(captured) = capture(
+        &state.read(),
+        tile_cache,
+        pane,
+        Some(file_id),
+        false,
+        &settings,
+    ) else {
         ui.set_status_text(SharedString::from(
             "The slide is no longer shown in this pane",
         ));
@@ -1078,9 +1187,10 @@ pub(crate) fn copy_view(
 ) {
     let (captured, mut settings) = {
         let state = state.read();
+        let settings = default_settings(&state, pane);
         (
-            capture(&state, tile_cache, pane, None, true),
-            default_settings(&state, pane),
+            capture(&state, tile_cache, pane, None, true, &settings),
+            settings,
         )
     };
     let Some(captured) = captured else {
@@ -1098,7 +1208,7 @@ pub(crate) fn copy_view(
         .name("eov-copy-view".to_string())
         .spawn(move || {
             let manager = TileManager::new(captured.wsi.clone(), captured.file_id);
-            let request = build_request(&captured, &settings, &manager, dpi);
+            let request = build_request(&captured, &settings, dpi, Some(&|| false));
             let prepared = prepare(&captured, &settings, &request, false);
             let source = ExportSource {
                 tile_manager: &manager,
@@ -1287,6 +1397,7 @@ mod tests {
             calibration: Calibration::new(Some(0.5), Some(0.5)),
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
+            fit: None,
         };
         let settings = SlintExportSettings {
             dpi: 192,
@@ -1331,6 +1442,51 @@ mod tests {
             .filter(|&(x, y)| px(x, y)[..3].iter().all(|&c| c < 40))
             .count();
         assert!(dark > 50, "no scale bar ({dark} dark pixels)");
+    }
+
+    /// The export uses the viewer's fit of the slide: a failed one is not
+    /// tried again (the export is not normalised, and says why), a pending
+    /// one is waited for by exports and not by previews.
+    #[test]
+    fn exports_use_the_viewer_s_stain_fit() {
+        let dir = tempfile::tempdir().unwrap();
+        let slide = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&slide, 256, 256, 256, |_, _| [200, 100, 150])
+            .unwrap();
+        let mut captured = Capture {
+            file_id: 1,
+            wsi: WsiFile::open(&slide).unwrap(),
+            file_name: "slide.tif".to_string(),
+            viewport: Viewport::new(128.0, 128.0, 256.0, 256.0),
+            tile_cache: Arc::new(TileCache::with_limits(16, 16 << 20)),
+            roi: None,
+            measurements: Vec::new(),
+            calibration: Calibration::new(None, None),
+            unit: MeasurementUnit::Um,
+            layers: Vec::new(),
+            fit: Some((
+                StainFitMethod::Macenko,
+                SlideFit::Failed("no tissue to fit".into()),
+            )),
+        };
+        let settings = SlintExportSettings {
+            dpi: 96,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            stain_normalization: SlintStainNormalization::Macenko,
+            ..Default::default()
+        };
+        let request = build_request(&captured, &settings, 96.0, Some(&|| false));
+        assert!(request.processing.summary().normalization.is_none());
+        assert!(fit_note(&captured).unwrap().contains("no tissue to fit"));
+        // A preview does not wait for a running fit: it says it is pending.
+        captured.fit = Some((StainFitMethod::Macenko, SlideFit::Pending));
+        let preview = build_request(&captured, &settings, 96.0, None);
+        assert!(preview.processing.summary().normalization_pending);
     }
 
     /// A turned view exports as shown: slide, plugin layers and the ROI
@@ -1387,6 +1543,7 @@ mod tests {
             calibration: Calibration::new(Some(0.5), Some(0.5)),
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
+            fit: None,
         };
         let settings = SlintExportSettings {
             dpi: 192,

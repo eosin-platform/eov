@@ -153,6 +153,40 @@ pub(crate) fn slide_fit(file_id: i32, wsi: &WsiFile, method: StainFitMethod) -> 
     SlideFit::Pending
 }
 
+/// The stain fit of `wsi` for an export, on the export's own thread:
+/// waits for the viewer's fit of the slide when one is running (it started
+/// when the export was set up, see [`slide_fit`]), and fits on this thread
+/// only when none is. [`SlideFit::Pending`] only when `cancelled`.
+pub(crate) fn await_slide_fit(
+    wsi: &WsiFile,
+    method: StainFitMethod,
+    cancelled: &dyn Fn() -> bool,
+) -> SlideFit {
+    let options = fit_options();
+    let key = StainCacheKey::slide(file_identity(&wsi.properties().path), method, &options);
+    loop {
+        if let Some(estimate) = global_stain_cache().get(&key) {
+            return SlideFit::Ready(estimate);
+        }
+        {
+            let mut jobs = FIT_JOBS.lock();
+            if let Some(error) = jobs.failed.get(&key) {
+                return SlideFit::Failed(Arc::clone(error));
+            }
+            if global_stain_cache().get(&key).is_none() && jobs.running.insert(key.clone()) {
+                // Nobody fits the slide: do it here, for everyone.
+                drop(jobs);
+                run_fit(wsi.clone(), method, options.clone(), key.clone());
+                continue;
+            }
+        }
+        if cancelled() {
+            return SlideFit::Pending;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 fn run_fit(
     wsi: WsiFile,
     method: StainFitMethod,
@@ -623,6 +657,29 @@ mod tests {
             &global_stain_cache().get(&export_key).unwrap(),
             &first
         ));
+        retain_files(&HashSet::new());
+    }
+
+    /// An export waits for the viewer's running fit instead of fitting the
+    /// slide again, and fits it itself when nobody does.
+    #[test]
+    fn exports_reuse_the_viewer_s_fit() {
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = he_slide(dir.path());
+        let method = StainFitMethod::Vahadane;
+        // Nobody fitted the slide: the export does, once.
+        let SlideFit::Ready(first) = await_slide_fit(&wsi, method, &|| false) else {
+            panic!("the export fits the slide");
+        };
+        // The viewer finds that fit, and so does the next export.
+        let SlideFit::Ready(viewer) = slide_fit(9007, &wsi, method) else {
+            panic!("shared with the viewer");
+        };
+        assert!(Arc::ptr_eq(&first, &viewer));
+        let SlideFit::Ready(again) = await_slide_fit(&wsi, method, &|| true) else {
+            panic!("cached");
+        };
+        assert!(Arc::ptr_eq(&first, &again));
         retain_files(&HashSet::new());
     }
 
