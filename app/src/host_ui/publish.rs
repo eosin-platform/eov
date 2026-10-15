@@ -184,6 +184,10 @@ pub(crate) fn wsi_file_info(
             .collect(),
         has_icc_profile: props.icc_profile_size.is_some(),
         stain: props.stain.clone(),
+        channel_names: wsi
+            .channels()
+            .map(|set| set.channels.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
     }
 }
 

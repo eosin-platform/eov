@@ -81,7 +81,7 @@ impl UiHost {
                 !state.slide_link.landmarks.is_empty(),
             )
         };
-        let (file_id, view, has_roi, has_measurements, turned) = {
+        let (file_id, view, has_roi, has_measurements, turned, multichannel) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -94,6 +94,7 @@ impl UiHost {
                 file.is_some_and(|f| !f.measurements.is_empty()),
                 file.and_then(|f| f.pane_state(PaneId(pane)))
                     .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
+                file.is_some_and(|f| f.wsi.is_multichannel()),
             )
         };
         let keys = crate::shortcuts::current();
@@ -112,6 +113,13 @@ impl UiHost {
             ),
         ];
         mark_last_separator(&mut items);
+        if multichannel {
+            items.push(with_key(
+                item("host:channels", "Channels…", ""),
+                Action::Channels,
+            ));
+            mark_last_separator(&mut items);
+        }
         if file_id.is_some() {
             items.push(with_key(
                 item("host:view-rotate-right", "Rotate Right 90°", ""),
@@ -370,6 +378,10 @@ impl UiHost {
         let Some(file_id) = file_id else {
             return true;
         };
+        if host_command == "channels" {
+            crate::channels::open(self, file_id as i32);
+            return true;
+        }
         if let Some(id) = host_command.strip_prefix("measurement-delete:") {
             self.apply_host_edit(file_id, HostEdit::Remove(vec![id.to_string()]), true);
         } else if let Some(id) = host_command.strip_prefix("measurement-copy:") {
@@ -455,5 +467,30 @@ impl UiHost {
             ui.set_measure_mode_label(mode.label().into());
         }
         super::input::set_tool(self, ToolChoice::Measure(mode));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use slint::Model;
+
+    /// Multichannel slides offer their Channels panel in the viewport menu.
+    #[test]
+    fn multichannel_slides_get_a_channels_item() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let setup = crate::test_support::HostWithSlide::new();
+            setup
+                .host
+                .open_viewport_menu(0, 10.0, 10.0, [0.0, 0.0], Vec::new());
+            let items: Vec<String> = setup
+                .ui
+                .get_context_menu_items()
+                .iter()
+                .map(|item| item.id.to_string())
+                .collect();
+            assert!(items.contains(&"host:channels".to_string()), "{items:?}");
+            assert!(setup.host.context_menu_command("host:channels"));
+            assert!(setup.ui.get_channels_panel_visible());
+        });
     }
 }

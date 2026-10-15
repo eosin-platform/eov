@@ -103,6 +103,24 @@ const fn shared(extension: &'static str, mime: &'static str, uti: &'static str) 
     }
 }
 
+/// BigTIFF, which large OME-TIFFs use (`.ome.btf`) and eov reads itself.
+/// shared-mime-info has no type for it, and other microscopy programs open
+/// it too, so eov is only offered for it.
+const fn bigtiff(extension: &'static str) -> SlideType {
+    SlideType {
+        extension,
+        mime: "image/x-bigtiff",
+        definition: Some(MimeDefinition {
+            comment: "BigTIFF image",
+            // Classic TIFF readers cannot read it.
+            tiff: false,
+            sniff_tiff: false,
+        }),
+        uti: "io.eosin.eov.bigtiff",
+        eov_owns: false,
+    }
+}
+
 /// Every format of `eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS`.
 pub(crate) const SLIDE_TYPES: &[SlideType] = &[
     vendor(
@@ -173,6 +191,9 @@ pub(crate) const SLIDE_TYPES: &[SlideType] = &[
     shared("tif", "image/tiff", "public.tiff"),
     shared("tiff", "image/tiff", "public.tiff"),
     shared("dcm", "application/dicom", "org.nema.dicom"),
+    bigtiff("btf"),
+    bigtiff("tf2"),
+    bigtiff("tf8"),
 ];
 
 /// eov's shared-mime-info package, as shipped in
@@ -181,25 +202,35 @@ pub(crate) fn mime_package() -> String {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <!--\n  \
-         Whole-slide image formats eov opens through OpenSlide, for file managers\n  \
-         (installed as share/mime/packages/io.eosin.eov.xml). shared-mime-info\n  \
-         already knows TIFF (image/tiff) and DICOM (application/dicom); the\n  \
-         desktop entry lists those too. Generated from SLIDE_TYPES in\n  \
+         Whole-slide image formats eov opens (through OpenSlide or its own\n  \
+         OME-TIFF reader), for file managers (installed as\n  \
+         share/mime/packages/io.eosin.eov.xml). shared-mime-info already knows\n  \
+         TIFF (image/tiff) and DICOM (application/dicom); the desktop entry\n  \
+         lists those too. Generated from SLIDE_TYPES in\n  \
          app/src/file_types/mod.rs, whose tests check this file.\n\
          -->\n\
          <mime-info xmlns=\"http://www.freedesktop.org/standards/shared-mime-info\">\n",
     );
-    for slide in SLIDE_TYPES {
+    for (index, slide) in SLIDE_TYPES.iter().enumerate() {
         let Some(definition) = slide.definition else {
             continue;
         };
+        // One definition per type, with the globs of all its extensions.
+        if SLIDE_TYPES[..index]
+            .iter()
+            .any(|earlier| earlier.mime == slide.mime)
+        {
+            continue;
+        }
         xml.push_str(&format!("  <mime-type type=\"{}\">\n", slide.mime));
         xml.push_str(&format!("    <comment>{}</comment>\n", definition.comment));
         if definition.tiff {
             xml.push_str("    <sub-class-of type=\"image/tiff\"/>\n");
         }
         xml.push_str("    <generic-icon name=\"image-x-generic\"/>\n");
-        xml.push_str(&format!("    <glob pattern=\"*.{}\"/>\n", slide.extension));
+        for same in SLIDE_TYPES.iter().filter(|same| same.mime == slide.mime) {
+            xml.push_str(&format!("    <glob pattern=\"*.{}\"/>\n", same.extension));
+        }
         if definition.sniff_tiff {
             xml.push_str(
                 "    <!-- Another format uses the extension too: a TIFF header tells them\n         \

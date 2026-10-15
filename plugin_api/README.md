@@ -118,6 +118,14 @@ change in `config.toml`, and Escape, Enter, Delete, Backspace, Tab and the
 plain arrows. A refused key arrives as `RegistrationRefused`, so offer
 users a way to pick another.
 
+Multichannel slides (fluorescence and multiplexed immunofluorescence
+OME-TIFF) list their channels in `FileInfo::channel_names` and their OME
+metadata as `ome.*` entries of `file_properties`. `read_region` returns
+them as RGBA like any slide: the visible channels composited with the
+colours, display windows and gammas the user chose in the Channels panel,
+exactly what the viewer shows; when the user changes them, later reads
+change too. Raw channel values are not available in plugin API 1.x.
+
 Coordinates are level-0 pixels of the slide (x right, y down). Layer ids are
 unique per plugin across all open slides, so include the file id when a
 slide gets its own layer (`format!("cells-{file_id}")`). Panes are named by

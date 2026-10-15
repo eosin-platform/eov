@@ -10,9 +10,11 @@
 //!   the process. OpenSlide handles are thread-safe, so all threads can read
 //!   through the shared handle concurrently;
 //! * attaches every handle to one global `openslide_cache_t`, sized with
-//!   [`set_openslide_cache_capacity`].
+//!   [`set_openslide_cache_capacity`], which also sizes the decoded-tile
+//!   cache of eov's own OME-TIFF reader.
 
 use super::SharedSlide;
+use super::health::HandleCell;
 use crate::openslide::{OpenSlide, OpenSlideCache};
 use crate::{Error, Result};
 use parking_lot::Mutex;
@@ -45,8 +47,19 @@ static GLOBAL_CACHE: LazyLock<Mutex<GlobalCache>> = LazyLock::new(|| {
     })
 });
 
-/// Every live shared slide, for handle reuse and cache re-attachment.
+/// Every live shared slide, for handle reuse.
 static SLIDES: LazyLock<Mutex<Vec<Weak<SharedSlide>>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Every live OpenSlide handle cell, to move them to a new global cache.
+static OPENSLIDE_HANDLES: LazyLock<Mutex<Vec<Weak<HandleCell>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Remembers an OpenSlide handle cell for [`set_openslide_cache_capacity`].
+pub(crate) fn register_openslide(handle: &Arc<HandleCell>) {
+    let mut handles = OPENSLIDE_HANDLES.lock();
+    handles.retain(|weak| weak.strong_count() > 0);
+    handles.push(Arc::downgrade(handle));
+}
 
 fn global_cache() -> Option<Arc<OpenSlideCache>> {
     let mut global = GLOBAL_CACHE.lock();
@@ -68,7 +81,9 @@ pub(crate) fn attach_global_cache(slide: &OpenSlide) {
 
 /// Sets the capacity of the process-wide OpenSlide tile cache shared by all
 /// slides, replacing the current cache. Open slides are moved to the new
-/// cache immediately.
+/// cache immediately. The OME-TIFF reader's cache of decoded tiles follows
+/// (twice this, as raw multichannel samples take more room, within
+/// 128 MiB-1 GiB).
 ///
 /// Call this at startup with a value derived from the user's memory budget,
 /// e.g. [`recommended_openslide_cache_bytes`].
@@ -79,9 +94,16 @@ pub fn set_openslide_cache_capacity(capacity_bytes: usize) -> Result<()> {
         global.capacity = capacity_bytes;
         global.cache = Some(Arc::clone(&cache));
     }
-    for slide in live_slides() {
-        slide.handle.current().slide.set_cache(&cache);
+    let handles: Vec<Arc<HandleCell>> = {
+        let mut handles = OPENSLIDE_HANDLES.lock();
+        handles.retain(|weak| weak.strong_count() > 0);
+        handles.iter().filter_map(Weak::upgrade).collect()
+    };
+    for handle in handles {
+        handle.current().slide.set_cache(&cache);
     }
+    crate::ome_tiff::cache::CHUNKS
+        .set_capacity(crate::ome_tiff::cache::capacity_for(capacity_bytes));
     Ok(())
 }
 
