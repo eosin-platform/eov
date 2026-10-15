@@ -876,10 +876,11 @@ pub(crate) fn raise_window(ui: &AppWindow) {
     use slint::winit_030::WinitWindowAccessor;
     use slint::winit_030::winit::window::UserAttentionType;
     ui.window().with_winit_window(|window| {
-        window.set_minimized(false);
-        window.focus_window();
         if is_wayland(window) {
             window.request_user_attention(Some(UserAttentionType::Informational));
+        } else {
+            window.set_minimized(false);
+            window.focus_window();
         }
     });
 }

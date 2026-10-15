@@ -4,8 +4,9 @@
 //!
 //! - **Endpoint.** The running eov holds an exclusive lock on
 //!   `<runtime dir>/<name>.lock` and listens on `<name>.sock`, a Unix-domain
-//!   socket (Linux, macOS), or on a localhost TCP port (Windows). `<name>.info`
-//!   holds the port, the process id and a random secret. The runtime dir
+//!   socket (Linux, macOS), or on a localhost TCP port (Windows, and where
+//!   the socket's path would be too long). `<name>.info` holds the port,
+//!   the process id and a random secret. The runtime dir
 //!   ([`crate::paths::runtime_dir`]) is private to the user (0700 on Unix,
 //!   the user's local application data on Windows). The name hashes eov's
 //!   home, configuration file and plugin folder, so eovs set up differently
@@ -80,21 +81,25 @@ pub(crate) enum Transport {
     /// A Unix-domain socket in the runtime dir.
     #[cfg(unix)]
     Unix,
-    /// A localhost TCP port (Windows; tested on every platform).
-    #[cfg_attr(unix, allow(dead_code))]
+    /// A localhost TCP port: on Windows, and where a socket's path would be
+    /// too long.
     Tcp,
 }
 
+/// Socket paths up to this length fit `sockaddr_un` everywhere (104 bytes
+/// on macOS, 108 on Linux, with the terminating NUL).
+const MAX_SOCKET_PATH: usize = 100;
+
 impl Transport {
-    fn native() -> Self {
+    /// A Unix-domain socket where its path fits, a localhost port
+    /// otherwise (deep runtime folders) and on Windows.
+    fn for_endpoint(dir: &Path, name: &str) -> Self {
         #[cfg(unix)]
-        {
-            Transport::Unix
+        if dir.as_os_str().len() + 1 + name.len() + ".sock".len() <= MAX_SOCKET_PATH {
+            return Transport::Unix;
         }
-        #[cfg(not(unix))]
-        {
-            Transport::Tcp
-        }
+        let _ = (dir, name);
+        Transport::Tcp
     }
 }
 
@@ -124,7 +129,9 @@ impl Endpoint {
             hasher.update([0]);
         }
         let name = format!("eov-{}", hex(&hasher.finalize()[..8]));
-        Self::new(crate::paths::runtime_dir(), name, Transport::native())
+        let dir = crate::paths::runtime_dir();
+        let transport = Transport::for_endpoint(&dir, &name);
+        Self::new(dir, name, transport)
     }
 
     fn file(&self, extension: &str) -> PathBuf {
@@ -1045,6 +1052,17 @@ mod tests {
         fs::set_permissions(&shared, fs::Permissions::from_mode(0o755)).unwrap();
         let open = Endpoint::new(shared, "eov-test".into(), Transport::Unix);
         assert!(Server::bind(&open).is_err());
+    }
+
+    #[test]
+    fn deep_runtime_folders_use_a_port() {
+        let deep = PathBuf::from("/").join("deep".repeat(30));
+        assert_eq!(Transport::for_endpoint(&deep, "eov-0123"), Transport::Tcp);
+        #[cfg(unix)]
+        assert_eq!(
+            Transport::for_endpoint(Path::new("/run/user/1000/eov"), "eov-0123456789abcdef"),
+            Transport::Unix
+        );
     }
 
     #[test]

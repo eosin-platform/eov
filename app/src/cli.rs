@@ -578,9 +578,11 @@ enum CliCommand {
         #[command(subcommand)]
         command: PluginCommand,
     },
-    /// Print a slide's metadata: size, pyramid levels, pixel size,
-    /// objective, stain, scanned bounds, ICC profile, associated images,
-    /// quickhash and every OpenSlide property.
+    /// Print a slide's metadata.
+    ///
+    /// Size, pyramid levels, pixel size, objective, stain, scanned bounds
+    /// and regions, ICC profile, associated images, quickhash and every
+    /// OpenSlide property.
     Probe {
         /// The slide.
         file: PathBuf,
@@ -601,10 +603,12 @@ enum CliCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Offer eov for slide files and eov:// links in this user account: the
-    /// registry on Windows, the desktop's MIME and application databases on
-    /// Linux (for the AppImage and cargo install). The macOS app and the
-    /// Flatpak declare them already.
+    /// Offer eov for slide files and eov:// links (this user only).
+    ///
+    /// Windows: writes HKEY_CURRENT_USER\Software\Classes. Linux (AppImage,
+    /// cargo install): writes the MIME package, a desktop entry and an icon
+    /// to ~/.local/share. The macOS app and the Flatpak declare them
+    /// already.
     RegisterFileTypes {
         /// Show what would change without changing anything.
         #[arg(long)]
@@ -1037,7 +1041,23 @@ impl LaunchOptions {
     }
 }
 
+/// Lets a subcommand whose output goes to a closed pipe (`eov probe x |
+/// head`) end quietly, as other command-line tools do, instead of
+/// panicking in `println!`. The viewer keeps ignoring SIGPIPE: its sockets
+/// report closed peers as errors.
+fn end_quietly_on_closed_pipe() {
+    #[cfg(unix)]
+    // SAFETY: restoring the default disposition of one signal, before any
+    // other thread exists.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
+    if !launch_options.launches_ui() {
+        end_quietly_on_closed_pipe();
+    }
     match &launch_options.command {
         CommandAction::LaunchUi => Ok(false),
         CommandAction::ApplicationUpdate(args) => {
