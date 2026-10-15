@@ -8,6 +8,7 @@ use crate::blitter;
 use crate::gpu::{QueuedFrame, SurfaceSlot, TileDraw};
 use crate::render_pool::{
     CachedCpuFrame, CpuBlitCommand, CpuBlitKind, CpuRenderJob, CpuRenderPostProcess,
+    CpuRenderResult,
 };
 use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
@@ -104,9 +105,8 @@ struct CpuPaneSnapshot {
     last_render_deconv_isolated: crate::state::IsolatedChannel,
     pending_cpu_job_id: Option<u64>,
     needs_settled_cpu_render: bool,
-    cached_stain_params: Option<crate::stain::StainNormParams>,
-    stain_params_epoch: u64,
-    stain_params_method: StainNormalization,
+    /// The pane's colour processing, resolved when the snapshot was taken.
+    color: crate::color::PaneColor,
     filtering_mode: FilteringMode,
     filter_revision: u64,
     last_render_filter_revision: u64,
@@ -123,7 +123,6 @@ struct CpuRenderCommit {
     frame_update: Option<CpuFrameStateUpdate>,
     pending_cpu_job_id: Option<Option<u64>>,
     needs_settled_cpu_render: Option<bool>,
-    stain_cache_update: Option<(crate::stain::StainNormParams, u64, StainNormalization)>,
 }
 
 struct CpuFrameStateUpdate {
@@ -455,32 +454,6 @@ fn collect_cached_visible_tiles(
     }
 }
 
-fn resolve_stain_params_from_tiles(
-    method: StainNormalization,
-    loaded_tile_epoch: u64,
-    cached_stain_params: Option<crate::stain::StainNormParams>,
-    cached_epoch: u64,
-    cached_method: StainNormalization,
-    tile_slices: &[&[u8]],
-) -> (
-    Option<crate::stain::StainNormParams>,
-    Option<(crate::stain::StainNormParams, u64, StainNormalization)>,
-) {
-    if method == StainNormalization::None {
-        return (None, None);
-    }
-
-    let cache_valid = cached_stain_params.is_some()
-        && cached_epoch == loaded_tile_epoch
-        && cached_method == method;
-    if cache_valid {
-        return (cached_stain_params, None);
-    }
-
-    let params = crate::stain::compute_cpu_stain_params(method, tile_slices);
-    (Some(params), Some((params, loaded_tile_epoch, method)))
-}
-
 fn tile_request_signature(
     tile_manager: &TileManager,
     viewport: &Viewport,
@@ -549,6 +522,26 @@ fn begin_cache_frame(ui: &AppWindow, state: &AppState, tile_cache: &TileCache) {
     });
 }
 
+/// Per-frame colour bookkeeping: panes of slides whose stain fit has just
+/// finished render again (now normalised, or with the reason it is not),
+/// and the colour state of closed files is dropped.
+fn begin_color_frame(state: &mut AppState) {
+    let open: HashSet<i32> = state.open_files.iter().map(|file| file.id).collect();
+    crate::color::retain_files(&open);
+    let refitted = crate::color::files_with_new_fits();
+    if refitted.is_empty() {
+        return;
+    }
+    for file in state
+        .open_files
+        .iter_mut()
+        .filter(|file| refitted.contains(&file.id))
+    {
+        file.invalidate_render_state();
+    }
+    state.request_render();
+}
+
 pub(crate) fn update_and_render(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -556,6 +549,7 @@ pub(crate) fn update_and_render(
 ) -> bool {
     let (completed_cpu_frame, cpu_jobs_pending, render_backend) = {
         let mut state = state.write();
+        begin_color_frame(&mut state);
         let (completed_cpu_frame, cpu_jobs_pending) = apply_completed_cpu_renders(&mut state);
         begin_cache_frame(ui, &state, tile_cache);
         (completed_cpu_frame, cpu_jobs_pending, state.render_backend)
@@ -659,7 +653,7 @@ pub(crate) fn update_and_render(
         }
     }
 
-    let mut keep_running = render_requested || cpu_jobs_pending;
+    let mut keep_running = render_requested || cpu_jobs_pending || crate::color::fits_pending();
     let mut rendered_frame = completed_cpu_frame;
     let filter_chain = state.filter_chain.clone();
 
@@ -817,7 +811,8 @@ fn update_and_render_cpu(
         tile_loader.set_wanted_tiles(wanted_tiles.into_iter().collect());
     }
 
-    let mut keep_running = frame.render_requested || frame.cpu_jobs_pending;
+    let mut keep_running =
+        frame.render_requested || frame.cpu_jobs_pending || crate::color::fits_pending();
     let mut rendered_frame = completed_cpu_frame;
 
     for pane_index in 0..frame.pane_count {
@@ -967,9 +962,6 @@ fn collect_cpu_frame_snapshot(
             last_render_filter_revision,
             pending_cpu_job_id,
             needs_settled_cpu_render,
-            cached_stain_params,
-            stain_params_epoch,
-            stain_params_method,
         )) = (match file.pane_state_mut(pane) {
             Some(pane_state) => {
                 if file_switched {
@@ -1011,9 +1003,6 @@ fn collect_cpu_frame_snapshot(
                     pane_state.last_render_filter_revision,
                     pane_state.pending_cpu_job_id,
                     pane_state.needs_settled_cpu_render,
-                    pane_state.cached_stain_params,
-                    pane_state.stain_params_epoch,
-                    pane_state.stain_params_method,
                 ))
             }
             None => None,
@@ -1023,6 +1012,7 @@ fn collect_cpu_frame_snapshot(
             continue;
         };
 
+        let color = crate::color::pane_color(file, pane);
         let vp = &viewport_state.viewport;
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
         let trilinear = calculate_trilinear_levels(
@@ -1082,9 +1072,7 @@ fn collect_cpu_frame_snapshot(
             last_render_filter_revision,
             pending_cpu_job_id,
             needs_settled_cpu_render,
-            cached_stain_params,
-            stain_params_epoch,
-            stain_params_method,
+            color,
             filtering_mode,
             filter_revision,
         }));
@@ -1138,11 +1126,6 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
         if let Some(needs_settled_cpu_render) = execution.commit.needs_settled_cpu_render {
             pane_state.needs_settled_cpu_render = needs_settled_cpu_render;
         }
-        if let Some((params, epoch, method)) = execution.commit.stain_cache_update {
-            pane_state.cached_stain_params = Some(params);
-            pane_state.stain_params_epoch = epoch;
-            pane_state.stain_params_method = method;
-        }
     }
 
     if execution.outcome.image.is_some() || execution.content_missing {
@@ -1157,6 +1140,11 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
 
     let mut applied = false;
 
+    let recycle = |result: CpuRenderResult| {
+        pool.recycle_buffer(result.pixels);
+        pool.recycle_buffer(result.source);
+    };
+
     while let Some(mut result) = pool.try_recv() {
         let pane = PaneId(result.pane_index);
         let is_active = state.active_file_id_for_pane(pane) == Some(result.file_id);
@@ -1165,18 +1153,18 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             .iter_mut()
             .find(|file| file.id == result.file_id)
         else {
-            pool.recycle_buffer(result.pixels);
+            recycle(result);
             continue;
         };
         let file_path = file.path.to_string_lossy().into_owned();
         let filename = file.filename.clone();
         let Some(pane_state) = file.pane_state_mut(pane) else {
-            pool.recycle_buffer(result.pixels);
+            recycle(result);
             continue;
         };
 
         if pane_state.pending_cpu_job_id != Some(result.job_id) {
-            pool.recycle_buffer(result.pixels);
+            recycle(result);
             continue;
         }
 
@@ -1184,7 +1172,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
         pane_state.needs_settled_cpu_render = !result.settled_quality;
 
         if !is_active {
-            pool.recycle_buffer(result.pixels);
+            recycle(result);
             continue;
         }
 
@@ -1213,9 +1201,10 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
         let Some(buffer) =
             blitter::create_image_buffer(&result.pixels, result.width, result.height)
         else {
-            pool.recycle_buffer(result.pixels);
+            recycle(result);
             continue;
         };
+        pool.recycle_buffer(result.pixels);
 
         crate::set_cached_pane_cpu_result(
             pane,
@@ -1226,6 +1215,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
                 height: result.height,
                 viewport: result.viewport,
                 pixels: cached_base_pixels,
+                source: result.source,
             },
         );
         state.set_last_rendered_file_id(pane, Some(result.file_id));
@@ -1330,7 +1320,6 @@ fn render_cpu_pane_from_snapshot(
         frame_update: None,
         pending_cpu_job_id: None,
         needs_settled_cpu_render: None,
-        stain_cache_update: None,
     };
 
     if !snapshot.file_switched
@@ -1601,61 +1590,9 @@ fn render_cpu_pane_from_snapshot(
         });
     }
 
-    let stain_params = if snapshot.hud_stain_normalization != StainNormalization::None {
-        let tile_slices: Vec<&[u8]> = cached_tiles
-            .fine_tiles
-            .iter()
-            .map(|(_, td)| td.data.as_slice())
-            .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
-            .collect();
-        let (params, cache_update) = resolve_stain_params_from_tiles(
-            snapshot.hud_stain_normalization,
-            loaded_tile_epoch,
-            snapshot.cached_stain_params,
-            snapshot.stain_params_epoch,
-            snapshot.stain_params_method,
-            &tile_slices,
-        );
-        if let Some(cache_update) = cache_update {
-            commit.stain_cache_update = Some(cache_update);
-        }
-        params
-    } else {
-        None
-    };
-
-    // Build color deconvolution params from HUD state.
-    let deconv_params = if snapshot.hud_deconv_isolated != crate::state::IsolatedChannel::None
-        || !snapshot.hud_deconv_h_visible
-        || !snapshot.hud_deconv_e_visible
-        || (snapshot.hud_deconv_h_intensity - 1.0).abs() > 0.001
-        || (snapshot.hud_deconv_e_intensity - 1.0).abs() > 0.001
-    {
-        let isolated = match snapshot.hud_deconv_isolated {
-            crate::state::IsolatedChannel::None => 0u8,
-            crate::state::IsolatedChannel::Hematoxylin => 1u8,
-            crate::state::IsolatedChannel::Eosin => 2u8,
-        };
-        let params = crate::stain::build_deconv_params(
-            snapshot.hud_deconv_h_intensity,
-            snapshot.hud_deconv_h_visible,
-            snapshot.hud_deconv_e_intensity,
-            snapshot.hud_deconv_e_visible,
-            isolated,
-            stain_params.as_ref(),
-        );
-        if params.enabled { Some(params) } else { None }
-    } else {
-        None
-    };
-
     let postprocess = CpuRenderPostProcess {
-        stain_params,
-        deconv_params,
-        sharpness: snapshot.hud_sharpness,
-        gamma: snapshot.hud_gamma,
-        brightness: snapshot.hud_brightness,
-        contrast: snapshot.hud_contrast,
+        pipeline: Arc::clone(&snapshot.color.pipeline),
+        background: crate::color::VIEWPORT_BACKGROUND,
     };
 
     let preview_image = if is_moving {
@@ -1687,7 +1624,6 @@ fn render_cpu_pane_from_snapshot(
             width: render_width,
             height: render_height,
             viewport: vp.clone(),
-            background_rgba: [30, 30, 30, 255],
             fallback_blits: fallback_commands,
             fine_blits: fine_commands,
             postprocess,
@@ -2052,77 +1988,21 @@ fn render_pane_to_image(
             &cached_tiles.fine_tiles,
             &cached_tiles.coarse_tiles,
         );
-        let tile_slices: Vec<&[u8]> = draws.iter().map(|draw| draw.tile.data.as_slice()).collect();
-        let (stain_params, stain_cache_update) = resolve_stain_params_from_tiles(
-            hud_stain_normalization,
-            loaded_tile_epoch,
-            file.pane_state(pane).and_then(|ps| ps.cached_stain_params),
-            file.pane_state(pane)
-                .map(|ps| ps.stain_params_epoch)
-                .unwrap_or(0),
-            file.pane_state(pane)
-                .map(|ps| ps.stain_params_method)
-                .unwrap_or(StainNormalization::None),
-            &tile_slices,
-        );
-        if let Some((params, epoch, method)) = stain_cache_update
-            && let Some(pane_state) = file.pane_state_mut(pane)
-        {
-            pane_state.cached_stain_params = Some(params);
-            pane_state.stain_params_epoch = epoch;
-            pane_state.stain_params_method = method;
-        }
-        let stain_params = stain_params.unwrap_or_default();
-        let deconv_params = {
-            let deconv_active = hud_deconv_isolated != crate::state::IsolatedChannel::None
-                || hud_deconv_h_intensity != 1.0
-                || hud_deconv_e_intensity != 1.0
-                || !hud_deconv_h_visible
-                || !hud_deconv_e_visible;
-            if deconv_active {
-                let isolated_mode = match hud_deconv_isolated {
-                    crate::state::IsolatedChannel::None => 0,
-                    crate::state::IsolatedChannel::Hematoxylin => 1,
-                    crate::state::IsolatedChannel::Eosin => 2,
-                };
-                crate::stain::build_deconv_params(
-                    hud_deconv_h_intensity,
-                    hud_deconv_h_visible,
-                    hud_deconv_e_intensity,
-                    hud_deconv_e_visible,
-                    isolated_mode,
-                    if stain_params.enabled {
-                        Some(&stain_params)
-                    } else {
-                        None
-                    },
-                )
-            } else {
-                crate::stain::ColorDeconvParams::default()
-            }
-        };
+        let color = crate::color::pane_color(file, pane);
         let slot = match pane {
             PaneId::PRIMARY => SurfaceSlot::PRIMARY,
             PaneId::SECONDARY => SurfaceSlot::SECONDARY,
             _ => SurfaceSlot(pane.0),
         };
         let image = crate::with_gpu_renderer(|renderer| {
-            let gpu_post_process_enabled = filter_chain.read().has_enabled_gpu_filters();
             renderer.borrow_mut().queue_frame(
                 slot,
                 QueuedFrame {
                     width: render_width,
                     height: render_height,
                     draws,
-                    gpu_post_process_enabled,
-                    gamma: hud_gamma,
-                    brightness: hud_brightness,
-                    contrast: hud_contrast,
-                    sharpness: hud_sharpness,
-                    stain_norm_enabled: stain_params.enabled,
-                    inv_stain_r0: stain_params.inv_stain_r0,
-                    inv_stain_r1: stain_params.inv_stain_r1,
-                    deconv_params,
+                    color: color.pipeline.gpu_uniform(),
+                    sharpness: color.pipeline.sharpness(),
                 },
             )
         })
@@ -2331,69 +2211,9 @@ fn render_pane_to_image(
         });
     }
 
-    let stain_params = if hud_stain_normalization != StainNormalization::None {
-        let tile_slices: Vec<&[u8]> = cached_tiles
-            .fine_tiles
-            .iter()
-            .map(|(_, td)| td.data.as_slice())
-            .chain(fallback_commands.iter().map(|cmd| cmd.tile.data.as_slice()))
-            .collect();
-        let (params, cache_update) = resolve_stain_params_from_tiles(
-            hud_stain_normalization,
-            loaded_tile_epoch,
-            file.pane_state(pane).and_then(|ps| ps.cached_stain_params),
-            file.pane_state(pane)
-                .map(|ps| ps.stain_params_epoch)
-                .unwrap_or(0),
-            file.pane_state(pane)
-                .map(|ps| ps.stain_params_method)
-                .unwrap_or(StainNormalization::None),
-            &tile_slices,
-        );
-        if let Some((params, epoch, method)) = cache_update
-            && let Some(ps) = file.pane_state_mut(pane)
-        {
-            ps.cached_stain_params = Some(params);
-            ps.stain_params_epoch = epoch;
-            ps.stain_params_method = method;
-        }
-        params
-    } else {
-        None
-    };
-
-    // Build color deconvolution params for the CPU path.
-    let deconv_params = if hud_deconv_isolated != crate::state::IsolatedChannel::None
-        || !hud_deconv_h_visible
-        || !hud_deconv_e_visible
-        || (hud_deconv_h_intensity - 1.0).abs() > 0.001
-        || (hud_deconv_e_intensity - 1.0).abs() > 0.001
-    {
-        let isolated = match hud_deconv_isolated {
-            crate::state::IsolatedChannel::None => 0u8,
-            crate::state::IsolatedChannel::Hematoxylin => 1u8,
-            crate::state::IsolatedChannel::Eosin => 2u8,
-        };
-        let params = crate::stain::build_deconv_params(
-            hud_deconv_h_intensity,
-            hud_deconv_h_visible,
-            hud_deconv_e_intensity,
-            hud_deconv_e_visible,
-            isolated,
-            stain_params.as_ref(),
-        );
-        if params.enabled { Some(params) } else { None }
-    } else {
-        None
-    };
-
     let postprocess = CpuRenderPostProcess {
-        stain_params,
-        deconv_params,
-        sharpness: hud_sharpness,
-        gamma: hud_gamma,
-        brightness: hud_brightness,
-        contrast: hud_contrast,
+        pipeline: Arc::clone(&crate::color::pane_color(file, pane).pipeline),
+        background: crate::color::VIEWPORT_BACKGROUND,
     };
 
     let preview_image = if is_moving {
@@ -2428,7 +2248,6 @@ fn render_pane_to_image(
             width: render_width,
             height: render_height,
             viewport: vp.clone(),
-            background_rgba: [30, 30, 30, 255],
             fallback_blits: fallback_commands,
             fine_blits: fine_commands,
             postprocess,
@@ -2517,13 +2336,13 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
             render_width,
             render_height,
             blitter::FrameSrc {
-                pixels: &cpu_frame.pixels,
+                pixels: &cpu_frame.source,
                 width: cpu_frame.width,
                 height: cpu_frame.height,
             },
             cpu_frame,
             viewport,
-            [30, 30, 30, 255],
+            [0, 0, 0, 0],
         );
 
         composite_commands_into_preview_parallel(

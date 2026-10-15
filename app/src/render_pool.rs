@@ -1,5 +1,5 @@
 use crate::blitter;
-use crate::stain;
+use eov_common::processing::ProcessingPipeline;
 use eov_common::{TileData, Viewport};
 use parking_lot::Mutex;
 use rayon::ThreadPool;
@@ -16,17 +16,31 @@ pub struct CachedCpuFrame {
     pub width: u32,
     pub height: u32,
     pub viewport: Viewport,
+    /// The displayed frame: colour-processed and composited onto the
+    /// background (before plugin filters).
     pub pixels: Vec<u8>,
+    /// The same frame before colour processing, transparent outside the
+    /// slide. Interaction previews reproject this one, so that no pixel is
+    /// colour-processed twice.
+    pub source: Vec<u8>,
 }
 
+/// Colour processing of a CPU frame.
 #[derive(Clone)]
 pub struct CpuRenderPostProcess {
-    pub stain_params: Option<crate::stain::StainNormParams>,
-    pub deconv_params: Option<crate::stain::ColorDeconvParams>,
-    pub sharpness: f32,
-    pub gamma: f32,
-    pub brightness: f32,
-    pub contrast: f32,
+    /// Stages 2–6 of `eov_common::processing`: stain transform, tone,
+    /// quantisation, compositing and screen-space sharpening.
+    pub pipeline: Arc<ProcessingPipeline>,
+    /// Colour of the pixels outside the slide.
+    pub background: [u8; 3],
+}
+
+impl CpuRenderPostProcess {
+    /// Processes a frame whose pixels outside the slide are transparent.
+    pub fn apply(&self, buffer: &mut [u8], width: u32, height: u32) {
+        self.pipeline
+            .apply_rgba(buffer, width, height, self.background);
+    }
 }
 
 #[derive(Clone)]
@@ -55,7 +69,6 @@ pub struct CpuRenderJob {
     pub width: u32,
     pub height: u32,
     pub viewport: Viewport,
-    pub background_rgba: [u8; 4],
     pub fallback_blits: Vec<CpuBlitCommand>,
     pub fine_blits: Vec<CpuBlitCommand>,
     pub postprocess: CpuRenderPostProcess,
@@ -69,7 +82,10 @@ pub struct CpuRenderResult {
     pub width: u32,
     pub height: u32,
     pub viewport: Viewport,
+    /// The processed frame.
     pub pixels: Vec<u8>,
+    /// The frame before colour processing (see [`CachedCpuFrame::source`]).
+    pub source: Vec<u8>,
     pub settled_quality: bool,
 }
 
@@ -113,10 +129,12 @@ impl RenderWorkerPool {
         let results_tx = self.results_tx.clone();
         self.latest_jobs.lock().insert(job.pane_index, job.job_id);
         let latest_jobs = Arc::clone(&self.latest_jobs);
-        let mut buffer = self.acquire_buffer((job.width as usize) * (job.height as usize) * 4);
+        let needed = (job.width as usize) * (job.height as usize) * 4;
+        let mut buffer = self.acquire_buffer(needed);
+        let mut source = self.acquire_buffer(needed);
 
         self.pool.spawn_fifo(move || {
-            if !render_job_into_buffer(&job, &latest_jobs, &mut buffer) {
+            if !render_job_into_buffer(&job, &latest_jobs, &mut buffer, &mut source) {
                 return;
             }
             let _ = results_tx.send(CpuRenderResult {
@@ -127,6 +145,7 @@ impl RenderWorkerPool {
                 height: job.height,
                 viewport: job.viewport,
                 pixels: buffer,
+                source,
                 settled_quality: job.settled_quality,
             });
         });
@@ -179,10 +198,14 @@ pub fn global() -> Option<&'static Arc<RenderWorkerPool>> {
     GLOBAL_RENDER_POOL.get()
 }
 
+/// Composites the job's tiles into `buffer` (transparent outside the slide),
+/// keeps that unprocessed frame in `source`, then colour-processes `buffer`.
+/// Returns `false` when a newer job for the pane superseded this one.
 fn render_job_into_buffer(
     job: &CpuRenderJob,
     latest_jobs: &Mutex<HashMap<usize, u64>>,
     buffer: &mut [u8],
+    source: &mut [u8],
 ) -> bool {
     if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
         return false;
@@ -206,13 +229,9 @@ fn render_job_into_buffer(
             let chunk_height = chunk_rows as u32;
             let row_offset = start_row as i32;
 
-            blitter::fast_fill_rgba(
-                chunk,
-                job.background_rgba[0],
-                job.background_rgba[1],
-                job.background_rgba[2],
-                job.background_rgba[3],
-            );
+            // Transparent until a tile covers it: the pipeline composites
+            // the rest onto the background after colour processing.
+            chunk.fill(0);
 
             for command in &job.fallback_blits {
                 if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
@@ -232,62 +251,17 @@ fn render_job_into_buffer(
         return false;
     }
 
-    if let Some(ref params) = job.postprocess.stain_params {
-        stain::apply_stain_params_to_buffer(buffer, params);
-        if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
-            return false;
-        }
-    }
-
-    // Color deconvolution: separate H&E channels and reconstruct based on
-    // visibility, intensity, and isolation settings.
-    if let Some(ref params) = job.postprocess.deconv_params {
-        stain::apply_color_deconvolution(buffer, params);
-        if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
-            return false;
-        }
-    }
-
-    if job.postprocess.sharpness > 0.001 {
-        eov_common::postprocess::apply_sharpening(buffer, width, height, job.postprocess.sharpness);
-        if !job_is_current(latest_jobs, job.pane_index, job.job_id) {
-            return false;
-        }
-    }
-
-    let has_adjustments = (job.postprocess.gamma - 1.0).abs() > 0.001
-        || job.postprocess.brightness.abs() > 0.001
-        || (job.postprocess.contrast - 1.0).abs() > 0.001;
-    if has_adjustments {
-        eov_common::postprocess::apply_adjustments(
-            buffer,
-            job.postprocess.gamma,
-            job.postprocess.brightness,
-            job.postprocess.contrast,
-        );
-    }
+    let len = buffer.len().min(source.len());
+    source[..len].copy_from_slice(&buffer[..len]);
+    job.postprocess.apply(buffer, width, height);
 
     job_is_current(latest_jobs, job.pane_index, job.job_id)
 }
 
-/// Apply post-processing effects to an RGBA pixel buffer.
-/// Used by both the async render job path and the synchronous preview path.
+/// Colour-processes an interaction preview (the synchronous counterpart of
+/// a render job): `buffer` must be transparent outside the slide.
 pub fn apply_postprocess(buffer: &mut [u8], width: u32, height: u32, pp: &CpuRenderPostProcess) {
-    if let Some(ref params) = pp.stain_params {
-        stain::apply_stain_params_to_buffer(buffer, params);
-    }
-    if let Some(ref params) = pp.deconv_params {
-        stain::apply_color_deconvolution(buffer, params);
-    }
-    if pp.sharpness > 0.001 {
-        eov_common::postprocess::apply_sharpening(buffer, width, height, pp.sharpness);
-    }
-    let has_adjustments = (pp.gamma - 1.0).abs() > 0.001
-        || pp.brightness.abs() > 0.001
-        || (pp.contrast - 1.0).abs() > 0.001;
-    if has_adjustments {
-        eov_common::postprocess::apply_adjustments(buffer, pp.gamma, pp.brightness, pp.contrast);
-    }
+    pp.apply(buffer, width, height);
 }
 
 fn draw_command_into_chunk(
@@ -352,5 +326,98 @@ fn draw_command_into_chunk(
             },
             rect,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eov_common::TileCoord;
+    use eov_common::postprocess::ToneAdjustments;
+
+    fn job_with_tile(pipeline: ProcessingPipeline) -> CpuRenderJob {
+        // A 2×2 tile at the left of a 4×2 frame; the right half is outside
+        // the slide.
+        let tile = Arc::new(TileData::new(
+            TileCoord::new(1, 0, 0, 0, 2),
+            [100u8, 150, 200, 255].repeat(4),
+            2,
+            2,
+            0,
+        ));
+        CpuRenderJob {
+            pane_index: 0,
+            file_id: 1,
+            job_id: 7,
+            width: 4,
+            height: 2,
+            viewport: Viewport::new(4.0, 2.0, 2.0, 2.0),
+            fallback_blits: Vec::new(),
+            fine_blits: vec![CpuBlitCommand {
+                tile,
+                rect: blitter::BlitRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                    exact_x: 0.0,
+                    exact_y: 0.0,
+                    exact_width: 2.0,
+                    exact_height: 2.0,
+                },
+                kind: CpuBlitKind::Bilinear,
+            }],
+            postprocess: CpuRenderPostProcess {
+                pipeline: Arc::new(pipeline),
+                background: [30, 30, 30],
+            },
+            settled_quality: true,
+        }
+    }
+
+    #[test]
+    fn slide_pixels_are_processed_once_and_the_rest_is_background() {
+        let pipeline =
+            ProcessingPipeline::new(None, ToneAdjustments::new(2.0, 0.1, 1.2), 0.0).unwrap();
+        let expected = pipeline.color_pixel([100, 150, 200]);
+        let job = job_with_tile(pipeline);
+        let latest = Mutex::new(HashMap::from([(0, 7)]));
+        let mut pixels = vec![0u8; 4 * 2 * 4];
+        let mut source = vec![0u8; 4 * 2 * 4];
+        assert!(render_job_into_buffer(
+            &job,
+            &latest,
+            &mut pixels,
+            &mut source
+        ));
+        for row in pixels.chunks(16) {
+            assert_eq!(&row[..3], &expected);
+            assert_eq!(row[3], 255);
+            // The background is not tone-mapped (stage 5 follows stage 4).
+            assert_eq!(&row[8..16], &[30, 30, 30, 255, 30, 30, 30, 255]);
+        }
+        // The unprocessed frame keeps the transparency outside the slide.
+        for row in source.chunks(16) {
+            assert_eq!(&row[..8], &[100, 150, 200, 255, 100, 150, 200, 255]);
+            assert_eq!(&row[8..16], &[0; 8]);
+        }
+        // The synchronous preview path gives the same result.
+        let mut preview = source.clone();
+        apply_postprocess(&mut preview, 4, 2, &job.postprocess);
+        assert_eq!(preview, pixels);
+    }
+
+    #[test]
+    fn superseded_jobs_are_dropped() {
+        let job = job_with_tile(ProcessingPipeline::identity());
+        let latest = Mutex::new(HashMap::from([(0, 8)]));
+        let mut pixels = vec![0u8; 32];
+        let mut source = vec![0u8; 32];
+        assert!(!render_job_into_buffer(
+            &job,
+            &latest,
+            &mut pixels,
+            &mut source
+        ));
     }
 }

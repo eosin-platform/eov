@@ -272,7 +272,9 @@ export component Viewport inherits Rectangle {
         zoom-input-text: root.zoom-input-text;
         zoom-tooltip: root.zoom-tooltip;
         dropdown-open: root.hud.hud-dropdown-open;
-        has-adjustments: root.hud.sharpness > 0.01 || (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01;
+        // Every colour-altering setting, stain normalisation and
+        // deconvolution included (CLR-9).
+        has-adjustments: root.hud.modified;
         plugin-buttons: root.plugin-hud-buttons;
         fit-to-view => {
             root.fit-to-view();
@@ -304,7 +306,7 @@ export component Viewport inherits Rectangle {
         contrast: root.hud.contrast;
         measurement-unit: root.hud.measurement-unit;
         stain-normalization: root.hud.stain-normalization;
-        has-adjustments: root.hud.sharpness > 0.01 || (root.hud.gamma - 1.0) > 0.01 || (1.0 - root.hud.gamma) > 0.01 || root.hud.brightness > 0.01 || root.hud.brightness < -0.01 || (root.hud.contrast - 1.0) > 0.01 || (1.0 - root.hud.contrast) > 0.01 || root.hud.stain-normalization != StainNormalization.none;
+        has-adjustments: root.hud.modified;
         sharpness-changed(v) => {
             root.hud-sharpness-changed(v);
         }
@@ -348,6 +350,43 @@ export component Viewport inherits Rectangle {
         }
         deconv-e-view-toggled => {
             root.hud-deconv-e-view-toggled();
+        }
+    }
+
+    // Colour badge (bottom-left, above the scale bar): shown whenever the
+    // colours are not as scanned, so a processed view is never mistaken for
+    // the original (CLR-9), with any colour warnings below it.
+    if root.hud.color-badge != "" || root.hud.color-warning != "": Rectangle {
+        property <bool> both: root.hud.color-badge != "" && root.hud.color-warning != "";
+        property <length> text-width: min(400px, root.width - 48px, max(badge-text.preferred-width, warning-text.preferred-width));
+        x: 16px;
+        y: root.height - self.height - (root.show-scale-bar ? 56px : 16px);
+        width: self.text-width + 16px;
+        height: badge-text.height + warning-text.height + (self.both ? 2px : 0px) + 8px;
+        background: #000000b8;
+        border-radius: 5px;
+
+        badge-text := Text {
+            x: 8px;
+            y: 4px;
+            width: parent.text-width;
+            height: root.hud.color-badge != "" ? self.preferred-height : 0px;
+            text: root.hud.color-badge;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            wrap: word-wrap;
+        }
+
+        warning-text := Text {
+            x: 8px;
+            y: badge-text.y + badge-text.height + (parent.both ? 2px : 0px);
+            width: parent.text-width;
+            height: root.hud.color-warning != "" ? self.preferred-height : 0px;
+            text: root.hud.color-warning;
+            color: #f5c26b;
+            font-size: 11px;
+            wrap: word-wrap;
         }
     }
 

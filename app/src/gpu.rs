@@ -1,7 +1,7 @@
 use crate::AppWindow;
-use crate::gpu_interop::{ExportableImage, VulkanHandles};
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
+use eov_common::processing::{GpuColorUniform, wgsl};
 use eov_common::{FilteringMode, TileCoord, TileData};
 use slint::ComponentHandle;
 use slint::wgpu_29::wgpu;
@@ -16,7 +16,27 @@ use std::sync::Arc;
 /// Memory budget for the tile texture array (~128 MB).
 const MAX_TILE_ARRAY_BYTES: u64 = 128 * 1024 * 1024;
 
-const SHADER_SOURCE: &str = r#"
+/// Colour of the viewport outside the slide (the same as the CPU path's).
+const CLEAR_COLOR: wgpu::Color = wgpu::Color {
+    r: crate::color::VIEWPORT_BACKGROUND[0] as f64 / 255.0,
+    g: crate::color::VIEWPORT_BACKGROUND[1] as f64 / 255.0,
+    b: crate::color::VIEWPORT_BACKGROUND[2] as f64 / 255.0,
+    a: 1.0,
+};
+
+// ---------------------------------------------------------------------------
+// Shaders
+//
+// The colour stages (stain transform, tone) come verbatim from
+// `eov_common::processing::wgsl`, the reference that the CPU pipeline is
+// tested against, so the two backends cannot drift apart. Sharpening (stage
+// 6) runs as a separate full-screen pass over the composited frame
+// (`wgsl::SHARPEN_POST_PASS`), in screen space as on the CPU.
+// ---------------------------------------------------------------------------
+
+/// Vertex stage and bindings shared by the tile shaders. The fragment
+/// stages use `color_params`, declared by `wgsl::COLOR_PARAMS_STRUCT`.
+const TILE_STAGE_WGSL: &str = r#"
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) fine_uv: vec2<f32>,
@@ -35,26 +55,6 @@ struct VertexOutput {
     @location(3) @interpolate(flat) fine_layer: i32,
     @location(4) @interpolate(flat) coarse_layer: i32,
     @location(5) fine_tex_size: vec2<f32>,
-};
-
-// Canonical colour pipeline (stages 2-3). Keep `EovColorParams` and the
-// `eov_*` functions identical to eov_common::processing::wgsl.
-struct EovColorParams {
-    // x: 1/gamma, y: brightness, z: contrast, w: sharpening amount
-    tone: vec4<f32>,
-    // x: stain transform enabled, y: isolated stain index + 1 (0 = blended),
-    // z: isolated stain multiplier, w: number of stains
-    stain_mode: vec4<f32>,
-    // xyz: ln(I0) per channel
-    stain_log_i0: vec4<f32>,
-    // rows of the source pseudo-inverse S+
-    stain_pinv0: vec4<f32>,
-    stain_pinv1: vec4<f32>,
-    stain_pinv2: vec4<f32>,
-    // columns of W = T * diag(m) - S
-    stain_w0: vec4<f32>,
-    stain_w1: vec4<f32>,
-    stain_w2: vec4<f32>,
 };
 
 @vertex
@@ -78,63 +78,10 @@ var tile_sampler: sampler;
 
 @group(0) @binding(2)
 var<uniform> color_params: EovColorParams;
+"#;
 
-// Fused stain normalisation + deconvolution (eov_common::stain::transform).
-fn eov_stain(rgb: vec3<f32>) -> vec3<f32> {
-    if (color_params.stain_mode.x < 0.5) {
-        return rgb;
-    }
-    let od = color_params.stain_log_i0.xyz - log(max(rgb * 255.0, vec3<f32>(1.0)));
-    let c = max(vec3<f32>(
-        dot(color_params.stain_pinv0.xyz, od),
-        dot(color_params.stain_pinv1.xyz, od),
-        dot(color_params.stain_pinv2.xyz, od),
-    ), vec3<f32>(0.0));
-    let iso = i32(color_params.stain_mode.y + 0.5);
-    if (iso > 0) {
-        var ci = c.x;
-        if (iso == 2) {
-            ci = c.y;
-        }
-        if (iso == 3) {
-            ci = c.z;
-        }
-        let g = exp(-color_params.stain_mode.z * ci);
-        return vec3<f32>(g, g, g);
-    }
-    let delta = color_params.stain_w0.xyz * c.x
-        + color_params.stain_w1.xyz * c.y
-        + color_params.stain_w2.xyz * c.z;
-    return clamp(rgb * exp(-delta), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-// Gamma, brightness, contrast (eov_common::postprocess::ToneAdjustments).
-fn eov_tone(rgb: vec3<f32>) -> vec3<f32> {
-    let x = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    var g = x;
-    if (abs(color_params.tone.x - 1.0) > 0.000001) {
-        g = pow(x, vec3<f32>(color_params.tone.x));
-    }
-    let c = (g + vec3<f32>(color_params.tone.y) - vec3<f32>(0.5)) * color_params.tone.z + vec3<f32>(0.5);
-    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-fn eov_color(rgb: vec3<f32>) -> vec3<f32> {
-    return eov_tone(eov_stain(rgb));
-}
-
-// Stage 6, evaluated in the tile pass until the renderer has a dedicated
-// post pass: a screen-space Laplacian unsharp mask whose neighbours are one
-// *screen* pixel away (dpdx/dpdy), each passed through the same colour
-// pipeline, so its strength does not depend on zoom or pyramid level. The
-// canonical implementation runs over the composited frame
-// (eov_common::processing::wgsl::SHARPEN_POST_PASS); once that pass is used,
-// upload `tone.w = 0` for the tile pass.
-fn eov_sharpen(rgb: vec3<f32>, n: vec3<f32>, s: vec3<f32>, w: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
-    let k = color_params.tone.w;
-    return clamp(rgb + k * (4.0 * rgb - (n + s + w + e)), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
+/// Bilinear / trilinear tile sampling.
+const BILINEAR_FRAGMENT_WGSL: &str = r#"
 fn sample_tile(
     fine_uv: vec2<f32>,
     coarse_uv: vec2<f32>,
@@ -149,92 +96,13 @@ fn sample_tile(
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // One screen pixel in UV space (derivatives need uniform control flow).
-    let fdx = dpdx(input.fine_uv);
-    let fdy = dpdy(input.fine_uv);
-    let cdx = dpdx(input.coarse_uv);
-    let cdy = dpdy(input.coarse_uv);
     let texel = sample_tile(input.fine_uv, input.coarse_uv, input.fine_layer, input.coarse_layer, input.mip_blend);
-    let rgb = eov_color(texel.rgb);
-    if (color_params.tone.w < 0.001) {
-        return vec4<f32>(rgb, texel.a);
-    }
-    // Keep neighbour samples inside this tile's texels (border included).
-    let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
-    let lo = vec2<f32>(0.5) / layer_size;
-    let hi = (input.fine_tex_size - vec2<f32>(0.5)) / layer_size;
-    let n = eov_color(sample_tile(clamp(input.fine_uv - fdy, lo, hi), input.coarse_uv - cdy, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
-    let s = eov_color(sample_tile(clamp(input.fine_uv + fdy, lo, hi), input.coarse_uv + cdy, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
-    let w = eov_color(sample_tile(clamp(input.fine_uv - fdx, lo, hi), input.coarse_uv - cdx, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
-    let e = eov_color(sample_tile(clamp(input.fine_uv + fdx, lo, hi), input.coarse_uv + cdx, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
-    return vec4<f32>(eov_sharpen(rgb, n, s, w, e), texel.a);
+    return vec4<f32>(eov_color(texel.rgb), texel.a);
 }
 "#;
 
-/// Lanczos-3 fragment shader: samples a 6×6 kernel from the fine texture array layer
-const LANCZOS_SHADER_SOURCE: &str = r#"
-struct VertexInput {
-    @location(0) position: vec2<f32>,
-    @location(1) fine_uv: vec2<f32>,
-    @location(2) coarse_uv: vec2<f32>,
-    @location(3) mip_blend: f32,
-    @location(4) fine_layer: i32,
-    @location(5) coarse_layer: i32,
-    @location(6) fine_tex_size: vec2<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) fine_uv: vec2<f32>,
-    @location(1) coarse_uv: vec2<f32>,
-    @location(2) mip_blend: f32,
-    @location(3) @interpolate(flat) fine_layer: i32,
-    @location(4) @interpolate(flat) coarse_layer: i32,
-    @location(5) fine_tex_size: vec2<f32>,
-};
-
-// Canonical colour pipeline (stages 2-3). Keep `EovColorParams` and the
-// `eov_*` functions identical to eov_common::processing::wgsl.
-struct EovColorParams {
-    // x: 1/gamma, y: brightness, z: contrast, w: sharpening amount
-    tone: vec4<f32>,
-    // x: stain transform enabled, y: isolated stain index + 1 (0 = blended),
-    // z: isolated stain multiplier, w: number of stains
-    stain_mode: vec4<f32>,
-    // xyz: ln(I0) per channel
-    stain_log_i0: vec4<f32>,
-    // rows of the source pseudo-inverse S+
-    stain_pinv0: vec4<f32>,
-    stain_pinv1: vec4<f32>,
-    stain_pinv2: vec4<f32>,
-    // columns of W = T * diag(m) - S
-    stain_w0: vec4<f32>,
-    stain_w1: vec4<f32>,
-    stain_w2: vec4<f32>,
-};
-
-@vertex
-fn vs_main(input: VertexInput) -> VertexOutput {
-    var output: VertexOutput;
-    output.position = vec4<f32>(input.position, 0.0, 1.0);
-    output.fine_uv = input.fine_uv;
-    output.coarse_uv = input.coarse_uv;
-    output.mip_blend = input.mip_blend;
-    output.fine_layer = input.fine_layer;
-    output.coarse_layer = input.coarse_layer;
-    output.fine_tex_size = input.fine_tex_size;
-    return output;
-}
-
-@group(0) @binding(0)
-var tile_array: texture_2d_array<f32>;
-
-@group(0) @binding(1)
-var tile_sampler: sampler;
-
-@group(0) @binding(2)
-var<uniform> color_params: EovColorParams;
-
+/// Lanczos-3: a 6×6 kernel over the fine texture array layer.
+const LANCZOS_FRAGMENT_WGSL: &str = r#"
 const PI: f32 = 3.14159265358979323846;
 const LANCZOS_A: f32 = 3.0;
 
@@ -251,58 +119,6 @@ fn lanczos_weight(x: f32) -> f32 {
         return 0.0;
     }
     return sinc(x) * sinc(x / LANCZOS_A);
-}
-
-// Fused stain normalisation + deconvolution (eov_common::stain::transform).
-fn eov_stain(rgb: vec3<f32>) -> vec3<f32> {
-    if (color_params.stain_mode.x < 0.5) {
-        return rgb;
-    }
-    let od = color_params.stain_log_i0.xyz - log(max(rgb * 255.0, vec3<f32>(1.0)));
-    let c = max(vec3<f32>(
-        dot(color_params.stain_pinv0.xyz, od),
-        dot(color_params.stain_pinv1.xyz, od),
-        dot(color_params.stain_pinv2.xyz, od),
-    ), vec3<f32>(0.0));
-    let iso = i32(color_params.stain_mode.y + 0.5);
-    if (iso > 0) {
-        var ci = c.x;
-        if (iso == 2) {
-            ci = c.y;
-        }
-        if (iso == 3) {
-            ci = c.z;
-        }
-        let g = exp(-color_params.stain_mode.z * ci);
-        return vec3<f32>(g, g, g);
-    }
-    let delta = color_params.stain_w0.xyz * c.x
-        + color_params.stain_w1.xyz * c.y
-        + color_params.stain_w2.xyz * c.z;
-    return clamp(rgb * exp(-delta), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-// Gamma, brightness, contrast (eov_common::postprocess::ToneAdjustments).
-fn eov_tone(rgb: vec3<f32>) -> vec3<f32> {
-    let x = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    var g = x;
-    if (abs(color_params.tone.x - 1.0) > 0.000001) {
-        g = pow(x, vec3<f32>(color_params.tone.x));
-    }
-    let c = (g + vec3<f32>(color_params.tone.y) - vec3<f32>(0.5)) * color_params.tone.z + vec3<f32>(0.5);
-    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-fn eov_color(rgb: vec3<f32>) -> vec3<f32> {
-    return eov_tone(eov_stain(rgb));
-}
-
-// Stage 6 in the tile pass (see the bilinear/trilinear shader): screen-space
-// neighbours, each through the colour pipeline. Neighbours use bilinear
-// samples to keep the cost bounded.
-fn eov_sharpen(rgb: vec3<f32>, n: vec3<f32>, s: vec3<f32>, w: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
-    let k = color_params.tone.w;
-    return clamp(rgb + k * (4.0 * rgb - (n + s + w + e)), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn lanczos_sample(uv: vec2<f32>, layer: i32, tile_size: vec2<f32>) -> vec4<f32> {
@@ -338,74 +154,21 @@ fn lanczos_sample(uv: vec2<f32>, layer: i32, tile_size: vec2<f32>) -> vec4<f32> 
 
 @fragment
 fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
-    // One screen pixel in UV space (derivatives need uniform control flow).
-    let fdx = dpdx(input.fine_uv);
-    let fdy = dpdy(input.fine_uv);
     let texel = lanczos_sample(input.fine_uv, input.fine_layer, input.fine_tex_size);
-    let rgb = eov_color(texel.rgb);
-    if (color_params.tone.w < 0.001) {
-        return vec4<f32>(rgb, texel.a);
-    }
-    let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
-    let lo = vec2<f32>(0.5) / layer_size;
-    let hi = (input.fine_tex_size - vec2<f32>(0.5)) / layer_size;
-    let n = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv - fdy, lo, hi), input.fine_layer, 0.0).rgb);
-    let s = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv + fdy, lo, hi), input.fine_layer, 0.0).rgb);
-    let w = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv - fdx, lo, hi), input.fine_layer, 0.0).rgb);
-    let e = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv + fdx, lo, hi), input.fine_layer, 0.0).rgb);
-    return vec4<f32>(eov_sharpen(rgb, n, s, w, e), texel.a);
+    return vec4<f32>(eov_color(texel.rgb), texel.a);
 }
 "#;
 
-/// Fullscreen post-process shader for viewport filters (e.g. grayscale).
-/// Reads from a source texture and writes to the render target.
-/// The `enabled` uniform controls whether the effect is active.
-const POST_PROCESS_SHADER: &str = r#"
-struct PostProcessUniforms {
-    enabled: f32,
-    _pad0: f32,
-    _pad1: f32,
-    _pad2: f32,
-};
-
-@group(0) @binding(0) var src_texture: texture_2d<f32>;
-@group(0) @binding(1) var src_sampler: sampler;
-@group(0) @binding(2) var<uniform> uniforms: PostProcessUniforms;
-
-struct FullscreenOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_fullscreen(@builtin(vertex_index) idx: u32) -> FullscreenOutput {
-    // Fullscreen triangle covering the viewport.
-    var positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-    var uvs = array<vec2<f32>, 3>(
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(2.0, 1.0),
-        vec2<f32>(0.0, -1.0),
-    );
-    var out: FullscreenOutput;
-    out.position = vec4<f32>(positions[idx], 0.0, 1.0);
-    out.uv = uvs[idx];
-    return out;
+/// A complete tile shader: the canonical colour stages plus `fragment`.
+fn tile_shader_source(fragment: &str) -> String {
+    [
+        wgsl::COLOR_PARAMS_STRUCT,
+        TILE_STAGE_WGSL,
+        wgsl::COLOR_FUNCTIONS,
+        fragment,
+    ]
+    .concat()
 }
-
-@fragment
-fn fs_grayscale(input: FullscreenOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(src_texture, src_sampler, input.uv);
-    if uniforms.enabled < 0.5 {
-        return color;
-    }
-    let lum = dot(color.rgb, vec3<f32>(0.299, 0.587, 0.114));
-    return vec4<f32>(lum, lum, lum, color.a);
-}
-"#;
 
 // ---------------------------------------------------------------------------
 // Rust-side data structures
@@ -437,32 +200,16 @@ impl SurfaceSlot {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, PartialEq)]
-struct AdjustmentsUniform {
-    // Layout of `EovColorParams` in the shaders, i.e.
-    // `eov_common::processing::GpuColorUniform` (9 × vec4, 144 bytes).
-    tone: [f32; 4],         // [1/gamma, brightness, contrast, sharpness]
-    stain_mode: [f32; 4],   // [enabled, isolated stain + 1, isolated multiplier, stains]
-    stain_log_i0: [f32; 4], // ln(I0) per channel
-    stain_pinv: [[f32; 4]; 3],
-    stain_w: [[f32; 4]; 3],
-}
-
 #[derive(Clone)]
 pub(crate) struct QueuedFrame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) draws: Vec<TileDraw>,
-    pub(crate) gpu_post_process_enabled: bool,
-    pub(crate) gamma: f32,
-    pub(crate) brightness: f32,
-    pub(crate) contrast: f32,
+    /// The pane's colour pipeline as the shaders' `EovColorParams` (stages
+    /// 2–4; see `eov_common::processing::ProcessingPipeline::gpu_uniform`).
+    pub(crate) color: GpuColorUniform,
+    /// Screen-space sharpening of the composited frame (stage 6), 0 = off.
     pub(crate) sharpness: f32,
-    pub(crate) stain_norm_enabled: bool,
-    pub(crate) inv_stain_r0: [f32; 4],
-    pub(crate) inv_stain_r1: [f32; 4],
-    pub(crate) deconv_params: crate::stain::ColorDeconvParams,
 }
 
 impl QueuedFrame {
@@ -472,30 +219,10 @@ impl QueuedFrame {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.width.hash(&mut hasher);
         self.height.hash(&mut hasher);
-        self.gpu_post_process_enabled.hash(&mut hasher);
-        self.gamma.to_bits().hash(&mut hasher);
-        self.brightness.to_bits().hash(&mut hasher);
-        self.contrast.to_bits().hash(&mut hasher);
+        for v in self.color.to_array() {
+            v.to_bits().hash(&mut hasher);
+        }
         self.sharpness.to_bits().hash(&mut hasher);
-        self.stain_norm_enabled.hash(&mut hasher);
-        for v in &self.inv_stain_r0 {
-            v.to_bits().hash(&mut hasher);
-        }
-        for v in &self.inv_stain_r1 {
-            v.to_bits().hash(&mut hasher);
-        }
-        // Include color deconvolution state in fingerprint
-        self.deconv_params.enabled.hash(&mut hasher);
-        self.deconv_params.isolated_mode.to_bits().hash(&mut hasher);
-        for v in &self.deconv_params.inv_row0 {
-            v.to_bits().hash(&mut hasher);
-        }
-        for v in &self.deconv_params.inv_row1 {
-            v.to_bits().hash(&mut hasher);
-        }
-        for v in &self.deconv_params.visibility {
-            v.to_bits().hash(&mut hasher);
-        }
         self.draws.len().hash(&mut hasher);
         for draw in &self.draws {
             draw.tile.coord.hash(&mut hasher);
@@ -514,6 +241,11 @@ impl QueuedFrame {
             (draw.filtering_mode as u8).hash(&mut hasher);
         }
         hasher.finish()
+    }
+
+    /// Whether the frame needs the sharpening post pass.
+    fn sharpens(&self) -> bool {
+        self.sharpness > 0.001
     }
 }
 
@@ -583,7 +315,7 @@ impl TileArray {
         layout: &wgpu::BindGroupLayout,
         bilinear_sampler: &wgpu::Sampler,
         trilinear_sampler: &wgpu::Sampler,
-        adjustments_buffer: &wgpu::Buffer,
+        color_buffer: &wgpu::Buffer,
         layer_size: u32,
         max_layers: u32,
     ) -> Self {
@@ -612,20 +344,10 @@ impl TileArray {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let bilinear_bind_group = Self::create_bind_group(
-            device,
-            layout,
-            &array_view,
-            bilinear_sampler,
-            adjustments_buffer,
-        );
-        let trilinear_bind_group = Self::create_bind_group(
-            device,
-            layout,
-            &array_view,
-            trilinear_sampler,
-            adjustments_buffer,
-        );
+        let bilinear_bind_group =
+            Self::create_bind_group(device, layout, &array_view, bilinear_sampler, color_buffer);
+        let trilinear_bind_group =
+            Self::create_bind_group(device, layout, &array_view, trilinear_sampler, color_buffer);
         let free_list = (0..max_layers).rev().collect();
         Self {
             texture,
@@ -644,7 +366,7 @@ impl TileArray {
         layout: &wgpu::BindGroupLayout,
         array_view: &wgpu::TextureView,
         sampler: &wgpu::Sampler,
-        adjustments_buffer: &wgpu::Buffer,
+        color_buffer: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("tile-array-bind-group"),
@@ -660,7 +382,7 @@ impl TileArray {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: adjustments_buffer.as_entire_binding(),
+                    resource: color_buffer.as_entire_binding(),
                 },
             ],
         })
@@ -770,119 +492,29 @@ struct GpuRuntime {
     bilinear_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
-    adjustments_buffer: wgpu::Buffer,
+    /// `EovColorParams` (`GpuColorUniform`, 144 bytes).
+    color_buffer: wgpu::Buffer,
     surfaces: HashMap<usize, ImportedSurface>,
-    // Post-process pipeline for viewport filters
-    post_process_pipeline: wgpu::RenderPipeline,
-    post_process_bind_group_layout: wgpu::BindGroupLayout,
-    post_process_sampler: wgpu::Sampler,
-    post_process_uniforms_buffer: wgpu::Buffer,
-    /// Scratch textures for post-processing (per surface slot).
-    post_process_scratch: HashMap<usize, ImportedSurface>,
-    /// Raw Vulkan handles for plugin GPU filter interop.
-    vulkan_handles: Option<VulkanHandles>,
-    /// Per-slot exportable images for GPU filter plugins (DMA-BUF capable).
-    filter_images: HashMap<usize, ExportableImage>,
+    /// Screen-space sharpening over the composited frame (stage 6).
+    sharpen_pipeline: wgpu::RenderPipeline,
+    sharpen_bind_group_layout: wgpu::BindGroupLayout,
+    /// `EovSharpenParams` (the amount, padded to 16 bytes).
+    sharpen_buffer: wgpu::Buffer,
+    /// Per surface slot: the composited frame the sharpening pass reads.
+    frames: HashMap<usize, ImportedSurface>,
 }
 
-// ---------------------------------------------------------------------------
-// Public renderer — owns the runtime, tile array, and pending frame queue.
-// ---------------------------------------------------------------------------
-
-pub struct GpuRenderer {
-    runtime: Option<GpuRuntime>,
-    pending_frames: HashMap<usize, QueuedFrame>,
-    /// One `TileArray` per distinct power-of-two layer size (e.g. 256, 512, 1024).
-    /// This avoids forcing all tiles into the largest layer size which would
-    /// waste most of the memory budget and limit the number of available layers.
-    tile_arrays: HashMap<u32, TileArray>,
-    frame_counter: u64,
-    /// Fingerprint of the last successfully rendered frame per slot.
-    /// Used to skip redundant vertex rebuilds and render passes.
-    last_rendered_fingerprint: HashMap<usize, u64>,
-    /// Last uploaded adjustments uniform, used to skip redundant uploads.
-    last_adjustments: Option<AdjustmentsUniform>,
-}
-
-impl GpuRenderer {
-    pub fn new() -> Self {
-        Self {
-            runtime: None,
-            pending_frames: HashMap::new(),
-            tile_arrays: HashMap::new(),
-            frame_counter: 0,
-            last_rendered_fingerprint: HashMap::new(),
-            last_adjustments: None,
-        }
-    }
-
-    pub fn install(ui: &AppWindow, renderer: Rc<RefCell<Self>>) -> Result<()> {
-        ui.window()
-            .set_rendering_notifier(move |state, graphics_api| {
-                let mut renderer = renderer.borrow_mut();
-                match state {
-                    RenderingState::RenderingSetup => renderer.initialize(graphics_api),
-                    RenderingState::BeforeRendering => renderer.flush_pending_frames(),
-                    RenderingState::RenderingTeardown => renderer.teardown(),
-                    RenderingState::AfterRendering => {}
-                    _ => {}
-                }
-            })?;
-        Ok(())
-    }
-
-    pub fn queue_frame(&mut self, slot: SurfaceSlot, frame: QueuedFrame) -> Option<Image> {
-        if frame.width == 0 || frame.height == 0 {
-            return None;
-        }
-
-        self.runtime.as_ref()?;
-
-        let surface_recreated = self.ensure_surface(slot, frame.width, frame.height)?;
-
-        // Skip the vertex rebuild and render pass if the frame is identical
-        // to what was last rendered on this slot.
-        if !surface_recreated {
-            let fp = frame.fingerprint();
-            if self
-                .last_rendered_fingerprint
-                .get(&slot.index())
-                .is_some_and(|prev| *prev == fp)
-            {
-                return self.surface_image(slot);
-            }
-        }
-
-        self.pending_frames.insert(slot.index(), frame);
-
-        // Return a live handle to the surface texture even on first creation
-        // so the UI can keep sampling the same texture across the redraw that
-        // flushes the queued frame.
-        self.surface_image(slot)
-    }
-
-    // -----------------------------------------------------------------------
-    // Initialization
-    // -----------------------------------------------------------------------
-
-    fn initialize(&mut self, graphics_api: &GraphicsAPI) {
-        if self.runtime.is_some() {
-            return;
-        }
-
-        let GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api else {
-            return;
-        };
-
+impl GpuRuntime {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("viewport-tile-shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_SOURCE.into()),
+            source: wgpu::ShaderSource::Wgsl(tile_shader_source(BILINEAR_FRAGMENT_WGSL).into()),
         });
 
         // Bind group layout — shared by bilinear/trilinear and Lanczos pipelines.
         // binding 0: tile_array (texture_2d_array)
         // binding 1: sampler
-        // binding 2: adjustments uniform
+        // binding 2: colour uniform
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("viewport-tile-bind-group-layout"),
             entries: &[
@@ -960,6 +592,12 @@ impl GpuRenderer {
             ],
         };
 
+        let color_target = [Some(wgpu::ColorTargetState {
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            blend: None,
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("viewport-tile-pipeline"),
             layout: Some(&pipeline_layout),
@@ -973,11 +611,7 @@ impl GpuRenderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &color_target,
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -993,9 +627,9 @@ impl GpuRenderer {
             mapped_at_creation: false,
         });
 
-        let adjustments_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("viewport-adjustments-buffer"),
-            size: std::mem::size_of::<AdjustmentsUniform>() as u64,
+        let color_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viewport-color-buffer"),
+            size: GpuColorUniform::SIZE as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1003,7 +637,7 @@ impl GpuRenderer {
         // Lanczos pipeline — same bind group layout, different fragment shader
         let lanczos_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lanczos-shader"),
-            source: wgpu::ShaderSource::Wgsl(LANCZOS_SHADER_SOURCE.into()),
+            source: wgpu::ShaderSource::Wgsl(tile_shader_source(LANCZOS_FRAGMENT_WGSL).into()),
         });
 
         let lanczos_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -1019,11 +653,7 @@ impl GpuRenderer {
                 module: &lanczos_shader,
                 entry_point: Some("fs_lanczos"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &color_target,
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -1032,21 +662,21 @@ impl GpuRenderer {
             cache: None,
         });
 
-        // ----- Post-process pipeline (fullscreen filter pass) -----
-        let pp_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("post-process-shader"),
-            source: wgpu::ShaderSource::Wgsl(POST_PROCESS_SHADER.into()),
+        // ----- Sharpening post pass (stage 6) -----
+        let sharpen_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("viewport-sharpen-shader"),
+            source: wgpu::ShaderSource::Wgsl(wgsl::SHARPEN_POST_PASS.into()),
         });
 
-        let post_process_bind_group_layout =
+        let sharpen_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("post-process-bind-group-layout"),
+                label: Some("viewport-sharpen-bind-group-layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
@@ -1054,12 +684,6 @@ impl GpuRenderer {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -1071,60 +695,43 @@ impl GpuRenderer {
                 ],
             });
 
-        let pp_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("post-process-pipeline-layout"),
-            bind_group_layouts: &[Some(&post_process_bind_group_layout)],
-            immediate_size: 0,
-        });
-
-        let post_process_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("post-process-grayscale-pipeline"),
-                layout: Some(&pp_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &pp_shader,
-                    entry_point: Some("vs_fullscreen"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &pp_shader,
-                    entry_point: Some("fs_grayscale"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
+        let sharpen_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("viewport-sharpen-pipeline-layout"),
+                bind_group_layouts: &[Some(&sharpen_bind_group_layout)],
+                immediate_size: 0,
             });
 
-        let post_process_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("post-process-sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
+        let sharpen_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("viewport-sharpen-pipeline"),
+            layout: Some(&sharpen_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &sharpen_shader,
+                entry_point: Some("vs_eov_sharpen"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sharpen_shader,
+                entry_point: Some("fs_eov_sharpen"),
+                compilation_options: Default::default(),
+                targets: &color_target,
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
         });
 
-        let post_process_uniforms_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("post-process-uniforms"),
-            size: 16, // PostProcessUniforms: 4 floats
+        let sharpen_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viewport-sharpen-buffer"),
+            size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        // Extract raw Vulkan handles for GPU filter plugin interop.
-        let vulkan_handles = unsafe { crate::gpu_interop::extract_vulkan_handles(device) };
-        if vulkan_handles.is_none() {
-            tracing::warn!("Failed to extract Vulkan handles for GPU filter interop");
-        }
-
-        self.runtime = Some(GpuRuntime {
+        Self {
             device: device.clone(),
             queue: queue.clone(),
             pipeline,
@@ -1134,31 +741,151 @@ impl GpuRenderer {
             bilinear_sampler,
             vertex_buffer,
             vertex_capacity: 6,
-            adjustments_buffer,
+            color_buffer,
             surfaces: HashMap::new(),
-            post_process_pipeline,
-            post_process_bind_group_layout,
-            post_process_sampler,
-            post_process_uniforms_buffer,
-            post_process_scratch: HashMap::new(),
-            vulkan_handles,
-            filter_images: HashMap::new(),
-        });
+            sharpen_pipeline,
+            sharpen_bind_group_layout,
+            sharpen_buffer,
+            frames: HashMap::new(),
+        }
+    }
+
+    /// The composited-frame texture of `slot` (the sharpening pass's input),
+    /// (re)created to match its surface.
+    fn frame_texture(&mut self, slot: usize, width: u32, height: u32) -> wgpu::TextureView {
+        let needs_recreate = self
+            .frames
+            .get(&slot)
+            .is_none_or(|frame| frame.width != width || frame.height != height);
+        if needs_recreate {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("pane-viewport-composited-frame"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.frames.insert(
+                slot,
+                ImportedSurface {
+                    texture,
+                    view,
+                    width,
+                    height,
+                },
+            );
+        }
+        self.frames[&slot].view.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public renderer — owns the runtime, tile array, and pending frame queue.
+// ---------------------------------------------------------------------------
+
+pub struct GpuRenderer {
+    runtime: Option<GpuRuntime>,
+    pending_frames: HashMap<usize, QueuedFrame>,
+    /// One `TileArray` per distinct power-of-two layer size (e.g. 256, 512, 1024).
+    /// This avoids forcing all tiles into the largest layer size which would
+    /// waste most of the memory budget and limit the number of available layers.
+    tile_arrays: HashMap<u32, TileArray>,
+    frame_counter: u64,
+    /// Fingerprint of the last successfully rendered frame per slot.
+    /// Used to skip redundant vertex rebuilds and render passes.
+    last_rendered_fingerprint: HashMap<usize, u64>,
+    /// Last uploaded colour uniform, used to skip redundant uploads.
+    last_color: Option<[f32; 36]>,
+}
+
+impl GpuRenderer {
+    pub fn new() -> Self {
+        Self {
+            runtime: None,
+            pending_frames: HashMap::new(),
+            tile_arrays: HashMap::new(),
+            frame_counter: 0,
+            last_rendered_fingerprint: HashMap::new(),
+            last_color: None,
+        }
+    }
+
+    pub fn install(ui: &AppWindow, renderer: Rc<RefCell<Self>>) -> Result<()> {
+        ui.window()
+            .set_rendering_notifier(move |state, graphics_api| {
+                let mut renderer = renderer.borrow_mut();
+                match state {
+                    RenderingState::RenderingSetup => renderer.initialize(graphics_api),
+                    RenderingState::BeforeRendering => renderer.flush_pending_frames(),
+                    RenderingState::RenderingTeardown => renderer.teardown(),
+                    RenderingState::AfterRendering => {}
+                    _ => {}
+                }
+            })?;
+        Ok(())
+    }
+
+    pub fn queue_frame(&mut self, slot: SurfaceSlot, frame: QueuedFrame) -> Option<Image> {
+        if frame.width == 0 || frame.height == 0 {
+            return None;
+        }
+
+        self.runtime.as_ref()?;
+
+        let surface_recreated = self.ensure_surface(slot, frame.width, frame.height)?;
+
+        // Skip the vertex rebuild and render pass if the frame is identical
+        // to what was last rendered on this slot.
+        if !surface_recreated {
+            let fp = frame.fingerprint();
+            if self
+                .last_rendered_fingerprint
+                .get(&slot.index())
+                .is_some_and(|prev| *prev == fp)
+            {
+                return self.surface_image(slot);
+            }
+        }
+
+        self.pending_frames.insert(slot.index(), frame);
+
+        // Return a live handle to the surface texture even on first creation
+        // so the UI can keep sampling the same texture across the redraw that
+        // flushes the queued frame.
+        self.surface_image(slot)
+    }
+
+    // -----------------------------------------------------------------------
+    // Initialization
+    // -----------------------------------------------------------------------
+
+    fn initialize(&mut self, graphics_api: &GraphicsAPI) {
+        if self.runtime.is_some() {
+            return;
+        }
+
+        let GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api else {
+            return;
+        };
+
+        self.runtime = Some(GpuRuntime::new(device, queue));
     }
 
     fn teardown(&mut self) {
-        if let Some(runtime) = &self.runtime
-            && let Some(handles) = &runtime.vulkan_handles
-        {
-            for img in runtime.filter_images.values() {
-                unsafe { img.destroy(&handles.device_fn) };
-            }
-        }
         self.runtime = None;
         self.pending_frames.clear();
         self.tile_arrays.clear();
         self.last_rendered_fingerprint.clear();
-        self.last_adjustments = None;
+        self.last_color = None;
     }
 
     fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
@@ -1299,15 +1026,13 @@ impl GpuRenderer {
         for (slot_index, frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
                 let fp = frame.fingerprint();
-                let gpu_post_process_enabled = frame.gpu_post_process_enabled;
                 Self::render_frame(
                     runtime,
                     &mut self.tile_arrays,
-                    &mut self.last_adjustments,
+                    &mut self.last_color,
                     SurfaceSlot(slot_index),
                     frame,
                     frame_id,
-                    gpu_post_process_enabled,
                 );
                 self.last_rendered_fingerprint.insert(slot_index, fp);
             }
@@ -1315,24 +1040,33 @@ impl GpuRenderer {
     }
 
     // -----------------------------------------------------------------------
-    // Core render path — one draw call per tile-array batch per surface.
+    // Core render path — one draw call per tile-array batch per surface,
+    // then the sharpening pass when the pane sharpens.
     // -----------------------------------------------------------------------
 
     fn render_frame(
         runtime: &mut GpuRuntime,
         tile_arrays: &mut HashMap<u32, TileArray>,
-        last_adjustments: &mut Option<AdjustmentsUniform>,
+        last_color: &mut Option<[f32; 36]>,
         slot: SurfaceSlot,
         frame: QueuedFrame,
         frame_id: u64,
-        gpu_filters_enabled: bool,
     ) {
-        let Some(surface_view) = runtime
+        let Some((surface_view, width, height)) = runtime
             .surfaces
             .get(&slot.index())
-            .map(|surface| surface.view.clone())
+            .map(|surface| (surface.view.clone(), surface.width, surface.height))
         else {
             return;
+        };
+        // Tiles are composited straight into the surface, or — when the
+        // pane sharpens — into a frame texture that the sharpening pass
+        // reads.
+        let sharpen = frame.sharpens();
+        let tile_target = if sharpen {
+            runtime.frame_texture(slot.index(), width, height)
+        } else {
+            surface_view.clone()
         };
 
         // Phase 1 & 2: Upload tiles and build vertices, tracking which array
@@ -1364,7 +1098,7 @@ impl GpuRenderer {
                     &runtime.bind_group_layout,
                     &runtime.bilinear_sampler,
                     &runtime.sampler,
-                    &runtime.adjustments_buffer,
+                    &runtime.color_buffer,
                     array_ls,
                     max_layers,
                 )
@@ -1432,31 +1166,13 @@ impl GpuRenderer {
                 .write_buffer(&runtime.vertex_buffer, 0, bytemuck::cast_slice(&flat));
         }
 
-        // Upload the colour-pipeline uniform only when values changed. The
-        // legacy normalisation and deconvolution parameters are fused into
-        // one stain transform (eov_common::processing).
-        let color = eov_common::processing::GpuColorUniform::from_legacy(
-            frame.gamma,
-            frame.brightness,
-            frame.contrast,
-            frame.sharpness,
-            frame.stain_norm_enabled,
-            frame.inv_stain_r0,
-            frame.inv_stain_r1,
-            &frame.deconv_params,
-        );
-        let adj = AdjustmentsUniform {
-            tone: color.tone,
-            stain_mode: color.stain.mode,
-            stain_log_i0: color.stain.log_i0,
-            stain_pinv: color.stain.pinv,
-            stain_w: color.stain.w,
-        };
-        if last_adjustments.as_ref() != Some(&adj) {
+        // Upload the colour-pipeline uniform only when values changed.
+        let color = frame.color.to_array();
+        if last_color.as_ref() != Some(&color) {
             runtime
                 .queue
-                .write_buffer(&runtime.adjustments_buffer, 0, bytemuck::bytes_of(&adj));
-            *last_adjustments = Some(adj);
+                .write_buffer(&runtime.color_buffer, 0, bytemuck::cast_slice(&color));
+            *last_color = Some(color);
         }
 
         // Build draw ranges — batch consecutive quads that share the same
@@ -1493,16 +1209,11 @@ impl GpuRenderer {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-tile-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &surface_view,
+                    view: &tile_target,
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 30.0 / 255.0,
-                            g: 30.0 / 255.0,
-                            b: 30.0 / 255.0,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1532,130 +1243,51 @@ impl GpuRenderer {
             }
         }
 
-        runtime.queue.submit(Some(encoder.finish()));
-
-        // ----- Post-process pass (e.g. grayscale viewport filter) ----------
-        if gpu_filters_enabled {
-            let surface = runtime.surfaces.get(&slot.index()).unwrap();
-            let (sw, sh) = (surface.width, surface.height);
-
-            // Ensure scratch texture exists and matches surface dimensions.
-            let scratch_key = slot.index();
-            let needs_recreate = runtime
-                .post_process_scratch
-                .get(&scratch_key)
-                .is_none_or(|s| s.width != sw || s.height != sh);
-            if needs_recreate {
-                let tex = runtime.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("post-process-scratch"),
-                    size: wgpu::Extent3d {
-                        width: sw,
-                        height: sh,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-                    view_formats: &[],
-                });
-                let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-                runtime.post_process_scratch.insert(
-                    scratch_key,
-                    ImportedSurface {
-                        texture: tex,
-                        view,
-                        width: sw,
-                        height: sh,
-                    },
-                );
-            }
-
-            let scratch = runtime.post_process_scratch.get(&scratch_key).unwrap();
-
-            // Update uniforms: enabled = 1.0
+        // ----- Stage 6: screen-space sharpening of the composited frame -----
+        if sharpen {
             runtime.queue.write_buffer(
-                &runtime.post_process_uniforms_buffer,
+                &runtime.sharpen_buffer,
                 0,
-                bytemuck::bytes_of(&[1.0f32, 0.0f32, 0.0f32, 0.0f32]),
+                bytemuck::cast_slice(&[frame.sharpness, 0.0, 0.0, 0.0]),
             );
-
-            // Bind group: surface texture as input.
             let bind_group = runtime
                 .device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("post-process-bind-group"),
-                    layout: &runtime.post_process_bind_group_layout,
+                    label: Some("viewport-sharpen-bind-group"),
+                    layout: &runtime.sharpen_bind_group_layout,
                     entries: &[
                         wgpu::BindGroupEntry {
                             binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&surface_view),
+                            resource: wgpu::BindingResource::TextureView(&tile_target),
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&runtime.post_process_sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: runtime.post_process_uniforms_buffer.as_entire_binding(),
+                            resource: runtime.sharpen_buffer.as_entire_binding(),
                         },
                     ],
                 });
-
-            let mut pp_encoder =
-                runtime
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("post-process-encoder"),
-                    });
-
-            {
-                let mut pass = pp_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("post-process-pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &scratch.view,
-                        resolve_target: None,
-                        depth_slice: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                    multiview_mask: None,
-                });
-                pass.set_pipeline(&runtime.post_process_pipeline);
-                pass.set_bind_group(0, &bind_group, &[]);
-                pass.draw(0..3, 0..1);
-            }
-
-            // Copy scratch back to surface.
-            let surface_tex = &runtime.surfaces.get(&slot.index()).unwrap().texture;
-            pp_encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &scratch.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: surface_tex,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: sw,
-                    height: sh,
-                    depth_or_array_layers: 1,
-                },
-            );
-
-            runtime.queue.submit(Some(pp_encoder.finish()));
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("viewport-sharpen-pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &surface_view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&runtime.sharpen_pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.draw(0..3, 0..1);
         }
+
+        runtime.queue.submit(Some(encoder.finish()));
     }
 }
 
@@ -1779,4 +1411,251 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eov_common::postprocess::ToneAdjustments;
+    use eov_common::processing::{ColorSettings, ProcessingPipeline};
+    use eov_common::stain::StainChannel;
+
+    fn validate(source: &str) {
+        let module = naga::front::wgsl::parse_str(source)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(source)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    }
+
+    #[test]
+    fn shaders_are_built_from_the_canonical_wgsl_and_validate() {
+        for fragment in [BILINEAR_FRAGMENT_WGSL, LANCZOS_FRAGMENT_WGSL] {
+            let source = tile_shader_source(fragment);
+            assert!(source.contains(wgsl::COLOR_FUNCTIONS));
+            assert!(source.contains(wgsl::COLOR_PARAMS_STRUCT));
+            validate(&source);
+        }
+        validate(wgsl::SHARPEN_POST_PASS);
+    }
+
+    fn frame(color: GpuColorUniform, sharpness: f32) -> QueuedFrame {
+        QueuedFrame {
+            width: 8,
+            height: 8,
+            draws: Vec::new(),
+            color,
+            sharpness,
+        }
+    }
+
+    #[test]
+    fn fingerprints_follow_colour_and_sharpening() {
+        let neutral = ProcessingPipeline::identity().gpu_uniform();
+        let toned = ProcessingPipeline::new(None, ToneAdjustments::new(1.3, 0.0, 1.0), 0.0)
+            .unwrap()
+            .gpu_uniform();
+        let base = frame(neutral, 0.0).fingerprint();
+        assert_eq!(base, frame(neutral, 0.0).fingerprint());
+        assert_ne!(base, frame(toned, 0.0).fingerprint());
+        assert_ne!(base, frame(neutral, 0.5).fingerprint());
+        assert!(!frame(neutral, 0.0).sharpens());
+        assert!(frame(neutral, 0.5).sharpens());
+    }
+
+    // ---- Headless GPU: the shaders against the CPU reference ------------
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            if let std::task::Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+                return output;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "GPU request timed out"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    /// A headless renderer, or `None` (test skipped) without a usable GPU.
+    fn headless_renderer() -> Option<GpuRenderer> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()?;
+        let info = adapter.get_info();
+        eprintln!("GPU tests run on {} ({:?})", info.name, info.backend);
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()?;
+        let mut renderer = GpuRenderer::new();
+        renderer.runtime = Some(GpuRuntime::new(&device, &queue));
+        Some(renderer)
+    }
+
+    const TILE: u32 = 48;
+
+    /// H&E-like test pattern.
+    fn pattern(x: u32, y: u32) -> [u8; 3] {
+        let t = ((x * 7 + y * 13) % 97) as f32 / 96.0;
+        if (x / 6 + y / 6).is_multiple_of(3) {
+            // nuclei
+            [
+                (90.0 + 60.0 * t) as u8,
+                (50.0 + 50.0 * t) as u8,
+                (140.0 + 50.0 * t) as u8,
+            ]
+        } else {
+            // stroma and glass
+            [
+                (210.0 + 40.0 * t) as u8,
+                (120.0 + 120.0 * t) as u8,
+                (170.0 + 70.0 * t) as u8,
+            ]
+        }
+    }
+
+    /// A tile with a one-pixel border (so that it maps 1:1 onto screen
+    /// pixels) and the same pixels as tightly packed RGBA.
+    fn tile() -> (Arc<TileData>, Vec<u8>) {
+        let data_w = TILE + 2;
+        let mut data = Vec::with_capacity((data_w * data_w * 4) as usize);
+        for y in 0..data_w {
+            for x in 0..data_w {
+                let px = pattern(
+                    x.saturating_sub(1).min(TILE - 1),
+                    y.saturating_sub(1).min(TILE - 1),
+                );
+                data.extend_from_slice(&[px[0], px[1], px[2], 255]);
+            }
+        }
+        let inner: Vec<u8> = (0..TILE)
+            .flat_map(|y| {
+                (0..TILE).flat_map(move |x| {
+                    let px = pattern(x, y);
+                    [px[0], px[1], px[2], 255]
+                })
+            })
+            .collect();
+        (
+            Arc::new(TileData::new(
+                TileCoord::new(1, 0, 0, 0, TILE),
+                data,
+                TILE,
+                TILE,
+                1,
+            )),
+            inner,
+        )
+    }
+
+    fn render(renderer: &mut GpuRenderer, width: u32, pipeline: &ProcessingPipeline) -> Vec<u8> {
+        let (tile, _) = tile();
+        let slot = SurfaceSlot(0);
+        renderer.ensure_surface(slot, width, TILE).unwrap();
+        renderer.pending_frames.insert(
+            slot.index(),
+            QueuedFrame {
+                width,
+                height: TILE,
+                draws: vec![TileDraw {
+                    tile,
+                    coarse_tile: None,
+                    screen_x: 0.0,
+                    screen_y: 0.0,
+                    screen_w: TILE as f32,
+                    screen_h: TILE as f32,
+                    coarse_uv_min: [0.0, 0.0],
+                    coarse_uv_max: [1.0, 1.0],
+                    mip_blend: 0.0,
+                    filtering_mode: FilteringMode::Bilinear,
+                }],
+                color: pipeline.gpu_uniform(),
+                sharpness: pipeline.sharpness(),
+            },
+        );
+        renderer.flush_pending_frames();
+        let (w, h, pixels) = renderer.read_surface_rgba(slot).unwrap();
+        assert_eq!((w, h), (width, TILE));
+        pixels
+    }
+
+    fn max_difference(a: &[u8], b: &[u8]) -> u8 {
+        assert_eq!(a.len(), b.len());
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| x.abs_diff(*y))
+            .max()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn gpu_frames_match_the_cpu_pipeline() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the GPU/CPU comparison");
+            return;
+        };
+        let (_, inner) = tile();
+        let mut settings = ColorSettings {
+            tone: ToneAdjustments::new(1.25, 0.03, 1.15),
+            channels: vec![
+                StainChannel {
+                    intensity: 1.4,
+                    visible: true,
+                },
+                StainChannel {
+                    intensity: 0.6,
+                    visible: true,
+                },
+            ],
+            ..ColorSettings::default()
+        };
+
+        // Stages 2–5: the tile shader against the CPU reference, with the
+        // background around the slide.
+        let pipeline = settings.pipeline(None);
+        let gpu = render(&mut renderer, TILE * 2, &pipeline);
+        let mut cpu = vec![0u8; (TILE * 2 * TILE * 4) as usize];
+        for y in 0..TILE as usize {
+            let row = &inner[y * TILE as usize * 4..(y + 1) * TILE as usize * 4];
+            cpu[y * TILE as usize * 8..y * TILE as usize * 8 + row.len()].copy_from_slice(row);
+        }
+        pipeline.apply_rgba(&mut cpu, TILE * 2, TILE, crate::color::VIEWPORT_BACKGROUND);
+        assert!(
+            max_difference(&gpu, &cpu) <= 1,
+            "GPU and CPU colours differ by {}",
+            max_difference(&gpu, &cpu)
+        );
+
+        // Isolating a stain uses the same uniform contract.
+        settings.isolated = Some(0);
+        let isolated = settings.pipeline(None);
+        let gpu = render(&mut renderer, TILE, &isolated);
+        let mut cpu = inner.clone();
+        isolated.apply_rgba(&mut cpu, TILE, TILE, crate::color::VIEWPORT_BACKGROUND);
+        assert!(max_difference(&gpu, &cpu) <= 1);
+        settings.isolated = None;
+
+        // Stage 6: the sharpening pass is the CPU's screen-space Laplacian
+        // over the composited 8-bit frame.
+        let unsharpened = render(&mut renderer, TILE * 2, &pipeline);
+        settings.sharpness = 0.6;
+        let sharpened_pipeline = settings.pipeline(None);
+        let gpu = render(&mut renderer, TILE * 2, &sharpened_pipeline);
+        let mut cpu = unsharpened;
+        sharpened_pipeline.sharpen(&mut cpu, TILE * 2, TILE);
+        assert!(
+            max_difference(&gpu, &cpu) <= 1,
+            "sharpening differs by {}",
+            max_difference(&gpu, &cpu)
+        );
+        // Far from the slide the background stays exactly as cleared.
+        let last = gpu.len() - 4;
+        assert_eq!(&gpu[last..], &[30, 30, 30, 255]);
+    }
 }

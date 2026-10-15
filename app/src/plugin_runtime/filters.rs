@@ -52,12 +52,6 @@ impl ChainSnapshot {
         self.has_enabled_cpu_filters()
     }
 
-    /// Kept for the GPU pipeline's post-process hook; plugins cannot add GPU
-    /// passes.
-    pub fn has_enabled_gpu_filters(&self) -> bool {
-        false
-    }
-
     /// Ids (`plugin:filter`) in execution order.
     #[cfg(test)]
     pub fn ids(&self) -> Vec<String> {

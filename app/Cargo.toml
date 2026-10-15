@@ -139,12 +139,7 @@ bytemuck = { version = "1", features = ["derive"] }
 # UUID for filter IDs
 uuid = { version = "1", features = ["v4"] }
 
-# Raw Vulkan bindings (same version as wgpu-hal uses internally)
-ash = "0.38"
-
 [target.'cfg(unix)'.dependencies]
-# Unix domain socket fd passing (SCM_RIGHTS) for DMA-BUF
-nix = { version = "0.29", features = ["socket", "uio"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -175,6 +170,8 @@ slint-build = "1.17.1"
 eov-common = { path = "../common", features = ["test-support"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.17.1" }
+# Validates the viewer's WGSL (the same naga as wgpu's).
+naga = { version = "29", features = ["wgsl-in"] }
 
 [features]
 default = ["distribution-cargo"]
