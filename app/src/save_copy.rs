@@ -163,6 +163,11 @@ fn summary(plan: &ConvertPlan) -> String {
         text.push_str("; the slide records no pixel size");
     }
     text.push('.');
+    if let Some(channels) = plan.composite_channels {
+        text.push_str(&format!(
+            " The {channels} channels are copied as the colour composite shown, not as channels."
+        ));
+    }
     text
 }
 
@@ -603,7 +608,7 @@ mod tests {
         struct ClearHost;
         impl Drop for ClearHost {
             fn drop(&mut self) {
-                crate::host_ui::clear_for_tests();
+                crate::host_ui::clear_host();
                 DIALOG.with(|dialog| *dialog.borrow_mut() = Dialog::default());
             }
         }

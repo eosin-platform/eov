@@ -24,8 +24,9 @@ const MAX_PLUGIN_ITEMS: usize = 20;
 pub(super) struct OpenMenu {
     contexts: Vec<(Arc<str>, MenuContext)>,
     file_id: Option<FileId>,
-    /// The pane the menu was opened on.
+    /// The pane the menu was opened on, and the level-0 point under it.
     pane: usize,
+    image: Point,
 }
 
 fn item(id: impl Into<String>, label: &str, icon: &str) -> ContextMenuItem {
@@ -72,7 +73,15 @@ impl UiHost {
         let Some(ui) = self.ui() else {
             return;
         };
-        let (file_id, view, has_roi, has_measurements, turned) = {
+        let (linked, can_align, has_landmarks) = {
+            let state = self.state.read();
+            (
+                state.slide_link.enabled && state.split_enabled,
+                crate::slide_link::can_align_from_landmarks(&state, PaneId(pane)),
+                !state.slide_link.landmarks.is_empty(),
+            )
+        };
+        let (file_id, view, has_roi, has_measurements, turned, multichannel) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -85,6 +94,7 @@ impl UiHost {
                 file.is_some_and(|f| !f.measurements.is_empty()),
                 file.and_then(|f| f.pane_state(PaneId(pane)))
                     .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
+                file.is_some_and(|f| f.wsi.is_multichannel()),
             )
         };
         let keys = crate::shortcuts::current();
@@ -103,13 +113,50 @@ impl UiHost {
             ),
         ];
         mark_last_separator(&mut items);
+        if multichannel {
+            items.push(with_key(
+                item("host:channels", "Channels…", ""),
+                Action::Channels,
+            ));
+            mark_last_separator(&mut items);
+        }
         if file_id.is_some() {
-            items.push(item("host:view-rotate-right", "Rotate Right 90°", ""));
-            items.push(item("host:view-rotate-left", "Rotate Left 90°", ""));
-            items.push(item("host:view-flip", "Flip Horizontally", ""));
+            items.push(with_key(
+                item("host:view-rotate-right", "Rotate Right 90°", ""),
+                Action::RotateRight,
+            ));
+            items.push(with_key(
+                item("host:view-rotate-left", "Rotate Left 90°", ""),
+                Action::RotateLeft,
+            ));
+            items.push(with_key(
+                item("host:view-flip", "Flip Horizontally", ""),
+                Action::Flip,
+            ));
             if turned {
                 items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
             }
+            mark_last_separator(&mut items);
+        }
+        // Linked navigation: align this slide to the others (Phase 3 #5).
+        if linked && file_id.is_some() {
+            items.push(item(
+                "host:link-landmark-1",
+                "Place Alignment Landmark 1",
+                "",
+            ));
+            items.push(item(
+                "host:link-landmark-2",
+                "Place Alignment Landmark 2",
+                "",
+            ));
+            if can_align {
+                items.push(item("host:link-align", "Align from Landmarks", ""));
+            }
+            if has_landmarks {
+                items.push(item("host:link-clear-landmarks", "Clear Landmarks", ""));
+            }
+            items.push(item("host:link-reset", "Reset Alignment", ""));
             mark_last_separator(&mut items);
         }
         if let Some(file_id) = file_id {
@@ -123,6 +170,15 @@ impl UiHost {
                     Action::Bookmarks,
                 ));
             }
+            items.push(item(
+                "host:heatmap",
+                if self.has_heatmap(file_id as i32) {
+                    "Heat Map…"
+                } else {
+                    "Show Heat Map…"
+                },
+                "",
+            ));
             mark_last_separator(&mut items);
         }
 
@@ -239,6 +295,7 @@ impl UiHost {
             contexts,
             file_id,
             pane,
+            image,
         });
 
         ui.set_context_menu_tab_id(-1);
@@ -285,6 +342,16 @@ impl UiHost {
         if self.bookmark_command(host_command) {
             return true;
         }
+        let opened_at = self
+            .menu
+            .borrow()
+            .as_ref()
+            .map(|menu| (menu.pane, menu.image));
+        if let Some((pane, image)) = opened_at
+            && self.link_command(host_command, pane, image)
+        {
+            return true;
+        }
         if host_command == "measurements-panel" {
             self.open_measurements_panel();
             return true;
@@ -320,6 +387,14 @@ impl UiHost {
         let Some(file_id) = file_id else {
             return true;
         };
+        if host_command == "channels" {
+            crate::channels::open(self, file_id as i32);
+            return true;
+        }
+        if host_command == "heatmap" {
+            self.open_heatmap_panel_for(file_id as i32);
+            return true;
+        }
         if let Some(id) = host_command.strip_prefix("measurement-delete:") {
             self.apply_host_edit(file_id, HostEdit::Remove(vec![id.to_string()]), true);
         } else if let Some(id) = host_command.strip_prefix("measurement-copy:") {
@@ -405,5 +480,30 @@ impl UiHost {
             ui.set_measure_mode_label(mode.label().into());
         }
         super::input::set_tool(self, ToolChoice::Measure(mode));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use slint::Model;
+
+    /// Multichannel slides offer their Channels panel in the viewport menu.
+    #[test]
+    fn multichannel_slides_get_a_channels_item() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let setup = crate::test_support::HostWithSlide::new();
+            setup
+                .host
+                .open_viewport_menu(0, 10.0, 10.0, [0.0, 0.0], Vec::new());
+            let items: Vec<String> = setup
+                .ui
+                .get_context_menu_items()
+                .iter()
+                .map(|item| item.id.to_string())
+                .collect();
+            assert!(items.contains(&"host:channels".to_string()), "{items:?}");
+            assert!(setup.host.context_menu_command("host:channels"));
+            assert!(setup.ui.get_channels_panel_visible());
+        });
     }
 }

@@ -117,6 +117,8 @@ pub struct PluginRuntime {
     shared: Arc<HostShared>,
     filters: SharedFilterChain,
     slots: Vec<PluginSlot>,
+    /// Plugins run without a window (`eov batch`).
+    headless: bool,
 }
 
 impl PluginRuntime {
@@ -125,6 +127,15 @@ impl PluginRuntime {
             shared,
             filters,
             slots: Vec::new(),
+            headless: false,
+        }
+    }
+
+    /// A runtime for plugins without a window (`eov batch`).
+    pub fn headless(shared: Arc<HostShared>, filters: SharedFilterChain) -> Self {
+        Self {
+            headless: true,
+            ..Self::new(shared, filters)
         }
     }
 
@@ -201,6 +212,7 @@ impl PluginRuntime {
             settings,
             legacy_config_dir: crate::paths::legacy_config_dir()
                 .map(|dir| dir.to_string_lossy().into_owned()),
+            headless: self.headless,
         };
         let host = HostApi::new(Arc::clone(&ctx), Arc::clone(&self.shared)).into_ffi();
         let started = Instant::now();

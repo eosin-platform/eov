@@ -178,6 +178,8 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
                 HostEvent::RegistrationRefused { what, id, reason },
             );
         }
+        // Batch runs happen in `eov batch`, never in the window.
+        Command::BatchProgress(_) | Command::BatchFinish(_) => {}
     }
 }
 

@@ -341,8 +341,49 @@ fn ome_tiff_copies_have_a_sub_ifd_pyramid() {
         };
         assert!(pixels == reference[index + 1].2, "SubIFD {index} differs");
     }
-    // OpenSlide sees the full-resolution image only.
-    assert_eq!(WsiFile::open(&output).unwrap().level_count(), 1);
+    // eov's own OME-TIFF reader sees the whole pyramid.
+    let copy = WsiFile::open(&output).unwrap();
+    assert_eq!(copy.properties().vendor.as_deref(), Some("ome-tiff"));
+    assert_eq!(copy.level_count(), 3);
+    assert!((copy.properties().mpp_x.unwrap() - 0.25).abs() < 1e-9);
+    for (level, (w, h, pixels)) in reference.iter().enumerate() {
+        let rgba = copy.read_region(0, 0, level as u32, *w, *h).unwrap();
+        assert!(rgb_of(&rgba) == *pixels, "level {level} differs");
+    }
+}
+
+/// OME-TIFF copies with JPEG tiles, associated images and an objective
+/// read back through eov's OME-TIFF reader.
+#[test]
+fn ome_tiff_copies_open_in_eov_with_their_images_and_objective() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = aperio_slide(dir.path());
+    let original = expected(512, 384, 0, 0, smooth);
+    let output = dir.path().join("copy.ome.tif");
+    let options = ConvertOptions {
+        format: SlideFormat::OmeTiff,
+        tile_size: 256,
+        ..ConvertOptions::default()
+    };
+    let report = convert(&source, &output, &options);
+    assert_eq!(report.plan.levels.len(), 2);
+    let copy = WsiFile::open(&output).unwrap();
+    let props = copy.properties();
+    assert_eq!(props.vendor.as_deref(), Some("ome-tiff"));
+    assert_eq!(copy.level_count(), 2);
+    assert_eq!(props.objective_power, Some(20.0));
+    assert!((props.mpp_x.unwrap() - 0.4942).abs() < 1e-9);
+    // YCbCr JPEG tiles decode to the right colours.
+    let rgba = copy.read_region(0, 0, 0, 512, 384).unwrap();
+    let p = psnr(&rgb_of(&rgba), &original);
+    assert!(p > 34.0, "PSNR {p:.1} through eov's OME-TIFF reader");
+    // The label, macro and thumbnail are images of their own, by name.
+    for name in ["label", "macro", "thumbnail"] {
+        assert!(copy.associated_image(name).is_some(), "{name} missing");
+    }
+    let label = copy.read_associated_image("label").unwrap();
+    assert_eq!((label.width, label.height), (24, 16));
+    assert_eq!(&label.pixels[..3], &[10, 20, 30]);
 }
 
 /// A decoder whose first image is the IFD at `offset` (a TIFF header
@@ -566,7 +607,11 @@ fn deidentified_copies_contain_no_label_macro_or_phi() {
         // What it does say.
         let copy = WsiFile::open(&output).unwrap();
         let props = copy.properties();
-        assert_eq!(props.vendor.as_deref(), Some("generic-tiff"));
+        let vendor = match format {
+            SlideFormat::Tiff => "generic-tiff",
+            SlideFormat::OmeTiff => "ome-tiff",
+        };
+        assert_eq!(props.vendor.as_deref(), Some(vendor));
         assert!(copy.associated_images().is_empty());
         assert!((props.mpp_x.unwrap() - 0.4942).abs() < 1e-6);
         let description = match format {
@@ -794,4 +839,40 @@ fn copies_record_their_objective_power_for_readers() {
         None,
         "a source property is not the copy's"
     );
+}
+
+/// A multichannel slide is copied as the RGB composite eov displays.
+#[test]
+fn multichannel_slides_are_copied_as_their_composite() {
+    use crate::test_support::{OmeTiffSpec, write_ome_tiff};
+
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("cycif.ome.tif");
+    let spec = OmeTiffSpec::channels(
+        256,
+        192,
+        64,
+        2,
+        &[("DAPI", [0, 0, 255]), ("CD3", [0, 255, 0])],
+    );
+    write_ome_tiff(&source, &spec, |channel, x, y| {
+        f64::from(if channel == 0 { x * 200 } else { y * 300 })
+    })
+    .unwrap();
+    let wsi = WsiFile::open(&source).unwrap();
+    assert!(wsi.is_multichannel());
+    let composite = rgb_of(&wsi.read_region(0, 0, 0, 256, 192).unwrap());
+
+    let output = dir.path().join("composite.tif");
+    let report = convert(&source, &output, &deflate(64));
+    assert_eq!(report.plan.composite_channels, Some(2));
+    let copy = WsiFile::open(&output).unwrap();
+    assert!(!copy.is_multichannel());
+    assert!(rgb_of(&copy.read_region(0, 0, 0, 256, 192).unwrap()) == composite);
+    let comment = copy.properties().comment.clone().unwrap();
+    assert!(
+        comment.contains("Channels = RGB composite of 2 channels, as displayed"),
+        "{comment}"
+    );
+    assert!((copy.properties().mpp_x.unwrap() - 0.5).abs() < 1e-9);
 }

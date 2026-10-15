@@ -1,0 +1,279 @@
+// Small controls shared by the floating panels (Quantify Stain, Heat Map).
+
+import { Theme } from "theme.slint";
+
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: label.preferred-width + 18px;
+    height: 24px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.border;
+    background: root.selected ? Theme.accent : touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+
+    label := Text {
+        text: root.text;
+        color: root.selected ? white : Theme.text-primary;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component NumberField inherits Rectangle {
+    in property <string> label;
+    in-out property <string> text;
+    callback edited(string);
+
+    width: 120px;
+    height: 44px;
+
+    VerticalLayout {
+        spacing: 3px;
+
+        Text {
+            text: root.label;
+            color: Theme.text-secondary;
+            font-size: 10px;
+        }
+
+        Rectangle {
+            height: 24px;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.accent : Theme.border;
+            background: #0a0c10;
+
+            input := TextInput {
+                x: 6px;
+                width: parent.width - 12px;
+                height: parent.height;
+                text <=> root.text;
+                color: Theme.text-primary;
+                font-size: 12px;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-label: root.label;
+                edited => {
+                    root.edited(self.text);
+                }
+            }
+        }
+    }
+}
+
+export component PanelButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    min-width: label.preferred-width + 16px;
+    height: 28px;
+    border-radius: 4px;
+    background: !root.enabled ? Theme.surface
+        : root.primary ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+    border-width: root.primary ? 0px : 1px;
+    border-color: Theme.border;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+
+    label := Text {
+        text: root.text;
+        color: !root.enabled ? Theme.text-secondary : root.primary ? white : Theme.text-primary;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+/// A value from `minimum` to `maximum`, dragged or moved with the arrow
+/// keys when focused.
+export component PanelSlider inherits Rectangle {
+    in property <string> label;
+    in-out property <float> value;
+    in property <float> minimum: 0.0;
+    in property <float> maximum: 1.0;
+    in property <float> step: 0.05;
+    in property <string> value-text;
+    callback changed(float);
+
+    height: 36px;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: root.value-text;
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.step;
+    accessible-action-increment => {
+        root.set(root.value + root.step);
+    }
+    accessible-action-decrement => {
+        root.set(root.value - root.step);
+    }
+
+    property <float> fraction: (root.value - root.minimum) / max(root.maximum - root.minimum, 0.0001);
+
+    function set(v: float) {
+        root.value = max(root.minimum, min(root.maximum, v));
+        root.changed(root.value);
+    }
+
+    Text {
+        x: 0px;
+        y: 0px;
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: 10px;
+    }
+
+    Text {
+        x: parent.width - self.width;
+        y: 0px;
+        text: root.value-text;
+        color: Theme.text-primary;
+        font-size: 10px;
+    }
+
+    track := Rectangle {
+        x: 6px;
+        y: 22px;
+        width: parent.width - 12px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff20;
+
+        Rectangle {
+            x: 0px;
+            width: root.fraction * parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.link;
+        }
+    }
+
+    Rectangle {
+        x: track.x + root.fraction * track.width - 6px;
+        y: track.y + 1.5px - 6px;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: white;
+        border-width: focus.has-focus ? 2px : 1px;
+        border-color: Theme.link;
+    }
+
+    focus := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.LeftArrow || e.text == Key.DownArrow {
+                root.set(root.value - root.step);
+                return accept;
+            }
+            if e.text == Key.RightArrow || e.text == Key.UpArrow {
+                root.set(root.value + root.step);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    TouchArea {
+        y: 12px;
+        height: parent.height - 12px;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                focus.focus();
+            }
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                root.set(root.minimum + max(0.0, min(1.0, (self.mouse-x - track.x) / max(track.width, 1px))) * (root.maximum - root.minimum));
+            }
+        }
+    }
+}
+
+export component PanelCheck inherits Rectangle {
+    in property <string> text;
+    in-out property <bool> checked;
+    callback toggled(bool);
+
+    height: 22px;
+    width: label.x + label.preferred-width;
+    accessible-role: checkbox;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => {
+        root.checked = !root.checked;
+        root.toggled(root.checked);
+    }
+
+    Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: root.checked ? Theme.accent : Theme.border;
+        background: root.checked ? Theme.accent : transparent;
+
+        if root.checked: Text {
+            text: "✓";
+            color: white;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    label := Text {
+        x: 20px;
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 12px;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}

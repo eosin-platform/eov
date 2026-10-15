@@ -18,17 +18,21 @@
 //!   snapshot), so plugin threads cannot block on the UI.
 
 mod annotations;
+mod app_update;
 mod bookmarks;
 mod callbacks;
 mod commands;
+mod heatmaps;
+pub(crate) use heatmaps::is_heatmap_layer;
 mod input;
 pub(crate) mod key_help;
+mod link;
 mod measurements_panel;
 mod menus;
 mod notices;
 mod overlays;
 mod panel;
-mod publish;
+pub(crate) mod publish;
 mod surfaces;
 
 use crate::AppWindow;
@@ -67,10 +71,10 @@ pub(crate) fn with_host<R>(f: impl FnOnce(&Rc<UiHost>) -> R) -> Option<R> {
     Some(f(&host))
 }
 
-/// Forgets this thread's host: tests share the Slint test thread, and a
-/// host left behind would take part in other tests.
+/// Forgets this thread's UI host, for tests that create one on the shared
+/// Slint test thread.
 #[cfg(test)]
-pub(crate) fn clear_for_tests() {
+pub(crate) fn clear_host() {
     HOST.with(|slot| *slot.borrow_mut() = None);
 }
 
@@ -131,6 +135,10 @@ pub(crate) struct UiHost {
     /// Newer versions found by the Plugins panel's Check for Updates, by
     /// plugin id.
     plugin_updates: RefCell<HashMap<String, String>>,
+    /// The update of eov started from the Home screen.
+    app_update: RefCell<Option<app_update::AppUpdate>>,
+    /// Its status-bar job while it applies.
+    app_update_job: RefCell<Option<String>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -200,6 +208,8 @@ pub(crate) fn init(
         last_pointer: Cell::new(None),
         measurements_panel: Cell::new(None),
         plugin_updates: RefCell::new(HashMap::new()),
+        app_update: RefCell::new(None),
+        app_update_job: RefCell::new(None),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();
@@ -871,6 +881,77 @@ mod tests {
                     .iter()
                     .any(|row| row.id == "broken.eop")
             );
+        });
+    }
+
+    /// The viewport menu's landmark commands place numbered markers and
+    /// align the linked panes.
+    #[test]
+    fn landmarks_from_the_menu_show_and_align() {
+        use crate::overlay::store::Owner;
+        use crate::state::PaneId;
+        run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
+            let (mut state, _dir, a, b, second) = crate::slide_link::test_fixtures::two_slides();
+            crate::slide_link::toggle_link(&mut state);
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(state));
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let timer = Rc::new(Timer::default());
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let host = init(
+                &ui,
+                &state,
+                &tile_cache,
+                &timer,
+                InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: true,
+                },
+            );
+            // B is A scaled 2× and shifted.
+            for (index, p) in [[100.0, 100.0], [600.0, 300.0]].into_iter().enumerate() {
+                let command = format!("link-landmark-{}", index + 1);
+                assert!(host.link_command(&command, 0, p));
+                assert!(host.link_command(&command, second.0, [2.0 * p[0] + 40.0, 2.0 * p[1]]));
+            }
+            let layer = host
+                .store
+                .layer(&Owner::Host, &format!("host-link-landmarks-{a}"))
+                .expect("the markers are shown");
+            assert_eq!(layer.len(), 2);
+            assert!(
+                host.store
+                    .layer(&Owner::Host, &format!("host-link-landmarks-{b}"))
+                    .is_some()
+            );
+            assert!(host.link_command("link-align", 0, [0.0, 0.0]));
+            {
+                let mut state = state.write();
+                let file = state.get_file_mut(a).unwrap();
+                file.pane_state_mut(PaneId::PRIMARY)
+                    .unwrap()
+                    .viewport
+                    .set_center_zoom(300.0, 200.0, 0.5);
+                crate::slide_link::sync_views(&mut state);
+                let follower = &state
+                    .get_file(b)
+                    .unwrap()
+                    .pane_state(second)
+                    .unwrap()
+                    .viewport
+                    .viewport;
+                assert!((follower.center.x - 640.0).abs() < 1e-6);
+                assert!((follower.center.y - 400.0).abs() < 1e-6);
+                assert!((follower.zoom - 0.25).abs() < 1e-9);
+            }
+            assert!(host.link_command("link-clear-landmarks", 0, [0.0, 0.0]));
+            assert!(
+                host.store
+                    .layer(&Owner::Host, &format!("host-link-landmarks-{a}"))
+                    .is_none()
+            );
+            host.shutdown();
         });
     }
 

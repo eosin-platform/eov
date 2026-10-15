@@ -1,0 +1,264 @@
+// The Heat Map panel (AUDIT §14.2): an image from another tool (a model's
+// probabilities, an attention map) drawn over the slide. It floats over
+// the top-right corner without dimming the slide, so changes are seen as
+// they are made.
+
+import { Theme } from "theme.slint";
+import { ChoiceItem } from "types.slint";
+import { Chip, NumberField, PanelButton, PanelSlider, PanelCheck } from "panel-controls.slint";
+
+/// The panel's state, set by the host.
+export global HeatMapPanel {
+    in-out property <bool> visible: false;
+    in property <string> title;
+    /// The map's file, size and how its pixels were read.
+    in property <string> summary;
+    in property <[ChoiceItem]> placements;
+    in property <string> placement;
+    /// The number a placement needs ("" when it needs none).
+    in property <string> scale-label;
+    in-out property <string> scale-text;
+    /// Where the map lies, or why it cannot be placed.
+    in property <string> placement-note;
+    in property <bool> placement-ok: true;
+    /// The map holds values (coloured through a colour map).
+    in property <bool> scalar;
+    in property <[ChoiceItem]> color-maps;
+    in property <string> color-map;
+    in property <image> legend;
+    in-out property <float> opacity: 0.5;
+    in-out property <float> threshold: 0.0;
+    in-out property <bool> smooth: false;
+    in-out property <bool> shown: true;
+    callback placement-chosen(string);
+    callback scale-edited(string);
+    callback color-map-chosen(string);
+    /// Opacity, threshold, smoothing or visibility changed.
+    callback style-changed();
+    callback replace-requested();
+    callback remove-requested();
+    callback close-requested();
+}
+
+export component HeatMapPanelView inherits Rectangle {
+    width: 340px;
+    height: min(layout.preferred-height, 640px);
+    background: Theme.surface;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000080;
+    clip: true;
+
+    // Keeps clicks on the panel off the viewport below.
+    TouchArea { }
+
+    FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                HeatMapPanel.close-requested();
+                return accept;
+            }
+            reject
+        }
+
+        layout := VerticalLayout {
+            padding: 14px;
+            spacing: 10px;
+
+            HorizontalLayout {
+                Text {
+                    text: HeatMapPanel.title;
+                    color: Theme.text-primary;
+                    font-size: 13px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: "Close the heat map panel";
+                    accessible-action-default => {
+                        HeatMapPanel.close-requested();
+                    }
+
+                    Text {
+                        text: "✕";
+                        color: Theme.text-secondary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    close-touch := TouchArea {
+                        clicked => {
+                            HeatMapPanel.close-requested();
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: HeatMapPanel.summary;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            Text {
+                text: "Placement";
+                color: Theme.text-secondary;
+                font-size: 11px;
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                for item in HeatMapPanel.placements: Chip {
+                    text: item.label;
+                    selected: item.id == HeatMapPanel.placement;
+                    clicked => {
+                        HeatMapPanel.placement-chosen(item.id);
+                    }
+                }
+            }
+
+            if HeatMapPanel.scale-label != "": NumberField {
+                width: 220px;
+                label: HeatMapPanel.scale-label;
+                text <=> HeatMapPanel.scale-text;
+                edited(text) => {
+                    HeatMapPanel.scale-edited(text);
+                }
+            }
+
+            Text {
+                text: HeatMapPanel.placement-note;
+                color: HeatMapPanel.placement-ok ? Theme.text-secondary : #f1c40f;
+                font-size: 10px;
+                wrap: word-wrap;
+            }
+
+            if HeatMapPanel.scalar: Text {
+                text: "Colours";
+                color: Theme.text-secondary;
+                font-size: 11px;
+            }
+
+            if HeatMapPanel.scalar: HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                for item in HeatMapPanel.color-maps: Chip {
+                    text: item.label;
+                    selected: item.id == HeatMapPanel.color-map;
+                    clicked => {
+                        HeatMapPanel.color-map-chosen(item.id);
+                    }
+                }
+            }
+
+            if HeatMapPanel.scalar: HorizontalLayout {
+                spacing: 6px;
+
+                Text {
+                    text: "0";
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+
+                Image {
+                    source: HeatMapPanel.legend;
+                    height: 10px;
+                    horizontal-stretch: 1;
+                    image-fit: fill;
+                    accessible-role: image;
+                    accessible-label: "Colour scale from 0 to 1";
+                }
+
+                Text {
+                    text: "1";
+                    color: Theme.text-secondary;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+
+            PanelSlider {
+                label: "Opacity";
+                value <=> HeatMapPanel.opacity;
+                value-text: round(HeatMapPanel.opacity * 100) + " %";
+                changed => {
+                    HeatMapPanel.style-changed();
+                }
+            }
+
+            if HeatMapPanel.scalar: PanelSlider {
+                label: "Hide values below";
+                value <=> HeatMapPanel.threshold;
+                step: 0.01;
+                value-text: HeatMapPanel.threshold <= 0 ? "none (zero is background)" : "" + round(HeatMapPanel.threshold * 100) / 100;
+                changed => {
+                    HeatMapPanel.style-changed();
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+
+                PanelCheck {
+                    text: "Show";
+                    checked <=> HeatMapPanel.shown;
+                    toggled => {
+                        HeatMapPanel.style-changed();
+                    }
+                }
+
+                PanelCheck {
+                    text: "Smooth";
+                    checked <=> HeatMapPanel.smooth;
+                    toggled => {
+                        HeatMapPanel.style-changed();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                PanelButton {
+                    text: "Other Image…";
+                    clicked => {
+                        HeatMapPanel.replace-requested();
+                    }
+                }
+
+                PanelButton {
+                    text: "Remove";
+                    clicked => {
+                        HeatMapPanel.remove-requested();
+                    }
+                }
+
+                PanelButton {
+                    text: "Done";
+                    primary: true;
+                    clicked => {
+                        HeatMapPanel.close-requested();
+                    }
+                }
+            }
+        }
+    }
+}

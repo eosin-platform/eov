@@ -19,7 +19,8 @@
 //!   [`plugins::PluginContext`].
 //! - **Application** (`app`): [`plan_update`] returns an
 //!   [`UpdatePlan`] (strategy, signature, per-plugin actions with reasons)
-//!   without changing anything; [`execute_update`] applies it;
+//!   without changing anything ([`UpdatePlan::summary`] for a dialog);
+//!   [`execute_update`] applies it;
 //!   [`rollback_plan`] / [`rollback`] restore the previous installation; and
 //!   [`take_helper_report`] returns what the post-exit update helper reported
 //!   (show it once at startup).
@@ -55,8 +56,9 @@ pub use plugins::OutputFormat as PluginOutputFormat;
 /// Library API for a GUI updater (see the module documentation).
 #[allow(unused_imports)]
 pub use app::{
-    PlannedUpdate, RollbackPlan, UpdateContext, UpdateOutcome, UpdatePlan, UpdateRequest,
-    execute as execute_update, plan as plan_update, rollback, rollback_plan, take_helper_report,
+    PlanSummary, PlannedUpdate, RollbackPlan, UpdateContext, UpdateOutcome, UpdatePlan,
+    UpdateRequest, execute as execute_update, plan as plan_update, rollback, rollback_plan,
+    take_helper_report,
 };
 pub use app::{UpdateOptions, run_cli as run_update_cli};
 /// Integration points for the plugin host: plugins the user disabled with

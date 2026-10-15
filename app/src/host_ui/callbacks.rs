@@ -147,6 +147,55 @@ impl UiHost {
     }
 }
 
+/// The Channels panel's callbacks, and its entry in the Slide Information
+/// panel.
+fn install_channels(ui: &AppWindow) {
+    use crate::channels::Edit;
+    fn edit(edit: Edit) {
+        with_host(|host| crate::channels::edit(host, edit));
+    }
+    let index = |index: i32| index.max(0) as usize;
+    ui.on_channels_closed(|| {
+        with_host(|host| {
+            if let Some(ui) = host.ui() {
+                crate::channels::closed(&ui);
+            }
+        });
+    });
+    ui.on_channels_visibility_toggled(move |i, visible| edit(Edit::Visible(index(i), visible)));
+    ui.on_channels_solo_toggled(move |i| edit(Edit::Solo(index(i))));
+    ui.on_channels_color_chosen(move |i, color| {
+        edit(Edit::Color(
+            index(i),
+            [color.red(), color.green(), color.blue()],
+        ))
+    });
+    ui.on_channels_window_moved(move |i, high, position| {
+        edit(Edit::Window {
+            index: index(i),
+            high,
+            position: f64::from(position),
+        })
+    });
+    ui.on_channels_min_entered(move |i, text| edit(Edit::Min(index(i), text.to_string())));
+    ui.on_channels_max_entered(move |i, text| edit(Edit::Max(index(i), text.to_string())));
+    ui.on_channels_gamma_moved(move |i, position| {
+        edit(Edit::GammaPosition(index(i), f64::from(position)))
+    });
+    ui.on_channels_gamma_entered(move |i, text| edit(Edit::Gamma(index(i), text.to_string())));
+    ui.on_channels_auto_contrast(|| edit(Edit::AutoContrast));
+    ui.on_channels_reset(|| edit(Edit::Reset));
+    ui.on_channels_show_all(|| edit(Edit::ShowAll));
+    ui.on_channels_palette(|id| {
+        if let Some(palette) = eov_common::channels::Palette::from_id(&id) {
+            edit(Edit::Palette(palette));
+        }
+    });
+    ui.on_slide_info_channels_requested(|| {
+        with_host(|host| crate::slide_info::open_channels(host));
+    });
+}
+
 pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_viewport_pointer(
         |pane, kind, button, x, y, wx, wy, shift, control, alt, meta| {
@@ -295,6 +344,7 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_measurements_clear(|| {
         with_host(|host| host.measurements_clear());
     });
+    install_channels(ui);
     let ui_weak = ui.as_weak();
     ui.on_bookmark_dialog_accepted(move |name| {
         with_host(|host| host.finish_bookmark(&name));
@@ -334,6 +384,33 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     });
     ui.on_plugins_check_updates(|| {
         with_host(|host| host.check_plugin_updates());
+    });
+    let heatmap = ui.global::<crate::HeatMapPanel>();
+    heatmap.on_placement_chosen(|id| {
+        with_host(|host| host.heatmap_placement_chosen(&id));
+    });
+    heatmap.on_scale_edited(|text| {
+        with_host(|host| host.heatmap_scale_edited(&text));
+    });
+    heatmap.on_color_map_chosen(|id| {
+        with_host(|host| host.heatmap_color_map_chosen(&id));
+    });
+    heatmap.on_style_changed(|| {
+        with_host(|host| host.heatmap_style_changed());
+    });
+    heatmap.on_replace_requested(|| {
+        with_host(|host| host.heatmap_replace());
+    });
+    heatmap.on_remove_requested(|| {
+        with_host(|host| host.heatmap_remove());
+    });
+    heatmap.on_close_requested(|| {
+        with_host(|host| host.heatmap_close());
+    });
+    let app_info = ui.global::<crate::AppInfo>();
+    app_info.set_version(env!("CARGO_PKG_VERSION").into());
+    app_info.on_check_for_updates(|| {
+        with_host(|host| host.check_for_app_update());
     });
     ui.on_plugin_update_requested(|plugin_id| {
         with_host(|host| host.update_plugin(&plugin_id));

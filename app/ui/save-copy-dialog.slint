@@ -208,7 +208,7 @@ export component SaveCopyDialog inherits Rectangle {
 
             Choice {
                 text: "OME-TIFF";
-                detail: "For QuPath, Bio-Formats and OMERO (eov shows its full resolution only)";
+                detail: "For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)";
                 checked: root.settings.format == 1;
                 clicked => {
                     root.settings.format = 1;

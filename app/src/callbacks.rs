@@ -393,6 +393,73 @@ fn toggle_scale_bar_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_show_scale_bar(show_scale_bar);
 }
 
+/// Links (or unlinks) the panes showing different slides, so they follow
+/// the focused one (Phase 3 #5). For key bindings; returns whether the link
+/// is on.
+pub(crate) fn toggle_slide_link(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -> bool {
+    let (linked, split) = {
+        let mut state = state.write();
+        (
+            crate::slide_link::toggle_link(&mut state),
+            state.split_enabled,
+        )
+    };
+    ui.set_slide_link_enabled(linked);
+    ui.set_alignment_adjust_enabled(false);
+    crate::host_ui::with_host(|host| host.sync_landmark_layers());
+    ui.set_status_text(
+        match (linked, split) {
+            (true, true) => "Panes linked: they follow the focused pane",
+            (true, false) => "Panes linked: split the view to compare slides",
+            (false, _) => "Panes unlinked",
+        }
+        .into(),
+    );
+    linked
+}
+
+/// Starts or ends adjusting the linked panes' alignment: while on, moving a
+/// pane moves it alone; ending saves the alignments. For key bindings;
+/// returns whether adjusting is on.
+pub(crate) fn toggle_alignment_adjust(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -> bool {
+    let (adjusting, linked) = {
+        let mut state = state.write();
+        (
+            crate::slide_link::toggle_adjust(&mut state),
+            state.slide_link.enabled,
+        )
+    };
+    ui.set_alignment_adjust_enabled(adjusting);
+    ui.set_status_text(
+        if !linked {
+            "Link the panes first"
+        } else if adjusting {
+            "Adjusting the alignment: move a pane to align it to the others"
+        } else {
+            "Alignment saved"
+        }
+        .into(),
+    );
+    adjusting
+}
+
+/// Aligns the other linked panes to the focused one from the alignment
+/// landmarks placed on both slides. For key bindings.
+pub(crate) fn align_linked_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let result = crate::slide_link::align_from_landmarks(&mut state.write());
+    match result {
+        Ok(text) => ui.set_status_text(text.into()),
+        Err(error) => ui.set_status_text(error.into()),
+    }
+}
+
+/// Forgets the focused pane's alignments (also the saved ones): the linked
+/// panes stay aligned as they are now. For key bindings.
+pub(crate) fn reset_linked_alignment(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    crate::slide_link::reset_alignment(&mut state.write());
+    ui.set_status_text("The panes are aligned as they are now".into());
+}
+
 fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let viewport_lock_enabled = {
         let mut state = state.write();
@@ -841,6 +908,34 @@ pub fn setup_callbacks(
         ui.on_toggle_viewport_lock_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_viewport_lock(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_slide_link_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_slide_link(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_alignment_adjust_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_alignment_adjust(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });

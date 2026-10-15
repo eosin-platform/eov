@@ -673,8 +673,15 @@ pub fn open_file(
         "Opening {}…",
         display_name(&normalized_path)
     )));
-    // Shows the loading indicator in the pane the slide opens in.
-    crate::update_tabs(ui, &state.read());
+    // Shows the loading indicator in the pane the slide opens in (with the
+    // caller's pane models: `crate::update_tabs` would borrow them again).
+    update_tabs(
+        ui,
+        &state.read(),
+        pane_render_cache,
+        pane_ui_models,
+        pane_view_model,
+    );
 
     // Opening can take seconds (network shares, MRXS, DICOM): do it, and
     // the thumbnail, on a worker and install the result on the UI thread
@@ -688,7 +695,13 @@ pub fn open_file(
             let _ = slint::invoke_from_event_loop(move || finish_open(ui_weak, request, result));
         });
     if let Err(err) = spawned {
-        finish_open(ui.as_weak(), request, Err(err.to_string()));
+        // From the event loop: the caller still holds the pane models,
+        // which finishing (an error refreshes the tabs) needs.
+        let ui_weak = ui.as_weak();
+        let error = err.to_string();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            finish_open(ui_weak, request, Err(error))
+        });
     }
 }
 
@@ -827,14 +840,14 @@ fn display_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-/// Opens a slide and builds its minimap thumbnail (worker thread).
-fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
-    let wsi = WsiFile::open(path)?;
+/// The minimap thumbnail of a slide (worker thread: it reads the slide).
+/// Multichannel slides show their current channel display.
+pub(crate) fn minimap_thumbnail(wsi: &WsiFile) -> Option<MinimapThumbnail> {
     let options = ThumbnailOptions {
         region: ThumbnailRegion::ContentBounds,
         ..ThumbnailOptions::new(MINIMAP_THUMBNAIL_SIZE)
     };
-    let thumbnail = match wsi.thumbnail_with(&options) {
+    match wsi.thumbnail_with(&options) {
         Ok(thumbnail) => Some(MinimapThumbnail {
             width: thumbnail.image.width as u32,
             height: thumbnail.image.height as u32,
@@ -842,10 +855,22 @@ fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
             region: thumbnail.region,
         }),
         Err(err) => {
-            warn!("No minimap thumbnail for {}: {err}", path.display());
+            warn!(
+                "No minimap thumbnail for {}: {err}",
+                wsi.properties().path.display()
+            );
             None
         }
-    };
+    }
+}
+
+/// Opens a slide and builds its minimap thumbnail (worker thread). A
+/// multichannel slide gets the channel display saved for it first, so it
+/// never shows the defaults for a moment.
+fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
+    let wsi = WsiFile::open(path)?;
+    crate::channels::restore_saved_display(&wsi);
+    let thumbnail = minimap_thumbnail(&wsi);
     Ok(OpenedSlide { wsi, thumbnail })
 }
 
@@ -1115,5 +1140,25 @@ mod tests {
         );
         assert!(names.contains(&"c.dcm"), "{names:?}");
         assert!(entries.iter().all(|e| e.modified.is_some()));
+    }
+
+    /// Opening a slide shows it loading in its pane without borrowing the
+    /// pane models a second time (`open_file` runs inside them).
+    #[test]
+    fn opening_a_slide_shows_it_loading() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("a.tif");
+            eov_common::test_support::write_tiled_tiff(&path, 512, 512, 256, |_, _| {
+                [200, 200, 200]
+            })
+            .unwrap();
+            let ui = crate::AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(8, 8 << 20));
+            let render_timer = Rc::new(Timer::default());
+            crate::open_file(&ui, &state, &tile_cache, &render_timer, path);
+            assert!(ui.get_is_loading());
+        });
     }
 }

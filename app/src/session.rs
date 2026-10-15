@@ -17,6 +17,9 @@ use std::sync::Arc;
 struct Session {
     #[serde(default)]
     focused_pane: usize,
+    /// The panes were linked (navigation across different slides).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    linked: bool,
     #[serde(default, rename = "pane")]
     panes: Vec<PaneSession>,
 }
@@ -115,6 +118,7 @@ fn capture(state: &AppState) -> Session {
         .collect();
     Session {
         focused_pane: state.focused_pane.0,
+        linked: state.slide_link.enabled,
         panes,
     }
 }
@@ -197,6 +201,11 @@ pub(crate) fn restore(
     let focused = session.focused_pane.min(session.panes.len() - 1);
     state.write().set_focused_pane(PaneId(focused));
     ui.set_focused_pane(focused as i32);
+    if session.linked {
+        // The slides open meanwhile; their pairs align as they are shown.
+        let linked = crate::slide_link::toggle_link(&mut state.write());
+        ui.set_slide_link_enabled(linked);
+    }
     true
 }
 
@@ -210,6 +219,7 @@ mod tests {
         let path = dir.path().join("session.toml");
         let session = Session {
             focused_pane: 1,
+            linked: true,
             panes: vec![
                 PaneSession {
                     tabs: vec![TabSession {

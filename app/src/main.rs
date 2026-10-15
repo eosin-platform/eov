@@ -3,11 +3,14 @@
 
 mod audit;
 mod backend;
+mod batch;
 mod blitter;
 mod bookmarks;
 mod cache_budget;
 mod calibration_store;
 mod callbacks;
+mod channel_store;
+mod channels;
 mod cli;
 mod clipboard;
 mod color;
@@ -42,6 +45,7 @@ mod save_copy;
 mod session;
 mod shortcuts;
 mod slide_info;
+mod slide_link;
 mod state;
 #[cfg(test)]
 mod test_support;

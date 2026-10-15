@@ -92,7 +92,8 @@ struct Capture {
 /// Captures the slide shown in `pane`. With `expected_file`, returns
 /// `None` when the pane shows another slide now. `host_layers` includes the
 /// host's ROI and measurement layers as drawn on screen; otherwise the
-/// export draws those from the dialog's settings.
+/// export draws those from the dialog's settings. Heat maps are always
+/// included.
 fn capture(
     state: &AppState,
     tile_cache: &Arc<TileCache>,
@@ -110,7 +111,11 @@ fn capture(
     let layers = with_host(|host| host.store.file_layers(i64::from(file_id)).layers)
         .unwrap_or_default()
         .into_iter()
-        .filter(|layer| host_layers || layer.key.owner != Owner::Host)
+        .filter(|layer| {
+            host_layers
+                || layer.key.owner != Owner::Host
+                || crate::host_ui::is_heatmap_layer(&layer.key.id)
+        })
         .filter(|layer| pane_uid.is_none_or(|uid| layer.shown_in(uid)))
         .collect();
     Some(Capture {

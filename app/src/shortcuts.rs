@@ -23,6 +23,8 @@ pub(crate) enum Action {
     NextSlide,
     PreviousSlide,
     SlideInfo,
+    /// The Channels panel of a multichannel slide.
+    Channels,
     CopyView,
     ExportView,
     Quit,
@@ -40,6 +42,10 @@ pub(crate) enum Action {
     RotateLeft,
     RotateRight,
     Flip,
+    LinkSlides,
+    AdjustAlignment,
+    AlignLandmarks,
+    ResetAlignment,
     HistoryBack,
     HistoryForward,
     BookmarkAdd,
@@ -146,6 +152,8 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::NextSlide, "next-slide", "Next slide of the folder", G::Slides, false, &["PageDown"]),
     info(A::PreviousSlide, "previous-slide", "Previous slide of the folder", G::Slides, false, &["PageUp"]),
     info(A::SlideInfo, "slide-info", "Slide information", G::Slides, false, &["I"]),
+    // No default key: plugins may use the free ones; users can bind one.
+    info(A::Channels, "channels", "Channels of the slide", G::Slides, false, &[]),
     info(A::CopyView, "copy-view", "Copy the view as an image", G::Slides, false, &["Ctrl+C"]),
     info(A::ExportView, "export-view", "Export the view", G::Slides, false, &["Ctrl+E"]),
     info(A::Fit, "fit", "Fit the slide to the pane", G::Navigation, false, &["F"]),
@@ -166,6 +174,10 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::RotateLeft, "rotate-left", "Rotate the view 90° to the left", G::Navigation, false, &["["]),
     info(A::RotateRight, "rotate-right", "Rotate the view 90° to the right", G::Navigation, false, &["]"]),
     info(A::Flip, "flip", "Mirror the view left to right", G::Navigation, false, &["Shift+H"]),
+    info(A::LinkSlides, "link-slides", "Link the panes' slides (move together)", G::Navigation, false, &["Ctrl+L"]),
+    info(A::AdjustAlignment, "adjust-alignment", "Adjust the alignment of linked slides", G::Navigation, false, &[]),
+    info(A::AlignLandmarks, "align-landmarks", "Align linked slides from their landmarks", G::Navigation, false, &[]),
+    info(A::ResetAlignment, "reset-alignment", "Align linked slides as they are shown", G::Navigation, false, &[]),
     info(A::HistoryBack, "back", "Back to the previous view", G::Navigation, false, &["Alt+ArrowLeft"]),
     info(A::HistoryForward, "forward", "Forward to the next view", G::Navigation, false, &["Alt+ArrowRight"]),
     info(A::BookmarkAdd, "bookmark-add", "Bookmark the view", G::Navigation, false, &["Ctrl+B"]),
@@ -596,6 +608,16 @@ mod tests {
         assert_eq!(problems.len(), 3, "{problems:?}");
         // Fit lost F to the minimap and its own new key was refused.
         assert!(table.chords(Action::Fit).is_empty());
+    }
+
+    #[test]
+    fn the_channels_panel_has_no_default_key_but_can_get_one() {
+        assert!(Table::default().chords(Action::Channels).is_empty());
+        assert_eq!(Table::default().label(Action::Channels), "");
+        let overrides = vec![("channels".to_string(), vec!["Ctrl+Shift+K".to_string()])];
+        let (table, problems) = Table::with_overrides(&overrides);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(table.lookup("k", true, true, false), Some(Action::Channels));
     }
 
     #[test]

@@ -103,6 +103,7 @@ The `Host` methods, grouped (see the API docs for every type):
 | Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
 | Filters | `register_filter`, `set_filter_enabled` (CPU RGBA filters run in the render path) |
 | Settings | `setting`, `set_setting`, `remove_setting` (persisted per plugin) |
+| Batch runs | `register_batch_command` (offered by `eov batch run <plugin>:<command> SLIDES --out DIR`; each slide arrives as `HostEvent::BatchRun` with its output folder and parameters), `batch_progress`, `finish_batch` (status, the files written and a summary for the run manifest); `PluginInit.headless` says when there is no window |
 
 Surfaces are `.slint` files compiled by eov's own Slint (see `[ui] slint` in
 the manifest); the exported component does not need to inherit `Window`.
@@ -116,6 +117,14 @@ uses: the keys in its Keyboard Shortcuts panel (F1), which users can
 change in `config.toml`, and Escape, Enter, Delete, Backspace, Tab and the
 plain arrows. A refused key arrives as `RegistrationRefused`, so offer
 users a way to pick another.
+
+Multichannel slides (fluorescence and multiplexed immunofluorescence
+OME-TIFF) list their channels in `FileInfo::channel_names` and their OME
+metadata as `ome.*` entries of `file_properties`. `read_region` returns
+them as RGBA like any slide: the visible channels composited with the
+colours, display windows and gammas the user chose in the Channels panel,
+exactly what the viewer shows; when the user changes them, later reads
+change too. Raw channel values are not available in plugin API 1.x.
 
 Coordinates are level-0 pixels of the slide (x right, y down). Layer ids are
 unique per plugin across all open slides, so include the file id when a
@@ -219,7 +228,7 @@ directories, so tests never touch a real eov installation.
 
 ## License
 
-Licensed under [MIT](https://github.com/eosin-platform/eov/blob/main/LICENSE-MIT),
-[Apache-2.0](https://github.com/eosin-platform/eov/blob/main/LICENSE-APACHE-2.0),
-or [GPLv3](https://github.com/eosin-platform/eov/blob/main/LICENSE-GPLv3), at
+Licensed under [MIT](https://github.com/eosin-platform/eov/blob/master/LICENSE-MIT),
+[Apache-2.0](https://github.com/eosin-platform/eov/blob/master/LICENSE-APACHE-2.0),
+or [GPLv3](https://github.com/eosin-platform/eov/blob/master/LICENSE-GPLv3), at
 your option.

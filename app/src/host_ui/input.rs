@@ -339,6 +339,7 @@ impl UiHost {
                 let pane = self.state.read().focused_pane;
                 crate::slide_info::open_for_pane(&ui, &self.state, pane);
             }
+            Action::Channels => crate::channels::open_for_focused_pane(self),
             Action::CopyView | Action::ExportView => {
                 let pane = self.state.read().active_viewport_pane();
                 if action == Action::CopyView {
@@ -380,6 +381,22 @@ impl UiHost {
             Action::RotateRight => self
                 .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, 1)),
             Action::Flip => self.with_focused_viewport(crate::callbacks::flip_active_viewport),
+            Action::LinkSlides => {
+                crate::callbacks::toggle_slide_link(&ui, &self.state);
+                self.request_render();
+            }
+            Action::AdjustAlignment => {
+                crate::callbacks::toggle_alignment_adjust(&ui, &self.state);
+                self.request_render();
+            }
+            Action::AlignLandmarks => {
+                crate::callbacks::align_linked_panes(&ui, &self.state);
+                self.request_render();
+            }
+            Action::ResetAlignment => {
+                crate::callbacks::reset_linked_alignment(&ui, &self.state);
+                self.request_render();
+            }
             Action::HistoryBack => self.history_step(true),
             Action::HistoryForward => self.history_step(false),
             Action::BookmarkAdd => self.begin_bookmark(),

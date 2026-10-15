@@ -12,8 +12,10 @@
 //!   most other tools read as a pyramid.
 //! * **OME-TIFF** ([`SlideFormat::OmeTiff`]): OME-XML (2016-06 schema) in
 //!   the first IFD, the reduced levels as SubIFDs of the full-resolution
-//!   IFD (Bio-Formats 6 / QuPath / OMERO pyramids). OpenSlide does not
-//!   read SubIFDs and sees the full-resolution image only.
+//!   IFD (Bio-Formats 6 / QuPath / OMERO pyramids), associated images as
+//!   images named `label`, `macro` and `thumbnail`. eov's own OME-TIFF
+//!   reader reads all of it; OpenSlide does not read SubIFDs and sees the
+//!   full-resolution image only.
 //!
 //! Tiles are 256 or 512 px, compressed with baseline JPEG (YCbCr, shared
 //! `JPEGTables`, abbreviated tile streams, as libtiff writes them; chroma
@@ -264,6 +266,10 @@ pub struct ConvertPlan {
     /// Associated images that will be copied (none when de-identifying).
     pub associated_images: Vec<String>,
     pub format: SlideFormat,
+    /// For a multichannel (fluorescence) slide, its channel count: the copy
+    /// holds the 8-bit RGB composite of the channels as they are displayed
+    /// (colours, windows and gamma), not the channels themselves.
+    pub composite_channels: Option<usize>,
     mapping: Mapping,
     sampling: SourceSampling,
 }
@@ -540,6 +546,7 @@ pub fn plan_conversion(
         objective_power,
         associated_images,
         format: options.format,
+        composite_channels: wsi.channels().map(|set| set.channels.len()),
         mapping,
         sampling,
     })
@@ -932,6 +939,10 @@ fn write_copy(
         plan.sampling.clone(),
         SystemTime::now(),
     );
+    let metadata = CopyMetadata {
+        composite_channels: plan.composite_channels,
+        ..metadata
+    };
     let icc = if options.keep_icc_profile {
         match wsi.icc_profile() {
             Ok(profile) => profile.filter(|profile| !profile.is_empty()),

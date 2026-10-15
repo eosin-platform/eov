@@ -1,5 +1,7 @@
 //! The Slide Information panel (AUDIT §14.1): the label, macro and overview
-//! images and every property of a slide.
+//! images and every property of a slide, with a summary line (format, size,
+//! levels and, for multichannel slides, the channels, which the Channels
+//! panel adjusts).
 //!
 //! The label (and the macro photo, which usually shows it) carry patient
 //! identifiers: a persisted "hide label" toggle blanks them for teaching
@@ -77,6 +79,8 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
         panel.generation
     });
     show_pixel_size(ui, &state.read(), file_id);
+    ui.set_slide_info_summary(SharedString::from(summary(&wsi)));
+    ui.set_slide_info_multichannel(wsi.is_multichannel());
     ui.set_slide_info_pixel_size_input(SharedString::new());
     ui.set_slide_info_title(SharedString::from(title));
     ui.set_slide_info_filter(SharedString::new());
@@ -97,6 +101,60 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
     apply_rows(ui);
     ui.set_slide_info_visible(true);
     load_images(ui, wsi, generation);
+}
+
+/// Channel names listed in the summary before "and N more".
+const SUMMARY_CHANNELS: usize = 8;
+
+/// The slide in one line: "OME-TIFF · 24000 × 18000 px · 5 levels ·
+/// 12 channels (uint16): DAPI, CD45, …".
+fn summary(wsi: &WsiFile) -> String {
+    let props = wsi.real_properties();
+    let format = match props.vendor.as_deref() {
+        Some(eov_common::wsi::OME_TIFF_VENDOR) => "OME-TIFF".to_string(),
+        Some(vendor) => vendor.to_string(),
+        None => "Slide".to_string(),
+    };
+    let levels = props.levels.len();
+    let mut text = format!(
+        "{format} · {} × {} px · {levels} {}",
+        props.width,
+        props.height,
+        if levels == 1 { "level" } else { "levels" }
+    );
+    if let Some(set) = wsi.channels() {
+        let names: Vec<&str> = set
+            .channels
+            .iter()
+            .take(SUMMARY_CHANNELS)
+            .map(|c| c.name.as_str())
+            .collect();
+        let more = set.len().saturating_sub(SUMMARY_CHANNELS);
+        text.push_str(&format!(
+            " · {} {} ({}): {}{}",
+            set.len(),
+            if set.len() == 1 {
+                "channel"
+            } else {
+                "channels"
+            },
+            set.sample_type.name(),
+            names.join(", "),
+            if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            }
+        ));
+    }
+    text
+}
+
+/// Opens the Channels panel for the slide shown here.
+pub(crate) fn open_channels(host: &crate::host_ui::UiHost) {
+    if let Some(file_id) = PANEL.with(|panel| panel.borrow().file_id) {
+        crate::channels::open(host, file_id);
+    }
 }
 
 fn load_images(ui: &AppWindow, wsi: WsiFile, generation: u64) {
@@ -356,6 +414,56 @@ mod tests {
         assert_eq!(matching(&rows, "VENDOR"), [1]);
         assert_eq!(matching(&rows, "library"), [2]);
         assert!(matching(&rows, "zzz").is_empty());
+    }
+
+    #[test]
+    fn the_summary_names_the_format_size_and_channels() {
+        use eov_common::test_support::{OmeTiffSpec, write_ome_tiff};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.ome.tif");
+        let names: Vec<String> = (0..10).map(|i| format!("M{i}")).collect();
+        let channels: Vec<(&str, [u8; 3])> = names
+            .iter()
+            .map(|n| (n.as_str(), [255, 255, 255]))
+            .collect();
+        write_ome_tiff(
+            &path,
+            &OmeTiffSpec::channels(64, 48, 32, 2, &channels),
+            |c, x, _| f64::from(x) + c as f64,
+        )
+        .unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        assert_eq!(
+            summary(&wsi),
+            "OME-TIFF · 64 × 48 px · 2 levels · 10 channels (uint16): M0, M1, M2, M3, M4, M5, \
+             M6, M7 and 2 more"
+        );
+        let rgb = dir.path().join("plain.tif");
+        eov_common::test_support::write_tiled_tiff(&rgb, 64, 64, 32, |_, _| [1, 2, 3]).unwrap();
+        assert_eq!(
+            summary(&WsiFile::open(&rgb).unwrap()),
+            "generic-tiff · 64 × 64 px · 1 level"
+        );
+    }
+
+    #[test]
+    fn multichannel_slides_open_the_channels_panel_from_here() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let setup = crate::test_support::HostWithSlide::new();
+            let pane = setup.state.read().focused_pane;
+            open_for_pane(&setup.ui, &setup.state, pane);
+            assert!(setup.ui.get_slide_info_visible());
+            assert!(setup.ui.get_slide_info_multichannel());
+            assert!(
+                setup
+                    .ui
+                    .get_slide_info_summary()
+                    .contains("3 channels (uint16): DAPI, CD45, CD8")
+            );
+            setup.ui.invoke_slide_info_channels_requested();
+            assert!(setup.ui.get_channels_panel_visible());
+            assert!(!setup.ui.get_slide_info_visible());
+        });
     }
 
     #[test]

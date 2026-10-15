@@ -192,6 +192,7 @@ version = "1.0.0"
 dependencies = [
  "eov-plugin-api",
  "half",
+ "libloading 0.9.0",
  "miniz_oxide",
  "ort",
  "rusqlite",

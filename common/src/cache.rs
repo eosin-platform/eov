@@ -388,6 +388,37 @@ impl TileCache {
         })
     }
 
+    /// Removes `tile` if the cache still holds this very tile (not a newer
+    /// one at the same coordinate); returns whether it did.
+    pub fn remove_if_same(&self, tile: &Arc<TileData>) -> bool {
+        match self
+            .map
+            .remove_if(&tile.coord, |_, entry| Arc::ptr_eq(&entry.tile, tile))
+        {
+            Some((_, entry)) => {
+                self.current_bytes
+                    .fetch_sub(entry.size_bytes, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The cached tiles of `file_id`, most recently used first, at most
+    /// `limit` of them: the ones worth rebuilding first when the file's
+    /// pixels change (for example a multichannel slide's display).
+    pub fn recent_coords(&self, file_id: i32, limit: usize) -> Vec<TileCoord> {
+        let mut tiles: Vec<(u64, TileCoord)> = self
+            .map
+            .iter()
+            .filter(|item| item.key().file_id == file_id)
+            .map(|item| (item.value().last_used.load(Ordering::Relaxed), *item.key()))
+            .collect();
+        tiles.sort_unstable_by_key(|(last_used, _)| std::cmp::Reverse(*last_used));
+        tiles.truncate(limit);
+        tiles.into_iter().map(|(_, coord)| coord).collect()
+    }
+
     /// Removes every tile for which `keep` returns false; returns how many
     /// were removed.
     pub fn retain(&self, mut keep: impl FnMut(&TileCoord, &TileData) -> bool) -> usize {
@@ -841,6 +872,28 @@ mod tests {
             cache.len() * TILE_BYTES,
             "byte accounting matches the map"
         );
+    }
+
+    #[test]
+    fn recent_tiles_come_first_and_only_the_same_tile_is_removed() {
+        let cache = cache_for(100);
+        for x in 0..5 {
+            cache.insert(tile(3, 0, x));
+        }
+        cache.insert(tile(4, 0, 0));
+        cache.touch(&coord(3, 0, 1));
+        let recent = cache.recent_coords(3, 3);
+        assert_eq!(recent, [coord(3, 0, 1), coord(3, 0, 4), coord(3, 0, 3)]);
+        assert_eq!(cache.recent_coords(9, 10), []);
+
+        let stale = cache.peek(&coord(3, 0, 2)).unwrap();
+        cache.insert(tile(3, 0, 2));
+        assert!(!cache.remove_if_same(&stale), "a newer tile replaced it");
+        assert!(cache.contains(&coord(3, 0, 2)));
+        let current = cache.peek(&coord(3, 0, 2)).unwrap();
+        assert!(cache.remove_if_same(&current));
+        assert!(!cache.contains(&coord(3, 0, 2)));
+        assert_eq!(cache.current_bytes(), cache.len() * TILE_BYTES);
     }
 
     #[test]

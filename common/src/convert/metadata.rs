@@ -218,6 +218,8 @@ pub(crate) struct CopyMetadata {
     pub source_sampling: Option<SourceSampling>,
     /// Every non-structural property of the slide, by name.
     pub source_properties: Vec<(String, String)>,
+    /// Channels of a multichannel slide, copied as their RGB composite.
+    pub composite_channels: Option<usize>,
 }
 
 /// The fields of a slide's metadata a copy may record.
@@ -319,6 +321,12 @@ impl CopyMetadata {
         }
         if let Some(power) = self.objective_power {
             fields.push(("Objective power", magnification(power)));
+        }
+        if let Some(channels) = self.composite_channels {
+            fields.push((
+                "Channels",
+                format!("RGB composite of {channels} channels, as displayed"),
+            ));
         }
         if let Some(stain) = &self.stain {
             fields.push(("Stain", stain.clone()));

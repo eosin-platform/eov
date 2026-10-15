@@ -5,11 +5,14 @@
 //!
 //! * [`wsi`]: [`WsiFile`], a cheap-to-clone handle to a slide opened with
 //!   OpenSlide (4.0 or newer, linked through the in-house [`openslide`]
-//!   binding). Region reads return opaque RGBA composited onto the slide's
-//!   background; handles are shared per slide, recover from OpenSlide's
-//!   sticky errors, and use one process-wide OpenSlide cache. Also bounded
-//!   thumbnails, associated images, ICC profiles, the full property map,
-//!   content bounds and synthetic levels for flat slides.
+//!   binding) or, for OME-TIFF, with eov's own reader. Region reads return
+//!   opaque RGBA composited onto the slide's background; handles are shared
+//!   per slide, recover from OpenSlide's sticky errors, and use one
+//!   process-wide tile cache. Also bounded thumbnails, associated images,
+//!   ICC profiles, the full property map, content bounds and synthetic
+//!   levels for flat slides.
+//! * [`channels`]: the channels of multichannel (fluorescence) slides and
+//!   their display: colours, windows, gamma, palettes, auto contrast.
 //! * [`tile`] and [`cache`]: tile addressing, loading and a byte-budgeted
 //!   LRU [`TileCache`] with per-frame protection and pinning.
 //! * [`render`], [`blitter`], [`viewport`]: level selection, pixel-centre
@@ -20,14 +23,17 @@
 
 pub mod blitter;
 pub mod cache;
+pub mod channels;
 pub mod convert;
 pub mod dataset;
 pub mod error;
 pub mod export;
 pub mod file_id;
 pub mod formatting;
+pub mod heatmap;
 pub mod imaging;
 pub mod job;
+pub(crate) mod ome_tiff;
 pub mod openslide;
 pub mod overlay;
 pub mod paths;

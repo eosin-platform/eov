@@ -413,6 +413,10 @@ impl Host {
     }
 
     /// Reads slide pixels on the calling thread.
+    ///
+    /// Multichannel slides (see [`FileInfo::channel_names`]) come back as
+    /// RGBA too: their visible channels composited with the user's current
+    /// channel display, as the viewer shows them.
     pub fn read_region(&self, request: RegionRequest) -> HostResult<Image> {
         from_ffi(self.ffi.read_region(request)).map(Image::from)
     }
@@ -498,6 +502,36 @@ impl Host {
                 text: text.map(str::to_string),
             },
         )
+    }
+
+    /// Offers a command for headless batch runs (`eov batch run
+    /// <plugin>:<command> SLIDES --out DIR`); slides then arrive as
+    /// [`HostEvent::BatchRun`]. Call it in [`Plugin::create`].
+    pub fn register_batch_command(&self, spec: BatchCommandSpec) -> HostResult<()> {
+        self.command(methods::BATCH_REGISTER, &spec)
+    }
+
+    /// Reports how far the slide of batch run `run_id` is.
+    pub fn batch_progress(
+        &self,
+        run_id: &str,
+        fraction: Option<f32>,
+        message: Option<&str>,
+    ) -> HostResult<()> {
+        self.command(
+            methods::BATCH_PROGRESS,
+            &BatchProgressArgs {
+                run_id: run_id.to_string(),
+                fraction,
+                message: message.map(str::to_string),
+            },
+        )
+    }
+
+    /// Ends the slide of a batch run: the next slide comes once this is
+    /// sent.
+    pub fn finish_batch(&self, result: BatchFinishArgs) -> HostResult<()> {
+        self.command(methods::BATCH_FINISH, &result)
     }
 
     /// Binds a key of its own (not tied to a button or tool); presses

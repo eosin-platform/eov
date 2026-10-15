@@ -73,6 +73,10 @@ export component SlideInfoPanel inherits Rectangle {
     in property <string> pixel-size-text;
     in property <bool> pixel-size-manual: false;
     in-out property <string> pixel-size-input: "";
+    // Format, size, levels and, for multichannel slides, the channels.
+    in property <string> summary;
+    in property <bool> multichannel: false;
+    callback channels-requested();
     callback close-requested();
     callback hide-label-toggled(bool);
     callback filter-edited(string);
@@ -218,6 +222,42 @@ export component SlideInfoPanel inherits Rectangle {
                     caption: "Overview";
                     source: root.overview-image;
                     available: root.has-overview;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                height: 28px;
+
+                Text {
+                    text: root.summary;
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+
+                if root.multichannel: Rectangle {
+                    width: channels-text.preferred-width + 16px;
+                    border-radius: 4px;
+                    background: channels-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    channels-text := Text {
+                        text: "Channels…";
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    channels-touch := TouchArea {
+                        clicked => {
+                            root.channels-requested();
+                        }
+                    }
                 }
             }
 
