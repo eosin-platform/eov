@@ -549,8 +549,13 @@ impl AppState {
     }
 
     fn create_duplicate_tab_id(&mut self, id: i32) -> i32 {
+        // Each pane gets its own Home tab: sharing one id made opening a
+        // slide in either pane close the other pane's Home tab (UI-11).
         if self.is_home_tab(id) {
-            return id;
+            let tab_id = self.next_id;
+            self.next_id += 1;
+            self.home_tabs.push(tab_id);
+            return tab_id;
         }
 
         let file_id = self.resolve_tab_file_id(id);
@@ -1722,6 +1727,21 @@ mod tests {
         let mut state = state_with(&[&[1], &[2]]);
         assert_eq!(state.split_tab_to_new_pane(2, 2), None);
         assert_eq!(layout(&state), vec![vec![1], vec![2]]);
+    }
+
+    #[test]
+    fn split_home_tabs_are_independent() {
+        let mut state = state_with(&[&[1]]);
+        state.next_id = 10;
+        let new_pane = state.insert_pane(1);
+        let copy = state.duplicate_tab_to_pane(1, new_pane);
+        assert_ne!(copy, 1);
+        assert!(state.is_home_tab(copy));
+        // Opening a slide in pane 0 closes only pane 0's Home tab.
+        state.panes[0].tabs.push(5);
+        state.home_tabs.push(5);
+        state.close_home_tab(1);
+        assert_eq!(layout(&state), vec![vec![5], vec![copy]]);
     }
 
     #[test]
