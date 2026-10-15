@@ -259,6 +259,7 @@ mod tests {
                 downsample,
                 tile_width: None,
                 tile_height: None,
+                synthetic: false,
             })
             .collect()
     }

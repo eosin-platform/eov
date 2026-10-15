@@ -33,8 +33,9 @@
 
 mod health;
 mod metadata;
-mod pixels;
+pub(crate) mod pixels;
 pub mod registry;
+mod synthetic;
 mod thumbnail;
 
 use crate::imaging::RgbaImageData;
@@ -43,11 +44,15 @@ use crate::{Error, Result};
 use health::{BadKey, Geometry, HandleCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tracing::{debug, info};
 
 pub use health::{HealthState, SlideHealth};
 pub use pixels::AlphaMode;
+pub use synthetic::{
+    EXACT_SYNTHESIS_BUDGET, SPARSE_SYNTHESIS_SAMPLES, SYNTHETIC_LEVEL_MAX_SIZE,
+    SYNTHETIC_LEVEL_RATIO,
+};
 pub use thumbnail::{Thumbnail, ThumbnailOptions, ThumbnailRegion, ThumbnailSource};
 pub use registry::{
     DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
@@ -174,6 +179,9 @@ pub struct WsiLevel {
     pub tile_width: Option<u32>,
     /// Native tile height of the file (if the format has a tile grid)
     pub tile_height: Option<u32>,
+    /// `true` for levels eov synthesises from the coarsest real level (see
+    /// [`WsiFile::with_synthetic_levels`]); they are not stored in the file.
+    pub synthetic: bool,
 }
 
 impl WsiLevel {
@@ -299,6 +307,8 @@ pub(crate) struct SharedSlide {
     property_map: BTreeMap<String, String>,
     associated_images: Vec<AssociatedImage>,
     icc_profile: parking_lot::Mutex<Option<Option<Vec<u8>>>>,
+    /// Properties of the view with synthetic levels, built on first use.
+    synthetic_view: OnceLock<Arc<WsiProperties>>,
 }
 
 /// How [`WsiFile::open_with`] opens a slide.
@@ -322,6 +332,9 @@ impl Default for OpenOptions {
 #[derive(Clone)]
 pub struct WsiFile {
     shared: Arc<SharedSlide>,
+    /// Levels exposed by this view: `None` for the file's real levels,
+    /// `Some` for real plus synthetic levels.
+    view: Option<Arc<WsiProperties>>,
     /// Tile size to use
     tile_size: u32,
 }
@@ -330,7 +343,7 @@ impl std::fmt::Debug for WsiFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WsiFile")
             .field("path", &self.shared.properties.path)
-            .field("levels", &self.shared.properties.levels.len())
+            .field("levels", &self.properties().levels.len())
             .field("tile_size", &self.tile_size)
             .finish_non_exhaustive()
     }
@@ -393,6 +406,7 @@ fn read_metadata(path: &Path, slide: &OpenSlide) -> Result<(WsiProperties, BTree
             downsample,
             tile_width,
             tile_height,
+            synthetic: false,
         });
     }
 
@@ -453,6 +467,7 @@ impl WsiFile {
             debug!("Reusing open slide handle for {}", path.display());
             return Ok(Self {
                 shared,
+                view: None,
                 tile_size: DEFAULT_TILE_SIZE,
             });
         }
@@ -486,9 +501,11 @@ impl WsiFile {
             property_map,
             associated_images,
             icc_profile: parking_lot::Mutex::new(None),
+            synthetic_view: OnceLock::new(),
         });
         Ok(Self {
             shared: registry::register(shared),
+            view: None,
             tile_size: DEFAULT_TILE_SIZE,
         })
     }
@@ -504,7 +521,61 @@ impl WsiFile {
             },
         )?;
         reopened.tile_size = self.tile_size;
+        if self.has_synthetic_levels() {
+            reopened = reopened.with_synthetic_levels();
+        }
         Ok(reopened)
+    }
+
+    /// A view of this slide with synthetic low-resolution levels appended
+    /// after the coarsest real level, for slides without a pyramid deep
+    /// enough to draw at fit zoom (see [`SYNTHETIC_LEVEL_MAX_SIZE`]).
+    ///
+    /// Real level indices are unchanged; synthetic levels are flagged with
+    /// [`WsiLevel::synthetic`]. Use the view for rendering (level selection,
+    /// [`TileManager`](crate::TileManager)); keep the plain view for
+    /// metadata displays and analysis, which should see real levels only.
+    /// Slides whose pyramid is deep enough get no synthetic levels.
+    pub fn with_synthetic_levels(&self) -> WsiFile {
+        let view = self
+            .shared
+            .synthetic_view
+            .get_or_init(|| {
+                let mut props = self.shared.properties.clone();
+                let extra = synthetic::synthetic_levels(&props.levels);
+                props.levels.extend(extra);
+                Arc::new(props)
+            })
+            .clone();
+        WsiFile {
+            shared: Arc::clone(&self.shared),
+            view: (view.levels.len() > self.shared.properties.levels.len()).then_some(view),
+            tile_size: self.tile_size,
+        }
+    }
+
+    /// The same slide with only its real levels.
+    pub fn without_synthetic_levels(&self) -> WsiFile {
+        WsiFile {
+            shared: Arc::clone(&self.shared),
+            view: None,
+            tile_size: self.tile_size,
+        }
+    }
+
+    /// Whether this view includes synthetic levels.
+    pub fn has_synthetic_levels(&self) -> bool {
+        self.view.is_some()
+    }
+
+    /// Number of levels stored in the file (excluding synthetic ones).
+    pub fn real_level_count(&self) -> u32 {
+        self.shared.properties.levels.len() as u32
+    }
+
+    /// Properties with the file's real levels only, whatever the view.
+    pub fn real_properties(&self) -> &WsiProperties {
+        &self.shared.properties
     }
 
     /// Whether two `WsiFile`s share the same OpenSlide handle.
@@ -523,9 +594,10 @@ impl WsiFile {
         self.shared.handle.clear_bad_regions();
     }
 
-    /// Get file properties
+    /// Get file properties. `levels` includes synthetic levels when this
+    /// is a [`with_synthetic_levels`](Self::with_synthetic_levels) view.
     pub fn properties(&self) -> &WsiProperties {
-        &self.shared.properties
+        self.view.as_deref().unwrap_or(&self.shared.properties)
     }
 
     /// The value of an OpenSlide property, e.g. `"aperio.AppMag"`.
@@ -637,6 +709,11 @@ impl WsiFile {
         let Some(level_info) = self.level(level) else {
             return self.tile_size;
         };
+        if level_info.synthetic {
+            // Synthetic tiles are computed, not decoded: small tiles keep
+            // each one cheap.
+            return DEFAULT_TILE_SIZE;
+        }
 
         let target = if level_info.downsample >= 16.0 {
             COARSE_TILE_SIZE
@@ -660,7 +737,7 @@ impl WsiFile {
 
     /// Get the number of levels
     pub fn level_count(&self) -> u32 {
-        self.shared.properties.levels.len() as u32
+        self.properties().levels.len() as u32
     }
 
     fn max_level(&self) -> u32 {
@@ -673,12 +750,12 @@ impl WsiFile {
     /// Computed in Rust from the level data cached at open, so it stays
     /// correct even when the OpenSlide handle is in an error state.
     pub fn best_level_for_downsample(&self, downsample: f64) -> u32 {
-        best_level_for_downsample(&self.shared.properties.levels, downsample)
+        best_level_for_downsample(&self.properties().levels, downsample)
     }
 
     /// Get level information
     pub fn level(&self, level: u32) -> Option<&WsiLevel> {
-        self.shared.properties.levels.get(level as usize)
+        self.properties().levels.get(level as usize)
     }
 
     /// Reads a region as opaque RGBA (`width * height * 4` bytes).
@@ -750,6 +827,9 @@ impl WsiFile {
         }
         if len == 0 {
             return Ok(());
+        }
+        if level >= self.real_level_count() {
+            return self.read_synthetic_into(x, y, level, width, height, mode, out);
         }
         let key = BadKey::Region {
             level,

@@ -3,12 +3,19 @@
 //! This module handles tile coordinates, tile requests, and tile data management
 //! for efficient rendering of whole slide images.
 
-use crate::wsi::WsiLevel;
+use crate::cache::TileCache;
+use crate::wsi::{EXACT_SYNTHESIS_BUDGET, WsiLevel, pixels};
 use crate::{Error, Result, WsiFile};
-use std::sync::OnceLock;
+use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use tracing::{debug, trace, warn};
+
+/// Outcome of a deduplicated load, shared with concurrent requesters:
+/// the tile, or the error message and whether it is transient.
+type LoadSlot = Arc<OnceLock<std::result::Result<Arc<TileData>, (String, bool)>>>;
 
 /// Most tiles [`TileManager::visible_tiles_with_margin`] returns for one
 /// level. Larger visible sets keep the tiles nearest the view centre.
@@ -375,6 +382,14 @@ pub struct TileManager {
     border: u32,
     /// Last time the visible-tile cap warning was logged (ms since start).
     last_cap_warning_ms: AtomicU64,
+    /// Cache used by [`load_tile_cached`](Self::load_tile_cached) and to
+    /// build synthetic tiles from finer cached tiles.
+    cache: Option<Arc<TileCache>>,
+    /// Loads in progress, so concurrent requests for one tile share a load.
+    in_flight: Mutex<HashMap<TileCoord, LoadSlot>>,
+    /// Base pixels a synthetic tile may read directly before it is built
+    /// from finer cached tiles instead.
+    synthesis_budget: u64,
 }
 
 impl TileManager {
@@ -387,7 +402,85 @@ impl TileManager {
             tile_size,
             border: DEFAULT_TILE_BORDER,
             last_cap_warning_ms: AtomicU64::new(u64::MAX),
+            cache: None,
+            in_flight: Mutex::new(HashMap::new()),
+            synthesis_budget: EXACT_SYNTHESIS_BUDGET,
         }
+    }
+
+    /// Base-level pixels a synthetic tile may decode directly (default
+    /// [`EXACT_SYNTHESIS_BUDGET`]). Above it, a manager with a tile cache
+    /// builds the tile from finer cached tiles.
+    pub fn with_synthesis_budget(mut self, base_pixels: u64) -> Self {
+        self.synthesis_budget = base_pixels;
+        self
+    }
+
+    /// Attaches the tile cache that [`load_tile_cached`](Self::load_tile_cached)
+    /// fills. With a cache, tiles of synthetic levels (see
+    /// [`WsiFile::with_synthetic_levels`]) are built exactly from cached
+    /// tiles of the next finer level, loading those as needed, instead of
+    /// being approximated when a direct read would be too expensive.
+    pub fn with_tile_cache(mut self, cache: Arc<TileCache>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
+    /// The attached tile cache, if any.
+    pub fn tile_cache(&self) -> Option<&Arc<TileCache>> {
+        self.cache.as_ref()
+    }
+
+    /// Returns a tile from the attached cache, or loads it, inserts it and
+    /// returns it. Concurrent calls for the same tile share one load.
+    /// Without an attached cache this is [`load_tile_sync`](Self::load_tile_sync).
+    pub fn load_tile_cached(&self, coord: TileCoord) -> Result<Arc<TileData>> {
+        if let Some(cache) = &self.cache
+            && let Some(tile) = cache.peek(&coord)
+        {
+            return Ok(tile);
+        }
+        let slot = Arc::clone(self.in_flight.lock().entry(coord).or_default());
+        let mut own_error = None;
+        let result = slot
+            .get_or_init(|| {
+                if let Some(cache) = &self.cache
+                    && let Some(tile) = cache.peek(&coord)
+                {
+                    return Ok(tile);
+                }
+                match self.load_tile_sync(coord) {
+                    Ok(tile) => {
+                        let tile = Arc::new(tile);
+                        if let Some(cache) = &self.cache {
+                            cache.insert_arc(Arc::clone(&tile));
+                        }
+                        Ok(tile)
+                    }
+                    Err(err) => {
+                        let shared = (err.to_string(), err.is_transient());
+                        own_error = Some(err);
+                        Err(shared)
+                    }
+                }
+            })
+            .clone();
+        {
+            let mut in_flight = self.in_flight.lock();
+            if in_flight
+                .get(&coord)
+                .is_some_and(|current| Arc::ptr_eq(current, &slot))
+            {
+                in_flight.remove(&coord);
+            }
+        }
+        result.map_err(|(message, transient)| {
+            own_error.unwrap_or(if transient {
+                Error::HandlePoisoned(message)
+            } else {
+                Error::OpenSlide(message)
+            })
+        })
     }
 
     /// Sets the border loaded around every tile (default
@@ -494,13 +587,20 @@ impl TileManager {
         let read_w = avail_left + inner_w + avail_right;
         let read_h = avail_top + inner_h + avail_bottom;
 
-        // Convert to level-0 coordinates for read_region
-        let read_x0 = (read_x as f64 * level_info.downsample) as i64;
-        let read_y0 = (read_y as f64 * level_info.downsample) as i64;
-
-        let read_data = self
-            .wsi
-            .read_region(read_x0, read_y0, coord.level, read_w, read_h)?;
+        let read_data = match &self.cache {
+            Some(cache) if level_info.synthetic && coord.level > 0 => self.synthesize_from_finer(
+                cache,
+                coord.level,
+                (read_x, read_y, read_w, read_h),
+            )?,
+            _ => {
+                // Convert to level-0 coordinates for read_region
+                let read_x0 = (read_x as f64 * level_info.downsample) as i64;
+                let read_y0 = (read_y as f64 * level_info.downsample) as i64;
+                self.wsi
+                    .read_region(read_x0, read_y0, coord.level, read_w, read_h)?
+            }
+        };
 
         // Build the uniformly-bordered output buffer.
         let data = create_bordered_tile(
@@ -517,6 +617,86 @@ impl TileManager {
         );
 
         Ok(TileData::new(coord, data, inner_w, inner_h, border))
+    }
+
+    /// Pixels of synthetic `level` in the level rectangle `rect`, averaged
+    /// from the next finer level: from its cached tiles when all are
+    /// present, else by a direct read when that is affordable, else from
+    /// that level's tiles loaded through the cache.
+    fn synthesize_from_finer(
+        &self,
+        cache: &TileCache,
+        level: u32,
+        (x, y, w, h): (u64, u64, u32, u32),
+    ) -> Result<Vec<u8>> {
+        let info = self.wsi.level(level).ok_or(Error::InvalidLevel(level, 0))?;
+        let finer = self
+            .wsi
+            .level(level - 1)
+            .ok_or(Error::InvalidLevel(level - 1, 0))?;
+        let ratio = (info.downsample / finer.downsample).round().max(1.0) as u64;
+        let tile_size = u64::from(self.tile_size_for_level(level - 1));
+        // The rectangle in finer-level pixels, and the finer tiles covering
+        // its part inside that level.
+        let (fx, fy) = (x * ratio, y * ratio);
+        let (fw, fh) = (u64::from(w) * ratio, u64::from(h) * ratio);
+        let (clip_w, clip_h) = (
+            (fx + fw).min(finer.width).saturating_sub(fx),
+            (fy + fh).min(finer.height).saturating_sub(fy),
+        );
+        let children: Vec<TileCoord> = if clip_w == 0 || clip_h == 0 {
+            Vec::new()
+        } else {
+            let (tx0, ty0) = (fx / tile_size, fy / tile_size);
+            let (tx1, ty1) = ((fx + clip_w).div_ceil(tile_size), (fy + clip_h).div_ceil(tile_size));
+            (ty0..ty1)
+                .flat_map(|ty| {
+                    (tx0..tx1).map(move |tx| {
+                        TileCoord::new(self.file_id, level - 1, tx, ty, tile_size as u32)
+                    })
+                })
+                .collect()
+        };
+
+        let all_cached = children.iter().all(|child| cache.contains(child));
+        if !all_cached
+            && self
+                .wsi
+                .synthesis_cost(level, w, h)
+                .is_some_and(|cost| cost <= self.synthesis_budget)
+        {
+            let x0 = (x as f64 * info.downsample) as i64;
+            let y0 = (y as f64 * info.downsample) as i64;
+            return self.wsi.read_region(x0, y0, level, w, h);
+        }
+
+        // Assemble the finer-level rectangle; pixels past the level's edge
+        // are background, as in a direct read.
+        let [r, g, b] = self.wsi.properties().background_color;
+        let (fw, fh) = (fw as usize, fh as usize);
+        let mut finer_px = vec![0u8; fw * fh * 4];
+        crate::blitter::fast_fill_rgba(&mut finer_px, r, g, b, 255);
+        for child in children {
+            let tile = self.load_tile_cached(child)?;
+            let data_w = tile.data_width() as usize;
+            let border = tile.border as usize;
+            let left = child.x * tile_size;
+            let top = child.y * tile_size;
+            let x_from = left.max(fx);
+            let x_to = (left + u64::from(tile.width)).min(fx + fw as u64);
+            let y_from = top.max(fy);
+            let y_to = (top + u64::from(tile.height)).min(fy + fh as u64);
+            if x_from >= x_to || y_from >= y_to {
+                continue;
+            }
+            let len = (x_to - x_from) as usize * 4;
+            for row in y_from..y_to {
+                let src = ((row - top) as usize + border) * data_w + (x_from - left) as usize + border;
+                let dst = (row - fy) as usize * fw + (x_from - fx) as usize;
+                finer_px[dst * 4..dst * 4 + len].copy_from_slice(&tile.data[src * 4..src * 4 + len]);
+            }
+        }
+        Ok(pixels::downsample_blocks(&finer_px, fw, fh, ratio as usize))
     }
 
     /// The range of tiles of `level` covering a level-0 rectangle, clamped
@@ -640,7 +820,8 @@ impl TileManager {
         {
             warn!(
                 "{total} tiles of level {level} are visible; keeping the {MAX_VISIBLE_TILES} \
-                 nearest the view centre (the slide has no coarse enough level)"
+                 nearest the view centre (the slide has no coarse enough level; render through \
+                 WsiFile::with_synthetic_levels)"
             );
         } else {
             debug!("visible tiles capped: {total} at level {level}");
@@ -672,6 +853,7 @@ mod tests {
             downsample,
             tile_width: None,
             tile_height: None,
+            synthetic: false,
         }
     }
 
@@ -767,6 +949,64 @@ mod tests {
         assert!([(1, 1), (1, 2), (2, 1), (2, 2)].contains(&(tiles[0].x, tiles[0].y)));
         let last = tiles.last().unwrap();
         assert!([(0, 0), (0, 3), (3, 0), (3, 3)].contains(&(last.x, last.y)));
+    }
+
+    #[test]
+    fn cached_loads_are_shared_and_synthetic_tiles_use_finer_tiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("flat.tiff");
+        // 8200 x 64, one level: synthetic levels at 4x (2050) and 16x (513).
+        write_tiff(&path, &TiffSpec::single(8200, 64, 64), |x, y| {
+            [(x / 64 % 256) as u8, (y * 4 % 256) as u8, 7]
+        })
+        .unwrap();
+        let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
+        assert_eq!(wsi.level_count(), 3);
+        let cache = Arc::new(TileCache::new());
+        // A zero budget forces building every synthetic tile from the next
+        // finer level's tiles.
+        let manager = TileManager::new(wsi.clone(), 3)
+            .with_tile_cache(Arc::clone(&cache))
+            .with_synthesis_budget(0);
+        assert!(manager.tile_cache().is_some());
+
+        let coord = TileCoord::new(3, 2, 0, 0, manager.tile_size_for_level(2));
+        let tile = manager.load_tile_cached(coord).unwrap();
+        assert!(cache.contains(&coord));
+        assert!(cache.contains(&TileCoord::new(3, 1, 0, 0, 256)), "children cached");
+        assert!(cache.contains(&TileCoord::new(3, 0, 0, 0, 256)), "grandchildren cached");
+        // Matches the direct (exact) synthesis up to per-stage rounding.
+        let direct = TileManager::new(wsi, 3).load_tile_sync(coord).unwrap();
+        assert_eq!((tile.width, tile.height), (direct.width, direct.height));
+        assert!(
+            tile.data
+                .iter()
+                .zip(&direct.data)
+                .all(|(a, b)| a.abs_diff(*b) <= 1)
+        );
+        // Second request: served from the cache.
+        assert!(Arc::ptr_eq(&tile, &manager.load_tile_cached(coord).unwrap()));
+
+        // Concurrent requests share one load.
+        let manager = Arc::new(manager);
+        let coord = TileCoord::new(3, 0, 5, 0, 256);
+        let tiles: Vec<_> = std::thread::scope(|scope| {
+            (0..4)
+                .map(|_| {
+                    let manager = Arc::clone(&manager);
+                    scope.spawn(move || manager.load_tile_cached(coord).unwrap())
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        assert!(tiles.windows(2).all(|pair| Arc::ptr_eq(&pair[0], &pair[1])));
+        assert!(manager.in_flight.lock().is_empty());
+        assert!(matches!(
+            manager.load_tile_cached(TileCoord::new(3, 0, 999, 0, 256)),
+            Err(Error::InvalidCoordinates { .. })
+        ));
     }
 
     #[test]

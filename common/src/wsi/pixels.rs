@@ -169,6 +169,34 @@ pub(crate) fn resize_area(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize
     dst
 }
 
+/// Averages `factor` x `factor` blocks of straight RGBA `src` (`sw` x `sh`,
+/// both multiples of `factor`) into a `sw / factor` x `sh / factor` image.
+pub(crate) fn downsample_blocks(src: &[u8], sw: usize, sh: usize, factor: usize) -> Vec<u8> {
+    debug_assert!(factor > 0 && sw.is_multiple_of(factor) && sh.is_multiple_of(factor));
+    let (dw, dh) = (sw / factor, sh / factor);
+    let area = (factor * factor) as u32;
+    let mut sums = vec![0u32; dw * 4];
+    let mut dst = vec![0u8; dw * dh * 4];
+    for oy in 0..dh {
+        sums.fill(0);
+        for y in oy * factor..(oy + 1) * factor {
+            let row = &src[y * sw * 4..(y + 1) * sw * 4];
+            for (x, px) in row.as_chunks::<4>().0.iter().enumerate() {
+                let o = (x / factor) * 4;
+                sums[o] += u32::from(px[0]);
+                sums[o + 1] += u32::from(px[1]);
+                sums[o + 2] += u32::from(px[2]);
+                sums[o + 3] += u32::from(px[3]);
+            }
+        }
+        let out = &mut dst[oy * dw * 4..(oy + 1) * dw * 4];
+        for (o, sum) in out.iter_mut().zip(&sums) {
+            *o = ((sum + area / 2) / area) as u8;
+        }
+    }
+    dst
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +279,14 @@ mod tests {
         let flat: Vec<u8> = std::iter::repeat_n([7u8, 77, 177, 255], 7 * 5).flatten().collect();
         let small = resize_area(&flat, 7, 5, 3, 2);
         assert!(small.as_chunks::<4>().0.iter().all(|p| *p == [7, 77, 177, 255]));
+    }
+
+    #[test]
+    fn block_downsample_rounds_to_nearest() {
+        let src = [
+            0, 0, 0, 255, 1, 1, 1, 255, //
+            1, 1, 1, 255, 1, 1, 1, 255,
+        ];
+        assert_eq!(downsample_blocks(&src, 2, 2, 2), [1, 1, 1, 255]);
     }
 }

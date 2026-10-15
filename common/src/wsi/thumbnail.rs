@@ -148,7 +148,8 @@ impl WsiFile {
     /// A bounded thumbnail; see the [module documentation](self) for the
     /// strategy. Run it off the UI thread: it performs slide I/O.
     pub fn thumbnail_with(&self, options: &ThumbnailOptions) -> Result<Thumbnail> {
-        let props = self.properties();
+        // Real levels only: synthetic ones would make "cheap" reads expensive.
+        let props = self.real_properties();
         let full = SlideBounds::full(props.width, props.height);
         let region = match options.region {
             ThumbnailRegion::FullSlide => full,
