@@ -77,7 +77,8 @@ impl Entry {
             (Some(path), None) => PathBuf::from(path),
             (None, None) => return None,
         };
-        Some(RecentFile::new(path, self.dir))
+        // Older versions stored `\\?\` paths on Windows (SH-15).
+        Some(RecentFile::new(crate::paths::simplified(&path), self.dir))
     }
 }
 

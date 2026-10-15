@@ -4,7 +4,7 @@
 
 use crate::state::{
     AppState, MinimapThumbnail, NewOpenFile, PaneId, SeriesEntry, SeriesNavigationMode,
-    SeriesThumbnail,
+    SeriesThumbnail, TabActivation,
 };
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
@@ -12,7 +12,6 @@ use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loo
 use eov_common::{
     ThumbnailOptions, ThumbnailRegion, TileCache, TileManager, ViewportState, WsiFile,
 };
-use natord::compare_ignore_case;
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -25,12 +24,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-/// Slide file extensions (`.ome.tif` and `.ome.tiff` end in `tif` and
-/// `tiff`; `btf`, `tf2` and `tf8` are BigTIFF, as OME-TIFF uses them).
-const WSI_EXTENSIONS: &[&str] = &[
-    "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide", "bif", "czi",
-    "btf", "tf2", "tf8",
-];
+/// The slide formats eov opens (also in the file dialog, the dataset
+/// extractor and the operating system's file associations).
+const WSI_EXTENSIONS: &[&str] = eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS;
 
 pub struct OpenFileUiContext<'a> {
     pub pane_render_cache: &'a mut Vec<PaneRenderCacheEntry>,
@@ -42,6 +38,76 @@ pub struct OpenFileUiContext<'a> {
 pub enum OpenFileMode {
     ReuseExistingTab,
     ForceNewTab,
+}
+
+/// Where a slide of a launch goes (SH-7). Slides open in parallel and
+/// finish in any order; their tabs still end up in the order they were
+/// given, the first one selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Placement {
+    /// The launch ([`new_batch`]).
+    pub(crate) batch: u64,
+    /// Position among the launch's slides in the same pane.
+    pub(crate) position: usize,
+    /// Select the tab (the first slide of its pane).
+    pub(crate) select: bool,
+    /// Focus its pane too (the first slide of the launch).
+    pub(crate) focus: bool,
+}
+
+impl Placement {
+    fn activation(self) -> TabActivation {
+        match (self.select, self.focus) {
+            (true, true) => TabActivation::Focus,
+            (true, false) => TabActivation::Select,
+            (false, _) => TabActivation::Background,
+        }
+    }
+}
+
+/// Launches whose tabs are remembered for ordering.
+const KEPT_BATCHES: u64 = 16;
+
+/// Starts a launch: slides opened with its id keep their order.
+pub(crate) fn new_batch() -> u64 {
+    let id = NEXT_BATCH.with(|next| {
+        let id = next.get();
+        next.set(id + 1);
+        id
+    });
+    BATCH_TABS.with(|batches| {
+        let mut batches = batches.borrow_mut();
+        batches.retain(|&batch, _| batch + KEPT_BATCHES > id);
+        batches.insert(id, Vec::new());
+    });
+    id
+}
+
+/// Moves a launch's new tab between the launch's tabs given before and
+/// after it, and remembers it.
+fn place_in_launch_order(state: &mut AppState, pane: PaneId, tab_id: i32, placement: Placement) {
+    BATCH_TABS.with(|batches| {
+        let mut batches = batches.borrow_mut();
+        let placed = batches.entry(placement.batch).or_default();
+        let position_of = |tab: i32| {
+            placed
+                .iter()
+                .find(|(placed_tab, _)| *placed_tab == tab)
+                .map(|(_, position)| *position)
+        };
+        let tabs = state.tabs_for_pane(pane);
+        let after_earlier = tabs
+            .iter()
+            .rposition(|&tab| position_of(tab).is_some_and(|p| p < placement.position))
+            .map(|index| index + 1);
+        let before_later = tabs
+            .iter()
+            .position(|&tab| position_of(tab).is_some_and(|p| p > placement.position));
+        if let Some(slot) = after_earlier.or(before_later) {
+            state.reorder_tab(pane, tab_id, slot as i32);
+        }
+        placed.push((tab_id, placement.position));
+    });
 }
 
 pub fn is_supported_wsi_path(path: &Path) -> bool {
@@ -56,37 +122,63 @@ pub fn is_supported_wsi_path(path: &Path) -> bool {
 }
 
 fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
-    let mut entries = fs::read_dir(folder_path)
+    let mut paths: Vec<PathBuf> = fs::read_dir(folder_path)
         .ok()
         .into_iter()
         .flat_map(|read_dir| read_dir.filter_map(Result::ok))
         .map(|entry| entry.path())
         .filter(|path| path.is_dir() || (path.is_file() && is_supported_wsi_path(path)))
-        .map(|path| {
-            let normalized_path = fs::canonicalize(&path).unwrap_or(path.clone());
-            let filename = normalized_path
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| normalized_path.display().to_string());
-            let is_directory = normalized_path.is_dir();
-            SeriesEntry {
-                path: normalized_path,
-                filename,
-                is_directory,
-                metadata_tooltip: if is_directory {
-                    format!("{}\nFolder", display_name(&path))
-                } else {
-                    "Loading metadata…".to_string()
-                },
-                objective_label: None,
-                stain_label: None,
-                thumbnail: None,
-                thumbnail_loading: !is_directory,
+        .map(|path| crate::paths::canonical(&path))
+        .collect();
+    paths.sort();
+    // The instances of one DICOM series are one slide, which OpenSlide
+    // opens from any of them: list the series once, by its first file.
+    let mut series_index: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut instances: Vec<usize> = Vec::new();
+    let mut entries: Vec<SeriesEntry> = Vec::new();
+    for path in paths {
+        let is_directory = path.is_dir();
+        let is_dicom = !is_directory
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"));
+        if is_dicom
+            && let Some(uid) = eov_common::dataset::dicom_series_uid_within(&path, 256 * 1024)
+        {
+            if let Some(&index) = series_index.get(&uid) {
+                instances[index] += 1;
+                continue;
             }
-        })
-        .collect::<Vec<_>>();
-
-    entries.sort_by(|left, right| compare_ignore_case(&left.filename, &right.filename));
+            series_index.insert(uid, entries.len());
+        }
+        let filename = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string());
+        let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+        instances.push(1);
+        entries.push(SeriesEntry {
+            metadata_tooltip: if is_directory {
+                format!("{}\nFolder", display_name(&path))
+            } else {
+                "Loading metadata…".to_string()
+            },
+            path,
+            filename,
+            is_directory,
+            modified,
+            objective_label: None,
+            stain_label: None,
+            thumbnail: None,
+            thumbnail_loading: !is_directory,
+        });
+    }
+    for (entry, count) in entries.iter_mut().zip(instances) {
+        if count > 1 {
+            entry.filename = format!("{} (DICOM series, {count} files)", entry.filename);
+        }
+    }
     entries
 }
 
@@ -95,7 +187,7 @@ fn thumbnail_cache_dir() -> PathBuf {
 }
 
 fn thumbnail_cache_key(path: &Path) -> Option<String> {
-    let normalized_path = fs::canonicalize(path).ok()?;
+    let normalized_path = dunce::canonicalize(path).ok()?;
     let fingerprint = eov_common::file_id::compute_fingerprint(&normalized_path).ok()?;
     let mut hasher = Sha256::new();
     hasher.update(eov_common::file_id::hex_digest(&fingerprint).as_bytes());
@@ -380,7 +472,7 @@ pub fn set_series_from_folder(
     navigation: SeriesNavigationMode,
     open_first: bool,
 ) {
-    let normalized_folder = fs::canonicalize(&folder_path).unwrap_or(folder_path);
+    let normalized_folder = crate::paths::canonical(&folder_path);
     if navigation != SeriesNavigationMode::Initialize
         && state
             .read()
@@ -442,6 +534,7 @@ pub fn set_series_from_file_parent(
 }
 
 /// Open a file and add it to the application state
+#[allow(clippy::too_many_arguments)]
 pub fn open_file(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -449,6 +542,7 @@ pub fn open_file(
     render_timer: &Rc<Timer>,
     path: PathBuf,
     mode: OpenFileMode,
+    placement: Option<Placement>,
     ui_context: OpenFileUiContext<'_>,
 ) {
     let OpenFileUiContext {
@@ -457,7 +551,7 @@ pub fn open_file(
         pane_view_model,
     } = ui_context;
 
-    let normalized_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let normalized_path = crate::paths::canonical(&path);
 
     let existing_tab = {
         let state_guard = state.read();
@@ -466,14 +560,24 @@ pub fn open_file(
 
     if let Some((pane, tab_id)) = existing_tab {
         let mut status_text = format!("Focused {}", normalized_path.display());
+        let view = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&normalized_path));
 
-        {
+        let warnings = {
             let mut state_guard = state.write();
-            match mode {
-                OpenFileMode::ReuseExistingTab => {
+            match (placement, mode) {
+                // Part of a launch: only the first slide of a pane is
+                // selected.
+                (Some(placement), _) => {
+                    if placement.select && placement.focus {
+                        state_guard.activate_tab_in_pane(pane, tab_id);
+                    } else if placement.select {
+                        state_guard.show_tab_in_pane(pane, tab_id);
+                    }
+                }
+                (None, OpenFileMode::ReuseExistingTab) => {
                     state_guard.activate_tab_in_pane(pane, tab_id);
                 }
-                OpenFileMode::ForceNewTab => {
+                (None, OpenFileMode::ForceNewTab) => {
                     let target_pane = if state_guard.split_enabled {
                         state_guard.focused_pane
                     } else {
@@ -485,7 +589,13 @@ pub fn open_file(
                 }
             }
             state_guard.add_to_recent(&normalized_path);
-        }
+            match view {
+                Some(PendingView::Requested(request)) => {
+                    show_view_on_open_tab(&mut state_guard, &normalized_path, &request)
+                }
+                _ => Vec::new(),
+            }
+        };
 
         {
             let state_guard = state.read();
@@ -503,6 +613,7 @@ pub fn open_file(
         // re-entrant).
         ui.set_is_loading(false);
         ui.set_status_text(SharedString::from(status_text));
+        report_view_warnings(&normalized_path, &warnings);
         request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
         return;
     }
@@ -550,6 +661,7 @@ pub fn open_file(
                 path: normalized_path.clone(),
                 target_pane,
                 extra_panes: Vec::new(),
+                placement,
                 state: Arc::clone(state),
                 tile_cache: Arc::clone(tile_cache),
                 render_timer: Rc::clone(render_timer),
@@ -561,19 +673,15 @@ pub fn open_file(
         "Opening {}…",
         display_name(&normalized_path)
     )));
-    // Shows the loading indicator in the pane the slide opens in. The pane
-    // caches are borrowed by our caller (`crate::update_tabs` would borrow
-    // them again and panic), so update through the borrowed ones.
-    {
-        let state_guard = state.read();
-        update_tabs(
-            ui,
-            &state_guard,
-            pane_render_cache,
-            pane_ui_models,
-            pane_view_model,
-        );
-    }
+    // Shows the loading indicator in the pane the slide opens in (with the
+    // caller's pane models: `crate::update_tabs` would borrow them again).
+    update_tabs(
+        ui,
+        &state.read(),
+        pane_render_cache,
+        pane_ui_models,
+        pane_view_model,
+    );
 
     // Opening can take seconds (network shares, MRXS, DICOM): do it, and
     // the thumbnail, on a worker and install the result on the UI thread
@@ -587,7 +695,13 @@ pub fn open_file(
             let _ = slint::invoke_from_event_loop(move || finish_open(ui_weak, request, result));
         });
     if let Err(err) = spawned {
-        finish_open(ui.as_weak(), request, Err(err.to_string()));
+        // From the event loop: the caller still holds the pane models,
+        // which finishing (an error refreshes the tabs) needs.
+        let ui_weak = ui.as_weak();
+        let error = err.to_string();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            finish_open(ui_weak, request, Err(error))
+        });
     }
 }
 
@@ -616,6 +730,8 @@ struct PendingOpen {
     target_pane: Option<u32>,
     /// Panes (stable ids) that asked for the same slide while it opened.
     extra_panes: Vec<Option<u32>>,
+    /// Its place in a launch.
+    placement: Option<Placement>,
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
@@ -627,21 +743,95 @@ struct OpenedSlide {
     thumbnail: Option<MinimapThumbnail>,
 }
 
+/// A view waiting for its slide to open.
+enum PendingView {
+    /// Exactly where the slide was (a restored session).
+    Saved(crate::session::SavedView),
+    /// `--goto`/`--zoom` or a link, placed once the slide's size, pixel
+    /// size and objective are known.
+    Requested(crate::launch::ViewRequest),
+}
+
 thread_local! {
     /// Opens in flight, by request (UI thread only).
     static PENDING_OPENS: RefCell<HashMap<u64, PendingOpen>> = RefCell::new(HashMap::new());
     static NEXT_OPEN_ID: Cell<u64> = const { Cell::new(1) };
-    /// Views to show when these slides (canonical paths) open, e.g. from
-    /// a restored session.
-    static INITIAL_VIEWS: RefCell<HashMap<PathBuf, crate::session::SavedView>> =
+    /// Views to show when these slides (canonical paths) open.
+    static INITIAL_VIEWS: RefCell<HashMap<PathBuf, PendingView>> =
         RefCell::new(HashMap::new());
+    static NEXT_BATCH: Cell<u64> = const { Cell::new(1) };
+    /// Tabs of recent launches with their positions, by launch.
+    static BATCH_TABS: RefCell<std::collections::BTreeMap<u64, Vec<(i32, usize)>>> =
+        const { RefCell::new(std::collections::BTreeMap::new()) };
 }
 
 /// Opens `path` at `view` instead of fitting it to the pane, the next time
 /// it is opened.
 pub(crate) fn set_initial_view(path: &Path, view: crate::session::SavedView) {
-    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, view));
+    let path = crate::paths::canonical(path);
+    INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, PendingView::Saved(view)));
+}
+
+/// Shows `path` at `request` when it opens next, or right away when it is
+/// open already (`--goto`, `--zoom`, links).
+pub(crate) fn request_view(path: &Path, request: crate::launch::ViewRequest) {
+    if request.is_empty() {
+        return;
+    }
+    let path = crate::paths::canonical(path);
+    INITIAL_VIEWS.with(|views| {
+        views
+            .borrow_mut()
+            .insert(path, PendingView::Requested(request))
+    });
+}
+
+/// Moves the view of an open slide to `request`, where the slide is the
+/// selected tab of its pane. Returns what could not be applied.
+fn show_view_on_open_tab(
+    state: &mut AppState,
+    path: &Path,
+    request: &crate::launch::ViewRequest,
+) -> Vec<String> {
+    let Some((pane, tab_id)) = state.find_tab_by_path(path) else {
+        return Vec::new();
+    };
+    if state.active_tab_id_for_pane(pane) != Some(tab_id) {
+        return Vec::new();
+    }
+    let file_id = state.resolve_tab_file_id(tab_id);
+    let Some(file) = state.get_file_mut(file_id) else {
+        return Vec::new();
+    };
+    let scale = crate::launch::SlideScale::of_open_file(file);
+    let Some(pane_state) = file.pane_state_mut(pane) else {
+        return Vec::new();
+    };
+    let viewport = &mut pane_state.viewport;
+    let current = (
+        viewport.viewport.center.x,
+        viewport.viewport.center.y,
+        viewport.viewport.zoom,
+    );
+    let view = crate::launch::resolve_view(request, &scale, current, viewport.fit_view());
+    viewport.smooth_set_center_zoom(view.center_x, view.center_y, view.zoom);
+    state.request_render();
+    view.warnings
+}
+
+/// Tells the user what of a requested view could not be applied.
+fn report_view_warnings(path: &Path, warnings: &[String]) {
+    if warnings.is_empty() {
+        return;
+    }
+    crate::host_ui::with_host(|host| {
+        host.notify(
+            eov_plugin_api::protocol::NotifyLevel::Warning,
+            &format!("Could not show {} exactly as asked", display_name(path)),
+            Some(&warnings.join("\n")),
+            None,
+        )
+    });
 }
 
 fn display_name(path: &Path) -> String {
@@ -703,6 +893,7 @@ fn finish_open(
         path,
         target_pane,
         extra_panes,
+        placement,
         state,
         tile_cache,
         render_timer,
@@ -712,8 +903,20 @@ fn finish_open(
         Ok(opened) => opened,
         Err(err) => {
             error!("Failed to open {}: {err}", path.display());
-            // A pane made for this slide (an edge drop) must not stay empty.
-            let removed = target_pane.is_some_and(|uid| state.write().remove_empty_pane(uid));
+            // A view asked for this slide must not apply to a later open.
+            INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path));
+            // A pane made for this slide (an edge drop) must not stay empty,
+            // nor the window when nothing opened (a launch whose slides all
+            // failed).
+            let removed = {
+                let mut state_guard = state.write();
+                let removed = target_pane.is_some_and(|uid| state_guard.remove_empty_pane(uid));
+                let nothing_shown = state_guard.panes.iter().all(|pane| pane.tabs.is_empty());
+                if nothing_shown && !still_opening {
+                    state_guard.create_home_tab();
+                }
+                removed || nothing_shown
+            };
             {
                 let state_guard = state.read();
                 if removed {
@@ -738,20 +941,22 @@ fn finish_open(
 
     // Opened meanwhile under another spelling of the path.
     let existing_tab = state.read().find_tab_by_path(&path);
-    let level_count = if let Some((pane, tab_id)) = existing_tab {
+    let (level_count, warnings) = if let Some((pane, tab_id)) = existing_tab {
         let mut state_guard = state.write();
         state_guard.activate_tab_in_pane(pane, tab_id);
         state_guard.add_to_recent(&path);
-        None
+        (None, Vec::new())
     } else {
-        Some(install_slide(
+        let (levels, warnings) = install_slide(
             &ui,
             &state,
             &tile_cache,
             path.clone(),
             target_pane,
+            placement,
             opened,
-        ))
+        );
+        (Some(levels), warnings)
     };
 
     {
@@ -785,19 +990,22 @@ fn finish_open(
         None => format!("Focused {name}"),
     };
     ui.set_status_text(SharedString::from(status));
+    report_view_warnings(&path, &warnings);
     request_render_loop(&render_timer, &ui.as_weak(), &state, &tile_cache);
 }
 
 /// Adds an opened slide to the state and starts loading its tiles.
-/// Returns its number of levels.
+/// Returns its number of levels and what of a requested view could not be
+/// applied.
 fn install_slide(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     path: PathBuf,
     target_pane: Option<u32>,
+    placement: Option<Placement>,
     opened: OpenedSlide,
-) -> u32 {
+) -> (u32, Vec<String>) {
     let OpenedSlide { wsi, thumbnail } = opened;
     let mut state_guard = state.write();
 
@@ -829,11 +1037,20 @@ fn install_slide(
         props.height as f64,
         Some(props.content_bounds()),
     );
-    if let Some(view) = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path))
-        && view.zoom.is_finite()
-        && view.zoom > 0.0
-    {
-        viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+    let mut warnings = Vec::new();
+    match INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path)) {
+        Some(PendingView::Saved(view)) if view.zoom.is_finite() && view.zoom > 0.0 => {
+            viewport.set_orientation(view.orientation);
+            viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+        }
+        Some(PendingView::Requested(request)) => {
+            let fit = viewport.fit_view();
+            let scale = crate::launch::SlideScale::of_properties(props);
+            let view = crate::launch::resolve_view(&request, &scale, fit, fit);
+            viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+            warnings = view.warnings;
+        }
+        _ => {}
     }
 
     // Rendering uses a view with synthetic coarse levels for slides whose
@@ -874,9 +1091,74 @@ fn install_slide(
         viewport,
         thumbnail,
         target_pane,
+        activation: placement.map_or(TabActivation::Focus, Placement::activation),
     });
+    if let Some(placement) = placement
+        && let Some(pane) = state_guard.pane_of_tab(file_id)
+    {
+        place_in_launch_order(&mut state_guard, pane, file_id, placement);
+    }
+    // A pane that showed its Home tab now shows the slide, whatever the
+    // activation (see `AppState::add_file`).
     if let Some(home_tab_id) = home_tab_to_close {
         state_guard.close_home_tab(home_tab_id);
     }
-    level_count
+    (level_count, warnings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_dicom(path: &Path, uid: &str) {
+        let mut bytes = vec![0u8; 128];
+        bytes.extend_from_slice(b"DICM");
+        let mut value = uid.as_bytes().to_vec();
+        if value.len() % 2 == 1 {
+            value.push(0);
+        }
+        bytes.extend_from_slice(&[0x20, 0x00, 0x0E, 0x00, b'U', b'I']);
+        bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(&value);
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn dicom_instances_of_one_series_are_listed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, uid) in [("b.dcm", "1.2.3"), ("a.dcm", "1.2.3"), ("c.dcm", "1.2.44")] {
+            write_dicom(&dir.path().join(name), uid);
+        }
+        fs::write(dir.path().join("slide10.svs"), b"").unwrap();
+        fs::write(dir.path().join("slide2.svs"), b"").unwrap();
+        let entries = enumerate_series_entries(dir.path());
+        let names: Vec<&str> = entries.iter().map(|e| e.filename.as_str()).collect();
+        assert_eq!(names.len(), 4, "{names:?}");
+        assert!(
+            names.contains(&"a.dcm (DICOM series, 2 files)"),
+            "{names:?}"
+        );
+        assert!(names.contains(&"c.dcm"), "{names:?}");
+        assert!(entries.iter().all(|e| e.modified.is_some()));
+    }
+
+    /// Opening a slide shows it loading in its pane without borrowing the
+    /// pane models a second time (`open_file` runs inside them).
+    #[test]
+    fn opening_a_slide_shows_it_loading() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("a.tif");
+            eov_common::test_support::write_tiled_tiff(&path, 512, 512, 256, |_, _| {
+                [200, 200, 200]
+            })
+            .unwrap();
+            let ui = crate::AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(8, 8 << 20));
+            let render_timer = Rc::new(Timer::default());
+            crate::open_file(&ui, &state, &tile_cache, &render_timer, path);
+            assert!(ui.get_is_loading());
+        });
+    }
 }

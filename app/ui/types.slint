@@ -48,6 +48,18 @@ export struct PropertyRow {
     value: string,
 }
 
+// One choice in a row of options (stain models, stains).
+export struct ChoiceItem {
+    id: string,
+    label: string,
+}
+
+// One result of the Quantify Stain panel.
+export struct ResultRow {
+    label: string,
+    value: string,
+}
+
 // One line of the Measurements panel (the region of interest has id "roi").
 export struct MeasurementRow {
     id: string,
@@ -144,6 +156,10 @@ export struct ViewportInfo {
     image-width: float,
     image-height: float,
     level: int,
+    // Clockwise rotation of the view in degrees (0, 90, 180, 270), then a
+    // left-right mirror when `flipped`.
+    rotation: int,
+    flipped: bool,
 }
 
 /// A text label drawn over the viewport (anchors: 0 = top-left at (x, y),
@@ -199,8 +215,15 @@ export struct PluginRowData {
     status-level: int,
     api-version: string,
     source: string,
+    // Where the package came from: official, github (owner/repo), local, …
+    origin: string,
+    // Why it needs attention (changed since installed, incompatible, …).
+    detail: string,
+    // A newer version found by Check for Updates ("" if none).
+    update: string,
     can-enable: bool,
     can-disable: bool,
+    can-remove: bool,
 }
 
 export struct MetadataItem {
@@ -404,6 +427,8 @@ export struct DatasetExportSettings {
     white-threshold: float,
     // Keep only patches that are mostly tissue (Otsu mask).
     tissue-only: bool,
+    // Name slides by opaque ids; write no paths or file names.
+    deidentify: bool,
     // Why the run cannot start, shown in the dialog.
     error: string,
 }

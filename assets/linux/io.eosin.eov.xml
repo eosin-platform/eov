@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Whole-slide image formats eov opens (through OpenSlide or its own
+  OME-TIFF reader), for file managers (installed as
+  share/mime/packages/io.eosin.eov.xml). shared-mime-info already knows
+  TIFF (image/tiff) and DICOM (application/dicom); the desktop entry
+  lists those too. Generated from SLIDE_TYPES in
+  app/src/file_types/mod.rs, whose tests check this file.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="image/x-aperio-svs">
+    <comment>Aperio whole-slide image</comment>
+    <sub-class-of type="image/tiff"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.svs"/>
+  </mime-type>
+  <mime-type type="image/x-hamamatsu-ndpi">
+    <comment>Hamamatsu NDPI whole-slide image</comment>
+    <sub-class-of type="image/tiff"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.ndpi"/>
+  </mime-type>
+  <mime-type type="image/x-hamamatsu-vms">
+    <comment>Hamamatsu VMS whole-slide image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.vms"/>
+  </mime-type>
+  <mime-type type="image/x-hamamatsu-vmu">
+    <comment>Hamamatsu VMU whole-slide image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.vmu"/>
+  </mime-type>
+  <mime-type type="image/x-leica-scn">
+    <comment>Leica SCN whole-slide image</comment>
+    <sub-class-of type="image/tiff"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.scn"/>
+    <!-- Another format uses the extension too: a TIFF header tells them
+         apart. Below image/tiff's priority, so other TIFFs stay image/tiff. -->
+    <magic priority="40">
+      <match type="string" value="II\x2a\x00" offset="0"/>
+      <match type="string" value="MM\x00\x2a" offset="0"/>
+      <match type="string" value="II\x2b\x00" offset="0"/>
+      <match type="string" value="MM\x00\x2b" offset="0"/>
+    </magic>
+  </mime-type>
+  <mime-type type="image/x-mirax">
+    <comment>MIRAX whole-slide image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.mrxs"/>
+  </mime-type>
+  <mime-type type="image/x-sakura-svslide">
+    <comment>Sakura whole-slide image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.svslide"/>
+  </mime-type>
+  <mime-type type="image/x-ventana-bif">
+    <comment>Ventana whole-slide image</comment>
+    <sub-class-of type="image/tiff"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.bif"/>
+  </mime-type>
+  <mime-type type="image/x-zeiss-czi">
+    <comment>Zeiss CZI whole-slide image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.czi"/>
+  </mime-type>
+  <mime-type type="image/x-bigtiff">
+    <comment>BigTIFF image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.btf"/>
+    <glob pattern="*.tf2"/>
+    <glob pattern="*.tf8"/>
+  </mime-type>
+</mime-info>

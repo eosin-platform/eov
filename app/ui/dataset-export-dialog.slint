@@ -481,6 +481,44 @@ export component DatasetExportDialog inherits Rectangle {
                 }
             }
 
+            // --- De-identification ---
+            HorizontalLayout {
+                spacing: 8px;
+                height: 22px;
+
+                Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.settings.deidentify ? Theme.accent : Theme.border;
+                    background: root.settings.deidentify ? Theme.accent : transparent;
+
+                    if root.settings.deidentify: Text {
+                        text: "✓";
+                        color: white;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: "De-identify (name slides by ids; write no file names or paths)";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                deidentify-touch := TouchArea {
+                    clicked => {
+                        root.settings.deidentify = !root.settings.deidentify;
+                        root.settings-changed(root.settings);
+                    }
+                }
+            }
+
             // Spacer
             Rectangle {
                 vertical-stretch: 1;

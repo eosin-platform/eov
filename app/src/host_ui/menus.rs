@@ -24,6 +24,9 @@ const MAX_PLUGIN_ITEMS: usize = 20;
 pub(super) struct OpenMenu {
     contexts: Vec<(Arc<str>, MenuContext)>,
     file_id: Option<FileId>,
+    /// The pane the menu was opened on, and the level-0 point under it.
+    pane: usize,
+    image: Point,
 }
 
 fn item(id: impl Into<String>, label: &str, icon: &str) -> ContextMenuItem {
@@ -70,7 +73,15 @@ impl UiHost {
         let Some(ui) = self.ui() else {
             return;
         };
-        let (file_id, view, has_roi, has_measurements, multichannel) = {
+        let (linked, can_align, has_landmarks) = {
+            let state = self.state.read();
+            (
+                state.slide_link.enabled && state.split_enabled,
+                crate::slide_link::can_align_from_landmarks(&state, PaneId(pane)),
+                !state.slide_link.landmarks.is_empty(),
+            )
+        };
+        let (file_id, view, has_roi, has_measurements, turned, multichannel) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -81,6 +92,8 @@ impl UiHost {
                 super::publish::view_info(&state, PaneId(pane), scale),
                 file.is_some_and(|f| f.roi.is_some()),
                 file.is_some_and(|f| !f.measurements.is_empty()),
+                file.and_then(|f| f.pane_state(PaneId(pane)))
+                    .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
                 file.is_some_and(|f| f.wsi.is_multichannel()),
             )
         };
@@ -105,6 +118,45 @@ impl UiHost {
                 item("host:channels", "Channels…", ""),
                 Action::Channels,
             ));
+            mark_last_separator(&mut items);
+        }
+        if file_id.is_some() {
+            items.push(with_key(
+                item("host:view-rotate-right", "Rotate Right 90°", ""),
+                Action::RotateRight,
+            ));
+            items.push(with_key(
+                item("host:view-rotate-left", "Rotate Left 90°", ""),
+                Action::RotateLeft,
+            ));
+            items.push(with_key(
+                item("host:view-flip", "Flip Horizontally", ""),
+                Action::Flip,
+            ));
+            if turned {
+                items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
+            }
+            mark_last_separator(&mut items);
+        }
+        // Linked navigation: align this slide to the others (Phase 3 #5).
+        if linked && file_id.is_some() {
+            items.push(item(
+                "host:link-landmark-1",
+                "Place Alignment Landmark 1",
+                "",
+            ));
+            items.push(item(
+                "host:link-landmark-2",
+                "Place Alignment Landmark 2",
+                "",
+            ));
+            if can_align {
+                items.push(item("host:link-align", "Align from Landmarks", ""));
+            }
+            if has_landmarks {
+                items.push(item("host:link-clear-landmarks", "Clear Landmarks", ""));
+            }
+            items.push(item("host:link-reset", "Reset Alignment", ""));
             mark_last_separator(&mut items);
         }
         if let Some(file_id) = file_id {
@@ -149,6 +201,12 @@ impl UiHost {
             host_items.push(with_key(
                 item("host:measurements-panel", "Measurements…", "measure"),
                 Action::Measurements,
+            ));
+        }
+        if has_roi {
+            host_items.push(with_key(
+                item("host:quantify", "Quantify Stain in Region…", ""),
+                Action::Quantify,
             ));
         }
         if has_measurements {
@@ -224,7 +282,12 @@ impl UiHost {
         if let Some(last) = items.last_mut() {
             last.separator_after = false;
         }
-        *self.menu.borrow_mut() = Some(OpenMenu { contexts, file_id });
+        *self.menu.borrow_mut() = Some(OpenMenu {
+            contexts,
+            file_id,
+            pane,
+            image,
+        });
 
         ui.set_context_menu_tab_id(-1);
         ui.set_context_menu_series_path("".into());
@@ -270,8 +333,45 @@ impl UiHost {
         if self.bookmark_command(host_command) {
             return true;
         }
+        let opened_at = self
+            .menu
+            .borrow()
+            .as_ref()
+            .map(|menu| (menu.pane, menu.image));
+        if let Some((pane, image)) = opened_at
+            && self.link_command(host_command, pane, image)
+        {
+            return true;
+        }
         if host_command == "measurements-panel" {
             self.open_measurements_panel();
+            return true;
+        }
+        if host_command == "quantify" {
+            if let Some(ui) = self.ui() {
+                crate::quantify_panel::open(&ui, &self.state);
+            }
+            return true;
+        }
+        if let Some(action) = host_command.strip_prefix("view-") {
+            let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
+            if let Some(pane) = pane {
+                {
+                    let mut state = self.state.write();
+                    state.set_focused_pane(PaneId(pane));
+                    let changed = match action {
+                        "rotate-right" => crate::callbacks::rotate_active_viewport(&mut state, 1),
+                        "rotate-left" => crate::callbacks::rotate_active_viewport(&mut state, -1),
+                        "flip" => crate::callbacks::flip_active_viewport(&mut state),
+                        _ => crate::callbacks::reset_active_orientation(&mut state),
+                    };
+                    if changed {
+                        state.mirror_locked_viewports_from_active();
+                        state.request_render();
+                    }
+                }
+                self.request_render();
+            }
             return true;
         }
         let file_id = self.menu.borrow().as_ref().and_then(|menu| menu.file_id);

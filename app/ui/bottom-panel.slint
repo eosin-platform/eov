@@ -11,6 +11,10 @@ export component BottomPanel inherits Rectangle {
     in property <bool> series-can-go-back: false;
     in property <bool> series-can-go-forward: false;
     in property <bool> series-can-go-up: false;
+    in-out property <string> series-filter;
+    in property <string> series-sort-label: "A–Z";
+    callback series-filter-edited(string);
+    callback series-sort-cycled();
     in property <string> status-left: "";
     in property <string> status-right: "";
 
@@ -51,6 +55,14 @@ export component BottomPanel inherits Rectangle {
             can-go-back: root.series-can-go-back;
             can-go-forward: root.series-can-go-forward;
             can-go-up: root.series-can-go-up;
+            filter <=> root.series-filter;
+            sort-label: root.series-sort-label;
+            filter-edited(text) => {
+                root.series-filter-edited(text);
+            }
+            sort-cycled => {
+                root.series-sort-cycled();
+            }
             open-folder-requested => {
                 root.open-folder-requested();
             }

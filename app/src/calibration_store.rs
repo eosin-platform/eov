@@ -23,7 +23,7 @@ struct Entry {
 }
 
 fn store_path() -> PathBuf {
-    crate::paths::data_dir().join("calibrations.toml")
+    crate::paths::calibrations_file()
 }
 
 fn read(path: &Path) -> Store {

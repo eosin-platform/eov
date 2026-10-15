@@ -177,6 +177,7 @@ mod tests {
             height: 8.0,
             scale: 1.0,
             mpp: None,
+            orientation: Default::default(),
         }
     }
 

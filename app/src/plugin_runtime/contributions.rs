@@ -5,8 +5,8 @@
 //! and hotkeys are checked against the host's shortcuts and each other.
 
 use eov_plugin_api::protocol::{
-    ButtonUpdate, FilterSpec, Hotkey, HotkeySpec, HudButtonSpec, MenuItem, PaneId, ToolSpec,
-    ToolbarButtonSpec,
+    BatchCommandSpec, ButtonUpdate, FilterSpec, Hotkey, HotkeySpec, HudButtonSpec, MenuItem,
+    PaneId, ToolSpec, ToolbarButtonSpec,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -129,6 +129,8 @@ pub struct Contributions {
     tools: Vec<ToolEntry>,
     hotkeys: Vec<HotkeyEntry>,
     filters: Vec<FilterEntry>,
+    /// Commands for headless batch runs, by plugin.
+    batch: Vec<(Arc<str>, BatchCommandSpec)>,
     seq: u64,
     revision: u64,
 }
@@ -636,8 +638,60 @@ impl Contributions {
         entries
     }
 
+    /// Adds or replaces a batch command (see `methods::BATCH_REGISTER`).
+    pub fn register_batch(
+        &mut self,
+        plugin_id: &Arc<str>,
+        spec: BatchCommandSpec,
+    ) -> Result<(), String> {
+        let id_ok = !spec.command_id.is_empty()
+            && spec.command_id.len() <= 64
+            && spec
+                .command_id
+                .starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && spec
+                .command_id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-'));
+        if !id_ok {
+            return Err(format!("invalid batch command id '{}'", spec.command_id));
+        }
+        if spec.params.len() > 64 {
+            return Err("a batch command takes at most 64 parameters".to_string());
+        }
+        let theirs = |(owner, s): &(Arc<str>, BatchCommandSpec)| {
+            owner == plugin_id && s.command_id == spec.command_id
+        };
+        match self.batch.iter_mut().find(|entry| theirs(entry)) {
+            Some(entry) => entry.1 = spec,
+            None => {
+                if self
+                    .batch
+                    .iter()
+                    .filter(|(owner, _)| owner == plugin_id)
+                    .count()
+                    >= 32
+                {
+                    return Err("plugins may register at most 32 batch commands".to_string());
+                }
+                self.batch.push((Arc::clone(plugin_id), spec));
+            }
+        }
+        Ok(())
+    }
+
+    /// The batch commands of `plugin_id` (all plugins for `None`).
+    pub fn batch_commands(&self, plugin_id: Option<&str>) -> Vec<(Arc<str>, BatchCommandSpec)> {
+        self.batch
+            .iter()
+            .filter(|(owner, _)| plugin_id.is_none_or(|id| &**owner == id))
+            .cloned()
+            .collect()
+    }
+
     /// Removes everything a plugin contributed.
     pub fn remove_plugin(&mut self, plugin_id: &str) {
+        self.batch.retain(|(owner, _)| &**owner != plugin_id);
         self.toolbar.retain(|e| &*e.plugin_id != plugin_id);
         self.hud.retain(|e| &*e.plugin_id != plugin_id);
         self.tools.retain(|e| &*e.plugin_id != plugin_id);

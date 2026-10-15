@@ -214,9 +214,18 @@ struct OpenSurface {
     window: Option<ComponentInstance>,
 }
 
+/// Who asked a confirmation, and so who gets the answer.
+enum ConfirmOwner {
+    Plugin {
+        plugin: Arc<str>,
+        request_id: String,
+    },
+    /// eov itself; called with the answer once the dialog has closed.
+    Host(Box<dyn FnOnce(bool)>),
+}
+
 struct PendingConfirm {
-    plugin: Arc<str>,
-    request_id: String,
+    owner: ConfirmOwner,
     args: ConfirmArgs,
 }
 
@@ -559,12 +568,12 @@ impl Surfaces {
         for id in ids {
             self.close(host, &id, false);
         }
-        self.confirm_queue.retain(|c| &*c.plugin != plugin_id);
-        if self
-            .confirm
-            .as_ref()
-            .is_some_and(|c| &*c.plugin == plugin_id)
-        {
+        self.confirm_queue.retain(
+            |c| !matches!(&c.owner, ConfirmOwner::Plugin { plugin, .. } if &**plugin == plugin_id),
+        );
+        if self.confirm.as_ref().is_some_and(
+            |c| matches!(&c.owner, ConfirmOwner::Plugin { plugin, .. } if &**plugin == plugin_id),
+        ) {
             self.confirm = None;
             self.show_next_confirm(host);
         }
@@ -587,8 +596,25 @@ impl Surfaces {
         args: ConfirmArgs,
     ) {
         self.confirm_queue.push_back(PendingConfirm {
-            plugin: Arc::clone(plugin),
-            request_id,
+            owner: ConfirmOwner::Plugin {
+                plugin: Arc::clone(plugin),
+                request_id,
+            },
+            args,
+        });
+        if self.confirm.is_none() {
+            self.show_next_confirm(host);
+        }
+    }
+
+    pub(super) fn queue_host_confirm(
+        &mut self,
+        host: &UiHost,
+        args: ConfirmArgs,
+        answer: Box<dyn FnOnce(bool)>,
+    ) {
+        self.confirm_queue.push_back(PendingConfirm {
+            owner: ConfirmOwner::Host(answer),
             args,
         });
         if self.confirm.is_none() {
@@ -608,23 +634,34 @@ impl Surfaces {
             ui.set_plugin_confirm_message(next.args.message.clone().into());
             ui.set_plugin_confirm_confirm_label(next.args.confirm_label.clone().into());
             ui.set_plugin_confirm_cancel_label(next.args.cancel_label.clone().into());
+            ui.set_plugin_confirm_destructive(next.args.destructive);
             ui.set_plugin_confirm_visible(true);
         }
         self.confirm = Some(next);
     }
 
-    /// The user answered the confirmation dialog.
-    pub(super) fn answer_confirm(&mut self, host: &UiHost, confirmed: bool) {
+    /// The user answered the confirmation dialog. A question of eov's own
+    /// is returned, to be answered once the surfaces are no longer borrowed.
+    pub(super) fn answer_confirm(
+        &mut self,
+        host: &UiHost,
+        confirmed: bool,
+    ) -> Option<Box<dyn FnOnce(bool)>> {
+        let mut host_answer = None;
         if let Some(pending) = self.confirm.take() {
-            host.post(
-                EventTarget::Plugin(pending.plugin),
-                HostEvent::ConfirmResult {
-                    request_id: pending.request_id,
-                    confirmed,
-                },
-            );
+            match pending.owner {
+                ConfirmOwner::Plugin { plugin, request_id } => host.post(
+                    EventTarget::Plugin(plugin),
+                    HostEvent::ConfirmResult {
+                        request_id,
+                        confirmed,
+                    },
+                ),
+                ConfirmOwner::Host(answer) => host_answer = Some(answer),
+            }
         }
         self.show_next_confirm(host);
+        host_answer
     }
 }
 
@@ -651,7 +688,32 @@ impl UiHost {
     }
 
     pub(crate) fn answer_plugin_confirm(&self, confirmed: bool) {
-        self.surfaces.borrow_mut().answer_confirm(self, confirmed);
+        let host_answer = self.surfaces.borrow_mut().answer_confirm(self, confirmed);
+        if let Some(answer) = host_answer {
+            answer(confirmed);
+        }
+    }
+
+    /// Asks the user to confirm something eov is about to do, in the same
+    /// dialog plugins use; `answer` gets the reply.
+    pub(crate) fn confirm(
+        &self,
+        title: &str,
+        message: &str,
+        confirm_label: &str,
+        destructive: bool,
+        answer: impl FnOnce(bool) + 'static,
+    ) {
+        let args = ConfirmArgs {
+            title: title.to_string(),
+            message: message.to_string(),
+            confirm_label: confirm_label.to_string(),
+            cancel_label: "Cancel".to_string(),
+            destructive,
+        };
+        self.surfaces
+            .borrow_mut()
+            .queue_host_confirm(self, args, Box::new(answer));
     }
 }
 

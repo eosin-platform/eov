@@ -9,7 +9,6 @@ use eov_common::{
 };
 use eov_plugin_api::protocol::Rect;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -143,6 +142,8 @@ pub struct SeriesEntry {
     pub path: PathBuf,
     pub filename: String,
     pub is_directory: bool,
+    /// When the file was last changed, for the Newest order.
+    pub modified: Option<std::time::SystemTime>,
     pub metadata_tooltip: String,
     pub objective_label: Option<String>,
     pub stain_label: Option<String>,
@@ -162,16 +163,97 @@ pub enum SeriesNavigationMode {
 #[derive(Debug, Clone, Default)]
 pub struct OpenedSeries {
     pub current_path: PathBuf,
+    /// In [`SeriesSort`] order.
     pub entries: Vec<SeriesEntry>,
     pub back_history: Vec<PathBuf>,
     pub forward_history: Vec<PathBuf>,
     /// Thumbnails of `entries` were requested (they load while the series
     /// bar is visible).
     pub thumbnails_requested: bool,
+    /// Only entries whose name, stain or objective contains this
+    /// (case-insensitively) are shown and stepped through.
+    pub filter: String,
+    pub sort: SeriesSort,
+}
+
+/// The order of a series (folders always come first).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SeriesSort {
+    /// By name, with numbers in numeric order ("S2" before "S10").
+    #[default]
+    Name,
+    /// The most recently changed first.
+    Newest,
+    /// By stain label, then name.
+    Stain,
+}
+
+impl SeriesSort {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Name => Self::Newest,
+            Self::Newest => Self::Stain,
+            Self::Stain => Self::Name,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Name => "A–Z",
+            Self::Newest => "Newest",
+            Self::Stain => "Stain",
+        }
+    }
+}
+
+impl OpenedSeries {
+    /// Puts `entries` in the chosen order.
+    pub fn apply_sort(&mut self) {
+        let sort = self.sort;
+        self.entries.sort_by(|a, b| {
+            b.is_directory
+                .cmp(&a.is_directory)
+                .then_with(|| match sort {
+                    SeriesSort::Name => natord::compare_ignore_case(&a.filename, &b.filename),
+                    SeriesSort::Newest => b
+                        .modified
+                        .cmp(&a.modified)
+                        .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename)),
+                    SeriesSort::Stain => {
+                        let stain = |e: &SeriesEntry| e.stain_label.clone().unwrap_or_default();
+                        // Unlabelled slides last.
+                        (stain(a).is_empty(), stain(a).to_lowercase())
+                            .cmp(&(stain(b).is_empty(), stain(b).to_lowercase()))
+                            .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename))
+                    }
+                })
+        });
+    }
+
+    /// The entries the series bar shows: those matching the filter.
+    pub fn visible_entries(&self) -> Vec<&SeriesEntry> {
+        let filter = self.filter.trim().to_lowercase();
+        if filter.is_empty() {
+            return self.entries.iter().collect();
+        }
+        self.entries
+            .iter()
+            .filter(|entry| {
+                [
+                    Some(entry.filename.as_str()),
+                    entry.stain_label.as_deref(),
+                    entry.objective_label.as_deref(),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|text| text.to_lowercase().contains(&filter))
+            })
+            .collect()
+    }
 }
 
 fn normalize_recent_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::paths::canonical(path)
 }
 
 /// A single open file with its associated state
@@ -218,6 +300,21 @@ pub struct NewOpenFile {
     /// Pane that shows the new tab (the focused pane when it no longer
     /// exists).
     pub target_pane: PaneId,
+    /// How the new tab is shown.
+    pub activation: TabActivation,
+}
+
+/// How a newly opened slide's tab is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabActivation {
+    /// Selected, and its pane focused (a slide opened on its own).
+    Focus,
+    /// Selected in its pane; the focus stays where it is (the first slide
+    /// of a further pane at launch).
+    Select,
+    /// Added behind the selected tab (the other slides of a launch), unless
+    /// the pane shows nothing or a Home tab.
+    Background,
 }
 
 impl OpenFile {
@@ -294,6 +391,8 @@ pub struct FilePaneState {
     pub last_render_width: f64,
     pub last_render_height: f64,
     pub last_render_level: u32,
+    /// How the last rendered frame was turned.
+    pub last_render_orientation: eov_common::viewport::Orientation,
     pub tiles_loaded_since_render: u32,
     pub frame_count: u32,
     pub last_render_time: std::time::Instant,
@@ -330,6 +429,7 @@ impl FilePaneState {
             last_render_width: 0.0,
             last_render_height: 0.0,
             last_render_level: u32::MAX,
+            last_render_orientation: eov_common::viewport::Orientation::IDENTITY,
             tiles_loaded_since_render: 0,
             frame_count: 0,
             last_render_time: std::time::Instant::now(),
@@ -445,6 +545,8 @@ pub struct AppState {
     pub series_content_revision: u64,
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
+    /// Linked navigation across panes with different slides.
+    pub slide_link: crate::slide_link::SlideLink,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -486,6 +588,7 @@ impl AppState {
             series_revision: 0,
             series_content_revision: 0,
             viewport_lock_enabled: false,
+            slide_link: Default::default(),
             needs_render: true,
             render_loop_running: false,
             filter_chain: Arc::new(crate::plugin_runtime::filters::FilterChain::default()),
@@ -848,7 +951,7 @@ impl AppState {
     }
 
     pub fn find_tab_by_path(&self, path: &std::path::Path) -> Option<(PaneId, i32)> {
-        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let normalized_path = crate::paths::canonical(path);
         self.panes
             .iter()
             .enumerate()
@@ -1157,6 +1260,7 @@ impl AppState {
             viewport,
             thumbnail,
             target_pane,
+            activation,
         } = new_file;
 
         let normalized_path = normalize_recent_path(&path);
@@ -1195,8 +1299,28 @@ impl AppState {
         } else {
             PaneId::PRIMARY
         };
-        self.activate_tab_in_pane(target_pane, id);
+        let pane_is_empty = self
+            .active_tab_id_for_pane(target_pane)
+            .is_none_or(|tab| self.is_home_tab(tab));
+        match activation {
+            TabActivation::Focus => self.activate_tab_in_pane(target_pane, id),
+            TabActivation::Select => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background if pane_is_empty => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background => self.add_tab_to_pane_if_missing(target_pane, id),
+        }
         id
+    }
+
+    /// Selects a tab in its pane without moving the keyboard focus to
+    /// that pane.
+    pub fn show_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if !self.is_known_tab(id) || pane.0 >= self.panes.len() {
+            return;
+        }
+        self.add_tab_to_pane_if_missing(pane, id);
+        self.select_tab_in_pane(pane, id);
+        self.sync_active_file_id();
+        self.needs_render = true;
     }
 
     /// Close a file by ID
@@ -1332,7 +1456,9 @@ impl AppState {
             self.series_selected_path = None;
             return None;
         };
-        if series.entries.is_empty() {
+        // Next and previous follow what the series bar shows.
+        let entries = series.visible_entries();
+        if entries.is_empty() {
             self.series_selected_path = None;
             return None;
         }
@@ -1349,23 +1475,21 @@ impl AppState {
         let current_index = selected_path
             .as_ref()
             .and_then(|selected| {
-                series
-                    .entries
+                entries
                     .iter()
                     .position(|entry| normalize_series_entry_path(&entry.path) == *selected)
             })
             .or_else(|| {
                 active_file_path.as_ref().and_then(|active| {
-                    series
-                        .entries
+                    entries
                         .iter()
                         .position(|entry| normalize_series_entry_path(&entry.path) == *active)
                 })
             })
             .unwrap_or(0) as i32;
 
-        let next_index = (current_index + offset).rem_euclid(series.entries.len() as i32) as usize;
-        let next_path = series.entries[next_index].path.clone();
+        let next_index = (current_index + offset).rem_euclid(entries.len() as i32) as usize;
+        let next_path = entries[next_index].path.clone();
         self.series_selected_path = Some(next_path.clone());
         self.needs_render = true;
         Some(next_path)
@@ -1457,18 +1581,22 @@ impl AppState {
                         }
                     }
                 }
+                if series.current_path != folder_path {
+                    series.filter.clear();
+                }
                 series.current_path = folder_path;
                 series.entries = entries;
+                series.apply_sort();
                 series.thumbnails_requested = false;
             }
             None => {
-                self.opened_series = Some(OpenedSeries {
+                let mut series = OpenedSeries {
                     current_path: folder_path,
                     entries,
-                    back_history: Vec::new(),
-                    forward_history: Vec::new(),
-                    thumbnails_requested: false,
-                });
+                    ..OpenedSeries::default()
+                };
+                series.apply_sort();
+                self.opened_series = Some(series);
             }
         }
 
@@ -1504,6 +1632,9 @@ impl AppState {
         entry.stain_label = stain_label;
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
+        if series.sort == SeriesSort::Stain {
+            series.apply_sort();
+        }
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
@@ -1528,11 +1659,33 @@ impl AppState {
         }
 
         series.entries = entries;
+        series.apply_sort();
         series.thumbnails_requested = false;
         self.reconcile_series_selection();
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
+    }
+
+    /// Shows only the series entries matching `filter`.
+    pub fn set_series_filter(&mut self, filter: &str) {
+        if let Some(series) = self.opened_series.as_mut()
+            && series.filter != filter
+        {
+            series.filter = filter.to_string();
+            self.series_content_revision = self.series_content_revision.wrapping_add(1);
+            self.needs_render = true;
+        }
+    }
+
+    /// Switches the series to the next order; returns it.
+    pub fn cycle_series_sort(&mut self) -> Option<SeriesSort> {
+        let series = self.opened_series.as_mut()?;
+        series.sort = series.sort.next();
+        series.apply_sort();
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
+        self.needs_render = true;
+        Some(series.sort)
     }
 
     pub fn toggle_viewport_lock(&mut self) {
@@ -1602,6 +1755,10 @@ impl AppState {
                 file.ensure_pane_state_from(target_pane, source_pane);
                 if let Some(target_state) = file.pane_state_mut(target_pane) {
                     if animated {
+                        // Locked panes of a slide share its turn.
+                        target_state
+                            .viewport
+                            .set_orientation(source_viewport.viewport.orientation);
                         let center = source_viewport.viewport.center;
                         target_state.viewport.smooth_set_center_zoom(
                             center.x,
@@ -1744,6 +1901,54 @@ mod tests {
         assert_eq!(layout(&state), vec![vec![1], vec![2]]);
     }
 
+    /// Locked panes of a slide share its turn.
+    #[test]
+    fn locked_panes_share_the_turn() {
+        let mut state = AppState::new();
+        let file_id = state.allocate_file_id();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&path, 256, 256, 256, |_, _| [200, 200, 200])
+            .unwrap();
+        crate::paths::isolate_for_tests();
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        use std::sync::Arc;
+        let cache = Arc::new(eov_common::TileCache::with_limits(8, 8 << 20));
+        let manager = Arc::new(eov_common::TileManager::new(wsi.clone(), file_id));
+        let loader = Arc::new(crate::tile_loader::TileLoader::new(
+            Arc::clone(&manager),
+            cache,
+        ));
+        state.add_file(super::NewOpenFile {
+            id: file_id,
+            path,
+            wsi,
+            tile_manager: manager,
+            tile_loader: loader,
+            viewport: eov_common::ViewportState::new(400.0, 300.0, 256.0, 256.0),
+            thumbnail: None,
+            target_pane: PaneId::PRIMARY,
+            activation: crate::state::TabActivation::Focus,
+        });
+        let second = state.insert_pane(1).unwrap();
+        let tab = state.active_tab_id_for_pane(PaneId::PRIMARY).unwrap();
+        state.duplicate_tab_to_pane(tab, second);
+        state.set_focused_pane(PaneId::PRIMARY);
+        state.toggle_viewport_lock();
+        assert!(crate::callbacks::rotate_active_viewport(&mut state, 1));
+        assert!(crate::callbacks::flip_active_viewport(&mut state));
+        state.mirror_locked_viewports_from_active();
+        let file = state.get_file(file_id).unwrap();
+        let turned = eov_common::viewport::Orientation::new(1, true);
+        for pane in [PaneId::PRIMARY, second] {
+            assert_eq!(
+                file.pane_state(pane).unwrap().viewport.viewport.orientation,
+                turned
+            );
+        }
+        assert!(crate::callbacks::reset_active_orientation(&mut state));
+    }
+
     #[test]
     fn split_home_tabs_are_independent() {
         let mut state = state_with(&[&[1]]);
@@ -1757,6 +1962,69 @@ mod tests {
         state.home_tabs.push(5);
         state.close_home_tab(1);
         assert_eq!(layout(&state), vec![vec![5], vec![copy]]);
+    }
+
+    fn entry(name: &str, stain: Option<&str>, age_s: u64, dir: bool) -> super::SeriesEntry {
+        super::SeriesEntry {
+            path: std::path::PathBuf::from(format!("/series/{name}")),
+            filename: name.to_string(),
+            is_directory: dir,
+            modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1000 - age_s)),
+            stain_label: stain.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn series_are_ordered_and_filtered() {
+        use super::{OpenedSeries, SeriesSort};
+        let mut series = OpenedSeries {
+            entries: vec![
+                entry("S10.svs", Some("Ki-67"), 5, false),
+                entry("S2.svs", Some("H&E"), 1, false),
+                entry("S1.svs", None, 9, false),
+                entry("old", None, 0, true),
+            ],
+            ..OpenedSeries::default()
+        };
+        let names = |series: &OpenedSeries| -> Vec<String> {
+            series
+                .visible_entries()
+                .iter()
+                .map(|e| e.filename.clone())
+                .collect()
+        };
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S1.svs", "S2.svs", "S10.svs"]);
+        series.sort = SeriesSort::Newest;
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S2.svs", "S10.svs", "S1.svs"]);
+        series.sort = SeriesSort::Stain;
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S2.svs", "S10.svs", "S1.svs"]);
+        series.filter = "ki-6".into();
+        assert_eq!(names(&series), ["S10.svs"]);
+        series.filter = "s1".into();
+        assert_eq!(names(&series), ["S10.svs", "S1.svs"]);
+    }
+
+    #[test]
+    fn next_and_previous_slide_follow_the_filter() {
+        let mut state = state_with(&[&[1]]);
+        let mut series = super::OpenedSeries {
+            entries: vec![
+                entry("a.svs", Some("H&E"), 0, false),
+                entry("b.svs", Some("Ki-67"), 0, false),
+                entry("c.svs", Some("H&E"), 0, false),
+            ],
+            ..super::OpenedSeries::default()
+        };
+        series.filter = "h&e".into();
+        state.opened_series = Some(series);
+        let next = state.cycle_series_selection(1).unwrap();
+        assert!(next.ends_with("c.svs"), "{next:?}");
+        let next = state.cycle_series_selection(1).unwrap();
+        assert!(next.ends_with("a.svs"), "{next:?}");
     }
 
     #[test]

@@ -29,6 +29,12 @@ the zip is what the cask installs.
   means building those libraries with the same deployment target.
 - **Licences.** `Contents/Resources` holds eov's licences, the third-party
   notices (`COPYING.third-party`) and `licenses/LGPL-2.1.txt` for OpenSlide.
+- **File types and links.** `Info.plist` declares the slide formats
+  (`CFBundleDocumentTypes`, `UTImportedTypeDeclarations`; eov is the default
+  for the vendor formats and an alternative for TIFF and DICOM) and the `eov`
+  URL scheme (`CFBundleURLTypes`). The tests of `app/src/file_types` check
+  the declarations against the formats eov opens; `plutil -lint` checks the
+  rendered file.
 
 ## Requirements
 

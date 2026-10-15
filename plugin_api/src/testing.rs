@@ -103,6 +103,12 @@ pub struct MockState {
     pub hotkeys: BTreeMap<String, HotkeySpec>,
     /// Badges by id: (slide, text).
     pub badges: BTreeMap<String, (Option<FileId>, String)>,
+    /// Batch commands registered, by id.
+    pub batch_commands: BTreeMap<String, BatchCommandSpec>,
+    /// `batch.progress` calls, in order.
+    pub batch_progress: Vec<BatchProgressArgs>,
+    /// `batch.finish` calls, in order.
+    pub batch_finished: Vec<BatchFinishArgs>,
     pub active_tool: Option<String>,
     pub filters: BTreeMap<String, FilterSpec>,
     pub undo: Vec<UndoPushArgs>,
@@ -276,6 +282,19 @@ impl MockHost {
             methods::HUD_REMOVE => {
                 let args: IdArgs = parse(args)?;
                 state.hud_buttons.remove(&args.id);
+                null
+            }
+            methods::BATCH_REGISTER => {
+                let spec: BatchCommandSpec = parse(args)?;
+                state.batch_commands.insert(spec.command_id.clone(), spec);
+                null
+            }
+            methods::BATCH_PROGRESS => {
+                state.batch_progress.push(parse(args)?);
+                null
+            }
+            methods::BATCH_FINISH => {
+                state.batch_finished.push(parse(args)?);
                 null
             }
             methods::BADGE_SET => {
@@ -488,6 +507,7 @@ impl MockHost {
             | methods::VIEW_ZOOM
             | methods::VIEW_FIT
             | methods::VIEW_FRAME
+            | methods::VIEW_ORIENTATION
             | methods::APP_CYCLE_PANE
             | methods::APP_CYCLE_TAB
             | methods::APP_SERIES => null,
@@ -678,6 +698,7 @@ pub fn test_init(plugin_id: &str) -> PluginInit {
         cache_dir: cache_dir.to_string_lossy().into_owned(),
         settings: Map::new(),
         legacy_config_dir: None,
+        headless: false,
     }
 }
 

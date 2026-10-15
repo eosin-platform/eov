@@ -353,6 +353,7 @@ impl UiHost {
                 let _ = slint::quit_event_loop();
             }
             Action::Fit => self.with_focused_viewport(crate::callbacks::frame_active_viewport),
+            Action::FitTissue => self.fit_tissue(),
             Action::ZoomIn | Action::ZoomOut => {
                 let factor = if action == Action::ZoomIn {
                     crate::callbacks::ACTION_ZOOM_FACTOR
@@ -375,6 +376,27 @@ impl UiHost {
             Action::Magnify(magnification) => {
                 self.magnify(magnification.map(crate::shortcuts::Magnification::value))
             }
+            Action::RotateLeft => self
+                .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, -1)),
+            Action::RotateRight => self
+                .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, 1)),
+            Action::Flip => self.with_focused_viewport(crate::callbacks::flip_active_viewport),
+            Action::LinkSlides => {
+                crate::callbacks::toggle_slide_link(&ui, &self.state);
+                self.request_render();
+            }
+            Action::AdjustAlignment => {
+                crate::callbacks::toggle_alignment_adjust(&ui, &self.state);
+                self.request_render();
+            }
+            Action::AlignLandmarks => {
+                crate::callbacks::align_linked_panes(&ui, &self.state);
+                self.request_render();
+            }
+            Action::ResetAlignment => {
+                crate::callbacks::reset_linked_alignment(&ui, &self.state);
+                self.request_render();
+            }
             Action::HistoryBack => self.history_step(true),
             Action::HistoryForward => self.history_step(false),
             Action::BookmarkAdd => self.begin_bookmark(),
@@ -386,6 +408,7 @@ impl UiHost {
             Action::ToolRoi => set_tool(self, ToolChoice::Roi),
             Action::ToolMeasure => set_tool(self, ToolChoice::Measure(self.measure_mode())),
             Action::Measurements => self.open_measurements_panel(),
+            Action::Quantify => crate::quantify_panel::open(&ui, &self.state),
             Action::Undo => self.undo(),
             Action::Redo => self.redo(),
             Action::ToggleMinimap => crate::callbacks::toggle_minimap_visibility(&ui, &self.state),
@@ -461,6 +484,48 @@ impl UiHost {
         }
         self.refresh_tabs();
         self.request_render();
+    }
+
+    /// Frames the focused slide's tissue, found in its minimap thumbnail,
+    /// leaving out the empty glass around it (AUDIT §14.1, §14.5). Slides
+    /// with no visible tissue are fitted whole.
+    fn fit_tissue(&self) {
+        let framed = {
+            let mut state = self.state.write();
+            let pane = state.active_viewport_pane();
+            let tissue = state
+                .active_file_id_for_pane(pane)
+                .and_then(|id| state.get_file(id))
+                .and_then(|file| {
+                    let thumb = file.thumbnail.as_ref()?;
+                    let region = thumb.region;
+                    let mask = eov_common::tissue::TissueMask::from_rgba(
+                        &thumb.rgba,
+                        thumb.width,
+                        thumb.height,
+                        region.width as f64 / f64::from(thumb.width.max(1)),
+                        region.height as f64 / f64::from(thumb.height.max(1)),
+                        eov_common::tissue::TissueMethod::Otsu,
+                    );
+                    let (x, y, w, h) = mask.tissue_bounds(0.002)?;
+                    Some((region.x as f64 + x, region.y as f64 + y, w, h))
+                });
+            match (tissue, state.active_viewport_mut()) {
+                (Some((x, y, w, h)), Some(viewport)) => {
+                    viewport.smooth_frame_rect(x, y, w, h);
+                    state.mirror_locked_viewports_from_active();
+                    state.request_render();
+                    true
+                }
+                _ => false,
+            }
+        };
+        if framed {
+            self.request_render();
+        } else {
+            self.status("No tissue was found; showing the whole slide");
+            self.with_focused_viewport(crate::callbacks::frame_active_viewport);
+        }
     }
 
     /// Zooms the focused pane to an objective-equivalent magnification

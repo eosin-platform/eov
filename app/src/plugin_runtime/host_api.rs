@@ -313,6 +313,30 @@ impl HostApi {
                 self.push(Command::OverlaysChanged);
                 null
             }
+            methods::BATCH_REGISTER => {
+                let spec: BatchCommandSpec = parse(args)?;
+                self.shared
+                    .contributions
+                    .lock()
+                    .register_batch(&self.ctx.id, spec)
+                    .map_err(invalid)?;
+                null
+            }
+            methods::BATCH_PROGRESS => {
+                let args: BatchProgressArgs = parse(args)?;
+                if let Some(fraction) = args.fraction
+                    && !fraction.is_finite()
+                {
+                    return Err(invalid("the fraction must be finite"));
+                }
+                self.push(Command::BatchProgress(args));
+                null
+            }
+            methods::BATCH_FINISH => {
+                let args: BatchFinishArgs = parse(args)?;
+                self.push(Command::BatchFinish(args));
+                null
+            }
             methods::BADGE_SET => {
                 let args: BadgeArgs = parse(args)?;
                 validate_badge_id(&args.badge_id)?;
@@ -447,6 +471,16 @@ impl HostApi {
                     return Err(invalid("zoom must be positive"));
                 }
                 self.push(Command::View(ViewCommand::Set(args)));
+                null
+            }
+            methods::VIEW_ORIENTATION => {
+                let args: ViewOrientationArgs = parse(args)?;
+                if eov_common::viewport::Orientation::from_degrees(args.rotation_deg, args.flipped)
+                    .is_none()
+                {
+                    return Err(invalid("rotation_deg must be a multiple of 90"));
+                }
+                self.push(Command::View(ViewCommand::Orientation(args)));
                 null
             }
             methods::VIEW_PAN => {

@@ -11,6 +11,11 @@
 //! plus one band, whatever the output size. Progress is reported and
 //! cancellation honoured per band through a [`JobControl`]; run it on a
 //! worker thread.
+//!
+//! A turned view (see [`crate::viewport::Orientation`]) exports as it shows
+//! on screen: each output band is rendered from the matching part of the
+//! frame drawn axis-aligned with the image (a column strip for odd quarter
+//! turns), then turned.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +29,7 @@ use crate::overlay::{Canvas, OverlayItem, embedded_font};
 use crate::postprocess::sharpen_rows_into;
 use crate::processing::{ProcessingPipeline, composite_onto};
 use crate::render::{FilteringMode, TrilinearLevels, calculate_trilinear_levels};
-use crate::viewport::ViewportBounds;
+use crate::viewport::{Orientation, ViewportBounds};
 use crate::{RgbaImageData, TileCache, TileCoord, TileData, TileManager, Viewport};
 
 /// Largest export dimension accepted (pixels per side).
@@ -105,6 +110,7 @@ impl ExportRequest {
             height: (height / downsample).round().max(1.0),
             image_width: image_size.0,
             image_height: image_size.1,
+            orientation: Orientation::IDENTITY,
         };
         Self::new(viewport, 96.0)
     }
@@ -127,6 +133,7 @@ impl ExportRequest {
             height: h as f64,
             image_width: self.viewport.image_width,
             image_height: self.viewport.image_height,
+            orientation: self.viewport.orientation,
         }
     }
 
@@ -135,8 +142,9 @@ impl ExportRequest {
         1.0 / (self.viewport.zoom * self.scale)
     }
 
-    /// Physical size of an output pixel per axis (µm), from the slide's
-    /// level-0 pixel size.
+    /// Physical size of an output pixel along the output's x and y axes
+    /// (µm), from the slide's level-0 pixel size (a quarter-turned view
+    /// swaps them).
     pub fn output_pixel_size_um(
         &self,
         mpp_x: Option<f64>,
@@ -144,7 +152,7 @@ impl ExportRequest {
     ) -> (Option<f64>, Option<f64>) {
         let f = self.level0_per_output_px();
         let valid = |v: Option<f64>| v.filter(|m| m.is_finite() && *m > 0.0).map(|m| m * f);
-        (valid(mpp_x), valid(mpp_y))
+        self.viewport.orientation.swap(valid(mpp_x), valid(mpp_y))
     }
 
     fn validate(&self) -> Result<(), ExportError> {
@@ -311,14 +319,18 @@ impl<'a> TileStore<'a> {
         self.tiles.get(coord).and_then(Option::as_ref)
     }
 
-    /// Drops tiles whose level-0 bottom edge is above `top`.
-    fn evict_above(&mut self, top: f64, manager: &TileManager) {
+    /// Drops tiles outside the level-0 rectangle the remaining bands cover.
+    fn evict_outside(&mut self, area: &ViewportBounds, manager: &TileManager) {
         self.tiles.retain(|coord, _| {
             let Some(info) = manager.wsi().level(coord.level) else {
                 return false;
             };
-            let bottom = (coord.y + 1) as f64 * coord.tile_size as f64 * info.downsample;
-            bottom > top
+            let span = coord.tile_size as f64 * info.downsample;
+            let (left, top) = (coord.x as f64 * span, coord.y as f64 * span);
+            left + span > area.left
+                && left < area.right
+                && top + span > area.top
+                && top < area.bottom
         });
     }
 }
@@ -363,22 +375,23 @@ pub(super) fn tiles_in_rect_for_test(
     tiles_in_rect(manager, level, left, top, right, bottom).len()
 }
 
-/// Output-pixel rectangle of a tile, relative to output row `row_offset`.
+/// Pixel rectangle of a tile in the aligned output frame, relative to the
+/// region starting at `offset` (column, row).
 fn tile_rect(
     zoom: f64,
     bounds: &ViewportBounds,
     downsample: f64,
     coord: &TileCoord,
     tile: &TileData,
-    row_offset: u32,
+    offset: (u32, u32),
 ) -> BlitRect {
     let origin_x = coord.x as f64 * coord.tile_size as f64;
     let origin_y = coord.y as f64 * coord.tile_size as f64;
-    let sx = (origin_x * downsample - bounds.left) * zoom;
-    let sy = (origin_y * downsample - bounds.top) * zoom - row_offset as f64;
-    let sx_end = ((origin_x + tile.width as f64) * downsample - bounds.left) * zoom;
-    let sy_end =
-        ((origin_y + tile.height as f64) * downsample - bounds.top) * zoom - row_offset as f64;
+    let (col, row) = (offset.0 as f64, offset.1 as f64);
+    let sx = (origin_x * downsample - bounds.left) * zoom - col;
+    let sy = (origin_y * downsample - bounds.top) * zoom - row;
+    let sx_end = ((origin_x + tile.width as f64) * downsample - bounds.left) * zoom - col;
+    let sy_end = ((origin_y + tile.height as f64) * downsample - bounds.top) * zoom - row;
     let x = sx.floor() as i32;
     let y = sy.floor() as i32;
     BlitRect {
@@ -476,8 +489,11 @@ fn blit(
     }
 }
 
+/// The export drawn axis-aligned with the image: `width × height` output
+/// pixels covering `bounds` (the output turned back for a turned view).
 struct Plan {
     width: u32,
+    height: u32,
     zoom: f64,
     bounds: ViewportBounds,
     level: u32,
@@ -493,21 +509,37 @@ struct Stats {
     used_fallback: bool,
 }
 
-/// Renders output rows `[row0, row0 + rows)` (transparent where there is no
-/// slide) into `buffer`.
-fn render_rows(
+/// Level-0 rectangle of the region `(x, y, width, height)` of the aligned
+/// output.
+fn region_bounds(plan: &Plan, region: (u32, u32, u32, u32)) -> ViewportBounds {
+    let (x, y, w, h) = (
+        f64::from(region.0),
+        f64::from(region.1),
+        f64::from(region.2),
+        f64::from(region.3),
+    );
+    ViewportBounds {
+        left: plan.bounds.left + x / plan.zoom,
+        right: plan.bounds.left + (x + w) / plan.zoom,
+        top: plan.bounds.top + y / plan.zoom,
+        bottom: plan.bounds.top + (y + h) / plan.zoom,
+    }
+}
+
+/// Renders the region `(x, y, width, height)` of the aligned output
+/// (transparent where there is no slide) into `buffer`.
+fn render_region(
     source: &ExportSource,
     plan: &Plan,
     store: &mut TileStore,
     buffer: &mut [u8],
-    row0: u32,
-    rows: u32,
+    region: (u32, u32, u32, u32),
     stats: &mut Stats,
 ) {
     let manager = source.tile_manager;
-    let top = plan.bounds.top + row0 as f64 / plan.zoom;
-    let bottom = plan.bounds.top + (row0 + rows) as f64 / plan.zoom;
-    let (left, right) = (plan.bounds.left, plan.bounds.right);
+    let (offset, width, rows) = ((region.0, region.1), region.2, region.3);
+    let area = region_bounds(plan, region);
+    let (left, top, right, bottom) = (area.left, area.top, area.right, area.bottom);
     let fine = tiles_in_rect(manager, plan.level, left, top, right, bottom);
     let mut wanted = fine.clone();
     if let Some(tri) = plan.trilinear {
@@ -542,9 +574,9 @@ fn render_rows(
                 let covering = tiles_in_rect(
                     manager,
                     fallback,
-                    fx0,
+                    fx0.max(left),
                     fy0.max(top),
-                    fx0 + span,
+                    (fx0 + span).min(right),
                     (fy0 + span).min(bottom),
                 );
                 store.ensure(&covering);
@@ -552,10 +584,10 @@ fn render_rows(
                     for c in &covering {
                         let tile = store.get(c).expect("checked above").clone();
                         let rect =
-                            tile_rect(plan.zoom, &plan.bounds, info.downsample, c, &tile, row0);
+                            tile_rect(plan.zoom, &plan.bounds, info.downsample, c, &tile, offset);
                         blit(
                             buffer,
-                            plan.width,
+                            width,
                             rows,
                             &tile,
                             rect,
@@ -574,7 +606,14 @@ fn render_rows(
         let Some(tile) = store.get(coord).cloned() else {
             continue;
         };
-        let rect = tile_rect(plan.zoom, &plan.bounds, plan.downsample, coord, &tile, row0);
+        let rect = tile_rect(
+            plan.zoom,
+            &plan.bounds,
+            plan.downsample,
+            coord,
+            &tile,
+            offset,
+        );
         if rect.width <= 0 || rect.height <= 0 {
             continue;
         }
@@ -583,7 +622,7 @@ fn render_rows(
             .and_then(|tri| coarse_blend(manager, store, tri, plan.downsample, coord, &tile));
         blit(
             buffer,
-            plan.width,
+            width,
             rows,
             &tile,
             rect,
@@ -601,15 +640,12 @@ const BAND_TILE_BYTES: f64 = 192.0 * 1024.0 * 1024.0;
 
 /// Band height that keeps both the band buffer and the tiles it touches
 /// within budget, whatever the zoom: memory stays bounded for any output
-/// size.
-fn auto_band_rows(manager: &TileManager, plan: &Plan, width: u32) -> u32 {
+/// size. A band of a turned export runs across the level-0 extent `across`.
+fn auto_band_rows(manager: &TileManager, plan: &Plan, width: u32, across: f64) -> u32 {
     let by_buffer = (BAND_BUFFER_BYTES / (width as usize * 4).max(1)).clamp(8, 512) as f64;
     let ts = manager.tile_size_for_level(plan.level) as f64;
     let span = ts * plan.downsample; // level-0 pixels per tile row
-    let across = ((plan.bounds.right - plan.bounds.left) / span)
-        .ceil()
-        .max(1.0)
-        + 1.0;
+    let across = (across / span).ceil().max(1.0) + 1.0;
     // A fine tile row, plus the coarse partner level when blending.
     let mut row_bytes = across * (ts + 2.0) * (ts + 2.0) * 4.0;
     if plan.trilinear.is_some() {
@@ -641,14 +677,17 @@ pub fn render_export_bands(
         ));
     }
     let evp = request.export_viewport();
+    let orientation = evp.orientation;
     let (width, height) = request.output_size();
+    let (aligned_width, aligned_height) = orientation.swap(width, height);
     let filtering = effective_filter(request.filtering, evp.zoom);
     let tri =
         calculate_trilinear_levels(wsi, 1.0 / evp.zoom, filtering == FilteringMode::Trilinear);
     let level = tri.level_fine;
     let downsample = wsi.level(level).map(|l| l.downsample).unwrap_or(1.0);
     let plan = Plan {
-        width,
+        width: aligned_width,
+        height: aligned_height,
         zoom: evp.zoom,
         bounds: evp.bounds(),
         level,
@@ -659,9 +698,14 @@ pub fn render_export_bands(
             && tri.blend > 0.01)
             .then_some(tri),
     };
+    let across = if orientation.swaps_axes() {
+        plan.bounds.height()
+    } else {
+        plan.bounds.width()
+    };
     let band_rows = request
         .band_rows
-        .unwrap_or_else(|| auto_band_rows(manager, &plan, width))
+        .unwrap_or_else(|| auto_band_rows(manager, &plan, width, across))
         .max(1);
     let sharpen = request.processing.sharpness();
     let halo = u32::from(sharpen > 0.0);
@@ -672,6 +716,7 @@ pub fn render_export_bands(
     let mut store = TileStore::new(source);
     let mut stats = Stats::default();
     let mut buffer: Vec<u8> = Vec::new();
+    let mut aligned: Vec<u8> = Vec::new();
     let mut sharpened: Vec<u8> = Vec::new();
     let mut halo_rows: Vec<u8> = Vec::new();
     let font = embedded_font();
@@ -687,7 +732,16 @@ pub fn render_export_bands(
         let rows = r1 - r0;
         buffer.clear();
         buffer.resize(rows as usize * stride, 0);
-        render_rows(source, &plan, &mut store, &mut buffer, r0, rows, &mut stats);
+        // The part of the aligned output these rows show.
+        let region = orientation.aligned_rect(plan.width, plan.height, 0, r0, width, rows);
+        if orientation.is_identity() {
+            render_region(source, &plan, &mut store, &mut buffer, region, &mut stats);
+        } else {
+            aligned.clear();
+            aligned.resize(buffer.len(), 0);
+            render_region(source, &plan, &mut store, &mut aligned, region, &mut stats);
+            blitter::orient_frame(&aligned, region.2, region.3, orientation, &mut buffer);
+        }
         request.processing.apply_color(&mut buffer);
         composite_onto(&mut buffer, request.background);
 
@@ -723,9 +777,13 @@ pub fn render_export_bands(
         sink.write_rows(&out[..out_rows as usize * stride], out_rows)?;
         control.advance(out_rows as u64);
 
-        // Tiles entirely above the next band are never needed again.
-        let next_top = plan.bounds.top + band_end.saturating_sub(halo) as f64 / plan.zoom;
-        store.evict_above(next_top, manager);
+        // Tiles outside the remaining bands are never needed again.
+        let next = band_end.saturating_sub(halo);
+        if next < height {
+            let rest =
+                orientation.aligned_rect(plan.width, plan.height, 0, next, width, height - next);
+            store.evict_outside(&region_bounds(&plan, rest), manager);
+        }
         band_start = band_end;
     }
     sink.finish()?;

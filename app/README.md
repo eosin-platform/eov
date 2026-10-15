@@ -34,26 +34,34 @@ For prebuilt AppImage, Flatpak, macOS, and Windows packages, see the [latest rel
 
 ## Usage
 
-Open one or more slides:
+Open one or more slides. They open as tabs of one pane, in order, with the first one selected:
 
 ```bash
 eov slide.svs
 eov slide1.svs slide2.svs slide3.svs
 ```
 
-Positional arguments define panes. Comma-separated files share a pane as tabs, and the last file in each group is selected:
+`--pane` opens more panes side by side, and `--goto`/`--zoom` open the first slide at a place (level-0 pixels, or micrometres with `um`) and magnification (`20x`, a zoom factor such as `0.5`, or `fit`):
 
 ```bash
-eov a.svs,b.svs c.tif d.svs
+eov he.svs --pane ki67.svs
+eov slide.svs --goto 300um,200um --zoom 20x
+eov 'eov://open?path=%2Fslides%2Fslide.svs&x=300um&y=200um&zoom=20x'
 ```
+
+An argument that exists is taken as it is, commas included; one that does not but contains commas is a list of files (`a.svs,b.svs`). `file://` URIs are decoded. Files that cannot be opened are reported in the window, and the rest still opens. While eov runs, `eov FILES` hands the files to it, which opens them as tabs and comes to the front, instead of starting a second eov; `--new-instance`, `single_instance = false` in the config and options such as `--cpu` or `--debug` start a separate one. `eov://open?path=…&x=…&y=…&zoom=…` links (percent-encoded path) work like `--goto` and `--zoom`; on Windows, links to network paths are only followed for servers listed in `trusted_link_servers`.
+
+`eov register-file-types` makes the file manager offer eov for slide files and use it for `eov://` links, for the current user: the registry on Windows, `~/.local/share` on Linux (for a `cargo install` or the AppImage). `eov unregister-file-types` undoes it. The macOS app and the Flatpak declare their file types themselves.
 
 The command-line interface also provides inspection and dataset utilities:
 
 ```text
-eov [OPTIONS] [FILES]...
-eov probe <FILE>
+eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
+eov probe [--json] <FILE>
 eov recent list
 eov config-path
+eov paths [--json]
+eov register-file-types|unregister-file-types [--dry-run]
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
 eov update [--release <VERSION>] [--app-only] [--from <DIR>] [--rollback] [--dry-run] [--json] [--allow-network] [-y]
 eov plugin ls|list [--json] [--allow-network]
@@ -74,10 +82,14 @@ Useful options include:
 - `--filtering-mode auto|bilinear|trilinear|lanczos` to select texture filtering.
 - `--debug` to enable debug overlays.
 - `--log-level error|warn|info|debug|trace` to control logging.
-- `--cache-size <MB>` and `--max-tiles <COUNT>` to tune the tile cache.
-- `--config <PATH>` to override the configuration file for the current process.
+- `--cache-size <MB>` and `--max-tiles <COUNT>` to tune the tile cache (at most 1 TiB and 16777216 tiles).
+- `--config <PATH>` to override the configuration file for the current process (a leading `~` is expanded).
 - `--plugin-dir <PATH>` to choose where packaged plugins are discovered.
+- `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together; Wayland ignores positions).
+- `--new-instance` to start a separate eov while one is running.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin.
+
+`eov probe` prints a slide's size, levels, pixel size, objective, stain, bounds, ICC profile size, associated images, quickhash and every OpenSlide property (`--json` for scripts). `eov paths` lists every file and folder eov keeps data in, with their sizes.
 
 Run `eov --help` or `eov dataset patches --help` for the complete, version-specific help text.
 
@@ -108,13 +120,15 @@ If OpenSlide can open a file, `eov` should be able to load it.
 
 ## Configuration and plugins
 
-By default, `eov` stores its preferences in `~/.eov/config.toml` and recently opened files in `~/.eov/recent_files.toml` (`remember_recent_files = false` in the config turns the history off). Set `EOV_CONFIG` or pass `--config <PATH>` to use a different configuration file.
+By default, `eov` stores its preferences in `~/.eov/config.toml`, recently opened files in `~/.eov/recent_files.toml` (`remember_recent_files = false` in the config turns the history off) and the last session in `~/.eov/session.toml`; `eov paths` lists every location. Set `EOV_CONFIG` or pass `--config <PATH>` to use a different configuration file.
 
 Example configuration:
 
 ```toml
 render_backend = "gpu"
 filtering_mode = "trilinear"
+single_instance = true                  # false: every launch starts its own eov
+trusted_link_servers = ["slides01"]     # Windows: network paths eov:// links may open
 ```
 
 Native plugins are discovered from `~/.eov/plugins/` by default. The `--plugin-dir` option can point to another directory. The [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds point and polygon annotations, while the [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller support. Manage them with `eov plugin` (install, update, remove, disable, enable, lock and sync); packages are `.eop` files (tar, optionally zstd-compressed) that eov extracts into a content-addressed cache.
@@ -127,6 +141,6 @@ Native plugins are discovered from `~/.eov/plugins/` by default. The `--plugin-d
 
 ## License
 
-Licensed under [MIT](https://github.com/eosin-platform/eov/blob/main/LICENSE-MIT), [Apache-2.0](https://github.com/eosin-platform/eov/blob/main/LICENSE-APACHE-2.0), or [GPLv3](https://github.com/eosin-platform/eov/blob/main/LICENSE-GPLv3), at your option.
+Licensed under [MIT](https://github.com/eosin-platform/eov/blob/master/LICENSE-MIT), [Apache-2.0](https://github.com/eosin-platform/eov/blob/master/LICENSE-APACHE-2.0), or [GPLv3](https://github.com/eosin-platform/eov/blob/master/LICENSE-GPLv3), at your option.
 
 The application also depends on OpenSlide and Slint. See the [repository license notes](https://github.com/eosin-platform/eov#dependency-license-notes) for details about those dependencies.

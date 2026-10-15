@@ -298,10 +298,16 @@ pub fn members_of(path: &Path) -> Vec<PathBuf> {
 /// Reads the DICOM Series Instance UID (0020,000E) from the first 1 MiB of
 /// an explicit-VR file (`DICM` preamble). Returns `None` for anything else.
 pub fn dicom_series_uid(path: &Path) -> Option<String> {
+    dicom_series_uid_within(path, 1 << 20)
+}
+
+/// [`dicom_series_uid`] reading at most `max_bytes` (the UID is in the
+/// header, usually within the first few kilobytes).
+pub fn dicom_series_uid_within(path: &Path, max_bytes: u64) -> Option<String> {
     let mut buf = Vec::with_capacity(1 << 16);
     File::open(path)
         .ok()?
-        .take(1 << 20)
+        .take(max_bytes)
         .read_to_end(&mut buf)
         .ok()?;
     if buf.len() < 132 || &buf[128..132] != b"DICM" {

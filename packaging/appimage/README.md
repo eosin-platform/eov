@@ -18,6 +18,15 @@ OpenSlide statically into eov.
   (`$ORIGIN/../lib`) and each bundled library finds its neighbours through
   `$ORIGIN`, both set with `patchelf`. `AppRun` only starts eov, so programs
   eov launches (`xdg-open`, file managers, browsers) never load eov's copies.
+  eov also gives them its launch environment without the AppImage runtime's
+  `APPIMAGE`, `APPDIR`, `ARGV0` and `OWD`; should `AppRun` ever have to set
+  a variable, it must save the launch value (`EOV_ORIG_<NAME>`, listed in
+  `EOV_SAVED_ENV`), which `scripts/check_packaging.py` enforces.
+- **Desktop integration.** The AppDir carries the desktop entry (with the
+  slide MIME types and `x-scheme-handler/eov`) and
+  `usr/share/mime/packages/io.eosin.eov.xml`. Integration tools such as
+  AppImageLauncher install them; without one, `eov register-file-types`
+  installs them for the current user, pointing at the AppImage itself.
 - **System libraries stay on the host.** The glibc family and the libraries
   in the [AppImage excludelist](https://github.com/AppImageCommunity/pkg2appimage/blob/master/excludelist)
   (libstdc++, libgcc_s, GL/EGL/DRM, X11/xcb, Wayland, fontconfig, freetype,

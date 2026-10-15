@@ -68,6 +68,11 @@ pub struct PluginInit {
     /// migrating data a plugin stored there. Read it; don't write it.
     #[serde(default)]
     pub legacy_config_dir: Option<String>,
+    /// The plugin runs without a window, for `eov batch` (see
+    /// [`methods::BATCH_REGISTER`]): toolbar buttons, tools, layers and
+    /// surfaces are accepted but not shown, so skip expensive UI set-up.
+    #[serde(default)]
+    pub headless: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -160,15 +165,55 @@ pub struct ViewInfo {
     /// Physical pixels per logical pixel of the window.
     #[serde(default = "default_scale_factor")]
     pub scale_factor: f64,
-    /// Clockwise view rotation in degrees.
+    /// Clockwise view rotation in degrees (eov turns views in steps of 90).
     #[serde(default)]
     pub rotation_deg: f64,
+    /// The view is mirrored left to right, after the rotation.
+    #[serde(default)]
+    pub flipped: bool,
     /// Level-0 bounding box of the visible area.
     pub visible: Rect,
 }
 
 fn default_scale_factor() -> f64 {
     1.0
+}
+
+impl ViewInfo {
+    /// An image-space direction as it points on the pane (rotation, then
+    /// mirror).
+    fn turn(&self, x: f64, y: f64) -> (f64, f64) {
+        let (sin, cos) = self.rotation_deg.to_radians().sin_cos();
+        let (tx, ty) = (x * cos - y * sin, x * sin + y * cos);
+        if self.flipped { (-tx, ty) } else { (tx, ty) }
+    }
+
+    /// Logical pane position of level-0 point `(x, y)`, accounting for the
+    /// view's rotation and mirror.
+    pub fn image_to_screen(&self, x: f64, y: f64) -> (f64, f64) {
+        let (dx, dy) = self.turn(x - self.center_x, y - self.center_y);
+        (
+            self.width / 2.0 + dx * self.zoom,
+            self.height / 2.0 + dy * self.zoom,
+        )
+    }
+
+    /// The level-0 point at logical pane position `(x, y)`.
+    pub fn screen_to_image(&self, x: f64, y: f64) -> (f64, f64) {
+        let zoom = if self.zoom > 0.0 { self.zoom } else { 1.0 };
+        let (mut dx, dy) = (
+            (x - self.width / 2.0) / zoom,
+            (y - self.height / 2.0) / zoom,
+        );
+        if self.flipped {
+            dx = -dx;
+        }
+        let (sin, cos) = (-self.rotation_deg).to_radians().sin_cos();
+        (
+            self.center_x + dx * cos - dy * sin,
+            self.center_y + dx * sin + dy * cos,
+        )
+    }
 }
 
 /// One pane in display order.
@@ -1306,6 +1351,22 @@ pub enum HostEvent {
         #[serde(default)]
         roi: Option<Rect>,
     },
+    /// A headless batch run (`eov batch run`, see
+    /// [`methods::BATCH_REGISTER`]) asks for `file` to be analysed with
+    /// `command_id`, writing results under `output_dir`. Slides come one at
+    /// a time; work may continue on the plugin's own threads, and the run
+    /// waits until [`methods::BATCH_FINISH`] names `run_id`.
+    BatchRun {
+        run_id: String,
+        command_id: String,
+        file: FileInfo,
+        /// An existing, writable folder for this slide's results.
+        output_dir: String,
+        /// `--param name=value` values (JSON when they parse, else
+        /// strings), over the command's defaults.
+        #[serde(default)]
+        params: Map<String, Value>,
+    },
     /// Sent by newer hosts for events this plugin version does not know.
     #[serde(other)]
     Unknown,
@@ -1445,9 +1506,22 @@ pub mod methods {
     pub const VIEW_FIT: &str = "view.fit";
     /// `ViewFrameArgs` → `null`
     pub const VIEW_FRAME: &str = "view.frame";
+    /// `ViewOrientationArgs` → `null`: turns a pane's view (the rotation
+    /// must be a multiple of 90°).
+    pub const VIEW_ORIENTATION: &str = "view.orientation";
     /// `PaneArgs` → `DisplayAdjustments`: how the pane renders the slide,
     /// so overlays derived from slide pixels can match it.
     pub const VIEW_DISPLAY: &str = "view.display";
+
+    /// `BatchCommandSpec` → `null`: offers a command for headless batch
+    /// runs over many slides (`eov batch run <plugin>:<command> SLIDES`).
+    /// Register it in `create`; slides then arrive as
+    /// [`HostEvent::BatchRun`](super::HostEvent::BatchRun).
+    pub const BATCH_REGISTER: &str = "batch.register";
+    /// `BatchProgressArgs` → `null`: how far a batch run's slide is.
+    pub const BATCH_PROGRESS: &str = "batch.progress";
+    /// `BatchFinishArgs` → `null`: a batch run's slide is done.
+    pub const BATCH_FINISH: &str = "batch.finish";
 
     /// `OffsetArgs` → `null`
     pub const APP_CYCLE_PANE: &str = "app.cycle_pane";
@@ -1552,6 +1626,58 @@ pub struct OpenFileArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdArgs {
     pub id: String,
+}
+
+/// A command a plugin offers for headless batch runs (see
+/// [`methods::BATCH_REGISTER`]).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchCommandSpec {
+    /// `^[a-z0-9][a-z0-9_-]{0,63}$`
+    pub command_id: String,
+    /// One line, for `eov batch list`.
+    pub description: String,
+    /// The parameters it takes, for `--param name=value`.
+    #[serde(default)]
+    pub params: Vec<BatchParam>,
+}
+
+/// A parameter of a [`BatchCommandSpec`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchParam {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Used when the run does not set it (`null`: no default).
+    #[serde(default)]
+    pub default: Value,
+}
+
+/// Arguments of [`methods::BATCH_PROGRESS`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchProgressArgs {
+    pub run_id: String,
+    /// 0–1, when known.
+    #[serde(default)]
+    pub fraction: Option<f32>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// Arguments of [`methods::BATCH_FINISH`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchFinishArgs {
+    pub run_id: String,
+    /// `false` when the slide could not be analysed (`message` says why).
+    pub ok: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+    /// The files written, relative to the slide's `output_dir`.
+    #[serde(default)]
+    pub outputs: Vec<String>,
+    /// Results and provenance for the run manifest: counts, scores, the
+    /// model and its hash, the level or resolution read, the device…
+    #[serde(default)]
+    pub summary: Value,
 }
 
 /// Arguments of [`methods::BADGE_SET`].
@@ -1756,6 +1882,17 @@ pub struct ViewZoomArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ViewOrientationArgs {
+    #[serde(default)]
+    pub pane: Option<PaneId>,
+    /// Clockwise rotation in degrees, a multiple of 90.
+    pub rotation_deg: f64,
+    /// Mirror left to right after the rotation.
+    #[serde(default)]
+    pub flipped: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ViewFrameArgs {
     #[serde(default)]
     pub pane: Option<PaneId>,
@@ -1861,6 +1998,38 @@ pub type PropertyMap = BTreeMap<String, String>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn views_map_screen_and_image_through_their_turn() {
+        let mut view = ViewInfo {
+            center_x: 100.0,
+            center_y: 50.0,
+            zoom: 2.0,
+            width: 300.0,
+            height: 200.0,
+            ..Default::default()
+        };
+        assert_eq!(view.image_to_screen(110.0, 50.0), (170.0, 100.0));
+        // Turned clockwise, a point right of the centre shows below it.
+        view.rotation_deg = 90.0;
+        let (x, y) = view.image_to_screen(110.0, 50.0);
+        assert!((x - 150.0).abs() < 1e-9 && (y - 120.0).abs() < 1e-9);
+        for rotation in [0.0, 90.0, 180.0, 270.0] {
+            for flipped in [false, true] {
+                view.rotation_deg = rotation;
+                view.flipped = flipped;
+                let (sx, sy) = view.image_to_screen(37.0, 81.0);
+                let (ix, iy) = view.screen_to_image(sx, sy);
+                assert!((ix - 37.0).abs() < 1e-9 && (iy - 81.0).abs() < 1e-9);
+            }
+        }
+        // Views from older hosts read as upright.
+        let old: ViewInfo = serde_json::from_str(
+            r#"{"pane":1,"file_id":1,"center_x":0,"center_y":0,"zoom":1,"width":1,"height":1,"visible":{"x":0,"y":0,"width":1,"height":1}}"#,
+        )
+        .unwrap();
+        assert_eq!((old.rotation_deg, old.flipped), (0.0, false));
+    }
 
     #[test]
     fn unknown_events_deserialize_to_unknown() {

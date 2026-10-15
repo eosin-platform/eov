@@ -17,6 +17,9 @@ use std::sync::Arc;
 struct Session {
     #[serde(default)]
     focused_pane: usize,
+    /// The panes were linked (navigation across different slides).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    linked: bool,
     #[serde(default, rename = "pane")]
     panes: Vec<PaneSession>,
 }
@@ -37,17 +40,29 @@ struct TabSession {
     center_x: f64,
     center_y: f64,
     zoom: f64,
+    /// Clockwise view rotation in degrees (a multiple of 90).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    rotation: u32,
+    /// Mirrored left to right (after the rotation).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    flipped: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     active: bool,
 }
 
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 impl TabSession {
     fn path(&self) -> Option<PathBuf> {
-        match (&self.path, &self.os_path) {
-            (_, Some(hex)) => crate::recent::decode_os(hex),
-            (Some(path), None) => Some(PathBuf::from(path)),
-            (None, None) => None,
-        }
+        let path = match (&self.path, &self.os_path) {
+            (_, Some(hex)) => crate::recent::decode_os(hex)?,
+            (Some(path), None) => PathBuf::from(path),
+            (None, None) => return None,
+        };
+        // Older versions stored `\\?\` paths on Windows (SH-15).
+        Some(crate::paths::simplified(&path))
     }
 }
 
@@ -57,6 +72,7 @@ pub(crate) struct SavedView {
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,
+    pub orientation: eov_common::viewport::Orientation,
 }
 
 fn session_path() -> PathBuf {
@@ -90,6 +106,8 @@ fn capture(state: &AppState) -> Session {
                         center_x: viewport.center.x,
                         center_y: viewport.center.y,
                         zoom: viewport.zoom,
+                        rotation: viewport.orientation.degrees(),
+                        flipped: viewport.orientation.flipped(),
                         active: active == Some(tab),
                     })
                 })
@@ -100,6 +118,7 @@ fn capture(state: &AppState) -> Session {
         .collect();
     Session {
         focused_pane: state.focused_pane.0,
+        linked: state.slide_link.enabled,
         panes,
     }
 }
@@ -150,29 +169,43 @@ pub(crate) fn restore(
         return false;
     }
     crate::prepare_launch_panes(ui, state, session.panes.len());
+    // Slides open in parallel; the placements keep each pane's tabs in
+    // their order, with the active one selected.
+    let batch = crate::file_ops::new_batch();
     for (index, pane) in session.panes.iter().enumerate() {
         state.write().set_focused_pane(PaneId(index));
-        // Inactive tabs first, so the active one ends up selected.
-        let mut tabs: Vec<&TabSession> = pane.tabs.iter().collect();
-        tabs.sort_by_key(|tab| tab.active);
-        for tab in tabs {
-            let Some(path) = tab.path() else {
-                continue;
-            };
+        let tabs = pane.tabs.iter().filter_map(|tab| Some((tab, tab.path()?)));
+        for (position, (tab, path)) in tabs.enumerate() {
             crate::file_ops::set_initial_view(
                 &path,
                 SavedView {
                     center_x: tab.center_x,
                     center_y: tab.center_y,
                     zoom: tab.zoom,
+                    orientation: eov_common::viewport::Orientation::from_degrees(
+                        f64::from(tab.rotation),
+                        tab.flipped,
+                    )
+                    .unwrap_or_default(),
                 },
             );
-            crate::open_file(ui, state, tile_cache, render_timer, path);
+            let placement = crate::file_ops::Placement {
+                batch,
+                position,
+                select: tab.active,
+                focus: tab.active && index == session.focused_pane,
+            };
+            crate::open_file_placed(ui, state, tile_cache, render_timer, path, placement);
         }
     }
     let focused = session.focused_pane.min(session.panes.len() - 1);
     state.write().set_focused_pane(PaneId(focused));
     ui.set_focused_pane(focused as i32);
+    if session.linked {
+        // The slides open meanwhile; their pairs align as they are shown.
+        let linked = crate::slide_link::toggle_link(&mut state.write());
+        ui.set_slide_link_enabled(linked);
+    }
     true
 }
 
@@ -186,6 +219,7 @@ mod tests {
         let path = dir.path().join("session.toml");
         let session = Session {
             focused_pane: 1,
+            linked: true,
             panes: vec![
                 PaneSession {
                     tabs: vec![TabSession {
@@ -194,6 +228,8 @@ mod tests {
                         center_x: 100.0,
                         center_y: 200.0,
                         zoom: 0.25,
+                        rotation: 90,
+                        flipped: true,
                         active: true,
                     }],
                 },
@@ -204,6 +240,8 @@ mod tests {
                         center_x: 1.0,
                         center_y: 2.0,
                         zoom: 1.0,
+                        rotation: 0,
+                        flipped: false,
                         active: false,
                     }],
                 },

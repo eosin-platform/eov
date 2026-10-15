@@ -58,8 +58,14 @@ const IDENTITY_WAIT: Duration = Duration::from_secs(5);
 /// Reads plugin pixel requests on the plugin's thread. `WsiFile` clones
 /// share the slide's self-healing handle, so no host lock is involved and a
 /// bad region read by a plugin cannot poison the viewer (PLG-11, WSI-1).
-struct FileReader {
+pub(crate) struct FileReader {
     wsi: WsiFile,
+}
+
+impl FileReader {
+    pub(crate) fn new(wsi: WsiFile) -> Self {
+        Self { wsi }
+    }
 }
 
 impl SlideReader for FileReader {
@@ -122,11 +128,31 @@ fn finish_alpha(pixels: &mut [u8], background: u32) {
 }
 
 pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
-    let props = file.wsi.properties();
+    wsi_file_info(
+        FileId::from(file.id),
+        &file.path,
+        &file.filename,
+        &file.wsi,
+        calibration(file),
+        identity,
+    )
+}
+
+/// What plugins learn about a slide (also for `eov batch`, which has no
+/// [`OpenFile`]).
+pub(crate) fn wsi_file_info(
+    file_id: FileId,
+    path: &std::path::Path,
+    filename: &str,
+    wsi: &WsiFile,
+    calibration: Calibration,
+    identity: Option<&str>,
+) -> FileInfo {
+    let props = wsi.properties();
     FileInfo {
-        file_id: FileId::from(file.id),
-        path: file.path.to_string_lossy().into_owned(),
-        filename: file.filename.clone(),
+        file_id,
+        path: path.to_string_lossy().into_owned(),
+        filename: filename.to_string(),
         width: props.width,
         height: props.height,
         levels: props
@@ -139,8 +165,8 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
                 downsample: level.downsample,
             })
             .collect(),
-        mpp_x: calibration(file).mpp_x,
-        mpp_y: calibration(file).mpp_y,
+        mpp_x: calibration.mpp_x,
+        mpp_y: calibration.mpp_y,
         objective_power: props.objective_power,
         vendor: props.vendor.clone(),
         scan_date: props.scan_date.clone(),
@@ -151,16 +177,14 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
             height: b.height as f64,
         }),
         identity: identity.map(str::to_string),
-        associated_images: file
-            .wsi
+        associated_images: wsi
             .associated_images()
             .iter()
             .map(|image| image.name.clone())
             .collect(),
         has_icc_profile: props.icc_profile_size.is_some(),
         stain: props.stain.clone(),
-        channel_names: file
-            .wsi
+        channel_names: wsi
             .channels()
             .map(|set| set.channels.iter().map(|c| c.name.clone()).collect())
             .unwrap_or_default(),
@@ -191,7 +215,8 @@ pub(crate) fn view_info(state: &AppState, pane: PaneId, scale_factor: f64) -> Op
         width: viewport.width,
         height: viewport.height,
         scale_factor,
-        rotation_deg: 0.0,
+        rotation_deg: f64::from(viewport.orientation.degrees()),
+        flipped: viewport.orientation.flipped(),
         visible: Rect {
             x: bounds.left,
             y: bounds.top,
@@ -220,9 +245,8 @@ fn measurement_infos(file: &OpenFile) -> Vec<MeasurementInfo> {
 }
 
 impl UiHost {
-    /// A slide's identity is known: publish it and announce the file.
     /// The slide identity key of an open file, once it is known.
-    pub(super) fn identity_key(&self, file_id: FileId) -> Option<String> {
+    pub(crate) fn identity_key(&self, file_id: FileId) -> Option<String> {
         self.tracker
             .borrow()
             .identities
@@ -231,6 +255,7 @@ impl UiHost {
             .flatten()
     }
 
+    /// A slide's identity is known: publish it and announce the file.
     fn identity_ready(&self, file_id: FileId, identity: Option<String>) {
         // A manual pixel size saved for this slide applies from now on.
         if let Some(um) = identity
@@ -612,6 +637,32 @@ impl UiHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plugins' screen math (`ViewInfo::image_to_screen`) agrees with the
+    /// viewer's for every turn.
+    #[test]
+    fn published_views_map_points_like_the_viewer() {
+        let mut viewport = eov_common::Viewport::new(640.0, 480.0, 5000.0, 3000.0);
+        viewport.zoom = 0.3;
+        viewport.center.x = 2100.0;
+        viewport.center.y = 1400.0;
+        for orientation in eov_common::viewport::Orientation::all() {
+            viewport.orientation = orientation;
+            let view = ViewInfo {
+                center_x: viewport.center.x,
+                center_y: viewport.center.y,
+                zoom: viewport.zoom,
+                width: viewport.width,
+                height: viewport.height,
+                rotation_deg: f64::from(orientation.degrees()),
+                flipped: orientation.flipped(),
+                ..Default::default()
+            };
+            let (x, y) = view.image_to_screen(2300.0, 1250.0);
+            let expected = viewport.image_to_screen(2300.0, 1250.0);
+            assert!((x - expected.x).abs() < 1e-6 && (y - expected.y).abs() < 1e-6);
+        }
+    }
 
     #[test]
     fn alpha_is_unpremultiplied_or_composited() {

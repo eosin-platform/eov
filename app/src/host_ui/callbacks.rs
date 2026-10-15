@@ -196,7 +196,7 @@ fn install_channels(ui: &AppWindow) {
     });
 }
 
-pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
+pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_viewport_pointer(
         |pane, kind, button, x, y, wx, wy, shift, control, alt, meta| {
             with_host(|host| {
@@ -283,6 +283,52 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     ui.on_shortcuts_copy_config_path(|| {
         with_host(|host| host.copy_config_path());
     });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_preset_chosen(move |id| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::preset_chosen(&ui, &state, &id);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_stain_chosen(move |id| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::stain_chosen(&ui, &state, &id);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_thresholds_edited(move |weak, moderate, strong| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::thresholds_edited(&ui, &state, &weak, &moderate, &strong);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_run(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::run(&ui, &state);
+        }
+    });
+    let state = Arc::clone(&host.state);
+    ui.on_quantify_copy(move || crate::quantify_panel::copy(&state));
+    let ui_weak = ui.as_weak();
+    ui.on_quantify_close(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::close(&ui);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_series_filter_edited(move |text| {
+        state.write().set_series_filter(&text);
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::update_tabs(&ui, &state.read());
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_series_sort_cycled(move || {
+        state.write().cycle_series_sort();
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::update_tabs(&ui, &state.read());
+        }
+    });
     ui.on_measurement_go(|id| {
         with_host(|host| host.measurement_go(&id));
     });
@@ -335,6 +381,15 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     });
     ui.on_plugin_enable_requested(|plugin_id, enable| {
         with_host(|host| host.set_plugin_enabled(&plugin_id, enable));
+    });
+    ui.on_plugins_check_updates(|| {
+        with_host(|host| host.check_plugin_updates());
+    });
+    ui.on_plugin_update_requested(|plugin_id| {
+        with_host(|host| host.update_plugin(&plugin_id));
+    });
+    ui.on_plugin_remove_requested(|plugin_id| {
+        with_host(|host| host.remove_plugin(&plugin_id));
     });
     ui.on_plugins_folder_requested(|| {
         with_host(|host| host.open_plugin_folder());

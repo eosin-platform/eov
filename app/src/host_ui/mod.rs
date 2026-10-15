@@ -23,12 +23,13 @@ mod callbacks;
 mod commands;
 mod input;
 pub(crate) mod key_help;
+mod link;
 mod measurements_panel;
 mod menus;
 mod notices;
 mod overlays;
 mod panel;
-mod publish;
+pub(crate) mod publish;
 mod surfaces;
 
 use crate::AppWindow;
@@ -128,6 +129,9 @@ pub(crate) struct UiHost {
     last_pointer: Cell<Option<(f32, f32)>>,
     /// The slide the Measurements panel shows.
     measurements_panel: Cell<Option<eov_plugin_api::protocol::FileId>>,
+    /// Newer versions found by the Plugins panel's Check for Updates, by
+    /// plugin id.
+    plugin_updates: RefCell<HashMap<String, String>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -196,6 +200,7 @@ pub(crate) fn init(
         bookmark_menu: RefCell::new(None),
         last_pointer: Cell::new(None),
         measurements_panel: Cell::new(None),
+        plugin_updates: RefCell::new(HashMap::new()),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();
@@ -346,6 +351,31 @@ impl UiHost {
             }
         }
         runtime.rebuild_filters();
+        // What this session runs with, for the audit log.
+        let plugins: Vec<serde_json::Value> = runtime
+            .slots()
+            .iter()
+            .map(|slot| {
+                let package = inventory.selected(&slot.info.id);
+                serde_json::json!({
+                    "plugin": slot.info.id,
+                    "version": slot.info.version,
+                    "state": slot.status.label(),
+                    "sha256": package.map(|package| package.sha256.clone()),
+                    "origin": package.map(|package| package.provenance.describe()),
+                })
+            })
+            .collect();
+        crate::audit::record(
+            "session_started",
+            serde_json::json!({
+                "eov": crate::version::BUILD_VERSION,
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+                "safe_mode": options.safe_mode,
+                "plugins": plugins,
+            }),
+        );
         drop(runtime);
         self.report_failed_plugins();
     }
@@ -571,6 +601,10 @@ impl UiHost {
         let name = self.plugin_name(plugin_id);
         match kind {
             FfiErrorKind::Panicked => {
+                crate::audit::record(
+                    "plugin_stopped",
+                    serde_json::json!({ "plugin": plugin_id, "reason": message }),
+                );
                 self.on_plugin_stopped(plugin_id);
                 self.notify(
                     NotifyLevel::Error,
@@ -782,10 +816,141 @@ mod tests {
     use crate::test_support::run_on_slint_ui_test_thread;
     use slint::Model;
 
+    /// Clears the thread's host when a test ends, even by a panic: the
+    /// Slint test thread is shared, and a host left behind would take part
+    /// in other tests' frames.
+    struct ClearHost;
+
+    impl Drop for ClearHost {
+        fn drop(&mut self) {
+            HOST.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
+    /// The Plugins panel lists a package eov cannot read, and Remove
+    /// deletes it after the user confirms in eov's own dialog.
+    #[test]
+    fn unreadable_packages_are_listed_and_can_be_removed() {
+        run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(64, 64 << 20));
+            let timer = Rc::new(Timer::default());
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let package = plugin_dir.path().join("broken.eop");
+            std::fs::write(&package, b"not a tar archive").unwrap();
+            let host = init(
+                &ui,
+                &state,
+                &tile_cache,
+                &timer,
+                InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: false,
+                },
+            );
+            host.refresh_plugin_panel();
+            let rows: Vec<_> = ui.get_plugin_rows().iter().collect();
+            let row = rows
+                .iter()
+                .find(|row| row.id == "broken.eop")
+                .expect("the broken package is listed");
+            assert!(row.can_remove);
+            assert!(!row.detail.is_empty());
+            assert!(ui.get_plugin_problems());
+
+            host.remove_plugin("broken.eop");
+            assert!(ui.get_plugin_confirm_visible(), "removing asks first");
+            assert!(ui.get_plugin_confirm_destructive());
+            assert!(package.exists());
+            host.answer_plugin_confirm(true);
+            assert!(!package.exists());
+            assert!(!ui.get_plugin_confirm_visible());
+            assert!(
+                !ui.get_plugin_rows()
+                    .iter()
+                    .any(|row| row.id == "broken.eop")
+            );
+        });
+    }
+
+    /// The viewport menu's landmark commands place numbered markers and
+    /// align the linked panes.
+    #[test]
+    fn landmarks_from_the_menu_show_and_align() {
+        use crate::overlay::store::Owner;
+        use crate::state::PaneId;
+        run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
+            let (mut state, _dir, a, b, second) = crate::slide_link::test_fixtures::two_slides();
+            crate::slide_link::toggle_link(&mut state);
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(state));
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let timer = Rc::new(Timer::default());
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let host = init(
+                &ui,
+                &state,
+                &tile_cache,
+                &timer,
+                InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: true,
+                },
+            );
+            // B is A scaled 2× and shifted.
+            for (index, p) in [[100.0, 100.0], [600.0, 300.0]].into_iter().enumerate() {
+                let command = format!("link-landmark-{}", index + 1);
+                assert!(host.link_command(&command, 0, p));
+                assert!(host.link_command(&command, second.0, [2.0 * p[0] + 40.0, 2.0 * p[1]]));
+            }
+            let layer = host
+                .store
+                .layer(&Owner::Host, &format!("host-link-landmarks-{a}"))
+                .expect("the markers are shown");
+            assert_eq!(layer.len(), 2);
+            assert!(
+                host.store
+                    .layer(&Owner::Host, &format!("host-link-landmarks-{b}"))
+                    .is_some()
+            );
+            assert!(host.link_command("link-align", 0, [0.0, 0.0]));
+            {
+                let mut state = state.write();
+                let file = state.get_file_mut(a).unwrap();
+                file.pane_state_mut(PaneId::PRIMARY)
+                    .unwrap()
+                    .viewport
+                    .set_center_zoom(300.0, 200.0, 0.5);
+                crate::slide_link::sync_views(&mut state);
+                let follower = &state
+                    .get_file(b)
+                    .unwrap()
+                    .pane_state(second)
+                    .unwrap()
+                    .viewport
+                    .viewport;
+                assert!((follower.center.x - 640.0).abs() < 1e-6);
+                assert!((follower.center.y - 400.0).abs() < 1e-6);
+                assert!((follower.zoom - 0.25).abs() < 1e-9);
+            }
+            assert!(host.link_command("link-clear-landmarks", 0, [0.0, 0.0]));
+            assert!(
+                host.store
+                    .layer(&Owner::Host, &format!("host-link-landmarks-{a}"))
+                    .is_none()
+            );
+            host.shutdown();
+        });
+    }
+
     /// The example plugin running in a real (headless) main window.
     #[test]
     fn example_plugin_runs_end_to_end() {
         run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
             let ui = AppWindow::new().unwrap();
             let state = Arc::new(RwLock::new(AppState::new()));
             let tile_cache = Arc::new(TileCache::with_limits(64, 64 << 20));
@@ -871,7 +1036,6 @@ mod tests {
             assert!(!ui.get_show_plugin_sidebar());
 
             host.shutdown();
-            HOST.with(|slot| *slot.borrow_mut() = None);
         });
     }
 }

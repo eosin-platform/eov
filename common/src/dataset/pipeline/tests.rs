@@ -715,3 +715,50 @@ fn jpeg_patches_are_rgb() {
     let img = image::open(out.join(&recs[0].tile_path)).unwrap();
     assert_eq!(img.color(), image::ColorType::Rgb8);
 }
+
+#[test]
+fn deidentified_runs_name_no_slide_and_no_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let case = temp.path().join("Smith-John-S23-1234");
+    std::fs::create_dir_all(&case).unwrap();
+    let slide = case.join("S23-1234-A1-HE.tif");
+    write_tiled_tiff(&slide, 256, 256, 64, |_, _| [200, 100, 150]).unwrap();
+    let broken = case.join("S23-1234-B2-HE.svs");
+    std::fs::write(&broken, b"not a slide").unwrap();
+    let out = temp.path().join("out");
+    let mut config = config(vec![case.clone()], out.clone());
+    config.metadata_format = None;
+    let deidentify = DatasetPatchesOptions {
+        deidentify: true,
+        ..options()
+    };
+    let report = run(&config, &deidentify);
+    assert_eq!(report.total_tiles, 4);
+
+    // Nothing written mentions the case folder, a file name or a stem.
+    let mut written = Vec::new();
+    let mut stack = vec![out.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            written.push(path.strip_prefix(&out).unwrap().display().to_string());
+            if path.is_dir() {
+                stack.push(path);
+            } else if let Ok(text) = std::fs::read_to_string(&path) {
+                written.push(text);
+            }
+        }
+    }
+    let all = written.join("\n");
+    for secret in ["Smith", "S23-1234", "A1-HE", "B2-HE"] {
+        assert!(!all.contains(secret), "'{secret}' leaked into the dataset");
+    }
+    assert!(all.contains("slide-"), "slides are named by opaque ids");
+
+    // The same slide gets the same id in a second run (resume).
+    let again = run(&config, &deidentify);
+    assert_eq!(again.total_tiles_existing, 4);
+    let ids: HashSet<String> = records(&out).into_iter().map(|r| r.slide_id).collect();
+    assert_eq!(ids.len(), 1);
+    assert!(ids.iter().all(|id| id.starts_with("slide-")));
+}

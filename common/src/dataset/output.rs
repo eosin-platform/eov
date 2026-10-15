@@ -198,6 +198,35 @@ fn unique_keys(names: Vec<String>, paths: &[PathBuf]) -> Vec<String> {
         .collect()
 }
 
+/// An opaque, filesystem-safe key for a de-identified dataset:
+/// `slide-<12 hex digits>` from the slide's content identity, so the same
+/// slide gets the same key in every run and at every site. A slide that
+/// cannot be opened is keyed by its path's hash instead. Keys already in
+/// `used` (two copies of one slide) get a `-2`, `-3`… suffix.
+pub fn deidentified_key(
+    wsi: Option<&crate::WsiFile>,
+    path: &Path,
+    used: &mut std::collections::HashSet<String>,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = match wsi.and_then(|wsi| wsi.identity().ok()) {
+        Some(identity) => Sha256::digest(identity.key().as_bytes()),
+        None => {
+            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            Sha256::digest(canonical.to_string_lossy().as_bytes())
+        }
+    };
+    let short: String = digest.iter().take(6).map(|b| format!("{b:02x}")).collect();
+    let base = format!("slide-{short}");
+    let mut key = base.clone();
+    let mut n = 2;
+    while !used.insert(key.clone()) {
+        key = format!("{base}-{n}");
+        n += 1;
+    }
+    key
+}
+
 /// A unique, filesystem-safe key per slide: its base name (the file stem,
 /// or the directory of a DICOM series), with a short hash of the canonical
 /// path appended when several slides share a name (compared

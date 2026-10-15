@@ -1,14 +1,18 @@
 use crate::backend::WindowGeometry;
 use crate::config;
+use crate::launch::{OpenRequest, Point, ViewRequest, Zoom};
 use crate::update;
 use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use eov_common::{
-    FilteringMode, RenderBackend, WsiFile,
+    FilteringMode, RenderBackend,
     dataset::{self, DatasetPatchesConfig, MetadataFormat},
-    format_decimal, format_optional_decimal,
 };
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+/// Largest `--cache-size`, in MiB (1 TiB).
+const MAX_CACHE_MIB: u64 = 1 << 20;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 enum CliBackend {
@@ -79,6 +83,7 @@ impl CliLogLevel {
 
 #[derive(Debug, Subcommand)]
 enum RecentCommand {
+    /// Print the recently opened slides and folders, newest first.
     List,
 }
 
@@ -287,6 +292,12 @@ struct DatasetPatchesArgs {
     /// writing anything.
     #[arg(long)]
     dry_run: bool,
+
+    /// Name slides by opaque ids derived from their content, and write no
+    /// slide paths or file names, for datasets shared outside the
+    /// institution.
+    #[arg(long)]
+    deidentify: bool,
 }
 
 /// A parsed `eov dataset patches` invocation.
@@ -378,6 +389,7 @@ impl DatasetPatchesArgs {
                 hash_files: !self.no_hash,
                 max_candidates_per_slide: self.max_candidates,
                 dry_run: self.dry_run,
+                deidentify: self.deidentify,
             },
         }
     }
@@ -445,7 +457,9 @@ pub(crate) enum PluginCommand {
     /// file name or path.
     #[command(alias = "rm", alias = "uninstall")]
     Remove {
+        /// A plugin id, or a package's file name or path.
         plugin: String,
+        /// Do not ask for confirmation.
         #[arg(short = 'y', long)]
         yes: bool,
         /// Show what would be removed without changing anything.
@@ -458,12 +472,15 @@ pub(crate) enum PluginCommand {
     /// Show a plugin's metadata, provenance and compatibility.
     #[command(alias = "inspect")]
     Info {
+        /// A plugin id, or a package's file name or path.
         plugin: String,
+        /// Output format.
         #[arg(short = 'o', long, value_enum, default_value_t = CliPluginOutputFormat::Plain)]
         output: CliPluginOutputFormat,
     },
     /// Keep a plugin installed but do not load it.
     Disable {
+        /// The plugin's id.
         id: String,
         /// Print machine-readable JSON.
         #[arg(long)]
@@ -471,6 +488,7 @@ pub(crate) enum PluginCommand {
     },
     /// Load a previously disabled plugin again.
     Enable {
+        /// The plugin's id.
         id: String,
         /// Print machine-readable JSON.
         #[arg(long)]
@@ -488,6 +506,7 @@ pub(crate) enum PluginCommand {
     },
     /// Install and replace plugins so they match a lockfile.
     Sync {
+        /// A lockfile written by `eov plugin lock`.
         lockfile: PathBuf,
         /// Take packages with matching SHA-256 from this directory instead
         /// of downloading them.
@@ -496,8 +515,11 @@ pub(crate) enum PluginCommand {
         /// Also remove installed plugins the lockfile does not list.
         #[arg(long)]
         prune: bool,
+        /// Do not ask for confirmation (network access still needs
+        /// --allow-network or interactive consent).
         #[arg(short = 'y', long)]
         yes: bool,
+        /// Allow GitHub requests without asking.
         #[arg(long)]
         allow_network: bool,
         /// Show what would change without changing anything.
@@ -563,20 +585,122 @@ enum CliCommand {
         #[command(subcommand)]
         command: PluginCommand,
     },
+    /// Print a slide's metadata.
+    ///
+    /// Size, pyramid levels, pixel size, objective, stain, scanned bounds
+    /// and regions, ICC profile, associated images, quickhash and every
+    /// OpenSlide property.
     Probe {
+        /// The slide.
         file: PathBuf,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
+    /// Recently opened slides and folders.
     Recent {
         #[command(subcommand)]
         command: RecentCommand,
     },
+    /// Print the path of the configuration file in use.
     ConfigPath,
+    /// List every file and folder eov keeps data in, with their sizes.
+    Paths {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Offer eov for slide files and eov:// links (this user only).
+    ///
+    /// Windows: writes HKEY_CURRENT_USER\Software\Classes. Linux (AppImage,
+    /// cargo install): writes the MIME package, a desktop entry and an icon
+    /// to ~/.local/share. The macOS app and the Flatpak declare them
+    /// already.
+    RegisterFileTypes {
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo `eov register-file-types`.
+    UnregisterFileTypes {
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Dataset generation utilities for ML workflows.
     Dataset {
         #[command(subcommand)]
         command: DatasetCommand,
     },
+    /// Run plugin analyses over many slides without a window.
+    Batch {
+        #[command(subcommand)]
+        command: BatchCommand,
+    },
 }
+
+#[derive(Debug, Subcommand)]
+enum BatchCommand {
+    /// List the batch commands installed plugins offer.
+    List {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run a plugin's batch command on slides, writing its results and a
+    /// manifest of the run (batch.json) to --out.
+    Run(BatchRunArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct BatchRunArgs {
+    /// <plugin>:<command>, as `eov batch list` shows it.
+    target: String,
+    /// Slide files or folders (searched recursively).
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    /// The folder for the results (one subfolder per slide) and batch.json.
+    #[arg(long)]
+    out: PathBuf,
+    /// A parameter of the command as name=value (JSON values are parsed:
+    /// numbers, booleans, lists); repeat for more.
+    #[arg(long = "param", value_name = "NAME=VALUE")]
+    params: Vec<String>,
+    /// Give up on a slide after this many seconds.
+    #[arg(long, value_name = "SECONDS")]
+    timeout: Option<u64>,
+    /// Name slides by opaque ids and write no slide paths or file names.
+    #[arg(long)]
+    deidentify: bool,
+}
+
+const AFTER_HELP: &str = "\
+FILES AND PANES:
+  Every FILE opens as a tab of one pane; the first one is selected. An
+  argument that exists on disk is taken as it is, commas included; one that
+  does not but contains commas is a list of files (a.svs,b.svs). A FILE may
+  also be a folder (its slides appear in the series bar), a file:// URI or
+  an eov:// link. Files that cannot be opened are reported in the window.
+
+    eov a.svs b.svs c.svs                  one pane, three tabs
+    eov a.svs --pane b.svs                 two panes side by side
+    eov --pane a.svs,b.svs --pane c.svs    two panes, the first with two tabs
+
+DEEP LINKS:
+  --goto and --zoom set the view of the first slide:
+
+    eov slide.svs --goto 1200,800 --zoom 20x
+    eov slide.svs --goto 300um,200um --zoom 0.5
+
+  An eov:// link does the same; percent-encode the path (+ is a space):
+
+    eov 'eov://open?path=%2Fslides%2Fslide.svs&x=300um&y=200um&zoom=20x'
+
+SINGLE INSTANCE:
+  While eov runs, `eov FILES` hands the files to it, which opens them as
+  tabs, and exits. Options that configure the viewer itself (--cpu,
+  --debug, --window-x, ...) start a separate eov, as do --new-instance and
+  single_instance = false in config.toml.";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -584,61 +708,85 @@ enum CliCommand {
     version,
     about = "A lightweight, cross-platform WSI viewer.",
     propagate_version = true,
-    after_help = "PANE LAYOUT:\n  \
-    Positional arguments define pane splits. Each argument is a comma-separated\n  \
-    list of files to open as tabs in one pane. The last file in each group\n  \
-    becomes the active tab.\n\n  \
-    Examples:\n    \
-      eov slide.svs                       # one pane, one tab\n    \
-      eov a.svs,b.svs                     # one pane, two tabs (b.svs active)\n    \
-      eov a.svs,b.svs c.tif d.svs         # three panes"
+    after_help = AFTER_HELP
 )]
 struct Cli {
+    /// Slides or folders to open as tabs of one pane (see FILES AND PANES).
     #[arg(value_name = "FILES")]
-    pane_groups: Vec<String>,
+    files: Vec<OsString>,
+
+    /// Open FILES in another pane, side by side; repeat for more panes.
+    /// FILES may list several slides, separated by commas.
+    #[arg(long, value_name = "FILES")]
+    pane: Vec<OsString>,
+
+    /// Centre the first slide on X,Y: level-0 pixels (1200,800) or
+    /// micrometres (300um,200um).
+    #[arg(long, value_name = "X,Y", value_parser = crate::launch::parse_point)]
+    goto: Option<Point>,
+
+    /// Zoom the first slide: a magnification (20x), screen pixels per slide
+    /// pixel (0.5; 1 or 1:1 is full resolution), or fit.
+    #[arg(long, value_name = "ZOOM", value_parser = crate::launch::parse_zoom)]
+    zoom: Option<Zoom>,
+
+    /// Start a separate eov even if one is running (see SINGLE INSTANCE).
+    #[arg(long)]
+    new_instance: bool,
 
     #[command(subcommand)]
     command: Option<CliCommand>,
 
+    /// Show the frame-rate overlay and other debugging aids.
     #[arg(short, long, global = true)]
     debug: bool,
 
+    /// Rendering backend (auto: the saved choice, else the GPU).
     #[arg(long, value_enum, default_value_t = CliBackend::Auto, global = true)]
     backend: CliBackend,
 
+    /// Render on the CPU (same as --backend cpu).
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     cpu: bool,
 
+    /// Render on the GPU (same as --backend gpu).
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     gpu: bool,
 
+    /// Texture filtering (auto: the saved choice, else trilinear).
     #[arg(long, value_enum, default_value_t = CliFilteringMode::Auto, global = true)]
     filtering_mode: CliFilteringMode,
 
+    /// What to log on standard error (default: RUST_LOG, else warnings).
     #[arg(long, value_enum, global = true)]
     log_level: Option<CliLogLevel>,
 
-    /// Tile-cache budget in MiB (default: sized for the display).
+    /// Tile-cache budget in MiB, at most 1048576 (default: sized for the
+    /// display).
     #[arg(
         long,
         value_name = "MB",
-        value_parser = clap::value_parser!(u64).range(1..),
+        value_parser = clap::value_parser!(u64).range(1..=MAX_CACHE_MIB),
         global = true
     )]
     cache_size: Option<u64>,
 
-    /// Maximum number of cached tiles (default: sized for the display).
+    /// Maximum number of cached tiles, at most 16777216 (default: sized for
+    /// the display).
     #[arg(
         long,
         value_name = "COUNT",
-        value_parser = clap::value_parser!(u64).range(1..),
+        value_parser = clap::value_parser!(u64).range(1..=eov_common::cache::MAX_TILES_LIMIT as u64),
         global = true
     )]
     max_tiles: Option<u64>,
 
+    /// Use this configuration file instead of ~/.eov/config.toml (or
+    /// EOV_CONFIG); a leading ~ is expanded.
     #[arg(long, value_name = "PATH", global = true)]
     config: Option<PathBuf>,
 
+    /// Window width in logical pixels.
     #[arg(
         long,
         value_name = "PX",
@@ -647,6 +795,7 @@ struct Cli {
     )]
     window_width: Option<u32>,
 
+    /// Window height in logical pixels.
     #[arg(
         long,
         value_name = "PX",
@@ -655,17 +804,34 @@ struct Cli {
     )]
     window_height: Option<u32>,
 
-    #[arg(long, value_name = "PX", global = true)]
+    /// Window position from the screen's left edge in logical pixels; give
+    /// --window-y too. Wayland ignores it: the compositor places windows.
+    #[arg(
+        long,
+        value_name = "PX",
+        global = true,
+        requires = "window_y",
+        allow_negative_numbers = true
+    )]
     window_x: Option<i32>,
 
-    #[arg(long, value_name = "PX", global = true)]
+    /// Window position from the screen's top edge in logical pixels; give
+    /// --window-x too. Wayland ignores it: the compositor places windows.
+    #[arg(
+        long,
+        value_name = "PX",
+        global = true,
+        requires = "window_x",
+        allow_negative_numbers = true
+    )]
     window_y: Option<i32>,
 
-    /// Directory to search for plugin packages.
-    /// Defaults to ~/.eov/plugins/ and scans for `.eop` files.
+    /// Directory with plugin packages (`.eop`). Default: ~/.eov/plugins, or
+    /// EOV_PLUGIN_DIR; a leading ~ is expanded.
     #[arg(long, value_name = "PATH", global = true)]
     plugin_dir: Option<PathBuf>,
 
+    /// Link the views of panes that show the same slide.
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     viewport_lock: bool,
 
@@ -679,19 +845,29 @@ enum CommandAction {
     LaunchUi,
     ApplicationUpdate(UpdateArgs),
     Plugin(PluginCommand),
-    Probe(PathBuf),
+    Probe { file: PathBuf, json: bool },
     RecentList,
     ConfigPath,
+    Paths { json: bool },
+    FileTypes { register: bool, dry_run: bool },
     DatasetPatches(Box<DatasetJob>),
-}
-
-pub(crate) struct PaneSpec {
-    pub(crate) files: Vec<PathBuf>,
+    BatchList { json: bool },
+    BatchRun(Box<crate::batch::RunOptions>),
 }
 
 pub(crate) struct LaunchOptions {
     pub(crate) debug_mode: bool,
-    pub(crate) panes_to_open: Vec<PaneSpec>,
+    /// Positional files (the current pane's tabs).
+    files: Vec<OsString>,
+    /// `--pane` values.
+    panes: Vec<OsString>,
+    /// `--goto` and `--zoom`.
+    view: ViewRequest,
+    /// `--new-instance`.
+    new_instance: bool,
+    /// An option that configures this process was given, so the launch is
+    /// not handed to a running eov.
+    configures_process: bool,
     pub(crate) render_backend_override: Option<RenderBackend>,
     pub(crate) filtering_mode_override: Option<FilteringMode>,
     pub(crate) viewport_lock_enabled: bool,
@@ -709,9 +885,25 @@ pub(crate) struct LaunchOptions {
     command: CommandAction,
 }
 
-pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
-    let cli = Cli::parse();
+/// The command line, without the `-psn_…` argument macOS adds when it
+/// starts an app from the Finder on some versions.
+fn launch_arguments() -> Vec<OsString> {
+    let mut arguments: Vec<OsString> = std::env::args_os().collect();
+    if cfg!(target_os = "macos") {
+        let mut index = 0;
+        arguments.retain(|argument| {
+            index += 1;
+            index == 1 || !argument.to_string_lossy().starts_with("-psn_")
+        });
+    }
+    arguments
+}
 
+pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
+    launch_options(Cli::parse_from(launch_arguments()))
+}
+
+fn launch_options(cli: Cli) -> Result<LaunchOptions> {
     let cache_size_bytes = cli
         .cache_size
         .map(|mib| {
@@ -729,8 +921,16 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         })
         .transpose()?;
 
-    if cli.command.is_some() && !cli.pane_groups.is_empty() {
-        bail!("file arguments cannot be combined with a subcommand");
+    let opens_files = !cli.files.is_empty() || !cli.pane.is_empty();
+    if cli.command.is_some()
+        && (opens_files || cli.goto.is_some() || cli.zoom.is_some() || cli.new_instance)
+    {
+        bail!(
+            "files, --pane, --goto, --zoom and --new-instance cannot be combined with a subcommand"
+        );
+    }
+    if (cli.goto.is_some() || cli.zoom.is_some()) && !opens_files {
+        bail!("--goto and --zoom need a slide to open");
     }
 
     let shorthand_backend = match (cli.cpu, cli.gpu) {
@@ -755,39 +955,59 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         (None, None) => None,
     };
 
-    let panes_to_open = cli
-        .pane_groups
-        .into_iter()
-        .map(|group| {
-            let files = group
-                .split(',')
-                .map(|entry| {
-                    let path = PathBuf::from(entry.trim());
-                    validate_launch_input_path(&path)?;
-                    Ok(path)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            if files.is_empty() {
-                bail!("empty pane group in arguments");
-            }
-            Ok(PaneSpec { files })
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let safe_mode = cli.safe_mode || safe_mode_from_env();
+    let configures_process = cli.debug
+        || cli.backend != CliBackend::Auto
+        || cli.cpu
+        || cli.gpu
+        || cli.filtering_mode != CliFilteringMode::Auto
+        || cli.log_level.is_some()
+        || cli.cache_size.is_some()
+        || cli.max_tiles.is_some()
+        || cli.window_width.is_some()
+        || cli.window_height.is_some()
+        || cli.window_x.is_some()
+        || cli.window_y.is_some()
+        || cli.viewport_lock
+        || safe_mode;
 
     let command = match cli.command {
         Some(CliCommand::Update(args)) => CommandAction::ApplicationUpdate(args),
         Some(CliCommand::Plugin { command }) => CommandAction::Plugin(command),
-        Some(CliCommand::Probe { file }) => {
+        Some(CliCommand::Probe { file, json }) => {
             validate_input_file(&file)?;
-            CommandAction::Probe(file)
+            CommandAction::Probe { file, json }
         }
         Some(CliCommand::Recent {
             command: RecentCommand::List,
         }) => CommandAction::RecentList,
         Some(CliCommand::ConfigPath) => CommandAction::ConfigPath,
+        Some(CliCommand::Paths { json }) => CommandAction::Paths { json },
+        Some(CliCommand::RegisterFileTypes { dry_run }) => CommandAction::FileTypes {
+            register: true,
+            dry_run,
+        },
+        Some(CliCommand::UnregisterFileTypes { dry_run }) => CommandAction::FileTypes {
+            register: false,
+            dry_run,
+        },
+
         Some(CliCommand::Dataset { command }) => match command {
             DatasetCommand::Patches(args) => {
                 CommandAction::DatasetPatches(Box::new(args.into_job()))
+            }
+        },
+        Some(CliCommand::Batch { command }) => match command {
+            BatchCommand::List { json } => CommandAction::BatchList { json },
+            BatchCommand::Run(args) => {
+                CommandAction::BatchRun(Box::new(crate::batch::RunOptions {
+                    target: args.target,
+                    inputs: args.inputs,
+                    out: args.out,
+                    params: args.params,
+                    timeout: args.timeout.map(std::time::Duration::from_secs),
+                    deidentify: args.deidentify,
+                }))
             }
         },
         None => CommandAction::LaunchUi,
@@ -797,7 +1017,14 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
 
     Ok(LaunchOptions {
         debug_mode: cli.debug,
-        panes_to_open,
+        files: cli.files,
+        panes: cli.pane,
+        view: ViewRequest {
+            center: cli.goto,
+            zoom: cli.zoom,
+        },
+        new_instance: cli.new_instance,
+        configures_process,
         render_backend_override,
         filtering_mode_override: cli.filtering_mode.filtering_mode_override(),
         viewport_lock_enabled: cli.viewport_lock,
@@ -812,7 +1039,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             y: cli.window_y,
         },
         plugin_dir,
-        safe_mode: cli.safe_mode || safe_mode_from_env(),
+        safe_mode,
         command,
     })
 }
@@ -853,9 +1080,46 @@ impl LaunchOptions {
     pub(crate) fn launches_ui(&self) -> bool {
         matches!(self.command, CommandAction::LaunchUi)
     }
+
+    /// What to open. Call after the config override is applied: links
+    /// consult `trusted_link_servers`.
+    pub(crate) fn open_request(&self) -> OpenRequest {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        crate::launch::request_from_arguments(
+            &self.files,
+            &self.panes,
+            self.view,
+            &cwd,
+            &crate::launch::find_on_disk,
+            &config::load_trusted_link_servers(),
+        )
+    }
+
+    /// Whether this launch may hand its files to an eov that is running
+    /// (SH-8): the GUI, without --new-instance or options that configure
+    /// the process (they need a process of their own).
+    pub(crate) fn may_forward(&self) -> bool {
+        self.launches_ui() && !self.new_instance && !self.configures_process
+    }
+}
+
+/// Lets a subcommand whose output goes to a closed pipe (`eov probe x |
+/// head`) end quietly, as other command-line tools do, instead of
+/// panicking in `println!`. The viewer keeps ignoring SIGPIPE: its sockets
+/// report closed peers as errors.
+fn end_quietly_on_closed_pipe() {
+    #[cfg(unix)]
+    // SAFETY: restoring the default disposition of one signal, before any
+    // other thread exists.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
 }
 
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
+    if !launch_options.launches_ui() {
+        end_quietly_on_closed_pipe();
+    }
     match &launch_options.command {
         CommandAction::LaunchUi => Ok(false),
         CommandAction::ApplicationUpdate(args) => {
@@ -866,8 +1130,8 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             run_plugin_command(&launch_options.plugin_dir, command)?;
             Ok(true)
         }
-        CommandAction::Probe(path) => {
-            probe_file(path)?;
+        CommandAction::Probe { file, json } => {
+            crate::probe::run(file, *json)?;
             Ok(true)
         }
         CommandAction::RecentList => {
@@ -878,8 +1142,26 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             println!("{}", config::resolve_config_path()?.display());
             Ok(true)
         }
+        CommandAction::Paths { json } => {
+            print_storage_locations(&launch_options.plugin_dir, *json)?;
+            Ok(true)
+        }
+        CommandAction::FileTypes { register, dry_run } => {
+            crate::file_types::run_cli(*register, *dry_run)?;
+            Ok(true)
+        }
         CommandAction::DatasetPatches(job) => {
             run_dataset_patches_cli(job)?;
+            Ok(true)
+        }
+        CommandAction::BatchList { json } => {
+            crate::batch::list(&launch_options.plugin_dir, *json)?;
+            Ok(true)
+        }
+        CommandAction::BatchRun(options) => {
+            if !crate::batch::run(&launch_options.plugin_dir, options)? {
+                std::process::exit(1);
+            }
             Ok(true)
         }
     }
@@ -1216,15 +1498,66 @@ fn validate_input_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn validate_launch_input_path(path: &Path) -> Result<()> {
-    if !path.exists() {
-        bail!("input path does not exist: {}", path.display());
+/// A size for people (`1.5 GiB`).
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
     }
-
-    if !path.is_file() && !path.is_dir() {
-        bail!("input path is not a file or directory: {}", path.display());
+    if unit == 0 {
+        format!("{bytes} bytes")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
     }
+}
 
+/// `eov paths`: every place eov keeps data, with what it holds and its
+/// size on disk.
+fn print_storage_locations(plugin_dir: &Path, json: bool) -> Result<()> {
+    let policy_file = update::policy::policy_path();
+    let locations = crate::paths::storage_locations(
+        &config::resolve_config_path()?,
+        plugin_dir,
+        policy_file.as_deref(),
+        &update::policy::current().plugin_dirs,
+    );
+    if json {
+        let entries: Vec<serde_json::Value> = locations
+            .iter()
+            .map(|location| {
+                let bytes = crate::paths::disk_usage(&location.path);
+                serde_json::json!({
+                    "id": location.id,
+                    "description": location.description,
+                    "path": location.path.display().to_string(),
+                    "kind": location.kind,
+                    "exists": bytes.is_some(),
+                    "bytes": bytes,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+        return Ok(());
+    }
+    let width = locations
+        .iter()
+        .map(|location| location.description.chars().count())
+        .max()
+        .unwrap_or_default();
+    for location in &locations {
+        let size = match crate::paths::disk_usage(&location.path) {
+            Some(bytes) => format_bytes(bytes),
+            None => "not created yet".to_string(),
+        };
+        println!(
+            "{:width$}  {}  ({size})",
+            location.description,
+            location.path.display()
+        );
+    }
     Ok(())
 }
 
@@ -1238,78 +1571,6 @@ fn print_recent_files() {
     for recent_file in recent_files {
         println!("{}", recent_file.path.display());
     }
-}
-
-fn probe_file(path: &Path) -> Result<()> {
-    let wsi = WsiFile::open(path)?;
-    let properties = wsi.properties();
-
-    println!("File: {}", properties.path.display());
-    println!("Filename: {}", properties.filename);
-    println!("Dimensions: {}x{}", properties.width, properties.height);
-    println!("Levels: {}", properties.levels.len());
-    println!(
-        "Vendor: {}",
-        properties.vendor.as_deref().unwrap_or("unknown")
-    );
-    println!(
-        "MPP: {} x {}",
-        format_optional_decimal(properties.mpp_x),
-        format_optional_decimal(properties.mpp_y)
-    );
-    println!(
-        "Objective: {}",
-        format_optional_decimal(properties.objective_power)
-    );
-    println!(
-        "Scan date: {}",
-        properties.scan_date.as_deref().unwrap_or("unknown")
-    );
-    println!("Base tile size: {}", wsi.tile_size());
-    println!();
-    println!("Levels:");
-
-    for level in &properties.levels {
-        let tile_width = level
-            .tile_width
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        let tile_height = level
-            .tile_height
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        println!(
-            "  L{}: {}x{} downsample {:.2} tile {}x{} preferred-tile {}",
-            level.level,
-            level.width,
-            level.height,
-            level.downsample,
-            tile_width,
-            tile_height,
-            wsi.tile_size_for_level(level.level)
-        );
-    }
-
-    if let (Some(set), Some(display)) = (wsi.channels(), wsi.channel_display()) {
-        println!();
-        println!("Channels: {} ({})", set.len(), set.sample_type.name());
-        for (info, settings) in set.channels.iter().zip(&display.channels) {
-            let [r, g, b] = settings.color;
-            println!(
-                "  C{}: {} colour #{r:02X}{g:02X}{b:02X} window {}-{} values {}-{}{}",
-                info.index,
-                info.name,
-                format_decimal(settings.min),
-                format_decimal(settings.max),
-                format_decimal(info.stats.min),
-                format_decimal(info.stats.max),
-                if settings.visible { "" } else { " (hidden)" }
-            );
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1358,5 +1619,108 @@ mod tests {
         // A path that contains ~ in the middle should not be expanded
         let path = expand_tilde(Path::new("/home/user/~config"));
         assert_eq!(path, PathBuf::from("/home/user/~config"));
+    }
+
+    fn parse(arguments: &[&str]) -> Result<LaunchOptions> {
+        let cli = Cli::try_parse_from(std::iter::once("eov").chain(arguments.iter().copied()))?;
+        launch_options(cli)
+    }
+
+    #[test]
+    fn files_panes_and_views_are_parsed() {
+        let options = parse(&[
+            "a.svs",
+            "b.svs",
+            "--pane",
+            "c.svs,d.svs",
+            "--goto",
+            "300um,200um",
+            "--zoom",
+            "20x",
+        ])
+        .unwrap();
+        assert_eq!(options.files, [OsString::from("a.svs"), "b.svs".into()]);
+        assert_eq!(options.panes, [OsString::from("c.svs,d.svs")]);
+        assert_eq!(options.view.zoom, Some(Zoom::Magnification(20.0)));
+        assert!(options.launches_ui() && options.may_forward());
+
+        assert!(parse(&["--goto", "1,2"]).is_err(), "--goto needs a slide");
+        assert!(parse(&["a.svs", "--goto", "1um,2"]).is_err());
+        assert!(parse(&["a.svs", "--zoom", "huge"]).is_err());
+        assert!(parse(&["--pane", "a.svs", "probe", "b.svs"]).is_err());
+    }
+
+    #[test]
+    fn a_double_dash_makes_everything_a_file() {
+        let options = parse(&["--", "probe", "--cpu"]).unwrap();
+        assert!(options.launches_ui());
+        assert_eq!(options.files, [OsString::from("probe"), "--cpu".into()]);
+    }
+
+    #[test]
+    fn options_that_configure_the_process_start_a_new_one() {
+        assert!(parse(&["a.svs"]).unwrap().may_forward());
+        assert!(
+            parse(&["--config", "~/x.toml", "a.svs"])
+                .unwrap()
+                .may_forward()
+        );
+        for configured in [
+            &["--cpu", "a.svs"][..],
+            &["--debug", "a.svs"],
+            &["--window-width", "800", "a.svs"],
+            &["--log-level", "debug"],
+            &["--new-instance", "a.svs"],
+        ] {
+            assert!(
+                !parse(configured).unwrap().may_forward(),
+                "{configured:?} must not forward"
+            );
+        }
+        assert!(!parse(&["recent", "list"]).unwrap().may_forward());
+    }
+
+    #[test]
+    fn limits_and_window_positions_are_checked() {
+        assert!(parse(&["--max-tiles", "16777216"]).is_ok());
+        assert!(parse(&["--max-tiles", "16777217"]).is_err());
+        assert!(parse(&["--max-tiles", "0"]).is_err());
+        assert!(parse(&["--cache-size", "1048577"]).is_err());
+        assert!(parse(&["--window-x", "10"]).is_err(), "needs --window-y");
+        let options = parse(&["--window-x", "-200", "--window-y", "40"]).unwrap();
+        assert_eq!(options.window_geometry.x, Some(-200));
+        assert_eq!(options.window_geometry.y, Some(40));
+    }
+
+    #[test]
+    fn the_help_text_documents_every_option_and_command() {
+        use clap::CommandFactory;
+        let command = Cli::command();
+        for argument in command.get_arguments() {
+            assert!(
+                argument.get_help().is_some(),
+                "--{} has no help text",
+                argument.get_id()
+            );
+        }
+        fn check(command: &clap::Command) {
+            for subcommand in command.get_subcommands() {
+                assert!(
+                    subcommand.get_about().is_some(),
+                    "`{}` has no help text",
+                    subcommand.get_name()
+                );
+                for argument in subcommand.get_arguments() {
+                    assert!(
+                        argument.get_help().is_some() || argument.is_hide_set(),
+                        "`{} {}` has no help text",
+                        subcommand.get_name(),
+                        argument.get_id()
+                    );
+                }
+                check(subcommand);
+            }
+        }
+        check(&command);
     }
 }

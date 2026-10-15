@@ -800,8 +800,9 @@ fn finish_rebuild(
         }
     };
     for pane in panes.unwrap_or_default() {
-        // The render loop draws the new thumbnail into a pane without one.
-        crate::set_cached_pane_minimap(pane, None);
+        // The render loop draws the new thumbnail (in the pane's
+        // orientation) into a pane without one.
+        crate::set_cached_pane_minimap(pane, None, Default::default());
     }
     host.request_render();
     rebuild_done(host, file_id);

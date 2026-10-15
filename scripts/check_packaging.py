@@ -5,9 +5,12 @@
 - The OpenSlide fork commit and the libdicom/uthash checksums agree between
   packaging/shared/build-openslide.sh, the Flatpak manifest and the
   third-party notices (SH-19).
-- AppRun does not export LD_LIBRARY_PATH (UPD-13), and the desktop entry's
-  StartupWMClass matches the app id eov sets (SH-19).
+- AppRun does not export LD_LIBRARY_PATH (UPD-13) or any variable without
+  saving its launch value for the programs eov starts (SH-15), and the
+  desktop entry's StartupWMClass matches the app id eov sets (SH-19).
 - The Flatpak grants network and input access (UPD-5).
+- The AppImage and the Flatpak ship the MIME package of the slide formats,
+  and the desktop entry declares them and eov:// links (SH-8).
 
 Exit status 1 lists every problem found.
 """
@@ -98,6 +101,16 @@ def check_linux_metadata(problems: list[str]) -> None:
     code = "\n".join(line for line in apprun.splitlines() if not line.lstrip().startswith("#"))
     if "LD_LIBRARY_PATH" in code:
         problems.append("packaging/appimage/AppRun sets LD_LIBRARY_PATH; bundled libraries use RUNPATH")
+    # Programs eov starts get the launch environment back (SH-15): every
+    # variable AppRun changes needs its launch value saved.
+    for name in re.findall(r"^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)", code, re.MULTILINE):
+        if name.startswith("EOV_ORIG_") or name == "EOV_SAVED_ENV":
+            continue
+        if f"EOV_ORIG_{name}" not in code or "EOV_SAVED_ENV" not in code:
+            problems.append(
+                f"packaging/appimage/AppRun exports {name} without saving its launch value "
+                f"(EOV_ORIG_{name} and EOV_SAVED_ENV, see app/src/desktop.rs)"
+            )
     desktop = read("assets/linux/io.eosin.eov.desktop")
     app_id = re.search(r'APP_XDG_ID: &str = "([^"]+)"', read("app/src/main.rs"))
     wm_class = re.search(r"^StartupWMClass=(.+)$", desktop, re.MULTILINE)
@@ -110,6 +123,20 @@ def check_linux_metadata(problems: list[str]) -> None:
     for permission in ("--share=network", "--device=input"):
         if f"- {permission}" not in flatpak:
             problems.append(f"packaging/flatpak/io.eosin.eov.yml: missing {permission}")
+    if "/app/share/mime/packages/io.eosin.eov.xml" not in flatpak:
+        problems.append("packaging/flatpak/io.eosin.eov.yml: does not install the MIME package")
+    appimage = read("packaging/appimage/build.sh")
+    if '"$MIME_FILE" "$APPDIR_MIME_DIR/$APP_ID.xml"' not in appimage:
+        problems.append("packaging/appimage/build.sh: does not install the MIME package")
+    mime_types = re.findall(r'<mime-type type="([^"]+)">', read("assets/linux/io.eosin.eov.xml"))
+    declared = re.search(r"^MimeType=(.*)$", desktop, re.MULTILINE)
+    declared = set(filter(None, declared.group(1).split(";"))) if declared else set()
+    for mime in mime_types + ["image/tiff", "application/dicom", "x-scheme-handler/eov"]:
+        if mime not in declared:
+            problems.append(f"assets/linux/io.eosin.eov.desktop: MimeType= lacks {mime}")
+    exec_line = re.search(r"^Exec=(.*)$", desktop, re.MULTILINE)
+    if exec_line is None or not exec_line.group(1).endswith("%U"):
+        problems.append("assets/linux/io.eosin.eov.desktop: Exec= must take %U (eov:// links)")
 
 
 def main() -> int:

@@ -251,6 +251,49 @@ impl TissueMask {
         self.sum(x0, y0, x1, y1) as f32 / ((x1 - x0) * (y1 - y0)) as f32
     }
 
+    /// The level-0 rectangle `(x, y, width, height)` holding nearly all the
+    /// tissue: `trim` (e.g. 0.002) of the tissue pixels is left out on each
+    /// side, so dust and specks at the edges do not stretch it. `None` when
+    /// the mask has no tissue.
+    pub fn tissue_bounds(&self, trim: f64) -> Option<(f64, f64, f64, f64)> {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let total = self.sum(0, 0, w, h);
+        if total == 0 {
+            return None;
+        }
+        let cut = (total as f64 * trim.clamp(0.0, 0.25)).floor() as u64;
+        // The first and last index whose cumulative count passes `cut`.
+        let extent = |count: &dyn Fn(usize) -> u64, n: usize| {
+            let mut seen = 0;
+            let mut start = 0;
+            for i in 0..n {
+                seen += count(i);
+                if seen > cut {
+                    start = i;
+                    break;
+                }
+            }
+            seen = 0;
+            let mut end = n;
+            for i in (0..n).rev() {
+                seen += count(i);
+                if seen > cut {
+                    end = i + 1;
+                    break;
+                }
+            }
+            (start, end.max(start + 1))
+        };
+        let (x0, x1) = extent(&|x| self.sum(x, 0, x + 1, h), w);
+        let (y0, y1) = extent(&|y| self.sum(0, y, w, y + 1), h);
+        Some((
+            x0 as f64 * self.scale_x,
+            y0 as f64 * self.scale_y,
+            (x1 - x0) as f64 * self.scale_x,
+            (y1 - y0) as f64 * self.scale_y,
+        ))
+    }
+
     /// Tissue fraction of the whole slide.
     pub fn slide_fraction(&self) -> f32 {
         let total = self.width as u64 * self.height as u64;
@@ -305,6 +348,30 @@ mod tests {
             mask.threshold()
         );
         assert!((mask.slide_fraction() - 0.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn tissue_bounds_ignore_specks() {
+        // A block of tissue at (20..60, 30..50) and one speck far away.
+        let rgba = image(100, 100, |x, y| {
+            ((20..60).contains(&x) && (30..50).contains(&y)) || (x == 95 && y == 5)
+        });
+        let mask = TissueMask::from_rgba(&rgba, 100, 100, 10.0, 10.0, TissueMethod::Otsu);
+        assert_eq!(mask.tissue_bounds(0.0), Some((200.0, 50.0, 760.0, 450.0)));
+        assert_eq!(
+            mask.tissue_bounds(0.002),
+            Some((200.0, 300.0, 400.0, 200.0))
+        );
+        let glass = image(10, 10, |_, _| false);
+        let mask = TissueMask::from_rgba(
+            &glass,
+            10,
+            10,
+            1.0,
+            1.0,
+            TissueMethod::Saturation { threshold: 0.1 },
+        );
+        assert_eq!(mask.tissue_bounds(0.002), None);
     }
 
     #[test]

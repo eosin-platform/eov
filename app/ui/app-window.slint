@@ -6,8 +6,10 @@ import {
     ChannelRow,
     ContextMenuItem,
     DatasetExportSettings,
+    ChoiceItem,
     MeasurementRow,
     PropertyRow,
+    ResultRow,
     ShortcutLabels,
     ShortcutRow,
     ExportPreviewInfo,
@@ -45,6 +47,7 @@ import { BookmarkDialog } from "bookmark-dialog.slint";
 import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
 import { ChannelsPanel } from "channels-panel.slint";
+import { QuantifyPanel } from "quantify-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -121,6 +124,11 @@ export component AppWindow inherits Window {
     in-out property <[PluginRowData]> plugin-rows: [];
     in-out property <string> plugin-dir-text: "";
     in-out property <string> plugins-panel-note: "";
+    in-out property <string> plugins-update-note: "";
+    in-out property <bool> plugins-checking: false;
+    callback plugins-check-updates();
+    callback plugin-update-requested(string);
+    callback plugin-remove-requested(string);
     in-out property <int> plugin-count: 0;
     in-out property <bool> plugin-problems: false;
 
@@ -132,6 +140,7 @@ export component AppWindow inherits Window {
     in-out property <string> plugin-confirm-message: "";
     in-out property <string> plugin-confirm-confirm-label: "Confirm";
     in-out property <string> plugin-confirm-cancel-label: "Cancel";
+    in-out property <bool> plugin-confirm-destructive: false;
     in-out property <bool> show-plugin-modal: false;
     in-out property <float> plugin-modal-width: 0;
     in-out property <float> plugin-modal-height: 0;
@@ -140,6 +149,19 @@ export component AppWindow inherits Window {
     in-out property <bool> bookmark-dialog-visible: false;
     in-out property <bool> shortcuts-panel-visible: false;
     in-out property <bool> measurements-panel-visible: false;
+    in-out property <bool> quantify-visible: false;
+    in-out property <string> quantify-title;
+    in-out property <[ChoiceItem]> quantify-presets: [];
+    in-out property <string> quantify-preset;
+    in-out property <[ChoiceItem]> quantify-stains: [];
+    in-out property <string> quantify-stain;
+    in-out property <string> quantify-weak;
+    in-out property <string> quantify-moderate;
+    in-out property <string> quantify-strong;
+    in-out property <string> quantify-region-text;
+    in-out property <string> quantify-note;
+    in-out property <bool> quantify-running: false;
+    in-out property <[ResultRow]> quantify-results: [];
     in-out property <string> measurements-title;
     in-out property <[MeasurementRow]> measurement-rows: [];
     in-out property <string> measurements-empty-text;
@@ -151,6 +173,12 @@ export component AppWindow inherits Window {
 
     callback bookmark-dialog-accepted(string);
     callback shortcuts-copy-config-path();
+    callback quantify-preset-chosen(string);
+    callback quantify-stain-chosen(string);
+    callback quantify-thresholds-edited(string, string, string);
+    callback quantify-run();
+    callback quantify-copy();
+    callback quantify-close();
     callback measurement-go(string);
     callback measurement-copy(string);
     callback measurement-delete(string);
@@ -245,9 +273,15 @@ export component AppWindow inherits Window {
     in-out property <bool> show-metadata: false;
     in-out property <bool> show-scale-bar: true;
     in-out property <bool> viewport-lock-enabled: false;
+    in-out property <bool> slide-link-enabled: false;
+    in-out property <bool> alignment-adjust-enabled: false;
     in-out property <BottomPanelKind> bottom-panel-kind: BottomPanelKind.none;
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
+    in-out property <string> series-filter;
+    in-out property <string> series-sort-label: "A–Z";
+    callback series-filter-edited(string);
+    callback series-sort-cycled();
     in-out property <string> series-selected-path: "";
     in-out property <bool> series-can-go-back: false;
     in-out property <bool> series-can-go-forward: false;
@@ -273,6 +307,8 @@ export component AppWindow inherits Window {
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
     callback toggle-viewport-lock-requested();
+    callback toggle-slide-link-requested();
+    callback toggle-alignment-adjust-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -293,7 +329,6 @@ export component AppWindow inherits Window {
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
-    callback file-dropped(string);
     callback viewport-interaction-started(int);
     callback pane-focused(int);
     callback request-render();
@@ -341,6 +376,7 @@ export component AppWindow inherits Window {
     callback hud-reset-adjustments(int);
     callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
+    callback hud-orientation-changed(int, int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
     callback hud-deconv-e-intensity-changed(int, float);
@@ -475,6 +511,10 @@ export component AppWindow inherits Window {
                 root.channels-closed();
                 accept
             }
+            if e.text == Key.Escape && root.quantify-visible {
+                root.quantify-close();
+                accept
+            }
             if e.text == Key.Escape && root.show-plugin-modal {
                 root.plugin-modal-dismiss-requested();
                 accept
@@ -495,7 +535,7 @@ export component AppWindow inherits Window {
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
                 || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
-                || root.channels-panel-visible {
+                || root.quantify-visible || root.channels-panel-visible {
                 reject
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -523,6 +563,8 @@ export component AppWindow inherits Window {
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
             viewport-lock-enabled: root.viewport-lock-enabled;
+            slide-link-enabled: root.slide-link-enabled;
+            alignment-adjust-enabled: root.alignment-adjust-enabled;
             use-native-window-controls: root.use-native-window-controls;
             shortcuts: root.shortcut-labels;
             undo-enabled: root.undo-enabled;
@@ -553,6 +595,12 @@ export component AppWindow inherits Window {
             }
             toggle-viewport-lock-requested => {
                 root.toggle-viewport-lock-requested();
+            }
+            toggle-slide-link-requested => {
+                root.toggle-slide-link-requested();
+            }
+            toggle-alignment-adjust-requested => {
+                root.toggle-alignment-adjust-requested();
             }
             tool-selected(tool) => {
                 root.tool-selected(tool);
@@ -781,9 +829,6 @@ export component AppWindow inherits Window {
                     minimap-drag-end => {
                         root.minimap-drag-end();
                     }
-                    file-dropped(path) => {
-                        root.file-dropped(path);
-                    }
                     viewport-interaction-started(pane-id) => {
                         root.viewport-interaction-started(pane-id);
                     }
@@ -885,6 +930,9 @@ export component AppWindow inherits Window {
                     hud-zoom-in(pane) => {
                         root.hud-zoom-in(pane);
                     }
+                    hud-orientation-changed(pane, action) => {
+                        root.hud-orientation-changed(pane, action);
+                    }
                     hud-zoom-out(pane) => {
                         root.hud-zoom-out(pane);
                     }
@@ -938,6 +986,14 @@ export component AppWindow inherits Window {
                 series-can-go-back: root.series-can-go-back;
                 series-can-go-forward: root.series-can-go-forward;
                 series-can-go-up: root.series-can-go-up;
+                series-filter <=> root.series-filter;
+                series-sort-label: root.series-sort-label;
+                series-filter-edited(text) => {
+                    root.series-filter-edited(text);
+                }
+                series-sort-cycled => {
+                    root.series-sort-cycled();
+                }
                 status-left: root.bottom-panel-status-left;
                 status-right: root.bottom-panel-status-right;
                 open-folder-requested => {
@@ -1496,7 +1552,9 @@ export component AppWindow inherits Window {
                         min-width: confirm-text.preferred-width + 16px;
                         height: 28px;
                         border-radius: 4px;
-                        background: plugin-confirm-touch.has-hover ? #1177bb : Theme.accent;
+                        background: root.plugin-confirm-destructive
+                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
+                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
 
                         plugin-confirm-touch := TouchArea {
                             clicked => {
@@ -1530,6 +1588,43 @@ export component AppWindow inherits Window {
         }
         cancelled => {
             root.bookmark-dialog-cancelled();
+        }
+    }
+
+    if root.quantify-visible: QuantifyPanel {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        title: root.quantify-title;
+        presets: root.quantify-presets;
+        preset: root.quantify-preset;
+        stains: root.quantify-stains;
+        stain: root.quantify-stain;
+        weak <=> root.quantify-weak;
+        moderate <=> root.quantify-moderate;
+        strong <=> root.quantify-strong;
+        region-text: root.quantify-region-text;
+        note: root.quantify-note;
+        running: root.quantify-running;
+        results: root.quantify-results;
+        preset-chosen(id) => {
+            root.quantify-preset-chosen(id);
+        }
+        stain-chosen(id) => {
+            root.quantify-stain-chosen(id);
+        }
+        thresholds-edited(weak, moderate, strong) => {
+            root.quantify-thresholds-edited(weak, moderate, strong);
+        }
+        run-requested => {
+            root.quantify-run();
+        }
+        copy-requested => {
+            root.quantify-copy();
+        }
+        close-requested => {
+            root.quantify-close();
         }
     }
 
@@ -1773,8 +1868,19 @@ export component AppWindow inherits Window {
         rows: root.plugin-rows;
         plugin-dir: root.plugin-dir-text;
         note: root.plugins-panel-note;
+        update-note: root.plugins-update-note;
+        checking: root.plugins-checking;
         close-requested => {
             root.plugins-panel-visible = false;
+        }
+        check-updates-requested => {
+            root.plugins-check-updates();
+        }
+        update-requested(id) => {
+            root.plugin-update-requested(id);
+        }
+        remove-requested(id) => {
+            root.plugin-remove-requested(id);
         }
         enable-requested(id, enable) => {
             root.plugin-enable-requested(id, enable);

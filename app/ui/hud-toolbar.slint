@@ -56,6 +56,9 @@ export component HudToolbar inherits Rectangle {
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
     in property <[HudToolbarButtonData]> plugin-buttons: [];
+    // The view's turn (see `ViewportInfo`).
+    in property <int> rotation-degrees: 0;
+    in property <bool> flipped: false;
 
     callback fit-to-view();
     callback zoom-in();
@@ -64,6 +67,8 @@ export component HudToolbar inherits Rectangle {
     callback zoom-input(string);
     callback plugin-button-clicked(/* plugin */ string, /* button */ string, /* menu item */ string);
     callback dismiss-plugin-menu();
+    // 0 rotate left, 1 rotate right, 2 flip, 3 reset the turn.
+    callback orientation-changed(int);
 
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
@@ -81,6 +86,10 @@ export component HudToolbar inherits Rectangle {
         zoom-touch.has-hover ? root.zoom-tooltip
         : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text
         : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text
+        : rotate-left-btn.hovered ? rotate-left-btn.tooltip-text
+        : rotate-right-btn.hovered ? rotate-right-btn.tooltip-text
+        : flip-btn.hovered ? flip-btn.tooltip-text
+        : angle-touch.has-hover ? "Reset rotation"
         : adjust-btn.hovered ? adjust-btn.tooltip-text
         : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
             ? root.plugin-buttons[root.hovered-plugin].tooltip
@@ -89,6 +98,10 @@ export component HudToolbar inherits Rectangle {
         zoom-touch.has-hover ? zoom-touch.absolute-position.x - root.absolute-position.x + zoom-touch.width / 2
         : zoom-out-btn.hovered ? zoom-out-btn.absolute-position.x - root.absolute-position.x + zoom-out-btn.width / 2
         : zoom-in-btn.hovered ? zoom-in-btn.absolute-position.x - root.absolute-position.x + zoom-in-btn.width / 2
+        : rotate-left-btn.hovered ? rotate-left-btn.absolute-position.x - root.absolute-position.x + rotate-left-btn.width / 2
+        : rotate-right-btn.hovered ? rotate-right-btn.absolute-position.x - root.absolute-position.x + rotate-right-btn.width / 2
+        : flip-btn.hovered ? flip-btn.absolute-position.x - root.absolute-position.x + flip-btn.width / 2
+        : angle-touch.has-hover ? angle-label.absolute-position.x - root.absolute-position.x + angle-label.width / 2
         : adjust-btn.hovered ? adjust-btn.absolute-position.x - root.absolute-position.x + adjust-btn.width / 2
         : root.hovered-plugin-x;
 
@@ -209,6 +222,56 @@ export component HudToolbar inherits Rectangle {
                 tooltip-text: "Zoom in";
                 clicked => {
                     root.zoom-in();
+                }
+            }
+
+            HudSeparator {}
+
+            rotate-left-btn := HudButton {
+                icon-source: @image-url("icons/rotate-left.svg");
+                tooltip-text: "Rotate left 90°";
+                clicked => {
+                    root.orientation-changed(0);
+                }
+            }
+
+            rotate-right-btn := HudButton {
+                icon-source: @image-url("icons/rotate-right.svg");
+                tooltip-text: "Rotate right 90°";
+                clicked => {
+                    root.orientation-changed(1);
+                }
+            }
+
+            flip-btn := HudButton {
+                icon-source: @image-url("icons/flip-horizontal.svg");
+                tooltip-text: root.flipped ? "Unflip" : "Flip horizontally";
+                active: root.flipped;
+                clicked => {
+                    root.orientation-changed(2);
+                }
+            }
+
+            // The angle, while the view is turned; clicking resets it.
+            angle-label := Rectangle {
+                width: root.rotation-degrees != 0 ? 46px : 0px;
+                height: 38px;
+                visible: root.rotation-degrees != 0;
+                background: angle-touch.has-hover ? #ffffff22 : transparent;
+
+                Text {
+                    text: root.rotation-degrees + "°";
+                    color: #e0e0e0;
+                    font-size: 13px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                angle-touch := TouchArea {
+                    clicked => {
+                        root.orientation-changed(3);
+                    }
                 }
             }
 

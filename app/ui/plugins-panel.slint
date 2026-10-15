@@ -7,9 +7,15 @@ export component PluginsPanel inherits Rectangle {
     in property <[PluginRowData]> rows: [];
     in property <string> plugin-dir: "";
     in property <string> note: "";
+    /// The result of the last Check for Updates.
+    in property <string> update-note: "";
+    in property <bool> checking: false;
     callback close-requested();
     callback enable-requested(/* plugin id */ string, /* enable */ bool);
     callback open-folder-requested();
+    callback check-updates-requested();
+    callback update-requested(/* plugin id */ string);
+    callback remove-requested(/* plugin id */ string);
 
     x: 0px;
     y: 0px;
@@ -58,6 +64,30 @@ export component PluginsPanel inherits Rectangle {
                     font-size: 15px;
                     font-weight: 600;
                     vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: check-text.preferred-width + 16px;
+                    height: 26px;
+                    border-radius: 4px;
+                    background: check-touch.has-hover && !root.checking ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    check-text := Text {
+                        text: root.checking ? "Checking…" : "Check for updates";
+                        color: root.checking ? Theme.text-secondary : Theme.text-primary;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    check-touch := TouchArea {
+                        enabled: !root.checking;
+                        clicked => {
+                            root.check-updates-requested();
+                        }
+                    }
                 }
 
                 Rectangle {
@@ -117,6 +147,15 @@ export component PluginsPanel inherits Rectangle {
                 color: #f1c40f;
                 font-size: 11px;
                 wrap: word-wrap;
+                height: self.preferred-height;
+            }
+
+            if root.update-note != "": Text {
+                text: root.update-note;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                wrap: word-wrap;
+                height: self.preferred-height;
             }
 
             Flickable {
@@ -168,30 +207,65 @@ export component PluginsPanel inherits Rectangle {
                                     }
                                 }
 
+                                // Wrapped text in `if`/`for` needs its height
+                                // set (Slint 1.17).
                                 if row.description != "": Text {
                                     text: row.description;
                                     color: Theme.text-secondary;
                                     font-size: 11px;
                                     wrap: word-wrap;
+                                    height: self.preferred-height;
                                 }
 
                                 Text {
-                                    text: row.status;
+                                    text: row.status + (row.update != "" ? " · version " + row.update + " is available" : "");
                                     color: row.status-level == 0 ? #2ecc71 : row.status-level == 1 ? Theme.text-secondary : #ff6b6b;
                                     font-size: 11px;
                                     wrap: word-wrap;
+                                    height: self.preferred-height;
+                                }
+
+                                if row.detail != "": Text {
+                                    text: row.detail;
+                                    color: #f1c40f;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                    height: self.preferred-height;
                                 }
 
                                 Text {
-                                    text: row.id + (row.source != "" ? " · " + row.source : "");
+                                    text: row.id + (row.origin != "" ? " · " + row.origin : "") + (row.source != "" ? " · " + row.source : "");
                                     color: Theme.text-secondary;
                                     font-size: 10px;
                                     wrap: word-wrap;
+                                    height: self.preferred-height;
                                 }
                             }
 
                             VerticalLayout {
                                 alignment: start;
+                                spacing: 6px;
+
+                                if row.update != "": Rectangle {
+                                    width: update-text.preferred-width + 18px;
+                                    height: 26px;
+                                    border-radius: 4px;
+                                    background: update-touch.has-hover ? #1177bb : Theme.accent;
+
+                                    update-text := Text {
+                                        text: "Update";
+                                        color: white;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    update-touch := TouchArea {
+                                        clicked => {
+                                            root.update-requested(row.id);
+                                        }
+                                    }
+                                }
 
                                 if row.can-enable || row.can-disable: Rectangle {
                                     width: toggle-text.preferred-width + 18px;
@@ -212,6 +286,29 @@ export component PluginsPanel inherits Rectangle {
                                     toggle-touch := TouchArea {
                                         clicked => {
                                             root.enable-requested(row.id, !row.can-disable);
+                                        }
+                                    }
+                                }
+
+                                if row.can-remove: Rectangle {
+                                    width: remove-text.preferred-width + 18px;
+                                    height: 26px;
+                                    border-radius: 4px;
+                                    background: remove-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+
+                                    remove-text := Text {
+                                        text: "Remove";
+                                        color: #ff8a8a;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    remove-touch := TouchArea {
+                                        clicked => {
+                                            root.remove-requested(row.id);
                                         }
                                     }
                                 }

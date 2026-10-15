@@ -67,10 +67,33 @@ pub fn polyline_midpoint(points: &[Point]) -> Point {
 }
 
 fn to_logical(view: &ViewTransform, p: Point) -> (f32, f32) {
-    (
-        ((p[0] - view.left) * view.zoom) as f32,
-        ((p[1] - view.top) * view.zoom) as f32,
-    )
+    let (x, y) = view.to_logical(p);
+    (x as f32, y as f32)
+}
+
+/// Where a shape's label goes on the target: above the top edge of the
+/// shape as shown (the view may be turned), or at its point.
+fn label_position(view: &ViewTransform, shape: &Shape) -> (f32, f32, LabelAnchor) {
+    let (point, anchor) = label_anchor(shape);
+    if anchor != LabelAnchor::Above || matches!(shape, Shape::Polyline { .. }) {
+        let (x, y) = to_logical(view, point);
+        return (x, y, anchor);
+    }
+    let b = shape.bounds();
+    let corners = [
+        [b.x, b.y],
+        [b.x + b.width, b.y],
+        [b.x, b.y + b.height],
+        [b.x + b.width, b.y + b.height],
+    ]
+    .map(|corner| to_logical(view, corner));
+    let left = corners.iter().map(|c| c.0).fold(f32::INFINITY, f32::min);
+    let right = corners
+        .iter()
+        .map(|c| c.0)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let top = corners.iter().map(|c| c.1).fold(f32::INFINITY, f32::min);
+    ((left + right) / 2.0, top, anchor)
 }
 
 /// Collects the labels of everything visible in `scene`, in draw order.
@@ -98,8 +121,7 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
             };
             let shape = scene.overrides.get(&key).unwrap_or(&object.object.shape);
             let style = resolve_style(layer, &object, scene.hovered.as_ref() == Some(&key));
-            let (anchor_point, anchor) = label_anchor(shape);
-            let (mut x, y) = to_logical(view, anchor_point);
+            let (mut x, y, anchor) = label_position(view, shape);
             if anchor == LabelAnchor::Right {
                 x += style.point_radius + 4.0;
             }
@@ -145,8 +167,7 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
         let Some(text) = &transient.label else {
             continue;
         };
-        let (anchor_point, anchor) = label_anchor(&transient.shape);
-        let (x, y) = to_logical(view, anchor_point);
+        let (x, y, anchor) = label_position(view, &transient.shape);
         labels.push(Label {
             x,
             y: y - 4.0,
@@ -177,6 +198,7 @@ mod tests {
             height: 200.0,
             scale: 1.0,
             mpp: None,
+            orientation: Default::default(),
         }
     }
 

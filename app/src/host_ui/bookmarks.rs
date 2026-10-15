@@ -21,6 +21,7 @@ pub(super) struct PendingBookmark {
     center_x: f64,
     center_y: f64,
     zoom: f64,
+    orientation: eov_common::viewport::Orientation,
 }
 
 /// What the bookmark menu was opened for.
@@ -93,6 +94,7 @@ impl UiHost {
                         center_x: viewport.center.x,
                         center_y: viewport.center.y,
                         zoom: viewport.zoom,
+                        orientation: viewport.orientation,
                     },
                     crate::callbacks::native_magnification(file),
                 ))
@@ -166,6 +168,8 @@ impl UiHost {
                 center_x: pending.center_x,
                 center_y: pending.center_y,
                 zoom: pending.zoom,
+                rotation: pending.orientation.degrees(),
+                flipped: pending.orientation.flipped(),
             },
         );
         match added {
@@ -363,6 +367,7 @@ impl UiHost {
                 return;
             }
             if let Some(viewport) = state.active_viewport_mut() {
+                viewport.set_orientation(bookmark.orientation());
                 viewport.smooth_set_center_zoom(
                     bookmark.center_x,
                     bookmark.center_y,

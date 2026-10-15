@@ -11,10 +11,10 @@ use crate::overlay::OverlayStore;
 use arc_swap::ArcSwap;
 use eov_plugin_api::abi::RegionRequest;
 use eov_plugin_api::protocol::{
-    ConfirmArgs, DisplayAdjustments, FileDialogArgs, FileId, FileInfo, HostSnapshot, JobFinishArgs,
-    JobStartArgs, JobUpdateArgs, MeasurementInfo, NotifyArgs, PaneId, PropertyMap, Rect,
-    SeriesAction, SurfaceSpec, UndoClearArgs, UndoPushArgs, ViewFrameArgs, ViewPanArgs,
-    ViewSetArgs, ViewZoomArgs,
+    BatchFinishArgs, BatchProgressArgs, ConfirmArgs, DisplayAdjustments, FileDialogArgs, FileId,
+    FileInfo, HostSnapshot, JobFinishArgs, JobStartArgs, JobUpdateArgs, MeasurementInfo,
+    NotifyArgs, PaneId, PropertyMap, Rect, SeriesAction, SurfaceSpec, UndoClearArgs, UndoPushArgs,
+    ViewFrameArgs, ViewOrientationArgs, ViewPanArgs, ViewSetArgs, ViewZoomArgs,
 };
 use parking_lot::{Mutex, RwLock};
 use serde_json::{Map, Value};
@@ -96,6 +96,7 @@ pub enum SurfaceCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewCommand {
     Set(ViewSetArgs),
+    Orientation(ViewOrientationArgs),
     Pan(ViewPanArgs),
     Zoom(ViewZoomArgs),
     Fit(Option<PaneId>),
@@ -145,6 +146,10 @@ pub enum Command {
         id: String,
         reason: String,
     },
+    /// For a headless batch run: how far a slide is.
+    BatchProgress(BatchProgressArgs),
+    /// For a headless batch run: a slide is done.
+    BatchFinish(BatchFinishArgs),
 }
 
 type Wake = Box<dyn Fn() + Send + Sync>;

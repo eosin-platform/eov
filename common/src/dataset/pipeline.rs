@@ -505,11 +505,18 @@ pub fn plan_dataset(
         });
     }
     let keys = output::unique_slide_keys_for(&discovery.slides);
+    let mut used_keys = std::collections::HashSet::new();
     let mut slides = Vec::with_capacity(discovery.slides.len());
     let mut classes = std::collections::BTreeSet::new();
     let mut planned_tiles = 0u64;
     for (input, key) in discovery.slides.into_iter().zip(keys) {
-        let (geometry, props) = match WsiFile::open(&input.path) {
+        let opened = WsiFile::open(&input.path);
+        let key = if options.deidentify {
+            output::deidentified_key(opened.as_ref().ok(), &input.path, &mut used_keys)
+        } else {
+            key
+        };
+        let (geometry, props) = match opened {
             Ok(wsi) => (
                 geometry(&wsi, config, options),
                 Some(wsi.properties().clone()),
@@ -648,6 +655,32 @@ fn read_with_retry(job: &SlideJob, x: u64, y: u64) -> crate::Result<Vec<u8>> {
 }
 
 impl Run<'_> {
+    /// A slide's path as written to the metadata ("" when de-identified).
+    fn public_path(&self, path: &Path) -> String {
+        if self.options.deidentify {
+            String::new()
+        } else {
+            path.display().to_string()
+        }
+    }
+
+    /// An error message as written to the metadata: when de-identified,
+    /// the slide's path and file name are replaced by its id.
+    fn public_message(&self, message: String, planned: &PlannedSlide) -> String {
+        if !self.options.deidentify {
+            return message;
+        }
+        let path = &planned.input.path;
+        let mut message = message.replace(&path.display().to_string(), &planned.key);
+        for part in [path.file_name(), path.file_stem()].into_iter().flatten() {
+            let part = part.to_string_lossy();
+            if !part.is_empty() {
+                message = message.replace(&*part, &planned.key);
+            }
+        }
+        message
+    }
+
     fn tile_path(&self, key: &str, x: u64, y: u64) -> String {
         let ext = self.options.image_format.extension();
         let name = output::tile_filename_with_extension(key, x, y, self.config.tile_size, ext);
@@ -674,8 +707,7 @@ impl Run<'_> {
     ) -> Option<SlideReport> {
         let previous = self.previous.get(&planned.key)?;
         let path = &planned.input.path;
-        if previous.status != SlideStatus::Complete
-            || previous.slide_path != path.display().to_string()
+        if previous.status != SlideStatus::Complete || previous.slide_path != self.public_path(path)
         {
             return None;
         }
@@ -816,10 +848,14 @@ impl Run<'_> {
         let props = job.props;
         Outcome::Written(Box::new(Accepted {
             record: TileRecord {
-                slide_path: job.planned.input.path.display().to_string(),
+                slide_path: self.public_path(&job.planned.input.path),
                 fingerprint: job.fingerprint.clone(),
                 file_sha256: job.sha256.clone(),
-                slide_stem: output::slide_base_name(&job.planned.input),
+                slide_stem: if self.options.deidentify {
+                    job.planned.key.clone()
+                } else {
+                    output::slide_base_name(&job.planned.input)
+                },
                 tile_path,
                 x,
                 y,
@@ -1138,9 +1174,11 @@ impl Run<'_> {
 
         let record = SlideRecord {
             slide_id: planned.key.clone(),
-            slide_path: path.display().to_string(),
+            slide_path: self.public_path(path),
             status,
-            message: failure.as_ref().map(|f| f.to_string()),
+            message: failure
+                .as_ref()
+                .map(|f| self.public_message(f.to_string(), planned)),
             vendor: props.vendor.clone(),
             objective_power: props.objective_power,
             mpp_x: props.mpp_x,
@@ -1165,7 +1203,7 @@ impl Run<'_> {
             fingerprint: Some(job.fingerprint.clone()),
             file_sha256: (!job.sha256.is_empty()).then(|| job.sha256.clone()),
             stain_normalization: job.stain.as_ref().map(|(_, s)| s.clone()),
-            annotation_file,
+            annotation_file: annotation_file.filter(|_| !self.options.deidentify),
         };
         let report = SlideReport {
             path: path.clone(),
@@ -1197,9 +1235,9 @@ impl Run<'_> {
         let props = planned.props.as_ref();
         let record = SlideRecord {
             slide_id: planned.key.clone(),
-            slide_path: planned.input.path.display().to_string(),
+            slide_path: self.public_path(&planned.input.path),
             status,
-            message: Some(reason.to_string()),
+            message: Some(self.public_message(reason.to_string(), planned)),
             vendor: props.and_then(|p| p.vendor.clone()),
             objective_power: props.and_then(|p| p.objective_power),
             mpp_x: props.and_then(|p| p.mpp_x),
@@ -1368,11 +1406,15 @@ pub fn run_dataset(
         format_version: MANIFEST_FORMAT_VERSION,
         software: crate::export::software_name(),
         parameters,
-        inputs: config
-            .inputs
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect(),
+        inputs: if options.deidentify {
+            Vec::new()
+        } else {
+            config
+                .inputs
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect()
+        },
         status: RunStatus::Running,
         started,
         updated: now(),

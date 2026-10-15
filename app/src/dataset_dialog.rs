@@ -134,6 +134,7 @@ fn run_spec(settings: &DatasetExportSettings) -> (DatasetPatchesConfig, DatasetP
     };
     let options = DatasetPatchesOptions {
         tissue_filter: settings.tissue_only.then(TissueFilter::default),
+        deidentify: settings.deidentify,
         ..DatasetPatchesOptions::default()
     };
     (config, options)

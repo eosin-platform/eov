@@ -118,6 +118,7 @@ impl HostWithSlide {
                 viewport: ViewportState::new(800.0, 600.0, 512.0, 384.0),
                 thumbnail: None,
                 target_pane,
+                activation: crate::state::TabActivation::Focus,
             });
             id
         };

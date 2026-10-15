@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, warn};
+use tracing::warn;
 
 /// Edge drops this close together are one multi-file drop.
 const EDGE_DROP_GROUPING: Duration = Duration::from_millis(400);
@@ -270,14 +270,10 @@ pub(crate) fn frame_active_viewport(state: &mut AppState) -> bool {
 /// the scanner's objective power, or about 10 µm ÷ pixel size when only
 /// the pixel size is known (0.25 µm/px ≈ 40×), including a manual one.
 pub(crate) fn native_magnification(file: &state::OpenFile) -> Option<f64> {
-    file.wsi
-        .properties()
-        .objective_power
-        .filter(|power| power.is_finite() && *power > 0.0)
-        .or_else(|| {
-            let mpp = crate::host_ui::calibration(file).average()?;
-            (mpp.is_finite() && mpp > 0.0).then(|| 10.0 / mpp)
-        })
+    crate::launch::native_magnification(
+        file.wsi.properties().objective_power,
+        crate::host_ui::calibration(file).average(),
+    )
 }
 
 /// Zooms the focused pane to an objective-equivalent `magnification`
@@ -310,6 +306,45 @@ pub(crate) fn magnify_active_viewport(
     viewport.zoom_to(zoom);
     Ok(true)
 }
+
+/// Turns the focused pane's slide `quarter_turns` × 90° clockwise as seen on
+/// screen (negative: counterclockwise), about the view centre; a fitted
+/// view stays fitted. Level-0 coordinates are unaffected. Callers mirror
+/// locked panes and request a render (as with the other `*_active_viewport`
+/// actions).
+pub(crate) fn rotate_active_viewport(state: &mut AppState, quarter_turns: i32) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let orientation = viewport.viewport.orientation.turned(quarter_turns);
+    viewport.set_orientation(orientation);
+    true
+}
+
+/// Mirrors the focused pane's slide left to right as seen on screen.
+pub(crate) fn flip_active_viewport(state: &mut AppState) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let orientation = viewport.viewport.orientation.mirrored();
+    viewport.set_orientation(orientation);
+    true
+}
+
+/// Shows the focused pane's slide upright and unmirrored again.
+pub(crate) fn reset_active_orientation(state: &mut AppState) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let changed = !viewport.viewport.orientation.is_identity();
+    viewport.set_orientation(eov_common::viewport::Orientation::IDENTITY);
+    changed
+}
+
+/// `hud-orientation-changed` actions (see `hud-toolbar.slint`).
+const HUD_ROTATE_LEFT: i32 = 0;
+const HUD_ROTATE_RIGHT: i32 = 1;
+const HUD_FLIP: i32 = 2;
 
 pub(crate) fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
@@ -358,6 +393,73 @@ fn toggle_scale_bar_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     ui.set_show_scale_bar(show_scale_bar);
 }
 
+/// Links (or unlinks) the panes showing different slides, so they follow
+/// the focused one (Phase 3 #5). For key bindings; returns whether the link
+/// is on.
+pub(crate) fn toggle_slide_link(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -> bool {
+    let (linked, split) = {
+        let mut state = state.write();
+        (
+            crate::slide_link::toggle_link(&mut state),
+            state.split_enabled,
+        )
+    };
+    ui.set_slide_link_enabled(linked);
+    ui.set_alignment_adjust_enabled(false);
+    crate::host_ui::with_host(|host| host.sync_landmark_layers());
+    ui.set_status_text(
+        match (linked, split) {
+            (true, true) => "Panes linked: they follow the focused pane",
+            (true, false) => "Panes linked: split the view to compare slides",
+            (false, _) => "Panes unlinked",
+        }
+        .into(),
+    );
+    linked
+}
+
+/// Starts or ends adjusting the linked panes' alignment: while on, moving a
+/// pane moves it alone; ending saves the alignments. For key bindings;
+/// returns whether adjusting is on.
+pub(crate) fn toggle_alignment_adjust(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -> bool {
+    let (adjusting, linked) = {
+        let mut state = state.write();
+        (
+            crate::slide_link::toggle_adjust(&mut state),
+            state.slide_link.enabled,
+        )
+    };
+    ui.set_alignment_adjust_enabled(adjusting);
+    ui.set_status_text(
+        if !linked {
+            "Link the panes first"
+        } else if adjusting {
+            "Adjusting the alignment: move a pane to align it to the others"
+        } else {
+            "Alignment saved"
+        }
+        .into(),
+    );
+    adjusting
+}
+
+/// Aligns the other linked panes to the focused one from the alignment
+/// landmarks placed on both slides. For key bindings.
+pub(crate) fn align_linked_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let result = crate::slide_link::align_from_landmarks(&mut state.write());
+    match result {
+        Ok(text) => ui.set_status_text(text.into()),
+        Err(error) => ui.set_status_text(error.into()),
+    }
+}
+
+/// Forgets the focused pane's alignments (also the saved ones): the linked
+/// panes stay aligned as they are now. For key bindings.
+pub(crate) fn reset_linked_alignment(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    crate::slide_link::reset_alignment(&mut state.write());
+    ui.set_status_text("The panes are aligned as they are now".into());
+}
+
 fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let viewport_lock_enabled = {
         let mut state = state.write();
@@ -395,7 +497,7 @@ fn open_path_with_series(
     path: PathBuf,
     mode: crate::file_ops::OpenFileMode,
 ) {
-    let normalized_path = std::fs::canonicalize(&path).unwrap_or(path);
+    let normalized_path = crate::paths::canonical(&path);
     let skip_series_sync = normalized_path.parent().is_some_and(|parent| {
         let guard = state.read();
         guard.find_tab_by_path(&normalized_path).is_some()
@@ -417,7 +519,7 @@ fn focus_existing_file(
     render_timer: &Rc<Timer>,
     path: &std::path::Path,
 ) -> bool {
-    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let normalized_path = crate::paths::canonical(path);
     let Some((pane, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
         return false;
     };
@@ -449,7 +551,7 @@ fn open_existing_file_in_new_tab(
     render_timer: &Rc<Timer>,
     path: &std::path::Path,
 ) -> bool {
-    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let normalized_path = crate::paths::canonical(path);
     let Some((_, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
         return false;
     };
@@ -496,7 +598,7 @@ fn navigate_series_to_folder(
 fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let should_initialize = state.read().current_series_path().is_none();
     if should_initialize && let Some(home) = default_series_home() {
-        let home = std::fs::canonicalize(&home).unwrap_or(home);
+        let home = crate::paths::canonical(&home);
         let revision = {
             let mut state = state.write();
             state.set_opened_series(
@@ -528,7 +630,7 @@ pub(crate) fn activate_series_entry_path(
     render_timer: &Rc<Timer>,
     path: PathBuf,
 ) {
-    let path = std::fs::canonicalize(&path).unwrap_or(path);
+    let path = crate::paths::canonical(&path);
     if !path.exists() {
         return;
     }
@@ -589,7 +691,7 @@ pub(crate) fn open_folder_as_series(
     state: &Arc<RwLock<AppState>>,
     folder: PathBuf,
 ) {
-    let normalized_folder = std::fs::canonicalize(&folder).unwrap_or(folder.clone());
+    let normalized_folder = crate::paths::canonical(&folder);
     {
         let mut state = state.write();
         state.set_bottom_panel_visible(true, state::BottomPanelKind::Series);
@@ -650,13 +752,7 @@ pub fn setup_callbacks(
             let ui = ui_weak.upgrade().unwrap();
 
             let dialog = FileDialog::new()
-                .add_filter(
-                    "WSI Files",
-                    &[
-                        "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
-                        "svslide", "bif", "czi", "btf", "tf2", "tf8",
-                    ],
-                )
+                .add_filter("WSI Files", eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS)
                 .add_filter("All Files", &["*"]);
 
             if let Some(path) = dialog.pick_file() {
@@ -823,6 +919,34 @@ pub fn setup_callbacks(
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
 
+        ui.on_toggle_slide_link_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_slide_link(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_toggle_alignment_adjust_requested(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                toggle_alignment_adjust(&ui, &state_handle);
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
         ui.on_context_menu_command(move |id| {
             let Some(ui) = ui_weak.upgrade() else {
                 return;
@@ -934,12 +1058,12 @@ pub fn setup_callbacks(
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "open-folder" => {
-                    let state = state_handle.read();
-                    if let Some(file) = state.get_file(tab_id)
-                        && let Some(parent) = file.path.parent()
-                        && let Err(err) = open::that(parent)
-                    {
-                        error!("Failed to open folder: {}", err);
+                    let path = state_handle
+                        .read()
+                        .get_file(tab_id)
+                        .map(|file| file.path.clone());
+                    if let Some(path) = path {
+                        crate::desktop::reveal(path);
                     }
                 }
                 "copy-path" => {
@@ -1459,12 +1583,9 @@ pub fn setup_callbacks(
         let state = Arc::clone(&state);
 
         ui.on_open_containing_folder(move |id| {
-            let state = state.read();
-            if let Some(file) = state.get_file(id)
-                && let Some(parent) = file.path.parent()
-                && let Err(e) = open::that(parent)
-            {
-                error!("Failed to open folder: {}", e);
+            let path = state.read().get_file(id).map(|file| file.path.clone());
+            if let Some(path) = path {
+                crate::desktop::reveal(path);
             }
         });
     }
@@ -1620,6 +1741,8 @@ pub fn setup_callbacks(
                 if let Some(vs) = state.active_viewport_mut() {
                     let nx = (nx as f64).clamp(0.0, 1.0);
                     let ny = (ny as f64).clamp(0.0, 1.0);
+                    // The minimap shows the slide turned like the view.
+                    let (nx, ny) = vs.viewport.orientation.to_image_normalized(nx, ny);
                     let vp = &mut vs.viewport;
                     let (new_x, new_y) = match region {
                         Some(region) => (
@@ -1660,47 +1783,6 @@ pub fn setup_callbacks(
 
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui.as_weak();
-
-        ui.on_file_dropped(move |path_str| {
-            let path_string = path_str.to_string();
-            let paths: Vec<&str> = path_string
-                .lines()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            for path_str in paths {
-                let path = if path_str.starts_with("file://") {
-                    PathBuf::from(path_str.strip_prefix("file://").unwrap_or(path_str))
-                } else {
-                    PathBuf::from(path_str)
-                };
-
-                if path.exists()
-                    && let Some(ui) = ui_weak.upgrade()
-                {
-                    if path.is_dir() {
-                        open_folder_as_series(&ui, &state, path);
-                    } else {
-                        open_path_with_series(
-                            &ui,
-                            &state,
-                            &tile_cache,
-                            &render_timer,
-                            path,
-                            crate::file_ops::OpenFileMode::ReuseExistingTab,
-                        );
-                    }
-                }
             }
         });
     }
@@ -1864,12 +1946,7 @@ pub fn setup_callbacks(
 
     {
         ui.on_series_item_open_containing_folder(move |path_str| {
-            let path = PathBuf::from(path_str.as_str());
-            if let Some(parent) = path.parent()
-                && let Err(err) = open::that(parent)
-            {
-                error!("Failed to open folder: {}", err);
-            }
+            crate::desktop::reveal(PathBuf::from(path_str.as_str()));
         });
     }
 
@@ -2238,6 +2315,34 @@ pub fn setup_callbacks(
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
                 let changed = zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR);
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
+                    state.request_render();
+                }
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    // Rotation and mirroring of a pane's view (HUD buttons).
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_hud_orientation_changed(move |pane, action| {
+            {
+                let mut state = state_handle.write();
+                state.set_focused_pane(pane_from_index(pane));
+                let changed = match action {
+                    HUD_ROTATE_LEFT => rotate_active_viewport(&mut state, -1),
+                    HUD_ROTATE_RIGHT => rotate_active_viewport(&mut state, 1),
+                    HUD_FLIP => flip_active_viewport(&mut state),
+                    _ => reset_active_orientation(&mut state),
+                };
                 let synced = state.mirror_locked_viewports_from_active();
                 if changed || synced {
                     state.request_render();

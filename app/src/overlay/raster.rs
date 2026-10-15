@@ -6,6 +6,7 @@
 
 use super::geometry::{self, Point};
 use super::store::{HostDecoration, Layer, ObjectKey, StoredObject, StoredRaster, size_to_screen};
+use eov_common::viewport::Orientation;
 use eov_plugin_api::protocol::{Dash, Rect, Rgba, Shape, SizeUnit, Style};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,10 +26,13 @@ const LOD_DOT_PX: f64 = 1.5;
 /// as squares (no anti-aliasing) to keep frames fast.
 const FAST_POINTS_THRESHOLD: usize = 20_000;
 
-/// Maps level-0 coordinates to the pixels of a raster target.
+/// Maps level-0 coordinates to the pixels of a raster target. A turned
+/// target (`orientation`) maps through the target drawn axis-aligned with
+/// the slide, turned about the centres.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewTransform {
-    /// Level-0 coordinates of the target's top-left corner.
+    /// Level-0 coordinates of the top-left corner of the target drawn
+    /// axis-aligned with the slide (the visible bounding box).
     pub left: f64,
     pub top: f64,
     /// Logical pixels per level-0 pixel.
@@ -40,17 +44,89 @@ pub struct ViewTransform {
     pub scale: f64,
     /// Average µm per level-0 pixel, for µm-sized strokes and markers.
     pub mpp: Option<f64>,
+    /// How the slide is turned on the target.
+    pub orientation: Orientation,
 }
 
 impl ViewTransform {
-    /// Level-0 rectangle covered by the target.
+    /// Level-0 rectangle covered by the target (its bounding box).
     pub fn visible_rect(self) -> Rect {
         let zoom = self.zoom.max(1e-12);
+        let (width, height) = self.orientation.swap(self.width, self.height);
         Rect {
             x: self.left,
             y: self.top,
-            width: self.width / zoom,
-            height: self.height / zoom,
+            width: width / zoom,
+            height: height / zoom,
+        }
+    }
+
+    /// Physical pixel position of level-0 point `p`.
+    fn px(self, p: Point) -> (f64, f64) {
+        let k = self.px_per_image();
+        let (ax, ay) = ((p[0] - self.left) * k, (p[1] - self.top) * k);
+        if self.orientation.is_identity() {
+            return (ax, ay);
+        }
+        let (w, h) = (self.width * self.scale, self.height * self.scale);
+        let (aw, ah) = self.orientation.swap(w, h);
+        let (x, y) = self.orientation.to_screen_xy(ax - aw / 2.0, ay - ah / 2.0);
+        (x + w / 2.0, y + h / 2.0)
+    }
+
+    /// Logical position of level-0 point `p` on the target.
+    pub fn to_logical(self, p: Point) -> (f64, f64) {
+        let (x, y) = self.px(p);
+        (x / self.scale, y / self.scale)
+    }
+
+    /// The level-0 point at logical position `(x, y)` of the target.
+    pub fn image_at_logical(self, x: f64, y: f64) -> Point {
+        let k = self.px_per_image().max(1e-12);
+        let (px, py) = (x * self.scale, y * self.scale);
+        let (ax, ay) = if self.orientation.is_identity() {
+            (px, py)
+        } else {
+            let (w, h) = (self.width * self.scale, self.height * self.scale);
+            let (aw, ah) = self.orientation.swap(w, h);
+            let (dx, dy) = self.orientation.to_image_xy(px - w / 2.0, py - h / 2.0);
+            (dx + aw / 2.0, dy + ah / 2.0)
+        };
+        [self.left + ax / k, self.top + ay / k]
+    }
+
+    /// Level-0 → physical pixel as an affine transform (for drawing
+    /// rasters), composed after `inner` (source pixel → level-0).
+    fn affine_after(self, inner: Transform) -> Transform {
+        let origin = self.px([0.0, 0.0]);
+        let x_axis = self.px([1.0, 0.0]);
+        let y_axis = self.px([0.0, 1.0]);
+        let outer = Transform::from_row(
+            (x_axis.0 - origin.0) as f32,
+            (x_axis.1 - origin.1) as f32,
+            (y_axis.0 - origin.0) as f32,
+            (y_axis.1 - origin.1) as f32,
+            origin.0 as f32,
+            origin.1 as f32,
+        );
+        inner.post_concat(outer)
+    }
+
+    /// The part of the target showing physical rows `row..row + rows`, as a
+    /// target of its own (exports draw overlays band by band).
+    pub fn band(self, row: u32, rows: u32) -> ViewTransform {
+        let k = self.px_per_image();
+        let (width, height) = self.physical_size();
+        let (aligned_width, aligned_height) = self.orientation.swap(width, height);
+        let (x, y, _, _) =
+            self.orientation
+                .aligned_rect(aligned_width, aligned_height, 0, row, width, rows);
+        ViewTransform {
+            left: self.left + f64::from(x) / k,
+            top: self.top + f64::from(y) / k,
+            width: f64::from(width) / self.scale,
+            height: f64::from(rows) / self.scale,
+            ..self
         }
     }
 
@@ -67,11 +143,8 @@ impl ViewTransform {
     }
 
     pub fn to_px(self, p: Point) -> (f32, f32) {
-        let k = self.px_per_image();
-        (
-            ((p[0] - self.left) * k) as f32,
-            ((p[1] - self.top) * k) as f32,
-        )
+        let (x, y) = self.px(p);
+        (x as f32, y as f32)
     }
 
     /// Style size → physical pixels.
@@ -518,8 +591,11 @@ pub fn draw_shape(
                 push_ring(&mut builder, view, &clipped);
                 builder.finish()
             } else {
-                let (x0, y0) = view.to_px([cx - rx, cy - ry]);
-                let (x1, y1) = view.to_px([cx + rx, cy + ry]);
+                // A quarter turn keeps the ellipse axis-aligned on screen.
+                let (ax, ay) = view.to_px([cx - rx, cy - ry]);
+                let (bx, by) = view.to_px([cx + rx, cy + ry]);
+                let (x0, y0) = (ax.min(bx), ay.min(by));
+                let (x1, y1) = (ax.max(bx), ay.max(by));
                 tiny_skia::Rect::from_ltrb(x0, y0, x1.max(x0 + 0.01), y1.max(y0 + 0.01))
                     .and_then(PathBuilder::from_oval)
             };
@@ -647,16 +723,19 @@ fn draw_raster(target: &mut Pixmap, view: &ViewTransform, raster: &StoredRaster)
         blend_mode: BlendMode::SourceOver,
         quality,
     };
+    // Source pixel → level-0 for the raster's pixels.
+    let su = raster.rect.width / f64::from(raster.width.max(1));
+    let sv = raster.rect.height / f64::from(raster.height.max(1));
     if sx <= 1.0 && sy <= 1.0 {
-        let (tx, ty) = view.to_px([raster.rect.x, raster.rect.y]);
-        target.draw_pixmap(
-            0,
-            0,
-            source,
-            &paint,
-            Transform::from_row(sx as f32, 0.0, 0.0, sy as f32, tx, ty),
-            None,
+        let inner = Transform::from_row(
+            su as f32,
+            0.0,
+            0.0,
+            sv as f32,
+            raster.rect.x as f32,
+            raster.rect.y as f32,
         );
+        target.draw_pixmap(0, 0, source, &paint, view.affine_after(inner), None);
         return;
     }
     // Magnified: crop to the visible source pixels so the transform stays
@@ -686,15 +765,15 @@ fn draw_raster(target: &mut Pixmap, view: &ViewTransform, raster: &StoredRaster)
         raster.rect.x + f64::from(x0) * raster.rect.width / f64::from(raster.width),
         raster.rect.y + f64::from(y0) * raster.rect.height / f64::from(raster.height),
     ];
-    let (tx, ty) = view.to_px(origin);
-    target.draw_pixmap(
-        0,
-        0,
-        crop.as_ref(),
-        &paint,
-        Transform::from_row(sx as f32, 0.0, 0.0, sy as f32, tx, ty),
-        None,
+    let inner = Transform::from_row(
+        su as f32,
+        0.0,
+        0.0,
+        sv as f32,
+        origin[0] as f32,
+        origin[1] as f32,
     );
+    target.draw_pixmap(0, 0, crop.as_ref(), &paint, view.affine_after(inner), None);
 }
 
 /// Converts straight-alpha RGBA to premultiplied RGBA (for raster uploads).
@@ -756,6 +835,7 @@ mod tests {
             height,
             scale: 1.0,
             mpp: None,
+            orientation: Default::default(),
         }
     }
 
@@ -1055,6 +1135,7 @@ mod bench {
                 height: 1080.0,
                 scale: 1.0,
                 mpp: None,
+                orientation: Default::default(),
             };
             let view = if label == "whole slide" {
                 ViewTransform {
@@ -1071,6 +1152,119 @@ mod bench {
                 std::hint::black_box(render(&view, &scene));
             }
             println!("{label}: {:?} per frame", t.elapsed() / runs);
+        }
+    }
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+    use eov_common::Viewport;
+
+    fn view_of(viewport: &Viewport, scale: f64) -> ViewTransform {
+        let bounds = viewport.bounds();
+        ViewTransform {
+            left: bounds.left,
+            top: bounds.top,
+            zoom: viewport.zoom,
+            width: viewport.width,
+            height: viewport.height,
+            scale,
+            mpp: None,
+            orientation: viewport.orientation,
+        }
+    }
+
+    /// Overlays land where the turned slide shows the same level-0 point.
+    #[test]
+    fn turned_overlays_follow_the_view() {
+        let mut viewport = Viewport::new(40.0, 30.0, 400.0, 300.0);
+        viewport.zoom = 0.5;
+        viewport.center.x = 100.0;
+        viewport.center.y = 80.0;
+        for orientation in Orientation::all() {
+            viewport.orientation = orientation;
+            let view = view_of(&viewport, 2.0);
+            for p in [[90.0, 70.0], [130.0, 95.0], [100.0, 80.0]] {
+                let screen = viewport.image_to_screen(p[0], p[1]);
+                let (x, y) = view.to_logical(p);
+                assert!((x - screen.x).abs() < 1e-9 && (y - screen.y).abs() < 1e-9);
+                let (px, py) = view.to_px(p);
+                assert!((f64::from(px) - screen.x * 2.0).abs() < 1e-3);
+                assert!((f64::from(py) - screen.y * 2.0).abs() < 1e-3);
+                let back = view.image_at_logical(x, y);
+                assert!((back[0] - p[0]).abs() < 1e-9 && (back[1] - p[1]).abs() < 1e-9);
+            }
+            let visible = view.visible_rect();
+            let bounds = viewport.bounds();
+            assert!((visible.width - bounds.width()).abs() < 1e-9);
+            assert!((visible.height - bounds.height()).abs() < 1e-9);
+        }
+    }
+
+    /// Drawing band by band gives the frame drawn at once, turned or not.
+    #[test]
+    fn turned_bands_compose_the_whole_frame() {
+        use crate::overlay::store::{OverlayStore, Owner};
+        use eov_plugin_api::protocol::{LayerSpec, OverlayObject};
+        let store = OverlayStore::new();
+        let owner = Owner::plugin("test");
+        store
+            .create_layer(owner.clone(), LayerSpec::new("shapes", 1))
+            .unwrap();
+        store
+            .upsert(
+                &owner,
+                "shapes",
+                vec![
+                    OverlayObject::new(
+                        "line",
+                        Shape::Polyline {
+                            points: vec![[80.0, 60.0], [125.0, 100.0]],
+                        },
+                    ),
+                    OverlayObject::new(
+                        "box",
+                        Shape::Rectangle {
+                            x: 95.0,
+                            y: 72.0,
+                            width: 20.0,
+                            height: 9.0,
+                        },
+                    ),
+                ],
+                false,
+            )
+            .unwrap();
+        let scene = FrameScene {
+            layers: store.file_layers(1).layers,
+            ..FrameScene::default()
+        };
+        let mut viewport = Viewport::new(40.0, 30.0, 400.0, 300.0);
+        viewport.zoom = 0.75;
+        viewport.center.x = 100.0;
+        viewport.center.y = 80.0;
+        for orientation in Orientation::all() {
+            viewport.orientation = orientation;
+            let view = view_of(&viewport, 1.0);
+            let whole = render(&view, &scene).unwrap();
+            let (width, height) = view.physical_size();
+            let mut bands = Vec::new();
+            for row in (0..height).step_by(7) {
+                let rows = 7.min(height - row);
+                let band = view.band(row, rows);
+                let mut pixmap = Pixmap::new(width, rows).unwrap();
+                render_into(&mut pixmap, &band, &scene);
+                bands.extend_from_slice(pixmap.data());
+            }
+            let differing = whole
+                .data()
+                .iter()
+                .zip(&bands)
+                .filter(|(a, b)| a.abs_diff(**b) > 8)
+                .count();
+            assert!(differing < 16, "{orientation:?}: {differing} bytes differ");
+            assert!(whole.data().iter().any(|&b| b > 0), "something is drawn");
         }
     }
 }

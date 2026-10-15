@@ -1607,6 +1607,7 @@ dependencies = [
  "eov-common",
  "eov-example-plugin",
  "eov-plugin-api",
+ "hmac",
  "i-slint-backend-testing",
  "i-slint-compiler",
  "image",
@@ -1646,6 +1647,7 @@ dependencies = [
  "wgpu 28.0.0",
  "windows-sys 0.48.0",
  "x11-dl",
+ "zbus",
  "zip",
  "zstd",
 ]

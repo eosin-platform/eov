@@ -504,6 +504,36 @@ impl Host {
         )
     }
 
+    /// Offers a command for headless batch runs (`eov batch run
+    /// <plugin>:<command> SLIDES --out DIR`); slides then arrive as
+    /// [`HostEvent::BatchRun`]. Call it in [`Plugin::create`].
+    pub fn register_batch_command(&self, spec: BatchCommandSpec) -> HostResult<()> {
+        self.command(methods::BATCH_REGISTER, &spec)
+    }
+
+    /// Reports how far the slide of batch run `run_id` is.
+    pub fn batch_progress(
+        &self,
+        run_id: &str,
+        fraction: Option<f32>,
+        message: Option<&str>,
+    ) -> HostResult<()> {
+        self.command(
+            methods::BATCH_PROGRESS,
+            &BatchProgressArgs {
+                run_id: run_id.to_string(),
+                fraction,
+                message: message.map(str::to_string),
+            },
+        )
+    }
+
+    /// Ends the slide of a batch run: the next slide comes once this is
+    /// sent.
+    pub fn finish_batch(&self, result: BatchFinishArgs) -> HostResult<()> {
+        self.command(methods::BATCH_FINISH, &result)
+    }
+
     /// Binds a key of its own (not tied to a button or tool); presses
     /// arrive as [`HostEvent::HotkeyPressed`]. A key eov uses (its shortcut
     /// table, which users can change, and Escape, Enter, Delete, Backspace,
@@ -623,6 +653,25 @@ impl Host {
 
     pub fn fit(&self, pane: Option<PaneId>) -> HostResult<()> {
         self.command(methods::VIEW_FIT, &PaneArgs { pane })
+    }
+
+    /// Turns a pane's view (default: the focused one): `rotation_deg`
+    /// clockwise (a multiple of 90), then mirrored left to right if
+    /// `flipped`. Level-0 coordinates are unaffected.
+    pub fn set_view_orientation(
+        &self,
+        pane: Option<PaneId>,
+        rotation_deg: f64,
+        flipped: bool,
+    ) -> HostResult<()> {
+        self.command(
+            methods::VIEW_ORIENTATION,
+            &ViewOrientationArgs {
+                pane,
+                rotation_deg,
+                flipped,
+            },
+        )
     }
 
     /// How a pane displays its slide (tone adjustments, normalisation), so

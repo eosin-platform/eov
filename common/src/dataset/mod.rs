@@ -42,12 +42,14 @@ pub use config::{
 };
 pub use discovery::{
     Discovery, SUPPORTED_SLIDE_EXTENSIONS, SkippedInput, SlideInput, dicom_series_uid,
-    discover_slides, expand_inputs, is_supported_slide_extension, non_slide_tiff_reason,
+    dicom_series_uid_within, discover_slides, expand_inputs, is_supported_slide_extension,
+    non_slide_tiff_reason,
 };
 pub use grid::{PatchCoord, PatchGrid, generate_patch_coords};
 pub use hashing::slide_sha256;
 pub use manifest::{DatasetManifest, ExtractionParameters, RunStatus, RunTotals};
 pub use metadata::{SlideRecord, SlideStatus, TileRecord};
+pub use output::{deidentified_key, unique_slide_keys_for};
 pub use pipeline::{
     DatasetControl, DatasetError, DatasetPatchesProgress, DatasetPatchesReport, DatasetPhase,
     DatasetPlan, PlannedSlide, SlideGeometry, SlideReport, SlideSkipReason, plan_dataset,
