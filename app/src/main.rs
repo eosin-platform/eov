@@ -42,6 +42,7 @@ mod quantify_panel;
 mod recent;
 mod render;
 mod render_pool;
+mod save_copy;
 mod session;
 mod shortcuts;
 mod slide_info;
@@ -390,6 +391,8 @@ fn main() -> Result<()> {
 
     ui.run()?;
 
+    // Copies still being written are cancelled, so no partial file is left.
+    save_copy::shutdown();
     // A new eov may take over while this one finishes.
     drop(instance_server);
     info!("Application shutting down");

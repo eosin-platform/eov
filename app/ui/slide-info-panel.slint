@@ -84,6 +84,7 @@ export component SlideInfoPanel inherits Rectangle {
     callback copy-row-requested(int);
     callback pixel-size-set(string);
     callback pixel-size-cleared();
+    callback save-copy-requested();
 
     x: 0px;
     y: 0px;
@@ -124,6 +125,29 @@ export component SlideInfoPanel inherits Rectangle {
                     font-weight: 600;
                     vertical-alignment: center;
                     overflow: elide;
+                }
+
+                Rectangle {
+                    width: save-text.preferred-width + 16px;
+                    height: 26px;
+                    border-radius: 4px;
+                    background: save-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    save-text := Text {
+                        text: "Save a Copy…";
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    save-touch := TouchArea {
+                        clicked => {
+                            root.save-copy-requested();
+                        }
+                    }
                 }
 
                 Rectangle {

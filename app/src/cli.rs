@@ -653,6 +653,17 @@ enum CliCommand {
         #[command(subcommand)]
         command: DatasetCommand,
     },
+    /// Copy a slide, or a region of it, into a pyramidal TIFF or OME-TIFF,
+    /// optionally de-identified.
+    ///
+    /// Reads any slide eov opens and writes a tiled pyramid (BigTIFF when it
+    /// does not fit 4 GiB) that eov, OpenSlide, QuPath and libvips read, with
+    /// the pixel size, objective power, stain and ICC profile of the slide,
+    /// so measurements still work on the copy. The copy is written to a
+    /// temporary file next to OUTPUT and renamed when it is complete:
+    /// Ctrl-C or an error never leaves a half-written file.
+    #[command(after_help = CONVERT_AFTER_HELP)]
+    Convert(Box<ConvertArgs>),
     /// Run plugin analyses over many slides without a window.
     Batch {
         #[command(subcommand)]
@@ -693,6 +704,209 @@ struct BatchRunArgs {
     /// Name slides by opaque ids and write no slide paths or file names.
     #[arg(long)]
     deidentify: bool,
+}
+
+const CONVERT_AFTER_HELP: &str = "\
+EXAMPLES:
+  eov convert slide.ndpi slide.tif
+  eov convert slide.svs teaching/case-01.tif --deidentify
+  eov convert slide.mrxs roi.ome.tif --region 20000,15000,8192,8192 --compression deflate
+  eov convert slide.svs small.tif --mpp 1.0 --quality 80 --tile-size 256
+
+DE-IDENTIFICATION:
+  --deidentify leaves out the label, macro and thumbnail images and keeps
+  only an allow-list of metadata: the geometry, pixel size, objective power,
+  stain and (with --keep-scanner) the scanner vendor and model. Dates,
+  barcodes, file names, users, comments, slide and device ids and all other
+  vendor properties are dropped, and the description says it is a
+  de-identified copy made by eov, with its version and the date. It does
+  not remove text or marks inside the scanned tissue image itself (a label
+  inside the scan area, pen marks, burned-in annotations): check the image,
+  and choose a --region that leaves them out. Never use the original file
+  name for the copy if the name identifies the patient.
+
+OUTPUT:
+  --format tiff (the default, or any name not ending in .ome.tif) writes each
+  pyramid level as its own image, as OpenSlide's generic TIFF expects;
+  --format ome-tiff writes OME-XML and a SubIFD pyramid for eov, QuPath,
+  Bio-Formats and OMERO (tools that use OpenSlide only see its full
+  resolution). JPEG tiles are YCbCr, chroma subsampled below quality 90;
+  deflate is lossless.
+
+EXIT STATUS:
+  0    the copy was written
+  1    the copy failed, or was written with tiles the slide could not supply
+  2    invalid arguments, or OUTPUT exists (use --overwrite)
+  130  cancelled with Ctrl-C (nothing is left behind)";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliCompression {
+    /// Baseline JPEG (lossy, small).
+    Jpeg,
+    /// Deflate (lossless, larger).
+    Deflate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliSlideFormat {
+    /// Pyramidal TIFF, one image per level (OpenSlide generic TIFF).
+    Tiff,
+    /// OME-TIFF with the reduced levels as SubIFDs.
+    OmeTiff,
+}
+
+/// `X,Y,WIDTH,HEIGHT` in level-0 pixels.
+fn parse_region(text: &str) -> std::result::Result<eov_common::SlideBounds, String> {
+    let parts: Vec<&str> = text.split(',').map(str::trim).collect();
+    let usage = || {
+        format!(
+            "expected X,Y,WIDTH,HEIGHT in level-0 pixels (e.g. 1000,2000,4096,4096), got {text:?}"
+        )
+    };
+    let [x, y, width, height] = parts[..] else {
+        return Err(usage());
+    };
+    let (Ok(x), Ok(y), Ok(width), Ok(height)) = (
+        x.parse::<i64>(),
+        y.parse::<i64>(),
+        width.parse::<u64>(),
+        height.parse::<u64>(),
+    ) else {
+        return Err(usage());
+    };
+    if width == 0 || height == 0 {
+        return Err("the region's width and height must be at least 1".to_string());
+    }
+    Ok(eov_common::SlideBounds {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+#[derive(Debug, clap::Args)]
+struct ConvertArgs {
+    /// The slide to copy (any format eov opens).
+    input: PathBuf,
+
+    /// The file to write: .tif or .tiff, or .ome.tif for OME-TIFF.
+    output: PathBuf,
+
+    /// Copy only this rectangle, in level-0 pixels (default: the part of
+    /// the slide that holds image data).
+    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_region, allow_hyphen_values = true)]
+    region: Option<eov_common::SlideBounds>,
+
+    /// Copy this pyramid level (0 = full resolution) at its native pixels.
+    #[arg(long, value_name = "N", conflicts_with = "mpp")]
+    level: Option<u32>,
+
+    /// Copy at this pixel size in micrometres: a pyramid level within 1 %
+    /// is used as it is, otherwise the next finer level is resampled.
+    #[arg(long, value_name = "UM")]
+    mpp: Option<f64>,
+
+    /// Tile compression.
+    #[arg(long, value_enum, default_value_t = CliCompression::Jpeg)]
+    compression: CliCompression,
+
+    /// JPEG quality, 1–100 (default 90); chroma is subsampled below 90.
+    #[arg(long, value_name = "Q", value_parser = clap::value_parser!(u8).range(1..=100))]
+    quality: Option<u8>,
+
+    /// Tile width and height in pixels.
+    #[arg(
+        long,
+        value_name = "PX",
+        default_value = "512",
+        value_parser = clap::builder::TypedValueParser::map(
+            clap::builder::PossibleValuesParser::new(["256", "512"]),
+            |size: String| size.parse::<u32>().unwrap_or(512),
+        )
+    )]
+    tile_size: u32,
+
+    /// Container (default: ome-tiff for names ending in .ome.tif, .ome.tiff
+    /// or .ome.btf, else tiff).
+    #[arg(long, value_enum)]
+    format: Option<CliSlideFormat>,
+
+    /// Leave out the label, macro and thumbnail images and every property
+    /// but geometry, pixel size, objective power and stain (see
+    /// DE-IDENTIFICATION).
+    #[arg(long)]
+    deidentify: bool,
+
+    /// With --deidentify, still record the scanner vendor and model.
+    #[arg(long, requires = "deidentify")]
+    keep_scanner: bool,
+
+    /// Do not copy the slide's ICC colour profile.
+    #[arg(long)]
+    no_icc_profile: bool,
+
+    /// Write a BigTIFF even when the copy would fit a classic TIFF.
+    #[arg(long)]
+    bigtiff: bool,
+
+    /// Replace OUTPUT if it exists.
+    #[arg(long)]
+    overwrite: bool,
+}
+
+/// A parsed `eov convert` invocation.
+#[derive(Debug)]
+struct ConvertJob {
+    input: PathBuf,
+    output: PathBuf,
+    options: eov_common::convert::ConvertOptions,
+}
+
+impl ConvertArgs {
+    fn to_job(&self) -> Result<ConvertJob> {
+        use eov_common::convert::{
+            ConvertOptions, DEFAULT_JPEG_QUALITY, OutputResolution, SlideCompression, SlideFormat,
+        };
+        validate_input_file(&self.input)?;
+        let compression = match (self.compression, self.quality) {
+            (CliCompression::Jpeg, quality) => SlideCompression::Jpeg {
+                quality: quality.unwrap_or(DEFAULT_JPEG_QUALITY),
+            },
+            (CliCompression::Deflate, None) => SlideCompression::Deflate,
+            (CliCompression::Deflate, Some(_)) => {
+                bail!("--quality applies to --compression jpeg only (deflate is lossless)")
+            }
+        };
+        let resolution = match (self.level, self.mpp) {
+            (Some(level), _) => OutputResolution::Level(level),
+            (None, Some(mpp)) => OutputResolution::Mpp(mpp),
+            (None, None) => OutputResolution::Full,
+        };
+        let format = match self.format {
+            Some(CliSlideFormat::Tiff) => SlideFormat::Tiff,
+            Some(CliSlideFormat::OmeTiff) => SlideFormat::OmeTiff,
+            None => SlideFormat::from_path(&self.output),
+        };
+        Ok(ConvertJob {
+            input: self.input.clone(),
+            output: self.output.clone(),
+            options: ConvertOptions {
+                region: self.region,
+                resolution,
+                compression,
+                tile_size: self.tile_size,
+                format,
+                deidentify: self.deidentify,
+                keep_scanner: self.keep_scanner,
+                keep_icc_profile: !self.no_icc_profile,
+                bigtiff: self.bigtiff,
+                overwrite: self.overwrite,
+                mpp_override: None,
+                threads: None,
+            },
+        })
+    }
 }
 
 const AFTER_HELP: &str = "\
@@ -873,6 +1087,7 @@ enum CommandAction {
     Paths { json: bool },
     FileTypes { register: bool, dry_run: bool },
     DatasetPatches(Box<DatasetJob>),
+    Convert(Box<ConvertArgs>),
     BatchList { json: bool },
     BatchRun(Box<crate::batch::RunOptions>),
 }
@@ -1035,6 +1250,7 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
                 CommandAction::DatasetPatches(Box::new(args.into_job()))
             }
         },
+        Some(CliCommand::Convert(args)) => CommandAction::Convert(args),
         Some(CliCommand::Batch { command }) => match command {
             BatchCommand::List { json } => CommandAction::BatchList { json },
             BatchCommand::Run(args) => {
@@ -1191,6 +1407,10 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
         }
         CommandAction::DatasetPatches(job) => {
             run_dataset_patches_cli(job)?;
+            Ok(true)
+        }
+        CommandAction::Convert(args) => {
+            run_convert_cli(args);
             Ok(true)
         }
         CommandAction::BatchList { json } => {
@@ -1525,6 +1745,230 @@ fn report_dataset_error(err: dataset::DatasetError) -> Result<()> {
     }
 }
 
+/// `eov convert` exit statuses (see the subcommand help).
+const CONVERT_EXIT_FAILED: i32 = 1;
+const CONVERT_EXIT_USAGE: i32 = 2;
+const CONVERT_EXIT_INTERRUPTED: i32 = 130;
+
+/// What a conversion will do, for the terminal.
+fn describe_conversion(
+    job: &ConvertJob,
+    source: &eov_common::WsiProperties,
+    plan: &eov_common::convert::ConvertPlan,
+) -> String {
+    use eov_common::convert::SlideCompression;
+    let (width, height) = plan.levels[0];
+    let mut lines = vec![format!(
+        "Copying {} ({}, {} × {} px)",
+        job.input.display(),
+        source.vendor.as_deref().unwrap_or("unknown format"),
+        source.width,
+        source.height
+    )];
+    let mut what = vec![
+        plan.format.label().to_string(),
+        format!("{width} × {height} px"),
+    ];
+    if let Some((x, y)) = plan.mpp {
+        what.push(if (x - y).abs() < 1e-9 {
+            format!("{} µm/px", eov_common::format_decimal(x))
+        } else {
+            format!(
+                "{} × {} µm/px",
+                eov_common::format_decimal(x),
+                eov_common::format_decimal(y)
+            )
+        });
+    }
+    what.push(format!("{} levels", plan.levels.len()));
+    what.push(match job.options.compression {
+        SlideCompression::Jpeg { quality } => {
+            format!("{}-px JPEG tiles (quality {quality})", plan.tile_size)
+        }
+        SlideCompression::Deflate => format!("{}-px lossless tiles", plan.tile_size),
+    });
+    if plan.resampled {
+        what.push(format!("resampled from level {}", plan.source_level));
+    } else if plan.source_level > 0 {
+        what.push(format!("from level {}", plan.source_level));
+    }
+    if job.options.deidentify {
+        what.push("de-identified".to_string());
+    }
+    lines.push(format!(
+        "  to {}: {}",
+        job.output.display(),
+        what.join(", ")
+    ));
+    if !plan.associated_images.is_empty() {
+        lines.push(format!(
+            "  with the {} image(s); pass --deidentify to leave them out",
+            plan.associated_images.join(", ")
+        ));
+    }
+    if let Some(channels) = plan.composite_channels {
+        lines.push(format!(
+            "  note: the slide's {channels} channels are copied as the 8-bit RGB composite \
+             eov displays, not as channels"
+        ));
+    }
+    lines.join("\n")
+}
+
+/// `"1h 02m"`, `"4m 05s"`, `"12s"`.
+fn format_elapsed(elapsed: std::time::Duration) -> String {
+    let total = elapsed.as_secs_f64().round() as u64;
+    let (hours, minutes, seconds) = (total / 3600, (total / 60) % 60, total % 60);
+    if hours > 0 {
+        format!("{hours}h {minutes:02}m")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds:02}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+/// Runs `eov convert`, exiting with its status (see the help) unless the
+/// copy was written completely.
+fn run_convert_cli(args: &ConvertArgs) {
+    use eov_common::convert::{self, ConvertError};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let job = match args.to_job() {
+        Ok(job) => job,
+        Err(err) => {
+            eprintln!("error: {err:#}");
+            dataset_exit(CONVERT_EXIT_USAGE);
+        }
+    };
+    let wsi = match eov_common::WsiFile::open(&job.input) {
+        Ok(wsi) => wsi,
+        Err(err) => {
+            eprintln!("error: cannot open {}: {err}", job.input.display());
+            dataset_exit(CONVERT_EXIT_FAILED);
+        }
+    };
+    let plan = match convert::plan_conversion(&wsi, &job.options).and_then(|plan| {
+        convert::check_output(&wsi, &job.output, job.options.overwrite).map(|()| plan)
+    }) {
+        Ok(plan) => plan,
+        Err(ConvertError::OutputExists(path)) => {
+            eprintln!("error: {} already exists", path.display());
+            eprintln!("hint: pass --overwrite to replace it, or choose another name");
+            dataset_exit(CONVERT_EXIT_USAGE);
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            dataset_exit(CONVERT_EXIT_USAGE);
+        }
+    };
+    eprintln!("{}", describe_conversion(&job, wsi.properties(), &plan));
+
+    let control = Arc::new(eov_common::job::JobControl::new());
+    {
+        let control = Arc::clone(&control);
+        let partial = convert::partial_path(&job.output);
+        let presses = AtomicU32::new(0);
+        let _ = ctrlc::set_handler(move || {
+            if presses.fetch_add(1, Ordering::Relaxed) == 0 {
+                control.cancel();
+                eprintln!("\nCancelling (press Ctrl-C again to stop at once)...");
+            } else {
+                // The worker would remove it; it does not get the chance.
+                let _ = std::fs::remove_file(&partial);
+                dataset_exit(CONVERT_EXIT_INTERRUPTED);
+            }
+        });
+    }
+    let worker = {
+        let control = Arc::clone(&control);
+        let options = job.options.clone();
+        let output = job.output.clone();
+        std::thread::Builder::new()
+            .name("eov-convert".into())
+            .spawn(move || convert::convert_slide(&wsi, &output, &options, &control))
+            .expect("failed to spawn the conversion thread")
+    };
+
+    let pb = indicatif::ProgressBar::new(plan.tiles + plan.associated_images.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} tiles \
+                 ({eta} remaining)",
+            )
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+    pb.enable_steady_tick(std::time::Duration::from_millis(200));
+    while !worker.is_finished() {
+        let progress = control.progress();
+        if progress.total > 0 {
+            pb.set_length(progress.total);
+        }
+        pb.set_position(progress.done);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    pb.finish_and_clear();
+
+    match worker.join().expect("the conversion thread panicked") {
+        Ok(report) => {
+            for warning in &report.warnings {
+                eprintln!("warning: {warning}");
+            }
+            let (w0, h0) = report.plan.levels[0];
+            let (wn, hn) = *report.plan.levels.last().unwrap_or(&(w0, h0));
+            let mut facts = vec![
+                format_bytes(report.bytes),
+                format!(
+                    "{} levels ({w0} × {h0} to {wn} × {hn} px)",
+                    report.plan.levels.len()
+                ),
+            ];
+            if report.bigtiff {
+                facts.push("BigTIFF".to_string());
+            }
+            if job.options.deidentify {
+                facts.push("de-identified".to_string());
+            }
+            if !report.associated_images.is_empty() {
+                facts.push(format!("with {}", report.associated_images.join(", ")));
+            }
+            if report.icc_profile {
+                facts.push("ICC profile".to_string());
+            }
+            println!(
+                "Wrote {}: {}, in {}",
+                report.path.display(),
+                facts.join(", "),
+                format_elapsed(report.elapsed)
+            );
+            if let Some(shortfall) = report.shortfall_message() {
+                eprintln!("warning: {shortfall}");
+                dataset_exit(CONVERT_EXIT_FAILED);
+            }
+        }
+        Err(ConvertError::Cancelled) => {
+            eprintln!("Cancelled; nothing was written.");
+            dataset_exit(CONVERT_EXIT_INTERRUPTED);
+        }
+        Err(ConvertError::OutputExists(path)) => {
+            eprintln!("error: {} already exists", path.display());
+            eprintln!("hint: pass --overwrite to replace it, or choose another name");
+            dataset_exit(CONVERT_EXIT_USAGE);
+        }
+        Err(ConvertError::Invalid(message)) => {
+            eprintln!("error: {message}");
+            dataset_exit(CONVERT_EXIT_USAGE);
+        }
+        Err(err) => {
+            eprintln!("error: could not write {}: {err}", job.output.display());
+            dataset_exit(CONVERT_EXIT_FAILED);
+        }
+    }
+}
+
 fn validate_input_file(path: &Path) -> Result<()> {
     if !path.exists() {
         bail!("input file does not exist: {}", path.display());
@@ -1761,5 +2205,120 @@ mod tests {
             }
         }
         check(&command);
+    }
+
+    fn convert_args(arguments: &[&str]) -> std::result::Result<Box<ConvertArgs>, String> {
+        let cli = Cli::try_parse_from(
+            ["eov", "convert"]
+                .into_iter()
+                .chain(arguments.iter().copied()),
+        )
+        .map_err(|err| err.to_string())?;
+        match cli.command {
+            Some(CliCommand::Convert(args)) => Ok(args),
+            other => Err(format!("not a convert command: {other:?}")),
+        }
+    }
+
+    #[test]
+    fn convert_options_are_parsed_and_checked() {
+        use eov_common::convert::{OutputResolution, SlideCompression, SlideFormat};
+
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("slide.svs");
+        std::fs::write(&input, b"").unwrap();
+        let input = input.to_str().unwrap();
+
+        let args = convert_args(&[input, "out.tif"]).unwrap();
+        let job = args.to_job().unwrap();
+        assert_eq!(
+            job.options.compression,
+            SlideCompression::Jpeg { quality: 90 }
+        );
+        assert_eq!(job.options.tile_size, 512);
+        assert_eq!(job.options.format, SlideFormat::Tiff);
+        assert_eq!(job.options.resolution, OutputResolution::Full);
+        assert!(!job.options.deidentify && job.options.keep_icc_profile);
+
+        let args = convert_args(&[
+            input,
+            "roi.ome.tif",
+            "--region",
+            "-10,20,300,400",
+            "--mpp",
+            "0.5",
+            "--quality",
+            "75",
+            "--tile-size",
+            "256",
+            "--deidentify",
+            "--keep-scanner",
+            "--no-icc-profile",
+            "--bigtiff",
+            "--overwrite",
+        ])
+        .unwrap();
+        let job = args.to_job().unwrap();
+        assert_eq!(job.options.format, SlideFormat::OmeTiff, "from the name");
+        assert_eq!(job.options.resolution, OutputResolution::Mpp(0.5));
+        assert_eq!(
+            job.options.compression,
+            SlideCompression::Jpeg { quality: 75 }
+        );
+        assert_eq!(job.options.tile_size, 256);
+        let region = job.options.region.unwrap();
+        assert_eq!(
+            (region.x, region.y, region.width, region.height),
+            (-10, 20, 300, 400)
+        );
+        assert!(job.options.deidentify && job.options.keep_scanner && job.options.bigtiff);
+        assert!(!job.options.keep_icc_profile && job.options.overwrite);
+
+        let args = convert_args(&[input, "x.ome.tif", "--format", "tiff", "--level", "2"]).unwrap();
+        let job = args.to_job().unwrap();
+        assert_eq!(job.options.format, SlideFormat::Tiff, "--format wins");
+        assert_eq!(job.options.resolution, OutputResolution::Level(2));
+
+        // Refused by the parser.
+        for bad in [
+            &[input, "o.tif", "--level", "1", "--mpp", "1"][..],
+            &[input, "o.tif", "--tile-size", "300"],
+            &[input, "o.tif", "--quality", "0"],
+            &[input, "o.tif", "--region", "1,2,3"],
+            &[input, "o.tif", "--region", "1,2,0,4"],
+            &[input, "o.tif", "--keep-scanner"],
+            &[input],
+        ] {
+            assert!(convert_args(bad).is_err(), "{bad:?} must be refused");
+        }
+        // Refused when the job is built.
+        let args = convert_args(&[
+            input,
+            "o.tif",
+            "--compression",
+            "deflate",
+            "--quality",
+            "80",
+        ])
+        .unwrap();
+        assert!(args.to_job().unwrap_err().to_string().contains("--quality"));
+        let args = convert_args(&["/no/such/slide.svs", "o.tif"]).unwrap();
+        assert!(args.to_job().is_err());
+    }
+
+    #[test]
+    fn regions_parse_as_level_0_rectangles() {
+        let region = parse_region(" 100, 200 ,300,400").unwrap();
+        assert_eq!(
+            (region.x, region.y, region.width, region.height),
+            (100, 200, 300, 400)
+        );
+        assert!(parse_region("1,2,3,4,5").is_err());
+        assert!(
+            parse_region("a,b,c,d")
+                .unwrap_err()
+                .contains("X,Y,WIDTH,HEIGHT")
+        );
+        assert!(parse_region("0,0,-5,5").is_err());
     }
 }

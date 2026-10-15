@@ -144,6 +144,7 @@ Current capabilities include:
 - A series bar for the slides of a folder (a case): filter, order by name, date or stain, one entry per DICOM series, and PageUp/PageDown to step through them.
 - Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
 - Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
+- Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
 - Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`).
 - An audit log of what eov ran with (`<data>/audit.jsonl`: versions and plugins, installs and updates), and a session log and crash reports in the log folder.
 
@@ -324,6 +325,7 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 ```
 
 Examples:
@@ -535,6 +537,49 @@ eov batch run example_plugin:tissue-stats cases/ --out results/ --param max_pixe
 ```
 
 Inputs are slide files or folders (searched recursively; the instances of a DICOM series are one slide). Each slide gets a folder of results under `--out`, and `results/batch.json` is the run's manifest, written as it goes: eov's version, the plugin's id, version, package SHA-256 and origin, the command and its parameters, and per slide its id, identity, status, outputs and the plugin's summary (for an analysis plugin: the model and its hash, the resolution read, the device). `--deidentify` names slides by opaque ids and leaves their paths and names out, and parameters that are paths (a model, a runtime) are recorded by their file name only; `--timeout` gives up on a slide after some seconds. The exit code is 1 if a slide failed. Runs are also recorded in the audit log. The plugin uses the host API it has in the window: what needs a window (tools, layers, panels) has no effect.
+
+## Converting and De-identifying Slides
+
+eov writes copies of slides as tiled, pyramidal TIFF or OME-TIFF files: to give a slide to someone whose software cannot read the scanner's format, to build teaching sets, or to keep just a region. A copy can be **de-identified** for sharing outside the institution.
+
+**In the viewer**, right-click a slide's tab (or click **Save a Copy…** in Slide Information) and choose **Save a Copy of the Slide…**. Pick the whole slide or the region of interest, TIFF or OME-TIFF, JPEG (quality 90 or 80) or lossless tiles, and whether to de-identify (on by default), then a file name. The copy is written in the background, with progress and Cancel in the status bar. A de-identified copy never suggests the slide's own file name, and a pixel size you set for the slide (Slide Information) is recorded in the copy.
+
+**From the command line**:
+
+```bash
+eov convert slide.ndpi slide.tif                          # whole slide, JPEG quality 90, 512-px tiles
+eov convert case.svs teaching/case-01.tif --deidentify    # for sharing: no label, macro or identifying metadata
+eov convert slide.mrxs roi.tif --region 20000,15000,8192,8192 --compression deflate
+eov convert slide.svs slide.ome.tif                       # OME-TIFF, chosen by the name
+eov convert slide.svs small.tif --mpp 1.0 --quality 80 --tile-size 256
+eov convert slide.svs level2.tif --level 2
+```
+
+- `--region X,Y,W,H` copies a rectangle in level-0 pixels (as `--goto` and the region tool use). Without it the copy covers the part of the slide that holds image data: the scanned bounds for formats that report them (MIRAX, some Hamamatsu, Leica and Philips slides), else the whole slide. Nothing outside the region is read, not even into the padding of edge tiles.
+- `--level N` copies a stored pyramid level at its own pixels; `--mpp M` copies at M µm per pixel: a level within 1 % of it is used as it is, otherwise the next finer level is resampled with Lanczos-3. Copies are never upsampled.
+- `--compression jpeg` (default) with `--quality Q` (1–100, default 90; chroma is subsampled below 90), or `--compression deflate` for lossless tiles, several times larger.
+- `--tile-size 256|512` (default 512), `--bigtiff` to write a BigTIFF even when the copy fits in 4 GiB, `--no-icc-profile` to leave the colour profile out, `--overwrite` to replace an existing file.
+- The command prints what it will write, shows progress on standard error, and exits with 0 when the copy was written, 1 when it failed (or tiles could not be read from the slide, which show its background colour), 2 for invalid arguments or an existing output, and 130 when cancelled with Ctrl-C. The copy is written to `<OUTPUT>.<pid>.eov-partial` next to the output and renamed when complete, so an error or Ctrl-C never leaves a half-written file, and an existing file is only replaced by a complete copy. eov refuses to write a copy over the slide it reads.
+
+**What is written.**
+
+- *TIFF* (`--format tiff`, the default): a tiled TIFF in which every pyramid level is its own image, full resolution first and the others marked reduced-resolution, halving down to a single tile. This is OpenSlide's "generic tiled TIFF", so the copy opens in eov, OpenSlide, QuPath, libvips and most WSI software. Files that could exceed 4 GiB are written as BigTIFF; smaller ones stay classic TIFF for older readers (the choice is made when the file is complete). Lossless copies stop their pyramid while every level is still at least one tile long, and use smaller tiles for small regions: OpenSlide 4.0 misreads non-JPEG levels smaller than a tile.
+- *OME-TIFF* (`--format ome-tiff`, or an output name ending in `.ome.tif`, `.ome.tiff` or `.ome.btf`): OME-XML in the first image and the reduced levels as SubIFDs, as QuPath, Bio-Formats and OMERO expect. eov reads these copies with its own OME-TIFF reader, pyramid, objective power and (for copies that are not de-identified) label and macro images included; tools that read slides through OpenSlide see only the full-resolution image of an OME-TIFF, so give them the TIFF.
+- JPEG tiles are baseline JPEG in the YCbCr colour space with shared tables, as libtiff writes them; lossless tiles are Deflate with the horizontal predictor. Lower levels are the 2×2 mean of the level above.
+- The pixel size goes into the TIFF resolution tags (pixels per centimetre), which OpenSlide reports as `openslide.mpp-x`/`-y`, so measurements and the scale bar work on the copy (eov's own pixel-size override included). The pixel size, objective power (scaled to the copy's resolution), stain and source format are also written as `key = value` lines in the description (`openslide.comment`) or the OME-XML. The slide's ICC colour profile is kept.
+- A multichannel (fluorescence) slide is copied as the 8-bit RGB composite eov shows, with the channel colours, windows and gamma set in the Channels panel, not as separate channels; the description says so.
+- A copy that is not de-identified also keeps the slide's label, macro and thumbnail images (as extra images in the file) and records its file name, the region copied and every vendor property.
+- Memory use does not grow with the slide: tiles are read and compressed in parallel batches and the pyramid is built while level 0 is read (roughly 0.3–1 GB at most, depending on the number of cores and the scanner format). A 500-megapixel Aperio slide copies in about 3 s and an 8.7-gigapixel Ventana BIF in about a minute on a 32-core workstation.
+
+**De-identification** (`--deidentify`, or **De-identify** in the dialog):
+
+- The copy has no associated images: no label, no macro and no thumbnail, any of which can show the label.
+- Its metadata is built from an allow-list, not by deleting known-bad fields: the image geometry, pixel size, objective power and stain, and, only with `--keep-scanner`, the scanner vendor and model. Dates, barcodes, accession and slide ids, file names and paths, user names, comments, device serial numbers and every other vendor property are left out. Kept free text (stain, scanner model) is dropped when it looks like it carries an identifier (long digit runs, dates, e-mail addresses).
+- The description states that it is a de-identified copy made by eov, with eov's version and the date the copy was made.
+- The slide's ICC colour profile is kept, because it describes the scanner's colours; its own name may mention the scanner model. Use `--no-icc-profile` to leave it out.
+- Choose the copy's file name yourself: slide file names often contain an accession number.
+
+> **De-identification covers metadata and associated images, not the image itself.** Text and marks inside the scanned tissue image — a label or barcode that lies inside the scanned area, handwriting or pen marks on the glass, annotations burned into the pixels by other software — are copied as they are. Look at the copy before sharing it, and use a region that leaves such areas out. eov's de-identification is a tool to help, not a certified de-identification process (for example under HIPAA or the GDPR); follow your institution's rules for sharing patient material.
 
 ## Plugins
 
