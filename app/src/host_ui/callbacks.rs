@@ -279,6 +279,18 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
             host.refresh_notices();
         });
     });
+    ui.on_log_folder_requested(|| {
+        if let Err(error) = crate::logging::open_log_folder() {
+            with_host(|host| {
+                host.notify(
+                    eov_plugin_api::protocol::NotifyLevel::Error,
+                    "Could not open the log folder",
+                    Some(&error),
+                    None,
+                )
+            });
+        }
+    });
     ui.on_notifications_cleared(|| {
         with_host(|host| {
             host.notices.borrow_mut().clear();

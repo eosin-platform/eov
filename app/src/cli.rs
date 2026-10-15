@@ -66,7 +66,7 @@ pub(crate) enum CliLogLevel {
 }
 
 impl CliLogLevel {
-    fn as_filter(self) -> &'static str {
+    pub(crate) fn as_filter(self) -> &'static str {
         match self {
             Self::Error => "error",
             Self::Warn => "warn",
@@ -822,21 +822,6 @@ fn safe_mode_from_env() -> bool {
     std::env::var_os("EOV_SAFE_MODE").is_some_and(|value| !value.is_empty() && value != "0")
 }
 
-pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {
-    let env_filter = match log_level {
-        Some(level) => tracing_subscriber::EnvFilter::new(level.as_filter()),
-        None => tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-    }
-    .add_directive(
-        "sctk_adwaita::buttons=error"
-            .parse()
-            .expect("valid sctk_adwaita buttons log directive"),
-    );
-
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
-}
-
 /// Default plugin directory: `~/.eov/plugins/` (or `$EOV_PLUGIN_DIR`).
 pub(crate) fn default_plugin_dir() -> PathBuf {
     crate::paths::plugin_dir()
@@ -861,6 +846,13 @@ pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()>
     }
 
     Ok(())
+}
+
+impl LaunchOptions {
+    /// Whether this run opens the GUI (rather than running a subcommand).
+    pub(crate) fn launches_ui(&self) -> bool {
+        matches!(self.command, CommandAction::LaunchUi)
+    }
 }
 
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {

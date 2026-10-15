@@ -481,7 +481,12 @@ impl WsiFile {
             });
         }
 
-        info!("Opening WSI file: {}", path.display());
+        // Paths can carry patient identifiers: the full path only at debug.
+        info!(
+            "Opening WSI file: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
+        tracing::debug!("Opening WSI file: {}", path.display());
         let slide = OpenSlide::open(path)?;
         let (properties, property_map) = read_metadata(path, &slide)?;
         let associated_images = read_associated_images(&slide, &property_map)?;

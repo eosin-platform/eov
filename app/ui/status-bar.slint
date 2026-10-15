@@ -115,6 +115,7 @@ export component NotificationsPopup inherits Rectangle {
     in property <[NotificationData]> items: [];
     callback cleared();
     callback dismissed();
+    callback log-folder-requested();
 
     width: 440px;
     height: min(420px, max(80px, list.preferred-height + 44px));
@@ -141,6 +142,26 @@ export component NotificationsPopup inherits Rectangle {
                 font-size: 13px;
                 font-weight: 600;
                 vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: logs-text.preferred-width + 14px;
+                border-radius: 3px;
+                background: logs-touch.has-hover ? Theme.surface-hover : transparent;
+
+                logs-text := Text {
+                    text: "Open Log Folder";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                logs-touch := TouchArea {
+                    clicked => {
+                        root.log-folder-requested();
+                    }
+                }
             }
 
             Rectangle {

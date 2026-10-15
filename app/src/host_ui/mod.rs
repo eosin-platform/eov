@@ -370,6 +370,17 @@ impl UiHost {
     /// Sends `Ready` (after the window is shown).
     pub(crate) fn ready(&self) {
         self.report_last_update();
+        if let Some(report) = crate::logging::take_crash_report() {
+            self.notify(
+                NotifyLevel::Error,
+                "eov closed unexpectedly last time",
+                Some(&format!(
+                    "A crash report was saved to {} (Open Log Folder in Messages).",
+                    report.display()
+                )),
+                None,
+            );
+        }
         let ids: Vec<String> = self
             .runtime
             .borrow()

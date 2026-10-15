@@ -176,4 +176,16 @@ export component HomeScreen inherits Rectangle {
             }
         }
     }
+
+    // Intended use (AUDIT §14.6).
+    Text {
+        x: 16px;
+        y: parent.height - self.height - 12px;
+        width: parent.width - 32px;
+        text: "For research and education. Not a medical device; not for primary diagnosis.";
+        color: Theme.text-secondary;
+        font-size: 10px;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
 }

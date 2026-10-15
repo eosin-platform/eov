@@ -18,6 +18,10 @@ Whereas the sister project [Eosin](https://github.com/eosin-platform/eosin) solv
 
 The name `eov` has no canonical expansion.
 
+## Intended use
+
+eov is software for research and education. It is **not a medical device**: it is not cleared or approved for primary diagnosis (for example by the FDA or under the EU IVDR), and nothing it shows should be the sole basis of a clinical decision. Colour normalisation, deconvolution, sharpening and plugin outputs (such as predicted channels or detections) are synthetic; eov labels them on screen and in exported figures.
+
 ## Installation
 
 <!-- release-install-links:start -->
@@ -480,6 +484,8 @@ eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 - `config.toml`: preferences (render backend, filtering mode, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
 - `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
 - `plugins/`: installed plugin packages and their registry (`eov plugin …`).
+
+Logs go to standard error (`--log-level`, default warnings). GUI sessions also write `eov.log` at info level in the log folder (`~/.local/share/eov/logs` on Linux; **Open Log Folder** in the Messages popup), keeping the previous five sessions. Info-level messages name files, not full paths. If eov crashes, it writes a `crash-<time>.txt` report there and mentions it at the next start.
 
 Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux).
 

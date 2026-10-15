@@ -722,7 +722,11 @@ fn finish_open(
     }
     let status = match level_count {
         Some(levels) => {
-            info!("Opened {} with {levels} levels", path.display());
+            info!(
+                "Opened {} with {levels} levels",
+                crate::logging::file_label(&path)
+            );
+            tracing::debug!("Opened {}", path.display());
             format!("Opened {name} ({levels} levels)")
         }
         None => format!("Focused {name}"),

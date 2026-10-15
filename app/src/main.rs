@@ -16,6 +16,7 @@ mod file_ops;
 mod gpu;
 mod host_ui;
 mod interaction;
+mod logging;
 mod overlay;
 mod pane_ui;
 mod paths;
@@ -49,7 +50,7 @@ use std::time::Duration;
 use tracing::info;
 
 use backend::select_backend;
-use cli::{apply_config_override, init_tracing, maybe_run_cli_command, parse_launch_options};
+use cli::{apply_config_override, maybe_run_cli_command, parse_launch_options};
 pub(crate) use pane_ui::{
     PaneRenderCacheEntry, PaneUiModels, clear_cached_pane, insert_pane_ui_state, pane_from_index,
     set_cached_pane_content, set_cached_pane_cpu_result, set_cached_pane_minimap,
@@ -134,7 +135,10 @@ fn main() -> Result<()> {
     win_console::init();
     let launch_options = parse_launch_options()?;
     apply_config_override(launch_options.config_path.as_ref())?;
-    init_tracing(launch_options.log_level);
+    logging::init(launch_options.log_level, launch_options.launches_ui());
+    if launch_options.launches_ui() {
+        logging::install_panic_hook();
+    }
 
     if maybe_run_cli_command(&launch_options)? {
         return Ok(());
