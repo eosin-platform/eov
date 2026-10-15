@@ -645,7 +645,7 @@ enum CliCommand {
     #[command(after_help = "EXIT STATUS:\n  \
     0    the call succeeded\n  \
     1    the call failed (the message says why)\n  \
-    2    invalid arguments or parameters\n  \
+    2    invalid arguments, parameters or method (nothing was done)\n  \
     3    no eov is running for this setup")]
     Call {
         /// The method, e.g. `slides` (`eov call version` lists them all).

@@ -743,6 +743,23 @@ fn wire_session(fx: &Fixtures) {
     );
     assert_eq!(hematoxylin["stain_name"], json!("Hematoxylin"));
     assert_eq!(hematoxylin["region"]["x"], json!(600.0));
+    // Regions are clipped to the slide, and refused off it.
+    let everything = eov.ok(
+        "quantify",
+        json!({"region": {"x": -100, "y": -100, "width": 1e9, "height": 1e9}}),
+    );
+    assert_eq!(
+        everything["region"],
+        json!({"x": 0.0, "y": 0.0, "width": 1024.0, "height": 512.0})
+    );
+    assert_eq!(everything["analysed_pixels"], json!(1024 * 512));
+    assert_eq!(
+        eov.error(
+            "quantify",
+            json!({"region": {"x": 5000, "y": 0, "width": 10, "height": 10}})
+        ),
+        "invalid_params"
+    );
     assert_eq!(
         eov.error("quantify", json!({"model": "he-macenko"})),
         "invalid_params"

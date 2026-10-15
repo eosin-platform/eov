@@ -125,6 +125,10 @@ pub(super) fn quantify(session: &Session, params: Quantify) -> CallResult {
                      or pass region",
                 )
             })?;
+            // Only the slide has pixels.
+            let properties = file.wsi.properties();
+            let region = params::on_slide(region, properties.width, properties.height)
+                .ok_or_else(|| RpcError::invalid("the region is outside the slide"))?;
             let (preset, stain) = model_and_stain(
                 model.as_deref(),
                 stain.as_ref(),
@@ -143,18 +147,20 @@ pub(super) fn quantify(session: &Session, params: Quantify) -> CallResult {
     })?;
     let result = {
         let _permit = super::HEAVY.acquire();
-        job.run(&cancel)
+        // The status-bar job ends however the work does.
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job.run(&cancel)))
     };
     session.post_ui(move |host| host.finish_host_job(&job_id));
     let quantification = match result {
-        Ok(Some(quantification)) => quantification,
-        Ok(None) => {
+        Ok(Ok(Some(quantification))) => quantification,
+        Ok(Ok(None)) => {
             return Err(RpcError::new(
                 ErrorKind::Cancelled,
                 "the quantification was cancelled",
             ));
         }
-        Err(error) => return Err(RpcError::failed(format!("cannot quantify: {error}"))),
+        Ok(Err(error)) => return Err(RpcError::failed(format!("cannot quantify: {error}"))),
+        Err(_) => return Err(RpcError::internal("quantify failed inside eov")),
     };
     let (level, downsample) = job.level();
     let fraction = |n: u64| {
@@ -370,7 +376,8 @@ pub(super) fn export_view(session: &Session, params: ExportView) -> CallResult {
     };
     let result = {
         let _permit = super::HEAVY.acquire();
-        job.run(&path, &control)
+        // The progress and the status-bar job end however the export does.
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job.run(&path, &control)))
     };
     done.store(true, Ordering::Release);
     if let Some(progress) = progress {
@@ -378,14 +385,15 @@ pub(super) fn export_view(session: &Session, params: ExportView) -> CallResult {
     }
     session.post_ui(move |host| host.finish_host_job(&job_id));
     let report = match result {
-        Ok(report) => report,
-        Err(ExportError::Cancelled) => {
+        Ok(Ok(report)) => report,
+        Ok(Err(ExportError::Cancelled)) => {
             return Err(RpcError::new(
                 ErrorKind::Cancelled,
                 "the export was cancelled",
             ));
         }
-        Err(error) => return Err(RpcError::failed(format!("cannot export: {error}"))),
+        Ok(Err(error)) => return Err(RpcError::failed(format!("cannot export: {error}"))),
+        Err(_) => return Err(RpcError::internal("export.view failed inside eov")),
     };
     let format_name = match format {
         ExportFormat::Png => "png",

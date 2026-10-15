@@ -271,9 +271,43 @@ pub(super) fn rect(
     Ok(rect)
 }
 
+/// The part of `rect` on a `width` × `height` slide, if any.
+pub(super) fn on_slide(
+    rect: eov_plugin_api::protocol::Rect,
+    width: u64,
+    height: u64,
+) -> Option<eov_plugin_api::protocol::Rect> {
+    let x0 = rect.x.max(0.0);
+    let y0 = rect.y.max(0.0);
+    let x1 = (rect.x + rect.width).min(width as f64);
+    let y1 = (rect.y + rect.height).min(height as f64);
+    (x1 > x0 && y1 > y0).then_some(eov_plugin_api::protocol::Rect {
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regions_are_clipped_to_the_slide() {
+        use eov_plugin_api::protocol::Rect;
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        assert_eq!(
+            on_slide(rect(-10.0, 5.0, 1e12, 10.0), 100, 50),
+            Some(rect(0.0, 5.0, 100.0, 10.0))
+        );
+        assert_eq!(on_slide(rect(200.0, 0.0, 5.0, 5.0), 100, 50), None);
+    }
 
     fn number(value: f64) -> CoordinateParam {
         CoordinateParam::Pixels(value)

@@ -697,7 +697,14 @@ pub fn open_file(
             let _ = slint::invoke_from_event_loop(move || finish_open(ui_weak, request, result));
         });
     if let Err(err) = spawned {
-        finish_open(ui.as_weak(), request, Err(err.to_string()));
+        // Later, from the event loop: this function runs inside the pane
+        // models' borrows, which finish_open's error path takes again.
+        let ui_weak = ui.as_weak();
+        let error = err.to_string();
+        if slint::invoke_from_event_loop(move || finish_open(ui_weak, request, Err(error))).is_err()
+        {
+            tracing::error!("Could not open {}: {err}", normalized_path.display());
+        }
     }
 }
 

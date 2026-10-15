@@ -3,7 +3,7 @@
 //! ([`eov_plugin_api::protocol::FileInfo`], `ViewInfo`).
 
 use super::params::{self, CoordinateParam, ZoomParam};
-use super::{CallResult, ErrorKind, NoParams, RpcError, Session};
+use super::{CallResult, Claim, ErrorKind, NoParams, RpcError, Session};
 use crate::host_ui::UiHost;
 use crate::launch::ViewRequest;
 use crate::plugin_runtime::shared::Published;
@@ -25,7 +25,8 @@ pub(super) fn version(_: NoParams) -> CallResult {
             "max_answer_bytes": crate::instance::MAX_SCRIPT_REPLY_BYTES,
             "max_region_pixels": super::pixels::MAX_REGION_PIXELS,
             "max_region_side": super::pixels::MAX_REGION_SIDE,
-            "max_connections": crate::instance::MAX_CONNECTIONS,
+            "max_scripts": super::MAX_SESSIONS,
+            "max_heavy_calls": super::HEAVY_CALLS,
         },
     }))
 }
@@ -191,29 +192,37 @@ pub(super) fn open(session: &Session, params: Open) -> CallResult {
     };
     let (pane, new_pane) = (params.pane, params.new_pane);
     let (done, opened) = mpsc::sync_channel(1);
-    session.on_ui(move |host| start_open(host, path, pane, new_pane, view, done))?;
+    // A slide that opens after the script gave up opens, but its view is
+    // left alone.
+    let claim = Claim::default();
+    let waiting = claim.clone();
+    session.on_ui(move |host| start_open(host, path, pane, new_pane, view, waiting, done))?;
+    let closing = || RpcError::new(ErrorKind::Unavailable, "eov is closing");
     match opened.recv_timeout(session.timing().open) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(RpcError::new(
+        Err(mpsc::RecvTimeoutError::Timeout) if claim.abandon() => Err(RpcError::new(
             ErrorKind::Busy,
             format!(
-                "the slide did not open within {} s (it may still open)",
+                "the slide did not open within {} s (it may still open, as asked, but its \
+                 view will not be set)",
                 session.timing().open.as_secs()
             ),
         )),
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            Err(RpcError::new(ErrorKind::Unavailable, "eov is closing"))
-        }
+        // It is being shown right now.
+        Err(mpsc::RecvTimeoutError::Timeout) => opened.recv().unwrap_or_else(|_| Err(closing())),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(closing()),
     }
 }
 
-/// Shows `path` in a pane (UI thread); `done` hears once it is shown.
+/// Shows `path` in a pane (UI thread); `done` hears once it is shown,
+/// unless the script gave up (`claim`).
 fn start_open(
     host: &UiHost,
     path: PathBuf,
     pane: Option<u32>,
     new_pane: bool,
     view: ViewRequest,
+    claim: Claim,
     done: mpsc::SyncSender<CallResult>,
 ) -> Result<(), RpcError> {
     let ui = host
@@ -250,13 +259,18 @@ fn start_open(
             }
         }
         refresh_window(host);
-        let _ = done.send(shown(host, &path, target, &view));
+        if claim.take() {
+            let _ = done.send(shown(host, &path, target, &view));
+        }
         return Ok(());
     }
     let shown_path = path.clone();
     crate::file_ops::when_open(
         &path,
         Box::new(move |opened| {
+            if !claim.take() {
+                return;
+            }
             let result = opened
                 .map_err(|error| RpcError::failed(format!("could not open the slide: {error}")))
                 .and_then(|_| {

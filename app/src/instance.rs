@@ -70,7 +70,12 @@ pub(crate) const MAX_SCRIPT_REQUEST_BYTES: u32 = 1 << 20;
 /// Largest answer to a script (pixels travel in answers).
 pub(crate) const MAX_SCRIPT_REPLY_BYTES: u32 = 64 << 20;
 /// Connections served at once, each on its own thread; more are refused.
-pub(crate) const MAX_CONNECTIONS: usize = 32;
+/// Scripts may hold at most [`crate::scripting::MAX_SESSIONS`] of them,
+/// so hand-overs from other eovs always find a place.
+pub(crate) const MAX_CONNECTIONS: usize = 64;
+/// Most bytes of an oversized call read (and dropped) before it is
+/// answered, so the answer is not lost to a connection reset.
+const MAX_DISCARDED_BYTES: u64 = 64 << 20;
 
 /// How long the two sides wait for each other.
 #[derive(Debug, Clone, Copy)]
@@ -615,6 +620,13 @@ impl ScriptConnection {
         self.connection.read_exact(&mut length).map_err(closed)?;
         let length = u32::from_be_bytes(length);
         if length > MAX_SCRIPT_REQUEST_BYTES {
+            // Hanging up on unread bytes resets the connection, which can
+            // take the answer with it: read them first (within reason).
+            let _ = self.connection.set_read_timeout(self.timing.io);
+            let _ = io::copy(
+                &mut (&mut self.connection).take(u64::from(length).min(MAX_DISCARDED_BYTES)),
+                &mut io::sink(),
+            );
             return Err(CallError::TooLarge(length));
         }
         // The rest of a call follows at once.
@@ -1542,8 +1554,13 @@ mod tests {
         let (_server, _) = running_with(&endpoint, fast(), Some(handler));
         let info = read_info(&endpoint).unwrap();
         let mut connection = open_session(&endpoint, &info, fast(), SCRIPT_MAGIC).unwrap();
+        // The whole call: hanging up on its unread bytes would reset the
+        // connection and lose the answer.
         connection
             .write_all(&(MAX_SCRIPT_REQUEST_BYTES + 1).to_be_bytes())
+            .unwrap();
+        connection
+            .write_all(&vec![b' '; MAX_SCRIPT_REQUEST_BYTES as usize + 1])
             .unwrap();
         assert_eq!(
             read_frame(&mut connection, MAX_SCRIPT_REPLY_BYTES).unwrap(),

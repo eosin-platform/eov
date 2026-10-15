@@ -76,6 +76,13 @@ pub(crate) fn call(
     params: Value,
     out: Option<&Path>,
 ) -> Result<Value, Failure> {
+    if out.is_some() && method != "region.read" {
+        // Checked before the call, which may change something.
+        return Err(Failure::new(
+            EXIT_USAGE,
+            "--out writes the pixels of region.read; other methods answer no data",
+        ));
+    }
     let request = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -109,10 +116,12 @@ pub(crate) fn call(
             .pointer("/data/kind")
             .and_then(Value::as_str)
             .unwrap_or("error");
-        return Err(Failure::new(
-            EXIT_CALL_FAILED,
-            format!("{message} ({kind})"),
-        ));
+        // The call itself was wrong: as for invalid arguments.
+        let status = match kind {
+            "parse_error" | "invalid_request" | "method_not_found" | "invalid_params" => EXIT_USAGE,
+            _ => EXIT_CALL_FAILED,
+        };
+        return Err(Failure::new(status, format!("{message} ({kind})")));
     }
     let mut result = answer.get("result").cloned().unwrap_or(Value::Null);
     if let Some(out) = out {

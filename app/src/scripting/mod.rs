@@ -50,7 +50,7 @@ use eov_plugin_api::protocol::FileId;
 use parking_lot::{Condvar, Mutex};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -81,6 +81,11 @@ pub(crate) const METHODS: &[&str] = &[
 /// Calls that read or render many pixels (`region.read`, `quantify`,
 /// `export.view`) running at once, across all scripts; more wait.
 pub(crate) const HEAVY_CALLS: usize = 4;
+
+/// Scripts connected at once; the next one's first call is answered
+/// `busy`. (The endpoint serves more connections, so other eovs can always
+/// hand files over.)
+pub(crate) const MAX_SESSIONS: usize = 16;
 
 /// What kind of error a call met; the `kind` of an error's `data`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,6 +246,8 @@ pub(crate) struct Service {
     /// from it, without the UI thread.
     shared: Arc<HostShared>,
     timing: Timing,
+    /// Scripts connected now.
+    sessions: AtomicUsize,
 }
 
 /// The endpoint's handler for scripting connections (main.rs).
@@ -266,11 +273,30 @@ impl Service {
             ui,
             shared,
             timing,
+            sessions: AtomicUsize::new(0),
         }
     }
 
     /// Answers a connection's calls until the script hangs up.
     pub(crate) fn serve(&self, mut connection: ScriptConnection) {
+        struct Connected<'a>(&'a AtomicUsize);
+        impl Drop for Connected<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::AcqRel);
+            }
+        }
+        let connected = self.sessions.fetch_add(1, Ordering::AcqRel) + 1;
+        let _connected = Connected(&self.sessions);
+        if connected > MAX_SESSIONS {
+            let error = RpcError::new(
+                ErrorKind::Busy,
+                format!("{MAX_SESSIONS} scripts are connected to eov; close one and try again"),
+            );
+            if !matches!(connection.next_call(), Err(CallError::Closed)) {
+                let _ = connection.answer(&reply(&Value::Null, Err(error)));
+            }
+            return;
+        }
         tracing::debug!("A script connected");
         let mut session = Session::new(self);
         loop {
@@ -826,6 +852,107 @@ mod session_tests {
         assert!(bytes.len() < 1024);
         let answer: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(kind(&answer), "too_large");
+    }
+
+    /// An endpoint serving `service` (and taking every file handed over).
+    fn serving(
+        service: Service,
+    ) -> (
+        tempfile::TempDir,
+        crate::instance::Endpoint,
+        crate::instance::Server,
+    ) {
+        use crate::instance::{self, Claim, Endpoint, Handlers, Transport};
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+        let Claim::Primary(mut server) = instance::claim(
+            &endpoint,
+            &crate::launch::OpenRequest::default(),
+            serving_timing(),
+        ) else {
+            panic!("the endpoint is free");
+        };
+        let service = Arc::new(service);
+        server.serve(
+            serving_timing(),
+            Handlers {
+                open: Arc::new(|_, answer| {
+                    let _ = answer.send(Ok(()));
+                }),
+                script: Some(Arc::new(move |connection| service.serve(connection))),
+            },
+        );
+        (dir, endpoint, server)
+    }
+
+    fn serving_timing() -> crate::instance::Timing {
+        crate::instance::Timing {
+            io: Duration::from_secs(2),
+            ..crate::instance::Timing::default()
+        }
+    }
+
+    /// `eov call`'s exit statuses: 2 for a call that was wrong (nothing was
+    /// done), 1 for one that failed, 3 without an eov.
+    #[test]
+    fn eov_call_reports_how_a_call_went() {
+        use super::client::{self, EXIT_CALL_FAILED, EXIT_USAGE};
+        let (dir, endpoint, _server) = serving(service(true));
+        assert_eq!(
+            client::call(&endpoint, "version", json!({}), None).unwrap()["protocol"],
+            json!(1)
+        );
+        for (method, params, status) in [
+            ("no.such.method", json!({}), EXIT_USAGE),
+            ("view.set", json!({"zom": 1}), EXIT_USAGE),
+            // The window never answers here.
+            ("roi.set", json!({"roi": null}), EXIT_CALL_FAILED),
+        ] {
+            let failure = client::call(&endpoint, method, params, None).unwrap_err();
+            assert_eq!(failure.status, status, "{method}: {}", failure.message);
+        }
+        // --out is checked before anything runs.
+        let out = dir.path().join("x.bin");
+        let failure =
+            client::call(&endpoint, "roi.set", json!({"roi": null}), Some(&out)).unwrap_err();
+        assert_eq!(failure.status, EXIT_USAGE);
+    }
+
+    /// Scripts beyond [`MAX_SESSIONS`] are told so; hand-overs keep their
+    /// places.
+    #[test]
+    fn scripts_beyond_the_limit_are_answered_busy() {
+        use crate::instance::{self, Claim};
+        let (_dir, endpoint, _server) = serving(service(true));
+        let timing = serving_timing();
+        let version = br#"{"id": 1, "method": "version"}"#;
+        let call = |client: &mut instance::ScriptClient| -> Value {
+            serde_json::from_slice(&client.call(version, Duration::from_secs(5)).unwrap()).unwrap()
+        };
+        let mut connected: Vec<_> = (0..MAX_SESSIONS)
+            .map(|_| instance::connect_script(&endpoint, timing).unwrap())
+            .collect();
+        for client in &mut connected {
+            assert_eq!(call(client)["result"]["protocol"], json!(1));
+        }
+        let mut extra = instance::connect_script(&endpoint, timing).unwrap();
+        let refused = call(&mut extra);
+        assert_eq!(kind(&refused), "busy");
+        // Files are still handed over.
+        assert!(matches!(
+            instance::claim(&endpoint, &crate::launch::OpenRequest::default(), timing),
+            Claim::Forwarded
+        ));
+        drop(connected.pop());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let mut again = instance::connect_script(&endpoint, timing).unwrap();
+            if call(&mut again).get("result").is_some() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "no place came free");
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     #[test]

@@ -26,6 +26,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Largest region read, in pixels of the chosen level.
 const MAX_PIXELS: u64 = 16_000_000;
 
+/// Largest region read at all, when even the coarsest level holds more
+/// than [`MAX_PIXELS`] (256 MB of RGBA).
+const MAX_READ_PIXELS: u64 = 4 * MAX_PIXELS;
+
 /// Stain models offered (the Macenko H&E reference is a normalisation
 /// target, not a model to measure with).
 pub(crate) const PRESETS: [StainPreset; 6] = [
@@ -446,8 +450,21 @@ fn measure(
     cancel: &AtomicBool,
 ) -> Result<Option<StainQuantification>, String> {
     let (level, downsample) = level_for(&levels(wsi), roi);
-    let width = (roi.width / downsample).ceil().max(1.0) as u32;
-    let height = (roi.height / downsample).ceil().max(1.0) as u32;
+    let (width, height) = (
+        (roi.width / downsample).ceil(),
+        (roi.height / downsample).ceil(),
+    );
+    // Even the coarsest level of a shallow pyramid: never allocate without
+    // bound (a whole-slide region of a single-level slide).
+    let pixels = width * height;
+    if !pixels.is_finite() || pixels > MAX_READ_PIXELS as f64 {
+        return Err(format!(
+            "the region is {width:.0} × {height:.0} pixels at the slide's coarsest level \
+             {level}; quantify a smaller region"
+        ));
+    }
+    let width = width.max(1.0) as u32;
+    let height = height.max(1.0) as u32;
     let mut rgba = vec![0u8; width as usize * height as usize * 4];
     const CHUNK: u32 = 2048;
     for y0 in (0..height).step_by(CHUNK as usize) {
@@ -640,6 +657,23 @@ mod tests {
         assert!((q.positive_fraction - 0.5).abs() < 0.01, "{q:?}");
         // All positives are moderate (0.5 ≤ 0.7 < 1.0): H-score 2 × 50.
         assert!((q.h_score - 100.0).abs() < 1.0, "{q:?}");
+        // A region no level holds in reasonable memory is refused, never
+        // allocated.
+        let huge = Rect {
+            width: 1e9,
+            height: 1e9,
+            ..roi
+        };
+        let refused = measure(
+            &wsi,
+            &huge,
+            StainPreset::HematoxylinDab,
+            1,
+            DEFAULT_THRESHOLDS,
+            [255.0; 3],
+            &AtomicBool::new(false),
+        );
+        assert!(refused.unwrap_err().contains("smaller region"));
         // Cancelled before reading: nothing.
         assert_eq!(
             measure(
