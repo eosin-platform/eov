@@ -55,9 +55,7 @@ pub(crate) use pane_ui::{
     set_cached_pane_content, set_cached_pane_cpu_result, set_cached_pane_minimap,
     with_gpu_renderer, with_pane_render_cache,
 };
-use pane_ui::{
-    reset_pane_ui_state, set_gpu_renderer_handle, with_pane_ui_models, with_pane_view_model,
-};
+use pane_ui::{set_gpu_renderer_handle, with_pane_ui_models, with_pane_view_model};
 
 // Debug macro - set to no-op for release, enable for debugging
 #[allow(unused_macros)]
@@ -76,8 +74,9 @@ const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
 
+/// Refreshes tabs and panes after tabs moved, closed or panes changed; the
+/// per-pane caches follow the panes, so nothing goes blank (UI-16).
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
-    reset_pane_ui_state();
     update_tabs(ui, state);
 }
 
@@ -340,13 +339,13 @@ fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_coun
             let next_index = state.panes.len();
             let source_pane = PaneId(next_index.saturating_sub(1));
             let new_pane = state.insert_pane(next_index);
-            inserted_panes.push((new_pane, source_pane));
+            inserted_panes.push((state.pane_uid(new_pane), state.pane_uid(source_pane)));
         }
         state.set_focused_pane(PaneId::PRIMARY);
     }
 
     for (new_pane, source_pane) in inserted_panes {
-        insert_pane_ui_state(new_pane, Some(source_pane));
+        insert_pane_ui_state(new_pane, source_pane);
     }
 
     let state = state.read();

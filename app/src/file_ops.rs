@@ -469,13 +469,16 @@ pub fn open_file(
         return;
     }
 
+    // Panes can be inserted or closed while the slide opens: remember the
+    // target by its stable id.
     let target_pane = {
         let state_guard = state.read();
-        if state_guard.split_enabled {
+        let pane = if state_guard.split_enabled {
             state_guard.focused_pane
         } else {
             PaneId::PRIMARY
-        }
+        };
+        state_guard.pane_uid(pane)
     };
 
     // A slide that is still opening gets one more pane rather than a
@@ -547,9 +550,10 @@ const SERIES_THUMBNAIL_SIZE: u32 = 180;
 struct PendingOpen {
     /// Canonical path.
     path: PathBuf,
-    target_pane: PaneId,
-    /// Panes that asked for the same slide while it was opening.
-    extra_panes: Vec<PaneId>,
+    /// Stable id of the pane that shows the slide.
+    target_pane: Option<u32>,
+    /// Panes (stable ids) that asked for the same slide while it opened.
+    extra_panes: Vec<Option<u32>>,
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
@@ -623,6 +627,14 @@ fn finish_open(
         Ok(opened) => opened,
         Err(err) => {
             error!("Failed to open {}: {err}", path.display());
+            // A pane made for this slide (an edge drop) must not stay empty.
+            let removed = target_pane.is_some_and(|uid| state.write().remove_empty_pane(uid));
+            if removed {
+                let state_guard = state.read();
+                ui.set_split_enabled(state_guard.split_enabled);
+                ui.set_focused_pane(state_guard.focused_pane.as_index());
+                crate::update_tabs(&ui, &state_guard);
+            }
             ui.set_status_text(SharedString::from(format!("Could not open {name}: {err}")));
             crate::host_ui::with_host(|host| {
                 host.notify(
@@ -657,8 +669,10 @@ fn finish_open(
     {
         let mut state_guard = state.write();
         if let Some((_, tab_id)) = state_guard.find_tab_by_path(&path) {
-            for pane in extra_panes {
-                if pane.0 < state_guard.panes.len() && pane != target_pane {
+            for uid in extra_panes.into_iter().flatten() {
+                if Some(uid) != target_pane
+                    && let Some(pane) = state_guard.pane_by_uid(uid)
+                {
                     let duplicated = state_guard.duplicate_tab_to_pane(tab_id, pane);
                     state_guard.activate_tab_in_pane(pane, duplicated);
                 }
@@ -689,7 +703,7 @@ fn install_slide(
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     path: PathBuf,
-    target_pane: PaneId,
+    target_pane: Option<u32>,
     opened: OpenedSlide,
 ) -> u32 {
     let OpenedSlide { wsi, thumbnail } = opened;
@@ -698,11 +712,9 @@ fn install_slide(
     // The file id tags the TileCoords, keeping CPU and GPU tile caches
     // per file.
     let file_id = state_guard.allocate_file_id();
-    let target_pane = if target_pane.0 < state_guard.panes.len() {
-        target_pane
-    } else {
-        state_guard.focused_pane
-    };
+    let target_pane = target_pane
+        .and_then(|uid| state_guard.pane_by_uid(uid))
+        .unwrap_or(state_guard.focused_pane);
     let home_tab_to_close = state_guard
         .active_tab_id_for_pane(target_pane)
         .filter(|&active_id| state_guard.is_home_tab(active_id));

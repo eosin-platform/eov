@@ -50,6 +50,79 @@ thread_local! {
     static PANE_UI_MODELS: RefCell<Vec<PaneUiModels>> = const { RefCell::new(Vec::new()) };
     static SERIES_ITEMS_MODEL: RefCell<Rc<VecModel<SeriesItemData>>> = RefCell::new(Rc::new(VecModel::default()));
     static SERIES_ITEMS_REVISION: RefCell<u64> = const { RefCell::new(0) };
+    /// The stable pane id of each entry of the per-pane caches, in order.
+    static PANE_CACHE_UIDS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+    /// New pane → the pane whose picture it shows until it first renders.
+    static PANE_SEEDS: RefCell<Vec<(u32, u32)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Re-orders the per-pane caches to follow the panes' stable ids (`uids`,
+/// in pane order): a pane keeps its picture, minimap and tab models when
+/// panes are inserted, moved or removed around it, removed panes free
+/// theirs, and new panes start from their seed (see
+/// [`insert_pane_ui_state`]) or empty (UI-2, UI-16).
+pub(crate) fn sync_pane_caches(
+    uids: &[u32],
+    cache: &mut Vec<PaneRenderCacheEntry>,
+    models: &mut Vec<PaneUiModels>,
+) {
+    let known = PANE_CACHE_UIDS.with(|known| known.borrow().clone());
+    let seeds = PANE_SEEDS.with(|seeds| std::mem::take(&mut *seeds.borrow_mut()));
+    if known == uids && cache.len() == uids.len() && models.len() == uids.len() {
+        return;
+    }
+    // Entries beyond what was recorded belong to the panes at their
+    // position (caches grow with the panes).
+    let uid_at = |index: usize| known.get(index).or_else(|| uids.get(index)).copied();
+
+    let mut old_entries: std::collections::HashMap<u32, PaneRenderCacheEntry> =
+        std::collections::HashMap::new();
+    for (index, entry) in cache.drain(..).enumerate() {
+        match uid_at(index) {
+            Some(uid) if !old_entries.contains_key(&uid) => {
+                old_entries.insert(uid, entry);
+            }
+            _ => recycle(entry),
+        }
+    }
+    let mut seeded: std::collections::HashMap<u32, PaneRenderCacheEntry> = seeds
+        .iter()
+        .filter_map(|(new, source)| Some((*new, old_entries.get(source)?.clone())))
+        .collect();
+    *cache = uids
+        .iter()
+        .map(|uid| {
+            old_entries
+                .remove(uid)
+                .or_else(|| seeded.remove(uid))
+                .unwrap_or_default()
+        })
+        .collect();
+    for (_, entry) in old_entries {
+        recycle(entry);
+    }
+
+    let mut old_models: std::collections::HashMap<u32, PaneUiModels> =
+        std::collections::HashMap::new();
+    for (index, model) in models.drain(..).enumerate() {
+        if let Some(uid) = uid_at(index) {
+            old_models.entry(uid).or_insert(model);
+        }
+    }
+    *models = uids
+        .iter()
+        .map(|uid| old_models.remove(uid).unwrap_or_default())
+        .collect();
+
+    PANE_CACHE_UIDS.with(|known| *known.borrow_mut() = uids.to_vec());
+}
+
+fn recycle(mut entry: PaneRenderCacheEntry) {
+    if let Some(frame) = entry.cpu_frame.take()
+        && let Some(pool) = crate::render_pool::global()
+    {
+        pool.recycle_buffer(frame.pixels);
+    }
 }
 
 pub(crate) fn pane_from_index(index: i32) -> PaneId {
@@ -139,33 +212,13 @@ pub(crate) fn with_pane_ui_models<T>(
     })
 }
 
-pub(crate) fn reset_pane_ui_state() {
-    PANE_RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
-    PANE_UI_MODELS.with(|models| models.borrow_mut().clear());
-    SERIES_ITEMS_REVISION.with(|revision| {
-        *revision.borrow_mut() = 0;
-    });
-    PANE_VIEW_MODEL.with(|model| {
-        let model = model.borrow_mut();
-        model.clear();
-    });
-}
-
-pub(crate) fn insert_pane_ui_state(new_pane: PaneId, source_pane: Option<PaneId>) {
-    PANE_RENDER_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let insert_index = new_pane.0.min(cache.len());
-        let entry = source_pane
-            .and_then(|pane| cache.get(pane.0).cloned())
-            .unwrap_or_default();
-        cache.insert(insert_index, entry);
-    });
-
-    PANE_UI_MODELS.with(|models| {
-        let mut models = models.borrow_mut();
-        let insert_index = new_pane.0.min(models.len());
-        models.insert(insert_index, PaneUiModels::default());
-    });
+/// Lets the pane `new_uid` show `source_uid`'s picture until it renders
+/// (a split shows the same view at first). Applied by the next
+/// [`sync_pane_caches`].
+pub(crate) fn insert_pane_ui_state(new_uid: Option<u32>, source_uid: Option<u32>) {
+    if let (Some(new_uid), Some(source_uid)) = (new_uid, source_uid) {
+        PANE_SEEDS.with(|seeds| seeds.borrow_mut().push((new_uid, source_uid)));
+    }
 }
 
 pub(crate) fn clear_cached_pane(pane: PaneId) {

@@ -22,6 +22,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, warn};
 
+/// Edge drops this close together are one multi-file drop.
+const EDGE_DROP_GROUPING: Duration = Duration::from_millis(400);
+
+thread_local! {
+    /// When and into which pane (stable id) the last edge drop went.
+    static LAST_EDGE_DROP: Cell<Option<(std::time::Instant, u32)>> = const { Cell::new(None) };
+}
+
 pub(crate) const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
     * ZOOM_FACTOR
     * ZOOM_FACTOR
@@ -888,16 +896,20 @@ pub fn setup_callbacks(
                     }
                 }
                 "split-right" => {
-                    let (split_enabled, source_pane, new_pane) = {
+                    let (split_enabled, source_uid, new_uid) = {
                         let mut state = state_handle.write();
                         let source_pane = pane;
                         let new_pane = state.insert_pane(source_pane.0 + 1);
                         state.duplicate_tab_to_pane(tab_id, new_pane);
                         state.set_focused_pane(new_pane);
                         state.request_render();
-                        (state.split_enabled, source_pane, new_pane)
+                        (
+                            state.split_enabled,
+                            state.pane_uid(source_pane),
+                            state.pane_uid(new_pane),
+                        )
                     };
-                    insert_pane_ui_state(new_pane, Some(source_pane));
+                    insert_pane_ui_state(new_uid, source_uid);
                     ui.set_split_enabled(split_enabled);
                     let state = state_handle.read();
                     ui.set_focused_pane(state.focused_pane.as_index());
@@ -1385,16 +1397,21 @@ pub fn setup_callbacks(
 
         ui.on_split_right(move |pane, id| {
             if let Some(ui) = ui_weak.upgrade() {
-                let (split_enabled, focused_pane, source_pane) = {
+                let (split_enabled, focused_pane, source_uid, new_uid) = {
                     let mut state = state_handle.write();
                     let source_pane = pane_from_index(pane);
                     let new_pane = state.insert_pane(source_pane.0 + 1);
                     state.duplicate_tab_to_pane(id, new_pane);
                     state.set_focused_pane(new_pane);
                     state.request_render();
-                    (state.split_enabled, state.focused_pane, source_pane)
+                    (
+                        state.split_enabled,
+                        state.focused_pane,
+                        state.pane_uid(source_pane),
+                        state.pane_uid(new_pane),
+                    )
                 };
-                insert_pane_ui_state(focused_pane, Some(source_pane));
+                insert_pane_ui_state(new_uid, source_uid);
                 ui.set_split_enabled(split_enabled);
                 ui.set_focused_pane(focused_pane.as_index());
                 let state = state_handle.read();
@@ -1653,34 +1670,56 @@ pub fn setup_callbacks(
                     crate::file_ops::OpenFileMode::ReuseExistingTab,
                 );
             } else {
-                // Drop on edge: create a new pane split
-                let insert_index = if side == 0 {
-                    target_pane.0
-                } else {
-                    target_pane.0 + 1
-                };
-                let (new_pane, source_pane) = {
+                // Drop on an edge: open in a new pane. Files dropped
+                // together share that pane (one drop event per file).
+                let recent = LAST_EDGE_DROP
+                    .with(Cell::get)
+                    .filter(|(at, _)| at.elapsed() < EDGE_DROP_GROUPING)
+                    .and_then(|(_, uid)| state_handle.read().pane_by_uid(uid));
+                let target_uid = {
                     let mut state = state_handle.write();
-                    let source = target_pane;
-                    let new_pane = state.insert_pane(insert_index);
-                    state.set_focused_pane(new_pane);
+                    let pane = match recent {
+                        Some(pane) => pane,
+                        None => {
+                            let insert_index = if side == 0 {
+                                target_pane.0
+                            } else {
+                                target_pane.0 + 1
+                            };
+                            let new_pane = state.insert_pane(insert_index);
+                            // The target pane moved right if the new one
+                            // went before it.
+                            let source = if insert_index <= target_pane.0 {
+                                PaneId(target_pane.0 + 1)
+                            } else {
+                                target_pane
+                            };
+                            insert_pane_ui_state(state.pane_uid(new_pane), state.pane_uid(source));
+                            new_pane
+                        }
+                    };
+                    state.set_focused_pane(pane);
                     state.request_render();
-                    (new_pane, source)
+                    state.pane_uid(pane)
                 };
-                insert_pane_ui_state(new_pane, Some(source_pane));
+                if let Some(uid) = target_uid {
+                    LAST_EDGE_DROP.with(|last| last.set(Some((std::time::Instant::now(), uid))));
+                }
                 {
                     let state = state_handle.read();
                     ui.set_split_enabled(state.split_enabled);
                     ui.set_focused_pane(state.focused_pane.as_index());
                     update_tabs(&ui, &state);
                 }
+                // The new pane shows the slide even when it is open
+                // elsewhere; if opening fails, the empty pane goes away.
                 open_path_with_series(
                     &ui,
                     &state_handle,
                     &tile_cache,
                     &render_timer,
                     path,
-                    crate::file_ops::OpenFileMode::ReuseExistingTab,
+                    crate::file_ops::OpenFileMode::ForceNewTab,
                 );
             }
             request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1765,9 +1804,11 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
-                    let target_pane = pane_from_index(to);
-                    state.move_tab_between_panes(id, pane_from_index(from), target_pane);
-                    state.set_focused_pane(target_pane);
+                    state.move_tab_between_panes(id, pane_from_index(from), pane_from_index(to));
+                    // Empty panes collapse: focus wherever the tab ended up.
+                    if let Some(pane) = state.pane_of_tab(id) {
+                        state.set_focused_pane(pane);
+                    }
                 }
                 let state = state_handle.read();
                 refresh_tab_ui(&ui, &state);
@@ -1786,19 +1827,13 @@ pub fn setup_callbacks(
 
         ui.on_split_tab_by_drop(move |id, to| {
             if let Some(ui) = ui_weak.upgrade() {
-                let (source_pane_for_cache, target_pane_for_cache) = {
+                let (source_uid, new_uid) = {
                     let mut state = state_handle.write();
-                    let source_pane = state
-                        .panes
-                        .iter()
-                        .enumerate()
-                        .find(|(_, pane_state)| pane_state.tabs.contains(&id))
-                        .map(|(index, _)| PaneId(index))
-                        .unwrap_or(PaneId::PRIMARY);
-                    state.split_tab_to_new_pane(id, source_pane, to.max(0) as usize);
-                    (source_pane, state.focused_pane)
+                    let source_uid = state.pane_of_tab(id).and_then(|pane| state.pane_uid(pane));
+                    let target = state.split_tab_to_new_pane(id, to.max(0) as usize);
+                    (source_uid, target.and_then(|pane| state.pane_uid(pane)))
                 };
-                insert_pane_ui_state(target_pane_for_cache, Some(source_pane_for_cache));
+                insert_pane_ui_state(new_uid, source_uid);
                 let state = state_handle.read();
                 ui.set_split_enabled(state.split_enabled);
                 ui.set_focused_pane(state.focused_pane.as_index());

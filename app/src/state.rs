@@ -876,6 +876,22 @@ impl AppState {
         PaneId(insert_index)
     }
 
+    /// Removes the pane with stable id `uid` if it has no tabs and is not
+    /// the last pane. Returns whether it was removed.
+    pub fn remove_empty_pane(&mut self, uid: u32) -> bool {
+        let Some(pane) = self.pane_by_uid(uid) else {
+            return false;
+        };
+        if self.panes.len() <= 1 || !self.panes[pane.0].tabs.is_empty() {
+            return false;
+        }
+        self.remove_pane(pane.0);
+        self.normalize_split_after_tab_change();
+        self.sync_active_file_id();
+        self.needs_render = true;
+        true
+    }
+
     fn remove_pane(&mut self, index: usize) {
         if self.panes.len() <= 1 || index >= self.panes.len() {
             return;
@@ -1039,15 +1055,40 @@ impl AppState {
         self.needs_render = true;
     }
 
-    pub fn split_tab_to_new_pane(&mut self, id: i32, source_pane: PaneId, insert_at: usize) {
-        if !self.is_known_tab(id) || source_pane.0 >= self.panes.len() {
-            return;
-        }
+    /// The pane that holds tab `id`.
+    pub fn pane_of_tab(&self, id: i32) -> Option<PaneId> {
+        self.panes
+            .iter()
+            .position(|pane| pane.tabs.contains(&id))
+            .map(PaneId)
+    }
 
-        let target_pane = self.insert_pane(insert_at);
-        self.move_tab_between_panes(id, source_pane, target_pane);
-        self.set_focused_pane(target_pane);
+    /// Moves tab `id` into a new pane inserted at position `insert_at`, and
+    /// focuses it. Panes are tracked by identity, so inserting before the
+    /// source pane or collapsing it when it empties cannot misplace the tab
+    /// (UI-2). Returns the new pane's final position.
+    pub fn split_tab_to_new_pane(&mut self, id: i32, insert_at: usize) -> Option<PaneId> {
+        if !self.is_known_tab(id) {
+            return None;
+        }
+        let source = self.pane_of_tab(id)?;
+        // A pane's only tab dropped on its own edge: nothing would change.
+        if self.panes[source.0].tabs.len() <= 1
+            && (insert_at == source.0 || insert_at == source.0 + 1)
+        {
+            return None;
+        }
+        let source_uid = self.panes[source.0].uid;
+        let target = self.insert_pane(insert_at);
+        let target_uid = self.panes[target.0].uid;
+        let source = self.pane_by_uid(source_uid)?;
+        self.move_tab_between_panes(id, source, target);
+        let target = self
+            .pane_by_uid(target_uid)
+            .or_else(|| self.pane_of_tab(id))?;
+        self.set_focused_pane(target);
         self.needs_render = true;
+        Some(target)
     }
 
     /// Reorder a tab within the same pane by moving it to a new index position.
@@ -1725,8 +1766,70 @@ impl Default for AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::dedupe_recent_files;
+    use super::{AppState, PaneId, PaneState, dedupe_recent_files};
     use std::path::PathBuf;
+
+    /// Panes holding Home tabs with the given ids.
+    fn state_with(layout: &[&[i32]]) -> AppState {
+        let mut state = AppState::new();
+        state.panes = layout
+            .iter()
+            .map(|tabs| PaneState {
+                tabs: tabs.to_vec(),
+                active_tab_id: tabs.first().copied(),
+                ..PaneState::new()
+            })
+            .collect();
+        state.home_tabs = layout
+            .iter()
+            .flat_map(|tabs| tabs.iter().copied())
+            .collect();
+        state.last_rendered_file_ids = vec![None; layout.len()];
+        state.split_enabled = layout.len() > 1;
+        state
+    }
+
+    fn layout(state: &AppState) -> Vec<Vec<i32>> {
+        state.panes.iter().map(|pane| pane.tabs.clone()).collect()
+    }
+
+    #[test]
+    fn splitting_to_the_left_of_the_source_pane_moves_the_tab() {
+        // UI-2: one pane [a, b], b dropped on the left edge.
+        let mut state = state_with(&[&[1, 2]]);
+        let target = state.split_tab_to_new_pane(2, 0).unwrap();
+        assert_eq!(layout(&state), vec![vec![2], vec![1]]);
+        assert_eq!(target, PaneId(0));
+        assert_eq!(state.focused_pane, PaneId(0));
+    }
+
+    #[test]
+    fn splitting_never_duplicates_a_tab() {
+        // UI-2: panes [a, x], [b]; b dropped on the left edge of pane 0.
+        let mut state = state_with(&[&[1, 3], &[2]]);
+        let target = state.split_tab_to_new_pane(2, 0).unwrap();
+        assert_eq!(layout(&state), vec![vec![2], vec![1, 3]]);
+        assert_eq!(target, PaneId(0));
+        assert_eq!(state.focused_pane, PaneId(0));
+    }
+
+    #[test]
+    fn a_lone_tab_dropped_on_its_own_edge_changes_nothing() {
+        let mut state = state_with(&[&[1], &[2]]);
+        assert_eq!(state.split_tab_to_new_pane(2, 2), None);
+        assert_eq!(layout(&state), vec![vec![1], vec![2]]);
+    }
+
+    #[test]
+    fn empty_panes_are_removed_only_when_empty() {
+        let mut state = state_with(&[&[1], &[]]);
+        let empty = state.panes[1].uid;
+        let full = state.panes[0].uid;
+        assert!(!state.remove_empty_pane(full));
+        assert!(state.remove_empty_pane(empty));
+        assert_eq!(layout(&state), vec![vec![1]]);
+        assert!(!state.split_enabled);
+    }
 
     #[test]
     fn dedupe_recent_files_preserves_first_occurrence_order() {

@@ -273,18 +273,9 @@ pub fn update_tabs(
     pane_ui_models: &mut Vec<PaneUiModels>,
     pane_view_model: &Rc<VecModel<PaneViewData>>,
 ) {
-    // Ensure cache and models are sized correctly
-    if pane_render_cache.len() < state.panes.len() {
-        pane_render_cache.resize_with(state.panes.len(), PaneRenderCacheEntry::default);
-    } else if pane_render_cache.len() > state.panes.len() {
-        pane_render_cache.truncate(state.panes.len());
-    }
-
-    if pane_ui_models.len() < state.panes.len() {
-        pane_ui_models.resize_with(state.panes.len(), PaneUiModels::default);
-    } else if pane_ui_models.len() > state.panes.len() {
-        pane_ui_models.truncate(state.panes.len());
-    }
+    // The caches follow the panes by identity, not position.
+    let uids: Vec<u32> = state.panes.iter().map(|pane| pane.uid).collect();
+    crate::pane_ui::sync_pane_caches(&uids, pane_render_cache, pane_ui_models);
 
     let build_pane_tabs = |pane: PaneId| {
         state
