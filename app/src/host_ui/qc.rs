@@ -272,8 +272,16 @@ mod tests {
         let pixels = overlay_pixels(&result);
         assert_eq!(&pixels[0..4], &[0, 0, 0, 0], "clean tissue is not coloured");
         assert_eq!(pixels[7], PEN_COLOUR[3], "pen first");
-        assert_eq!(u32::from(pixels[4]), (0x2f * 0xb0 + 127) / 255, "premultiplied");
-        assert_eq!(u32::from(pixels[8]), (0xff * 0xb0 + 127) / 255, "then folds");
+        assert_eq!(
+            u32::from(pixels[4]),
+            (0x2f * 0xb0 + 127) / 255,
+            "premultiplied"
+        );
+        assert_eq!(
+            u32::from(pixels[8]),
+            (0xff * 0xb0 + 127) / 255,
+            "then folds"
+        );
         assert_eq!(pixels[15], BLUR_COLOUR[3]);
         let text = summary_text(&result);
         assert_eq!(

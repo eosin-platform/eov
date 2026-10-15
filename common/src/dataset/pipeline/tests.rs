@@ -532,6 +532,48 @@ fn tissue_filter_keeps_only_tissue_patches() {
 }
 
 #[test]
+fn patches_over_qc_marks_are_left_out() {
+    let temp = tempfile::tempdir().unwrap();
+    let slide = temp.path().join("s.tif");
+    // 1024 × 512: tissue with fine detail, a band of green marker ink in
+    // the second quarter, glass on the right half.
+    write_tiled_tiff(&slide, 1024, 512, 64, |x, y| {
+        if x >= 512 {
+            [244, 244, 242]
+        } else if (256..384).contains(&x) {
+            [40, 150, 70]
+        } else if (x / 2 + y / 2) % 2 == 0 {
+            [190, 110, 170]
+        } else {
+            [230, 160, 205]
+        }
+    })
+    .unwrap();
+    let out = temp.path().join("out");
+    let opts = DatasetPatchesOptions {
+        qc_exclusion: Some(crate::dataset::QcExclusion {
+            pen: true,
+            ..Default::default()
+        }),
+        ..options()
+    };
+    let report = run(&config(vec![slide], out.clone()), &opts);
+    // QC cells are 512 px here (no pixel size): the ink marks the left
+    // cells it lies in, and no patch over it is written.
+    assert!(report.total_tiles_skipped_qc > 0, "{report:?}");
+    assert!(
+        records(&out).iter().all(|r| !(256..384).contains(&r.x)),
+        "no patch over the ink"
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(out.join("dataset.json")).unwrap()).unwrap();
+    assert_eq!(
+        manifest["totals"]["tiles_skipped_qc"],
+        report.total_tiles_skipped_qc
+    );
+}
+
+#[test]
 fn per_slide_limits_sample_deterministically() {
     let temp = tempfile::tempdir().unwrap();
     let slide = temp.path().join("s.tif");

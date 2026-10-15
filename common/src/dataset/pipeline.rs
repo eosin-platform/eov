@@ -221,6 +221,8 @@ pub struct SlideReport {
     pub tiles_skipped_white: u64,
     pub tiles_skipped_tissue: u64,
     pub tiles_skipped_annotation: u64,
+    /// Over tissue-QC marks the run excludes.
+    pub tiles_skipped_qc: u64,
     pub tiles_failed: u64,
     /// Set when the slide was skipped or failed.
     pub skipped: Option<SlideSkipReason>,
@@ -243,6 +245,7 @@ pub struct DatasetPatchesReport {
     pub total_tiles_skipped_white: u64,
     pub total_tiles_skipped_tissue: u64,
     pub total_tiles_skipped_annotation: u64,
+    pub total_tiles_skipped_qc: u64,
     pub total_tiles_existing: u64,
     pub total_tiles_failed: u64,
     /// Planned tiles (the progress total).
@@ -581,6 +584,7 @@ enum Outcome {
     SkippedWhite,
     SkippedTissue,
     SkippedAnnotation,
+    SkippedQc,
     Failed(String),
 }
 
@@ -600,6 +604,8 @@ struct SlideJob<'a> {
     tissue: Option<(Option<TissueMask>, f32)>,
     stain: Option<(StainTransform, String)>,
     annotations: Option<AnnotationSet>,
+    /// Tissue-QC marks and the bits the run leaves out.
+    qc: Option<(crate::qc::QcResult, u8)>,
     handles: Vec<Mutex<Option<WsiFile>>>,
 }
 
@@ -747,6 +753,7 @@ impl Run<'_> {
             tiles_skipped_white: 0,
             tiles_skipped_tissue: 0,
             tiles_skipped_annotation: 0,
+            tiles_skipped_qc: 0,
             tiles_failed: 0,
             skipped: None,
             errors: Vec::new(),
@@ -757,6 +764,11 @@ impl Run<'_> {
     /// annotation coverage).
     fn prefilter(&self, job: &SlideJob, x: u64, y: u64) -> Option<Outcome> {
         let (fx, fy) = (job.geometry.grid.footprint_x, job.geometry.grid.footprint_y);
+        if let Some((qc, marks)) = &job.qc
+            && qc.rect_marked(x as f64, y as f64, fx, fy, *marks)
+        {
+            return Some(Outcome::SkippedQc);
+        }
         if let (Some((Some(mask), _)), Some(filter)) = (&job.tissue, &self.options.tissue_filter) {
             // Lenient: the mask is coarse, the patch decides.
             if mask.fraction(x as f64, y as f64, fx, fy) < filter.min_fraction * 0.5 {
@@ -895,6 +907,7 @@ struct SlideCounts {
     white: u64,
     tissue: u64,
     annotation: u64,
+    qc: u64,
     failed: u64,
     errors: Vec<String>,
 }
@@ -1037,6 +1050,20 @@ impl Run<'_> {
             Some((p, set)) => (Some(p.display().to_string()), Some(set)),
             None => (None, None),
         };
+        let qc = match self.options.qc_exclusion.filter(|q| q.marks() != 0) {
+            None => None,
+            Some(exclusion) => {
+                let options = crate::qc::QcOptions {
+                    sharpness: exclusion.blur,
+                    ..crate::qc::QcOptions::default()
+                };
+                let cancelled = AtomicBool::new(false);
+                match crate::qc::run(&wsi, &options, &|_| {}, &cancelled) {
+                    Ok(result) => result.map(|result| (result, exclusion.marks())),
+                    Err(e) => return fail(format!("tissue QC: {e}")),
+                }
+            }
+        };
         drop(wsi);
 
         let job = SlideJob {
@@ -1048,6 +1075,7 @@ impl Run<'_> {
             tissue,
             stain,
             annotations,
+            qc,
             handles: (0..self.pool.current_num_threads().max(1))
                 .map(|_| Mutex::new(None))
                 .collect(),
@@ -1128,10 +1156,14 @@ impl Run<'_> {
                         self.control.existing.fetch_add(1, Ordering::Relaxed);
                         1
                     }
-                    Outcome::SkippedWhite | Outcome::SkippedTissue | Outcome::SkippedAnnotation => {
+                    Outcome::SkippedWhite
+                    | Outcome::SkippedTissue
+                    | Outcome::SkippedAnnotation
+                    | Outcome::SkippedQc => {
                         match outcome {
                             Outcome::SkippedWhite => counts.white += 1,
                             Outcome::SkippedTissue => counts.tissue += 1,
+                            Outcome::SkippedQc => counts.qc += 1,
                             _ => counts.annotation += 1,
                         }
                         self.control.skipped.fetch_add(1, Ordering::Relaxed);
@@ -1197,7 +1229,7 @@ impl Run<'_> {
             written: counts.written,
             existing: counts.existing,
             skipped_white: counts.white,
-            skipped_tissue: counts.tissue,
+            skipped_tissue: counts.tissue + counts.qc,
             skipped_annotation: counts.annotation,
             failed: counts.failed,
             fingerprint: Some(job.fingerprint.clone()),
@@ -1214,6 +1246,7 @@ impl Run<'_> {
             tiles_skipped_white: counts.white,
             tiles_skipped_tissue: counts.tissue,
             tiles_skipped_annotation: counts.annotation,
+            tiles_skipped_qc: counts.qc,
             tiles_failed: counts.failed,
             skipped: failure,
             errors: counts.errors,
@@ -1270,6 +1303,7 @@ impl Run<'_> {
             tiles_skipped_white: 0,
             tiles_skipped_tissue: 0,
             tiles_skipped_annotation: 0,
+            tiles_skipped_qc: 0,
             tiles_failed: 0,
             skipped: Some(reason),
             errors: Vec::new(),
@@ -1355,6 +1389,7 @@ pub fn run_dataset(
         total_tiles_skipped_white: 0,
         total_tiles_skipped_tissue: 0,
         total_tiles_skipped_annotation: 0,
+        total_tiles_skipped_qc: 0,
         total_tiles_existing: 0,
         total_tiles_failed: 0,
         planned_tiles: plan.planned_tiles,
@@ -1379,6 +1414,7 @@ pub fn run_dataset(
                     tiles_skipped_white: 0,
                     tiles_skipped_tissue: 0,
                     tiles_skipped_annotation: 0,
+                    tiles_skipped_qc: 0,
                     tiles_failed: 0,
                     skipped: Some(reason.clone()),
                     errors: Vec::new(),
@@ -1450,6 +1486,7 @@ pub fn run_dataset(
         tiles_skipped_white: report.total_tiles_skipped_white,
         tiles_skipped_tissue: report.total_tiles_skipped_tissue,
         tiles_skipped_annotation: report.total_tiles_skipped_annotation,
+        tiles_skipped_qc: report.total_tiles_skipped_qc,
         tiles_failed: report.total_tiles_failed,
     };
     let saved = manifest
@@ -1555,6 +1592,7 @@ fn extract_planned(
         report.total_tiles_skipped_white += slide.tiles_skipped_white;
         report.total_tiles_skipped_tissue += slide.tiles_skipped_tissue;
         report.total_tiles_skipped_annotation += slide.tiles_skipped_annotation;
+        report.total_tiles_skipped_qc += slide.tiles_skipped_qc;
         report.total_tiles_failed += slide.tiles_failed;
     }
     control.set_phase(DatasetPhase::Finishing);

@@ -134,6 +134,7 @@ fn run_spec(settings: &DatasetExportSettings) -> (DatasetPatchesConfig, DatasetP
     };
     let options = DatasetPatchesOptions {
         tissue_filter: settings.tissue_only.then(TissueFilter::default),
+        qc_exclusion: settings.exclude_qc.then(dataset::QcExclusion::all),
         deidentify: settings.deidentify,
         ..DatasetPatchesOptions::default()
     };
@@ -310,9 +311,16 @@ fn summary(report: &DatasetPatchesReport, output_dir: &std::path::Path) -> Strin
     )];
     let skipped = report.total_tiles_skipped_white
         + report.total_tiles_skipped_tissue
-        + report.total_tiles_skipped_annotation;
+        + report.total_tiles_skipped_annotation
+        + report.total_tiles_skipped_qc;
     if skipped > 0 {
         lines.push(format!("{skipped} patches skipped by the filters."));
+    }
+    if report.total_tiles_skipped_qc > 0 {
+        lines.push(format!(
+            "{} of them over pen marks, folds or blurred areas.",
+            report.total_tiles_skipped_qc
+        ));
     }
     if report.total_tiles_existing > 0 {
         lines.push(format!(

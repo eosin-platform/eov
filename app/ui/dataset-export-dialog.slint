@@ -481,6 +481,52 @@ export component DatasetExportDialog inherits Rectangle {
                 }
             }
 
+            // --- Tissue QC ---
+            HorizontalLayout {
+                spacing: 8px;
+                height: 22px;
+                accessible-role: checkbox;
+                accessible-label: "Leave out pen marks, folds and blurred areas";
+                accessible-checkable: true;
+                accessible-checked: root.settings.exclude-qc;
+                accessible-action-default => {
+                    root.settings.exclude-qc = !root.settings.exclude-qc;
+                    root.settings-changed(root.settings);
+                }
+
+                Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.settings.exclude-qc ? Theme.accent : Theme.border;
+                    background: root.settings.exclude-qc ? Theme.accent : transparent;
+
+                    if root.settings.exclude-qc: Text {
+                        text: "✓";
+                        color: white;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: "Leave out pen marks, folds and blurred areas (tissue QC)";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                qc-touch := TouchArea {
+                    clicked => {
+                        root.settings.exclude-qc = !root.settings.exclude-qc;
+                        root.settings-changed(root.settings);
+                    }
+                }
+            }
+
             // --- De-identification ---
             HorizontalLayout {
                 spacing: 8px;

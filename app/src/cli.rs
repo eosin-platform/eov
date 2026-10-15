@@ -298,6 +298,20 @@ struct DatasetPatchesArgs {
     /// institution.
     #[arg(long)]
     deidentify: bool,
+
+    /// Leave out patches over cells tissue QC marks (as `eov qc` finds
+    /// them): pen, folds, blur, or all. Comma-separated.
+    #[arg(long, value_enum, value_delimiter = ',', value_name = "MARKS")]
+    exclude_qc: Vec<CliQcMark>,
+}
+
+/// A tissue-QC mark for `--exclude-qc`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliQcMark {
+    Pen,
+    Folds,
+    Blur,
+    All,
 }
 
 /// A parsed `eov dataset patches` invocation.
@@ -390,6 +404,16 @@ impl DatasetPatchesArgs {
                 max_candidates_per_slide: self.max_candidates,
                 dry_run: self.dry_run,
                 deidentify: self.deidentify,
+                qc_exclusion: (!self.exclude_qc.is_empty()).then(|| {
+                    let has = |mark: CliQcMark| {
+                        self.exclude_qc.contains(&mark) || self.exclude_qc.contains(&CliQcMark::All)
+                    };
+                    dataset::QcExclusion {
+                        pen: has(CliQcMark::Pen),
+                        folds: has(CliQcMark::Folds),
+                        blur: has(CliQcMark::Blur),
+                    }
+                }),
             },
         }
     }
@@ -1711,7 +1735,8 @@ fn print_dataset_report(report: &dataset::DatasetPatchesReport) {
     println!();
     println!(
         "Done: {} slide(s) processed, {} skipped, {} failed; {} patch(es) written, {} already \
-         present, {} skipped as white, {} as non-tissue, {} outside annotations, {} unreadable.",
+         present, {} skipped as white, {} as non-tissue, {} outside annotations, {} over tissue-QC \
+         marks, {} unreadable.",
         report.processed_slides,
         report.skipped_slides - report.failed_slides,
         report.failed_slides,
@@ -1720,6 +1745,7 @@ fn print_dataset_report(report: &dataset::DatasetPatchesReport) {
         report.total_tiles_skipped_white,
         report.total_tiles_skipped_tissue,
         report.total_tiles_skipped_annotation,
+        report.total_tiles_skipped_qc,
         report.total_tiles_failed,
     );
     for meta in &report.metadata_paths {
