@@ -51,6 +51,92 @@ const RATIONAL: u16 = 5;
 const ASCII: u16 = 2;
 const LONG8: u16 = 16;
 
+/// Accented Latin letters and their unaccented ASCII letter.
+const LATIN: &[(&str, char)] = &[
+    ("ÀÁÂÃÄÅĀĂĄ", 'A'),
+    ("àáâãäåāăą", 'a'),
+    ("ÇĆĈĊČ", 'C'),
+    ("çćĉċč", 'c'),
+    ("ĎĐ", 'D'),
+    ("ďđ", 'd'),
+    ("ÈÉÊËĒĖĘĚ", 'E'),
+    ("èéêëēėęě", 'e'),
+    ("ĞĢ", 'G'),
+    ("ğģ", 'g'),
+    ("ÌÍÎÏĪĮİ", 'I'),
+    ("ìíîïīįı", 'i'),
+    ("Ķ", 'K'),
+    ("ķ", 'k'),
+    ("ĹĻĽŁ", 'L'),
+    ("ĺļľł", 'l'),
+    ("ÑŃŅŇ", 'N'),
+    ("ñńņň", 'n'),
+    ("ÒÓÔÕÖØŌŐ", 'O'),
+    ("òóôõöøōő", 'o'),
+    ("ŔŘ", 'R'),
+    ("ŕř", 'r'),
+    ("ŚŞŠȘ", 'S'),
+    ("śşšș", 's'),
+    ("ŢŤȚ", 'T'),
+    ("ţťț", 't'),
+    ("ÙÚÛÜŪŮŰŲ", 'U'),
+    ("ùúûüūůűų", 'u'),
+    ("ÝŸ", 'Y'),
+    ("ýÿ", 'y'),
+    ("ŹŻŽ", 'Z'),
+    ("źżž", 'z'),
+];
+
+/// Text as a NUL-terminated TIFF `ASCII` value. The type is 7-bit ASCII,
+/// so the typographic characters eov's descriptions use (`µ`, `×`, `·`,
+/// `°`, dashes, quotes) and common accented Latin letters (from file names)
+/// are transliterated, anything else becomes `?`, and NULs are dropped.
+fn ascii_value(text: &str) -> Vec<u8> {
+    let mut out = String::with_capacity(text.len() + 1);
+    for c in text.chars() {
+        if c.is_ascii() {
+            if c != '\0' {
+                out.push(c);
+            }
+            continue;
+        }
+        let replacement = match c {
+            'µ' | 'μ' => "u",
+            '×' => "x",
+            '·' | '•' | '∙' => "-",
+            '°' => " deg",
+            '–' | '—' | '−' | '‐' | '‑' => "-",
+            '‘' | '’' | '′' => "'",
+            '“' | '”' | '″' => "\"",
+            '…' => "...",
+            '≈' | '∼' => "~",
+            '≤' => "<=",
+            '≥' => ">=",
+            '±' => "+/-",
+            '→' => "->",
+            '\u{a0}' | '\u{2009}' | '\u{202f}' => " ",
+            'γ' => "gamma",
+            'Δ' => "Delta",
+            'ß' => "ss",
+            'Æ' => "AE",
+            'æ' => "ae",
+            'Œ' => "OE",
+            'œ' => "oe",
+            _ => match LATIN.iter().find(|(from, _)| from.contains(c)) {
+                Some((_, to)) => {
+                    out.push(*to);
+                    continue;
+                }
+                None => "?",
+            },
+        };
+        out.push_str(replacement);
+    }
+    let mut bytes = out.into_bytes();
+    bytes.push(0);
+    bytes
+}
+
 /// Streaming TIFF writer: feed RGB rows with [`write_rows`](Self::write_rows)
 /// and call [`finish`](Self::finish).
 pub struct TiffWriter<W: Write + Seek> {
@@ -180,11 +266,7 @@ impl<W: Write + Seek> TiffWriter<W> {
                 v.iter().flat_map(|x| (*x as u32).to_le_bytes()).collect()
             }
         };
-        let ascii = |s: &str| {
-            let mut b: Vec<u8> = s.bytes().filter(|c| *c != 0).collect();
-            b.push(0);
-            b
-        };
+        let ascii = ascii_value;
         entries.push((256, LONG, 1, u32s(&[self.width])));
         entries.push((257, LONG, 1, u32s(&[self.height])));
         entries.push((258, SHORT, 3, u16s(&[8, 8, 8])));
@@ -349,7 +431,7 @@ mod tests {
             8,
             TiffOptions {
                 dpi: Some(300.0),
-                description: Some("eov export; MPP = 0.2500".into()),
+                description: Some("Pixel size: 0.25 × 0.25 µm\nMPP = 0.2500".into()),
                 software: Some("eov 1.0.0".into()),
                 ..TiffOptions::default()
             },
@@ -357,12 +439,28 @@ mod tests {
         let (_, _, _, mut decoder) = decode(&bytes);
         use tiff::tags::Tag;
         let description = decoder.get_tag_ascii_string(Tag::ImageDescription).unwrap();
-        assert_eq!(description, "eov export; MPP = 0.2500");
+        assert_eq!(description, "Pixel size: 0.25 x 0.25 um\nMPP = 0.2500");
         let software = decoder.get_tag_ascii_string(Tag::Software).unwrap();
         assert_eq!(software, "eov 1.0.0");
         let unit = decoder.get_tag_u32(Tag::ResolutionUnit).unwrap();
         assert_eq!(unit, 2);
         let xres = decoder.get_tag_u32_vec(Tag::XResolution).unwrap();
         assert_eq!(xres, vec![300_000, 1000]);
+    }
+
+    #[test]
+    fn ascii_values_are_seven_bit() {
+        let value = ascii_value("0.25 × 0.25 µm · 12.5° – Øresund Příbram 日本\0x");
+        assert_eq!(
+            value,
+            b"0.25 x 0.25 um - 12.5 deg - Oresund Pribram ??x\0".to_vec()
+        );
+        assert!(value.iter().all(u8::is_ascii));
+        for (from, to) in LATIN {
+            assert!(
+                to.is_ascii() && from.chars().all(|c| !c.is_ascii()),
+                "{from}"
+            );
+        }
     }
 }

@@ -288,6 +288,11 @@ fn files_carry_resolution_and_provenance_metadata() {
         .get_tag_ascii_string(::tiff::tags::Tag::ImageDescription)
         .unwrap();
     assert!(description.contains("MPP = "));
+    // TIFF ASCII is 7-bit: "µm" and "×" are transliterated.
+    assert!(
+        description.is_ascii() && description.contains(" um"),
+        "{description}"
+    );
     let ::tiff::decoder::DecodingResult::U8(rgb) = decoder.read_image().unwrap() else {
         panic!("8-bit RGB expected");
     };
