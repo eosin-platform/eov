@@ -403,6 +403,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 json!(match job.request.kind {
                     JobKind::WholeSlide => "Whole slide",
                     JobKind::Viewport => "Viewport",
+                    JobKind::Roi => "Region of interest",
                     JobKind::Auto => "Visible tiles",
                 }),
             );
@@ -470,7 +471,12 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     let keep_pixels = config.keep_pixels;
     let memory_limit = config.memory_limit_bytes();
     let has_active = active.is_some();
+    let active_id = active.map(|(id, _)| id);
     drop(state);
+    let has_roi = active_id
+        .and_then(|id| core.host.roi(id).ok().flatten())
+        .is_some();
+    set("has-roi", json!(has_roi));
 
     let stats = ctx.as_ref().and_then(|ctx| {
         core.ensure_loaded(ctx);
@@ -724,21 +730,26 @@ pub fn callback<B: Backend>(
             lock(&core.state).model_dialog = Some(id);
         }
         "choose-runtime" => {
-            let extensions = if cfg!(target_os = "windows") {
-                vec!["dll".to_string()]
+            // Versioned Linux names (libonnxruntime.so.1.28.3) defeat an
+            // extension filter, so Linux lists every file.
+            let filters = if cfg!(target_os = "windows") {
+                vec![FileFilter {
+                    name: "ONNX Runtime".into(),
+                    extensions: vec!["dll".into()],
+                }]
             } else if cfg!(target_os = "macos") {
-                vec!["dylib".to_string()]
+                vec![FileFilter {
+                    name: "ONNX Runtime".into(),
+                    extensions: vec!["dylib".into()],
+                }]
             } else {
-                vec!["so".to_string(), "1".to_string()]
+                Vec::new()
             };
             let id = core
                 .host
                 .open_file_dialog(FileDialogArgs {
                     title: Some("Choose the ONNX Runtime library".into()),
-                    filters: vec![FileFilter {
-                        name: "ONNX Runtime".into(),
-                        extensions,
-                    }],
+                    filters,
                     ..Default::default()
                 })
                 .map_err(String::from)?;
@@ -946,7 +957,7 @@ pub fn callback<B: Backend>(
                 state.touch_config();
             }
         }
-        "analyze-viewport" | "analyze-slide" => {
+        "analyze-viewport" | "analyze-slide" | "analyze-roi" => {
             let (file_id, pane, view) = {
                 let state = lock(&core.state);
                 let pane = state.focused_pane;
@@ -957,10 +968,10 @@ pub fn callback<B: Backend>(
                 return Err("Open a slide first.".to_string());
             };
             core.start_job(JobRequest {
-                kind: if name == "analyze-slide" {
-                    JobKind::WholeSlide
-                } else {
-                    JobKind::Viewport
+                kind: match name {
+                    "analyze-slide" => JobKind::WholeSlide,
+                    "analyze-roi" => JobKind::Roi,
+                    _ => JobKind::Viewport,
                 },
                 file_id,
                 pane,

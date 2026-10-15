@@ -112,6 +112,8 @@ pub struct PaneState {
 pub enum JobKind {
     Viewport,
     WholeSlide,
+    /// Tiles intersecting the host's region of interest.
+    Roi,
     /// Visible tiles while an overlay is shown.
     Auto,
 }
@@ -1307,6 +1309,18 @@ impl<B: Backend> Core<B> {
         };
         let (tiles, need_payloads) = match request.kind {
             JobKind::WholeSlide => (ctx.grid.full_range().iter().collect::<Vec<_>>(), false),
+            JobKind::Roi => {
+                let roi = self
+                    .host
+                    .roi(request.file_id)
+                    .map_err(String::from)?
+                    .ok_or_else(|| "Draw a region of interest on the slide first.".to_string())?;
+                let range = ctx.grid.range_in(&roi);
+                let center = ctx
+                    .grid
+                    .tile_units(roi.x + roi.width / 2.0, roi.y + roi.height / 2.0);
+                (range.center_out(center), mode.needs_pixels())
+            }
             JobKind::Viewport | JobKind::Auto => {
                 let view = request
                     .view
@@ -1374,6 +1388,7 @@ impl<B: Backend> Core<B> {
         let host_job = if request.kind.explicit() {
             let title = match request.kind {
                 JobKind::WholeSlide => "VAE: whole slide",
+                JobKind::Roi => "VAE: region of interest",
                 _ => "VAE: viewport",
             };
             self.host.start_job(title, true).ok()
@@ -1519,7 +1534,8 @@ impl<B: Backend> Core<B> {
     /// Writes the active run's tile scores as CSV, plus a JSON manifest of
     /// how they were computed (§14.5). No slide path is written.
     fn export_csv(self: &Arc<Self>, file_id: FileId, path: PathBuf) {
-        let ctx = match run_context(&lock(&self.state), file_id) {
+        let found = run_context(&lock(&self.state), file_id);
+        let ctx = match found {
             Ok(ctx) => ctx,
             Err(reason) => {
                 self.host
@@ -1667,6 +1683,7 @@ fn summarize_outcome(kind: JobKind, outcome: &JobOutcome, elapsed: Duration) -> 
     let what = match kind {
         JobKind::WholeSlide => "Whole slide",
         JobKind::Viewport => "Viewport",
+        JobKind::Roi => "Region of interest",
         JobKind::Auto => "Automatic analysis",
     };
     match outcome {

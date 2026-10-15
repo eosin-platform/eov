@@ -700,3 +700,63 @@ fn results_persist_across_restarts_without_new_reads() {
         "{result}"
     );
 }
+
+#[test]
+fn the_manifest_is_valid_for_plugin_api_1() {
+    use eov_plugin_api::PluginManifest;
+    let version = |text: &str| semver::Version::parse(text).unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest = PluginManifest::from_file(&root.join("plugin.toml")).unwrap();
+    assert_eq!(manifest.id, "eovae");
+    assert_eq!(
+        manifest.version,
+        env!("CARGO_PKG_VERSION"),
+        "plugin.toml and Cargo.toml agree"
+    );
+    assert!(manifest.declares_environment);
+    assert_eq!(manifest.api.as_deref(), Some(">=1.0, <2"));
+    assert!(manifest.accepts_api(&version(eov_plugin_api::abi::API_VERSION)));
+    assert!(manifest.accepts_host(&version("1.0.0")));
+    assert!(!manifest.accepts_host(&version("2.0.0")));
+    assert!(manifest.accepts_slint(&version("1.17.1")));
+    manifest.validate_files(root).unwrap();
+    // The host loads lib<id>.so (or the platform's name): the crate's
+    // library must be named after the id.
+    let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    assert!(cargo.contains("name = \"eovae\"\ncrate-type = [\"cdylib\", \"rlib\"]"));
+    // No 0.x leftovers.
+    let text = std::fs::read_to_string(root.join("plugin.toml")).unwrap();
+    assert!(!text.contains("toolbar_buttons"));
+}
+
+#[test]
+fn region_of_interest_runs_cover_only_the_roi() {
+    let s = setup();
+    // A host ROI over two tiles of the level-1 grid (128 level-0 px each).
+    s.harness.state().roi.insert(
+        1,
+        Rect {
+            x: 300.0,
+            y: 140.0,
+            width: 200.0,
+            height: 100.0,
+        },
+    );
+    let surface = s.start();
+    s.wait_property("ROI button", "has-roi", |v| v == &json!(true));
+    s.callback(&surface, "analyze-roi", vec![]);
+    s.wait_finished();
+    let reads = s.reads();
+    // x 300..500 spans columns 2-3 (256..512); y 140..240 is row 1.
+    assert_eq!(reads.len(), 2, "{reads:?}");
+    assert!(
+        reads
+            .iter()
+            .all(|r| (256..512).contains(&r.x) && r.y == 128)
+    );
+    let result = s.property("last-result");
+    assert!(
+        result.as_str().unwrap().contains("Region of interest"),
+        "{result}"
+    );
+}

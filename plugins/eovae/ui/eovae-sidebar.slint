@@ -203,6 +203,7 @@ export component EovaeSidebar inherits Rectangle {
     in-out property <bool> skip-background: true;
     in-out property <bool> auto-analyze: true;
     in property <bool> can-analyze: false;
+    in property <bool> has-roi: false;
     in property <bool> job-running: false;
     in property <string> job-title;
     in property <string> job-status;
@@ -258,6 +259,7 @@ export component EovaeSidebar inherits Rectangle {
     callback auto-analyze-toggled(bool);
     callback analyze-viewport();
     callback analyze-slide();
+    callback analyze-roi();
     callback cancel-job();
     callback view-selected(int) -> int;
     callback jump-to-region(string);
@@ -521,6 +523,15 @@ export component EovaeSidebar inherits Rectangle {
                         hover: #2b8777;
                         enabled: root.can-analyze;
                         clicked => { root.analyze-viewport(); }
+                    }
+
+                    ActionButton {
+                        horizontal-stretch: 1;
+                        text: "ROI";
+                        base: #2e5e8a;
+                        hover: #3b74a8;
+                        enabled: root.can-analyze && root.has-roi;
+                        clicked => { root.analyze-roi(); }
                     }
 
                     ActionButton {
