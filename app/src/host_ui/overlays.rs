@@ -62,6 +62,8 @@ struct Displayed {
 
 struct PaneOverlay {
     requested: Option<FrameKey>,
+    /// The requested frame has nothing to draw: it is not waited for.
+    requested_empty: bool,
     ticket: u64,
     displayed_ticket: u64,
     displayed: Option<Displayed>,
@@ -74,6 +76,7 @@ impl Default for PaneOverlay {
     fn default() -> Self {
         Self {
             requested: None,
+            requested_empty: false,
             ticket: 0,
             displayed_ticket: 0,
             displayed: None,
@@ -109,14 +112,16 @@ impl OverlayPanes {
         self.cursors.insert(pane_index, cursor);
     }
 
-    /// Whether some pane still waits for a frame.
+    /// Whether some pane still waits for a frame (one with nothing to draw
+    /// is never rendered, so it is not waited for).
     pub(super) fn pending(&self) -> bool {
         self.panes.values().any(|pane| {
-            pane.requested.as_ref().is_some_and(|key| {
-                pane.displayed
-                    .as_ref()
-                    .is_none_or(|displayed| displayed.view != key.view)
-            })
+            !pane.requested_empty
+                && pane.requested.as_ref().is_some_and(|key| {
+                    pane.displayed
+                        .as_ref()
+                        .is_none_or(|displayed| displayed.view != key.view)
+                })
         })
     }
 }
@@ -291,7 +296,8 @@ impl UiHost {
         };
         if pane.requested.as_ref() != Some(&key) && !self.worker.is_busy(uid) {
             pane.ticket += 1;
-            if scene.is_empty() {
+            pane.requested_empty = scene.is_empty();
+            if pane.requested_empty {
                 // Nothing to draw: skip the worker entirely.
                 pane.displayed = None;
             } else {
@@ -369,5 +375,40 @@ impl UiHost {
     pub(super) fn redraw_overlays(&self) {
         self.overlays.borrow_mut().bump_scene();
         self.request_render();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A pane whose overlay has nothing to draw waits for no frame, so the
+    /// render loop can idle; one with something to draw waits until it is
+    /// displayed.
+    #[test]
+    fn empty_overlays_are_not_waited_for() {
+        let view = view_transform(
+            &Viewport::new(100.0, 100.0, 1000.0, 1000.0),
+            1.0,
+            &Calibration::new(None, None),
+        );
+        let key = FrameKey {
+            file_id: 1,
+            view,
+            store_revision: 0,
+            scene_generation: 0,
+        };
+        let mut panes = OverlayPanes::default();
+        panes.panes.insert(
+            7,
+            PaneOverlay {
+                requested: Some(key),
+                requested_empty: true,
+                ..PaneOverlay::default()
+            },
+        );
+        assert!(!panes.pending());
+        panes.panes.get_mut(&7).unwrap().requested_empty = false;
+        assert!(panes.pending(), "a frame to draw is waited for");
     }
 }
