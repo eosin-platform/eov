@@ -168,7 +168,6 @@ struct CpuFrameStateUpdate {
     last_render_deconv_e_visible: bool,
     last_render_deconv_isolated: crate::state::IsolatedChannel,
     last_render_filter_revision: u64,
-    gpu_surface_valid: bool,
 }
 
 struct CpuPaneExecution {
@@ -955,6 +954,13 @@ pub(crate) fn update_and_render(
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
 ) -> bool {
+    // A minimised window shows nothing, and the GPU does not render for
+    // it, so a readback for plugin filters would never arrive: the loop
+    // stops until the window is back (its focus or visibility event starts
+    // it again, see `callbacks`).
+    if ui.window().is_minimized() {
+        return false;
+    }
     if let Some(reason) = crate::gpu::take_failure() {
         use_cpu_after_gpu_failure(ui, &mut state.write(), &reason);
         crate::host_ui::with_host(|host| {
@@ -1526,7 +1532,6 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_deconv_e_visible = frame_update.last_render_deconv_e_visible;
             pane_state.last_render_deconv_isolated = frame_update.last_render_deconv_isolated;
             pane_state.last_render_filter_revision = frame_update.last_render_filter_revision;
-            pane_state.gpu_surface_valid = frame_update.gpu_surface_valid;
         }
 
         if let Some(pending_cpu_job_id) = execution.commit.pending_cpu_job_id {
@@ -1831,7 +1836,6 @@ fn render_cpu_pane_from_snapshot(
         last_render_deconv_e_visible: snapshot.hud_deconv_e_visible,
         last_render_deconv_isolated: snapshot.hud_deconv_isolated,
         last_render_filter_revision: snapshot.filter_revision,
-        gpu_surface_valid: false,
     });
 
     let Some(level_info) = snapshot.tile_manager.wsi().level(level).cloned() else {
@@ -2270,15 +2274,11 @@ fn render_pane_gpu(
     .flatten();
 
     if image.is_some() {
-        if let Some(pane_state) = file.pane_state_mut(pane) {
-            pane_state.gpu_surface_valid = true;
-        }
         ui.window().request_redraw();
     } else if let Some(pane_state) = file.pane_state_mut(pane) {
         pane_state.frame_count = 0;
         pane_state.last_render_level = u32::MAX;
         pane_state.tiles_loaded_since_render = 0;
-        pane_state.gpu_surface_valid = false;
     }
     let rendered = image.is_some();
 
@@ -2865,6 +2865,24 @@ mod tests {
             assert!(!ui.get_gpu_rendering_available());
             assert_eq!(ui.get_status_text(), GPU_FAILED_MESSAGE);
             assert!(crate::gpu::take_failure().is_none(), "reported once");
+        });
+    }
+
+    /// While the window is minimised the loop stops, whatever is pending.
+    #[test]
+    fn the_render_loop_stops_while_minimised() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            // Not shown: hiding the test thread's only shown window would
+            // queue a quit that ends the next test's event loop early.
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            ui.window().set_minimized(true);
+            assert!(ui.window().is_minimized());
+            state.write().request_render();
+            assert!(!update_and_render(&ui, &state, &tile_cache));
+            assert!(state.read().needs_render, "the frame is drawn later");
+            ui.window().set_minimized(false);
         });
     }
 

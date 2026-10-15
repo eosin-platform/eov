@@ -2813,8 +2813,18 @@ pub fn setup_callbacks(
                     modifiers.set(next_modifiers.state());
                     EventResult::Propagate
                 }
-                winit::event::WindowEvent::Focused(_) => {
+                winit::event::WindowEvent::Focused(focused) => {
                     crate::host_ui::window_focus_changed();
+                    // Back from being minimised: the render loop, which
+                    // stopped, catches up.
+                    if *focused && let Some(ui) = ui_weak.upgrade() {
+                        request_render_loop(
+                            &render_timer,
+                            &ui.as_weak(),
+                            &state_handle,
+                            &tile_cache,
+                        );
+                    }
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::CursorMoved { position, .. } => {

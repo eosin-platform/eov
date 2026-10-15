@@ -1752,9 +1752,15 @@ impl GpuRenderer {
         done
     }
 
-    /// Whether readbacks are still on their way.
+    /// Whether readbacks are still on their way, including those of frames
+    /// waiting for the window's next rendering.
     pub(crate) fn readbacks_pending(&self) -> bool {
-        !self.pending_readbacks.is_empty() || !self.readback_requests.is_empty()
+        !self.pending_readbacks.is_empty()
+            || !self.readback_requests.is_empty()
+            || self
+                .pending_frames
+                .values()
+                .any(|frame| frame.readback.is_some())
     }
 
     // -----------------------------------------------------------------------
@@ -2670,6 +2676,10 @@ mod tests {
         renderer
             .pending_frames
             .insert(slot.index(), tagged_frame(width, 1));
+        assert!(
+            renderer.readbacks_pending(),
+            "a frame waiting for the window's rendering is not lost"
+        );
         renderer.flush_pending_frames();
         assert!(renderer.readbacks_pending());
         let frames = wait_for_readbacks(&mut renderer);
