@@ -818,8 +818,9 @@ fn copies_record_their_objective_power_for_readers() {
         };
         convert(&source, &output, &options);
         let copy = WsiFile::open(&output).unwrap();
-        // OpenSlide's generic TIFF driver reports none itself.
-        assert_eq!(copy.properties().objective_power, None);
+        // OpenSlide's generic TIFF driver reports none itself; eov reads it
+        // back from the description.
+        assert_eq!(copy.properties().objective_power, Some(5.0));
         let comment = copy.properties().comment.clone().unwrap();
         // 20× at level 0; level 1 is 4× smaller.
         assert_eq!(
