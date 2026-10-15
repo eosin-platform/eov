@@ -792,6 +792,8 @@ fn begin_color_frame(state: &mut AppState) {
         pool.retain_panes(&live);
     }
     gpu_filters::retain_panes(&live);
+    // GPU surfaces of closed panes (RND-7).
+    crate::with_gpu_renderer(|renderer| renderer.borrow_mut().retain_slots(live.len()));
     let refitted = crate::color::files_with_new_fits();
     if refitted.is_empty() {
         return;
@@ -806,11 +808,36 @@ fn begin_color_frame(state: &mut AppState) {
     state.request_render();
 }
 
+/// Message shown when the GPU renderer fails while running.
+const GPU_FAILED_MESSAGE: &str = "The GPU renderer failed; slides are drawn by the CPU renderer";
+
+/// The GPU failed (a wgpu error or a lost device): slides are drawn by the
+/// CPU renderer from now on (RND-7).
+fn use_cpu_after_gpu_failure(ui: &AppWindow, state: &mut AppState, reason: &str) {
+    tracing::warn!("{GPU_FAILED_MESSAGE}: {reason}");
+    crate::with_gpu_renderer(|renderer| renderer.borrow_mut().disable());
+    state.gpu_backend_available = false;
+    state.select_render_backend(RenderBackend::Cpu);
+    crate::ui_update::update_render_backend(ui, state);
+    ui.set_status_text(GPU_FAILED_MESSAGE.into());
+}
+
 pub(crate) fn update_and_render(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
 ) -> bool {
+    if let Some(reason) = crate::gpu::take_failure() {
+        use_cpu_after_gpu_failure(ui, &mut state.write(), &reason);
+        crate::host_ui::with_host(|host| {
+            host.notify(
+                eov_plugin_api::protocol::NotifyLevel::Warning,
+                GPU_FAILED_MESSAGE,
+                Some(&reason),
+                None,
+            )
+        });
+    }
     let (completed_cpu_frame, cpu_jobs_pending, render_backend) = {
         let mut state = state.write();
         begin_color_frame(&mut state);
@@ -2565,6 +2592,30 @@ mod tests {
             assert!(!cached.fine_tiles.is_empty());
             let shown = crate::with_pane_render_cache(1, |cache| cache[0].content.is_some());
             assert!(shown);
+        });
+    }
+
+    /// RND-7: a GPU error switches the slides to the CPU renderer instead
+    /// of crashing, and the GPU stays off.
+    #[test]
+    fn a_failed_gpu_hands_the_slides_to_the_cpu_renderer() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            {
+                let mut state = state.write();
+                state.gpu_backend_available = true;
+                state.select_render_backend(RenderBackend::Gpu);
+            }
+            crate::gpu::record_failure("GPU error: test".to_string());
+            update_and_render(&ui, &state, &tile_cache);
+            let state = state.read();
+            assert_eq!(state.render_backend, RenderBackend::Cpu);
+            assert!(!state.gpu_backend_available);
+            assert!(!ui.get_gpu_rendering_available());
+            assert_eq!(ui.get_status_text(), GPU_FAILED_MESSAGE);
+            assert!(crate::gpu::take_failure().is_none(), "reported once");
         });
     }
 
