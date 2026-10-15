@@ -398,7 +398,8 @@ impl HandleCell {
 
         // Another thread may have replaced the handle while we waited.
         let current = self.current();
-        if current.generation != failed.generation && !current.slide.is_poisoned() {
+        let replaced = current.generation != failed.generation && !current.slide.is_poisoned();
+        if replaced && !attempted {
             return Ok(Recovered::Retry(current));
         }
 
@@ -409,6 +410,38 @@ impl HandleCell {
                 self.path.display(),
                 wait.as_millis().max(1)
             )));
+        }
+
+        if replaced {
+            // Our own operation failed, but someone else already published a
+            // healthy handle. Re-check on a private handle: if the data is
+            // bad, retrying on the shared one would poison it again.
+            let probe = match self.open_fresh() {
+                Ok(probe) => probe,
+                Err(err) => {
+                    recovery.note_open_failure(now);
+                    self.counters.failed_reopens.fetch_add(1, Ordering::Relaxed);
+                    return Err(Error::HandlePoisoned(format!(
+                        "{}: reopening failed: {err}",
+                        self.path.display()
+                    )));
+                }
+            };
+            recovery.note_open_success();
+            drop(recovery);
+            return match op(&probe) {
+                Ok(value) => Ok(Recovered::Done(value)),
+                Err(Error::HandlePoisoned(message)) => {
+                    if let Some(key) = key {
+                        self.mark_bad(key.clone(), message.clone());
+                    }
+                    Err(match key {
+                        Some(key) => key.clone().into_error(message),
+                        None => Error::OpenSlide(message),
+                    })
+                }
+                Err(other) => Err(other),
+            };
         }
 
         let fresh = match self.open_fresh() {

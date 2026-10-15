@@ -302,6 +302,26 @@ impl OpenSlide {
         }
     }
 
+    /// Error check after a call that fills `dest` and, if *it* fails,
+    /// clears all of it (`openslide_read_region`, associated images, ICC).
+    ///
+    /// A handle can be poisoned by a concurrent call on another thread while
+    /// ours succeeds. Any non-zero element proves that our call wrote real
+    /// data, so only an all-zero result is reported as a failure. (A
+    /// legitimately all-transparent region is reported as a failure too; the
+    /// caller's recovery re-reads it on a fresh handle.)
+    fn check_filled<T: Copy + PartialEq + Default>(&self, dest: &[T], context: &str) -> Result<()> {
+        if !self.is_poisoned() {
+            return Ok(());
+        }
+        let zero = T::default();
+        if dest.iter().any(|&value| value != zero) {
+            Ok(())
+        } else {
+            Err(self.poisoned_error(context))
+        }
+    }
+
     /// Number of pyramid levels.
     pub fn level_count(&self) -> Result<u32> {
         // SAFETY: valid handle.
@@ -396,7 +416,7 @@ impl OpenSlide {
                 i64::from(height),
             );
         }
-        self.check("openslide_read_region")
+        self.check_filled(dest, "openslide_read_region")
     }
 
     /// Names of all properties.
@@ -481,7 +501,7 @@ impl OpenSlide {
         unsafe {
             ffi::openslide_read_associated_image(self.ptr(), c_name.as_ptr(), dest.as_mut_ptr());
         }
-        self.check("openslide_read_associated_image")?;
+        self.check_filled(&dest, "openslide_read_associated_image")?;
         Ok((w as u32, h as u32, dest))
     }
 
@@ -498,7 +518,7 @@ impl OpenSlide {
         let mut dest = try_alloc_u8(size as usize)?;
         // SAFETY: `dest` holds exactly the profile size OpenSlide reported.
         unsafe { ffi::openslide_read_icc_profile(self.ptr(), dest.as_mut_ptr().cast::<c_void>()) };
-        self.check("openslide_read_icc_profile")?;
+        self.check_filled(&dest, "openslide_read_icc_profile")?;
         Ok(Some(dest))
     }
 
@@ -527,7 +547,7 @@ impl OpenSlide {
                 dest.as_mut_ptr().cast::<c_void>(),
             );
         }
-        self.check("openslide_read_associated_image_icc_profile")?;
+        self.check_filled(&dest, "openslide_read_associated_image_icc_profile")?;
         Ok(Some(dest))
     }
 
@@ -739,6 +759,11 @@ mod tests {
         assert!(good.iter().all(|&p| p == 0));
         assert!(slide.level_count().is_err());
         assert!(slide.best_level_for_downsample(2.0).is_err());
+
+        // A call that wrote data succeeded even if the handle is poisoned now
+        // (by a concurrent call); only an all-cleared result is a failure.
+        assert!(slide.check_filled(&[0u32, 0xff00_0000], "test").is_ok());
+        assert!(slide.check_filled(&[0u32; 4], "test").is_err());
     }
 
     #[test]
