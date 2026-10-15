@@ -300,7 +300,6 @@ export component AppWindow inherits Window {
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
-    callback file-dropped(string);
     callback viewport-interaction-started(int);
     callback pane-focused(int);
     callback request-render();
@@ -787,9 +786,6 @@ export component AppWindow inherits Window {
                     }
                     minimap-drag-end => {
                         root.minimap-drag-end();
-                    }
-                    file-dropped(path) => {
-                        root.file-dropped(path);
                     }
                     viewport-interaction-started(pane-id) => {
                         root.viewport-interaction-started(pane-id);

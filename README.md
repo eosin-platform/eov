@@ -119,7 +119,7 @@ eov opens pyramid-based whole-slide image files through OpenSlide and presents t
 
 Current capabilities include:
 
-- Open WSI files from the file picker, drag and drop, the recent-files list, the command line, the file manager ("Open With", double-click) or `eov://` links that point at a place on a slide (see [Opening slides](#opening-slides)).
+- Open WSI files from the file picker, drag and drop, the recent-files list, the command line, the file manager ("Open With", double-click) or `eov://` links that point at a place on a slide (see [Opening slides](#opening-slides)). Drag and drop needs X11, Windows or macOS: the windowing library eov uses (winit 0.30) does not receive drops on Wayland, so on a Wayland desktop start eov with `env -u WAYLAND_DISPLAY eov` (it then runs through XWayland) or open slides another way.
 - One eov window: opening more slides while eov runs adds them as tabs instead of starting another eov.
 - A tab- and pane-based layout
 - Duplicate tabs into additional panes for side-by-side comparison.

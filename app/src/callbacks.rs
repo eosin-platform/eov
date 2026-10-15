@@ -1693,47 +1693,6 @@ pub fn setup_callbacks(
     }
 
     {
-        let state = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui.as_weak();
-
-        ui.on_file_dropped(move |path_str| {
-            let path_string = path_str.to_string();
-            let paths: Vec<&str> = path_string
-                .lines()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            for path_str in paths {
-                let path = if path_str.starts_with("file://") {
-                    PathBuf::from(path_str.strip_prefix("file://").unwrap_or(path_str))
-                } else {
-                    PathBuf::from(path_str)
-                };
-
-                if path.exists()
-                    && let Some(ui) = ui_weak.upgrade()
-                {
-                    if path.is_dir() {
-                        open_folder_as_series(&ui, &state, path);
-                    } else {
-                        open_path_with_series(
-                            &ui,
-                            &state,
-                            &tile_cache,
-                            &render_timer,
-                            path,
-                            crate::file_ops::OpenFileMode::ReuseExistingTab,
-                        );
-                    }
-                }
-            }
-        });
-    }
-
-    {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
