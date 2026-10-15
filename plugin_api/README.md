@@ -219,7 +219,7 @@ directories, so tests never touch a real eov installation.
 
 ## License
 
-Licensed under [MIT](https://github.com/eosin-platform/eov/blob/main/LICENSE-MIT),
-[Apache-2.0](https://github.com/eosin-platform/eov/blob/main/LICENSE-APACHE-2.0),
-or [GPLv3](https://github.com/eosin-platform/eov/blob/main/LICENSE-GPLv3), at
+Licensed under [MIT](https://github.com/eosin-platform/eov/blob/master/LICENSE-MIT),
+[Apache-2.0](https://github.com/eosin-platform/eov/blob/master/LICENSE-APACHE-2.0),
+or [GPLv3](https://github.com/eosin-platform/eov/blob/master/LICENSE-GPLv3), at
 your option.

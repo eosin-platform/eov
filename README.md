@@ -199,7 +199,7 @@ With the [annotations plugin](https://github.com/eosin-platform/eov-annotations-
 
 ## Texture Filtering
 
-eov provides three texture filtering modes, selectable from the viewport context menu:
+eov provides three texture filtering modes, selectable in the window toolbar (or `filtering_mode` in `config.toml`, `--filtering-mode` on the command line):
 
 | Mode | Description |
 |------|-------------|
@@ -471,17 +471,19 @@ ds/
       <slide-stem>_x000000_y000000_s512.png
       <slide-stem>_x000512_y000000_s512.png
       ...
-  metadata.csv   # if --metadata csv
-  metadata.json  # if --metadata json
+  metadata.csv     # per patch (without --metadata, or --metadata csv)
+  metadata.jsonl   # per patch (without --metadata, or --metadata json)
+  slides.csv       # per slide
+  dataset.json     # parameters, inputs and totals of the run (also for resuming)
 ```
+
+With `--deidentify`, `<slide-stem>` is replaced by an opaque `slide-<id>`.
 
 Tile filenames encode the origin coordinates and tile size with zero-padded values for lexical sorting. Tiles from different slides are placed in separate subdirectories so filenames cannot collide.
 
 ### Metadata
 
-When `--metadata csv` or `--metadata json` is provided, a single metadata file is written at the dataset root. Each record includes the slide path, slide stem, tile path, X/Y origin, tile size, slide dimensions, pyramid level (always 0), and microns-per-pixel when available from slide properties. No metadata file is written unless `--metadata` is explicitly provided.
-
-This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
+Metadata is written as CSV and JSON unless `--metadata csv` or `--metadata json` picks one. Each patch record includes the slide id, path (not with `--deidentify`) and stem, the patch path, its origin and size in output and level-0 pixels, the pyramid level and downsample read, the output microns per pixel, tissue and white fractions, the annotation label and coverage and mask path when annotations are used, and the slide's vendor, MPP and content fingerprint. `eov dataset patches --help` lists every option (target resolution, tissue filter, annotations and masks, stain normalisation, per-slide caps and sampling, JPEG output, resuming and dry runs).
 
 ## Plugins
 
@@ -578,12 +580,12 @@ bookmark-add = "Ctrl+D"
 
 ## Architecture
 
-This repository is a Cargo workspace with four crates:
+This repository is a Cargo workspace (`common`, `app`, `plugin_api` and `plugin_api/example-plugin`); the plugins under `plugins/` are separate Cargo projects built against the in-tree `plugin_api`, and `annotations`, `gamepad` and `cellaris` are git submodules (`git submodule update --init`):
 
-- `common`: WSI access, tile management, caching, viewport math, and benchmarks.
-- `app`: the desktop application built with Slint + CPU/GPU rendering paths.
-- `plugin_api`: shared trait definitions and manifest types for the native plugin system.
-- `plugins/*`: in-tree native plugins loaded through `abi_stable`.
+- `common` (`eov-common`): WSI access through OpenSlide, tile management and caching, viewport math, colour science (stain normalisation, deconvolution, quantification), image export and dataset extraction.
+- `app` (`eov`): the desktop application (Slint UI, CPU and GPU rendering, the plugin host) and the command line (updates, plugin management, datasets, probing).
+- `plugin_api` (`eov-plugin-api`): the plugin SDK, ABI, protocol, manifest and a mock host for tests.
+- `plugins/*`: the in-tree plugins.
 
 At a high level, the flow is:
 
@@ -624,9 +626,10 @@ sudo apt-get install -y \
 
 ### How to Build
 
-Build the release binary from the workspace root:
+Build a development binary from the workspace root with a current stable Rust (install it with [rustup](https://rustup.rs): distribution packages of `cargo` are often too old for edition 2024):
 
 ```bash
+git submodule update --init   # the annotations, gamepad and cellaris plugins
 cargo build --bin eov
 ```
 
@@ -662,20 +665,23 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 ```text
 .
 ├── Cargo.toml            # Workspace definition
-├── app/                  # Desktop application crate
-│   ├── src/              # Application logic, rendering, callbacks, state
-│   │   └── plugins/      # Plugin manager, discovery, toolbar wiring
+├── app/                  # Desktop application and CLI (crate eov)
+│   ├── src/              # State, rendering, the plugin host (host_ui, plugin_runtime), CLI, updates
 │   └── ui/               # Slint UI components
-├── common/               # Shared WSI, tile, cache, and viewport code
+├── common/               # WSI, tiles, caching, viewport, colour, export, datasets (crate eov-common)
 │   ├── src/
 │   └── benches/          # Benchmarks for various core functions
-├── plugin_api/           # Shared plugin trait definitions and manifest types
-│   └── src/
-├── plugins/              # In-tree native plugins
-│   ├── annotations/
+├── plugin_api/           # Plugin SDK, ABI, protocol and mock host (crate eov-plugin-api)
+│   └── example-plugin/   # A complete plugin, also eov's end-to-end test
+├── plugins/              # In-tree plugins (separate Cargo projects)
+│   ├── annotations/      # submodule
+│   ├── cellaris/         # submodule
 │   ├── eovae/
-│   └── gamepad/
-└── fixtures/             # Sample data used for local testing/benchmarks
+│   └── gamepad/          # submodule
+├── assets/               # Icons, desktop and MIME files, macOS Info.plist
+├── packaging/            # AppImage, Flatpak, macOS, Windows and Homebrew packaging
+├── scripts/              # Release, packaging and development scripts
+└── fixtures/             # Sample slides for local tests and benchmarks (not in git)
 ```
 
 ## Status
