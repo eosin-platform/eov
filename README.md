@@ -131,12 +131,18 @@ Current capabilities include:
 - Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
 - Color deconvolution: separate and visualize individual H&E stain channels with per-channel intensity control and channel isolation, on both CPU and GPU.
-- A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available.
+- A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available, and a pixel size you can set for slides that lack one (Slide Information, kept per slide).
 - A minimap thumbnail with viewport navigation and a zoom slider.
-- Basic "Region of Interest" and "Measure Distance" tools.
-- Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
-- Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
-- Various quality of life enhancements expected from modern software packages
+- Slide Information (I): the label and macro images (with a privacy toggle to hide the label), and every property, searchable and copyable.
+- Objective-equivalent magnification presets (1–6, 0 for 1:1), fit to the slide or to its tissue, rotation in quarter turns and mirroring, full screen, and a remappable keyboard shortcut table (F1 lists it).
+- Back and forward through the views of a pane (Alt+←/→), named bookmarks of views (Ctrl+B), and the open slides and views restored at the next start.
+- A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
+- Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
+- A series bar for the slides of a folder (a case): filter, order by name, date or stain, one entry per DICOM series, and PageUp/PageDown to step through them.
+- Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
+- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
+- Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`).
+- An audit log of what eov ran with (`<data>/audit.jsonl`: versions and plugins, installs and updates), and a session log and crash reports in the log folder.
 
 ## Keyboard Shortcuts
 
@@ -479,21 +485,19 @@ This first version extracts fixed-grid patches only. Annotation-driven labeling 
 
 ## Plugins
 
-eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
+Plugins extend eov with tools, overlays, panels, filters and analyses. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
 
 ### Annotations Plugin
 
-The official companion [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
+The official companion [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds points, regions (polygon, freehand, brush, rectangle, ellipse), lines, arrows and text, reusable classes with hotkeys, cell counting with densities and indices, high-power fields, measurements in physical units, review status and comment threads, blinded copies for multi-reader studies, and import and export in GeoJSON (as QuPath writes it), ASAP and Aperio ImageScope XML, Hamamatsu NDPA (import) and CSV. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
 
 ### Gamepad Plugin
 
-The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles.
+The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles. It acts only while an eov window has focus, and moving the system pointer is opt-in.
 
 ### General Plugin Architecture
 
-Plugins are native Rust dynamic libraries loaded through `abi_stable`. They can contribute toolbar buttons, HUD actions, sidebars, viewport overlays, and viewport filters while interacting with the host through a stable vtable.
-
-Plugins can query a host snapshot containing app/session state, open-file metadata, and the active viewport; read slide regions by file id; ask for a file’s pyramid levels with their dimensions and downsample factors (which are not always powers of two); open a file in the viewer; move or fit the active viewport; frame an image-space rectangle; and send plugin-scoped log messages back to the host.
+A plugin is a `cdylib` implementing the SDK's `Plugin` trait, exported with `export_plugin!`. eov checks the library's API and ABI before any plugin code runs, then talks to it through JSON messages (pixels as binary buffers): it sends events (files opened, views changed, tool gestures, UI callbacks, …) on its UI thread with no locks held, and the plugin calls the host from any thread, without blocking it, to read slide regions and properties, draw retained overlay layers, register tools, hotkeys, toolbar and HUD buttons, open Slint panels, run viewport filters, push undo entries, keep settings and show progress. A panicking plugin is stopped and reported, not allowed to take eov down. See [plugin_api/README.md](plugin_api/README.md) for the API, the manifest, packaging and a mock host for tests.
 
 ### Plugin Directory
 
@@ -507,71 +511,25 @@ Each `.eop` package in that directory is treated as a plugin package: a tar arch
 
 The Plugins panel (the plugin button in the toolbar) does the same from the window. It lists each plugin with its version, origin and state, says why one failed or whether its package changed since it was installed, and lists packages eov cannot read. Plugins can be disabled, enabled and removed there. **Check for updates** asks before going online, then compares the installed plugins with the official catalog of this eov release; an update is installed after a confirmation and used from the next start.
 
-### Manifest Format
+### Manifest and Writing a Plugin
 
-Every plugin directory must contain a `plugin.toml` at its root:
+Each package has a `plugin.toml` at its root:
 
 ```toml
-[plugin]
-id = "example_plugin"
-name = "Example Plugin"
-version = "0.1.0"
-entry_ui = "ui/my_panel.slint"
-entry_component = "MyPanel"
+id = "hello"                        # ^[a-z0-9][a-z0-9_]{0,63}$
+name = "Hello"
+version = "1.0.0"
+api = ">=1.0, <2"                   # eov-plugin-api requirement
 
-[icon]
-svg = '<svg>...</svg>'
-# OR: file = "icons/my-icon.svg"
+[environment]
+version = ">=1.0.0, <2.0.0"         # eov versions the plugin supports
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | yes | Unique plugin identifier. Must match the id used during registration. |
-| `name` | yes | Human-readable display name. |
-| `version` | yes | SemVer version string. |
-| `entry_ui` | no | Relative path to a `.slint` file loaded at runtime via the Slint interpreter. |
-| `entry_component` | no | Name of the exported component inside the `.slint` file. |
-| `icon.svg` | no | Inline SVG string for the toolbar button icon. |
-| `icon.file` | no | Relative path to an SVG icon file. |
-
-Paths must be relative (no leading `/` or `..` traversal) and are resolved against the plugin directory root.
-
-### Writing a Plugin
-
-1. Create a Rust library crate that depends on `plugin_api`.
-2. Implement the `Plugin` trait:
-
-```rust
-use eov_plugin_api::{Plugin, HostContext, PluginError};
-use eov_plugin_api::manifest::PluginManifest;
-
-pub struct MyPlugin { manifest: PluginManifest }
-
-impl Plugin for MyPlugin {
-    fn manifest(&self) -> &PluginManifest { &self.manifest }
-
-    fn activate(&self, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
-        // Register toolbar buttons, initialize state
-        host.add_toolbar_button(ToolbarButtonRegistration { /* ... */ })?;
-        Ok(())
-    }
-
-    fn on_action(&self, action: &str, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
-        // Respond to toolbar button clicks
-        if action == "open_panel" {
-            host.open_plugin_window(plugin_root, &self.manifest)?;
-        }
-        Ok(())
-    }
-}
-```
-
-3. Add a `plugin.toml` manifest and optionally a `.slint` UI file to the plugin directory.
-4. Register the plugin in the host app's `main.rs` (static registration in v1).
+The [plugin API README](plugin_api/README.md) has a complete minimal plugin, every manifest key, the package layout and the compatibility rules; `plugin_api/example-plugin/` is a complete plugin with a sidebar, a tool, overlays, a filter and settings, and it is eov's own end-to-end test.
 
 ### Example Plugin
 
-The in-tree plugins under `plugins/` demonstrate the supported native pattern. To try them:
+The in-tree plugins under `plugins/` are full examples. To try them:
 
 1. Build, package, and launch the native plugins with `./scripts/run-with-plugins.sh slide.svs`. It uses a separate development home (`target/dev-eov-home`, or `EOV_HOME`), so your installed plugins and settings are left alone; set `CUDA_HOME` to use a specific CUDA toolkit for eovae.
 2. Inspect the generated `.eop` packages in `target/dev-eov-home/plugins/` if you want to load them manually later
