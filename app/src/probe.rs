@@ -1,7 +1,8 @@
 //! `eov probe`: everything eov knows about a slide, as text or JSON
 //! (SH-17): size, pyramid levels, pixel size, objective, stain, scanned
-//! bounds and regions, ICC profile, quickhash, associated images, the
-//! channels of multichannel slides and every property.
+//! bounds and regions, ICC profile, quickhash, the slide identity eov keys
+//! per-slide data by, associated images, the channels of multichannel
+//! slides and every property.
 
 use anyhow::Result;
 use eov_common::{SlideBounds, WsiFile, format_decimal, format_optional_decimal};
@@ -25,6 +26,9 @@ struct Report {
     comment: Option<String>,
     /// `openslide.quickhash-1`.
     quickhash: Option<String>,
+    /// The key eov and its plugins store this slide's data under
+    /// (annotations, bookmarks, measurements, heat maps).
+    identity: Option<String>,
     /// The non-empty region (`openslide.bounds-*`).
     bounds: Option<Bounds>,
     /// Scanned regions (`openslide.region[i].*`).
@@ -161,6 +165,10 @@ fn report(wsi: &WsiFile) -> Report {
         stain: properties.stain.clone(),
         comment: properties.comment.clone(),
         quickhash: properties.quickhash1.clone(),
+        identity: wsi
+            .identity()
+            .ok()
+            .map(|identity| identity.key().to_string()),
         bounds: properties.bounds.as_ref().map(Bounds::from),
         regions: properties.regions.iter().map(Bounds::from).collect(),
         background_color: format!("#{r:02x}{g:02x}{b:02x}"),
@@ -242,6 +250,7 @@ fn print_plain(report: &Report) {
             .unwrap_or_else(|| "none".to_string())
     );
     println!("Quickhash: {}", or_unknown(report.quickhash.as_deref()));
+    println!("Identity: {}", or_unknown(report.identity.as_deref()));
     println!("Base tile size: {}", report.tile_size);
     println!();
     println!("Levels:");
@@ -344,6 +353,13 @@ mod tests {
             "{images:?}"
         );
         assert!(json["quickhash"].is_string());
+        assert!(
+            json["identity"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("eov-slide-")),
+            "{}",
+            json["identity"]
+        );
         assert_eq!(json["background_color"], "#ffffff");
         assert!(json["channels"].is_null());
     }
