@@ -1536,7 +1536,7 @@ fn run_call(plugin_dir: &Path, call: &ScriptCall) -> Result<()> {
         }
         Err(failure) => {
             eprintln!("eov: {}", failure.message);
-            exit_flushed(failure.status)
+            dataset_exit(failure.status)
         }
     }
 }
@@ -1647,8 +1647,7 @@ const DATASET_EXIT_FAILURES: i32 = 1;
 const DATASET_EXIT_USAGE: i32 = 2;
 const DATASET_EXIT_INTERRUPTED: i32 = 130;
 
-/// Exits with `code` once standard output and error are flushed.
-fn exit_flushed(code: i32) -> ! {
+fn dataset_exit(code: i32) -> ! {
     use std::io::Write;
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
@@ -1782,7 +1781,7 @@ fn run_dataset_patches_cli(job: &DatasetJob) -> Result<()> {
                      (press Ctrl-C again to stop immediately)..."
                 );
             } else {
-                exit_flushed(DATASET_EXIT_INTERRUPTED);
+                dataset_exit(DATASET_EXIT_INTERRUPTED);
             }
         });
     }
@@ -1829,10 +1828,10 @@ fn run_dataset_patches_cli(job: &DatasetJob) -> Result<()> {
             print_dataset_report(&report);
             if report.cancelled {
                 eprintln!("Cancelled. Run the same command again to resume.");
-                exit_flushed(DATASET_EXIT_INTERRUPTED);
+                dataset_exit(DATASET_EXIT_INTERRUPTED);
             }
             if report.has_errors() {
-                exit_flushed(DATASET_EXIT_FAILURES);
+                dataset_exit(DATASET_EXIT_FAILURES);
             }
             Ok(())
         }
@@ -1845,19 +1844,19 @@ fn report_dataset_error(err: dataset::DatasetError) -> Result<()> {
     match err {
         dataset::DatasetError::Config(e) => {
             eprintln!("error: {e}");
-            exit_flushed(DATASET_EXIT_USAGE);
+            dataset_exit(DATASET_EXIT_USAGE);
         }
         dataset::DatasetError::NoSlides { input_errors } => {
             for (path, e) in &input_errors {
                 eprintln!("error: {}: {}", path.display(), e);
             }
             eprintln!("error: no slide files were found in the inputs");
-            exit_flushed(DATASET_EXIT_USAGE);
+            dataset_exit(DATASET_EXIT_USAGE);
         }
         dataset::DatasetError::OutputConflict(message) => {
             eprintln!("error: {message}");
             eprintln!("hint: pass --overwrite to replace it, or choose another --out directory");
-            exit_flushed(DATASET_EXIT_USAGE);
+            dataset_exit(DATASET_EXIT_USAGE);
         }
         other => Err(other.into()),
     }
@@ -1957,14 +1956,14 @@ fn run_convert_cli(args: &ConvertArgs) {
         Ok(job) => job,
         Err(err) => {
             eprintln!("error: {err:#}");
-            exit_flushed(CONVERT_EXIT_USAGE);
+            dataset_exit(CONVERT_EXIT_USAGE);
         }
     };
     let wsi = match eov_common::WsiFile::open(&job.input) {
         Ok(wsi) => wsi,
         Err(err) => {
             eprintln!("error: cannot open {}: {err}", job.input.display());
-            exit_flushed(CONVERT_EXIT_FAILED);
+            dataset_exit(CONVERT_EXIT_FAILED);
         }
     };
     let plan = match convert::plan_conversion(&wsi, &job.options).and_then(|plan| {
@@ -1974,11 +1973,11 @@ fn run_convert_cli(args: &ConvertArgs) {
         Err(ConvertError::OutputExists(path)) => {
             eprintln!("error: {} already exists", path.display());
             eprintln!("hint: pass --overwrite to replace it, or choose another name");
-            exit_flushed(CONVERT_EXIT_USAGE);
+            dataset_exit(CONVERT_EXIT_USAGE);
         }
         Err(err) => {
             eprintln!("error: {err}");
-            exit_flushed(CONVERT_EXIT_USAGE);
+            dataset_exit(CONVERT_EXIT_USAGE);
         }
     };
     eprintln!("{}", describe_conversion(&job, wsi.properties(), &plan));
@@ -1995,7 +1994,7 @@ fn run_convert_cli(args: &ConvertArgs) {
             } else {
                 // The worker would remove it; it does not get the chance.
                 let _ = std::fs::remove_file(&partial);
-                exit_flushed(CONVERT_EXIT_INTERRUPTED);
+                dataset_exit(CONVERT_EXIT_INTERRUPTED);
             }
         });
     }
@@ -2064,25 +2063,25 @@ fn run_convert_cli(args: &ConvertArgs) {
             );
             if let Some(shortfall) = report.shortfall_message() {
                 eprintln!("warning: {shortfall}");
-                exit_flushed(CONVERT_EXIT_FAILED);
+                dataset_exit(CONVERT_EXIT_FAILED);
             }
         }
         Err(ConvertError::Cancelled) => {
             eprintln!("Cancelled; nothing was written.");
-            exit_flushed(CONVERT_EXIT_INTERRUPTED);
+            dataset_exit(CONVERT_EXIT_INTERRUPTED);
         }
         Err(ConvertError::OutputExists(path)) => {
             eprintln!("error: {} already exists", path.display());
             eprintln!("hint: pass --overwrite to replace it, or choose another name");
-            exit_flushed(CONVERT_EXIT_USAGE);
+            dataset_exit(CONVERT_EXIT_USAGE);
         }
         Err(ConvertError::Invalid(message)) => {
             eprintln!("error: {message}");
-            exit_flushed(CONVERT_EXIT_USAGE);
+            dataset_exit(CONVERT_EXIT_USAGE);
         }
         Err(err) => {
             eprintln!("error: could not write {}: {err}", job.output.display());
-            exit_flushed(CONVERT_EXIT_FAILED);
+            dataset_exit(CONVERT_EXIT_FAILED);
         }
     }
 }
