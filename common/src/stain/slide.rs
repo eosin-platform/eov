@@ -67,13 +67,25 @@ fn choose_level(wsi: &WsiFile, w0: u64, h0: u64, budget: u64) -> (u32, f64, bool
             return (level, ds, true);
         }
     }
+    // A coarsest level somewhat over budget is still cheaper to read whole
+    // than to sample sparsely, and gives a better fit.
     let level = count.saturating_sub(1);
     let ds = wsi
         .level(level)
         .map(|l| l.downsample.max(1.0))
         .unwrap_or(1.0);
-    (level, ds, false)
+    let w = (w0 as f64 / ds).ceil() as u64;
+    let h = (h0 as f64 / ds).ceil() as u64;
+    (
+        level,
+        ds,
+        w.saturating_mul(h) <= budget.saturating_mul(COARSEST_LEVEL_SLACK),
+    )
 }
+
+/// How far over the pixel budget the coarsest level may be and still be
+/// read in full.
+const COARSEST_LEVEL_SLACK: u64 = 4;
 
 /// Reads a level-0 rectangle at `level` in chunks. Coordinates are level-0;
 /// the returned buffers are RGBA at the level's resolution.

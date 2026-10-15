@@ -19,6 +19,7 @@ pub mod processing;
 pub mod render;
 pub mod stain;
 pub mod tile;
+pub mod tissue;
 pub mod viewport;
 pub mod wsi;
 
