@@ -186,4 +186,5 @@ jobs:
           test -f assets/macos/Info.plist
           test -f assets/linux/io.eosin.eov.desktop
           test -f assets/linux/io.eosin.eov.metainfo.xml
-          test -d assets/linux/licenses
+          test -f assets/COPYING.third-party
+          test -d assets/licenses

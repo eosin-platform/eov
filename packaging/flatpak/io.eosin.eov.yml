@@ -103,8 +103,8 @@ modules:
       - install -Dm755 target/release/eov /app/bin/eov
       - install -Dm644 assets/linux/io.eosin.eov.desktop /app/share/applications/io.eosin.eov.desktop
       - install -Dm644 assets/linux/io.eosin.eov.metainfo.xml /app/share/metainfo/io.eosin.eov.metainfo.xml
-      - install -Dm644 assets/linux/COPYING.third-party /app/share/doc/eov/COPYING.third-party
-      - install -Dm644 assets/linux/licenses/LGPL-2.1.txt /app/share/doc/eov/licenses/LGPL-2.1.txt
+      - install -Dm644 assets/COPYING.third-party /app/share/doc/eov/COPYING.third-party
+      - install -Dm644 assets/licenses/LGPL-2.1.txt /app/share/doc/eov/licenses/LGPL-2.1.txt
       - install -Dm644 images/logo_256.png /app/share/icons/hicolor/256x256/apps/io.eosin.eov.png
 
     sources:

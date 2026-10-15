@@ -323,7 +323,7 @@ jobs:
           # Ship the license texts next to the binaries (LGPL compliance for
           # the bundled OpenSlide and its dependencies).
           Copy-Item "LICENSE-MIT","LICENSE-APACHE-2.0","LICENSE-GPLv3" "staging\eov\"
-          Copy-Item "assets\linux\COPYING.third-party" "staging\eov\THIRD-PARTY-NOTICES.txt"
+          Copy-Item "assets\COPYING.third-party" "staging\eov\THIRD-PARTY-NOTICES.txt"
 
           # Manifest of every shipped file. The self-updater refuses to replace
           # a folder that contains anything not listed here, so extracting eov
