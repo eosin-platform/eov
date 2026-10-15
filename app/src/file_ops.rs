@@ -791,6 +791,7 @@ fn install_slide(
         && view.zoom.is_finite()
         && view.zoom > 0.0
     {
+        viewport.set_orientation(view.orientation);
         viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
     }
 

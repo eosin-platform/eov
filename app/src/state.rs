@@ -294,6 +294,8 @@ pub struct FilePaneState {
     pub last_render_width: f64,
     pub last_render_height: f64,
     pub last_render_level: u32,
+    /// How the last rendered frame was turned.
+    pub last_render_orientation: eov_common::viewport::Orientation,
     pub tiles_loaded_since_render: u32,
     pub frame_count: u32,
     pub last_render_time: std::time::Instant,
@@ -330,6 +332,7 @@ impl FilePaneState {
             last_render_width: 0.0,
             last_render_height: 0.0,
             last_render_level: u32::MAX,
+            last_render_orientation: eov_common::viewport::Orientation::IDENTITY,
             tiles_loaded_since_render: 0,
             frame_count: 0,
             last_render_time: std::time::Instant::now(),
@@ -1577,6 +1580,10 @@ impl AppState {
                 file.ensure_pane_state_from(target_pane, source_pane);
                 if let Some(target_state) = file.pane_state_mut(target_pane) {
                     if animated {
+                        // Locked panes of a slide share its turn.
+                        target_state
+                            .viewport
+                            .set_orientation(source_viewport.viewport.orientation);
                         let center = source_viewport.viewport.center;
                         target_state.viewport.smooth_set_center_zoom(
                             center.x,
@@ -1717,6 +1724,53 @@ mod tests {
         let mut state = state_with(&[&[1], &[2]]);
         assert_eq!(state.split_tab_to_new_pane(2, 2), None);
         assert_eq!(layout(&state), vec![vec![1], vec![2]]);
+    }
+
+    /// Locked panes of a slide share its turn.
+    #[test]
+    fn locked_panes_share_the_turn() {
+        let mut state = AppState::new();
+        let file_id = state.allocate_file_id();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&path, 256, 256, 256, |_, _| [200, 200, 200])
+            .unwrap();
+        crate::paths::isolate_for_tests();
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        use std::sync::Arc;
+        let cache = Arc::new(eov_common::TileCache::with_limits(8, 8 << 20));
+        let manager = Arc::new(eov_common::TileManager::new(wsi.clone(), file_id));
+        let loader = Arc::new(crate::tile_loader::TileLoader::new(
+            Arc::clone(&manager),
+            cache,
+        ));
+        state.add_file(super::NewOpenFile {
+            id: file_id,
+            path,
+            wsi,
+            tile_manager: manager,
+            tile_loader: loader,
+            viewport: eov_common::ViewportState::new(400.0, 300.0, 256.0, 256.0),
+            thumbnail: None,
+            target_pane: PaneId::PRIMARY,
+        });
+        let second = state.insert_pane(1);
+        let tab = state.active_tab_id_for_pane(PaneId::PRIMARY).unwrap();
+        state.duplicate_tab_to_pane(tab, second);
+        state.set_focused_pane(PaneId::PRIMARY);
+        state.toggle_viewport_lock();
+        assert!(crate::callbacks::rotate_active_viewport(&mut state, 1));
+        assert!(crate::callbacks::flip_active_viewport(&mut state));
+        state.mirror_locked_viewports_from_active();
+        let file = state.get_file(file_id).unwrap();
+        let turned = eov_common::viewport::Orientation::new(1, true);
+        for pane in [PaneId::PRIMARY, second] {
+            assert_eq!(
+                file.pane_state(pane).unwrap().viewport.viewport.orientation,
+                turned
+            );
+        }
+        assert!(crate::callbacks::reset_active_orientation(&mut state));
     }
 
     #[test]

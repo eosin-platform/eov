@@ -37,8 +37,18 @@ struct TabSession {
     center_x: f64,
     center_y: f64,
     zoom: f64,
+    /// Clockwise view rotation in degrees (a multiple of 90).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    rotation: u32,
+    /// Mirrored left to right (after the rotation).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    flipped: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     active: bool,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 impl TabSession {
@@ -57,6 +67,7 @@ pub(crate) struct SavedView {
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,
+    pub orientation: eov_common::viewport::Orientation,
 }
 
 fn session_path() -> PathBuf {
@@ -90,6 +101,8 @@ fn capture(state: &AppState) -> Session {
                         center_x: viewport.center.x,
                         center_y: viewport.center.y,
                         zoom: viewport.zoom,
+                        rotation: viewport.orientation.degrees(),
+                        flipped: viewport.orientation.flipped(),
                         active: active == Some(tab),
                     })
                 })
@@ -165,6 +178,11 @@ pub(crate) fn restore(
                     center_x: tab.center_x,
                     center_y: tab.center_y,
                     zoom: tab.zoom,
+                    orientation: eov_common::viewport::Orientation::from_degrees(
+                        f64::from(tab.rotation),
+                        tab.flipped,
+                    )
+                    .unwrap_or_default(),
                 },
             );
             crate::open_file(ui, state, tile_cache, render_timer, path);
@@ -194,6 +212,8 @@ mod tests {
                         center_x: 100.0,
                         center_y: 200.0,
                         zoom: 0.25,
+                        rotation: 90,
+                        flipped: true,
                         active: true,
                     }],
                 },
@@ -204,6 +224,8 @@ mod tests {
                         center_x: 1.0,
                         center_y: 2.0,
                         zoom: 1.0,
+                        rotation: 0,
+                        flipped: false,
                         active: false,
                     }],
                 },

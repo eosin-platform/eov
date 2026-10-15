@@ -796,6 +796,43 @@ pub enum BlitError {
     InvalidZoom,
 }
 
+/// Copies `src`, a `width × height` RGBA frame drawn axis-aligned with the
+/// image, into `dst` as `orientation` shows it on screen: `dst` is
+/// `orientation.swap(width, height)` pixels. Exact (a permutation).
+pub fn orient_frame(
+    src: &[u8],
+    width: u32,
+    height: u32,
+    orientation: crate::viewport::Orientation,
+    dst: &mut [u8],
+) {
+    let need = width as usize * height as usize * 4;
+    if src.len() < need || dst.len() < need || need == 0 {
+        return;
+    }
+    if orientation.is_identity() {
+        dst[..need].copy_from_slice(&src[..need]);
+        return;
+    }
+    let (dst_width, _) = orientation.swap(width, height);
+    let w = i64::from(width);
+    // One destination column to the right is this step in the source.
+    let step = orientation.to_image(glam::DVec2::new(1.0, 0.0));
+    let (step_x, step_y) = (step.x as i64, step.y as i64);
+    dst[..need]
+        .par_chunks_mut(dst_width as usize * 4)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let (mut sx, mut sy) = orientation.aligned_pixel(width, height, 0, y as i64);
+            for px in row.as_chunks_mut::<4>().0 {
+                let i = ((sy * w + sx) * 4) as usize;
+                px.copy_from_slice(&src[i..i + 4]);
+                sx += step_x;
+                sy += step_y;
+            }
+        });
+}
+
 /// Bilinear reproject one RGBA frame onto another at a different viewport.
 ///
 /// Inconsistent sizes (a buffer shorter than its stated dimensions) make
@@ -1350,5 +1387,36 @@ mod tests {
         let mut fine = [101u8; 4];
         blend_buffers(&mut fine, &[200; 4], 0.5);
         assert_eq!(fine, [151; 4]);
+    }
+}
+
+#[cfg(test)]
+mod orient_tests {
+    use super::orient_frame;
+    use crate::viewport::Orientation;
+
+    fn frame(width: u32, height: u32) -> Vec<u8> {
+        (0..width * height)
+            .flat_map(|i| [i as u8, (i >> 8) as u8, 7, 255])
+            .collect()
+    }
+
+    #[test]
+    fn frames_turn_exactly_and_back() {
+        let src = frame(3, 2);
+        let mut turned = vec![0; src.len()];
+        orient_frame(&src, 3, 2, Orientation::new(1, false), &mut turned);
+        // Clockwise: the bottom-left pixel (index 3) comes to the top-left.
+        let first: Vec<u8> = turned.chunks(4).map(|px| px[0]).collect();
+        assert_eq!(first, vec![3, 0, 4, 1, 5, 2]);
+        for orientation in Orientation::all() {
+            let src = frame(7, 4);
+            let (w, h) = orientation.swap(7, 4);
+            let mut turned = vec![0; src.len()];
+            orient_frame(&src, 7, 4, orientation, &mut turned);
+            let mut back = vec![0; src.len()];
+            orient_frame(&turned, w, h, orientation.inverse(), &mut back);
+            assert_eq!(back, src, "{orientation:?}");
+        }
     }
 }

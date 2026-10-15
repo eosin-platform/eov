@@ -95,6 +95,7 @@ struct CpuPaneSnapshot {
     last_render_width: f64,
     last_render_height: f64,
     last_render_level: u32,
+    last_render_orientation: eov_common::viewport::Orientation,
     previous_tiles_loaded: u32,
     last_seen_tile_epoch: u64,
     hud_sharpness: f32,
@@ -150,6 +151,7 @@ struct CpuFrameStateUpdate {
     last_render_width: f64,
     last_render_height: f64,
     last_render_level: u32,
+    last_render_orientation: eov_common::viewport::Orientation,
     tiles_loaded_since_render: u32,
     last_seen_tile_epoch: u64,
     last_render_gamma: f32,
@@ -191,6 +193,7 @@ fn physical_viewport(viewport: &Viewport, scale: f64) -> Viewport {
         height: (viewport.height * scale).round().max(1.0),
         image_width: viewport.image_width,
         image_height: viewport.image_height,
+        orientation: viewport.orientation,
     }
 }
 
@@ -792,10 +795,40 @@ fn merge_wanted_tiles(lists: Vec<Vec<eov_common::TileCoord>>) -> Vec<eov_common:
     merged
 }
 
-pub(crate) fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
+/// The slide's minimap thumbnail turned like the pane's view.
+pub(crate) fn thumbnail_image_for_file(
+    file: &OpenFile,
+    orientation: eov_common::viewport::Orientation,
+) -> Option<Image> {
     let thumbnail = file.thumbnail.as_ref()?;
-    blitter::create_image_buffer(&thumbnail.rgba, thumbnail.width, thumbnail.height)
-        .map(Image::from_rgba8)
+    let (width, height) = orientation.swap(thumbnail.width, thumbnail.height);
+    let needed = width as usize * height as usize * 4;
+    if thumbnail.rgba.len() < needed {
+        return None;
+    }
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+    eov_common::blitter::orient_frame(
+        &thumbnail.rgba,
+        thumbnail.width,
+        thumbnail.height,
+        orientation,
+        buffer.make_mut_bytes(),
+    );
+    Some(Image::from_rgba8(buffer))
+}
+
+/// Whether the pane's minimap needs its thumbnail (again): none yet, or
+/// turned differently from the view.
+fn minimap_stale(
+    pane: PaneId,
+    pane_count: usize,
+    orientation: eov_common::viewport::Orientation,
+) -> bool {
+    crate::with_pane_render_cache(pane_count, |cache| {
+        cache.get(pane.0).is_none_or(|entry| {
+            entry.minimap_thumbnail.is_none() || entry.minimap_orientation != orientation
+        })
+    })
 }
 
 /// Per-frame tile-cache bookkeeping: protects this frame's working set from
@@ -1011,12 +1044,11 @@ pub(crate) fn update_and_render(
             continue;
         };
 
-        let minimap_missing = crate::with_pane_render_cache(pane_count, |cache| {
-            cache
-                .get(pane.0)
-                .and_then(|entry| entry.minimap_thumbnail.as_ref())
-                .is_none()
-        });
+        let orientation = file
+            .pane_state(pane)
+            .map(|pane_state| pane_state.viewport.viewport.orientation)
+            .unwrap_or_default();
+        let minimap_missing = minimap_stale(pane, pane_count, orientation);
         let content_missing = crate::with_pane_render_cache(pane_count, |cache| {
             cache
                 .get(pane.0)
@@ -1029,7 +1061,11 @@ pub(crate) fn update_and_render(
             pane_state.frame_count = 0;
         }
         if file_switched || minimap_missing {
-            crate::set_cached_pane_minimap(pane, thumbnail_image_for_file(file));
+            crate::set_cached_pane_minimap(
+                pane,
+                thumbnail_image_for_file(file, orientation),
+                orientation,
+            );
         }
 
         let outcome = render_pane_gpu(
@@ -1146,7 +1182,11 @@ fn update_and_render_cpu(
         };
 
         if snapshot.file_switched || snapshot.minimap_missing {
-            crate::set_cached_pane_minimap(snapshot.pane, snapshot.minimap_image.clone());
+            crate::set_cached_pane_minimap(
+                snapshot.pane,
+                snapshot.minimap_image.clone(),
+                snapshot.viewport_state.viewport.orientation,
+            );
         }
 
         let execution = render_cpu_pane_from_snapshot(&snapshot, tile_cache, &filter_chain);
@@ -1226,12 +1266,6 @@ fn collect_cpu_frame_snapshot(
 
         let pane_uid = state.pane_uid(pane).unwrap_or(pane_index as u32);
         let file_switched = state.last_rendered_file_id(pane) != Some(file_id);
-        let minimap_missing = crate::with_pane_render_cache(pane_count, |cache| {
-            cache
-                .get(pane.0)
-                .and_then(|entry| entry.minimap_thumbnail.as_ref())
-                .is_none()
-        });
         let content_missing = crate::with_pane_render_cache(pane_count, |cache| {
             cache
                 .get(pane.0)
@@ -1244,10 +1278,15 @@ fn collect_cpu_frame_snapshot(
             panes.push(None);
             continue;
         };
+        let orientation = file
+            .pane_state(pane)
+            .map(|pane_state| pane_state.viewport.viewport.orientation)
+            .unwrap_or_default();
+        let minimap_missing = minimap_stale(pane, pane_count, orientation);
         let tile_manager = Arc::clone(&file.tile_manager);
         let tile_loader = Arc::clone(&file.tile_loader);
         let minimap_image = if file_switched || minimap_missing {
-            thumbnail_image_for_file(file)
+            thumbnail_image_for_file(file, orientation)
         } else {
             None
         };
@@ -1261,6 +1300,7 @@ fn collect_cpu_frame_snapshot(
             last_render_width,
             last_render_height,
             last_render_level,
+            last_render_orientation,
             previous_tiles_loaded,
             last_seen_tile_epoch,
             hud_sharpness,
@@ -1302,6 +1342,7 @@ fn collect_cpu_frame_snapshot(
                     pane_state.last_render_width,
                     pane_state.last_render_height,
                     pane_state.last_render_level,
+                    pane_state.last_render_orientation,
                     pane_state.tiles_loaded_since_render,
                     pane_state.last_seen_tile_epoch,
                     pane_state.hud.sharpness,
@@ -1359,6 +1400,7 @@ fn collect_cpu_frame_snapshot(
             last_render_width,
             last_render_height,
             last_render_level,
+            last_render_orientation,
             previous_tiles_loaded,
             last_seen_tile_epoch,
             hud_sharpness,
@@ -1415,6 +1457,7 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_width = frame_update.last_render_width;
             pane_state.last_render_height = frame_update.last_render_height;
             pane_state.last_render_level = frame_update.last_render_level;
+            pane_state.last_render_orientation = frame_update.last_render_orientation;
             pane_state.tiles_loaded_since_render = frame_update.tiles_loaded_since_render;
             pane_state.last_seen_tile_epoch = frame_update.last_seen_tile_epoch;
             pane_state.last_render_gamma = frame_update.last_render_gamma;
@@ -1548,6 +1591,9 @@ fn render_cpu_pane_from_snapshot(
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
 ) -> CpuPaneExecution {
     let vp = &snapshot.render_viewport;
+    // Tiles are composited axis-aligned with the slide and the frame turned
+    // to the view's orientation afterwards.
+    let aligned = vp.aligned();
     let vp_zoom = vp.zoom;
     let vp_center_x = vp.center.x;
     let vp_center_y = vp.center.y;
@@ -1560,7 +1606,8 @@ fn render_cpu_pane_from_snapshot(
         || (snapshot.last_render_center_x - vp_center_x).abs() > 1.0
         || (snapshot.last_render_center_y - vp_center_y).abs() > 1.0
         || (snapshot.last_render_width - vp_width).abs() > 1.0
-        || (snapshot.last_render_height - vp_height).abs() > 1.0;
+        || (snapshot.last_render_height - vp_height).abs() > 1.0
+        || snapshot.last_render_orientation != vp.orientation;
 
     let trilinear = calculate_trilinear_levels(
         snapshot.tile_manager.wsi(),
@@ -1576,7 +1623,7 @@ fn render_cpu_pane_from_snapshot(
     let cached_tiles = collect_cached_visible_tiles(
         &snapshot.tile_manager,
         tile_cache,
-        vp,
+        &aligned,
         trilinear,
         margin_tiles,
         use_trilinear_blend,
@@ -1711,6 +1758,7 @@ fn render_cpu_pane_from_snapshot(
         last_render_width: vp_width,
         last_render_height: vp_height,
         last_render_level: level,
+        last_render_orientation: vp.orientation,
         tiles_loaded_since_render: cached_count,
         last_seen_tile_epoch: loaded_tile_epoch,
         last_render_gamma: snapshot.hud_gamma,
@@ -1771,13 +1819,13 @@ fn render_cpu_pane_from_snapshot(
     let fallback_commands = fallback_blits(
         &snapshot.tile_manager,
         tile_cache,
-        vp,
+        &aligned,
         level,
         coverage.as_ref(),
     );
     let fine_commands = fine_blits(
         &snapshot.tile_manager,
-        vp,
+        &aligned,
         &level_info,
         trilinear,
         &cached_tiles,
@@ -2014,16 +2062,20 @@ fn render_pane_gpu(
     let last = pane_state.clone();
 
     let viewport_state = &last.viewport;
-    // Frames, levels and change detection are in physical pixels.
+    // Frames, levels and change detection are in physical pixels; tiles are
+    // drawn axis-aligned with the slide (`aligned`) and the frame turned to
+    // the view's orientation as it is composited.
     let physical = physical_viewport(&viewport_state.viewport, scale);
     let vp = &physical;
+    let aligned = vp.aligned();
     let is_first_frame = last.frame_count == 0;
     let viewport_changed = animating
         || (last.last_render_zoom - vp.zoom).abs() > 0.001
         || (last.last_render_center_x - vp.center.x).abs() > 1.0
         || (last.last_render_center_y - vp.center.y).abs() > 1.0
         || (last.last_render_width - vp.width).abs() > 1.0
-        || (last.last_render_height - vp.height).abs() > 1.0;
+        || (last.last_render_height - vp.height).abs() > 1.0
+        || last.last_render_orientation != vp.orientation;
 
     let trilinear = calculate_trilinear_levels(
         file.tile_manager.wsi(),
@@ -2037,7 +2089,7 @@ fn render_pane_gpu(
     let cached_tiles = collect_cached_visible_tiles(
         &file.tile_manager,
         tile_cache,
-        vp,
+        &aligned,
         trilinear,
         margin_tiles,
         use_trilinear_blend,
@@ -2089,6 +2141,7 @@ fn render_pane_gpu(
         pane_state.last_render_width = vp.width;
         pane_state.last_render_height = vp.height;
         pane_state.last_render_level = level;
+        pane_state.last_render_orientation = vp.orientation;
         pane_state.tiles_loaded_since_render = cached_count;
         pane_state.last_seen_tile_epoch = loaded_tile_epoch;
         pane_state.last_render_filter_revision = filter_revision;
@@ -2109,7 +2162,7 @@ fn render_pane_gpu(
     let draws = collect_tile_draws_from_cached(
         file,
         tile_cache,
-        vp,
+        &aligned,
         gpu_trilinear,
         gpu_filtering,
         &cached_tiles.fine_tiles,
@@ -2144,6 +2197,7 @@ fn render_pane_gpu(
             QueuedFrame {
                 width: render_width,
                 height: render_height,
+                orientation: vp.orientation,
                 draws,
                 color: color.pipeline.gpu_uniform(),
                 sharpness: color.pipeline.sharpness(),
@@ -2210,9 +2264,18 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         let entry = cache.get_mut(pane.0)?;
         let cpu_frame = entry.cpu_frame.as_ref()?;
         let source_len = (cpu_frame.width as usize) * (cpu_frame.height as usize) * 4;
-        if cpu_frame.file_id != file_id || cpu_frame.source.len() < source_len {
+        if cpu_frame.file_id != file_id
+            || cpu_frame.source.len() < source_len
+            || cpu_frame.viewport.orientation != viewport.orientation
+        {
             return None;
         }
+        // Reprojection and compositing happen axis-aligned with the slide;
+        // the result is turned to the view's orientation.
+        let orientation = viewport.orientation;
+        let (source_width, source_height) = orientation.swap(cpu_frame.width, cpu_frame.height);
+        let (aligned_width, aligned_height) = orientation.swap(render_width, render_height);
+        let aligned_zoom = viewport.zoom;
 
         let src_bounds = cpu_frame.viewport.bounds();
         let dest_bounds = viewport.bounds();
@@ -2236,34 +2299,43 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         let reproject = |band: &mut [u8], band_height: u32, first_row: u32| {
             eov_common::blitter::reproject_frame(
                 band,
-                render_width,
+                aligned_width,
                 band_height,
                 source,
-                cpu_frame.width,
-                cpu_frame.height,
+                source_width,
+                source_height,
                 src_bounds.left,
                 src_bounds.top,
                 cpu_frame.viewport.zoom,
                 dest_bounds.left,
-                dest_bounds.top + f64::from(first_row) / viewport.zoom,
-                viewport.zoom,
+                dest_bounds.top + f64::from(first_row) / aligned_zoom,
+                aligned_zoom,
                 [0, 0, 0, 0],
             );
         };
         crate::render_pool::composite_preview(
             preview,
-            render_width,
-            render_height,
+            aligned_width,
+            aligned_height,
             &reproject,
             fallback_commands,
             fine_commands,
         );
-        crate::render_pool::apply_postprocess(preview, render_width, render_height, postprocess);
+        let mut frame =
+            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
+        let pixels = frame.make_mut_bytes();
+        eov_common::blitter::orient_frame(
+            preview,
+            aligned_width,
+            aligned_height,
+            orientation,
+            pixels,
+        );
+        crate::render_pool::apply_postprocess(pixels, render_width, render_height, postprocess);
         if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
-            filters.apply(preview, render_width, render_height);
+            filters.apply(pixels, render_width, render_height);
         }
-
-        blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
+        Some(Image::from_rgba8(frame))
     })
 }
 

@@ -314,6 +314,7 @@ fn export_view(request: &ExportRequest, calibration: &Calibration) -> ViewTransf
         height: viewport.height,
         scale: request.scale,
         mpp: calibration.average(),
+        orientation: viewport.orientation,
     }
 }
 
@@ -381,13 +382,14 @@ fn host_items(
     };
 
     if let Some(roi) = capture.roi {
-        let top_left = to_px(roi.x, roi.y);
-        let bottom_right = to_px(roi.x + roi.width, roi.y + roi.height);
+        // Opposite corners; a turned view may swap them.
+        let a = to_px(roi.x, roi.y);
+        let b = to_px(roi.x + roi.width, roi.y + roi.height);
         let rect = [
-            top_left[0],
-            top_left[1],
-            bottom_right[0] - top_left[0],
-            bottom_right[1] - top_left[1],
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            (a[0] - b[0]).abs(),
+            (a[1] - b[1]).abs(),
         ];
         if settings.roi_outside_overlay {
             items.push(OverlayItem::FillOutsideRect {
@@ -578,12 +580,7 @@ impl<S: BandSink> BandSink for OverlaySink<'_, S> {
         if !self.prepared.scene.is_empty()
             && let Some(mut pixmap) = tiny_skia::Pixmap::new(self.width, rows)
         {
-            let band_view = ViewTransform {
-                top: view.top + f64::from(self.row) / view.px_per_image(),
-                width: f64::from(self.width) / view.scale,
-                height: f64::from(rows) / view.scale,
-                ..view
-            };
+            let band_view = view.band(self.row, rows);
             raster::render_into(&mut pixmap, &band_view, &self.prepared.scene);
             raster::composite_over_straight(&mut self.band, pixmap.data());
         }
@@ -1078,12 +1075,13 @@ fn copied_notice(copied: bool) {
 /// Crops the rendered view to the slide, dropping the background around it.
 fn crop_to_slide(image: RgbaImageData, request: &ExportRequest) -> RgbaImageData {
     let viewport = request.export_viewport();
-    let top_left = viewport.image_to_screen(0.0, 0.0);
-    let bottom_right = viewport.image_to_screen(viewport.image_width, viewport.image_height);
+    // Opposite corners of the slide; a turned view may swap them.
+    let a = viewport.image_to_screen(0.0, 0.0);
+    let b = viewport.image_to_screen(viewport.image_width, viewport.image_height);
     let clamp_x = |v: f64| v.round().clamp(0.0, image.width as f64) as usize;
     let clamp_y = |v: f64| v.round().clamp(0.0, image.height as f64) as usize;
-    let (x0, x1) = (clamp_x(top_left.x), clamp_x(bottom_right.x));
-    let (y0, y1) = (clamp_y(top_left.y), clamp_y(bottom_right.y));
+    let (x0, x1) = (clamp_x(a.x.min(b.x)), clamp_x(a.x.max(b.x)));
+    let (y0, y1) = (clamp_y(a.y.min(b.y)), clamp_y(a.y.max(b.y)));
     if x1 <= x0 || y1 <= y0 || (x0 == 0 && y0 == 0 && x1 == image.width && y1 == image.height) {
         return image;
     }
@@ -1242,6 +1240,99 @@ mod tests {
             .filter(|&(x, y)| px(x, y)[..3].iter().all(|&c| c < 40))
             .count();
         assert!(dark > 50, "no scale bar ({dark} dark pixels)");
+    }
+
+    /// A turned view exports as shown: slide, plugin layers and the ROI
+    /// turn with it.
+    #[test]
+    fn turned_views_export_turned() {
+        use crate::overlay::OverlayStore;
+        use eov_plugin_api::protocol::{LayerSpec, OverlayObject, Rgba, Shape, Style};
+
+        let dir = tempfile::tempdir().unwrap();
+        let slide = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&slide, 512, 512, 256, |_, _| [200, 100, 150])
+            .unwrap();
+        let wsi = WsiFile::open(&slide).unwrap();
+        let store = OverlayStore::new();
+        let owner = Owner::plugin("example");
+        let red = Style {
+            fill: Rgba(255, 0, 0, 255),
+            stroke: Rgba(255, 0, 0, 255),
+            ..Style::default()
+        };
+        store
+            .create_layer(owner.clone(), LayerSpec::new("marks-1", 1).with_style(red))
+            .unwrap();
+        let square = Shape::Rectangle {
+            x: 32.0,
+            y: 32.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        store
+            .upsert(
+                &owner,
+                "marks-1",
+                vec![OverlayObject::new("a", square)],
+                false,
+            )
+            .unwrap();
+        let mut viewport = Viewport::new(256.0, 256.0, 512.0, 512.0);
+        viewport.orientation = eov_common::viewport::Orientation::new(1, false);
+        let captured = Capture {
+            file_id: 1,
+            wsi,
+            file_name: "slide.tif".to_string(),
+            viewport,
+            tile_cache: Arc::new(TileCache::with_limits(64, 64 << 20)),
+            roi: Some(Rect {
+                x: 256.0,
+                y: 256.0,
+                width: 200.0,
+                height: 100.0,
+            }),
+            measurements: Vec::new(),
+            calibration: Calibration::new(Some(0.5), Some(0.5)),
+            unit: MeasurementUnit::Um,
+            layers: store.file_layers(1).layers,
+        };
+        let settings = SlintExportSettings {
+            dpi: 192,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            show_roi_outline: true,
+            has_roi: true,
+            roi_color: slint::Color::from_argb_u8(255, 241, 196, 15),
+            roi_opacity: 100.0,
+            roi_thickness: 2.0,
+            format: SlintExportFormat::Png,
+            ..Default::default()
+        };
+        let path = dir.path().join("turned.png");
+        run_export(
+            &captured,
+            &settings,
+            &path,
+            ExportFormat::Png,
+            &JobControl::new(),
+        )
+        .unwrap();
+        let image = image::open(&path).unwrap().to_rgba8();
+        let px = |x: u32, y: u32| image.get_pixel(x, y).0;
+        // Turned clockwise, the slide's top-left square shows top-right.
+        assert_eq!(px(416, 96)[..3], [255, 0, 0]);
+        assert_eq!(px(96, 96)[..3], [200, 100, 150]);
+        // The ROI's top edge (level-0 y = 256) is the column x = 256 now,
+        // running down over its width (output y 256 to 456).
+        let edge = px(256, 400);
+        assert!(edge[0] > 200 && edge[1] > 150 && edge[2] < 80, "{edge:?}");
+        let inside = px(200, 400);
+        assert_eq!(inside[..3], [200, 100, 150], "inside the ROI");
     }
 
     #[test]

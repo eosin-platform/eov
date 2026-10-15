@@ -94,6 +94,10 @@ export struct ViewportInfo {
     image-width: float,
     image-height: float,
     level: int,
+    // Clockwise rotation of the view in degrees (0, 90, 180, 270), then a
+    // left-right mirror when `flipped`.
+    rotation: int,
+    flipped: bool,
 }
 
 /// A text label drawn over the viewport (anchors: 0 = top-left at (x, y),

@@ -186,7 +186,8 @@ pub(crate) fn view_info(state: &AppState, pane: PaneId, scale_factor: f64) -> Op
         width: viewport.width,
         height: viewport.height,
         scale_factor,
-        rotation_deg: 0.0,
+        rotation_deg: f64::from(viewport.orientation.degrees()),
+        flipped: viewport.orientation.flipped(),
         visible: Rect {
             x: bounds.left,
             y: bounds.top,
@@ -594,6 +595,32 @@ impl UiHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plugins' screen math (`ViewInfo::image_to_screen`) agrees with the
+    /// viewer's for every turn.
+    #[test]
+    fn published_views_map_points_like_the_viewer() {
+        let mut viewport = eov_common::Viewport::new(640.0, 480.0, 5000.0, 3000.0);
+        viewport.zoom = 0.3;
+        viewport.center.x = 2100.0;
+        viewport.center.y = 1400.0;
+        for orientation in eov_common::viewport::Orientation::all() {
+            viewport.orientation = orientation;
+            let view = ViewInfo {
+                center_x: viewport.center.x,
+                center_y: viewport.center.y,
+                zoom: viewport.zoom,
+                width: viewport.width,
+                height: viewport.height,
+                rotation_deg: f64::from(orientation.degrees()),
+                flipped: orientation.flipped(),
+                ..Default::default()
+            };
+            let (x, y) = view.image_to_screen(2300.0, 1250.0);
+            let expected = viewport.image_to_screen(2300.0, 1250.0);
+            assert!((x - expected.x).abs() < 1e-6 && (y - expected.y).abs() < 1e-6);
+        }
+    }
 
     #[test]
     fn alpha_is_unpremultiplied_or_composited() {

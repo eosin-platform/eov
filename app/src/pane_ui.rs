@@ -10,6 +10,8 @@ use std::rc::Rc;
 pub(crate) struct PaneRenderCacheEntry {
     pub(crate) content: Option<Image>,
     pub(crate) minimap_thumbnail: Option<Image>,
+    /// How `minimap_thumbnail` is turned (it follows the pane's view).
+    pub(crate) minimap_orientation: eov_common::viewport::Orientation,
     pub(crate) cpu_frame: Option<CachedCpuFrame>,
     /// Reused for the frames shown while the view moves (CPU backend).
     pub(crate) preview_buffer: Vec<u8>,
@@ -20,6 +22,7 @@ impl Clone for PaneRenderCacheEntry {
         Self {
             content: self.content.clone(),
             minimap_thumbnail: self.minimap_thumbnail.clone(),
+            minimap_orientation: self.minimap_orientation,
             cpu_frame: None,
             preview_buffer: Vec::new(),
         }
@@ -172,9 +175,14 @@ pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: Cach
     });
 }
 
-pub(crate) fn set_cached_pane_minimap(pane: PaneId, image: Option<Image>) {
+pub(crate) fn set_cached_pane_minimap(
+    pane: PaneId,
+    image: Option<Image>,
+    orientation: eov_common::viewport::Orientation,
+) {
     with_pane_render_cache(pane.0 + 1, |cache| {
         cache[pane.0].minimap_thumbnail = image;
+        cache[pane.0].minimap_orientation = orientation;
     });
 }
 

@@ -2,6 +2,7 @@ use crate::AppWindow;
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use eov_common::processing::{GpuColorUniform, wgsl};
+use eov_common::viewport::Orientation;
 use eov_common::{FilteringMode, TileCoord, TileData};
 use slint::ComponentHandle;
 use slint::wgpu_29::wgpu;
@@ -199,6 +200,9 @@ impl SurfaceSlot {
 pub(crate) struct QueuedFrame {
     pub(crate) width: u32,
     pub(crate) height: u32,
+    /// How the draws, laid out axis-aligned with the slide (see
+    /// `Viewport::aligned`), turn onto the `width × height` surface.
+    pub(crate) orientation: Orientation,
     pub(crate) draws: Vec<TileDraw>,
     /// The pane's colour pipeline as the shaders' `EovColorParams` (stages
     /// 2–4; see `eov_common::processing::ProcessingPipeline::gpu_uniform`).
@@ -270,6 +274,7 @@ impl QueuedFrame {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.width.hash(&mut hasher);
         self.height.hash(&mut hasher);
+        self.orientation.hash(&mut hasher);
         for v in self.color.to_array() {
             v.to_bits().hash(&mut hasher);
         }
@@ -333,6 +338,8 @@ struct QuadParams {
     /// Weight of the coarse level (0 when the draw has none, or it did not
     /// fit into the fine tile's page).
     mip_blend: f32,
+    /// How the aligned layout turns onto the surface.
+    orientation: Orientation,
 }
 
 // ---------------------------------------------------------------------------
@@ -1668,6 +1675,7 @@ impl GpuRenderer {
                         fine_border: draw.tile.border,
                         coarse_border,
                         mip_blend,
+                        orientation: frame.orientation,
                     },
                 ),
             });
@@ -1839,10 +1847,22 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
     let x1 = draw.screen_x + draw.screen_w;
     let y1 = draw.screen_y + draw.screen_h;
 
-    let left = x0 / vw * 2.0 - 1.0;
-    let right = x1 / vw * 2.0 - 1.0;
-    let top = 1.0 - y0 / vh * 2.0;
-    let bottom = 1.0 - y1 / vh * 2.0;
+    // Draws are laid out in the aligned frame; turn each corner onto the
+    // surface about the frame centres.
+    let orientation = params.orientation;
+    let (aligned_w, aligned_h) = orientation.swap(vw, vh);
+    let ndc = |x: f32, y: f32| -> [f32; 2] {
+        let (px, py) = orientation.to_screen_xy(
+            f64::from(x - aligned_w / 2.0),
+            f64::from(y - aligned_h / 2.0),
+        );
+        let (sx, sy) = (px as f32 + vw / 2.0, py as f32 + vh / 2.0);
+        [sx / vw * 2.0 - 1.0, 1.0 - sy / vh * 2.0]
+    };
+    let top_left = ndc(x0, y0);
+    let top_right = ndc(x1, y0);
+    let bottom_left = ndc(x0, y1);
+    let bottom_right = ndc(x1, y1);
 
     // Fine UV: map quad edges to the inner tile region within the padded
     // texture.  With border > 0 the texture contains valid neighbor data so
@@ -1887,7 +1907,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
 
     [
         Vertex {
-            position: [left, top],
+            position: top_left,
             fine_uv: [fu_min, fv_min],
             coarse_uv: [coarse_min[0], coarse_min[1]],
             mip_blend,
@@ -1896,7 +1916,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
         Vertex {
-            position: [right, top],
+            position: top_right,
             fine_uv: [fu_max, fv_min],
             coarse_uv: [coarse_max[0], coarse_min[1]],
             mip_blend,
@@ -1905,7 +1925,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
         Vertex {
-            position: [left, bottom],
+            position: bottom_left,
             fine_uv: [fu_min, fv_max],
             coarse_uv: [coarse_min[0], coarse_max[1]],
             mip_blend,
@@ -1914,7 +1934,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
         Vertex {
-            position: [left, bottom],
+            position: bottom_left,
             fine_uv: [fu_min, fv_max],
             coarse_uv: [coarse_min[0], coarse_max[1]],
             mip_blend,
@@ -1923,7 +1943,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
         Vertex {
-            position: [right, top],
+            position: top_right,
             fine_uv: [fu_max, fv_min],
             coarse_uv: [coarse_max[0], coarse_min[1]],
             mip_blend,
@@ -1932,7 +1952,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
             fine_tex_size,
         },
         Vertex {
-            position: [right, bottom],
+            position: bottom_right,
             fine_uv: [fu_max, fv_max],
             coarse_uv: [coarse_max[0], coarse_max[1]],
             mip_blend,
@@ -1976,6 +1996,7 @@ mod tests {
         QueuedFrame {
             width: 8,
             height: 8,
+            orientation: Orientation::IDENTITY,
             draws: Vec::new(),
             color,
             sharpness,
@@ -2094,6 +2115,7 @@ mod tests {
             QueuedFrame {
                 width,
                 height: TILE,
+                orientation: Orientation::IDENTITY,
                 draws: vec![TileDraw {
                     tile,
                     coarse_tile: None,
@@ -2124,6 +2146,56 @@ mod tests {
             .map(|(x, y)| x.abs_diff(*y))
             .max()
             .unwrap_or(0)
+    }
+
+    /// A turned frame on the GPU is the upright frame turned (as the CPU
+    /// turns its frames).
+    #[test]
+    fn turned_frames_turn_the_composite() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the turned-frame test");
+            return;
+        };
+        let pipeline = ProcessingPipeline::identity();
+        let upright = render(&mut renderer, TILE * 2, &pipeline);
+        for orientation in Orientation::all() {
+            let (tile, _) = tile();
+            let (width, height) = orientation.swap(TILE * 2, TILE);
+            let slot = SurfaceSlot(1);
+            renderer.ensure_surface(slot, width, height).unwrap();
+            renderer.pending_frames.insert(
+                slot.index(),
+                QueuedFrame {
+                    width,
+                    height,
+                    orientation,
+                    draws: vec![TileDraw {
+                        tile,
+                        coarse_tile: None,
+                        screen_x: 0.0,
+                        screen_y: 0.0,
+                        screen_w: TILE as f32,
+                        screen_h: TILE as f32,
+                        coarse_uv_min: [0.0, 0.0],
+                        coarse_uv_max: [1.0, 1.0],
+                        mip_blend: 0.0,
+                        filtering_mode: FilteringMode::Bilinear,
+                    }],
+                    color: pipeline.gpu_uniform(),
+                    sharpness: 0.0,
+                    readback: None,
+                },
+            );
+            renderer.flush_pending_frames();
+            let (_, _, turned) = renderer.read_surface_rgba(slot).unwrap();
+            let mut expected = vec![0u8; upright.len()];
+            eov_common::blitter::orient_frame(&upright, TILE * 2, TILE, orientation, &mut expected);
+            assert!(
+                max_difference(&turned, &expected) <= 1,
+                "{orientation:?} differs by {}",
+                max_difference(&turned, &expected)
+            );
+        }
     }
 
     #[test]
@@ -2196,6 +2268,7 @@ mod tests {
         QueuedFrame {
             width,
             height: TILE,
+            orientation: Orientation::IDENTITY,
             draws: vec![TileDraw {
                 tile,
                 coarse_tile: None,
@@ -2329,6 +2402,7 @@ mod tests {
             QueuedFrame {
                 width,
                 height,
+                orientation: Orientation::IDENTITY,
                 draws,
                 color: ProcessingPipeline::identity().gpu_uniform(),
                 sharpness: 0.0,

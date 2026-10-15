@@ -64,6 +64,7 @@ fn view(file_id: FileId, x: f64, y: f64, width: f64, height: f64) -> ViewInfo {
         height: height * zoom,
         scale_factor: 1.0,
         rotation_deg: 0.0,
+        flipped: false,
         visible: Rect {
             x,
             y,

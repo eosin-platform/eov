@@ -72,6 +72,7 @@ export component Viewport inherits Rectangle {
     callback hud-reset-adjustments();
     callback hud-zoom-input(string);
     callback hud-zoom-in();
+    callback hud-orientation-changed(int);
     callback hud-zoom-out();
     callback hud-deconv-h-intensity-changed(float);
     callback hud-deconv-e-intensity-changed(float);
@@ -277,6 +278,11 @@ export component Viewport inherits Rectangle {
         // deconvolution included (CLR-9).
         has-adjustments: root.hud.modified;
         plugin-buttons: root.plugin-hud-buttons;
+        rotation-degrees: root.viewport-info.rotation;
+        flipped: root.viewport-info.flipped;
+        orientation-changed(action) => {
+            root.hud-orientation-changed(action);
+        }
         fit-to-view => {
             root.fit-to-view();
         }

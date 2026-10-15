@@ -23,6 +23,8 @@ const MAX_PLUGIN_ITEMS: usize = 20;
 pub(super) struct OpenMenu {
     contexts: Vec<(Arc<str>, MenuContext)>,
     file_id: Option<FileId>,
+    /// The pane the menu was opened on.
+    pane: usize,
 }
 
 fn item(id: impl Into<String>, label: &str, icon: &str) -> ContextMenuItem {
@@ -78,7 +80,7 @@ impl UiHost {
         let Some(ui) = self.ui() else {
             return;
         };
-        let (file_id, view, has_roi, has_measurements) = {
+        let (file_id, view, has_roi, has_measurements, turned) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -89,6 +91,8 @@ impl UiHost {
                 super::publish::view_info(&state, PaneId(pane), scale),
                 file.is_some_and(|f| f.roi.is_some()),
                 file.is_some_and(|f| !f.measurements.is_empty()),
+                file.and_then(|f| f.pane_state(PaneId(pane)))
+                    .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
             )
         };
         let mut items = vec![
@@ -96,6 +100,15 @@ impl UiHost {
             item("viewport-export-image", "Export Image…", "export"),
         ];
         mark_last_separator(&mut items);
+        if file_id.is_some() {
+            items.push(item("host:view-rotate-right", "Rotate Right 90°", ""));
+            items.push(item("host:view-rotate-left", "Rotate Left 90°", ""));
+            items.push(item("host:view-flip", "Flip Horizontally", ""));
+            if turned {
+                items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
+            }
+            mark_last_separator(&mut items);
+        }
         if let Some(file_id) = file_id {
             let mut add = item("host:bookmark-add", "Add Bookmark…", "");
             add.shortcut = shortcut("B", false).into();
@@ -205,7 +218,11 @@ impl UiHost {
         if let Some(last) = items.last_mut() {
             last.separator_after = false;
         }
-        *self.menu.borrow_mut() = Some(OpenMenu { contexts, file_id });
+        *self.menu.borrow_mut() = Some(OpenMenu {
+            contexts,
+            file_id,
+            pane,
+        });
 
         ui.set_context_menu_tab_id(-1);
         ui.set_context_menu_series_path("".into());
@@ -249,6 +266,27 @@ impl UiHost {
             return false;
         };
         if self.bookmark_command(host_command) {
+            return true;
+        }
+        if let Some(action) = host_command.strip_prefix("view-") {
+            let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
+            if let Some(pane) = pane {
+                {
+                    let mut state = self.state.write();
+                    state.set_focused_pane(PaneId(pane));
+                    let changed = match action {
+                        "rotate-right" => crate::callbacks::rotate_active_viewport(&mut state, 1),
+                        "rotate-left" => crate::callbacks::rotate_active_viewport(&mut state, -1),
+                        "flip" => crate::callbacks::flip_active_viewport(&mut state),
+                        _ => crate::callbacks::reset_active_orientation(&mut state),
+                    };
+                    if changed {
+                        state.mirror_locked_viewports_from_active();
+                        state.request_render();
+                    }
+                }
+                self.request_render();
+            }
             return true;
         }
         let file_id = self.menu.borrow().as_ref().and_then(|menu| menu.file_id);

@@ -151,15 +151,55 @@ pub struct ViewInfo {
     /// Physical pixels per logical pixel of the window.
     #[serde(default = "default_scale_factor")]
     pub scale_factor: f64,
-    /// Clockwise view rotation in degrees.
+    /// Clockwise view rotation in degrees (eov turns views in steps of 90).
     #[serde(default)]
     pub rotation_deg: f64,
+    /// The view is mirrored left to right, after the rotation.
+    #[serde(default)]
+    pub flipped: bool,
     /// Level-0 bounding box of the visible area.
     pub visible: Rect,
 }
 
 fn default_scale_factor() -> f64 {
     1.0
+}
+
+impl ViewInfo {
+    /// An image-space direction as it points on the pane (rotation, then
+    /// mirror).
+    fn turn(&self, x: f64, y: f64) -> (f64, f64) {
+        let (sin, cos) = self.rotation_deg.to_radians().sin_cos();
+        let (tx, ty) = (x * cos - y * sin, x * sin + y * cos);
+        if self.flipped { (-tx, ty) } else { (tx, ty) }
+    }
+
+    /// Logical pane position of level-0 point `(x, y)`, accounting for the
+    /// view's rotation and mirror.
+    pub fn image_to_screen(&self, x: f64, y: f64) -> (f64, f64) {
+        let (dx, dy) = self.turn(x - self.center_x, y - self.center_y);
+        (
+            self.width / 2.0 + dx * self.zoom,
+            self.height / 2.0 + dy * self.zoom,
+        )
+    }
+
+    /// The level-0 point at logical pane position `(x, y)`.
+    pub fn screen_to_image(&self, x: f64, y: f64) -> (f64, f64) {
+        let zoom = if self.zoom > 0.0 { self.zoom } else { 1.0 };
+        let (mut dx, dy) = (
+            (x - self.width / 2.0) / zoom,
+            (y - self.height / 2.0) / zoom,
+        );
+        if self.flipped {
+            dx = -dx;
+        }
+        let (sin, cos) = (-self.rotation_deg).to_radians().sin_cos();
+        (
+            self.center_x + dx * cos - dy * sin,
+            self.center_y + dx * sin + dy * cos,
+        )
+    }
 }
 
 /// One pane in display order.
@@ -1435,6 +1475,9 @@ pub mod methods {
     pub const VIEW_FIT: &str = "view.fit";
     /// `ViewFrameArgs` → `null`
     pub const VIEW_FRAME: &str = "view.frame";
+    /// `ViewOrientationArgs` → `null`: turns a pane's view (the rotation
+    /// must be a multiple of 90°).
+    pub const VIEW_ORIENTATION: &str = "view.orientation";
     /// `PaneArgs` → `DisplayAdjustments`: how the pane renders the slide,
     /// so overlays derived from slide pixels can match it.
     pub const VIEW_DISPLAY: &str = "view.display";
@@ -1746,6 +1789,17 @@ pub struct ViewZoomArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ViewOrientationArgs {
+    #[serde(default)]
+    pub pane: Option<PaneId>,
+    /// Clockwise rotation in degrees, a multiple of 90.
+    pub rotation_deg: f64,
+    /// Mirror left to right after the rotation.
+    #[serde(default)]
+    pub flipped: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ViewFrameArgs {
     #[serde(default)]
     pub pane: Option<PaneId>,
@@ -1851,6 +1905,38 @@ pub type PropertyMap = BTreeMap<String, String>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn views_map_screen_and_image_through_their_turn() {
+        let mut view = ViewInfo {
+            center_x: 100.0,
+            center_y: 50.0,
+            zoom: 2.0,
+            width: 300.0,
+            height: 200.0,
+            ..Default::default()
+        };
+        assert_eq!(view.image_to_screen(110.0, 50.0), (170.0, 100.0));
+        // Turned clockwise, a point right of the centre shows below it.
+        view.rotation_deg = 90.0;
+        let (x, y) = view.image_to_screen(110.0, 50.0);
+        assert!((x - 150.0).abs() < 1e-9 && (y - 120.0).abs() < 1e-9);
+        for rotation in [0.0, 90.0, 180.0, 270.0] {
+            for flipped in [false, true] {
+                view.rotation_deg = rotation;
+                view.flipped = flipped;
+                let (sx, sy) = view.image_to_screen(37.0, 81.0);
+                let (ix, iy) = view.screen_to_image(sx, sy);
+                assert!((ix - 37.0).abs() < 1e-9 && (iy - 81.0).abs() < 1e-9);
+            }
+        }
+        // Views from older hosts read as upright.
+        let old: ViewInfo = serde_json::from_str(
+            r#"{"pane":1,"file_id":1,"center_x":0,"center_y":0,"zoom":1,"width":1,"height":1,"visible":{"x":0,"y":0,"width":1,"height":1}}"#,
+        )
+        .unwrap();
+        assert_eq!((old.rotation_deg, old.flipped), (0.0, false));
+    }
 
     #[test]
     fn unknown_events_deserialize_to_unknown() {
