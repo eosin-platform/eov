@@ -1175,7 +1175,10 @@ fn replace_package_atomically(
     for path in old_paths {
         let _ = invalidate_plugin_package_cache(&path);
     }
-    let _ = invalidate_plugin_package_cache(&target);
+    // The staged package was extracted (and hashed) during inspection; the
+    // installed file has the same content, so the next launch reuses it.
+    crate::plugins::discovery::package_cache::PackageCache::default()
+        .record_rename(stage_path, &target);
     Ok(())
 }
 

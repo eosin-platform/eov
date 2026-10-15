@@ -1750,6 +1750,7 @@ dependencies = [
  "windows-sys 0.48.0",
  "x11-dl",
  "zip",
+ "zstd",
 ]
 
 [[package]]
