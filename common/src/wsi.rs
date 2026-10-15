@@ -257,6 +257,18 @@ impl WsiProperties {
     }
 }
 
+/// Rounds `target` to the nearest positive multiple of a square native tile
+/// size (64..=1024 px); other grids leave `target` unchanged.
+pub fn aligned_tile_size(target: u32, native_width: Option<u32>, native_height: Option<u32>) -> u32 {
+    match (native_width, native_height) {
+        (Some(w), Some(h)) if w == h && (64..=COARSE_TILE_SIZE).contains(&w) => {
+            let multiple = (f64::from(target) / f64::from(w)).round().max(1.0) as u32;
+            w * multiple
+        }
+        _ => target,
+    }
+}
+
 /// OpenSlide's best-level rule, computed from cached level data: the
 /// coarsest level whose downsample does not exceed `downsample`.
 pub fn best_level_for_downsample(levels: &[WsiLevel], downsample: f64) -> u32 {
@@ -614,19 +626,26 @@ impl WsiFile {
         self.tile_size
     }
 
-    /// Get the preferred tile size for a specific pyramid level.
+    /// The tile size eov uses to address `level`.
+    ///
+    /// Coarser levels use larger tiles (256, 512 or 1024 px by downsample),
+    /// rounded to a multiple of the file's native tile size when the format
+    /// has a square native grid of at most 1024 px (e.g. 240 px for Aperio
+    /// gives 240/480/960), so each native tile is decoded for exactly one eov
+    /// tile instead of being split across up to four.
     pub fn tile_size_for_level(&self, level: u32) -> u32 {
         let Some(level_info) = self.level(level) else {
             return self.tile_size;
         };
 
-        if level_info.downsample >= 16.0 {
+        let target = if level_info.downsample >= 16.0 {
             COARSE_TILE_SIZE
         } else if level_info.downsample >= 4.0 {
             MEDIUM_TILE_SIZE
         } else {
             DEFAULT_TILE_SIZE
-        }
+        };
+        aligned_tile_size(target, level_info.tile_width, level_info.tile_height)
     }
 
     /// Set the tile size used by [`read_tile`](Self::read_tile). A size of 0
@@ -902,6 +921,28 @@ mod tests {
             wsi.read_region(0, 0, 0, u32::MAX, u32::MAX),
             Err(Error::RegionTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn tile_sizes_follow_the_native_grid() {
+        assert_eq!(aligned_tile_size(256, Some(240), Some(240)), 240);
+        assert_eq!(aligned_tile_size(512, Some(240), Some(240)), 480);
+        assert_eq!(aligned_tile_size(1024, Some(240), Some(240)), 960);
+        assert_eq!(aligned_tile_size(256, Some(512), Some(512)), 512);
+        assert_eq!(aligned_tile_size(1024, Some(512), Some(512)), 1024);
+        assert_eq!(aligned_tile_size(256, Some(256), Some(256)), 256);
+        // Non-square, tiny, huge or unknown grids are not followed.
+        assert_eq!(aligned_tile_size(256, Some(240), Some(120)), 256);
+        assert_eq!(aligned_tile_size(256, Some(16), Some(16)), 256);
+        assert_eq!(aligned_tile_size(256, Some(4096), Some(4096)), 256);
+        assert_eq!(aligned_tile_size(512, None, None), 512);
+
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = WsiFile::open(pyramid_file(dir.path())).unwrap();
+        // Native 64-px tiles: 256 = 4 * 64.
+        assert_eq!(wsi.tile_size_for_level(0), 256);
+        assert_eq!(wsi.tile_size_for_level(2), 512);
+        assert_eq!(wsi.tile_size_for_level(99), wsi.tile_size());
     }
 
     #[test]
