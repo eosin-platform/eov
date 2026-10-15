@@ -33,6 +33,7 @@
 
 mod health;
 mod metadata;
+mod pixels;
 pub mod registry;
 
 use crate::openslide::OpenSlide;
@@ -44,6 +45,7 @@ use std::sync::Arc;
 use tracing::{debug, info};
 
 pub use health::{HealthState, SlideHealth};
+pub use pixels::AlphaMode;
 pub use registry::{
     DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
     set_openslide_cache_capacity,
@@ -530,14 +532,25 @@ impl WsiFile {
         self.shared.properties.levels.get(level as usize)
     }
 
-    /// Read a region from the slide
+    /// Reads a region as opaque RGBA (`width * height * 4` bytes).
+    ///
+    /// OpenSlide's premultiplied pixels are composited over the slide's
+    /// background colour ([`WsiProperties::background_color`], white unless
+    /// the slide specifies one), so gaps between scanned regions and areas
+    /// outside the slide read as glass, never as black or transparent. Use
+    /// [`read_region_with`](Self::read_region_with) to keep the alpha channel.
     ///
     /// # Arguments
-    /// * `x` - X coordinate at level 0
-    /// * `y` - Y coordinate at level 0
+    /// * `x` - X coordinate at level 0 (may be negative)
+    /// * `y` - Y coordinate at level 0 (may be negative)
     /// * `level` - The level to read from
     /// * `width` - Width in pixels at the target level
     /// * `height` - Height in pixels at the target level
+    ///
+    /// # Errors
+    /// [`Error::InvalidLevel`], [`Error::RegionTooLarge`] (above
+    /// [`MAX_REGION_PIXELS`]), the transient [`Error::HandlePoisoned`] and
+    /// the permanent [`Error::CorruptRegion`].
     pub fn read_region(
         &self,
         x: i64,
@@ -546,6 +559,80 @@ impl WsiFile {
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>> {
+        self.read_region_with(x, y, level, width, height, AlphaMode::Composited)
+    }
+
+    /// Like [`read_region`](Self::read_region), with an explicit
+    /// [`AlphaMode`].
+    pub fn read_region_with(
+        &self,
+        x: i64,
+        y: i64,
+        level: u32,
+        width: u32,
+        height: u32,
+        mode: AlphaMode,
+    ) -> Result<Vec<u8>> {
+        let len = self.region_byte_len(level, width, height)?;
+        let mut out = pixels::try_alloc(len)?;
+        self.read_region_into(x, y, level, width, height, mode, &mut out)?;
+        Ok(out)
+    }
+
+    /// Reads a region into `out`, which must hold exactly
+    /// `width * height * 4` bytes. Avoids an allocation per read.
+    #[allow(clippy::too_many_arguments)]
+    pub fn read_region_into(
+        &self,
+        x: i64,
+        y: i64,
+        level: u32,
+        width: u32,
+        height: u32,
+        mode: AlphaMode,
+        out: &mut [u8],
+    ) -> Result<()> {
+        let len = self.region_byte_len(level, width, height)?;
+        if out.len() != len {
+            return Err(Error::InvalidArgument(format!(
+                "output buffer holds {} bytes, region needs {len}",
+                out.len()
+            )));
+        }
+        if len == 0 {
+            return Ok(());
+        }
+        let key = BadKey::Region {
+            level,
+            x,
+            y,
+            width,
+            height,
+        };
+        let background = self.shared.properties.background_color;
+
+        // OpenSlide writes native-endian u32 ARGB. Let it write straight into
+        // `out` when the buffer happens to be 4-byte aligned (it practically
+        // always is), then convert in place.
+        // SAFETY: every bit pattern is a valid u32 and u8.
+        let (prefix, aligned, suffix) = unsafe { out.align_to_mut::<u32>() };
+        if prefix.is_empty() && suffix.is_empty() {
+            self.shared.handle.run(Some(key), |slide| {
+                slide.read_region_argb(aligned, x, y, level, width, height)
+            })?;
+            pixels::argb_bytes_to_rgba_in_place(out, mode, background);
+        } else {
+            let mut argb = vec![0u32; len / 4];
+            self.shared.handle.run(Some(key), |slide| {
+                slide.read_region_argb(&mut argb, x, y, level, width, height)
+            })?;
+            pixels::argb_to_rgba(&argb, out, mode, background);
+        }
+        Ok(())
+    }
+
+    /// Validates a region read and returns its size in bytes.
+    fn region_byte_len(&self, level: u32, width: u32, height: u32) -> Result<usize> {
         if level >= self.level_count() {
             return Err(Error::InvalidLevel(level, self.max_level()));
         }
@@ -557,30 +644,7 @@ impl WsiFile {
                 max_pixels: MAX_REGION_PIXELS,
             });
         }
-
-        let mut argb = vec![0u32; pixels as usize];
-        let key = BadKey::Region {
-            level,
-            x,
-            y,
-            width,
-            height,
-        };
-        self.shared.handle.run(Some(key), |slide| {
-            slide.read_region_argb(&mut argb, x, y, level, width, height)
-        })?;
-
-        // OpenSlide returns native-endian ARGB; emit RGBA bytes.
-        let mut data = Vec::with_capacity(argb.len() * 4);
-        for pixel in argb {
-            data.extend_from_slice(&[
-                (pixel >> 16) as u8,
-                (pixel >> 8) as u8,
-                pixel as u8,
-                (pixel >> 24) as u8,
-            ]);
-        }
-        Ok(data)
+        Ok(pixels as usize * 4)
     }
 
     /// Read a tile at the specified coordinates
@@ -950,6 +1014,72 @@ mod tests {
         set_openslide_cache_capacity(capacity).unwrap();
         assert_eq!(recommended_openslide_cache_bytes(0), 32 * 1024 * 1024);
         assert_eq!(recommended_openslide_cache_bytes(1 << 30), 128 * 1024 * 1024);
+    }
+
+    #[test]
+    fn gaps_and_areas_outside_the_slide_read_as_opaque_background() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sparse.tiff");
+        let spec = TiffSpec {
+            levels: vec![TiffLevel::new(64, 64, 32).with_missing_tile(1, 0)],
+            ..TiffSpec::default()
+        };
+        write_tiff(&path, &spec, |_, _| [10, 20, 30]).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        assert_eq!(wsi.properties().background_color, [255, 255, 255]);
+
+        // A tile the scanner never wrote: transparent in OpenSlide.
+        let gap = wsi.read_region(32, 0, 0, 32, 32).unwrap();
+        assert!(gap.as_chunks::<4>().0.iter().all(|p| *p == [255, 255, 255, 255]));
+        let raw = wsi
+            .read_region_with(32, 0, 0, 32, 32, AlphaMode::Straight)
+            .unwrap();
+        assert!(raw.as_chunks::<4>().0.iter().all(|p| p[3] == 0));
+
+        // Negative coordinates and the area past the edge are padded, not
+        // shifted.
+        let edge = wsi.read_region(-2, 62, 0, 4, 4).unwrap();
+        let px = |x: usize, y: usize| &edge[(y * 4 + x) * 4..(y * 4 + x) * 4 + 4];
+        assert_eq!(px(0, 0), [255, 255, 255, 255]);
+        assert_eq!(px(2, 0), [10, 20, 30, 255]);
+        assert_eq!(px(2, 2), [255, 255, 255, 255]);
+        let premul = wsi
+            .read_region_with(-2, 62, 0, 4, 4, AlphaMode::Premultiplied)
+            .unwrap();
+        assert_eq!(&premul[..4], [0, 0, 0, 0]);
+        assert_eq!(&premul[8..12], [10, 20, 30, 255]);
+    }
+
+    #[test]
+    fn read_region_into_reuses_buffers_and_checks_their_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let wsi = WsiFile::open(pyramid_file(dir.path())).unwrap();
+        let mut buf = vec![0u8; 8 * 8 * 4];
+        wsi.read_region_into(0, 0, 1, 8, 8, AlphaMode::Composited, &mut buf)
+            .unwrap();
+        assert_eq!(buf, wsi.read_region(0, 0, 1, 8, 8).unwrap());
+        // A misaligned buffer works too.
+        let mut backing = vec![0u8; 8 * 8 * 4 + 1];
+        wsi.read_region_into(0, 0, 1, 8, 8, AlphaMode::Composited, &mut backing[1..])
+            .unwrap();
+        assert_eq!(&backing[1..], &buf[..]);
+        assert!(matches!(
+            wsi.read_region_into(0, 0, 1, 8, 8, AlphaMode::Composited, &mut buf[..12]),
+            Err(Error::InvalidArgument(_))
+        ));
+        assert!(wsi.read_region(0, 0, 0, 0, 5).unwrap().is_empty());
+    }
+
+    /// The audit's reproduction: the gap between `openslide.region[0]` and
+    /// `[1]` of `OS-2.bif` must read as white glass.
+    #[test]
+    #[ignore = "needs the OS-2.bif fixture in ../fixtures"]
+    fn bif_region_gap_reads_as_white() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/OS-2.bif");
+        let wsi = WsiFile::open(&path).unwrap();
+        assert_eq!(wsi.properties().regions.len(), 2);
+        let gap = wsi.read_region(15_000, 10_000, 0, 8, 8).unwrap();
+        assert!(gap.as_chunks::<4>().0.iter().all(|p| *p == [255, 255, 255, 255]));
     }
 
     #[test]
