@@ -182,8 +182,15 @@ export struct PluginRowData {
     status-level: int,
     api-version: string,
     source: string,
+    // Where the package came from: official, github (owner/repo), local, …
+    origin: string,
+    // Why it needs attention (changed since installed, incompatible, …).
+    detail: string,
+    // A newer version found by Check for Updates ("" if none).
+    update: string,
     can-enable: bool,
     can-disable: bool,
+    can-remove: bool,
 }
 
 export struct MetadataItem {

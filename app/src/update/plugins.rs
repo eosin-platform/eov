@@ -17,7 +17,7 @@ use super::manifest::{
 use super::network::{FetchError, NetworkPermission, ReleaseClient};
 use super::platform::Platform;
 use super::policy::{self, Policy};
-use super::prompt::Interaction;
+use super::prompt::{Answer, Interaction, Prompter};
 use super::registry::{
     self, ManagedPlugin, ManagedRegistry, PluginDirLock, SOURCE_GITHUB, SOURCE_LOCAL,
     SOURCE_OFFICIAL,
@@ -81,9 +81,74 @@ impl PluginContext {
         })
     }
 
+    /// The context of the Plugins panel, which asks its questions (and
+    /// for network access) in dialogs before it starts an operation. Any
+    /// further question the operation would ask, such as replacing a
+    /// plugin from another source, is answered no.
+    pub fn for_panel(plugin_dir: &Path) -> Result<Self> {
+        let policy = policy::current().clone();
+        Ok(Self {
+            plugin_dir: plugin_dir.to_path_buf(),
+            system_plugin_dirs: policy.plugin_dirs.clone(),
+            host: compat::host_version(),
+            platform: Platform::current()?,
+            verifier: Verifier::for_build(&policy)?,
+            policy,
+            interaction: Interaction::new(true, Box::new(Declines)),
+            client: ReleaseClient::for_build(),
+            json: false,
+        })
+    }
+
     fn plain(&self) -> bool {
         !self.json
     }
+}
+
+/// Answers every question no, for operations confirmed beforehand.
+struct Declines;
+
+impl Prompter for Declines {
+    fn interactive(&self) -> bool {
+        false
+    }
+
+    fn ask(&mut self, _question: &str, _default: Answer) -> Answer {
+        Answer::No
+    }
+}
+
+/// Compares the installed plugins with the official catalog of this eov
+/// release. The user agreed to the network request. Library API for the
+/// Plugins panel.
+pub fn check_for_updates(ctx: &mut PluginContext) -> Result<Vec<PluginListing>> {
+    ctx.policy.ensure_valid()?;
+    let permission = NetworkPermission::require(
+        true,
+        "The Plugins panel compares installed plugins with the official catalog.",
+        &mut ctx.interaction,
+        &ctx.policy,
+    )?;
+    let catalog = fetch_host_catalog(ctx, &permission)?;
+    let inventory = inventory(&ctx.plugin_dir, &ctx.system_plugin_dirs, &ctx.host)?;
+    Ok(list_plugins(&inventory, Some(&catalog.manifest)))
+}
+
+/// Updates plugin `id` from where it was installed from, as `eov plugin
+/// update` does. The user agreed in a dialog; the update takes effect when
+/// eov restarts.
+pub fn update_from_panel(ctx: &mut PluginContext, id: &str) -> Result<()> {
+    install(
+        ctx,
+        id,
+        &InstallOptions {
+            allow_network: true,
+            dry_run: false,
+            force: false,
+            id: None,
+            require_existing: true,
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1695,10 +1760,17 @@ pub struct RemoveOptions {
     pub dry_run: bool,
 }
 
-/// `eov plugin remove`: removes every package of a plugin (or a broken
-/// package, by path or file name) and its registry record.
-pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> Result<()> {
-    let inventory = inventory(&ctx.plugin_dir, &[], &ctx.host)?;
+/// What removing a plugin (or broken packages) will delete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Removal {
+    pub id: Option<String>,
+    pub paths: Vec<PathBuf>,
+}
+
+/// Finds what `query` (a plugin id, or a broken package's path or file
+/// name) would remove. Library API for the Plugins panel.
+pub fn plan_removal(plugin_dir: &Path, host: &Version, query: &str) -> Result<Removal> {
+    let inventory = inventory(plugin_dir, &[], host)?;
     let matches = find_matches(&inventory, query);
     let ids: BTreeSet<String> = matches.iter().map(|package| package.id.clone()).collect();
     if ids.len() > 1 {
@@ -1724,6 +1796,34 @@ pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> 
     if paths.is_empty() {
         bail!("no installed plugin matches '{query}'");
     }
+    Ok(Removal { id, paths })
+}
+
+/// Deletes the packages of a planned removal and the plugin's registry
+/// record, atomically with respect to other eov processes.
+pub fn apply_removal(plugin_dir: &Path, removal: &Removal) -> Result<()> {
+    let _lock = PluginDirLock::acquire(plugin_dir)?;
+    let mut registry = registry::load(plugin_dir)?;
+    let backups = move_to_backups(&removal.paths)?;
+    if let Some(id) = &removal.id {
+        registry.plugins.remove(id);
+    }
+    if let Err(error) = registry::save(plugin_dir, &registry) {
+        restore_backups(&backups)?;
+        return Err(error);
+    }
+    finish_backups(backups, None);
+    for path in &removal.paths {
+        let _ = invalidate_plugin_package_cache(path);
+    }
+    Ok(())
+}
+
+/// `eov plugin remove`: removes every package of a plugin (or a broken
+/// package, by path or file name) and its registry record.
+pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> Result<()> {
+    let removal = plan_removal(&ctx.plugin_dir, &ctx.host, query)?;
+    let Removal { id, paths } = &removal;
 
     #[derive(Serialize)]
     struct RemoveReport<'a> {
@@ -1733,10 +1833,10 @@ pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> 
         removed: bool,
     }
     let mut description = String::new();
-    if let Some(id) = &id {
+    if let Some(id) = id {
         description.push_str(&format!("Plugin:   {id}\n"));
     }
-    for path in &paths {
+    for path in paths {
         description.push_str(&format!("Package:  {}\n", path.display()));
     }
     let description = description.trim_end().to_string();
@@ -1744,7 +1844,7 @@ pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> 
         if ctx.json {
             return print_json(&RemoveReport {
                 id: id.as_deref(),
-                packages: &paths,
+                packages: paths,
                 dry_run: true,
                 removed: false,
             });
@@ -1753,25 +1853,11 @@ pub fn remove(ctx: &mut PluginContext, query: &str, options: &RemoveOptions) -> 
         return Ok(());
     }
     ctx.interaction.confirm(&description)?;
-
-    let _lock = PluginDirLock::acquire(&ctx.plugin_dir)?;
-    let mut registry = registry::load(&ctx.plugin_dir)?;
-    let backups = move_to_backups(&paths)?;
-    if let Some(id) = &id {
-        registry.plugins.remove(id);
-    }
-    if let Err(error) = registry::save(&ctx.plugin_dir, &registry) {
-        restore_backups(&backups)?;
-        return Err(error);
-    }
-    finish_backups(backups, None);
-    for path in &paths {
-        let _ = invalidate_plugin_package_cache(path);
-    }
+    apply_removal(&ctx.plugin_dir, &removal)?;
     if ctx.json {
         return print_json(&RemoveReport {
             id: id.as_deref(),
-            packages: &paths,
+            packages: paths,
             dry_run: false,
             removed: true,
         });

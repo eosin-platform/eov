@@ -443,6 +443,8 @@ eov --plugin-dir /path/to/my/plugins slide.svs
 
 Each `.eop` package in that directory is treated as a plugin package: a tar archive, optionally zstd-compressed (detected from its content, not its name). eov extracts each package once, when it is installed or first seen, into a cache keyed by the package's SHA-256, so an update never touches the files a running eov uses; unused extractions are removed in the background (or with `eov plugin gc`). Plugins disabled with `eov plugin disable` stay installed but are not loaded, and `--safe-mode` loads none. Administrators can add read-only plugin directories with `plugin_dirs` in the [policy file](#application-and-plugin-updates).
 
+The Plugins panel (the plugin button in the toolbar) does the same from the window. It lists each plugin with its version, origin and state, says why one failed or whether its package changed since it was installed, and lists packages eov cannot read. Plugins can be disabled, enabled and removed there. **Check for updates** asks before going online, then compares the installed plugins with the official catalog of this eov release; an update is installed after a confirmation and used from the next start.
+
 ### Manifest Format
 
 Every plugin directory must contain a `plugin.toml` at its root:

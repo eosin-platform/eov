@@ -286,6 +286,15 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     ui.on_plugin_enable_requested(|plugin_id, enable| {
         with_host(|host| host.set_plugin_enabled(&plugin_id, enable));
     });
+    ui.on_plugins_check_updates(|| {
+        with_host(|host| host.check_plugin_updates());
+    });
+    ui.on_plugin_update_requested(|plugin_id| {
+        with_host(|host| host.update_plugin(&plugin_id));
+    });
+    ui.on_plugin_remove_requested(|plugin_id| {
+        with_host(|host| host.remove_plugin(&plugin_id));
+    });
     ui.on_plugins_folder_requested(|| {
         with_host(|host| host.open_plugin_folder());
     });

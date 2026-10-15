@@ -119,6 +119,11 @@ export component AppWindow inherits Window {
     in-out property <[PluginRowData]> plugin-rows: [];
     in-out property <string> plugin-dir-text: "";
     in-out property <string> plugins-panel-note: "";
+    in-out property <string> plugins-update-note: "";
+    in-out property <bool> plugins-checking: false;
+    callback plugins-check-updates();
+    callback plugin-update-requested(string);
+    callback plugin-remove-requested(string);
     in-out property <int> plugin-count: 0;
     in-out property <bool> plugin-problems: false;
 
@@ -130,6 +135,7 @@ export component AppWindow inherits Window {
     in-out property <string> plugin-confirm-message: "";
     in-out property <string> plugin-confirm-confirm-label: "Confirm";
     in-out property <string> plugin-confirm-cancel-label: "Cancel";
+    in-out property <bool> plugin-confirm-destructive: false;
     in-out property <bool> show-plugin-modal: false;
     in-out property <float> plugin-modal-width: 0;
     in-out property <float> plugin-modal-height: 0;
@@ -1469,7 +1475,9 @@ export component AppWindow inherits Window {
                         min-width: confirm-text.preferred-width + 16px;
                         height: 28px;
                         border-radius: 4px;
-                        background: plugin-confirm-touch.has-hover ? #1177bb : Theme.accent;
+                        background: root.plugin-confirm-destructive
+                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
+                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
 
                         plugin-confirm-touch := TouchArea {
                             clicked => {
@@ -1689,8 +1697,19 @@ export component AppWindow inherits Window {
         rows: root.plugin-rows;
         plugin-dir: root.plugin-dir-text;
         note: root.plugins-panel-note;
+        update-note: root.plugins-update-note;
+        checking: root.plugins-checking;
         close-requested => {
             root.plugins-panel-visible = false;
+        }
+        check-updates-requested => {
+            root.plugins-check-updates();
+        }
+        update-requested(id) => {
+            root.plugin-update-requested(id);
+        }
+        remove-requested(id) => {
+            root.plugin-remove-requested(id);
         }
         enable-requested(id, enable) => {
             root.plugin-enable-requested(id, enable);

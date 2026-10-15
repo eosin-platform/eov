@@ -121,6 +121,9 @@ pub(crate) struct UiHost {
     last_pointer: Cell<Option<(f32, f32)>>,
     /// The slide the Measurements panel shows.
     measurements_panel: Cell<Option<eov_plugin_api::protocol::FileId>>,
+    /// Newer versions found by the Plugins panel's Check for Updates, by
+    /// plugin id.
+    plugin_updates: RefCell<HashMap<String, String>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -189,6 +192,7 @@ pub(crate) fn init(
         bookmark_menu: RefCell::new(None),
         last_pointer: Cell::new(None),
         measurements_panel: Cell::new(None),
+        plugin_updates: RefCell::new(HashMap::new()),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();
@@ -774,6 +778,53 @@ mod tests {
     use crate::plugin_runtime::loader::Module;
     use crate::test_support::run_on_slint_ui_test_thread;
     use slint::Model;
+
+    /// The Plugins panel lists a package eov cannot read, and Remove
+    /// deletes it after the user confirms in eov's own dialog.
+    #[test]
+    fn unreadable_packages_are_listed_and_can_be_removed() {
+        run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(64, 64 << 20));
+            let timer = Rc::new(Timer::default());
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let package = plugin_dir.path().join("broken.eop");
+            std::fs::write(&package, b"not a tar archive").unwrap();
+            let host = init(
+                &ui,
+                &state,
+                &tile_cache,
+                &timer,
+                InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: false,
+                },
+            );
+            host.refresh_plugin_panel();
+            let rows: Vec<_> = ui.get_plugin_rows().iter().collect();
+            let row = rows
+                .iter()
+                .find(|row| row.id == "broken.eop")
+                .expect("the broken package is listed");
+            assert!(row.can_remove);
+            assert!(!row.detail.is_empty());
+            assert!(ui.get_plugin_problems());
+
+            host.remove_plugin("broken.eop");
+            assert!(ui.get_plugin_confirm_visible(), "removing asks first");
+            assert!(ui.get_plugin_confirm_destructive());
+            assert!(package.exists());
+            host.answer_plugin_confirm(true);
+            assert!(!package.exists());
+            assert!(!ui.get_plugin_confirm_visible());
+            assert!(
+                !ui.get_plugin_rows()
+                    .iter()
+                    .any(|row| row.id == "broken.eop")
+            );
+        });
+    }
 
     /// The example plugin running in a real (headless) main window.
     #[test]
