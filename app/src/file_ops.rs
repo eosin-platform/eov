@@ -3,22 +3,27 @@
 //! This module contains functions for opening files and generating thumbnails.
 
 use crate::state::{
-    AppState, NewOpenFile, PaneId, SeriesEntry, SeriesNavigationMode, SeriesThumbnail,
+    AppState, MinimapThumbnail, NewOpenFile, PaneId, SeriesEntry, SeriesNavigationMode,
+    SeriesThumbnail,
 };
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
 use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loop};
-use eov_common::{TileCache, TileManager, ViewportState, WsiFile};
+use eov_common::{
+    ThumbnailOptions, ThumbnailRegion, TileCache, TileManager, ViewportState, WsiFile,
+};
 use natord::compare_ignore_case;
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const WSI_EXTENSIONS: &[&str] = &[
     "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide", "bif", "czi",
@@ -184,47 +189,17 @@ fn build_series_overlay_labels(wsi: Option<&WsiFile>) -> (Option<String>, Option
     (objective_label, stain_label)
 }
 
-fn generate_thumbnail_with_dimensions(wsi: &WsiFile, max_size: u32) -> Option<SeriesThumbnail> {
-    let level = wsi.level_count().saturating_sub(1);
-    let level_info = wsi.level(level)?;
-
-    let aspect = level_info.width as f64 / level_info.height as f64;
-    let (thumb_w, thumb_h) = if aspect > 1.0 {
-        (max_size, (max_size as f64 / aspect).max(1.0) as u32)
-    } else {
-        ((max_size as f64 * aspect).max(1.0) as u32, max_size)
+/// A series-bar thumbnail with bounded memory and I/O (WSI-3).
+fn series_thumbnail(wsi: &WsiFile) -> Option<SeriesThumbnail> {
+    let options = ThumbnailOptions {
+        region: ThumbnailRegion::ContentBounds,
+        ..ThumbnailOptions::new(SERIES_THUMBNAIL_SIZE)
     };
-
-    let data = wsi
-        .read_region(
-            0,
-            0,
-            level,
-            level_info.width as u32,
-            level_info.height as u32,
-        )
-        .ok()?;
-
-    if level_info.width <= max_size as u64 && level_info.height <= max_size as u64 {
-        return Some(SeriesThumbnail {
-            rgba: data,
-            width: level_info.width as u32,
-            height: level_info.height as u32,
-        });
-    }
-
-    let image =
-        image::RgbaImage::from_raw(level_info.width as u32, level_info.height as u32, data)?;
-    let resized = image::imageops::resize(
-        &image,
-        thumb_w,
-        thumb_h,
-        image::imageops::FilterType::Triangle,
-    );
+    let thumbnail = wsi.thumbnail_with(&options).ok()?;
     Some(SeriesThumbnail {
-        rgba: resized.into_raw(),
-        width: thumb_w,
-        height: thumb_h,
+        width: thumbnail.image.width as u32,
+        height: thumbnail.image.height as u32,
+        rgba: thumbnail.image.pixels,
     })
 }
 
@@ -236,6 +211,10 @@ fn spawn_series_thumbnail_worker(
 ) {
     std::thread::spawn(move || {
         for path in paths {
+            // Stop once the user moved to another folder (UI-14).
+            if state.read().series_revision != revision {
+                return;
+            }
             let cached_thumbnail = load_cached_thumbnail(&path);
             let had_cached_thumbnail = cached_thumbnail.is_some();
             if let Some(cached_thumbnail) = cached_thumbnail.clone() {
@@ -270,11 +249,7 @@ fn spawn_series_thumbnail_worker(
             let opened = WsiFile::open(&path).ok();
             let metadata_tooltip = build_series_metadata_tooltip(&path, opened.as_ref());
             let (objective_label, stain_label) = build_series_overlay_labels(opened.as_ref());
-            let thumbnail = cached_thumbnail.or_else(|| {
-                opened
-                    .as_ref()
-                    .and_then(|wsi| generate_thumbnail_with_dimensions(wsi, 180))
-            });
+            let thumbnail = cached_thumbnail.or_else(|| opened.as_ref().and_then(series_thumbnail));
 
             if !had_cached_thumbnail && let Some(thumbnail) = thumbnail.as_ref() {
                 persist_thumbnail(&path, thumbnail);
@@ -494,137 +469,304 @@ pub fn open_file(
         return;
     }
 
+    let target_pane = {
+        let state_guard = state.read();
+        if state_guard.split_enabled {
+            state_guard.focused_pane
+        } else {
+            PaneId::PRIMARY
+        }
+    };
+
+    // A slide that is still opening gets one more pane rather than a
+    // second handle.
+    let already_opening = PENDING_OPENS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        let Some(open) = pending
+            .values_mut()
+            .find(|open| open.path == normalized_path)
+        else {
+            return false;
+        };
+        if open.target_pane != target_pane && !open.extra_panes.contains(&target_pane) {
+            open.extra_panes.push(target_pane);
+        }
+        true
+    });
+    if already_opening {
+        return;
+    }
+
+    let request = NEXT_OPEN_ID.with(|next| {
+        let id = next.get();
+        next.set(id + 1);
+        id
+    });
+    PENDING_OPENS.with(|pending| {
+        pending.borrow_mut().insert(
+            request,
+            PendingOpen {
+                path: normalized_path.clone(),
+                target_pane,
+                extra_panes: Vec::new(),
+                state: Arc::clone(state),
+                tile_cache: Arc::clone(tile_cache),
+                render_timer: Rc::clone(render_timer),
+            },
+        )
+    });
     ui.set_is_loading(true);
-    ui.set_status_text(SharedString::from(format!("Opening {}...", path.display())));
+    ui.set_status_text(SharedString::from(format!(
+        "Opening {}…",
+        display_name(&normalized_path)
+    )));
 
-    match WsiFile::open(&path) {
-        Ok(wsi) => {
-            let id = {
-                let mut state_guard = state.write();
-
-                // Allocate the file ID up front so TileManager can tag its
-                // TileCoords, ensuring CPU and GPU tile caches are per-file.
-                let file_id = state_guard.allocate_file_id();
-
-                let target_pane = if state_guard.split_enabled {
-                    state_guard.focused_pane
-                } else {
-                    PaneId::PRIMARY
-                };
-
-                let home_tab_to_close = state_guard
-                    .active_tab_id_for_pane(target_pane)
-                    .filter(|&active_id| state_guard.is_home_tab(active_id));
-
-                // Get viewport size from the focused pane (use reasonable defaults if not yet laid out)
-                let pane_count = state_guard.panes.len().max(1) as f64;
-                let pane_gap = 6.0;
-                let ui_width = ((ui.get_content_area_width() as f64)
-                    - pane_gap * (pane_count - 1.0))
-                    / pane_count;
-                let ui_height = ui.get_content_area_height() as f64 - 35.0;
-                let viewport_width = if ui_width > 0.0 { ui_width } else { 1024.0 };
-                let viewport_height = if ui_height > 0.0 { ui_height } else { 768.0 };
-
-                let props = wsi.properties();
-                let viewport = ViewportState::new(
-                    viewport_width,
-                    viewport_height,
-                    props.width as f64,
-                    props.height as f64,
-                );
-
-                // Give the tile manager its own OpenSlide handle so tile loading
-                // never contends with the UI's metadata handle.
-                let tile_manager_wsi = match wsi.reopen() {
-                    Ok(tile_manager_wsi) => tile_manager_wsi,
-                    Err(err) => {
-                        error!("Failed to open dedicated tile-manager handle: {}", err);
-                        ui.set_is_loading(false);
-                        ui.set_status_text(SharedString::from(format!("Error: {}", err)));
-                        return;
-                    }
-                };
-                let tile_manager = Arc::new(TileManager::new(tile_manager_wsi, file_id));
-
-                // Create background tile loader (tiles are loaded on-demand)
-                let tile_loader = Arc::new(TileLoader::new(
-                    Arc::clone(&tile_manager),
-                    Arc::clone(tile_cache),
-                ));
-
-                // Start loading tiles immediately using the initial viewport bounds
-                // This ensures tiles begin loading before the first render
-                let bounds = viewport.viewport.bounds();
-                let best_level =
-                    wsi.best_level_for_downsample(viewport.viewport.effective_downsample());
-                let initial_tiles = calculate_wanted_tiles(
-                    &tile_manager,
-                    best_level,
-                    bounds.left,
-                    bounds.top,
-                    bounds.right,
-                    bounds.bottom,
-                    1,
-                );
-                tile_loader.set_wanted_tiles(initial_tiles);
-
-                // Generate small thumbnail for minimap (lazy - only reads what's needed)
-                let thumbnail = generate_thumbnail(&wsi, 150);
-
-                let opened_file_id = state_guard.add_file(NewOpenFile {
-                    id: file_id,
-                    path: path.clone(),
-                    wsi,
-                    tile_manager,
-                    tile_loader,
-                    viewport,
-                    thumbnail,
-                });
-
-                if let Some(home_tab_id) = home_tab_to_close {
-                    state_guard.close_home_tab(home_tab_id);
-                }
-
-                opened_file_id
-            };
-
-            let level_count = {
-                let state_guard = state.read();
-                update_tabs(
-                    ui,
-                    &state_guard,
-                    pane_render_cache,
-                    pane_ui_models,
-                    pane_view_model,
-                );
-                update_recent_files(ui, &state_guard);
-                state_guard
-                    .get_file(id)
-                    .map(|f| f.wsi.level_count())
-                    .unwrap_or(0)
-            };
-
-            ui.set_is_loading(false);
-            ui.set_status_text(SharedString::from(format!(
-                "Opened {} ({} levels)",
-                path.file_name().unwrap_or_default().to_string_lossy(),
-                level_count
-            )));
-
-            info!("Successfully opened file with {} levels", level_count);
-
-            request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
-        }
-        Err(e) => {
-            error!("Failed to open file: {}", e);
-            ui.set_is_loading(false);
-            ui.set_status_text(SharedString::from(format!("Error: {}", e)));
-        }
+    // Opening can take seconds (network shares, MRXS, DICOM): do it, and
+    // the thumbnail, on a worker and install the result on the UI thread
+    // (SH-11, WSI-3).
+    let ui_weak = ui.as_weak();
+    let worker_path = normalized_path.clone();
+    let spawned = std::thread::Builder::new()
+        .name("eov-open-slide".to_string())
+        .spawn(move || {
+            let result = open_slide_blocking(&worker_path).map_err(|e| e.to_string());
+            let _ = slint::invoke_from_event_loop(move || finish_open(ui_weak, request, result));
+        });
+    if let Err(err) = spawned {
+        finish_open(ui.as_weak(), request, Err(err.to_string()));
     }
 }
 
-/// Generate a thumbnail image from the lowest resolution level of the WSI
-pub fn generate_thumbnail(wsi: &WsiFile, max_size: u32) -> Option<Vec<u8>> {
-    generate_thumbnail_with_dimensions(wsi, max_size).map(|thumbnail| thumbnail.rgba)
+/// Longest side of minimap thumbnails, in pixels.
+const MINIMAP_THUMBNAIL_SIZE: u32 = 256;
+
+/// Longest side of series-bar thumbnails, in pixels.
+const SERIES_THUMBNAIL_SIZE: u32 = 180;
+
+/// A slide being opened on a worker thread.
+struct PendingOpen {
+    /// Canonical path.
+    path: PathBuf,
+    target_pane: PaneId,
+    /// Panes that asked for the same slide while it was opening.
+    extra_panes: Vec<PaneId>,
+    state: Arc<RwLock<AppState>>,
+    tile_cache: Arc<TileCache>,
+    render_timer: Rc<Timer>,
+}
+
+/// What the open worker produces.
+struct OpenedSlide {
+    wsi: WsiFile,
+    thumbnail: Option<MinimapThumbnail>,
+}
+
+thread_local! {
+    /// Opens in flight, by request (UI thread only).
+    static PENDING_OPENS: RefCell<HashMap<u64, PendingOpen>> = RefCell::new(HashMap::new());
+    static NEXT_OPEN_ID: Cell<u64> = const { Cell::new(1) };
+}
+
+fn display_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+/// Opens a slide and builds its minimap thumbnail (worker thread).
+fn open_slide_blocking(path: &Path) -> eov_common::Result<OpenedSlide> {
+    let wsi = WsiFile::open(path)?;
+    let options = ThumbnailOptions {
+        region: ThumbnailRegion::ContentBounds,
+        ..ThumbnailOptions::new(MINIMAP_THUMBNAIL_SIZE)
+    };
+    let thumbnail = match wsi.thumbnail_with(&options) {
+        Ok(thumbnail) => Some(MinimapThumbnail {
+            width: thumbnail.image.width as u32,
+            height: thumbnail.image.height as u32,
+            rgba: thumbnail.image.pixels,
+            region: thumbnail.region,
+        }),
+        Err(err) => {
+            warn!("No minimap thumbnail for {}: {err}", path.display());
+            None
+        }
+    };
+    Ok(OpenedSlide { wsi, thumbnail })
+}
+
+/// Installs an opened slide (UI thread).
+fn finish_open(
+    ui_weak: slint::Weak<crate::AppWindow>,
+    request: u64,
+    result: Result<OpenedSlide, String>,
+) {
+    let Some(pending) = PENDING_OPENS.with(|pending| pending.borrow_mut().remove(&request)) else {
+        return;
+    };
+    let Some(ui) = ui_weak.upgrade() else {
+        return;
+    };
+    let still_opening = PENDING_OPENS.with(|pending| !pending.borrow().is_empty());
+    ui.set_is_loading(still_opening);
+
+    let PendingOpen {
+        path,
+        target_pane,
+        extra_panes,
+        state,
+        tile_cache,
+        render_timer,
+    } = pending;
+    let name = display_name(&path);
+    let opened = match result {
+        Ok(opened) => opened,
+        Err(err) => {
+            error!("Failed to open {}: {err}", path.display());
+            ui.set_status_text(SharedString::from(format!("Could not open {name}: {err}")));
+            crate::host_ui::with_host(|host| {
+                host.notify(
+                    eov_plugin_api::protocol::NotifyLevel::Error,
+                    &format!("Could not open {name}"),
+                    Some(&err),
+                    None,
+                )
+            });
+            return;
+        }
+    };
+
+    // Opened meanwhile under another spelling of the path.
+    let existing_tab = state.read().find_tab_by_path(&path);
+    let level_count = if let Some((pane, tab_id)) = existing_tab {
+        let mut state_guard = state.write();
+        state_guard.activate_tab_in_pane(pane, tab_id);
+        state_guard.add_to_recent(&path);
+        None
+    } else {
+        Some(install_slide(
+            &ui,
+            &state,
+            &tile_cache,
+            path.clone(),
+            target_pane,
+            opened,
+        ))
+    };
+
+    {
+        let mut state_guard = state.write();
+        if let Some((_, tab_id)) = state_guard.find_tab_by_path(&path) {
+            for pane in extra_panes {
+                if pane.0 < state_guard.panes.len() && pane != target_pane {
+                    let duplicated = state_guard.duplicate_tab_to_pane(tab_id, pane);
+                    state_guard.activate_tab_in_pane(pane, duplicated);
+                }
+            }
+        }
+    }
+
+    {
+        let state_guard = state.read();
+        crate::update_tabs(&ui, &state_guard);
+        update_recent_files(&ui, &state_guard);
+    }
+    let status = match level_count {
+        Some(levels) => {
+            info!("Opened {} with {levels} levels", path.display());
+            format!("Opened {name} ({levels} levels)")
+        }
+        None => format!("Focused {name}"),
+    };
+    ui.set_status_text(SharedString::from(status));
+    request_render_loop(&render_timer, &ui.as_weak(), &state, &tile_cache);
+}
+
+/// Adds an opened slide to the state and starts loading its tiles.
+/// Returns its number of levels.
+fn install_slide(
+    ui: &crate::AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    path: PathBuf,
+    target_pane: PaneId,
+    opened: OpenedSlide,
+) -> u32 {
+    let OpenedSlide { wsi, thumbnail } = opened;
+    let mut state_guard = state.write();
+
+    // The file id tags the TileCoords, keeping CPU and GPU tile caches
+    // per file.
+    let file_id = state_guard.allocate_file_id();
+    let target_pane = if target_pane.0 < state_guard.panes.len() {
+        target_pane
+    } else {
+        state_guard.focused_pane
+    };
+    let home_tab_to_close = state_guard
+        .active_tab_id_for_pane(target_pane)
+        .filter(|&active_id| state_guard.is_home_tab(active_id));
+
+    // Viewport size of one pane (defaults until the window is laid out).
+    let pane_count = state_guard.panes.len().max(1) as f64;
+    let pane_gap = 6.0;
+    let ui_width =
+        ((ui.get_content_area_width() as f64) - pane_gap * (pane_count - 1.0)) / pane_count;
+    let ui_height = ui.get_content_area_height() as f64 - 35.0;
+    let viewport_width = if ui_width > 0.0 { ui_width } else { 1024.0 };
+    let viewport_height = if ui_height > 0.0 { ui_height } else { 768.0 };
+
+    let props = wsi.properties();
+    // Fit and pan limits follow the scanned area of sparse slides.
+    let viewport = ViewportState::with_content_bounds(
+        viewport_width,
+        viewport_height,
+        props.width as f64,
+        props.height as f64,
+        Some(props.content_bounds()),
+    );
+
+    // Rendering uses a view with synthetic coarse levels for slides whose
+    // pyramid is too shallow to draw at fit zoom; it shares the OpenSlide
+    // handle of `wsi`, which metadata displays keep using.
+    let tile_manager = Arc::new(
+        TileManager::new(wsi.with_synthetic_levels(), file_id)
+            .with_tile_cache(Arc::clone(tile_cache)),
+    );
+    tile_manager.pin_fallback_levels();
+    let tile_loader = Arc::new(TileLoader::new(
+        Arc::clone(&tile_manager),
+        Arc::clone(tile_cache),
+    ));
+
+    // Start loading before the first render.
+    let bounds = viewport.viewport.bounds();
+    let best_level = tile_manager
+        .wsi()
+        .best_level_for_downsample(viewport.viewport.effective_downsample());
+    tile_loader.set_wanted_tiles(calculate_wanted_tiles(
+        &tile_manager,
+        best_level,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        1,
+    ));
+
+    let level_count = wsi.level_count();
+    state_guard.add_file(NewOpenFile {
+        id: file_id,
+        path,
+        wsi,
+        tile_manager,
+        tile_loader,
+        viewport,
+        thumbnail,
+        target_pane,
+    });
+    if let Some(home_tab_id) = home_tab_to_close {
+        state_guard.close_home_tab(home_tab_id);
+    }
+    level_count
 }

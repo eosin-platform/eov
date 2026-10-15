@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 pub(crate) const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
     * ZOOM_FACTOR
@@ -1996,21 +1996,33 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_minimap_navigate(move |nx, ny| {
-            info!("Minimap navigate called: nx={}, ny={}", nx, ny);
             {
                 let mut state = state_handle.write();
                 let mut changed = false;
 
+                // The minimap shows the thumbnail's region (the content
+                // bounds of sparse slides), not necessarily the canvas.
+                let pane = if state.split_enabled {
+                    state.focused_pane
+                } else {
+                    PaneId::PRIMARY
+                };
+                let region = state
+                    .active_file_id_for_pane(pane)
+                    .and_then(|file_id| state.get_file(file_id))
+                    .and_then(|file| file.thumbnail.as_ref())
+                    .map(|thumbnail| thumbnail.region);
                 if let Some(vs) = state.active_viewport_mut() {
                     let nx = (nx as f64).clamp(0.0, 1.0);
                     let ny = (ny as f64).clamp(0.0, 1.0);
                     let vp = &mut vs.viewport;
-                    let new_x = nx * vp.image_width;
-                    let new_y = ny * vp.image_height;
-                    info!(
-                        "Setting viewport center: ({}, {}) -> ({}, {})",
-                        vp.center.x, vp.center.y, new_x, new_y
-                    );
+                    let (new_x, new_y) = match region {
+                        Some(region) => (
+                            region.x as f64 + nx * region.width as f64,
+                            region.y as f64 + ny * region.height as f64,
+                        ),
+                        None => (nx * vp.image_width, ny * vp.image_height),
+                    };
                     vs.drag_center_to(new_x, new_y);
                     changed = true;
                 }

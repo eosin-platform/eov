@@ -15,7 +15,11 @@ export component Minimap inherits Rectangle {
     property <length> content-y: 5px;
     property <length> content-width: self.width - 10px;
     property <length> content-height: self.height - 10px;
-    property <float> image-aspect: image-width / max(image-height, 0.001);
+    // The thumbnail's own size gives the aspect of what it shows (the
+    // content bounds of sparse slides); the canvas size is the fallback.
+    property <float> image-aspect: thumbnail.width > 0 && thumbnail.height > 0
+        ? thumbnail.width / thumbnail.height
+        : image-width / max(image-height, 0.001);
     property <float> content-aspect: (content-width / 1px) / max(content-height / 1px, 0.001);
     property <length> img-display-width: image-aspect > content-aspect ? content-width : content-height * image-aspect;
     property <length> img-display-height: image-aspect > content-aspect ? content-width / image-aspect : content-height;
@@ -28,6 +32,7 @@ export component Minimap inherits Rectangle {
     border-radius: 4px;
     border-width: 1px;
     border-color: Theme.border;
+    clip: true;
 
     Image {
         x: content-x;

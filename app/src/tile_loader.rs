@@ -1,19 +1,27 @@
-//! Background tile loading system with automatic cancellation
+//! Background tile loading.
 //!
-//! This module provides asynchronous tile loading that automatically discards
-//! requests for tiles that are no longer visible.
+//! One worker pool serves every open slide (RND-8). Each frame the renderer
+//! replaces a slide's request queue with the tiles it wants now, in priority
+//! order (centre first, the displayed level before fallbacks), so requests
+//! for tiles that scrolled away are dropped without being loaded (RND-5).
+//! Workers sleep on a condition variable instead of polling, and closing a
+//! slide never joins threads on the UI thread.
+//!
+//! Failures: regions the WSI core reports as corrupt are not retried for a
+//! long time (the renderer draws coarser levels there); transient failures
+//! (a recovering OpenSlide handle, I/O) are retried after a few frames.
 
-use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
-use eov_common::{TileCache, TileCoord, TileManager, WsiFile};
-use parking_lot::Mutex;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use eov_common::{Error, TileCache, TileCoord, TileManager};
+use parking_lot::{Condvar, Mutex};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::thread;
+use std::sync::{Arc, OnceLock};
 use tracing::trace;
 
-/// Number of wanted-tile generations to suppress immediately retrying a failed tile.
-const FAILED_RETRY_GENERATIONS: u64 = 12;
+/// Frames to wait before retrying a tile after a transient failure.
+const TRANSIENT_RETRY_GENERATIONS: u64 = 12;
+/// Frames to wait before retrying a tile in a corrupt region (~5 min at 60 fps).
+const CORRUPT_RETRY_GENERATIONS: u64 = 60 * 300;
 
 fn loader_worker_count() -> usize {
     std::thread::available_parallelism()
@@ -21,168 +29,138 @@ fn loader_worker_count() -> usize {
         .unwrap_or(4)
 }
 
-fn max_tiles_per_frame(worker_count: usize) -> usize {
+fn max_queued_tiles(worker_count: usize) -> usize {
     (worker_count * 24).clamp(64, 256)
 }
 
-fn request_channel_capacity(worker_count: usize) -> usize {
-    (worker_count * 32).clamp(128, 512)
+struct FileQueue {
+    manager: Arc<TileManager>,
+    cache: Arc<TileCache>,
+    queue: VecDeque<TileCoord>,
+    in_flight: HashSet<TileCoord>,
+    /// Tile → generation after which it may be retried.
+    failed: HashMap<TileCoord, u64>,
+    generation: u64,
+    pending: Arc<AtomicUsize>,
+    loaded_epoch: Arc<AtomicU64>,
 }
 
-/// Background tile loader with automatic cancellation of stale requests
+impl FileQueue {
+    fn update_pending(&self) {
+        self.pending
+            .store(self.queue.len() + self.in_flight.len(), Ordering::Relaxed);
+    }
+}
+
+#[derive(Default)]
+struct PoolState {
+    files: HashMap<u64, FileQueue>,
+    /// Round-robin position, so one slide cannot starve another.
+    turn: usize,
+}
+
+struct Pool {
+    state: Mutex<PoolState>,
+    work: Condvar,
+    max_queued: usize,
+    next_id: AtomicU64,
+}
+
+fn pool() -> &'static Pool {
+    static POOL: OnceLock<&'static Pool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let workers = loader_worker_count();
+        let pool: &'static Pool = Box::leak(Box::new(Pool {
+            state: Mutex::new(PoolState::default()),
+            work: Condvar::new(),
+            max_queued: max_queued_tiles(workers),
+            next_id: AtomicU64::new(1),
+        }));
+        for index in 0..workers {
+            std::thread::Builder::new()
+                .name(format!("eov-tile-loader-{index}"))
+                .spawn(move || worker_loop(pool))
+                .expect("spawn tile loader");
+        }
+        pool
+    })
+}
+
+/// A slide's handle on the shared loader pool. Dropping it (when the slide
+/// is closed) cancels its queue and frees its cached tiles.
 pub struct TileLoader {
-    /// Channel to send tile requests to workers
-    request_tx: Sender<TileCoord>,
-    /// Failed tiles are temporarily suppressed until their retry generation expires.
-    failed: Arc<Mutex<HashMap<TileCoord, u64>>>,
-    /// Current generation - tiles from old generations are skipped
-    generation: Arc<AtomicU64>,
-    /// Tiles currently queued or loading, used to deduplicate work
-    pending: Arc<Mutex<HashSet<TileCoord>>>,
-    /// Number of tiles currently queued or loading
-    pending_count: Arc<AtomicUsize>,
-    /// Monotonically increasing epoch when a new tile becomes available
-    loaded_epoch: Arc<AtomicU64>,
-    /// Worker handles
-    workers: Vec<thread::JoinHandle<()>>,
-    /// Shutdown flag
-    shutdown: Arc<std::sync::atomic::AtomicBool>,
-    /// Reference to cache
+    id: u64,
+    file_id: i32,
     cache: Arc<TileCache>,
-    /// Maximum tiles to enqueue per frame for the current machine.
-    max_tiles_per_frame: usize,
+    pending: Arc<AtomicUsize>,
+    loaded_epoch: Arc<AtomicU64>,
 }
 
 impl TileLoader {
-    /// Create a new tile loader
     pub fn new(tile_manager: Arc<TileManager>, cache: Arc<TileCache>) -> Self {
-        let worker_count = loader_worker_count();
-        // Bounded channel for tile requests - sized for good throughput
-        let (request_tx, request_rx) = bounded::<TileCoord>(request_channel_capacity(worker_count));
-        let failed = Arc::new(Mutex::new(HashMap::new()));
-        let generation = Arc::new(AtomicU64::new(0));
-        let pending = Arc::new(Mutex::new(HashSet::new()));
-        let pending_count = Arc::new(AtomicUsize::new(0));
+        let pool = pool();
+        let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
+        let pending = Arc::new(AtomicUsize::new(0));
         let loaded_epoch = Arc::new(AtomicU64::new(0));
-        let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-        let mut workers = Vec::with_capacity(worker_count);
-
-        for i in 0..worker_count {
-            let request_rx = request_rx.clone();
-            let tile_manager = Arc::clone(&tile_manager);
-            let worker_path = tile_manager.wsi().properties().path.clone();
-            let worker_file_id = tile_manager.file_id();
-            let cache = Arc::clone(&cache);
-            let failed = Arc::clone(&failed);
-            let generation = Arc::clone(&generation);
-            let pending = Arc::clone(&pending);
-            let pending_count = Arc::clone(&pending_count);
-            let loaded_epoch = Arc::clone(&loaded_epoch);
-            let shutdown = Arc::clone(&shutdown);
-
-            let handle = thread::spawn(move || {
-                let tile_manager = match WsiFile::open(&worker_path) {
-                    Ok(worker_wsi) => Arc::new(TileManager::new(worker_wsi, worker_file_id)),
-                    Err(_) => tile_manager,
-                };
-
-                worker_loop(
-                    i,
-                    WorkerContext {
-                        request_rx,
-                        tile_manager,
-                        cache,
-                        failed,
-                        generation,
-                        pending,
-                        pending_count,
-                        loaded_epoch,
-                        shutdown,
-                    },
-                );
-            });
-
-            workers.push(handle);
-        }
-
+        let file_id = tile_manager.file_id();
+        pool.state.lock().files.insert(
+            id,
+            FileQueue {
+                manager: tile_manager,
+                cache: Arc::clone(&cache),
+                queue: VecDeque::new(),
+                in_flight: HashSet::new(),
+                failed: HashMap::new(),
+                generation: 0,
+                pending: Arc::clone(&pending),
+                loaded_epoch: Arc::clone(&loaded_epoch),
+            },
+        );
         Self {
-            request_tx,
-            failed,
-            generation,
-            pending,
-            pending_count,
-            loaded_epoch,
-            workers,
-            shutdown,
+            id,
+            file_id,
             cache,
-            max_tiles_per_frame: max_tiles_per_frame(worker_count),
+            pending,
+            loaded_epoch,
         }
     }
 
-    /// Update the set of wanted tiles for this frame
-    /// Sends tiles to workers, skipping those already cached or failed
+    /// Replaces the slide's queue with `tiles`, most important first.
     pub fn set_wanted_tiles(&self, tiles: Vec<TileCoord>) {
-        // Bump generation to invalidate any stale in-flight requests
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        if generation.is_multiple_of(32) {
-            self.failed
-                .lock()
-                .retain(|_, retry_generation| *retry_generation >= generation);
+        let pool = pool();
+        let mut state = pool.state.lock();
+        let Some(file) = state.files.get_mut(&self.id) else {
+            return;
+        };
+        file.generation += 1;
+        let generation = file.generation;
+        if generation.is_multiple_of(64) {
+            file.failed.retain(|_, retry| *retry >= generation);
         }
-
-        let mut sent = 0;
-
-        // Send tiles to workers (limited to avoid flooding)
-        for coord in tiles {
-            if sent >= self.max_tiles_per_frame {
-                break;
-            }
-
-            // Skip if already cached
-            if self.cache.contains(&coord) {
-                continue;
-            }
-
-            // Skip if previously failed (brief lock)
-            {
-                let failed = self.failed.lock();
-                if failed
-                    .get(&coord)
-                    .is_some_and(|retry_generation| *retry_generation >= generation)
-                {
-                    continue;
-                }
-            }
-
-            // Skip if already queued or loading
-            {
-                let mut pending = self.pending.lock();
-                if pending.contains(&coord) {
-                    continue;
-                }
-                pending.insert(coord);
-            }
-
-            // Try to send to workers (non-blocking)
-            match self.request_tx.try_send(coord) {
-                Ok(_) => sent += 1,
-                Err(TrySendError::Full(coord)) => {
-                    self.pending.lock().remove(&coord);
-                    break;
-                }
-                Err(TrySendError::Disconnected(coord)) => {
-                    self.pending.lock().remove(&coord);
-                    break;
-                }
-            }
-
-            self.pending_count.fetch_add(1, Ordering::Relaxed);
+        let mut seen = HashSet::new();
+        let queue: VecDeque<TileCoord> = tiles
+            .into_iter()
+            .filter(|coord| seen.insert(*coord))
+            .filter(|coord| !file.in_flight.contains(coord))
+            .filter(|coord| {
+                file.failed
+                    .get(coord)
+                    .is_none_or(|retry| *retry < generation)
+            })
+            .filter(|coord| !file.cache.contains(coord))
+            .take(pool.max_queued)
+            .collect();
+        let has_work = !queue.is_empty();
+        file.queue = queue;
+        file.update_pending();
+        drop(state);
+        if has_work {
+            pool.work.notify_all();
         }
     }
 
     pub fn pending_count(&self) -> usize {
-        self.pending_count.load(Ordering::Relaxed)
+        self.pending.load(Ordering::Relaxed)
     }
 
     pub fn loaded_epoch(&self) -> u64 {
@@ -192,81 +170,75 @@ impl TileLoader {
 
 impl Drop for TileLoader {
     fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::SeqCst);
-        // Drop the sender to unblock workers
-        drop(self.request_tx.clone());
-        for handle in self.workers.drain(..) {
-            let _ = handle.join();
-        }
+        // In-flight loads finish on their worker and are discarded.
+        pool().state.lock().files.remove(&self.id);
+        self.cache.remove_file(self.file_id);
     }
 }
 
-struct WorkerContext {
-    request_rx: Receiver<TileCoord>,
-    tile_manager: Arc<TileManager>,
-    cache: Arc<TileCache>,
-    failed: Arc<Mutex<HashMap<TileCoord, u64>>>,
-    generation: Arc<AtomicU64>,
-    pending: Arc<Mutex<HashSet<TileCoord>>>,
-    pending_count: Arc<AtomicUsize>,
-    loaded_epoch: Arc<AtomicU64>,
-    shutdown: Arc<std::sync::atomic::AtomicBool>,
-}
-
-/// Worker thread loop
-fn worker_loop(id: usize, context: WorkerContext) {
-    let WorkerContext {
-        request_rx,
-        tile_manager,
-        cache,
-        failed,
-        generation,
-        pending,
-        pending_count,
-        loaded_epoch,
-        shutdown,
-    } = context;
-
-    trace!("Tile loader worker {} starting", id);
-
-    while !shutdown.load(Ordering::Relaxed) {
-        // Wait for a tile request with timeout
-        let coord = match request_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-            Ok(coord) => coord,
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+fn worker_loop(pool: &'static Pool) {
+    loop {
+        let (id, coord, manager) = {
+            let mut state = pool.state.lock();
+            loop {
+                let ids: Vec<u64> = {
+                    let mut ids: Vec<u64> = state
+                        .files
+                        .iter()
+                        .filter(|(_, file)| !file.queue.is_empty())
+                        .map(|(id, _)| *id)
+                        .collect();
+                    ids.sort_unstable();
+                    ids
+                };
+                if let Some(id) = (!ids.is_empty()).then(|| ids[state.turn % ids.len()]) {
+                    state.turn = state.turn.wrapping_add(1);
+                    let file = state.files.get_mut(&id).expect("listed");
+                    let coord = file.queue.pop_front().expect("non-empty");
+                    file.in_flight.insert(coord);
+                    break (id, coord, Arc::clone(&file.manager));
+                }
+                pool.work.wait(&mut state);
+            }
         };
 
-        // Skip if already in cache
-        if cache.contains(&coord) {
-            pending.lock().remove(&coord);
-            pending_count.fetch_sub(1, Ordering::Relaxed);
+        let result = manager.load_tile_cached(coord);
+
+        let mut state = pool.state.lock();
+        let Some(file) = state.files.get_mut(&id) else {
             continue;
-        }
-
-        // Load the tile
-        match tile_manager.load_tile_sync(coord) {
+        };
+        file.in_flight.remove(&coord);
+        match result {
             Ok(tile) => {
-                cache.insert(tile);
-                loaded_epoch.fetch_add(1, Ordering::Relaxed);
-                trace!("Worker {} loaded tile {:?}", id, coord);
+                // `load_tile_cached` already inserted it when the manager
+                // has the cache attached.
+                if !file.cache.contains(&coord) {
+                    file.cache.insert_arc(tile);
+                }
+                file.loaded_epoch.fetch_add(1, Ordering::Relaxed);
             }
-            Err(e) => {
-                trace!("Worker {} failed to load tile {:?}: {}", id, coord, e);
-                let retry_generation =
-                    generation.load(Ordering::Relaxed) + FAILED_RETRY_GENERATIONS;
-                failed.lock().insert(coord, retry_generation);
+            Err(error) => {
+                let wait = if error.is_transient() {
+                    TRANSIENT_RETRY_GENERATIONS
+                } else if matches!(error, Error::CorruptRegion { .. }) {
+                    CORRUPT_RETRY_GENERATIONS
+                } else {
+                    TRANSIENT_RETRY_GENERATIONS * 4
+                };
+                trace!("Tile {coord:?} failed: {error}");
+                file.failed.insert(coord, file.generation + wait);
+                // A failed tile still changes what the renderer can show
+                // (it falls back to coarser levels).
+                file.loaded_epoch.fetch_add(1, Ordering::Relaxed);
             }
         }
-
-        pending.lock().remove(&coord);
-        pending_count.fetch_sub(1, Ordering::Relaxed);
+        file.update_pending();
     }
-
-    trace!("Tile loader worker {} shutting down", id);
 }
 
-/// Calculate tiles needed for the current viewport
+/// Calculate tiles needed for the current viewport, most important first:
+/// the displayed level centre-out, then a few tiles of each coarser level.
 pub fn calculate_wanted_tiles(
     tile_manager: &TileManager,
     level: u32,
@@ -278,25 +250,9 @@ pub fn calculate_wanted_tiles(
 ) -> Vec<TileCoord> {
     let mut wanted = Vec::new();
     let level_count = tile_manager.wsi().level_count();
-    let center_x = (bounds_left + bounds_right) * 0.5;
-    let center_y = (bounds_top + bounds_bottom) * 0.5;
-    let tile_size = tile_manager.tile_size_for_level(level) as f64;
 
-    let sort_by_center = |tiles: &mut Vec<TileCoord>, downsample: f64| {
-        tiles.sort_by(|a, b| {
-            let ax = ((a.x as f64 + 0.5) * tile_size * downsample - center_x).abs();
-            let ay = ((a.y as f64 + 0.5) * tile_size * downsample - center_y).abs();
-            let bx = ((b.x as f64 + 0.5) * tile_size * downsample - center_x).abs();
-            let by = ((b.y as f64 + 0.5) * tile_size * downsample - center_y).abs();
-            let da = ax + ay;
-            let db = bx + by;
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        });
-    };
-
-    // FIRST: Add current level tiles - these are the primary display tiles
-    // Prioritize these over fallbacks so user sees sharp content ASAP
-    let mut visible = tile_manager.visible_tiles_with_margin(
+    // The tile manager returns visible tiles nearest the view centre first.
+    let visible = tile_manager.visible_tiles_with_margin(
         level,
         bounds_left,
         bounds_top,
@@ -304,15 +260,11 @@ pub fn calculate_wanted_tiles(
         bounds_bottom,
         margin_tiles,
     );
-    if let Some(level_info) = tile_manager.wsi().level(level) {
-        sort_by_center(&mut visible, level_info.downsample);
-    }
     wanted.extend(visible.iter().take(500).copied());
 
-    // THEN: Add lower-resolution tiles for fallback display (while high-res loads)
-    // These provide quick visual feedback but are lower priority
+    // Coarser levels give quick feedback while the displayed level loads.
     for fallback_level in (level + 1)..level_count {
-        let mut fallback_tiles = tile_manager.visible_tiles_with_margin(
+        let fallback_tiles = tile_manager.visible_tiles_with_margin(
             fallback_level,
             bounds_left,
             bounds_top,
@@ -320,12 +272,7 @@ pub fn calculate_wanted_tiles(
             bounds_bottom,
             margin_tiles.max(0),
         );
-        if let Some(level_info) = tile_manager.wsi().level(fallback_level) {
-            sort_by_center(&mut fallback_tiles, level_info.downsample);
-        }
-
-        // Closer levels (smaller fallback_level - level) get more tiles loaded
-        // as they provide better fallback quality
+        // Closer levels get more tiles, as they look better.
         let priority_boost = level_count.saturating_sub(fallback_level);
         let tiles_at_this_level =
             (fallback_tiles.len().min(20) + priority_boost as usize * 10).min(50);
@@ -333,4 +280,46 @@ pub fn calculate_wanted_tiles(
     }
 
     wanted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eov_common::WsiFile;
+    use std::time::{Duration, Instant};
+
+    fn write_slide(path: &std::path::Path) {
+        // A minimal tiled TIFF that OpenSlide's generic-tiff driver opens.
+        eov_common::test_support::write_tiled_tiff(path, 512, 512, 256, |x, y| {
+            [(x % 256) as u8, (y % 256) as u8, 128]
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn tiles_load_in_the_background_and_stale_requests_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        write_slide(&path);
+        let wsi = WsiFile::open(&path).unwrap();
+        let cache = Arc::new(TileCache::with_limits(256, 64 << 20));
+        let manager = Arc::new(TileManager::new(wsi, 1).with_tile_cache(Arc::clone(&cache)));
+        let loader = TileLoader::new(Arc::clone(&manager), Arc::clone(&cache));
+        let level = 0;
+        let wanted = calculate_wanted_tiles(&manager, level, 0.0, 0.0, 512.0, 512.0, 0);
+        assert!(!wanted.is_empty());
+        loader.set_wanted_tiles(wanted.clone());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while wanted.iter().any(|coord| !cache.contains(coord)) {
+            assert!(Instant::now() < deadline, "tiles did not load");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(loader.loaded_epoch() >= 1);
+        // Requesting cached tiles again queues nothing.
+        loader.set_wanted_tiles(wanted.clone());
+        assert_eq!(loader.pending_count(), 0);
+        // Closing the slide frees its tiles.
+        drop(loader);
+        assert!(wanted.iter().all(|coord| !cache.contains(coord)));
+    }
 }

@@ -18,6 +18,7 @@ use eov_common::{
 };
 use parking_lot::RwLock;
 use slint::{ComponentHandle, Image};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::debug;
@@ -510,18 +511,42 @@ fn tile_request_signature(
 }
 
 pub(crate) fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
-    let thumb_data = file.thumbnail.as_ref()?;
+    let thumbnail = file.thumbnail.as_ref()?;
+    blitter::create_image_buffer(&thumbnail.rgba, thumbnail.width, thumbnail.height)
+        .map(Image::from_rgba8)
+}
 
-    let level = file.wsi.level_count().saturating_sub(1);
-    let level_info = file.wsi.level(level)?;
-    let aspect = level_info.width as f64 / level_info.height as f64;
-    let (width, height) = if aspect > 1.0 {
-        (150u32, (150.0 / aspect) as u32)
+/// Per-frame tile-cache bookkeeping: protects this frame's working set from
+/// eviction, sizes the cache for the window, and lets the tiles of slides
+/// shown in no pane go first (WSI-4).
+fn begin_cache_frame(ui: &AppWindow, state: &AppState, tile_cache: &TileCache) {
+    tile_cache.begin_frame();
+
+    let visible_panes = if state.split_enabled {
+        state.panes.len()
     } else {
-        ((150.0 * aspect) as u32, 150u32)
+        1
     };
+    let size = ui.window().size();
+    crate::cache_budget::update(tile_cache, size.width, size.height, visible_panes as u32);
 
-    blitter::create_image_buffer(thumb_data, width.max(1), height.max(1)).map(Image::from_rgba8)
+    thread_local! {
+        /// File id → visibility last told to the cache.
+        static VISIBILITY: RefCell<HashMap<i32, bool>> = RefCell::new(HashMap::new());
+    }
+    let visible: HashSet<i32> = (0..visible_panes)
+        .filter_map(|pane| state.active_file_id_for_pane(PaneId(pane)))
+        .collect();
+    VISIBILITY.with(|known| {
+        let mut known = known.borrow_mut();
+        known.retain(|id, _| state.get_file(*id).is_some());
+        for file in &state.open_files {
+            let shown = visible.contains(&file.id);
+            if known.insert(file.id, shown) != Some(shown) {
+                tile_cache.set_file_visible(file.id, shown);
+            }
+        }
+    });
 }
 
 pub(crate) fn update_and_render(
@@ -532,6 +557,7 @@ pub(crate) fn update_and_render(
     let (completed_cpu_frame, cpu_jobs_pending, render_backend) = {
         let mut state = state.write();
         let (completed_cpu_frame, cpu_jobs_pending) = apply_completed_cpu_renders(&mut state);
+        begin_cache_frame(ui, &state, tile_cache);
         (completed_cpu_frame, cpu_jobs_pending, state.render_backend)
     };
 
@@ -594,7 +620,7 @@ pub(crate) fn update_and_render(
         let request = {
             let file = &state.open_files[file_index];
             let trilinear = calculate_trilinear_levels(
-                &file.wsi,
+                file.tile_manager.wsi(),
                 vp.effective_downsample(),
                 trilinear_lod_bias_enabled(filtering_mode),
             );
@@ -1806,7 +1832,7 @@ fn render_pane_to_image(
         || (last_render_height - vp_height).abs() > 1.0;
 
     let trilinear = calculate_trilinear_levels(
-        &file.wsi,
+        file.tile_manager.wsi(),
         vp.effective_downsample(),
         trilinear_lod_bias_enabled(filtering_mode),
     );
@@ -2126,7 +2152,7 @@ fn render_pane_to_image(
         pane_state.gpu_surface_valid = false;
     }
 
-    let level_info = match file.wsi.level(level) {
+    let level_info = match file.tile_manager.wsi().level(level) {
         Some(info) => info.clone(),
         None => {
             return PaneRenderOutcome {
@@ -2161,14 +2187,15 @@ fn render_pane_to_image(
     };
     let effective_trilinear = filter_uses_trilinear(effective_filtering, effective_lanczos_weight);
 
-    let level_count = file.wsi.level_count();
+    let level_count = file.tile_manager.wsi().level_count();
     let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= level {
             continue;
         }
 
-        let Some(fallback_level_info) = file.wsi.level(fallback_level).cloned() else {
+        let Some(fallback_level_info) = file.tile_manager.wsi().level(fallback_level).cloned()
+        else {
             continue;
         };
 
@@ -2652,7 +2679,7 @@ fn collect_tile_draws_from_cached(
         bounds_top: bounds.top,
         downsample: 1.0,
     };
-    let level_count = file.wsi.level_count();
+    let level_count = file.tile_manager.wsi().level_count();
     let coarse_tile_map: HashMap<eov_common::TileCoord, Arc<eov_common::TileData>> =
         if filtering_mode == FilteringMode::Trilinear
             && trilinear.level_fine != trilinear.level_coarse
@@ -2668,7 +2695,7 @@ fn collect_tile_draws_from_cached(
             continue;
         }
 
-        let Some(fallback_level_info) = file.wsi.level(fallback_level) else {
+        let Some(fallback_level_info) = file.tile_manager.wsi().level(fallback_level) else {
             continue;
         };
 
@@ -2696,7 +2723,7 @@ fn collect_tile_draws_from_cached(
         }
     }
 
-    let Some(level_info) = file.wsi.level(trilinear.level_fine) else {
+    let Some(level_info) = file.tile_manager.wsi().level(trilinear.level_fine) else {
         return draws;
     };
 

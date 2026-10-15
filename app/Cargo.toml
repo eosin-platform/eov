@@ -149,6 +149,7 @@ slint-build = "1.17.1"
 
 [dev-dependencies]
 tempfile = "3"
+eov-common = { path = "../common", features = ["test-support"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.17.1" }
 

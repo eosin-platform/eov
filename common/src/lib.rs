@@ -34,8 +34,12 @@ pub mod tile;
 pub mod viewport;
 pub mod wsi;
 
-#[cfg(test)]
-pub(crate) mod test_support;
+/// Writers for small synthetic slides (uncompressed TIFF pyramids that
+/// OpenSlide opens), for this crate's tests and, with the `test-support`
+/// feature, for other crates' tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod test_support;
 
 /// Compiles the README's examples as doctests.
 #[cfg(doctest)]

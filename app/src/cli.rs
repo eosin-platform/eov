@@ -6,7 +6,6 @@ use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use eov_common::{
     FilteringMode, RenderBackend, WsiFile,
-    cache::{DEFAULT_CACHE_SIZE_BYTES, DEFAULT_MAX_TILES},
     dataset::{self, DatasetPatchesConfig, MetadataFormat},
     format_optional_decimal,
 };
@@ -278,23 +277,23 @@ struct Cli {
     #[arg(long, value_enum, global = true)]
     log_level: Option<CliLogLevel>,
 
+    /// Tile-cache budget in MiB (default: sized for the display).
     #[arg(
         long,
         value_name = "MB",
-        default_value_t = (DEFAULT_CACHE_SIZE_BYTES / (1024 * 1024)) as u64,
         value_parser = clap::value_parser!(u64).range(1..),
         global = true
     )]
-    cache_size: u64,
+    cache_size: Option<u64>,
 
+    /// Maximum number of cached tiles (default: sized for the display).
     #[arg(
         long,
         value_name = "COUNT",
-        default_value_t = DEFAULT_MAX_TILES as u64,
         value_parser = clap::value_parser!(u64).range(1..),
         global = true
     )]
-    max_tiles: u64,
+    max_tiles: Option<u64>,
 
     #[arg(long, value_name = "PATH", global = true)]
     config: Option<PathBuf>,
@@ -371,8 +370,9 @@ pub(crate) struct LaunchOptions {
     pub(crate) filtering_mode_override: Option<FilteringMode>,
     pub(crate) viewport_lock_enabled: bool,
     pub(crate) log_level: Option<CliLogLevel>,
-    pub(crate) cache_size_bytes: usize,
-    pub(crate) max_tiles: usize,
+    /// Fixed tile-cache limits; `None` sizes the cache for the display.
+    pub(crate) cache_size_bytes: Option<usize>,
+    pub(crate) max_tiles: Option<usize>,
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) window_geometry: WindowGeometry,
     pub(crate) plugin_dir: PathBuf,
@@ -384,12 +384,20 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
 
     let cache_size_bytes = cli
         .cache_size
-        .checked_mul(1024 * 1024)
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or_else(|| anyhow::anyhow!("--cache-size is too large for this platform"))?;
+        .map(|mib| {
+            mib.checked_mul(1024 * 1024)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| anyhow::anyhow!("--cache-size is too large for this platform"))
+        })
+        .transpose()?;
 
-    let max_tiles = usize::try_from(cli.max_tiles)
-        .map_err(|_| anyhow::anyhow!("--max-tiles is too large for this platform"))?;
+    let max_tiles = cli
+        .max_tiles
+        .map(|count| {
+            usize::try_from(count)
+                .map_err(|_| anyhow::anyhow!("--max-tiles is too large for this platform"))
+        })
+        .transpose()?;
 
     if cli.command.is_some() && !cli.pane_groups.is_empty() {
         bail!("file arguments cannot be combined with a subcommand");

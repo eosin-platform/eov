@@ -10,12 +10,12 @@ use crate::plugin_runtime::EventTarget;
 use crate::plugin_runtime::shared::{Published, PublishedFile, SlideReader};
 use crate::state::{AppState, OpenFile, PaneId};
 use eov_common::WsiFile;
+use eov_common::wsi::AlphaMode;
 use eov_plugin_api::abi::RegionRequest;
 use eov_plugin_api::protocol::{
     FileId, FileInfo, HostEvent, HostSnapshot, LevelInfo, MeasurementInfo, PaneInfo, PropertyMap,
     Rect, ToolRef, ViewInfo,
 };
-use parking_lot::Mutex;
 use slint::ComponentHandle;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -42,63 +42,52 @@ pub(super) struct Tracker {
     /// The slide each pane showed at the last frame (UI-10).
     pane_files: HashMap<u32, Option<FileId>>,
     pane_count: usize,
+    /// Slide identities computed off the UI thread (`None`: unavailable).
+    identities: HashMap<FileId, Option<String>>,
+    /// Opened files whose `FileOpened` waits for their identity.
+    pending_open: Vec<FileId>,
 }
 
-/// Slide metadata the plugin API exposes, from the WSI core.
-trait WsiMetadata {
-    fn property_map_snapshot(&self) -> PropertyMap;
-    fn associated_image_rgba(&self, name: &str) -> Result<(u32, u32, Vec<u8>), String>;
-}
+/// How long `FileOpened` may wait for a slide identity.
+const IDENTITY_WAIT: Duration = Duration::from_secs(5);
 
-impl WsiMetadata for WsiFile {
-    fn property_map_snapshot(&self) -> PropertyMap {
-        PropertyMap::new()
-    }
-
-    fn associated_image_rgba(&self, name: &str) -> Result<(u32, u32, Vec<u8>), String> {
-        Err(format!("associated image '{name}' is not available"))
-    }
-}
-
-/// Reads plugin pixel requests through a dedicated slide handle, so a bad
-/// region read by a plugin never affects the viewer's own handle.
+/// Reads plugin pixel requests on the plugin's thread. `WsiFile` clones
+/// share the slide's self-healing handle, so no host lock is involved and a
+/// bad region read by a plugin cannot poison the viewer (PLG-11, WSI-1).
 struct FileReader {
-    path: PathBuf,
-    handle: Mutex<Option<WsiFile>>,
-}
-
-impl FileReader {
-    fn with_handle<T>(&self, f: impl FnOnce(&WsiFile) -> Result<T, String>) -> Result<T, String> {
-        let mut handle = self.handle.lock();
-        if handle.is_none() {
-            *handle = Some(WsiFile::open(&self.path).map_err(|e| e.to_string())?);
-        }
-        f(handle.as_ref().expect("opened"))
-    }
+    wsi: WsiFile,
 }
 
 impl SlideReader for FileReader {
     fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String> {
-        self.with_handle(|wsi| {
-            let mut pixels = wsi
-                .read_region(
-                    request.x,
-                    request.y,
-                    request.level,
-                    request.width,
-                    request.height,
-                )
-                .map_err(|e| e.to_string())?;
+        let mode = if request.background & 0xFF == 0 {
+            AlphaMode::Straight
+        } else {
+            AlphaMode::Premultiplied
+        };
+        let mut pixels = self
+            .wsi
+            .read_region_with(
+                request.x,
+                request.y,
+                request.level,
+                request.width,
+                request.height,
+                mode,
+            )
+            .map_err(|e| e.to_string())?;
+        if mode == AlphaMode::Premultiplied {
             finish_alpha(&mut pixels, request.background);
-            Ok(pixels)
-        })
+        }
+        Ok(pixels)
     }
 
     fn associated_image(&self, name: &str) -> Result<(u32, u32, Vec<u8>), String> {
-        self.with_handle(|wsi| {
-            let image = wsi.associated_image_rgba(name).map_err(|e| e.to_string())?;
-            Ok(image)
-        })
+        let image = self
+            .wsi
+            .read_associated_image(name)
+            .map_err(|e| e.to_string())?;
+        Ok((image.width as u32, image.height as u32, image.pixels))
     }
 }
 
@@ -128,7 +117,7 @@ fn finish_alpha(pixels: &mut [u8], background: u32) {
     }
 }
 
-pub(crate) fn file_info(file: &OpenFile, properties: &PropertyMap) -> FileInfo {
+pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
     let props = file.wsi.properties();
     FileInfo {
         file_id: FileId::from(file.id),
@@ -151,12 +140,20 @@ pub(crate) fn file_info(file: &OpenFile, properties: &PropertyMap) -> FileInfo {
         objective_power: props.objective_power,
         vendor: props.vendor.clone(),
         scan_date: props.scan_date.clone(),
-        bounds: None,
-        identity: properties
-            .get("openslide.quickhash-1")
-            .map(|hash| format!("quickhash1:{hash}")),
-        associated_images: Vec::new(),
-        has_icc_profile: false,
+        bounds: props.bounds.map(|b| Rect {
+            x: b.x as f64,
+            y: b.y as f64,
+            width: b.width as f64,
+            height: b.height as f64,
+        }),
+        identity: identity.map(str::to_string),
+        associated_images: file
+            .wsi
+            .associated_images()
+            .iter()
+            .map(|image| image.name.clone())
+            .collect(),
+        has_icc_profile: props.icc_profile_size.is_some(),
         stain: props.stain.clone(),
     }
 }
@@ -210,6 +207,39 @@ fn measurement_infos(file: &OpenFile) -> Vec<MeasurementInfo> {
 }
 
 impl UiHost {
+    /// A slide's identity is known: publish it and announce the file.
+    fn identity_ready(&self, file_id: FileId, identity: Option<String>) {
+        self.tracker
+            .borrow_mut()
+            .identities
+            .insert(file_id, identity);
+        self.publish_now();
+        self.announce_open(file_id);
+    }
+
+    /// Sends `FileOpened` once per file, when its identity is known or the
+    /// wait timed out.
+    fn announce_open(&self, file_id: FileId) {
+        let waiting = {
+            let mut tracker = self.tracker.borrow_mut();
+            let before = tracker.pending_open.len();
+            tracker.pending_open.retain(|id| *id != file_id);
+            tracker.pending_open.len() != before
+        };
+        if !waiting {
+            return;
+        }
+        let info = self
+            .shared
+            .published()
+            .files
+            .get(&file_id)
+            .map(|file| file.info.clone());
+        if let Some(file) = info {
+            self.post(EventTarget::All, HostEvent::FileOpened { file });
+        }
+    }
+
     /// Publishes immediately (startup, after commands).
     pub(super) fn publish_now(&self) {
         let state = self.state.read();
@@ -236,9 +266,10 @@ impl UiHost {
             let properties = tracker
                 .properties
                 .entry(id)
-                .or_insert_with(|| Arc::new(file.wsi.property_map_snapshot()))
+                .or_insert_with(|| Arc::new(file.wsi.property_map().clone()))
                 .clone();
-            let info = file_info(file, &properties);
+            let identity = tracker.identities.get(&id).cloned().flatten();
+            let info = file_info(file, identity.as_deref());
             files.insert(
                 id,
                 PublishedFile {
@@ -261,24 +292,45 @@ impl UiHost {
             .copied()
             .collect();
         for id in &opened {
+            let Some(file) = state.get_file(*id as i32) else {
+                continue;
+            };
             self.shared.set_reader(
                 *id,
                 Arc::new(FileReader {
-                    path: current[id].clone(),
-                    handle: Mutex::new(None),
+                    wsi: file.wsi.clone(),
                 }),
             );
             self.ensure_host_layers(*id);
-            if let Some(file) = files.get(id) {
-                events.push((
-                    EventTarget::All,
-                    HostEvent::FileOpened {
-                        file: file.info.clone(),
-                    },
-                ));
+            // The identity samples the slide files: compute it on a worker
+            // and announce the file once it is known.
+            tracker.pending_open.push(*id);
+            let wsi = file.wsi.clone();
+            let file_id = *id;
+            let spawned = std::thread::Builder::new()
+                .name("eov-slide-identity".into())
+                .spawn(move || {
+                    let identity = match wsi.identity() {
+                        Ok(identity) => Some(identity.key().to_string()),
+                        Err(error) => {
+                            tracing::warn!("No slide identity: {error}");
+                            None
+                        }
+                    };
+                    let _ = slint::invoke_from_event_loop(move || {
+                        super::with_host(|host| host.identity_ready(file_id, identity));
+                    });
+                });
+            if let Err(error) = spawned {
+                tracing::warn!("Cannot compute the slide identity: {error}");
             }
+            slint::Timer::single_shot(IDENTITY_WAIT, move || {
+                super::with_host(|host| host.announce_open(file_id));
+            });
         }
         for id in &closed {
+            tracker.identities.remove(id);
+            tracker.pending_open.retain(|pending| pending != id);
             self.shared.remove_reader(*id);
             self.store.remove_file(*id);
             self.undo.borrow_mut().clear_file(*id);

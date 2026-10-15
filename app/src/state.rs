@@ -4,8 +4,8 @@ use crate::interaction::HostMeasurement;
 use crate::plugin_runtime::filters::SharedFilterChain;
 use crate::tile_loader::TileLoader;
 use eov_common::{
-    FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileManager, ViewportState,
-    WsiFile,
+    FilteringMode, MeasurementUnit, RenderBackend, SlideBounds, StainNormalization, TileManager,
+    ViewportState, WsiFile,
 };
 use eov_plugin_api::protocol::Rect;
 use std::collections::{HashMap, HashSet};
@@ -144,6 +144,17 @@ pub struct SeriesThumbnail {
     pub height: u32,
 }
 
+/// The minimap image of a slide: its real dimensions and the level-0
+/// rectangle it shows (the content bounds of sparse slides), so the
+/// minimap never has to guess either (RND-10).
+#[derive(Debug, Clone)]
+pub struct MinimapThumbnail {
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub region: SlideBounds,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SeriesEntry {
     pub path: PathBuf,
@@ -234,8 +245,8 @@ pub struct OpenFile {
     pub viewport: ViewportState,
     /// Per-pane viewport/render state indexed by pane position
     pub pane_states: Vec<Option<FilePaneState>>,
-    /// Thumbnail for minimap (RGBA data)
-    pub thumbnail: Option<Vec<u8>>,
+    /// Minimap thumbnail.
+    pub thumbnail: Option<MinimapThumbnail>,
     /// Region of interest in level-0 pixels (if set); shown in every pane
     /// with this slide.
     pub roi: Option<Rect>,
@@ -250,7 +261,10 @@ pub struct NewOpenFile {
     pub tile_manager: Arc<TileManager>,
     pub tile_loader: Arc<TileLoader>,
     pub viewport: ViewportState,
-    pub thumbnail: Option<Vec<u8>>,
+    pub thumbnail: Option<MinimapThumbnail>,
+    /// Pane that shows the new tab (the focused pane when it no longer
+    /// exists).
+    pub target_pane: PaneId,
 }
 
 impl OpenFile {
@@ -1184,6 +1198,7 @@ impl AppState {
             tile_loader,
             viewport,
             thumbnail,
+            target_pane,
         } = new_file;
 
         let normalized_path = normalize_recent_path(&path);
@@ -1210,7 +1225,9 @@ impl AppState {
             measurements: Vec::new(),
         });
 
-        let target_pane = if self.split_enabled {
+        let target_pane = if target_pane.0 < self.panes.len() {
+            target_pane
+        } else if self.split_enabled {
             self.focused_pane
         } else {
             PaneId::PRIMARY

@@ -11,7 +11,7 @@ use std::path::Path;
 
 /// One tiled pyramid level.
 #[derive(Clone, Debug)]
-pub(crate) struct TiffLevel {
+pub struct TiffLevel {
     pub width: u32,
     pub height: u32,
     pub tile: u32,
@@ -53,7 +53,7 @@ impl TiffLevel {
 
 /// A stripped (non-tiled) image, used for Aperio associated images.
 #[derive(Clone, Debug)]
-pub(crate) struct TiffStripped {
+pub struct TiffStripped {
     pub width: u32,
     pub height: u32,
     pub description: String,
@@ -61,7 +61,7 @@ pub(crate) struct TiffStripped {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TiffSpec {
+pub struct TiffSpec {
     /// Tiled levels, largest first.
     pub levels: Vec<TiffLevel>,
     /// ImageDescription of the first directory.
@@ -139,7 +139,7 @@ impl TiffSpec {
 /// Writes a minimal uncompressed, tiled, 8-bit RGB TIFF that OpenSlide opens
 /// with its generic-tiff driver. `pixel(x, y)` supplies the colour of every
 /// pixel; `tile` must be a multiple of 32.
-pub(crate) fn write_tiled_tiff(
+pub fn write_tiled_tiff(
     path: &Path,
     width: u32,
     height: u32,
@@ -181,7 +181,7 @@ impl Value {
 
 /// Writes `spec` to `path`. `pixel(x, y)` gives the level-0 colour; lower
 /// levels sample it at the corresponding level-0 position.
-pub(crate) fn write_tiff(
+pub fn write_tiff(
     path: &Path,
     spec: &TiffSpec,
     pixel: impl Fn(u32, u32) -> [u8; 3],

@@ -348,11 +348,17 @@ pub fn update_tabs(
                     image_width: vp.image_width as f32,
                     image_height: vp.image_height as f32,
                     level: file
-                        .wsi
+                        .tile_manager
+                        .wsi()
                         .best_level_for_downsample(vp.effective_downsample())
                         as i32,
                 };
-                let rect = vp.minimap_rect();
+                // Relative to what the thumbnail shows (the content bounds
+                // of sparse slides).
+                let rect = match file.thumbnail.as_ref() {
+                    Some(thumbnail) => vp.minimap_rect_within(&thumbnail.region),
+                    None => viewport_state.minimap_rect(),
+                };
                 minimap_rect = MinimapRect {
                     x: rect.x,
                     y: rect.y,

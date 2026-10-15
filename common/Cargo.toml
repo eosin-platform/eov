@@ -53,6 +53,8 @@ tempfile = "3"
 
 [features]
 default = []
+# Exposes `test_support` (synthetic slide writers) to other crates' tests.
+test-support = []
 
 [[bench]]
 name = "wsi_benchmarks"

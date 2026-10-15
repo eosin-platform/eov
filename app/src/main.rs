@@ -3,6 +3,7 @@
 
 mod backend;
 mod blitter;
+mod cache_budget;
 mod callbacks;
 mod cli;
 mod clipboard;
@@ -173,10 +174,10 @@ fn main() -> Result<()> {
     let mut initial_state = AppState::new();
     initial_state.viewport_lock_enabled = launch_options.viewport_lock_enabled;
     let state = Arc::new(RwLock::new(initial_state));
-    let tile_cache = Arc::new(TileCache::with_limits(
-        launch_options.max_tiles,
+    let tile_cache = Arc::new(TileCache::with_budget(cache_budget::init(
         launch_options.cache_size_bytes,
-    ));
+        launch_options.max_tiles,
+    )));
     render_pool::init_global()?;
 
     info!(

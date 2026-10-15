@@ -235,8 +235,8 @@ Notable options:
 - `--cpu` and `--gpu` as shorthands for `--backend cpu|gpu`
 - `--debug` to enable debug overlays in the UI
 - `--log-level error|warn|info|debug|trace`
-- `--cache-size <MB>` to set the tile-cache budget in megabytes. Default and recommended value: `256`.
-- `--max-tiles <COUNT>` to cap the number of cached tiles. Default and recommended value: `2048`.
+- `--cache-size <MB>` to fix the tile-cache budget in megabytes. By default the budget follows the window: about two full frames per visible pane, between 256 MB and 4 GB.
+- `--max-tiles <COUNT>` to fix the maximum number of cached tiles (default: sized with the budget).
 - `--config <PATH>` to override the active config file path for the current process
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
 
