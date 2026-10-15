@@ -159,6 +159,11 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
             .collect(),
         has_icc_profile: props.icc_profile_size.is_some(),
         stain: props.stain.clone(),
+        channel_names: file
+            .wsi
+            .channels()
+            .map(|set| set.channels.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
     }
 }
 

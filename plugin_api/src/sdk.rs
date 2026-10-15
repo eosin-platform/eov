@@ -413,6 +413,10 @@ impl Host {
     }
 
     /// Reads slide pixels on the calling thread.
+    ///
+    /// Multichannel slides (see [`FileInfo::channel_names`]) come back as
+    /// RGBA too: their visible channels composited with the user's current
+    /// channel display, as the viewer shows them.
     pub fn read_region(&self, request: RegionRequest) -> HostResult<Image> {
         from_ffi(self.ffi.read_region(request)).map(Image::from)
     }

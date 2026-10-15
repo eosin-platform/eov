@@ -133,6 +133,15 @@ pub struct FileInfo {
     /// Stain label parsed from slide metadata (e.g. `"H&E"`), if any.
     #[serde(default)]
     pub stain: Option<String>,
+    /// Channel names of a multichannel slide (fluorescence or multiplexed
+    /// immunofluorescence OME-TIFF), in file order; empty for RGB slides.
+    ///
+    /// Pixels from `read_region` are always RGBA: the visible channels
+    /// composited with the colours, windows and gammas the user set in the
+    /// Channels panel, the same image the viewer shows. Raw channel values
+    /// are not available through plugin API 1.x.
+    #[serde(default)]
+    pub channel_names: Vec<String>,
 }
 
 /// The visible state of a pane showing a slide.
@@ -1899,6 +1908,27 @@ mod tests {
         assert!(spec.visible);
         assert_eq!(spec.opacity, 1.0);
         assert_eq!(spec.style, Style::default());
+    }
+
+    #[test]
+    fn channel_names_are_optional_both_ways() {
+        // An older host sends no channel names.
+        let file: FileInfo = serde_json::from_str(
+            r#"{"file_id":1,"path":"/s.svs","filename":"s.svs","width":10,"height":20}"#,
+        )
+        .unwrap();
+        assert!(file.channel_names.is_empty());
+        // A newer host's field round-trips, and older plugins ignore it.
+        let file = FileInfo {
+            channel_names: vec!["DAPI".into(), "CD45".into()],
+            ..file
+        };
+        let text = serde_json::to_string(&file).unwrap();
+        assert!(
+            text.contains(r#""channel_names":["DAPI","CD45"]"#),
+            "{text}"
+        );
+        assert_eq!(serde_json::from_str::<FileInfo>(&text).unwrap(), file);
     }
 
     #[test]
