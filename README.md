@@ -363,7 +363,9 @@ On macOS, slides opened from the Finder or the Dock and `eov://` links arrive as
 
 ### Application and plugin updates
 
-Updates are explicit CLI actions. eov does not check GitHub at startup, run background update checks, or collect telemetry.
+Updates are explicit actions: `eov update` on the command line, or **Check for Updates…** at the bottom of the Home screen. eov does not check GitHub at startup, run background update checks, or collect telemetry.
+
+**From the window.** Check for Updates asks before it contacts GitHub, then shows the same plan as `eov update` (the installed and available versions, the signature status, how this installation is updated, the release notes link and the plugin changes) and changes nothing until you choose Update. AppImage, Homebrew and Cargo updates are used from the next start; a Windows portable folder or a manually installed macOS bundle closes eov, lets the update helper replace the application and starts eov again with the session restored. Installations eov does not manage (a distribution package, a policy that turns self-update off) are told where the new release is. The administrator policy applies as on the command line.
 
 ```bash
 eov update                       # newest release, with the official plugins it pins

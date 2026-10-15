@@ -18,6 +18,7 @@
 //!   snapshot), so plugin threads cannot block on the UI.
 
 mod annotations;
+mod app_update;
 mod bookmarks;
 mod callbacks;
 mod commands;
@@ -125,6 +126,10 @@ pub(crate) struct UiHost {
     /// Newer versions found by the Plugins panel's Check for Updates, by
     /// plugin id.
     plugin_updates: RefCell<HashMap<String, String>>,
+    /// The update of eov started from the Home screen.
+    app_update: RefCell<Option<app_update::AppUpdate>>,
+    /// Its status-bar job while it applies.
+    app_update_job: RefCell<Option<String>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -194,6 +199,8 @@ pub(crate) fn init(
         last_pointer: Cell::new(None),
         measurements_panel: Cell::new(None),
         plugin_updates: RefCell::new(HashMap::new()),
+        app_update: RefCell::new(None),
+        app_update_job: RefCell::new(None),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();

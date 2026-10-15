@@ -335,6 +335,11 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_plugins_check_updates(|| {
         with_host(|host| host.check_plugin_updates());
     });
+    let app_info = ui.global::<crate::AppInfo>();
+    app_info.set_version(env!("CARGO_PKG_VERSION").into());
+    app_info.on_check_for_updates(|| {
+        with_host(|host| host.check_for_app_update());
+    });
     ui.on_plugin_update_requested(|plugin_id| {
         with_host(|host| host.update_plugin(&plugin_id));
     });

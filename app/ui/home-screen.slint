@@ -1,6 +1,12 @@
 import { Theme } from "theme.slint";
 import { RecentFileData } from "types.slint";
 
+/// About this eov, set by the host.
+export global AppInfo {
+    in property <string> version: "";
+    callback check-for-updates();
+}
+
 export component HomeScreen inherits Rectangle {
     in property <[RecentFileData]> recent-files: [];
     callback open-file-requested();
@@ -177,15 +183,55 @@ export component HomeScreen inherits Rectangle {
         }
     }
 
-    // Intended use (AUDIT §14.6).
-    Text {
+    // Intended use (AUDIT §14.6), the version and Check for Updates.
+    VerticalLayout {
         x: 16px;
         y: parent.height - self.height - 12px;
         width: parent.width - 32px;
-        text: "For research and education. Not a medical device; not for primary diagnosis.";
-        color: Theme.text-secondary;
-        font-size: 10px;
-        horizontal-alignment: center;
-        wrap: word-wrap;
+        height: self.preferred-height;
+        spacing: 4px;
+
+        Text {
+            text: "For research and education. Not a medical device; not for primary diagnosis.";
+            color: Theme.text-secondary;
+            font-size: 10px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+
+            Text {
+                text: "eov " + AppInfo.version;
+                color: Theme.text-secondary;
+                font-size: 10px;
+            }
+
+            Text {
+                text: "·";
+                color: Theme.text-secondary;
+                font-size: 10px;
+            }
+
+            Text {
+                text: "Check for Updates…";
+                color: update-touch.has-hover ? Theme.text-primary : Theme.link;
+                font-size: 10px;
+                accessible-role: button;
+                accessible-label: "Check for eov updates";
+                accessible-action-default => {
+                    AppInfo.check-for-updates();
+                }
+
+                update-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        AppInfo.check-for-updates();
+                    }
+                }
+            }
+        }
     }
 }
