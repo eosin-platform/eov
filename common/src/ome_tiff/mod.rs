@@ -47,7 +47,7 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tracing::{debug, warn};
 
 /// `openslide.vendor` of slides this reader opens.
@@ -72,6 +72,8 @@ const MAX_EXTRA_IFDS: usize = 4096;
 /// Channels accepted (the largest cyclic-immunofluorescence panels have
 /// about a hundred).
 const MAX_CHANNELS: usize = 1024;
+/// Focal planes offered at most (the rest of a deeper stack is not shown).
+const MAX_FOCAL_PLANES: u64 = 512;
 
 static NEXT_SLIDE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -242,6 +244,11 @@ struct Associated {
 pub(crate) struct OmeTiffSource {
     reader: ChunkReader,
     levels: Vec<Level>,
+    /// The planes of every level for each focal plane: `[z][level][channel]`
+    /// (`[0]` is the levels' own).
+    focal_planes: Vec<Vec<Vec<PlaneRef>>>,
+    /// The focal plane reads come from.
+    focal_plane: AtomicUsize,
     content: Content,
     background: [u8; 3],
     associated: Vec<Associated>,
@@ -309,13 +316,14 @@ fn main_image(doc: &OmeDocument) -> usize {
         .unwrap_or(0)
 }
 
-/// Where the first focal plane and time point of every channel of
-/// `pixels` are stored.
+/// Where focal plane `z` (at the first time point) of every channel of
+/// `pixels` is stored.
 fn image_planes(
     table: &mut IfdTable<'_>,
     pixels: &Pixels,
     own_file: &str,
     own_uuid: Option<&str>,
+    z: u64,
 ) -> Result<ImagePlanes> {
     let channels = pixels.effective_size_c();
     if channels > MAX_CHANNELS as u64 {
@@ -328,7 +336,7 @@ fn image_planes(
     let sizes = (channels as u64, pixels.size_z.max(1), pixels.size_t.max(1));
     let mut ifds: Vec<Option<Arc<Ifd>>> = Vec::with_capacity(channels);
     for c in 0..channels {
-        let plane = pixels.dimension_order.plane_index((c as u64, 0, 0), sizes);
+        let plane = pixels.dimension_order.plane_index((c as u64, z, 0), sizes);
         ifds.push(match map.get(&plane) {
             Some(&index) => Some(table.by_index(index)?),
             None => None,
@@ -470,6 +478,7 @@ fn pyramid(
     main: usize,
     base: &ImagePlanes,
     own: (&str, Option<&str>),
+    z: u64,
 ) -> (Vec<Vec<PlaneRef>>, PyramidKind) {
     let base_size = (base.planes[0].ifd.width, base.planes[0].ifd.height);
     let accept = |candidates: Vec<Vec<PlaneRef>>| -> Vec<Vec<PlaneRef>> {
@@ -532,7 +541,7 @@ fn pyramid(
     others.sort_by_key(|&i| std::cmp::Reverse(pixel_count(&doc.images[i].pixels)));
     let candidates: Vec<Vec<PlaneRef>> = others
         .into_iter()
-        .filter_map(|i| image_planes(table, &doc.images[i].pixels, own.0, own.1).ok())
+        .filter_map(|i| image_planes(table, &doc.images[i].pixels, own.0, own.1, z).ok())
         .filter(|planes| planes.layout == base.layout)
         .map(|planes| planes.planes)
         .collect();
@@ -1126,9 +1135,9 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
 
     let main = main_image(&doc);
     let image = &doc.images[main];
-    let base = image_planes(&mut table, &image.pixels, own.0, own.1)?;
+    let base = image_planes(&mut table, &image.pixels, own.0, own.1, 0)?;
     check_decodable(&base.planes)?;
-    let (sub_levels, pyramid_kind) = pyramid(&mut table, &doc, main, &base, own);
+    let (sub_levels, pyramid_kind) = pyramid(&mut table, &doc, main, &base, own, 0);
 
     let base_ifd = Arc::clone(&base.planes[0].ifd);
     let (w0, h0) = (u64::from(base_ifd.width), u64::from(base_ifd.height));
@@ -1158,6 +1167,46 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         });
     }
 
+    // The other focal planes: the same levels, from their own IFDs. A plane
+    // that is stored elsewhere or does not match stops the list there.
+    let mut focal_planes: Vec<Vec<Vec<PlaneRef>>> =
+        vec![levels.iter().map(|level| level.planes.clone()).collect()];
+    for z in 1..image.pixels.size_z.clamp(1, MAX_FOCAL_PLANES) {
+        let planes = image_planes(&mut table, &image.pixels, own.0, own.1, z).and_then(|base_z| {
+            check_decodable(&base_z.planes)?;
+            Ok(base_z)
+        });
+        let base_z = match planes {
+            Ok(base_z) if base_z.layout == base.layout => base_z,
+            Ok(_) | Err(_) => {
+                warn!(
+                    "{file_name}: showing {z} of {} focal planes",
+                    image.pixels.size_z
+                );
+                break;
+            }
+        };
+        let (sub, _) = pyramid(&mut table, &doc, main, &base_z, own, z);
+        let mut by_level = vec![base_z.planes];
+        by_level.extend(sub);
+        let matches = by_level.len() == levels.len()
+            && by_level.iter().zip(&levels).all(|(planes, level)| {
+                planes.len() == level.planes.len()
+                    && planes.iter().all(|plane| {
+                        (u64::from(plane.ifd.width), u64::from(plane.ifd.height))
+                            == (level.width, level.height)
+                    })
+            });
+        if !matches {
+            warn!(
+                "{file_name}: focal plane {z} is stored differently from the first; showing {z} of {} planes",
+                image.pixels.size_z
+            );
+            break;
+        }
+        focal_planes.push(by_level);
+    }
+
     let mut associated = Vec::new();
     for other in &doc.images {
         let Some(name) = associated_name(other) else {
@@ -1166,7 +1215,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         if associated.iter().any(|a: &Associated| a.name == name) {
             continue;
         }
-        let Ok(planes) = image_planes(&mut table, &other.pixels, own.0, own.1) else {
+        let Ok(planes) = image_planes(&mut table, &other.pixels, own.0, own.1, 0) else {
             continue;
         };
         let ifd = Arc::clone(&planes.planes[0].ifd);
@@ -1306,6 +1355,8 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         source: Box::new(OmeTiffSource {
             reader,
             levels,
+            focal_planes,
+            focal_plane: AtomicUsize::new(0),
             content,
             background,
             associated,
@@ -1317,6 +1368,15 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
 }
 
 impl OmeTiffSource {
+    /// The planes of `level` in the current focal plane.
+    fn planes_of(&self, level: usize) -> &[PlaneRef] {
+        let z = self
+            .focal_plane
+            .load(Ordering::Relaxed)
+            .min(self.focal_planes.len() - 1);
+        &self.focal_planes[z][level]
+    }
+
     fn region_error(&self, error: ChunkError, region: Region) -> Error {
         match error {
             ChunkError::Io(error) => Error::Io(error),
@@ -1379,7 +1439,7 @@ impl OmeTiffSource {
 
     fn composite(
         &self,
-        level: &Level,
+        planes: &[PlaneRef],
         compositor: &Compositor,
         clip: &Clip,
         out: &mut [u8],
@@ -1395,7 +1455,7 @@ impl OmeTiffSource {
             let Some(lut) = lut else {
                 continue;
             };
-            let plane = &level.planes[channel];
+            let plane = &planes[channel];
             let sample = match plane.ifd.planar {
                 Planar::Chunky => usize::from(plane.sample),
                 Planar::Separate => 0,
@@ -1437,11 +1497,12 @@ impl SlideSource for OmeTiffSource {
         ) else {
             return Ok(());
         };
+        let planes = self.planes_of(region.level as usize);
         let result = match &self.content {
-            Content::Rgb => self.copy_color(&level.planes[0].ifd, &clip, out),
+            Content::Rgb => self.copy_color(&planes[0].ifd, &clip, out),
             Content::Channels { display, .. } => {
                 let compositor = Arc::clone(&display.read());
-                self.composite(level, &compositor, &clip, out)
+                self.composite(planes, &compositor, &clip, out)
             }
         };
         if matches!(mode, AlphaMode::Composited) {
@@ -1537,6 +1598,25 @@ impl SlideSource for OmeTiffSource {
             Content::Channels { defaults, .. } => Some(defaults.clone()),
             Content::Rgb => None,
         }
+    }
+
+    fn focal_planes(&self) -> u32 {
+        self.focal_planes.len() as u32
+    }
+
+    fn focal_plane(&self) -> u32 {
+        self.focal_plane.load(Ordering::Relaxed) as u32
+    }
+
+    fn set_focal_plane(&self, z: u32) -> Result<()> {
+        if z as usize >= self.focal_planes.len() {
+            return Err(Error::InvalidArgument(format!(
+                "focal plane {z} (the slide has {})",
+                self.focal_planes.len()
+            )));
+        }
+        self.focal_plane.store(z as usize, Ordering::Relaxed);
+        Ok(())
     }
 
     fn set_channel_display(&self, new: ChannelDisplay) -> Result<()> {

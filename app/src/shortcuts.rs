@@ -25,6 +25,9 @@ pub(crate) enum Action {
     SlideInfo,
     /// The Channels panel of a multichannel slide.
     Channels,
+    /// The next or previous focal plane of a Z-stack.
+    NextFocalPlane,
+    PreviousFocalPlane,
     CopyView,
     ExportView,
     Quit,
@@ -154,6 +157,8 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::SlideInfo, "slide-info", "Slide information", G::Slides, false, &["I"]),
     // No default key: plugins may use the free ones; users can bind one.
     info(A::Channels, "channels", "Channels of the slide", G::Slides, false, &[]),
+    info(A::NextFocalPlane, "next-focal-plane", "Next focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowUp"]),
+    info(A::PreviousFocalPlane, "previous-focal-plane", "Previous focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowDown"]),
     info(A::CopyView, "copy-view", "Copy the view as an image", G::Slides, false, &["Ctrl+C"]),
     info(A::ExportView, "export-view", "Export the view", G::Slides, false, &["Ctrl+E"]),
     info(A::Fit, "fit", "Fit the slide to the pane", G::Navigation, false, &["F"]),

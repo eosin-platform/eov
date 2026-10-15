@@ -66,6 +66,27 @@ pub(crate) trait SlideSource: Send + Sync {
         None
     }
 
+    /// Focal planes the slide has (Z-stacks; 1 for most slides).
+    fn focal_planes(&self) -> u32 {
+        1
+    }
+
+    /// The focal plane reads come from.
+    fn focal_plane(&self) -> u32 {
+        0
+    }
+
+    /// Reads come from focal plane `z` from now on.
+    fn set_focal_plane(&self, z: u32) -> Result<()> {
+        if z == 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidArgument(
+                "the slide has one focal plane".to_string(),
+            ))
+        }
+    }
+
     /// Changes how the channels are drawn, for every later read.
     fn set_channel_display(&self, _display: ChannelDisplay) -> Result<()> {
         Err(Error::InvalidArgument(

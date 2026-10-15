@@ -340,6 +340,8 @@ impl UiHost {
                 crate::slide_info::open_for_pane(&ui, &self.state, pane);
             }
             Action::Channels => crate::channels::open_for_focused_pane(self),
+            Action::NextFocalPlane => self.step_focal_plane(1),
+            Action::PreviousFocalPlane => self.step_focal_plane(-1),
             Action::CopyView | Action::ExportView => {
                 let pane = self.state.read().active_viewport_pane();
                 if action == Action::CopyView {
@@ -489,6 +491,36 @@ impl UiHost {
     /// Frames the focused slide's tissue, found in its minimap thumbnail,
     /// leaving out the empty glass around it (AUDIT §14.1, §14.5). Slides
     /// with no visible tissue are fitted whole.
+    /// Ctrl+↑ / Ctrl+↓: shows the next or previous focal plane of the
+    /// focused slide's Z-stack.
+    fn step_focal_plane(&self, delta: i64) {
+        let found = {
+            let state = self.state.read();
+            let pane = state.active_viewport_pane();
+            state
+                .active_file_id_for_pane(pane)
+                .and_then(|id| state.get_file(id).map(|file| (id, file.wsi.clone())))
+        };
+        let Some((file_id, wsi)) = found else {
+            return;
+        };
+        let planes = wsi.focal_planes();
+        if planes <= 1 {
+            self.status("This slide has one focal plane");
+            return;
+        }
+        let current = i64::from(wsi.focal_plane());
+        let next = (current + delta).clamp(0, i64::from(planes) - 1);
+        if next != current {
+            if let Err(error) = wsi.set_focal_plane(next as u32) {
+                self.status(&format!("Could not change the focal plane: {error}"));
+                return;
+            }
+            crate::channels::rebuild_slide(self, file_id, &wsi);
+        }
+        self.status(&format!("Focal plane {} of {planes}", next + 1));
+    }
+
     fn fit_tissue(&self) {
         let framed = {
             let mut state = self.state.write();

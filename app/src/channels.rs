@@ -613,20 +613,25 @@ pub(crate) fn edit(host: &UiHost, edit: Edit) {
         host.status(&format!("Could not change the channels: {error}"));
         return;
     }
-    // Every open file reading through this slide's handle shows the new
-    // display (normally just the panel's own).
+    rebuild_slide(host, file_id, &wsi);
+    schedule_save();
+}
+
+/// Draws slide `file_id` again after its pixels changed (a channel display,
+/// a focal plane): every open file reading through the same handle gets
+/// new tiles and a new minimap.
+pub(crate) fn rebuild_slide(host: &UiHost, file_id: i32, wsi: &WsiFile) {
     let sharing: Vec<i32> = host
         .state
         .read()
         .open_files
         .iter()
-        .filter(|file| file.id == file_id || file.wsi.shares_handle_with(&wsi))
+        .filter(|file| file.id == file_id || file.wsi.shares_handle_with(wsi))
         .map(|file| file.id)
         .collect();
     for id in sharing {
         schedule_rebuild(host, id);
     }
-    schedule_save();
 }
 
 /// Saves the open panel's display after a quiet moment.

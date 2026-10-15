@@ -582,6 +582,23 @@ impl WsiFile {
         self.shared.source.set_channel_display(display)
     }
 
+    /// The focal planes of a Z-stack (OME-TIFF); 1 for most slides.
+    pub fn focal_planes(&self) -> u32 {
+        self.shared.source.focal_planes()
+    }
+
+    /// The focal plane shown (0 = the first).
+    pub fn focal_plane(&self) -> u32 {
+        self.shared.source.focal_plane()
+    }
+
+    /// Shows focal plane `z` from now on, for every reader of the slide.
+    /// Cached tiles of the previous plane must be dropped by the caller (as
+    /// after [`set_channel_display`](Self::set_channel_display)).
+    pub fn set_focal_plane(&self, z: u32) -> Result<()> {
+        self.shared.source.set_focal_plane(z)
+    }
+
     /// Get file properties. `levels` includes synthetic levels when this
     /// is a [`with_synthetic_levels`](Self::with_synthetic_levels) view.
     pub fn properties(&self) -> &WsiProperties {

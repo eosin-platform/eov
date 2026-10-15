@@ -1100,3 +1100,48 @@ fn channel_names_fall_back_and_white_colours_are_replaced() {
     assert_eq!(colors, [BLUE, GREEN, RED]);
     assert_eq!(wsi.channels().unwrap().channels[2].emission_nm, Some(670.0));
 }
+
+#[test]
+fn focal_planes_of_a_z_stack_can_be_shown_one_by_one() {
+    let dir = tempfile::tempdir().unwrap();
+    // The writer stores its three "channels" as IFDs 0, 1 and 2 (each with
+    // SubIFD levels); the XML calls them focal planes 0–2 of one channel.
+    let mut spec = three_channels();
+    spec.xml = Some(
+        "<OME><Image ID=\"Image:0\"><Pixels ID=\"Pixels:0\" DimensionOrder=\"XYCZT\" \
+         Type=\"uint16\" SizeX=\"300\" SizeY=\"200\" SizeC=\"1\" SizeZ=\"3\" SizeT=\"1\">\
+         <Channel ID=\"Channel:0:0\" Name=\"DAPI\" SamplesPerPixel=\"1\"/>\
+         <TiffData IFD=\"0\" PlaneCount=\"3\"/></Pixels></Image></OME>"
+            .into(),
+    );
+    let path = dir.path().join("stack.ome.tif");
+    // Plane z is a constant 100 × (z + 1).
+    write_ome_tiff(&path, &spec, |plane, _, _| 100.0 * (plane as f64 + 1.0)).unwrap();
+    let wsi = WsiFile::open(&path).unwrap();
+    assert_eq!(wsi.focal_planes(), 3);
+    assert_eq!(wsi.channels().unwrap().len(), 1);
+    // A fixed window, so the composite shows the value.
+    wsi.set_channel_display(display(&[[255, 255, 255]], 0.0, 300.0, 1.0))
+        .unwrap();
+    let grey = |level: u32| {
+        let pixels = wsi.read_region(40, 40, level, 4, 4).unwrap();
+        pixels[0]
+    };
+    let first = grey(0);
+    wsi.set_focal_plane(2).unwrap();
+    assert_eq!(wsi.focal_plane(), 2);
+    let last = grey(0);
+    assert!(last > first, "plane 2 is brighter: {first} then {last}");
+    assert_eq!(grey(1), last, "lower levels come from the same plane");
+    wsi.set_focal_plane(1).unwrap();
+    let middle = grey(0);
+    assert!(first < middle && middle < last, "{first} {middle} {last}");
+    assert!(wsi.set_focal_plane(3).is_err());
+    assert_eq!(wsi.focal_plane(), 1, "a refused plane changes nothing");
+
+    // Slides without a stack have one plane.
+    let flat = write(dir.path(), "flat.ome.tif", &three_channels());
+    let flat = WsiFile::open(&flat).unwrap();
+    assert_eq!(flat.focal_planes(), 1);
+    assert!(flat.set_focal_plane(0).is_ok() && flat.set_focal_plane(1).is_err());
+}
