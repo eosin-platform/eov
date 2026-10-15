@@ -219,9 +219,12 @@ pub fn format_length(um: f64, unit: MeasurementUnit) -> String {
     }
 }
 
+/// An area for display in the user's unit. In µm mode areas from 0.1 mm²
+/// (about half a high-power field) upwards are shown in mm², as field and
+/// tumour areas are usually stated.
 pub fn format_area(um2: f64, unit: MeasurementUnit) -> String {
     match unit {
-        MeasurementUnit::Um if um2.abs() >= 1_000_000.0 => {
+        MeasurementUnit::Um if um2.abs() >= 100_000.0 => {
             format!("{} mm²", format_sig(um2 / 1_000_000.0))
         }
         MeasurementUnit::Um => format!("{} µm²", format_sig(um2)),
@@ -355,6 +358,8 @@ mod tests {
         assert_eq!(format_length(250.0, MeasurementUnit::Mm), "0.250 mm");
         assert_eq!(format_length(25_400.0, MeasurementUnit::Inches), "1.00 in");
         assert_eq!(format_area(2_500_000.0, MeasurementUnit::Um), "2.50 mm²");
+        assert_eq!(format_area(237_000.0, MeasurementUnit::Um), "0.237 mm²");
+        assert_eq!(format_area(99_000.0, MeasurementUnit::Um), "99000 µm²");
     }
 
     #[test]

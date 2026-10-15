@@ -234,6 +234,21 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     ui.on_shortcuts_copy_config_path(|| {
         with_host(|host| host.copy_config_path());
     });
+    ui.on_measurement_go(|id| {
+        with_host(|host| host.measurement_go(&id));
+    });
+    ui.on_measurement_copy(|id| {
+        with_host(|host| host.measurement_copy(&id));
+    });
+    ui.on_measurement_delete(|id| {
+        with_host(|host| host.measurement_delete(&id));
+    });
+    ui.on_measurements_copy_all(|| {
+        with_host(|host| host.measurements_copy_all());
+    });
+    ui.on_measurements_clear(|| {
+        with_host(|host| host.measurements_clear());
+    });
     let ui_weak = ui.as_weak();
     ui.on_bookmark_dialog_accepted(move |name| {
         with_host(|host| host.finish_bookmark(&name));

@@ -137,6 +137,12 @@ impl UiHost {
             ));
             host_items.push(item("host:roi-clear", "Clear Region of Interest", "delete"));
         }
+        if has_roi || has_measurements {
+            host_items.push(with_key(
+                item("host:measurements-panel", "Measurements…", "measure"),
+                Action::Measurements,
+            ));
+        }
         if has_measurements {
             host_items.push(item(
                 "host:measurements-clear",
@@ -256,6 +262,10 @@ impl UiHost {
         if self.bookmark_command(host_command) {
             return true;
         }
+        if host_command == "measurements-panel" {
+            self.open_measurements_panel();
+            return true;
+        }
         let file_id = self.menu.borrow().as_ref().and_then(|menu| menu.file_id);
         let Some(file_id) = file_id else {
             return true;
@@ -292,7 +302,7 @@ impl UiHost {
         true
     }
 
-    fn measurement_text(&self, file_id: FileId, id: &str) -> Option<String> {
+    pub(super) fn measurement_text(&self, file_id: FileId, id: &str) -> Option<String> {
         let state = self.state.read();
         let file = state.get_file(file_id as i32)?;
         let m = file.measurements.iter().find(|m| m.id == id)?;
@@ -306,7 +316,7 @@ impl UiHost {
             return;
         };
         let current = self.measure_mode();
-        let items: Vec<ContextMenuItem> = MeasureMode::ALL
+        let mut items: Vec<ContextMenuItem> = MeasureMode::ALL
             .iter()
             .map(|mode| ContextMenuItem {
                 id: format!("measure-mode:{}", mode.id()).into(),
@@ -321,6 +331,12 @@ impl UiHost {
                 separator_after: false,
             })
             .collect();
+        mark_last_separator(&mut items);
+        let mut list = item("host:measurements-panel", "Show Measurements…", "");
+        list.shortcut = crate::shortcuts::current()
+            .label(Action::Measurements)
+            .into();
+        items.push(list);
         *self.menu.borrow_mut() = None;
         ui.set_context_menu_tab_id(-1);
         ui.set_context_menu_series_path("".into());

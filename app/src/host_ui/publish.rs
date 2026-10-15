@@ -216,6 +216,16 @@ fn measurement_infos(file: &OpenFile) -> Vec<MeasurementInfo> {
 
 impl UiHost {
     /// A slide's identity is known: publish it and announce the file.
+    /// The slide identity key of an open file, once it is known.
+    pub(super) fn identity_key(&self, file_id: FileId) -> Option<String> {
+        self.tracker
+            .borrow()
+            .identities
+            .get(&file_id)
+            .cloned()
+            .flatten()
+    }
+
     fn identity_ready(&self, file_id: FileId, identity: Option<String>) {
         // A manual pixel size saved for this slide applies from now on.
         if let Some(um) = identity
@@ -232,7 +242,10 @@ impl UiHost {
         self.tracker
             .borrow_mut()
             .identities
-            .insert(file_id, identity);
+            .insert(file_id, identity.clone());
+        if let Some(key) = &identity {
+            self.restore_host_annotations(file_id, key);
+        }
         self.publish_now();
         self.announce_open(file_id);
     }

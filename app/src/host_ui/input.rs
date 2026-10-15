@@ -384,6 +384,7 @@ impl UiHost {
             Action::ToolNavigate => set_tool(self, ToolChoice::Navigate),
             Action::ToolRoi => set_tool(self, ToolChoice::Roi),
             Action::ToolMeasure => set_tool(self, ToolChoice::Measure(self.measure_mode())),
+            Action::Measurements => self.open_measurements_panel(),
             Action::Undo => self.undo(),
             Action::Redo => self.redo(),
             Action::ToggleMinimap => crate::callbacks::toggle_minimap_visibility(&ui, &self.state),

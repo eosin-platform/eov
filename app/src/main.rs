@@ -20,6 +20,7 @@ mod history;
 mod host_ui;
 mod interaction;
 mod logging;
+mod measurement_store;
 mod overlay;
 mod pane_ui;
 mod paths;

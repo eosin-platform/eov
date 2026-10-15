@@ -47,6 +47,7 @@ export component ShortcutsPanel inherits Rectangle {
                 spacing: 12px;
 
                 HorizontalLayout {
+                    vertical-stretch: 0;
                     Text {
                         text: "Keyboard Shortcuts";
                         color: Theme.text-primary;
@@ -78,52 +79,57 @@ export component ShortcutsPanel inherits Rectangle {
                     }
                 }
 
-                Flickable {
+                // Takes the height the window leaves, and scrolls.
+                Rectangle {
                     vertical-stretch: 1;
-                    // Shrinks to what the window leaves, and scrolls.
                     min-height: 60px;
-                    viewport-height: list.preferred-height;
 
-                    list := VerticalLayout {
-                        for row in root.rows: Rectangle {
-                            height: row.heading ? 32px : 24px;
+                    Flickable {
+                        width: parent.width;
+                        height: parent.height;
+                        viewport-height: list.preferred-height;
 
-                            if row.heading: Text {
-                                x: 0px;
-                                y: parent.height - self.height - 4px;
-                                text: row.label;
-                                color: Theme.accent;
-                                font-size: 12px;
-                                font-weight: 600;
-                            }
+                        list := VerticalLayout {
+                            for row in root.rows: Rectangle {
+                                height: row.heading ? 32px : 24px;
 
-                            if !row.heading: HorizontalLayout {
-                                spacing: 12px;
-
-                                Text {
+                                if row.heading: Text {
+                                    x: 0px;
+                                    y: parent.height - self.height - 4px;
                                     text: row.label;
-                                    color: Theme.text-primary;
+                                    color: Theme.accent;
                                     font-size: 12px;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                    overflow: elide;
+                                    font-weight: 600;
                                 }
 
-                                if row.id != "": Text {
-                                    text: row.id;
-                                    color: Theme.text-secondary;
-                                    font-size: 10px;
-                                    font-family: "monospace";
-                                    vertical-alignment: center;
-                                }
+                                if !row.heading: HorizontalLayout {
+                                    spacing: 12px;
 
-                                Text {
-                                    text: row.keys == "" ? "no key" : row.keys;
-                                    color: row.keys == "" ? Theme.text-secondary : Theme.text-primary;
-                                    font-size: 12px;
-                                    font-family: "monospace";
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
+                                    Text {
+                                        text: row.label;
+                                        color: Theme.text-primary;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+
+                                    if row.id != "": Text {
+                                        text: row.id;
+                                        color: Theme.text-secondary;
+                                        font-size: 10px;
+                                        font-family: "monospace";
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: row.keys == "" ? "no key" : row.keys;
+                                        color: row.keys == "" ? Theme.text-secondary : Theme.text-primary;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                        vertical-alignment: center;
+                                        horizontal-alignment: right;
+                                    }
                                 }
                             }
                         }
@@ -139,6 +145,7 @@ export component ShortcutsPanel inherits Rectangle {
                 }
 
                 HorizontalLayout {
+                    vertical-stretch: 0;
                     alignment: end;
 
                     Rectangle {

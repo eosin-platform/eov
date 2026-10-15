@@ -23,6 +23,7 @@ mod callbacks;
 mod commands;
 mod input;
 pub(crate) mod key_help;
+mod measurements_panel;
 mod menus;
 mod notices;
 mod overlays;
@@ -118,6 +119,8 @@ pub(crate) struct UiHost {
     /// The pointer's last window position over a pane, for menus opened
     /// from the keyboard.
     last_pointer: Cell<Option<(f32, f32)>>,
+    /// The slide the Measurements panel shows.
+    measurements_panel: Cell<Option<eov_plugin_api::protocol::FileId>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -185,6 +188,7 @@ pub(crate) fn init(
         pending_bookmark: RefCell::new(None),
         bookmark_menu: RefCell::new(None),
         last_pointer: Cell::new(None),
+        measurements_panel: Cell::new(None),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();

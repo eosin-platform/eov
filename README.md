@@ -526,6 +526,14 @@ Logs go to standard error (`--log-level`, default warnings). GUI sessions also w
 
 Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux).
 
+eov also remembers, per slide, in that data folder, keyed by the slide's identity so that it follows a slide that is renamed or moved:
+
+- `measurements/`: the region of interest and the measurements (list them with Ctrl+Shift+M; `remember_measurements = false` in `config.toml` turns this off);
+- `bookmarks.toml`: named views (Ctrl+B);
+- `calibrations.toml`: pixel sizes set by hand in Slide Information.
+
+The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
+
 Example config file:
 
 ```toml

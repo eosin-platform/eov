@@ -48,6 +48,13 @@ export struct PropertyRow {
     value: string,
 }
 
+// One line of the Measurements panel (the region of interest has id "roi").
+export struct MeasurementRow {
+    id: string,
+    kind: string,
+    value: string,
+}
+
 // One line of the Keyboard Shortcuts panel: a section heading, or an
 // action with its keys.
 export struct ShortcutRow {

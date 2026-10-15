@@ -219,6 +219,8 @@ impl UiHost {
             return;
         };
         self.sync_host_layers(file_id, roi, &measurements, &calibration, unit);
+        self.persist_host_annotations(file_id, roi, &measurements);
+        self.refresh_measurements_panel();
         if record {
             let dropped = self.undo.borrow_mut().push(UndoEntry {
                 file_id: Some(file_id),
@@ -228,6 +230,78 @@ impl UiHost {
             self.undo_dropped(dropped);
         }
         self.refresh_undo_ui();
+        self.redraw_overlays();
+    }
+
+    /// Keeps a slide's region and measurements for the next time it opens.
+    /// Before its identity is known nothing is written: that happens in
+    /// [`restore_host_annotations`](Self::restore_host_annotations).
+    fn persist_host_annotations(
+        &self,
+        file_id: FileId,
+        roi: Option<Rect>,
+        measurements: &[HostMeasurement],
+    ) {
+        if !crate::config::load_remember_measurements() {
+            return;
+        }
+        let Some(key) = self.identity_key(file_id) else {
+            return;
+        };
+        let name = self
+            .state
+            .read()
+            .get_file(file_id as i32)
+            .map(|file| file.filename.clone())
+            .unwrap_or_default();
+        if let Err(error) = crate::measurement_store::save(&key, &name, roi, measurements) {
+            tracing::warn!("Could not save the measurements of {name}: {error}");
+        }
+    }
+
+    /// A slide's identity became known: brings back the region and
+    /// measurements saved for it, keeping any made since it opened.
+    pub(super) fn restore_host_annotations(&self, file_id: FileId, key: &str) {
+        if !crate::config::load_remember_measurements() {
+            return;
+        }
+        let saved = crate::measurement_store::load(key);
+        let restored = {
+            let mut state = self.state.write();
+            let unit = state.file_pane_unit(file_id as i32).unwrap_or_default();
+            let Some(file) = state.get_file_mut(file_id as i32) else {
+                return;
+            };
+            let made_here = file.roi.is_some() || !file.measurements.is_empty();
+            if saved.is_none() && !made_here {
+                return;
+            }
+            if let Some(saved) = saved {
+                if file.roi.is_none() {
+                    file.roi = saved.roi;
+                }
+                for measurement in saved.measurements {
+                    if !file.measurements.iter().any(|m| m.id == measurement.id) {
+                        file.measurements.push(measurement);
+                    }
+                }
+            }
+            state.request_render();
+            let file = state.get_file(file_id as i32).expect("just found");
+            (
+                made_here,
+                file.roi,
+                file.measurements.clone(),
+                super::publish::calibration(file),
+                unit,
+            )
+        };
+        let (made_here, roi, measurements, calibration, unit) = restored;
+        self.sync_host_layers(file_id, roi, &measurements, &calibration, unit);
+        if made_here {
+            self.persist_host_annotations(file_id, roi, &measurements);
+        }
+        self.refresh_measurements_panel();
         self.redraw_overlays();
     }
 

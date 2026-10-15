@@ -1,0 +1,253 @@
+// The Measurements panel: the slide's region of interest and measurements,
+// to go to, copy or delete.
+
+import { Theme } from "theme.slint";
+import { MeasurementRow } from "types.slint";
+
+component SmallButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    width: label.preferred-width + 14px;
+    height: 22px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    label := Text {
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component Button inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    min-width: label.preferred-width + 16px;
+    height: 28px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    label := Text {
+        text: root.text;
+        color: Theme.text-primary;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component MeasurementsPanel inherits Rectangle {
+    in property <string> title;
+    in property <[MeasurementRow]> rows;
+    /// Shown when there is nothing to list.
+    in property <string> empty-text;
+    callback close-requested();
+    callback go-requested(string);
+    callback copy-requested(string);
+    callback delete-requested(string);
+    callback copy-all-requested();
+    callback clear-requested();
+
+    background: #00000088;
+
+    TouchArea {
+        clicked => {
+            root.close-requested();
+        }
+    }
+
+    FocusScope {
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.close-requested();
+                return accept;
+            }
+            reject
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(640px, root.width - 32px);
+            height: min(root.height - 64px, 560px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.title;
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+                        Text {
+                            text: "✕";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.close-requested();
+                            }
+                        }
+                    }
+                }
+
+                // Takes the height the window leaves, and scrolls.
+                Rectangle {
+                    vertical-stretch: 1;
+                    min-height: 60px;
+
+                    Flickable {
+                        width: parent.width;
+                        height: parent.height;
+                        viewport-height: list.preferred-height;
+
+                        list := VerticalLayout {
+                            spacing: 2px;
+
+                            if root.rows.length == 0: Text {
+                                text: root.empty-text;
+                                color: Theme.text-secondary;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                height: self.preferred-height;
+                            }
+
+                            for row in root.rows: Rectangle {
+                                height: 30px;
+                                border-radius: 4px;
+                                background: row-touch.has-hover ? #ffffff08 : transparent;
+
+                                row-touch := TouchArea {
+                                    double-clicked => {
+                                        root.go-requested(row.id);
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    spacing: 8px;
+
+                                    Text {
+                                        width: 130px;
+                                        text: row.kind;
+                                        color: Theme.text-secondary;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: row.value;
+                                        color: Theme.text-primary;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        SmallButton {
+                                            text: "Go";
+                                            clicked => {
+                                                root.go-requested(row.id);
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        SmallButton {
+                                            text: "Copy";
+                                            clicked => {
+                                                root.copy-requested(row.id);
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        SmallButton {
+                                            text: "Delete";
+                                            clicked => {
+                                                root.delete-requested(row.id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    alignment: end;
+
+                    Button {
+                        text: "Copy All (CSV)";
+                        clicked => {
+                            root.copy-all-requested();
+                        }
+                    }
+
+                    Button {
+                        text: "Delete All Measurements";
+                        clicked => {
+                            root.clear-requested();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

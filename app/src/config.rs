@@ -244,6 +244,18 @@ pub fn load_remember_recent_files() -> bool {
     .unwrap_or(true)
 }
 
+/// Whether a slide's region of interest and measurements are kept for the
+/// next time it opens (`remember_measurements`, on by default).
+pub fn load_remember_measurements() -> bool {
+    with_document(|_, document| {
+        document
+            .get("remember_measurements")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true)
+    })
+    .unwrap_or(true)
+}
+
 /// Whether slide labels (and macro photos, which show them) are hidden in
 /// the Slide Information panel (`hide_slide_label`).
 pub fn load_hide_slide_label() -> bool {
