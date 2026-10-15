@@ -22,6 +22,7 @@ mod bookmarks;
 mod callbacks;
 mod commands;
 mod input;
+pub(crate) mod key_help;
 mod menus;
 mod notices;
 mod overlays;
@@ -393,6 +394,7 @@ impl UiHost {
     /// Sends `Ready` (after the window is shown).
     pub(crate) fn ready(&self) {
         self.report_last_update();
+        self.report_shortcut_problems();
         if let Some(report) = crate::logging::take_crash_report() {
             self.notify(
                 NotifyLevel::Error,

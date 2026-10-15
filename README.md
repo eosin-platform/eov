@@ -131,6 +131,43 @@ Current capabilities include:
 - Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
 - Various quality of life enhancements expected from modern software packages
 
+## Keyboard Shortcuts
+
+Press **F1** (or **?**) for the list of shortcuts, including the keys of
+installed plugins. On macOS, **Ctrl** below means **⌘**.
+
+| Keys | Action |
+|---|---|
+| Ctrl+O, Ctrl+W | Open a slide, close the tab |
+| Ctrl+Tab, Ctrl+Shift+Tab | Next or previous tab in the pane |
+| PageDown, PageUp | Next or previous slide of the folder |
+| I | Slide information (label, macro image, properties, pixel size) |
+| Ctrl+C, Ctrl+E | Copy the view as an image, export the view |
+| F, +, - | Fit the slide, zoom in, zoom out |
+| Arrows (Shift: further) | Pan |
+| 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
+| Alt+←, Alt+→ | Back and forward through the pane's views |
+| Ctrl+B, Ctrl+Shift+B | Bookmark the view, list the slide's bookmarks |
+| N, R, D | Navigate, region of interest and measure tools |
+| Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |
+| M, F11 | Minimap, full screen |
+| Ctrl+Shift+W | Quit |
+
+Change keys in the `[shortcuts]` table of `config.toml`, by the action
+names the panel shows in grey:
+
+```toml
+[shortcuts]
+bookmark-add = "Ctrl+D"      # a key
+zoom-in = ["+", "=", "W"]    # several keys
+slide-info = []              # no key
+```
+
+A key given to one action is taken from any other. Escape, Enter, Delete,
+Backspace and Tab keep their meaning in the viewport and dialogs.
+Plugins cannot bind a key eov uses. Changes apply when eov starts, and
+entries eov cannot use are reported in the Messages popup.
+
 ## Screenshots
 
 <p align="center">
@@ -495,6 +532,9 @@ Example config file:
 render_backend = "gpu"
 filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
 remember_recent_files = true
+
+[shortcuts]                    # see Keyboard Shortcuts
+bookmark-add = "Ctrl+D"
 ```
 
 ## Architecture

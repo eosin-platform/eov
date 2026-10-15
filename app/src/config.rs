@@ -272,6 +272,42 @@ pub fn load_restore_session() -> bool {
     .unwrap_or(true)
 }
 
+/// The `[shortcuts]` table: action ids with their keys (a key or a list of
+/// keys; an empty list leaves the action without one), and entries that
+/// are not keys, as problems for the user.
+pub fn load_shortcuts() -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    with_document(shortcuts_in).unwrap_or_default()
+}
+
+fn shortcuts_in(path: &Path, document: &DocumentMut) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    let mut bindings = Vec::new();
+    let mut problems = Vec::new();
+    let Some(item) = document.get("shortcuts") else {
+        return (bindings, problems);
+    };
+    let Some(table) = item.as_table_like() else {
+        problems.push(format!("shortcuts in {} is not a table", path.display()));
+        return (bindings, problems);
+    };
+    for (action, item) in table.iter() {
+        let keys = match (item.as_str(), item.as_array()) {
+            (Some(key), _) => Some(vec![key.to_string()]),
+            (None, Some(array)) => array
+                .iter()
+                .map(|key| key.as_str().map(str::to_string))
+                .collect(),
+            _ => None,
+        };
+        match keys {
+            Some(keys) => bindings.push((action.to_string(), keys)),
+            None => problems.push(format!(
+                "[shortcuts] {action}: expected a key such as \"Ctrl+B\" or a list of keys"
+            )),
+        }
+    }
+    (bindings, problems)
+}
+
 pub fn load_scroll_pans() -> Result<bool> {
     with_document(|_, document| {
         document
@@ -284,6 +320,26 @@ pub fn load_scroll_pans() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcuts_are_read_as_keys_or_lists() {
+        let document: DocumentMut = "[shortcuts]\nbookmark-add = \"Ctrl+D\"\nzoom-in = [\"+\", \"=\"]\nslide-info = []\nfit = 3\n"
+            .parse()
+            .unwrap();
+        let (bindings, problems) = shortcuts_in(Path::new("config.toml"), &document);
+        assert_eq!(
+            bindings,
+            vec![
+                ("bookmark-add".to_string(), vec!["Ctrl+D".to_string()]),
+                (
+                    "zoom-in".to_string(),
+                    vec!["+".to_string(), "=".to_string()]
+                ),
+                ("slide-info".to_string(), vec![]),
+            ]
+        );
+        assert_eq!(problems.len(), 1);
+    }
 
     #[test]
     fn edits_keep_unknown_keys_and_comments() {

@@ -11,16 +11,6 @@ use eov_plugin_api::protocol::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Keys the host binds without modifiers (case-insensitive).
-pub const RESERVED_PLAIN_KEYS: &[&str] = &[
-    "f", "m", "n", "r", "d", "i", "+", "=", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-    "f11", "pageup", "pagedown",
-];
-/// Keys the host binds with the primary modifier (Ctrl, or ⌘ on macOS).
-pub const RESERVED_PRIMARY_KEYS: &[&str] = &[
-    "w", "z", "y", "o", "c", "e", "s", "b", "tab", "+", "=", "-", "0",
-];
-
 /// Largest inline SVG accepted for an icon.
 const MAX_ICON_BYTES: usize = 64 * 1024;
 
@@ -66,23 +56,11 @@ fn hotkey_signature(hotkey: &Hotkey) -> (String, bool, bool, bool) {
     )
 }
 
-/// Whether `hotkey` collides with a host shortcut.
+/// Whether `hotkey` collides with a host shortcut (the shortcut table,
+/// with the user's changes, and the keys of the viewport and dialogs).
 pub fn is_reserved(hotkey: &Hotkey) -> bool {
-    let (key, primary, _shift, alt) = hotkey_signature(hotkey);
-    if alt {
-        // Alt+←/→ step through the pane's navigation history.
-        return !primary && matches!(key.as_str(), "arrowleft" | "arrowright");
-    }
-    if primary {
-        RESERVED_PRIMARY_KEYS.contains(&key.as_str())
-    } else {
-        RESERVED_PLAIN_KEYS.contains(&key.as_str())
-            || matches!(
-                key.as_str(),
-                "escape" | "enter" | "return" | "delete" | "backspace" | "tab"
-            )
-            || key.starts_with("arrow")
-    }
+    let (key, primary, shift, alt) = hotkey_signature(hotkey);
+    crate::shortcuts::is_taken_by_host(&key, primary, shift, alt)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -521,6 +499,28 @@ impl Contributions {
                 plugin_id: Arc::clone(&e.plugin_id),
                 hotkey_id: e.spec.hotkey_id.clone(),
             })
+    }
+
+    /// Every plugin key, as (plugin, what it does, key), for the Keyboard
+    /// Shortcuts panel.
+    pub fn key_bindings(&self) -> Vec<(Arc<str>, String, Hotkey)> {
+        let tools = self.tools().into_iter().filter_map(|e| {
+            let hotkey = e.spec.hotkey.clone()?;
+            Some((Arc::clone(&e.plugin_id), e.spec.label.clone(), hotkey))
+        });
+        let buttons = self.toolbar().into_iter().filter_map(|e| {
+            let hotkey = e.spec.hotkey.clone()?;
+            Some((Arc::clone(&e.plugin_id), e.spec.tooltip.clone(), hotkey))
+        });
+        let hotkeys = self.hotkeys.iter().map(|e| {
+            let label = if e.spec.description.is_empty() {
+                e.spec.hotkey_id.clone()
+            } else {
+                e.spec.description.clone()
+            };
+            (Arc::clone(&e.plugin_id), label, e.spec.hotkey.clone())
+        });
+        tools.chain(buttons).chain(hotkeys).collect()
     }
 
     // -- hotkeys -------------------------------------------------------------------

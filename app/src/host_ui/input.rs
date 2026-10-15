@@ -16,6 +16,7 @@ use crate::interaction::controller::{
 use crate::interaction::{PaneView, ToolChoice};
 use crate::plugin_runtime::EventTarget;
 use crate::plugin_runtime::contributions::HotkeyTarget;
+use crate::shortcuts::Action;
 use crate::state::PaneId;
 use crate::{PaneCursor, ToolType};
 use eov_plugin_api::protocol::{Cursor, FileId, HostEvent, Modifiers, PointerButton};
@@ -230,160 +231,20 @@ impl UiHost {
         self.shortcut(text, modifiers, pressed, repeat)
     }
 
-    /// The host shortcut table and plugin hotkeys.
+    /// The host shortcut table, then plugin hotkeys.
     fn shortcut(&self, text: &str, modifiers: Modifiers, pressed: bool, repeat: bool) -> bool {
         let name = key_name(text);
         if !pressed {
             return self.release_momentary(&name);
         }
-        let Some(ui) = self.ui() else {
-            return false;
-        };
         let primary = modifiers.primary;
         let shift = modifiers.shift;
-        // Back and forward through the pane's visited fields (AUDIT §14.1).
-        if modifiers.alt && !primary {
-            match name.as_str() {
-                "ArrowLeft" => {
-                    self.history_step(true);
-                    return true;
-                }
-                "ArrowRight" => {
-                    self.history_step(false);
-                    return true;
-                }
-                _ => {}
+        let table = crate::shortcuts::current();
+        if let Some(action) = table.lookup(&name, primary, shift, modifiers.alt) {
+            if !repeat || crate::shortcuts::action_info(action).repeats {
+                self.run_action(action, shift);
             }
-        }
-        match (primary, name.as_str()) {
-            (true, "z") if shift => {
-                self.redo();
-                return true;
-            }
-            (true, "z") => {
-                self.undo();
-                return true;
-            }
-            (true, "y") => {
-                self.redo();
-                return true;
-            }
-            (true, "w") if shift => {
-                let _ = ui.hide();
-                let _ = slint::quit_event_loop();
-                return true;
-            }
-            (true, "w") => {
-                ui.invoke_close_active_tab();
-                return true;
-            }
-            (true, "o") => {
-                ui.invoke_open_file_requested();
-                return true;
-            }
-            (true, "b") if shift => {
-                let (x, y) = self.keyboard_menu_position();
-                self.open_bookmark_menu(x, y, false);
-                return true;
-            }
-            (true, "b") => {
-                self.begin_bookmark();
-                return true;
-            }
-            (true, "Tab") => {
-                self.state
-                    .write()
-                    .cycle_tab_in_focused_pane(if shift { -1 } else { 1 });
-                self.refresh_tabs();
-                return true;
-            }
-            _ => {}
-        }
-        if !(primary || modifiers.alt) {
-            let handled = match name.as_str() {
-                "f" => {
-                    self.with_focused_viewport(crate::callbacks::frame_active_viewport);
-                    true
-                }
-                "m" => {
-                    crate::callbacks::toggle_minimap_visibility(&ui, &self.state);
-                    true
-                }
-                "+" | "=" => {
-                    self.with_focused_viewport(|state| {
-                        crate::callbacks::zoom_active_viewport(
-                            state,
-                            crate::callbacks::ACTION_ZOOM_FACTOR,
-                        )
-                    });
-                    true
-                }
-                "-" => {
-                    self.with_focused_viewport(|state| {
-                        crate::callbacks::zoom_active_viewport(
-                            state,
-                            1.0 / crate::callbacks::ACTION_ZOOM_FACTOR,
-                        )
-                    });
-                    true
-                }
-                "n" => {
-                    set_tool(self, ToolChoice::Navigate);
-                    true
-                }
-                "r" => {
-                    set_tool(self, ToolChoice::Roi);
-                    true
-                }
-                "d" => {
-                    set_tool(self, ToolChoice::Measure(self.measure_mode()));
-                    true
-                }
-                "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" => {
-                    let step = if shift { 0.5 } else { 0.15 };
-                    self.pan_focused_by_fraction(match name.as_str() {
-                        "ArrowLeft" => (-step, 0.0),
-                        "ArrowRight" => (step, 0.0),
-                        "ArrowUp" => (0.0, -step),
-                        _ => (0.0, step),
-                    });
-                    true
-                }
-                "i" => {
-                    let pane = self.state.read().focused_pane;
-                    crate::slide_info::open_for_pane(&ui, &self.state, pane);
-                    true
-                }
-                "F11" => {
-                    let window = ui.window();
-                    window.set_fullscreen(!window.is_fullscreen());
-                    true
-                }
-                "PageDown" => {
-                    crate::callbacks::cycle_series(
-                        &ui,
-                        &self.state,
-                        &self.tile_cache,
-                        &self.render_timer,
-                        1,
-                    );
-                    true
-                }
-                "PageUp" => {
-                    crate::callbacks::cycle_series(
-                        &ui,
-                        &self.state,
-                        &self.tile_cache,
-                        &self.render_timer,
-                        -1,
-                    );
-                    true
-                }
-                _ => false,
-            };
-            if handled {
-                return true;
-            }
+            return true;
         }
         if repeat {
             if let Some(entry) = self
@@ -449,7 +310,88 @@ impl UiHost {
                 );
                 true
             }
-            None => !primary && !modifiers.alt && self.magnification_key(&name),
+            None => false,
+        }
+    }
+
+    /// Does what a shortcut stands for; `shift` makes pans go further.
+    pub(crate) fn run_action(&self, action: Action, shift: bool) {
+        let Some(ui) = self.ui() else {
+            return;
+        };
+        match action {
+            Action::OpenFile => ui.invoke_open_file_requested(),
+            Action::CloseTab => ui.invoke_close_active_tab(),
+            Action::NextTab | Action::PreviousTab => {
+                self.state
+                    .write()
+                    .cycle_tab_in_focused_pane(if action == Action::NextTab { 1 } else { -1 });
+                self.refresh_tabs();
+            }
+            Action::NextSlide | Action::PreviousSlide => crate::callbacks::cycle_series(
+                &ui,
+                &self.state,
+                &self.tile_cache,
+                &self.render_timer,
+                if action == Action::NextSlide { 1 } else { -1 },
+            ),
+            Action::SlideInfo => {
+                let pane = self.state.read().focused_pane;
+                crate::slide_info::open_for_pane(&ui, &self.state, pane);
+            }
+            Action::CopyView | Action::ExportView => {
+                let pane = self.state.read().active_viewport_pane();
+                if action == Action::CopyView {
+                    crate::export_dialog::copy_view(&ui, &self.state, &self.tile_cache, pane);
+                } else {
+                    crate::export_dialog::open(&ui, &self.state, &self.tile_cache, pane);
+                }
+            }
+            Action::Quit => {
+                let _ = ui.hide();
+                let _ = slint::quit_event_loop();
+            }
+            Action::Fit => self.with_focused_viewport(crate::callbacks::frame_active_viewport),
+            Action::ZoomIn | Action::ZoomOut => {
+                let factor = if action == Action::ZoomIn {
+                    crate::callbacks::ACTION_ZOOM_FACTOR
+                } else {
+                    1.0 / crate::callbacks::ACTION_ZOOM_FACTOR
+                };
+                self.with_focused_viewport(|state| {
+                    crate::callbacks::zoom_active_viewport(state, factor)
+                });
+            }
+            Action::PanLeft | Action::PanRight | Action::PanUp | Action::PanDown => {
+                let step = if shift { 0.5 } else { 0.15 };
+                self.pan_focused_by_fraction(match action {
+                    Action::PanLeft => (-step, 0.0),
+                    Action::PanRight => (step, 0.0),
+                    Action::PanUp => (0.0, -step),
+                    _ => (0.0, step),
+                });
+            }
+            Action::Magnify(magnification) => {
+                self.magnify(magnification.map(crate::shortcuts::Magnification::value))
+            }
+            Action::HistoryBack => self.history_step(true),
+            Action::HistoryForward => self.history_step(false),
+            Action::BookmarkAdd => self.begin_bookmark(),
+            Action::Bookmarks => {
+                let (x, y) = self.keyboard_menu_position();
+                self.open_bookmark_menu(x, y, false);
+            }
+            Action::ToolNavigate => set_tool(self, ToolChoice::Navigate),
+            Action::ToolRoi => set_tool(self, ToolChoice::Roi),
+            Action::ToolMeasure => set_tool(self, ToolChoice::Measure(self.measure_mode())),
+            Action::Undo => self.undo(),
+            Action::Redo => self.redo(),
+            Action::ToggleMinimap => crate::callbacks::toggle_minimap_visibility(&ui, &self.state),
+            Action::FullScreen => {
+                let window = ui.window();
+                window.set_fullscreen(!window.is_fullscreen());
+            }
+            Action::Shortcuts => self.open_shortcuts_panel(),
         }
     }
 
@@ -519,19 +461,9 @@ impl UiHost {
         self.request_render();
     }
 
-    /// Digit keys zoom to objective-equivalent magnifications (1.25×, 2.5×,
-    /// 5×, 10×, 20×, 40×; 0 = 1:1) unless a plugin claims them.
-    fn magnification_key(&self, name: &str) -> bool {
-        let magnification = match name {
-            "1" => Some(1.25),
-            "2" => Some(2.5),
-            "3" => Some(5.0),
-            "4" => Some(10.0),
-            "5" => Some(20.0),
-            "6" => Some(40.0),
-            "0" => None,
-            _ => return false,
-        };
+    /// Zooms the focused pane to an objective-equivalent magnification
+    /// (`None`: one screen pixel per slide pixel).
+    fn magnify(&self, magnification: Option<f64>) {
         let result = {
             let mut state = self.state.write();
             let result = crate::callbacks::magnify_active_viewport(&mut state, magnification);
@@ -545,7 +477,6 @@ impl UiHost {
             Ok(_) => self.request_render(),
             Err(message) => self.status(&message),
         }
-        true
     }
 
     /// Restores the previous tool after a held tool hotkey is released.
@@ -625,7 +556,7 @@ impl UiHost {
             self,
             ToolChoice::Plugin {
                 plugin_id: Arc::from(plugin_id),
-                spec,
+                spec: Arc::new(spec),
             },
         );
     }

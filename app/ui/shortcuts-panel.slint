@@ -1,0 +1,170 @@
+// The Keyboard Shortcuts panel (F1): eov's shortcuts and plugins' keys.
+
+import { Theme } from "theme.slint";
+import { ShortcutRow } from "types.slint";
+
+export component ShortcutsPanel inherits Rectangle {
+    in property <[ShortcutRow]> rows;
+    /// How to change keys, with the configuration file's path.
+    in property <string> hint;
+    callback close();
+    callback copy-config-path();
+
+    background: #00000088;
+
+    TouchArea {
+        clicked => {
+            root.close();
+        }
+    }
+
+    focus-scope := FocusScope {
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            if e.text == Key.Escape || e.text == Key.F1 {
+                root.close();
+                return accept;
+            }
+            reject
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(560px, root.width - 32px);
+            height: min(root.height - 64px, 680px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    Text {
+                        text: "Keyboard Shortcuts";
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+                        Text {
+                            text: "✕";
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.close();
+                            }
+                        }
+                    }
+                }
+
+                Flickable {
+                    vertical-stretch: 1;
+                    // Shrinks to what the window leaves, and scrolls.
+                    min-height: 60px;
+                    viewport-height: list.preferred-height;
+
+                    list := VerticalLayout {
+                        for row in root.rows: Rectangle {
+                            height: row.heading ? 32px : 24px;
+
+                            if row.heading: Text {
+                                x: 0px;
+                                y: parent.height - self.height - 4px;
+                                text: row.label;
+                                color: Theme.accent;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            if !row.heading: HorizontalLayout {
+                                spacing: 12px;
+
+                                Text {
+                                    text: row.label;
+                                    color: Theme.text-primary;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+
+                                if row.id != "": Text {
+                                    text: row.id;
+                                    color: Theme.text-secondary;
+                                    font-size: 10px;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: row.keys == "" ? "no key" : row.keys;
+                                    color: row.keys == "" ? Theme.text-secondary : Theme.text-primary;
+                                    font-size: 12px;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.hint;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    height: self.preferred-height;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+
+                    Rectangle {
+                        min-width: copy-text.preferred-width + 16px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        copy-text := Text {
+                            text: "Copy Config Path";
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        copy-touch := TouchArea {
+                            clicked => {
+                                root.copy-config-path();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

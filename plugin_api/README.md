@@ -111,6 +111,12 @@ unless `capture_keyboard` is off. One Slint 1.17 pitfall: wrapped `Text`
 inside `if` or `for` needs `height: self.preferred-height`, or it is sized
 for the wrong width.
 
+Hotkeys (of tools, buttons and `register_hotkey`) cannot take a key eov
+uses: the keys in its Keyboard Shortcuts panel (F1), which users can
+change in `config.toml`, and Escape, Enter, Delete, Backspace, Tab and the
+plain arrows. A refused key arrives as `RegistrationRefused`, so offer
+users a way to pick another.
+
 Coordinates are level-0 pixels of the slide (x right, y down). Layer ids are
 unique per plugin across all open slides, so include the file id when a
 slide gets its own layer (`format!("cells-{file_id}")`). Panes are named by

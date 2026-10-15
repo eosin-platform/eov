@@ -113,13 +113,17 @@ pub enum ToolChoice {
     Navigate,
     Roi,
     Measure(MeasureMode),
-    Plugin { plugin_id: Arc<str>, spec: ToolSpec },
+    /// The spec is shared: tool choices are cloned on every switch.
+    Plugin {
+        plugin_id: Arc<str>,
+        spec: Arc<ToolSpec>,
+    },
 }
 
 impl ToolChoice {
     pub fn plugin_tool(&self) -> Option<(&Arc<str>, &ToolSpec)> {
         match self {
-            ToolChoice::Plugin { plugin_id, spec } => Some((plugin_id, spec)),
+            ToolChoice::Plugin { plugin_id, spec } => Some((plugin_id, &**spec)),
             _ => None,
         }
     }
@@ -2371,7 +2375,7 @@ mod tests {
     fn plugin_tool(kind: ToolKind) -> ToolChoice {
         ToolChoice::Plugin {
             plugin_id: Arc::from("anno"),
-            spec: ToolSpec::new("t", "Tool", "<svg/>", kind),
+            spec: Arc::new(ToolSpec::new("t", "Tool", "<svg/>", kind)),
         }
     }
 
@@ -2526,7 +2530,7 @@ mod tests {
         let mut c = Controller::new(Arc::clone(&store));
         let mut tool = plugin_tool(ToolKind::Custom);
         if let ToolChoice::Plugin { spec, .. } = &mut tool {
-            spec.keys = Some(vec!["A".into(), "ArrowLeft".into()]);
+            Arc::make_mut(spec).keys = Some(vec!["A".into(), "ArrowLeft".into()]);
         }
         c.set_tool(tool);
         let v = view();

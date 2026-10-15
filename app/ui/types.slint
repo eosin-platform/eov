@@ -48,6 +48,28 @@ export struct PropertyRow {
     value: string,
 }
 
+// One line of the Keyboard Shortcuts panel: a section heading, or an
+// action with its keys.
+export struct ShortcutRow {
+    heading: bool,
+    label: string,
+    // The action's name in config.toml's [shortcuts] ("" for plugin keys).
+    id: string,
+    keys: string,
+}
+
+// The keys of host actions that menus and tooltips mention (from the
+// shortcut table, so they follow the user's changes; "" when unbound).
+export struct ShortcutLabels {
+    undo: string,
+    redo: string,
+    navigate: string,
+    roi: string,
+    measure: string,
+    close-tab: string,
+    slide-info: string,
+}
+
 export struct RecentFileData {
     path: string,
     name: string,

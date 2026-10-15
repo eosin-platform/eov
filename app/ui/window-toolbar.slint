@@ -3,6 +3,7 @@ import {
     FilteringMode,
     PluginButtonData,
     RenderMode,
+    ShortcutLabels,
     ToolType,
 } from "types.slint";
 import {
@@ -39,15 +40,12 @@ export component WindowToolbar inherits Rectangle {
     property <string> plugin-hovered-tooltip-text: "";
     property <length> plugin-hovered-tooltip-center-x: 0px;
     property <length> plugin-hovered-tooltip-top-y: 0px;
-    property <string> primary-shortcut-label: root.use-native-window-controls ? "⌘" : "Ctrl";
-    property <string> undo-tooltip-text: (root.undo-label != "" ? "Undo " + root.undo-label : "Undo") + " (" + root.primary-shortcut-label + "+Z)";
-    property <string> redo-tooltip-text:
-        (root.redo-label != "" ? "Redo " + root.redo-label : "Redo")
-        + " ("
-        + root.primary-shortcut-label
-        + "+Y or "
-        + (root.use-native-window-controls ? "Shift+⌘+Z" : "Ctrl+Shift+Z")
-        + ")";
+    /// Keys from the shortcut table, for tooltips.
+    in property <ShortcutLabels> shortcuts;
+    property <string> undo-tooltip-text: (root.undo-label != "" ? "Undo " + root.undo-label : "Undo")
+        + (root.shortcuts.undo != "" ? " (" + root.shortcuts.undo + ")" : "");
+    property <string> redo-tooltip-text: (root.redo-label != "" ? "Redo " + root.redo-label : "Redo")
+        + (root.shortcuts.redo != "" ? " (" + root.shortcuts.redo + ")" : "");
 
     callback open-file-requested();
     callback open-recent-menu-requested(length, length);
@@ -174,7 +172,7 @@ export component WindowToolbar inherits Rectangle {
 
                 navigate-button := SvgToolButton {
                     icon-source: @image-url("icons/navigate.svg");
-                    tooltip-text: "Navigate (N)";
+                    tooltip-text: "Navigate" + (root.shortcuts.navigate != "" ? " (" + root.shortcuts.navigate + ")" : "");
                     is-active: root.current-tool == ToolType.navigate;
                     clicked => {
                         root.tool-selected(ToolType.navigate);
@@ -182,7 +180,7 @@ export component WindowToolbar inherits Rectangle {
                 }
 
                 roi-button := RoiToolButton {
-                    tooltip-text: "Region of interest (R)";
+                    tooltip-text: "Region of interest" + (root.shortcuts.roi != "" ? " (" + root.shortcuts.roi + ")" : "");
                     is-active: root.current-tool == ToolType.region-of-interest;
                     clicked => {
                         root.tool-selected(ToolType.region-of-interest);
@@ -191,7 +189,8 @@ export component WindowToolbar inherits Rectangle {
 
                 measure-button := SvgToolButton {
                     icon-source: @image-url("icons/measure.svg");
-                    tooltip-text: "Measure: " + root.measure-mode-label + " (D; right-click for more)";
+                    tooltip-text: "Measure: " + root.measure-mode-label
+                        + (root.shortcuts.measure != "" ? " (" + root.shortcuts.measure + "; right-click for more)" : " (right-click for more)");
                     is-active: root.current-tool == ToolType.measure;
                     clicked => {
                         root.tool-selected(ToolType.measure);

@@ -8,6 +8,7 @@ use crate::interaction::measure::{self, MeasureMode};
 use crate::overlay::geometry::Point;
 use crate::overlay::{ObjectKey, Owner};
 use crate::plugin_runtime::EventTarget;
+use crate::shortcuts::Action;
 use crate::state::PaneId;
 use eov_plugin_api::protocol::{
     ContextMenuResponse, FileId, HostEvent, MenuContext, MenuItem, ObjectRef,
@@ -51,15 +52,6 @@ fn plugin_item(plugin_id: &str, menu_item: &MenuItem) -> ContextMenuItem {
     }
 }
 
-/// A primary-modifier shortcut as the platform writes it.
-fn shortcut(key: &str, shift: bool) -> String {
-    if cfg!(target_os = "macos") {
-        format!("{}⌘{key}", if shift { "⇧" } else { "" })
-    } else {
-        format!("Ctrl+{}{key}", if shift { "Shift+" } else { "" })
-    }
-}
-
 fn mark_last_separator(items: &mut [ContextMenuItem]) {
     if let Some(last) = items.last_mut() {
         last.separator_after = true;
@@ -91,19 +83,32 @@ impl UiHost {
                 file.is_some_and(|f| !f.measurements.is_empty()),
             )
         };
+        let keys = crate::shortcuts::current();
+        let with_key = |mut item: ContextMenuItem, action: Action| {
+            item.shortcut = keys.label(action).into();
+            item
+        };
         let mut items = vec![
-            item("viewport-copy-image", "Copy Image", "copy"),
-            item("viewport-export-image", "Export Image…", "export"),
+            with_key(
+                item("viewport-copy-image", "Copy Image", "copy"),
+                Action::CopyView,
+            ),
+            with_key(
+                item("viewport-export-image", "Export Image…", "export"),
+                Action::ExportView,
+            ),
         ];
         mark_last_separator(&mut items);
         if let Some(file_id) = file_id {
-            let mut add = item("host:bookmark-add", "Add Bookmark…", "");
-            add.shortcut = shortcut("B", false).into();
-            items.push(add);
+            items.push(with_key(
+                item("host:bookmark-add", "Add Bookmark…", ""),
+                Action::BookmarkAdd,
+            ));
             if self.slide_has_bookmarks(file_id as i32) {
-                let mut list = item("host:bookmarks", "Bookmarks…", "");
-                list.shortcut = shortcut("B", true).into();
-                items.push(list);
+                items.push(with_key(
+                    item("host:bookmarks", "Bookmarks…", ""),
+                    Action::Bookmarks,
+                ));
             }
             mark_last_separator(&mut items);
         }

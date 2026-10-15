@@ -231,6 +231,9 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     ui.on_measure_mode_menu_requested(|x, y| {
         with_host(|host| host.open_measure_mode_menu(x, y));
     });
+    ui.on_shortcuts_copy_config_path(|| {
+        with_host(|host| host.copy_config_path());
+    });
     let ui_weak = ui.as_weak();
     ui.on_bookmark_dialog_accepted(move |name| {
         with_host(|host| host.finish_bookmark(&name));

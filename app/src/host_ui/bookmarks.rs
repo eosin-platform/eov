@@ -5,6 +5,7 @@
 use super::UiHost;
 use crate::ContextMenuItem;
 use crate::bookmarks::{self, Bookmark};
+use crate::shortcuts::Action;
 use crate::state::{AppState, PaneId};
 use eov_plugin_api::protocol::NotifyLevel;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -28,6 +29,16 @@ pub(super) struct BookmarkMenu {
     key: String,
     /// `bookmarks::list(key)` when the menu opened; indices refer to it.
     bookmarks: Vec<Bookmark>,
+}
+
+/// " (Ctrl+Shift+B)" for an action with a key, "" without.
+fn key_hint(action: Action) -> String {
+    let key = crate::shortcuts::current().label(action);
+    if key.is_empty() {
+        String::new()
+    } else {
+        format!(" ({key})")
+    }
 }
 
 /// An objective-equivalent magnification as people write it ("2.5×").
@@ -109,8 +120,9 @@ impl UiHost {
                 NotifyLevel::Warning,
                 "Cannot add a bookmark",
                 Some(&format!(
-                    "A slide can have at most {} bookmarks. Delete some from the bookmark menu (Ctrl+Shift+B).",
-                    bookmarks::MAX_PER_SLIDE
+                    "A slide can have at most {} bookmarks. Delete some from the bookmark menu{}.",
+                    bookmarks::MAX_PER_SLIDE,
+                    key_hint(Action::Bookmarks)
                 )),
                 None,
             );
@@ -157,9 +169,14 @@ impl UiHost {
             },
         );
         match added {
-            Ok(name) => self.status(&format!(
-                "Bookmarked “{name}” (Ctrl+Shift+B lists bookmarks)"
-            )),
+            Ok(name) => {
+                let key = crate::shortcuts::current().label(Action::Bookmarks);
+                self.status(&if key.is_empty() {
+                    format!("Bookmarked “{name}”")
+                } else {
+                    format!("Bookmarked “{name}”; {key} lists the slide's bookmarks")
+                })
+            }
             Err(error) => self.notify(
                 NotifyLevel::Warning,
                 "Cannot add a bookmark",
@@ -207,7 +224,12 @@ impl UiHost {
         };
         let list = bookmarks::list(&key);
         if list.is_empty() {
-            self.status("This slide has no bookmarks yet: Ctrl+B adds one");
+            let key = crate::shortcuts::current().label(Action::BookmarkAdd);
+            self.status(&if key.is_empty() {
+                "This slide has no bookmarks yet".to_string()
+            } else {
+                format!("This slide has no bookmarks yet: {key} adds one")
+            });
             return;
         }
         let first = list.len().saturating_sub(MENU_ITEMS);

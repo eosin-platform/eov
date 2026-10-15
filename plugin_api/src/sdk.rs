@@ -501,8 +501,11 @@ impl Host {
     }
 
     /// Binds a key of its own (not tied to a button or tool); presses
-    /// arrive as [`HostEvent::HotkeyPressed`]. A reserved or taken key is
-    /// refused with [`HostEvent::RegistrationRefused`].
+    /// arrive as [`HostEvent::HotkeyPressed`]. A key eov uses (its shortcut
+    /// table, which users can change, and Escape, Enter, Delete, Backspace,
+    /// Tab and plain arrows) or another plugin's key is refused with
+    /// [`HostEvent::RegistrationRefused`]; tool and button hotkeys are
+    /// checked the same way.
     pub fn register_hotkey(&self, spec: HotkeySpec) -> HostResult<()> {
         self.command(methods::HOTKEY_REGISTER, &spec)
     }

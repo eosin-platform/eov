@@ -29,6 +29,7 @@ mod recent;
 mod render;
 mod render_pool;
 mod session;
+mod shortcuts;
 mod slide_info;
 mod state;
 #[cfg(test)]
@@ -231,6 +232,9 @@ fn main() -> Result<()> {
     set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
     info!("GPU renderer installed");
 
+    // Before plugins start: their hotkeys are checked against it.
+    shortcuts::install_from_config();
+    host_ui::key_help::apply_labels(&ui);
     let render_timer = Rc::new(Timer::default());
     let host = host_ui::init(
         &ui,
