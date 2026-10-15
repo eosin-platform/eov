@@ -22,15 +22,6 @@ fn normalize_series_entry_path(path: &Path) -> PathBuf {
 
 static NEXT_PANE_UID: AtomicU32 = AtomicU32::new(1);
 
-/// Pane position → stable id, readable without the `AppState` lock (by
-/// render workers that tell plugin filters which pane they filter).
-static PANE_UIDS: parking_lot::RwLock<Vec<u32>> = parking_lot::RwLock::new(Vec::new());
-
-/// The stable id of the pane at `index`, as last published.
-pub fn pane_uid_for_index(index: usize) -> Option<u32> {
-    PANE_UIDS.read().get(index).copied()
-}
-
 #[derive(Debug, Clone)]
 pub struct PaneState {
     /// Stable identity, unaffected by panes inserted or removed around it
@@ -392,7 +383,6 @@ pub struct PaneId(pub usize);
 
 impl PaneId {
     pub const PRIMARY: Self = Self(0);
-    pub const SECONDARY: Self = Self(1);
 
     pub fn as_index(self) -> i32 {
         self.0 as i32
@@ -728,11 +718,6 @@ impl AppState {
         let current = self.focused_pane.0 as i32;
         let next = (current + offset).rem_euclid(pane_count as i32) as usize;
         self.set_focused_pane(PaneId(next));
-    }
-
-    /// Publishes the pane ids for [`pane_uid_for_index`].
-    pub fn publish_pane_uids(&self) {
-        *PANE_UIDS.write() = self.panes.iter().map(|p| p.uid).collect();
     }
 
     /// The stable id of the pane at `pane`.

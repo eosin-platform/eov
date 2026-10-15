@@ -12,6 +12,7 @@ use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Memory budget for the tile texture array (~128 MB).
 const MAX_TILE_ARRAY_BYTES: u64 = 128 * 1024 * 1024;
@@ -192,9 +193,6 @@ pub struct TileDraw {
 pub struct SurfaceSlot(pub usize);
 
 impl SurfaceSlot {
-    pub const PRIMARY: Self = Self(0);
-    pub const SECONDARY: Self = Self(1);
-
     fn index(self) -> usize {
         self.0
     }
@@ -210,6 +208,60 @@ pub(crate) struct QueuedFrame {
     pub(crate) color: GpuColorUniform,
     /// Screen-space sharpening of the composited frame (stage 6), 0 = off.
     pub(crate) sharpness: f32,
+    /// Read the finished frame back for the CPU filter chain (RND-6); see
+    /// [`GpuRenderer::poll_readbacks`].
+    pub(crate) readback: Option<ReadbackTag>,
+}
+
+/// Identifies a pane frame read back from the GPU for plugin filters.
+#[derive(Clone, Debug)]
+pub(crate) struct ReadbackTag {
+    pub(crate) pane_uid: u32,
+    pub(crate) file_id: i32,
+    /// The view the frame shows (in the frame's pixels).
+    pub(crate) viewport: eov_common::Viewport,
+    /// Increases with every readback a pane requests.
+    pub(crate) generation: u64,
+}
+
+/// A frame read back from the GPU: tightly packed RGBA.
+pub(crate) struct ReadbackFrame {
+    pub(crate) tag: ReadbackTag,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) pixels: Vec<u8>,
+}
+
+/// A surface copy on its way to the CPU.
+struct PendingReadback {
+    tag: ReadbackTag,
+    buffer: wgpu::Buffer,
+    padded_bytes_per_row: u32,
+    width: u32,
+    height: u32,
+    /// 0 while mapping, 1 mapped, 2 failed.
+    state: Arc<AtomicU8>,
+}
+
+impl PendingReadback {
+    fn into_frame(self) -> ReadbackFrame {
+        let row = self.width as usize * 4;
+        let mut pixels = vec![0u8; row * self.height as usize];
+        {
+            let mapped = self.buffer.slice(..).get_mapped_range();
+            for (y, dst) in pixels.chunks_exact_mut(row).enumerate() {
+                let src = y * self.padded_bytes_per_row as usize;
+                dst.copy_from_slice(&mapped[src..src + row]);
+            }
+        }
+        self.buffer.unmap();
+        ReadbackFrame {
+            tag: self.tag,
+            width: self.width,
+            height: self.height,
+            pixels,
+        }
+    }
 }
 
 impl QueuedFrame {
@@ -805,6 +857,10 @@ pub struct GpuRenderer {
     last_rendered_fingerprint: HashMap<usize, u64>,
     /// Last uploaded colour uniform, used to skip redundant uploads.
     last_color: Option<[f32; 36]>,
+    /// Surfaces to read back as they are (their frame did not change).
+    readback_requests: Vec<(usize, ReadbackTag)>,
+    /// Readbacks waiting for the GPU.
+    pending_readbacks: Vec<PendingReadback>,
 }
 
 impl GpuRenderer {
@@ -816,6 +872,8 @@ impl GpuRenderer {
             frame_counter: 0,
             last_rendered_fingerprint: HashMap::new(),
             last_color: None,
+            readback_requests: Vec::new(),
+            pending_readbacks: Vec::new(),
         }
     }
 
@@ -852,6 +910,10 @@ impl GpuRenderer {
                 .get(&slot.index())
                 .is_some_and(|prev| *prev == fp)
             {
+                // The surface already shows this frame; read it back as is.
+                if let Some(tag) = frame.readback {
+                    self.readback_requests.push((slot.index(), tag));
+                }
                 return self.surface_image(slot);
             }
         }
@@ -881,6 +943,8 @@ impl GpuRenderer {
     }
 
     fn teardown(&mut self) {
+        self.pending_readbacks.clear();
+        self.readback_requests.clear();
         self.runtime = None;
         self.pending_frames.clear();
         self.tile_arrays.clear();
@@ -1022,10 +1086,14 @@ impl GpuRenderer {
         let frame_id = self.frame_counter;
 
         let pending_frames = std::mem::take(&mut self.pending_frames);
+        let mut readbacks = std::mem::take(&mut self.readback_requests);
 
-        for (slot_index, frame) in pending_frames {
+        for (slot_index, mut frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
                 let fp = frame.fingerprint();
+                if let Some(tag) = frame.readback.take() {
+                    readbacks.push((slot_index, tag));
+                }
                 Self::render_frame(
                     runtime,
                     &mut self.tile_arrays,
@@ -1037,6 +1105,108 @@ impl GpuRenderer {
                 self.last_rendered_fingerprint.insert(slot_index, fp);
             }
         }
+        for (slot_index, tag) in readbacks {
+            if let Some(pending) = Self::start_readback(runtime, slot_index, tag) {
+                self.pending_readbacks.push(pending);
+            }
+        }
+    }
+
+    /// Copies a surface into a mappable buffer and starts mapping it.
+    fn start_readback(
+        runtime: &GpuRuntime,
+        slot_index: usize,
+        tag: ReadbackTag,
+    ) -> Option<PendingReadback> {
+        let surface = runtime.surfaces.get(&slot_index)?;
+        let bytes_per_row = surface.width.checked_mul(4)?;
+        let padded_bytes_per_row = bytes_per_row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pane-filter-readback"),
+            size: u64::from(padded_bytes_per_row) * u64::from(surface.height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = runtime
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pane-filter-readback-encoder"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &surface.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(surface.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: surface.width,
+                height: surface.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        runtime.queue.submit(Some(encoder.finish()));
+        let state = Arc::new(AtomicU8::new(0));
+        let flag = Arc::clone(&state);
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                flag.store(if result.is_ok() { 1 } else { 2 }, Ordering::Release);
+            });
+        Some(PendingReadback {
+            tag,
+            buffer,
+            padded_bytes_per_row,
+            width: surface.width,
+            height: surface.height,
+            state,
+        })
+    }
+
+    /// Frames read back since the last call, without blocking: readbacks
+    /// still on the GPU stay pending.
+    pub(crate) fn poll_readbacks(&mut self) -> Vec<ReadbackFrame> {
+        if self.pending_readbacks.is_empty() {
+            return Vec::new();
+        }
+        let Some(runtime) = self.runtime.as_ref() else {
+            self.pending_readbacks.clear();
+            return Vec::new();
+        };
+        let _ = runtime.device.poll(wgpu::PollType::Poll);
+        let mut done = Vec::new();
+        let mut index = 0;
+        while index < self.pending_readbacks.len() {
+            match self.pending_readbacks[index].state.load(Ordering::Acquire) {
+                0 => index += 1,
+                1 => {
+                    let pending = self.pending_readbacks.swap_remove(index);
+                    done.push(pending.into_frame());
+                }
+                _ => {
+                    let pending = self.pending_readbacks.swap_remove(index);
+                    tracing::warn!(
+                        "reading pane {} back from the GPU failed",
+                        pending.tag.pane_uid
+                    );
+                }
+            }
+        }
+        done
+    }
+
+    /// Whether readbacks are still on their way.
+    pub(crate) fn readbacks_pending(&self) -> bool {
+        !self.pending_readbacks.is_empty() || !self.readback_requests.is_empty()
     }
 
     // -----------------------------------------------------------------------
@@ -1449,6 +1619,7 @@ mod tests {
             draws: Vec::new(),
             color,
             sharpness,
+            readback: None,
         }
     }
 
@@ -1577,6 +1748,7 @@ mod tests {
                 }],
                 color: pipeline.gpu_uniform(),
                 sharpness: pipeline.sharpness(),
+                readback: None,
             },
         );
         renderer.flush_pending_frames();
@@ -1657,5 +1829,77 @@ mod tests {
         // Far from the slide the background stays exactly as cleared.
         let last = gpu.len() - 4;
         assert_eq!(&gpu[last..], &[30, 30, 30, 255]);
+    }
+
+    fn tagged_frame(width: u32, generation: u64) -> QueuedFrame {
+        let (tile, _) = tile();
+        QueuedFrame {
+            width,
+            height: TILE,
+            draws: vec![TileDraw {
+                tile,
+                coarse_tile: None,
+                screen_x: 0.0,
+                screen_y: 0.0,
+                screen_w: TILE as f32,
+                screen_h: TILE as f32,
+                coarse_uv_min: [0.0, 0.0],
+                coarse_uv_max: [1.0, 1.0],
+                mip_blend: 0.0,
+                filtering_mode: FilteringMode::Bilinear,
+            }],
+            color: ProcessingPipeline::identity().gpu_uniform(),
+            sharpness: 0.0,
+            readback: Some(ReadbackTag {
+                pane_uid: 7,
+                file_id: 1,
+                viewport: eov_common::Viewport::new(width as f64, TILE as f64, 100.0, 100.0),
+                generation,
+            }),
+        }
+    }
+
+    fn wait_for_readbacks(renderer: &mut GpuRenderer) -> Vec<ReadbackFrame> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let frames = renderer.poll_readbacks();
+            if !frames.is_empty() || std::time::Instant::now() > deadline {
+                return frames;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn rendered_frames_are_read_back_without_blocking() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the readback test");
+            return;
+        };
+        let slot = SurfaceSlot(0);
+        let width = TILE + 16;
+        renderer.ensure_surface(slot, width, TILE).unwrap();
+        renderer
+            .pending_frames
+            .insert(slot.index(), tagged_frame(width, 1));
+        renderer.flush_pending_frames();
+        assert!(renderer.readbacks_pending());
+        let frames = wait_for_readbacks(&mut renderer);
+        assert_eq!(frames.len(), 1);
+        let frame = &frames[0];
+        assert_eq!((frame.tag.pane_uid, frame.tag.generation), (7, 1));
+        assert_eq!((frame.width, frame.height), (width, TILE));
+        let (_, _, surface) = renderer.read_surface_rgba(slot).unwrap();
+        assert_eq!(frame.pixels, surface, "rows are unpadded");
+        assert!(!renderer.readbacks_pending());
+
+        // An unchanged frame is not rendered again, but still read back.
+        let _ = renderer.queue_frame(slot, tagged_frame(width, 2));
+        assert!(renderer.pending_frames.is_empty(), "nothing to render");
+        renderer.flush_pending_frames();
+        let frames = wait_for_readbacks(&mut renderer);
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].tag.generation, 2);
+        assert_eq!(frames[0].pixels, surface);
     }
 }

@@ -12,9 +12,8 @@ pub(crate) struct PaneRenderCacheEntry {
     pub(crate) content: Option<Image>,
     pub(crate) minimap_thumbnail: Option<Image>,
     pub(crate) cpu_frame: Option<CachedCpuFrame>,
+    /// Reused for the frames shown while the view moves (CPU backend).
     pub(crate) preview_buffer: Vec<u8>,
-    pub(crate) preview_width: u32,
-    pub(crate) preview_height: u32,
 }
 
 impl Clone for PaneRenderCacheEntry {
@@ -24,8 +23,6 @@ impl Clone for PaneRenderCacheEntry {
             minimap_thumbnail: self.minimap_thumbnail.clone(),
             cpu_frame: None,
             preview_buffer: Vec::new(),
-            preview_width: 0,
-            preview_height: 0,
         }
     }
 }
@@ -122,6 +119,7 @@ fn recycle(mut entry: PaneRenderCacheEntry) {
         && let Some(pool) = crate::render_pool::global()
     {
         pool.recycle_buffer(frame.pixels);
+        pool.recycle_buffer(frame.source);
     }
 }
 
@@ -176,9 +174,6 @@ pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: Cach
         }
         cache[pane.0].content = Some(image);
         cache[pane.0].cpu_frame = Some(frame);
-        cache[pane.0].preview_buffer.clear();
-        cache[pane.0].preview_width = 0;
-        cache[pane.0].preview_height = 0;
     });
 }
 

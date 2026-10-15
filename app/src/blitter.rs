@@ -10,38 +10,6 @@ pub use eov_common::blitter::{
     BlitRect, CoarseSrc, TileSrc, blit_tile, blit_tile_lanczos3, blit_tile_trilinear,
 };
 
-pub struct FrameSrc<'a> {
-    pub pixels: &'a [u8],
-    pub width: u32,
-    pub height: u32,
-}
-
-pub fn reproject_frame(
-    dest: &mut [u8],
-    dest_width: u32,
-    dest_height: u32,
-    src: FrameSrc<'_>,
-    src_viewport: &crate::render_pool::CachedCpuFrame,
-    dest_viewport: &eov_common::Viewport,
-    clear_rgba: [u8; 4],
-) {
-    eov_common::blitter::reproject_frame(
-        dest,
-        dest_width,
-        dest_height,
-        src.pixels,
-        src.width,
-        src.height,
-        src_viewport.viewport.bounds().left,
-        src_viewport.viewport.bounds().top,
-        src_viewport.viewport.zoom,
-        dest_viewport.bounds().left,
-        dest_viewport.bounds().top,
-        dest_viewport.zoom,
-        clear_rgba,
-    );
-}
-
 /// Create a SharedPixelBuffer from raw RGBA data
 pub fn create_image_buffer(
     data: &[u8],

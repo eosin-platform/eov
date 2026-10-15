@@ -253,7 +253,6 @@ impl UiHost {
             .ui()
             .map(|ui| f64::from(ui.window().scale_factor()))
             .unwrap_or(1.0);
-        state.publish_pane_uids();
         let mut tracker = self.tracker.borrow_mut();
         let mut events: Vec<(EventTarget, HostEvent)> = Vec::new();
 
