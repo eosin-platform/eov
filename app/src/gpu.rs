@@ -215,8 +215,10 @@ pub(crate) struct QueuedFrame {
 pub(crate) struct ReadbackTag {
     pub(crate) pane_uid: u32,
     pub(crate) file_id: i32,
-    /// The view the frame shows (in the frame's pixels).
+    /// The view the frame shows (in the frame's, physical, pixels).
     pub(crate) viewport: eov_common::Viewport,
+    /// Physical pixels of the frame per logical pixel.
+    pub(crate) scale: f64,
     /// Increases with every readback a pane requests.
     pub(crate) generation: u64,
 }
@@ -1275,6 +1277,13 @@ impl GpuRenderer {
         self.last_color = None;
     }
 
+    /// The largest surface edge the device supports.
+    pub(crate) fn max_surface_dimension(&self) -> Option<u32> {
+        self.runtime
+            .as_ref()
+            .map(|runtime| runtime.max_texture_dimension_2d)
+    }
+
     /// Releases everything and stays off: the GPU failed.
     pub(crate) fn disable(&mut self) {
         self.teardown();
@@ -2205,6 +2214,7 @@ mod tests {
                 pane_uid: 7,
                 file_id: 1,
                 viewport: eov_common::Viewport::new(width as f64, TILE as f64, 100.0, 100.0),
+                scale: 1.0,
                 generation,
             }),
         }

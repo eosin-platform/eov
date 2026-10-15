@@ -339,11 +339,10 @@ pub fn update_tabs(
                     zoom: vp.zoom as f32,
                     image_width: vp.image_width as f32,
                     image_height: vp.image_height as f32,
-                    level: file
-                        .tile_manager
-                        .wsi()
-                        .best_level_for_downsample(vp.effective_downsample())
-                        as i32,
+                    // Frames are rendered at physical resolution (RND-3).
+                    level: file.tile_manager.wsi().best_level_for_downsample(
+                        vp.effective_downsample() / f64::from(ui.window().scale_factor()).max(1e-6),
+                    ) as i32,
                 };
                 // Relative to what the thumbnail shows (the content bounds
                 // of sparse slides).

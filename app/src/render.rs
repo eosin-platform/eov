@@ -67,6 +67,8 @@ struct RenderPaneRequest<'a> {
     pane_uid: u32,
     /// `AppState::filter_revision` of this frame.
     filter_revision: u64,
+    /// Physical pixels to render per logical pixel (RND-3).
+    scale: f64,
 }
 
 #[derive(Clone)]
@@ -82,6 +84,10 @@ struct CpuPaneSnapshot {
     tile_manager: Arc<TileManager>,
     tile_loader: Arc<TileLoader>,
     viewport_state: eov_common::ViewportState,
+    /// The view in physical pixels, which frames are rendered at (RND-3).
+    render_viewport: Viewport,
+    /// Physical pixels per logical pixel.
+    scale: f64,
     frame_count: u32,
     last_render_zoom: f64,
     last_render_center_x: f64,
@@ -168,14 +174,49 @@ struct CpuPaneExecution {
     commit: CpuRenderCommit,
 }
 
+// ─── Physical-resolution frames (RND-3) ─────────────────────────────────────
+
+/// Largest edge of a CPU-rendered frame, in pixels.
+const MAX_CPU_FRAME_DIMENSION: u32 = 16384;
+
+/// The view at the display's physical resolution: the same image region
+/// over `scale` times as many pixels in each direction. Frames, levels and
+/// tile requests use it; interaction, overlays and what the HUD shows stay
+/// in logical pixels.
+fn physical_viewport(viewport: &Viewport, scale: f64) -> Viewport {
+    Viewport {
+        center: viewport.center,
+        zoom: viewport.zoom * scale,
+        width: (viewport.width * scale).round().max(1.0),
+        height: (viewport.height * scale).round().max(1.0),
+        image_width: viewport.image_width,
+        image_height: viewport.image_height,
+    }
+}
+
+/// Physical pixels per logical pixel to render a `width × height` logical
+/// pane with: the window's scale factor, less if the frame would be larger
+/// than `max_dimension`.
+fn render_scale(scale_factor: f32, width: f64, height: f64, max_dimension: u32) -> f64 {
+    let scale = f64::from(scale_factor);
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    scale.min(f64::from(max_dimension) / width.max(height).max(1.0))
+}
+
 static FILTER_FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// What a plugin filter is told about the frame it filters: the view the
-/// frame shows (which may be older than the pane's current view).
+/// frame shows (which may be older than the pane's current view), in logical
+/// pixels, and the frame's physical pixels per logical pixel.
 fn filter_view(
     file_id: i32,
     pane_uid: u32,
     viewport: &Viewport,
+    scale: f64,
 ) -> eov_plugin_api::abi::FilterView {
     let bounds = viewport.bounds();
     eov_plugin_api::abi::FilterView {
@@ -183,10 +224,10 @@ fn filter_view(
         file_id: i64::from(file_id),
         center_x: viewport.center.x,
         center_y: viewport.center.y,
-        zoom: viewport.zoom,
-        width: viewport.width,
-        height: viewport.height,
-        scale_factor: 1.0,
+        zoom: viewport.zoom / scale,
+        width: viewport.width / scale,
+        height: viewport.height / scale,
+        scale_factor: scale,
         visible_x: bounds.left,
         visible_y: bounds.top,
         visible_width: bounds.width(),
@@ -195,17 +236,19 @@ fn filter_view(
     }
 }
 
-/// The enabled plugin filters for a frame of `viewport`, if any.
+/// The enabled plugin filters for a frame of `viewport` (physical pixels,
+/// `scale` per logical pixel), if any.
 fn frame_filters(
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
     file_id: i32,
     pane_uid: u32,
     viewport: &Viewport,
+    scale: f64,
 ) -> Option<FrameFilters> {
     let chain = filter_chain.read();
     chain.has_enabled_cpu_filters().then(|| FrameFilters {
         chain,
-        view: filter_view(file_id, pane_uid, viewport),
+        view: filter_view(file_id, pane_uid, viewport, scale),
     })
 }
 
@@ -239,6 +282,7 @@ fn refilter_cached_frame(
     render_width: u32,
     render_height: u32,
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
+    scale: f64,
 ) -> Option<Image> {
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -251,7 +295,7 @@ fn refilter_cached_frame(
             slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
         let pixels = buffer.make_mut_bytes();
         pixels.copy_from_slice(&cpu_frame.pixels[..needed]);
-        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport) {
+        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
             filters.apply(pixels, render_width, render_height);
         }
         Some(Image::from_rgba8(buffer))
@@ -315,7 +359,12 @@ mod gpu_filters {
     /// A readback tag for the pane's next frame, or `None` (the frame is
     /// remembered as dirty) while the pane's previous frame is still being
     /// read back or filtered.
-    pub(super) fn request(pane_uid: u32, file_id: i32, viewport: &Viewport) -> Option<ReadbackTag> {
+    pub(super) fn request(
+        pane_uid: u32,
+        file_id: i32,
+        viewport: &Viewport,
+        scale: f64,
+    ) -> Option<ReadbackTag> {
         PANES.with(|panes| {
             let mut panes = panes.borrow_mut();
             panes.next_generation += 1;
@@ -330,6 +379,7 @@ mod gpu_filters {
                 pane_uid,
                 file_id,
                 viewport: viewport.clone(),
+                scale,
                 generation,
             })
         })
@@ -358,6 +408,7 @@ mod gpu_filters {
                     frame.tag.file_id,
                     frame.tag.pane_uid,
                     &frame.tag.viewport,
+                    frame.tag.scale,
                 );
                 let sender = sender.clone();
                 let job = move || {
@@ -882,6 +933,16 @@ pub(crate) fn update_and_render(
         / pane_count.max(1) as f64)
         .max(100.0);
 
+    // Physical pixels per logical pixel of the frames (RND-3).
+    let scale = render_scale(
+        ui.window().scale_factor(),
+        pane_width,
+        content_height,
+        crate::with_gpu_renderer(|renderer| renderer.borrow().max_surface_dimension())
+            .flatten()
+            .unwrap_or(MAX_CPU_FRAME_DIMENSION),
+    );
+
     // Each pane's wanted tiles, most important first, per file.
     let mut wanted_tiles_by_file: HashMap<i32, Vec<Vec<eov_common::TileCoord>>> = HashMap::new();
     for (pane_index, file_id) in active_file_ids.iter().copied().enumerate() {
@@ -897,7 +958,7 @@ pub(crate) fn update_and_render(
         };
         pane_state.viewport.set_size(pane_width, content_height);
         let viewport_state = pane_state.viewport.clone();
-        let vp = &viewport_state.viewport;
+        let vp = &physical_viewport(&viewport_state.viewport, scale);
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
         let trilinear = calculate_trilinear_levels(
             file.tile_manager.wsi(),
@@ -984,6 +1045,7 @@ pub(crate) fn update_and_render(
                 filter_chain: &filter_chain,
                 pane_uid,
                 filter_revision,
+                scale,
             },
         );
 
@@ -1034,7 +1096,7 @@ fn update_and_render_cpu(
         HashMap::new();
 
     for snapshot in frame.panes.iter().flatten() {
-        let vp = &snapshot.viewport_state.viewport;
+        let vp = &snapshot.render_viewport;
         let margin_tiles = if snapshot.viewport_state.is_moving() {
             1
         } else {
@@ -1147,6 +1209,12 @@ fn collect_cpu_frame_snapshot(
     let pane_width = ((content_width - pane_gap * (pane_count.saturating_sub(1) as f64))
         / pane_count.max(1) as f64)
         .max(100.0);
+    let scale = render_scale(
+        ui.window().scale_factor(),
+        pane_width,
+        content_height,
+        MAX_CPU_FRAME_DIMENSION,
+    );
 
     let mut panes = Vec::with_capacity(pane_count);
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
@@ -1269,6 +1337,7 @@ fn collect_cpu_frame_snapshot(
         };
 
         let color = crate::color::pane_color(file, pane);
+        let render_viewport = physical_viewport(&viewport_state.viewport, scale);
 
         panes.push(Some(CpuPaneSnapshot {
             pane,
@@ -1281,6 +1350,8 @@ fn collect_cpu_frame_snapshot(
             tile_manager,
             tile_loader,
             viewport_state,
+            render_viewport,
+            scale,
             frame_count,
             last_render_zoom,
             last_render_center_x,
@@ -1476,7 +1547,7 @@ fn render_cpu_pane_from_snapshot(
     tile_cache: &Arc<TileCache>,
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
 ) -> CpuPaneExecution {
-    let vp = &snapshot.viewport_state.viewport;
+    let vp = &snapshot.render_viewport;
     let vp_zoom = vp.zoom;
     let vp_center_x = vp.center.x;
     let vp_center_y = vp.center.y;
@@ -1614,6 +1685,7 @@ fn render_cpu_pane_from_snapshot(
             render_width,
             render_height,
             filter_chain,
+            snapshot.scale,
         )
     {
         commit.last_render_filter_revision = Some(snapshot.filter_revision);
@@ -1724,6 +1796,7 @@ fn render_cpu_pane_from_snapshot(
             pane_uid: snapshot.pane_uid,
             file_id: snapshot.file_id,
             viewport: vp,
+            scale: snapshot.scale,
             render_width,
             render_height,
             fallback_commands: &fallback_commands,
@@ -1749,7 +1822,13 @@ fn render_cpu_pane_from_snapshot(
             fallback_blits: fallback_commands,
             fine_blits: fine_commands,
             postprocess,
-            filters: frame_filters(filter_chain, snapshot.file_id, snapshot.pane_uid, vp),
+            filters: frame_filters(
+                filter_chain,
+                snapshot.file_id,
+                snapshot.pane_uid,
+                vp,
+                snapshot.scale,
+            ),
             settled_quality: !is_moving,
         });
         commit.pending_cpu_job_id = Some(Some(job_id));
@@ -1924,6 +2003,7 @@ fn render_pane_gpu(
         filter_chain,
         pane_uid,
         filter_revision,
+        scale,
     } = request;
 
     let Some(pane_state) = file.pane_state_mut(pane) else {
@@ -1934,7 +2014,9 @@ fn render_pane_gpu(
     let last = pane_state.clone();
 
     let viewport_state = &last.viewport;
-    let vp = &viewport_state.viewport;
+    // Frames, levels and change detection are in physical pixels.
+    let physical = physical_viewport(&viewport_state.viewport, scale);
+    let vp = &physical;
     let is_first_frame = last.frame_count == 0;
     let viewport_changed = animating
         || (last.last_render_zoom - vp.zoom).abs() > 0.001
@@ -2051,7 +2133,7 @@ fn render_pane_gpu(
                 })
         });
         (frame_changed || filters_changed || !current)
-            .then(|| gpu_filters::request(pane_uid, file.id, vp))
+            .then(|| gpu_filters::request(pane_uid, file.id, vp, scale))
             .flatten()
     } else {
         None
@@ -2098,6 +2180,7 @@ struct RenderCachedPreview<'a> {
     pane_uid: u32,
     file_id: i32,
     viewport: &'a Viewport,
+    scale: f64,
     render_width: u32,
     render_height: u32,
     fallback_commands: &'a [CpuBlitCommand],
@@ -2115,6 +2198,7 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         pane_uid,
         file_id,
         viewport,
+        scale,
         render_width,
         render_height,
         fallback_commands,
@@ -2175,7 +2259,7 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
             fine_commands,
         );
         crate::render_pool::apply_postprocess(preview, render_width, render_height, postprocess);
-        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport) {
+        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
             filters.apply(preview, render_width, render_height);
         }
 
@@ -2485,6 +2569,37 @@ mod tests {
         );
     }
 
+    /// RND-3: frames cover the pane's region at physical resolution, levels
+    /// follow the physical zoom, and filters still see logical sizes.
+    #[test]
+    fn frames_are_rendered_at_physical_resolution() {
+        let mut logical = Viewport::new(800.0, 600.0, 10_000.0, 8_000.0);
+        logical.zoom = 0.25;
+        logical.center.x = 3000.0;
+        logical.center.y = 2000.0;
+        let physical = physical_viewport(&logical, 2.0);
+        assert_eq!((physical.width, physical.height), (1600.0, 1200.0));
+        assert_eq!(physical.effective_downsample(), 2.0);
+        let (a, b) = (logical.bounds(), physical.bounds());
+        assert_eq!(
+            (a.left, a.top, a.right, a.bottom),
+            (b.left, b.top, b.right, b.bottom),
+            "the same region"
+        );
+
+        let view = filter_view(1, 7, &physical, 2.0);
+        assert_eq!(
+            (view.zoom, view.width, view.height, view.scale_factor),
+            (0.25, 800.0, 600.0, 2.0)
+        );
+        assert_eq!((view.visible_x, view.visible_width), (a.left, a.width()));
+
+        // Frames stay within the GPU's texture limit.
+        assert_eq!(render_scale(2.0, 800.0, 600.0, 8192), 2.0);
+        assert_eq!(render_scale(2.0, 6000.0, 600.0, 8192), 8192.0 / 6000.0);
+        assert_eq!(render_scale(f32::NAN, 800.0, 600.0, 8192), 1.0);
+    }
+
     #[test]
     fn panes_share_a_slide_s_tile_requests_in_turns() {
         let coord = |x| TileCoord::new(1, 0, x, 0, 256);
@@ -2634,13 +2749,13 @@ mod tests {
     fn gpu_frames_are_filtered_one_at_a_time_per_pane() {
         let viewport = Viewport::new(4.0, 2.0, 100.0, 100.0);
         let chain = crate::plugin_runtime::filters::SharedFilterChain::default();
-        let first = gpu_filters::request(5, 1, &viewport).expect("an idle pane reads back");
+        let first = gpu_filters::request(5, 1, &viewport, 1.0).expect("an idle pane reads back");
         assert!(
-            gpu_filters::request(5, 1, &viewport).is_none(),
+            gpu_filters::request(5, 1, &viewport, 1.0).is_none(),
             "one frame per pane at a time"
         );
         assert!(
-            gpu_filters::request(6, 1, &viewport).is_some(),
+            gpu_filters::request(6, 1, &viewport, 1.0).is_some(),
             "panes are independent"
         );
         assert!(gpu_filters::busy());
@@ -2663,6 +2778,6 @@ mod tests {
         // The renderer lost pane 6's readback: the pane renders again.
         assert!(gpu_filters::dispatch(Vec::new(), false, &chain));
         assert!(!gpu_filters::busy());
-        assert!(gpu_filters::request(6, 1, &viewport).is_some());
+        assert!(gpu_filters::request(6, 1, &viewport, 1.0).is_some());
     }
 }
