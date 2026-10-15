@@ -2,7 +2,7 @@
 name = "eov-plugin-api"
 version = "1.0.0"
 edition = "2024"
-description = "Shared plugin API for EOV plugins"
+description = "The plugin API and SDK for eov, the whole-slide image viewer"
 license = "MIT OR Apache-2.0 OR GPL-3.0"
 homepage = "https://eov.sh"
 repository = "https://github.com/eosin-platform/eov"
@@ -15,4 +15,5 @@ abi_stable = { version = "0.11", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+semver = "1"
 thiserror = "2"

@@ -78,7 +78,10 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
     let visible = view.visible_rect();
     let mut labels = Vec::new();
     let in_view = |x: f32, y: f32| {
-        x >= -200.0 && y >= -50.0 && f64::from(x) <= view.width + 200.0 && f64::from(y) <= view.height + 50.0
+        x >= -200.0
+            && y >= -50.0
+            && f64::from(x) <= view.width + 200.0
+            && f64::from(y) <= view.height + 50.0
     };
     for layer in &scene.layers {
         if !layer.spec.visible || layer.spec.min_zoom.is_some_and(|min| view.zoom < min) {
@@ -117,8 +120,16 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
             if let Some(text) = &object.object.label {
                 labels.push(Label {
                     x,
-                    y: if anchor == LabelAnchor::Above { y - 4.0 } else { y },
-                    anchor: if shape_has_text { LabelAnchor::TopLeft } else { anchor },
+                    y: if anchor == LabelAnchor::Above {
+                        y - 4.0
+                    } else {
+                        y
+                    },
+                    anchor: if shape_has_text {
+                        LabelAnchor::TopLeft
+                    } else {
+                        anchor
+                    },
                     text: text.clone(),
                     color: style.text_color,
                     backdrop: true,
@@ -179,7 +190,9 @@ mod tests {
     fn labels_are_collected_for_visible_objects() {
         let store = OverlayStore::new();
         let owner = Owner::plugin("p");
-        store.create_layer(owner.clone(), LayerSpec::new("l", 1)).unwrap();
+        store
+            .create_layer(owner.clone(), LayerSpec::new("l", 1))
+            .unwrap();
         store
             .upsert(
                 &owner,

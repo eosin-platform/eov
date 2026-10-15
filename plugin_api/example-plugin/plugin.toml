@@ -1,0 +1,16 @@
+id = "example_plugin"
+name = "Example Plugin"
+version = "1.0.0"
+description = "Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with undo, a filter and background jobs."
+repository = "https://github.com/eosin-platform/eov"
+api = ">=1.0, <2"
+
+[environment]
+version = ">=1.0.0, <2.0.0"
+
+[icon]
+kind = "svg"
+data = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='8' fill='none' stroke='white' stroke-width='2'/></svg>"
+
+[ui]
+slint = ">=1.17"

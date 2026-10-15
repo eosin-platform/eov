@@ -4,5 +4,5 @@
 pub mod controller;
 pub mod measure;
 
-pub use controller::{Controller, Effect, KeyInput, PaneView, PointerInput, PointerKind, ToolChoice};
+pub use controller::{Controller, PaneView, ToolChoice};
 pub use measure::{Calibration, HostMeasurement, MeasureMode};

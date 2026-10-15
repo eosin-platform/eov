@@ -488,7 +488,6 @@ pub fn open_file(
         // Everything below may take the state lock itself; the read guard
         // above must be released first (parking_lot locks are not
         // re-entrant).
-        let _ = crate::plugin_host::refresh_active_sidebar();
         ui.set_is_loading(false);
         ui.set_status_text(SharedString::from(status_text));
         request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
@@ -605,8 +604,6 @@ pub fn open_file(
                     .map(|f| f.wsi.level_count())
                     .unwrap_or(0)
             };
-
-            let _ = crate::plugin_host::refresh_active_sidebar();
 
             ui.set_is_loading(false);
             ui.set_status_text(SharedString::from(format!(

@@ -1,72 +1,126 @@
-//! Plugin manifest parsing and validation.
+//! Plugin manifest (`plugin.toml`) parsing and validation.
+//!
+//! ```toml
+//! id = "example_plugin"              # ^[a-z0-9][a-z0-9_]{0,63}$
+//! name = "Example Plugin"
+//! version = "1.0.0"                  # semantic version
+//! description = "Optional description shown in the Plugins panel"
+//! repository = "https://github.com/example/example-plugin"
+//! api = ">=1.0, <2"                  # optional eov-plugin-api requirement
+//!
+//! [environment]                      # optional; defaults to any eov version
+//! version = ">=1.0.0, <2.0.0"        # eov application version requirement
+//!
+//! [icon]                             # optional, for the Plugins panel
+//! kind = "svg"
+//! data = "<svg xmlns='http://www.w3.org/2000/svg'/>"
+//!
+//! [ui]                               # optional
+//! slint = ">=1.17"                   # Slint version the .slint files need
+//! ```
+//!
+//! The plugin library must be named after the id (`lib<id>.so`,
+//! `lib<id>.dylib` or `<id>.dll`) and sit next to `plugin.toml`. Unknown keys
+//! are ignored so that manifests written for newer hosts still load.
 
 use crate::{IconDescriptor, PluginError, PluginResult};
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path};
 
-/// A toolbar button declared in the manifest.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ManifestToolbarButton {
-    pub button_id: String,
-    pub tooltip: String,
-    pub action_id: String,
-    /// Inline SVG icon data. If omitted, the plugin's top-level icon is used.
-    pub icon_svg: Option<String>,
-}
-
+/// Requirements on the host application.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginEnvironment {
-    /// Host application version constraint.
+    /// eov version requirement (semver range).
     pub version: String,
+}
+
+impl Default for PluginEnvironment {
+    /// Manifests without an `[environment]` table accept any eov version; the
+    /// plugin-API check at load time still applies.
+    fn default() -> Self {
+        Self {
+            version: "*".to_string(),
+        }
+    }
+}
+
+/// UI requirements.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginUi {
+    /// Slint version requirement for the plugin's `.slint` surfaces.
+    #[serde(default)]
+    pub slint: Option<String>,
 }
 
 /// The parsed contents of a `plugin.toml` manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginManifest {
-    /// Unique, stable identifier for the plugin (e.g. `"example_plugin"`).
+    /// Unique, stable identifier (`^[a-z0-9][a-z0-9_]{0,63}$`).
     pub id: String,
     /// Human-readable name shown in the UI.
     pub name: String,
-    /// Semantic version string.
+    /// Semantic version of the plugin.
     pub version: String,
-    /// Optional human-readable description for management interfaces.
     #[serde(default)]
     pub description: Option<String>,
-    /// Optional source repository for management and provenance display.
     #[serde(default)]
     pub repository: Option<String>,
-    /// Relative path to the `.slint` UI file (from the plugin root).
-    /// Optional — plugins that are pure viewport filters may omit this.
+    /// eov-plugin-api requirement, e.g. `">=1.0, <2"`. When absent the API
+    /// version embedded in the library is the only check.
     #[serde(default)]
-    pub entry_ui: Option<String>,
-    /// Name of the exported Slint component inside `entry_ui`.
-    /// Optional — plugins that are pure viewport filters may omit this.
+    pub api: Option<String>,
+    /// Icon for the Plugins panel.
     #[serde(default)]
-    pub entry_component: Option<String>,
-    /// Optional icon for the toolbar button.
     pub icon: Option<IconDescriptor>,
-    /// Toolbar buttons declared in the manifest.
+    /// Host application requirements.
     #[serde(default)]
-    pub toolbar_buttons: Vec<ManifestToolbarButton>,
-    /// Host application requirements for the plugin.
     pub environment: PluginEnvironment,
+    /// Whether the manifest had an `[environment]` table.
+    #[serde(skip)]
+    pub declares_environment: bool,
+    #[serde(default)]
+    pub ui: PluginUi,
 }
 
 /// Name of the manifest file inside each plugin directory.
 pub const MANIFEST_FILENAME: &str = "plugin.toml";
 
+/// Whether `id` is a valid plugin id: lowercase ASCII letters, digits and
+/// `_`, starting with a letter or digit, at most 64 characters.
+pub fn is_valid_plugin_id(id: &str) -> bool {
+    let mut chars = id.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit())
+        && id.len() <= 64
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Whether `path` is relative and stays inside its base directory
+/// (no root, drive prefix or `..` component).
+pub fn is_contained_relative_path(path: &Path) -> bool {
+    !path.as_os_str().is_empty()
+        && path
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
 impl PluginManifest {
-    /// Parse a manifest from a TOML string, validating required fields.
+    /// Parses and validates a manifest. `plugin_id_hint` names the package
+    /// in error messages when the id itself is unusable.
     pub fn from_toml(toml_str: &str, plugin_id_hint: &str) -> PluginResult<Self> {
-        let manifest: Self = toml::from_str(toml_str).map_err(|e| PluginError::Manifest {
+        let mut manifest: Self = toml::from_str(toml_str).map_err(|e| PluginError::Manifest {
             plugin_id: plugin_id_hint.to_string(),
             message: format!("TOML parse error: {e}"),
         })?;
+        manifest.declares_environment = toml_str
+            .parse::<toml::Table>()
+            .map(|table| table.contains_key("environment"))
+            .unwrap_or(false);
         manifest.validate()?;
         Ok(manifest)
     }
 
-    /// Load a manifest from a file path.
+    /// Loads a manifest from a file path.
     pub fn from_file(path: &Path) -> PluginResult<Self> {
         let dir_name = path
             .parent()
@@ -80,93 +134,82 @@ impl PluginManifest {
         Self::from_toml(&contents, dir_name)
     }
 
-    /// Validate semantic constraints beyond TOML structure.
+    fn error(&self, message: impl Into<String>) -> PluginError {
+        PluginError::Manifest {
+            plugin_id: self.id.clone(),
+            message: message.into(),
+        }
+    }
+
     fn validate(&self) -> PluginResult<()> {
-        if self.id.is_empty() {
-            return Err(PluginError::Manifest {
-                plugin_id: self.id.clone(),
-                message: "'id' must not be empty".into(),
-            });
+        if !is_valid_plugin_id(&self.id) {
+            return Err(self.error(format!(
+                "'id' must be 1–64 lowercase letters, digits or '_' and start with a letter or digit, got '{}'",
+                self.id
+            )));
         }
-        if self.name.is_empty() {
-            return Err(PluginError::Manifest {
-                plugin_id: self.id.clone(),
-                message: "'name' must not be empty".into(),
-            });
+        if self.name.trim().is_empty() || self.name.len() > 100 {
+            return Err(self.error("'name' must be 1–100 characters"));
         }
-        if self.version.is_empty() {
-            return Err(PluginError::Manifest {
-                plugin_id: self.id.clone(),
-                message: "'version' must not be empty".into(),
-            });
+        Version::parse(&self.version)
+            .map_err(|e| self.error(format!("'version' must be a semantic version: {e}")))?;
+        VersionReq::parse(&self.environment.version).map_err(|e| {
+            self.error(format!(
+                "'environment.version' must be a semver requirement: {e}"
+            ))
+        })?;
+        if let Some(api) = &self.api {
+            VersionReq::parse(api)
+                .map_err(|e| self.error(format!("'api' must be a semver requirement: {e}")))?;
         }
-        if let Some(ref entry_ui) = self.entry_ui {
-            if entry_ui.is_empty() {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: "'entry_ui' must not be empty when specified".into(),
-                });
-            }
-            // entry_ui must be a relative path
-            if Path::new(entry_ui).is_absolute() {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!("'entry_ui' must be a relative path, got '{entry_ui}'"),
-                });
-            }
-            // Reject path traversal
-            if entry_ui.contains("..") {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!("'entry_ui' must not contain '..', got '{entry_ui}'"),
-                });
-            }
+        if let Some(slint) = &self.ui.slint {
+            VersionReq::parse(slint)
+                .map_err(|e| self.error(format!("'ui.slint' must be a semver requirement: {e}")))?;
         }
-        if let Some(ref entry_component) = self.entry_component
-            && entry_component.is_empty()
-        {
-            return Err(PluginError::Manifest {
-                plugin_id: self.id.clone(),
-                message: "'entry_component' must not be empty when specified".into(),
-            });
+        if self.description.as_ref().is_some_and(|d| d.len() > 2000) {
+            return Err(self.error("'description' must be at most 2000 characters"));
         }
-        // Validate icon file path if present
-        if let Some(IconDescriptor::File { path }) = &self.icon {
-            if path.is_absolute() {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!("icon file path must be relative, got '{}'", path.display()),
-                });
+        match &self.icon {
+            Some(IconDescriptor::File { path }) if !is_contained_relative_path(path) => {
+                return Err(self.error(format!(
+                    "icon file path must be relative and stay inside the package, got '{}'",
+                    path.display()
+                )));
             }
-            if path.to_string_lossy().contains("..") {
-                return Err(PluginError::Manifest {
-                    plugin_id: self.id.clone(),
-                    message: format!(
-                        "icon file path must not contain '..', got '{}'",
-                        path.display()
-                    ),
-                });
+            Some(IconDescriptor::Svg { data }) if data.len() > 64 * 1024 => {
+                return Err(self.error("inline icon SVG must be at most 64 KiB"));
             }
+            _ => {}
         }
         Ok(())
     }
 
-    /// Resolve the `entry_ui` to an absolute path given the plugin root.
-    /// Returns `None` if `entry_ui` is not set.
-    pub fn resolve_entry_ui(&self, plugin_root: &Path) -> Option<PathBuf> {
-        self.entry_ui.as_ref().map(|ui| plugin_root.join(ui))
+    /// Whether the host's plugin-API version satisfies `api`.
+    pub fn accepts_api(&self, api_version: &Version) -> bool {
+        self.api
+            .as_deref()
+            .and_then(|req| VersionReq::parse(req).ok())
+            .is_none_or(|req| req.matches(api_version))
     }
 
-    /// Validate that referenced files actually exist on disk.
+    /// Whether the eov version satisfies `environment.version`.
+    pub fn accepts_host(&self, host_version: &Version) -> bool {
+        VersionReq::parse(&self.environment.version)
+            .map(|req| req.matches(host_version))
+            .unwrap_or(false)
+    }
+
+    /// Whether the host's Slint version satisfies `ui.slint`.
+    pub fn accepts_slint(&self, slint_version: &Version) -> bool {
+        self.ui
+            .slint
+            .as_deref()
+            .and_then(|req| VersionReq::parse(req).ok())
+            .is_none_or(|req| req.matches(slint_version))
+    }
+
+    /// Checks that referenced files exist.
     pub fn validate_files(&self, plugin_root: &Path) -> PluginResult<()> {
-        if let Some(ui_path) = self.resolve_entry_ui(plugin_root)
-            && !ui_path.exists()
-        {
-            return Err(PluginError::MissingFile {
-                plugin_id: self.id.clone(),
-                path: ui_path,
-            });
-        }
         if let Some(IconDescriptor::File { path }) = &self.icon {
             let icon_path = plugin_root.join(path);
             if !icon_path.exists() {
@@ -190,176 +233,145 @@ name = "Test Plugin"
 version = "1.0.0"
 description = "A test plugin"
 repository = "https://github.com/example/test-plugin"
-entry_ui = "ui/panel.slint"
-entry_component = "Panel"
+api = ">=1.0, <2"
 
 [environment]
-version = ">=0.4.1"
+version = ">=1.0.0, <2.0.0"
 
 [icon]
 kind = "svg"
 data = "<svg/>"
+
+[ui]
+slint = ">=1.17"
 "#;
+
+    fn parse(toml: &str) -> PluginResult<PluginManifest> {
+        PluginManifest::from_toml(toml, "hint")
+    }
 
     #[test]
     fn parse_valid_manifest() {
-        let m = PluginManifest::from_toml(VALID_TOML, "test").unwrap();
+        let m = parse(VALID_TOML).unwrap();
         assert_eq!(m.id, "test_plugin");
         assert_eq!(m.name, "Test Plugin");
-        assert_eq!(m.version, "1.0.0");
         assert_eq!(m.description.as_deref(), Some("A test plugin"));
-        assert_eq!(
-            m.repository.as_deref(),
-            Some("https://github.com/example/test-plugin")
-        );
-        assert_eq!(m.entry_ui.as_deref(), Some("ui/panel.slint"));
-        assert_eq!(m.entry_component.as_deref(), Some("Panel"));
-        assert_eq!(
-            m.icon,
-            Some(IconDescriptor::Svg {
-                data: "<svg/>".into()
-            })
-        );
+        assert!(m.declares_environment);
+        assert!(m.accepts_api(&Version::new(1, 3, 0)));
+        assert!(!m.accepts_api(&Version::new(2, 0, 0)));
+        assert!(m.accepts_host(&Version::new(1, 0, 0)));
+        assert!(m.accepts_slint(&Version::new(1, 17, 1)));
+        assert!(!m.accepts_slint(&Version::new(1, 16, 0)));
     }
 
     #[test]
-    fn reject_missing_id() {
-        let toml = r#"
-name = "Test"
+    fn environment_is_optional() {
+        // PLG-4: cellaris shipped without [environment].
+        let m = parse(
+            r#"
+id = "cellaris"
+name = "Cellaris"
 version = "1.0.0"
-entry_ui = "ui/p.slint"
-entry_component = "P"
-
-[environment]
-version = ">=0.4.1"
-"#;
-        let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
-        assert!(err.to_string().contains("TOML parse error"));
+"#,
+        )
+        .unwrap();
+        assert!(!m.declares_environment);
+        assert!(m.accepts_host(&Version::new(1, 2, 3)));
+        assert!(m.accepts_api(&Version::new(1, 0, 0)));
     }
 
     #[test]
-    fn reject_empty_id() {
-        let toml = r#"
-id = ""
-name = "Test"
-version = "1.0.0"
-entry_ui = "ui/p.slint"
-entry_component = "P"
-
-[environment]
-version = ">=0.4.1"
-"#;
-        let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
-        assert!(err.to_string().contains("'id' must not be empty"));
-    }
-
-    #[test]
-    fn reject_absolute_entry_ui() {
-        let toml = r#"
-id = "abs"
-name = "Test"
-version = "1.0.0"
-entry_ui = "/etc/evil.slint"
-entry_component = "Evil"
-
-[environment]
-version = ">=0.4.1"
-"#;
-        let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
-        assert!(err.to_string().contains("relative path"));
-    }
-
-    #[test]
-    fn reject_path_traversal_in_entry_ui() {
-        let toml = r#"
-id = "trav"
-name = "Test"
-version = "1.0.0"
-entry_ui = "../escape/evil.slint"
-entry_component = "Evil"
-
-[environment]
-version = ">=0.4.1"
-"#;
-        let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
-        assert!(err.to_string().contains(".."));
-    }
-
-    #[test]
-    fn resolve_entry_ui_relative_to_root() {
-        let m = PluginManifest::from_toml(VALID_TOML, "test").unwrap();
-        let resolved = m.resolve_entry_ui(Path::new("/plugins/test_plugin"));
-        assert_eq!(
-            resolved,
-            Some(PathBuf::from("/plugins/test_plugin/ui/panel.slint"))
-        );
-    }
-
-    #[test]
-    fn validate_files_missing_ui() {
-        let m = PluginManifest::from_toml(VALID_TOML, "test").unwrap();
-        let err = m
-            .validate_files(Path::new("/nonexistent/plugin/root"))
-            .unwrap_err();
-        match err {
-            PluginError::MissingFile { plugin_id, .. } => {
-                assert_eq!(plugin_id, "test_plugin");
-            }
-            other => panic!("expected MissingFile, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_manifest_without_icon() {
-        let toml = r#"
-id = "no_icon"
-name = "No Icon Plugin"
-version = "0.1.0"
-entry_ui = "ui/panel.slint"
-entry_component = "Panel"
-
-[environment]
-version = ">=0.4.1"
-"#;
-        let m = PluginManifest::from_toml(toml, "no_icon").unwrap();
-        assert!(m.icon.is_none());
-    }
-
-    #[test]
-    fn parse_manifest_without_optional_metadata() {
-        let m = PluginManifest::from_toml(
+    fn manifests_of_older_hosts_still_parse() {
+        // Fields from the 0.x format are ignored.
+        let m = parse(
             r#"
 id = "legacy"
 name = "Legacy"
-version = "0.1.0"
+version = "0.4.9"
+entry_ui = "ui/panel.slint"
+entry_component = "Panel"
+
+[[toolbar_buttons]]
+button_id = "x"
+tooltip = "X"
+action_id = "x"
 
 [environment]
 version = ">=0.4.1"
 "#,
-            "legacy",
         )
         .unwrap();
-        assert!(m.description.is_none());
-        assert!(m.repository.is_none());
+        assert_eq!(m.id, "legacy");
+        // The host range admits 1.0; the ABI check at load time rejects it.
+        assert!(m.accepts_host(&Version::new(1, 0, 0)));
     }
 
     #[test]
-    fn reject_absolute_icon_path() {
-        let toml = r#"
-id = "bad_icon"
-name = "Test"
-version = "1.0.0"
-entry_ui = "ui/p.slint"
-entry_component = "P"
+    fn ids_are_validated() {
+        for bad in [
+            "",
+            "Upper",
+            "has-dash",
+            "has:colon",
+            "C:evil",
+            "a/b",
+            "../x",
+            "_lead",
+            &"x".repeat(65),
+        ] {
+            let toml = format!("id = \"{bad}\"\nname = \"N\"\nversion = \"1.0.0\"\n");
+            assert!(parse(&toml).is_err(), "accepted '{bad}'");
+        }
+        for good in ["a", "eovae", "gamepad_2", "0day"] {
+            assert!(is_valid_plugin_id(good), "rejected '{good}'");
+        }
+    }
 
-[environment]
-version = ">=0.4.1"
+    #[test]
+    fn versions_and_requirements_are_validated() {
+        assert!(parse("id = \"a\"\nname = \"A\"\nversion = \"one\"\n").is_err());
+        assert!(
+            parse("id = \"a\"\nname = \"A\"\nversion = \"1.0.0\"\napi = \"not a req\"\n").is_err()
+        );
+        assert!(
+            parse(
+                "id = \"a\"\nname = \"A\"\nversion = \"1.0.0\"\n[environment]\nversion = \"??\"\n"
+            )
+            .is_err()
+        );
+        assert!(parse("id = \"a\"\nname = \"\"\nversion = \"1.0.0\"\n").is_err());
+    }
 
-[icon]
-kind = "file"
-path = "/etc/icon.png"
-"#;
-        let err = PluginManifest::from_toml(toml, "hint").unwrap_err();
-        assert!(err.to_string().contains("icon file path must be relative"));
+    #[test]
+    fn icon_paths_must_stay_inside_the_package() {
+        for bad in ["/etc/icon.png", "../icon.png", "a/../../icon.png"] {
+            let toml = format!(
+                "id = \"a\"\nname = \"A\"\nversion = \"1.0.0\"\n[icon]\nkind = \"file\"\npath = \"{bad}\"\n"
+            );
+            assert!(parse(&toml).is_err(), "accepted '{bad}'");
+        }
+        let toml = "id = \"a\"\nname = \"A\"\nversion = \"1.0.0\"\n[icon]\nkind = \"file\"\npath = \"assets/icon.png\"\n";
+        let m = parse(toml).unwrap();
+        assert!(matches!(
+            m.validate_files(Path::new("/nonexistent")),
+            Err(PluginError::MissingFile { .. })
+        ));
+    }
+
+    #[test]
+    fn readme_example_parses() {
+        // Keep the documented format honest (PLG-4).
+        let docs = include_str!("manifest.rs");
+        let example: String = docs
+            .lines()
+            .skip_while(|line| !line.starts_with("//! ```toml"))
+            .skip(1)
+            .take_while(|line| !line.starts_with("//! ```"))
+            .map(|line| line.trim_start_matches("//!").trim_start_matches(' '))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        let m = parse(&example).unwrap();
+        assert_eq!(m.id, "example_plugin");
+        assert!(m.declares_environment);
     }
 }

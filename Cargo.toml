@@ -1,13 +1,15 @@
 [workspace]
-members = [
-    "common",
-    "app",
-    "plugin_api",
+# Plugins are built on their own (each has its own workspace): they are
+# separate products, three of them are git submodules, and none of them may
+# be required to build or test the viewer. `plugin_api/example-plugin` is the
+# in-tree plugin used as documentation and as the host's test fixture.
+members = ["common", "app", "plugin_api", "plugin_api/example-plugin"]
+exclude = [
     "plugins/annotations",
+    "plugins/cellaris",
     "plugins/eovae",
     "plugins/gamepad",
 ]
-exclude = ["plugins/annotations"]
 resolver = "3"
 
 [workspace.dependencies]

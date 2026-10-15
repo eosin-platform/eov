@@ -5,19 +5,31 @@ export struct PluginButtonData {
     button-id: string,
     tooltip: string,
     icon: image,
-    action-id: string,
     active: bool,
+    enabled: bool,
+    // Tools are mutually exclusive with the host tools.
+    is-tool: bool,
     show-left-separator: bool,
 }
 
+export struct ContextMenuItem {
+    id: string,
+    label: string,
+    icon: string,
+    shortcut: string,
+    enabled: bool,
+    separator-after: bool,
+}
+
 export struct HudToolbarButtonData {
-    pane-id: int,
     plugin-id: string,
     button-id: string,
     tooltip: string,
     icon: image,
-    action-id: string,
     active: bool,
+    // When non-empty the button opens this menu; the chosen item id is
+    // reported with the click.
+    menu: [ContextMenuItem],
 }
 
 export struct TabData {
@@ -54,15 +66,6 @@ export struct SeriesItemData {
     is-selected: bool,
 }
 
-export struct ContextMenuItem {
-    id: string,
-    label: string,
-    icon: string,
-    shortcut: string,
-    enabled: bool,
-    separator-after: bool,
-}
-
 export struct TileInfo {
     x: int,
     y: int,
@@ -87,50 +90,61 @@ export struct ViewportInfo {
     level: int,
 }
 
-export struct ROIRect {
+/// A text label drawn over the viewport (anchors: 0 = top-left at (x, y),
+/// 1 = centred above (x, y), 2 = left-middle at (x, y)).
+export struct OverlayLabel {
     x: float,
     y: float,
-    width: float,
-    height: float,
-    visible: bool,
-    ant-offset: float,
+    anchor: int,
+    text: string,
+    color: color,
+    backdrop: bool,
+    font-size: float,
 }
 
-export struct MeasurementLine {
-    x1: float,
-    y1: float,
-    x2: float,
-    y2: float,
-    distance-um: float,
-    visible: bool,
+export enum PaneCursor {
+    default,
+    crosshair,
+    pointer,
+    move,
+    grabbing,
+    text,
+    not-allowed,
 }
 
-export struct PluginOverlayPoint {
-    plugin-id: string,
-    annotation-id: string,
-    x: float,
-    y: float,
-    diameter-px: float,
-    ring-color: color,
+/// One entry of the notification list (levels: 0 info, 1 success,
+/// 2 warning, 3 error).
+export struct NotificationData {
+    level: int,
+    message: string,
+    detail: string,
+    source: string,
+    time: string,
 }
 
-export struct PluginOverlayPolygon {
-    plugin-id: string,
-    annotation-id: string,
-    path-commands: string,
-    fill-color: color,
-    stroke-color: color,
+/// A background job shown in the status bar.
+export struct JobData {
+    id: string,
+    title: string,
+    message: string,
+    fraction: float,
+    indeterminate: bool,
+    cancellable: bool,
 }
 
-export struct PluginOverlayVertexBox {
-    plugin-id: string,
-    annotation-id: string,
-    vertex-index: int,
-    x: float,
-    y: float,
-    size-px: float,
-    fill-color: color,
-    border-color: color,
+/// A row of the Plugins panel (status levels: 0 active, 1 disabled,
+/// 2 failed, 3 stopped).
+export struct PluginRowData {
+    id: string,
+    name: string,
+    version: string,
+    description: string,
+    status: string,
+    status-level: int,
+    api-version: string,
+    source: string,
+    can-enable: bool,
+    can-disable: bool,
 }
 
 export struct MetadataItem {
@@ -179,6 +193,8 @@ export struct HudSettings {
 
 export struct PaneViewData {
     id: int,
+    // Stable identity of the pane (survives reordering).
+    uid: int,
     tabs: [TabData],
     content: image,
     viewport-info: ViewportInfo,
@@ -190,13 +206,17 @@ export struct PaneViewData {
     metadata-items: [MetadataItem],
     is-home-tab: bool,
     zoom-slider-position: float,
-    roi-rect: ROIRect,
-    measurements: [MeasurementLine],
-    plugin-overlay-points: [PluginOverlayPoint],
-    plugin-overlay-polygons: [PluginOverlayPolygon],
-    plugin-overlay-vertex-boxes: [PluginOverlayVertexBox],
-    annotation-tool-hover-active: bool,
-    candidate-measurement: MeasurementLine,
+    // Host and plugin overlay layers, rendered off the UI thread and placed
+    // at (overlay-x, overlay-y) with the given size (reprojected while the
+    // view moves).
+    overlay: image,
+    overlay-x: float,
+    overlay-y: float,
+    overlay-width: float,
+    overlay-height: float,
+    overlay-labels: [OverlayLabel],
+    cursor: PaneCursor,
+    hud-buttons: [HudToolbarButtonData],
     is-loading: bool,
     hud: HudSettings,
 }
@@ -204,9 +224,9 @@ export struct PaneViewData {
 export enum ToolType {
     navigate,
     region-of-interest,
-    measure-distance,
-    point-annotation,
-    polygon-annotation,
+    measure,
+    // A plugin tool; its toolbar button shows which one.
+    plugin,
 }
 
 export enum RenderMode {

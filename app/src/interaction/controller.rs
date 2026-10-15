@@ -8,7 +8,7 @@
 //! the appropriate locks and then delivers plugin events with none held.
 
 use super::measure::{
-    self, Calibration, HostMeasurement, MEASUREMENT_LAYER, MeasureMode, ROI_LAYER,
+    self, Calibration, HostMeasurement, MeasureMode, is_measurement_layer, is_roi_layer,
 };
 use crate::overlay::geometry::{self, Point};
 use crate::overlay::raster::Transient;
@@ -98,11 +98,6 @@ impl PaneView {
         [p.x, p.y]
     }
 
-    pub fn to_screen(&self, p: Point) -> (f64, f64) {
-        let s = self.viewport.image_to_screen(p[0], p[1]);
-        (s.x, s.y)
-    }
-
     pub fn zoom(&self) -> f64 {
         self.viewport.zoom.max(1e-12)
     }
@@ -118,10 +113,7 @@ pub enum ToolChoice {
     Navigate,
     Roi,
     Measure(MeasureMode),
-    Plugin {
-        plugin_id: Arc<str>,
-        spec: ToolSpec,
-    },
+    Plugin { plugin_id: Arc<str>, spec: ToolSpec },
 }
 
 impl ToolChoice {
@@ -143,12 +135,31 @@ impl ToolChoice {
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
-    StartPan { pane: usize, x: f64, y: f64 },
-    Pan { pane: usize, x: f64, y: f64 },
-    EndPan { pane: usize },
+    StartPan {
+        pane: usize,
+        x: f64,
+        y: f64,
+    },
+    Pan {
+        pane: usize,
+        x: f64,
+        y: f64,
+    },
+    EndPan {
+        pane: usize,
+    },
     /// Pan by logical pixels (wheel/trackpad scrolling).
-    PanBy { pane: usize, dx: f64, dy: f64 },
-    Zoom { pane: usize, factor: f64, x: f64, y: f64 },
+    PanBy {
+        pane: usize,
+        dx: f64,
+        dy: f64,
+    },
+    Zoom {
+        pane: usize,
+        factor: f64,
+        x: f64,
+        y: f64,
+    },
     ContextMenu {
         pane: usize,
         window_x: f64,
@@ -180,7 +191,10 @@ pub enum Effect {
     },
     /// The active tool changed (e.g. Escape returned to Navigate).
     ToolChanged,
-    Cursor { pane: usize, cursor: Cursor },
+    Cursor {
+        pane: usize,
+        cursor: Cursor,
+    },
     /// Show (or with `None` hide) the hover tooltip.
     Tooltip(Option<TooltipRequest>),
     /// The overlay scene (preview, hover, handles) changed.
@@ -201,7 +215,10 @@ enum PressTarget {
     /// An interactive object (click selects; drag behaves like empty).
     Object(ObjectKey),
     /// A vertex/corner handle of an editable object.
-    Handle { key: ObjectKey, index: usize },
+    Handle {
+        key: ObjectKey,
+        index: usize,
+    },
     /// The outline of an editable polygon/polyline away from vertices.
     Edge {
         key: ObjectKey,
@@ -494,8 +511,8 @@ impl Controller {
     /// Whether the active tool may reshape objects of `layer`.
     fn can_edit(&self, layer: &Layer) -> bool {
         match (&self.tool, &layer.key.owner) {
-            (ToolChoice::Roi, Owner::Host) => layer.key.id == ROI_LAYER,
-            (ToolChoice::Measure(_), Owner::Host) => layer.key.id == MEASUREMENT_LAYER,
+            (ToolChoice::Roi, Owner::Host) => is_roi_layer(&layer.key.id),
+            (ToolChoice::Measure(_), Owner::Host) => is_measurement_layer(&layer.key.id),
             (ToolChoice::Plugin { plugin_id, spec }, Owner::Plugin(owner)) => {
                 spec.kind != ToolKind::Custom
                     && owner == plugin_id
@@ -513,9 +530,9 @@ impl Controller {
         }
         match &layer.key.owner {
             Owner::Host => match &self.tool {
-                ToolChoice::Navigate => layer.key.id == MEASUREMENT_LAYER,
-                ToolChoice::Roi => layer.key.id == ROI_LAYER,
-                ToolChoice::Measure(_) => layer.key.id == MEASUREMENT_LAYER,
+                ToolChoice::Navigate => is_measurement_layer(&layer.key.id),
+                ToolChoice::Roi => is_roi_layer(&layer.key.id),
+                ToolChoice::Measure(_) => is_measurement_layer(&layer.key.id),
                 ToolChoice::Plugin { .. } => false,
             },
             Owner::Plugin(owner) => {
@@ -591,7 +608,9 @@ impl Controller {
         }
         let hits = self
             .store
-            .hit_test(self.pick_params(view, file_id, point), |layer| self.can_pick(layer));
+            .hit_test(self.pick_params(view, file_id, point), |layer| {
+                self.can_pick(layer)
+            });
         let Some(hit) = hits.into_iter().next() else {
             return PressTarget::Empty;
         };
@@ -674,7 +693,11 @@ impl Controller {
             changed.extend(self.store.clear_selection(None));
             if self
                 .store
-                .select(&key.layer.owner, &key.layer.id, std::slice::from_ref(&key.object_id))
+                .select(
+                    &key.layer.owner,
+                    &key.layer.id,
+                    std::slice::from_ref(&key.object_id),
+                )
                 .unwrap_or(false)
             {
                 changed.push(key.layer.owner.clone());
@@ -739,7 +762,13 @@ impl Controller {
         })
     }
 
-    fn on_down(&mut self, view: &PaneView, input: PointerInput, now: Instant, effects: &mut Vec<Effect>) {
+    fn on_down(
+        &mut self,
+        view: &PaneView,
+        input: PointerInput,
+        now: Instant,
+        effects: &mut Vec<Effect>,
+    ) {
         if self.gesture != Gesture::Idle {
             // A second button during a gesture is ignored.
             return;
@@ -852,9 +881,26 @@ impl Controller {
                 if dx.hypot(dy) < DRAG_THRESHOLD_PX {
                     return;
                 }
-                let (pane, button, start, start_image, modifiers, target, file_id) =
-                    (*pane, *button, *start, *start_image, *modifiers, target.clone(), *file_id);
-                self.begin_drag(view, pane, button, start, start_image, modifiers, target, file_id, effects);
+                let (pane, button, start, start_image, modifiers, target, file_id) = (
+                    *pane,
+                    *button,
+                    *start,
+                    *start_image,
+                    *modifiers,
+                    target.clone(),
+                    *file_id,
+                );
+                self.begin_drag(
+                    view,
+                    pane,
+                    button,
+                    start,
+                    start_image,
+                    modifiers,
+                    target,
+                    file_id,
+                    effects,
+                );
                 // Apply the first movement immediately.
                 self.on_move(view, input, effects);
             }
@@ -940,7 +986,9 @@ impl Controller {
             Some((key, object.object.shape.clone(), grab))
         };
         let editing = match &target {
-            PressTarget::Handle { key, index } => edit(key.clone(), Grab::Handle(*index), &self.store),
+            PressTarget::Handle { key, index } => {
+                edit(key.clone(), Grab::Handle(*index), &self.store)
+            }
             PressTarget::Edge { key, after, at } => {
                 // Insert a vertex at the press position and drag it.
                 self.store.object(key).map(|object| {
@@ -991,7 +1039,13 @@ impl Controller {
         let _ = view;
     }
 
-    fn on_up(&mut self, view: &PaneView, input: PointerInput, now: Instant, effects: &mut Vec<Effect>) {
+    fn on_up(
+        &mut self,
+        view: &PaneView,
+        input: PointerInput,
+        now: Instant,
+        effects: &mut Vec<Effect>,
+    ) {
         let point = view.to_image(input.x, input.y);
         match std::mem::replace(&mut self.gesture, Gesture::Idle) {
             Gesture::Idle => {}
@@ -1029,7 +1083,15 @@ impl Controller {
                                 y: input.y,
                             })
                         };
-                        self.click(view, file_id, start_image, target, modifiers, double, effects);
+                        self.click(
+                            view,
+                            file_id,
+                            start_image,
+                            target,
+                            modifiers,
+                            double,
+                            effects,
+                        );
                     }
                 }
                 _ => {}
@@ -1043,7 +1105,11 @@ impl Controller {
                 modifiers,
                 ..
             } => {
-                let current = if view.file_id == Some(file_id) { point } else { current };
+                let current = if view.file_id == Some(file_id) {
+                    point
+                } else {
+                    current
+                };
                 self.finish_drag_shape(view, file_id, kind, start, current, modifiers, effects);
                 effects.push(Effect::Redraw);
             }
@@ -1085,10 +1151,7 @@ impl Controller {
                 current,
                 ..
             } => {
-                let committed = self
-                    .store
-                    .object(&key)
-                    .map(|o| o.object.shape.clone());
+                let committed = self.store.object(&key).map(|o| o.object.shape.clone());
                 // An inserted vertex counts as an edit even without movement.
                 if Some(&current) != committed.as_ref() || current != original {
                     self.commit_edit(file_id, &key, current, effects);
@@ -1171,7 +1234,13 @@ impl Controller {
         })
     }
 
-    fn update_hover(&mut self, view: &PaneView, input: PointerInput, point: Point, effects: &mut Vec<Effect>) {
+    fn update_hover(
+        &mut self,
+        view: &PaneView,
+        input: PointerInput,
+        point: Point,
+        effects: &mut Vec<Effect>,
+    ) {
         let Some(file_id) = view.file_id else {
             return;
         };
@@ -1202,7 +1271,10 @@ impl Controller {
         let new_key = target.key().cloned();
         let old_key = self.hover.as_ref().map(|h| h.key.clone());
         if new_key == old_key {
-            if let (Some(hover), Some(text)) = (&self.hover, self.hover.as_ref().and_then(|h| h.tooltip.clone())) {
+            if let (Some(hover), Some(text)) = (
+                &self.hover,
+                self.hover.as_ref().and_then(|h| h.tooltip.clone()),
+            ) {
                 effects.push(Effect::Tooltip(Some(TooltipRequest {
                     pane: hover.pane,
                     window_x: input.window_x,
@@ -1217,19 +1289,22 @@ impl Controller {
             .as_ref()
             .and_then(|key| self.store.object(key))
             .and_then(|object| object.object.tooltip.clone());
-        effects.push(Effect::Tooltip(tooltip.clone().map(|text| TooltipRequest {
-            pane: view.index,
-            window_x: input.window_x,
-            window_y: input.window_y,
-            text,
+        effects.push(Effect::Tooltip(tooltip.clone().map(|text| {
+            TooltipRequest {
+                pane: view.index,
+                window_x: input.window_x,
+                window_y: input.window_y,
+                text,
+            }
         })));
         // Owners hear about hover changes on their interactive layers.
         let plugin_of = |key: &Option<ObjectKey>| match key {
             Some(ObjectKey {
-                layer: LayerKey {
-                    owner: Owner::Plugin(id),
-                    ..
-                },
+                layer:
+                    LayerKey {
+                        owner: Owner::Plugin(id),
+                        ..
+                    },
                 ..
             }) => Some(Arc::clone(id)),
             _ => None,
@@ -1313,7 +1388,16 @@ impl Controller {
             // where clicks place new geometry over it.
             (ToolChoice::Plugin { spec, .. }, None) if spec.kind == ToolKind::Point => {
                 self.clear_selection(effects);
-                self.emit_shape(view, file_id, Shape::Point { x: point[0], y: point[1] }, modifiers, effects);
+                self.emit_shape(
+                    view,
+                    file_id,
+                    Shape::Point {
+                        x: point[0],
+                        y: point[1],
+                    },
+                    modifiers,
+                    effects,
+                );
             }
             (ToolChoice::Plugin { spec, .. }, Some(key))
                 if spec.kind == ToolKind::Point && matches!(target, PressTarget::Object(_)) =>
@@ -1321,7 +1405,16 @@ impl Controller {
                 // A non-editable object under a point tool does not block
                 // placing a point.
                 let _ = key;
-                self.emit_shape(view, file_id, Shape::Point { x: point[0], y: point[1] }, modifiers, effects);
+                self.emit_shape(
+                    view,
+                    file_id,
+                    Shape::Point {
+                        x: point[0],
+                        y: point[1],
+                    },
+                    modifiers,
+                    effects,
+                );
             }
             (ToolChoice::Plugin { spec, .. }, None)
                 if matches!(spec.kind, ToolKind::Polygon | ToolKind::Polyline) =>
@@ -1380,7 +1473,14 @@ impl Controller {
         }
     }
 
-    fn start_drawing(&mut self, view: &PaneView, file_id: FileId, kind: DrawKind, point: Point, effects: &mut Vec<Effect>) {
+    fn start_drawing(
+        &mut self,
+        view: &PaneView,
+        file_id: FileId,
+        kind: DrawKind,
+        point: Point,
+        effects: &mut Vec<Effect>,
+    ) {
         self.drawing = Some(Drawing {
             pane: view.index,
             file_id,
@@ -1431,10 +1531,18 @@ impl Controller {
     }
 
     /// Completes the click-by-click shape (Enter, double click, closing click).
-    fn finish_drawing(&mut self, view: &PaneView, mut drawing: Drawing, modifiers: Modifiers, effects: &mut Vec<Effect>) {
+    fn finish_drawing(
+        &mut self,
+        view: &PaneView,
+        mut drawing: Drawing,
+        modifiers: Modifiers,
+        effects: &mut Vec<Effect>,
+    ) {
         effects.push(Effect::Redraw);
         // Drop consecutive duplicates (double clicks, accidental taps).
-        drawing.points.dedup_by(|a, b| view.screen_distance(*a, *b) < 1.0);
+        drawing
+            .points
+            .dedup_by(|a, b| view.screen_distance(*a, *b) < 1.0);
         if drawing.points.len() < drawing.kind.min_points() {
             return;
         }
@@ -1469,7 +1577,15 @@ impl Controller {
                 }
             }
             DrawKind::PluginPolyline => {
-                self.emit_shape(view, file_id, Shape::Polyline { points: drawing.points }, modifiers, effects);
+                self.emit_shape(
+                    view,
+                    file_id,
+                    Shape::Polyline {
+                        points: drawing.points,
+                    },
+                    modifiers,
+                    effects,
+                );
             }
             DrawKind::PluginPolygon => {
                 if geometry::is_usable_ring(&drawing.points) {
@@ -1488,7 +1604,13 @@ impl Controller {
         }
     }
 
-    fn add_measurement(&mut self, file_id: FileId, mode: MeasureMode, shape: Shape, effects: &mut Vec<Effect>) {
+    fn add_measurement(
+        &mut self,
+        file_id: FileId,
+        mode: MeasureMode,
+        shape: Shape,
+        effects: &mut Vec<Effect>,
+    ) {
         self.measurement_counter += 1;
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1505,7 +1627,14 @@ impl Controller {
         });
     }
 
-    fn emit_shape(&self, view: &PaneView, file_id: FileId, shape: Shape, modifiers: Modifiers, effects: &mut Vec<Effect>) {
+    fn emit_shape(
+        &self,
+        view: &PaneView,
+        file_id: FileId,
+        shape: Shape,
+        modifiers: Modifiers,
+        effects: &mut Vec<Effect>,
+    ) {
         if let Some((plugin_id, spec)) = self.tool.plugin_tool() {
             effects.push(Effect::Plugin {
                 plugin_id: Arc::clone(plugin_id),
@@ -1533,7 +1662,8 @@ impl Controller {
     ) {
         let rect = geometry::rect_from_corners(start, end);
         let zoom = view.zoom();
-        let big_enough = rect.width * zoom >= MIN_DRAG_SHAPE_PX || rect.height * zoom >= MIN_DRAG_SHAPE_PX;
+        let big_enough =
+            rect.width * zoom >= MIN_DRAG_SHAPE_PX || rect.height * zoom >= MIN_DRAG_SHAPE_PX;
         let area_shape = |ellipse: bool| {
             if ellipse {
                 Shape::Ellipse {
@@ -1548,7 +1678,8 @@ impl Controller {
         };
         match kind {
             DragShape::Roi => {
-                if rect.width * zoom >= MIN_DRAG_SHAPE_PX && rect.height * zoom >= MIN_DRAG_SHAPE_PX {
+                if rect.width * zoom >= MIN_DRAG_SHAPE_PX && rect.height * zoom >= MIN_DRAG_SHAPE_PX
+                {
                     effects.push(Effect::SetRoi {
                         file_id,
                         rect: Some(rect),
@@ -1584,14 +1715,26 @@ impl Controller {
             }
             DragShape::PluginRect | DragShape::PluginEllipse => {
                 if big_enough {
-                    self.emit_shape(view, file_id, area_shape(kind == DragShape::PluginEllipse), modifiers, effects);
+                    self.emit_shape(
+                        view,
+                        file_id,
+                        area_shape(kind == DragShape::PluginEllipse),
+                        modifiers,
+                        effects,
+                    );
                 }
             }
             DragShape::Marquee => self.marquee_select(file_id, &rect, modifiers, effects),
         }
     }
 
-    fn marquee_select(&mut self, file_id: FileId, rect: &Rect, modifiers: Modifiers, effects: &mut Vec<Effect>) {
+    fn marquee_select(
+        &mut self,
+        file_id: FileId,
+        rect: &Rect,
+        modifiers: Modifiers,
+        effects: &mut Vec<Effect>,
+    ) {
         let Some((plugin_id, _)) = self.tool.plugin_tool() else {
             return;
         };
@@ -1615,7 +1758,11 @@ impl Controller {
                     ids.push(object.object.object_id.clone());
                 }
             }
-            if self.store.select(&owner, &layer.key.id, &ids).unwrap_or(false) {
+            if self
+                .store
+                .select(&owner, &layer.key.id, &ids)
+                .unwrap_or(false)
+            {
                 changed.push(owner.clone());
             }
         }
@@ -1628,9 +1775,15 @@ impl Controller {
     /// Applies an edit of an editable object: host objects become host
     /// edits (undoable), plugin objects are updated optimistically and the
     /// owner is told.
-    fn commit_edit(&mut self, file_id: FileId, key: &ObjectKey, shape: Shape, effects: &mut Vec<Effect>) {
+    fn commit_edit(
+        &mut self,
+        file_id: FileId,
+        key: &ObjectKey,
+        shape: Shape,
+        effects: &mut Vec<Effect>,
+    ) {
         match &key.layer.owner {
-            Owner::Host if key.layer.id == ROI_LAYER => {
+            Owner::Host if is_roi_layer(&key.layer.id) => {
                 effects.push(Effect::SetRoi {
                     file_id,
                     rect: Some(shape.bounds()),
@@ -1645,8 +1798,15 @@ impl Controller {
                 if let Some(object) = self.store.object(key) {
                     let mut updated = object.object.clone();
                     updated.shape = shape.clone();
-                    if let Err(err) = self.store.upsert(&key.layer.owner, &key.layer.id, vec![updated], false) {
-                        tracing::warn!("edit of {}/{} rejected: {err}", key.layer.id, key.object_id);
+                    if let Err(err) =
+                        self.store
+                            .upsert(&key.layer.owner, &key.layer.id, vec![updated], false)
+                    {
+                        tracing::warn!(
+                            "edit of {}/{} rejected: {err}",
+                            key.layer.id,
+                            key.object_id
+                        );
                         return;
                     }
                 }
@@ -1666,7 +1826,15 @@ impl Controller {
 
     // -- wheel and gestures --------------------------------------------------------
 
-    pub fn wheel(&mut self, view: &PaneView, x: f64, y: f64, dx: f64, dy: f64, modifiers: Modifiers) -> Vec<Effect> {
+    pub fn wheel(
+        &mut self,
+        view: &PaneView,
+        x: f64,
+        y: f64,
+        dx: f64,
+        dy: f64,
+        modifiers: Modifiers,
+    ) -> Vec<Effect> {
         let mut effects = Vec::new();
         let zoom_modifier = modifiers.primary || modifiers.control;
         let horizontal_only = dy == 0.0 && dx != 0.0;
@@ -1717,7 +1885,14 @@ impl Controller {
     }
 
     /// Pinch gestures: `scale` is cumulative since the gesture started.
-    pub fn pinch(&mut self, view: &PaneView, scale: f64, x: f64, y: f64, active: bool) -> Vec<Effect> {
+    pub fn pinch(
+        &mut self,
+        view: &PaneView,
+        scale: f64,
+        x: f64,
+        y: f64,
+        active: bool,
+    ) -> Vec<Effect> {
         if !active || !scale.is_finite() || scale <= 0.0 {
             self.pinch_scale = None;
             return Vec::new();
@@ -1803,7 +1978,7 @@ impl Controller {
         if let Some(file_id) = file_id {
             let measurements: Vec<String> = host
                 .iter()
-                .filter(|key| key.layer.id == MEASUREMENT_LAYER)
+                .filter(|key| key.layer.id == measure::measurement_layer_id(file_id))
                 .map(|key| key.object_id.clone())
                 .collect();
             if !measurements.is_empty() {
@@ -1813,8 +1988,14 @@ impl Controller {
                 });
                 consumed = true;
             }
-            if host.iter().any(|key| key.layer.id == ROI_LAYER) {
-                effects.push(Effect::SetRoi { file_id, rect: None });
+            if host
+                .iter()
+                .any(|key| key.layer.id == measure::roi_layer_id(file_id))
+            {
+                effects.push(Effect::SetRoi {
+                    file_id,
+                    rect: None,
+                });
                 consumed = true;
             }
         }
@@ -1914,7 +2095,9 @@ impl Controller {
                         },
                         (*kind == DragShape::MeasureEllipse).then_some(MeasureMode::Ellipse),
                     ),
-                    DragShape::MeasureRect => (measure::roi_shape(&rect), Some(MeasureMode::Rectangle)),
+                    DragShape::MeasureRect => {
+                        (measure::roi_shape(&rect), Some(MeasureMode::Rectangle))
+                    }
                     DragShape::Roi | DragShape::PluginRect | DragShape::Marquee => {
                         (measure::roi_shape(&rect), None)
                     }
@@ -1960,7 +2143,7 @@ impl Controller {
                 ..
             } if *f == file_id => {
                 overrides.insert(key.clone(), current.clone());
-                if key.layer.owner == Owner::Host && key.layer.id == MEASUREMENT_LAYER {
+                if key.layer.owner == Owner::Host && is_measurement_layer(&key.layer.id) {
                     // Live value while dragging a measurement handle.
                     let mode = self.measurement_mode(file_id, &key.object_id);
                     let value = measure::measure(mode, current, &view.calibration);
@@ -2108,10 +2291,25 @@ mod tests {
         effects
     }
 
-    fn drag(c: &mut Controller, v: &PaneView, button: PointerButton, from: (f64, f64), to: (f64, f64)) -> Vec<Effect> {
+    fn drag(
+        c: &mut Controller,
+        v: &PaneView,
+        button: PointerButton,
+        from: (f64, f64),
+        to: (f64, f64),
+    ) -> Vec<Effect> {
         let now = T0();
         let mut effects = c.pointer(v, input(PointerKind::Down, button, from.0, from.1), now);
-        effects.extend(c.pointer(v, input(PointerKind::Move, button, (from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0), now));
+        effects.extend(c.pointer(
+            v,
+            input(
+                PointerKind::Move,
+                button,
+                (from.0 + to.0) / 2.0,
+                (from.1 + to.1) / 2.0,
+            ),
+            now,
+        ));
         effects.extend(c.pointer(v, input(PointerKind::Move, button, to.0, to.1), now));
         effects.extend(c.pointer(v, input(PointerKind::Up, button, to.0, to.1), now));
         effects
@@ -2144,8 +2342,16 @@ mod tests {
         assert!(effects.iter().any(|e| matches!(e, Effect::EndPan { .. })));
 
         let now = T0();
-        c.pointer(&v, input(PointerKind::Down, PointerButton::Right, 20.0, 20.0), now);
-        let effects = c.pointer(&v, input(PointerKind::Up, PointerButton::Right, 20.0, 20.0), now);
+        c.pointer(
+            &v,
+            input(PointerKind::Down, PointerButton::Right, 20.0, 20.0),
+            now,
+        );
+        let effects = c.pointer(
+            &v,
+            input(PointerKind::Up, PointerButton::Right, 20.0, 20.0),
+            now,
+        );
         assert!(matches!(effects[0], Effect::ContextMenu { .. }));
     }
 
@@ -2154,7 +2360,9 @@ mod tests {
         let mut c = Controller::new(Arc::new(OverlayStore::new()));
         let v = view();
         let effects = c.wheel(&v, 10.0, 10.0, 0.0, 60.0, Modifiers::default());
-        assert!(matches!(effects[0], Effect::Zoom { factor, .. } if (factor - WHEEL_ZOOM_PER_NOTCH).abs() < 1e-9));
+        assert!(
+            matches!(effects[0], Effect::Zoom { factor, .. } if (factor - WHEEL_ZOOM_PER_NOTCH).abs() < 1e-9)
+        );
         let effects = c.wheel(&v, 10.0, 10.0, 0.0, 6.0, Modifiers::default());
         assert!(matches!(effects[0], Effect::Zoom { factor, .. } if factor < 1.05 && factor > 1.0));
         let effects = c.wheel(&v, 10.0, 10.0, 30.0, 0.0, Modifiers::default());
@@ -2167,8 +2375,9 @@ mod tests {
         c.set_tool(ToolChoice::Measure(MeasureMode::Line));
         let v = view();
         let effects = drag(&mut c, &v, PointerButton::Left, (0.0, 0.0), (100.0, 0.0));
-        let Some(Effect::AddMeasurement { measurement, .. }) =
-            effects.iter().find(|e| matches!(e, Effect::AddMeasurement { .. }))
+        let Some(Effect::AddMeasurement { measurement, .. }) = effects
+            .iter()
+            .find(|e| matches!(e, Effect::AddMeasurement { .. }))
         else {
             panic!("no measurement: {effects:?}");
         };
@@ -2178,7 +2387,11 @@ mod tests {
         let t = T0();
         click(&mut c, &v, 0.0, 0.0, t);
         let effects = click(&mut c, &v, 0.0, 50.0, t + Duration::from_secs(1));
-        assert!(effects.iter().any(|e| matches!(e, Effect::AddMeasurement { .. })));
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::AddMeasurement { .. }))
+        );
     }
 
     #[test]
@@ -2193,7 +2406,12 @@ mod tests {
         click(&mut c, &v, 100.0, 100.0, t + 2 * s);
         let effects = click(&mut c, &v, 2.0, 1.0, t + 3 * s);
         let events = plugin_events(&effects);
-        let Some(HostEvent::ShapeDrawn { shape: Shape::Polygon { exterior, .. }, pane, .. }) = events.first() else {
+        let Some(HostEvent::ShapeDrawn {
+            shape: Shape::Polygon { exterior, .. },
+            pane,
+            ..
+        }) = events.first()
+        else {
             panic!("no polygon: {effects:?}");
         };
         assert_eq!(exterior.len(), 3);
@@ -2212,8 +2430,10 @@ mod tests {
         let t2 = t + Duration::from_secs(2);
         click(&mut c, &v, 50.0, 50.0, t2);
         let effects = click(&mut c, &v, 50.0, 50.0, t2 + Duration::from_millis(100));
-        let Some(HostEvent::ShapeDrawn { shape: Shape::Polyline { points }, .. }) =
-            plugin_events(&effects).first().copied()
+        let Some(HostEvent::ShapeDrawn {
+            shape: Shape::Polyline { points },
+            ..
+        }) = plugin_events(&effects).first().copied()
         else {
             panic!("no polyline: {effects:?}");
         };
@@ -2240,9 +2460,11 @@ mod tests {
         let (effects, consumed) = c.key(Some(&v), &escape);
         assert!(consumed);
         assert_eq!(c.tool(), &ToolChoice::Navigate);
-        assert!(plugin_events(&effects)
-            .iter()
-            .any(|e| matches!(e, HostEvent::ToolDeactivated { .. })));
+        assert!(
+            plugin_events(&effects)
+                .iter()
+                .any(|e| matches!(e, HostEvent::ToolDeactivated { .. }))
+        );
     }
 
     #[test]
@@ -2259,23 +2481,37 @@ mod tests {
             .upsert(
                 &owner,
                 "pts",
-                vec![OverlayObject::new("p1", Shape::Point { x: image[0], y: image[1] })],
+                vec![OverlayObject::new(
+                    "p1",
+                    Shape::Point {
+                        x: image[0],
+                        y: image[1],
+                    },
+                )],
                 false,
             )
             .unwrap();
         let mut c = Controller::new(Arc::clone(&store));
         let effects = click(&mut c, &v, 101.0, 101.0, T0());
         let events = plugin_events(&effects);
-        assert!(events.iter().any(|e| matches!(e, HostEvent::SelectionChanged { objects } if objects.len() == 1)));
-        assert!(events.iter().any(|e| matches!(e, HostEvent::ObjectClicked { click_count: 1, .. })));
+        assert!(
+            events.iter().any(
+                |e| matches!(e, HostEvent::SelectionChanged { objects } if objects.len() == 1)
+            )
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, HostEvent::ObjectClicked { click_count: 1, .. }))
+        );
         assert_eq!(store.selection_of(&owner).len(), 1);
 
         // Delete asks the owner to delete.
         let mut effects = Vec::new();
         assert!(c.delete_selection(Some(1), &mut effects));
-        assert!(plugin_events(&effects)
-            .iter()
-            .any(|e| matches!(e, HostEvent::ObjectsDeleteRequested { objects } if objects.len() == 1)));
+        assert!(plugin_events(&effects).iter().any(
+            |e| matches!(e, HostEvent::ObjectsDeleteRequested { objects } if objects.len() == 1)
+        ));
 
         // Clicking empty space clears the selection and broadcasts.
         let effects = click(&mut c, &v, 600.0, 600.0, T0() + Duration::from_secs(5));
@@ -2290,7 +2526,10 @@ mod tests {
         let store = Arc::new(OverlayStore::new());
         let owner = Owner::plugin("anno");
         store
-            .create_layer(owner.clone(), LayerSpec::new("polys", 1).interactive(true).editable(true))
+            .create_layer(
+                owner.clone(),
+                LayerSpec::new("polys", 1).interactive(true).editable(true),
+            )
             .unwrap();
         let v = view();
         let a = v.to_image(100.0, 100.0);
@@ -2313,12 +2552,25 @@ mod tests {
         let mut c = Controller::new(Arc::clone(&store));
         c.set_tool(plugin_tool(ToolKind::Polygon));
         // Hover the polygon so its handles appear, then drag vertex 1.
-        c.pointer(&v, input(PointerKind::Move, PointerButton::None, 150.0, 130.0), T0());
-        let effects = drag(&mut c, &v, PointerButton::Left, (200.0, 100.0), (250.0, 120.0));
+        c.pointer(
+            &v,
+            input(PointerKind::Move, PointerButton::None, 150.0, 130.0),
+            T0(),
+        );
+        let effects = drag(
+            &mut c,
+            &v,
+            PointerButton::Left,
+            (200.0, 100.0),
+            (250.0, 120.0),
+        );
         let edited = plugin_events(&effects)
             .into_iter()
             .find_map(|e| match e {
-                HostEvent::ObjectEdited { shape: Shape::Polygon { exterior, .. }, .. } => Some(exterior.clone()),
+                HostEvent::ObjectEdited {
+                    shape: Shape::Polygon { exterior, .. },
+                    ..
+                } => Some(exterior.clone()),
                 _ => None,
             })
             .expect("edited");
@@ -2330,7 +2582,13 @@ mod tests {
                 object_id: "tri".into(),
             })
             .unwrap();
-        assert_eq!(stored.object.shape, Shape::Polygon { exterior: edited, holes: vec![] });
+        assert_eq!(
+            stored.object.shape,
+            Shape::Polygon {
+                exterior: edited,
+                holes: vec![]
+            }
+        );
     }
 
     #[test]
@@ -2346,7 +2604,11 @@ mod tests {
         };
         // Clicking in the same pane after the tab switched to another slide
         // starts afresh instead of mixing coordinates.
-        c.pointer(&other, input(PointerKind::Down, PointerButton::Left, 5.0, 5.0), T0());
+        c.pointer(
+            &other,
+            input(PointerKind::Down, PointerButton::Left, 5.0, 5.0),
+            T0(),
+        );
         assert!(c.drawing.is_none());
         c.cancel();
         click(&mut c, &v, 0.0, 0.0, T0());
@@ -2360,13 +2622,28 @@ mod tests {
         c.set_tool(ToolChoice::Roi);
         let v = view();
         let now = T0();
-        c.pointer(&v, input(PointerKind::Down, PointerButton::Left, 10.0, 10.0), now);
-        c.pointer(&v, input(PointerKind::Move, PointerButton::Left, 60.0, 80.0), now);
+        c.pointer(
+            &v,
+            input(PointerKind::Down, PointerButton::Left, 10.0, 10.0),
+            now,
+        );
+        c.pointer(
+            &v,
+            input(PointerKind::Move, PointerButton::Left, 60.0, 80.0),
+            now,
+        );
         let (_, _, transients) = c.scene_extras(&v);
         assert_eq!(transients.len(), 1);
         assert!(transients[0].decoration.dim_outside);
-        let effects = c.pointer(&v, input(PointerKind::Up, PointerButton::Left, 60.0, 80.0), now);
-        let Some(Effect::SetRoi { rect: Some(rect), .. }) = effects.iter().find(|e| matches!(e, Effect::SetRoi { .. })) else {
+        let effects = c.pointer(
+            &v,
+            input(PointerKind::Up, PointerButton::Left, 60.0, 80.0),
+            now,
+        );
+        let Some(Effect::SetRoi {
+            rect: Some(rect), ..
+        }) = effects.iter().find(|e| matches!(e, Effect::SetRoi { .. }))
+        else {
             panic!("{effects:?}");
         };
         assert_eq!((rect.width, rect.height), (50.0, 70.0));
@@ -2387,7 +2664,12 @@ mod tests {
             .collect();
         assert_eq!(
             kinds,
-            [ProtoPointerKind::Down, ProtoPointerKind::Move, ProtoPointerKind::Move, ProtoPointerKind::Up]
+            [
+                ProtoPointerKind::Down,
+                ProtoPointerKind::Move,
+                ProtoPointerKind::Move,
+                ProtoPointerKind::Up
+            ]
         );
     }
 
@@ -2397,16 +2679,39 @@ mod tests {
         c.set_tool(plugin_tool(ToolKind::Freehand));
         let v = view();
         let now = T0();
-        c.pointer(&v, input(PointerKind::Down, PointerButton::Left, 0.0, 0.0), now);
+        c.pointer(
+            &v,
+            input(PointerKind::Down, PointerButton::Left, 0.0, 0.0),
+            now,
+        );
         for i in 1..=20 {
-            c.pointer(&v, input(PointerKind::Move, PointerButton::Left, i as f64 * 5.0, 0.0), now);
+            c.pointer(
+                &v,
+                input(PointerKind::Move, PointerButton::Left, i as f64 * 5.0, 0.0),
+                now,
+            );
         }
         for i in 1..=20 {
-            c.pointer(&v, input(PointerKind::Move, PointerButton::Left, 100.0, i as f64 * 5.0), now);
+            c.pointer(
+                &v,
+                input(
+                    PointerKind::Move,
+                    PointerButton::Left,
+                    100.0,
+                    i as f64 * 5.0,
+                ),
+                now,
+            );
         }
-        let effects = c.pointer(&v, input(PointerKind::Up, PointerButton::Left, 0.0, 100.0), now);
-        let Some(HostEvent::ShapeDrawn { shape: Shape::Polygon { exterior, .. }, .. }) =
-            plugin_events(&effects).first().copied()
+        let effects = c.pointer(
+            &v,
+            input(PointerKind::Up, PointerButton::Left, 0.0, 100.0),
+            now,
+        );
+        let Some(HostEvent::ShapeDrawn {
+            shape: Shape::Polygon { exterior, .. },
+            ..
+        }) = plugin_events(&effects).first().copied()
         else {
             panic!("{effects:?}");
         };

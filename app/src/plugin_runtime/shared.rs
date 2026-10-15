@@ -11,10 +11,10 @@ use crate::overlay::OverlayStore;
 use arc_swap::ArcSwap;
 use eov_plugin_api::abi::RegionRequest;
 use eov_plugin_api::protocol::{
-    ButtonUpdate, ConfirmArgs, FileDialogArgs, FileId, FileInfo, HostSnapshot, JobFinishArgs,
-    JobStartArgs, JobUpdateArgs, MeasurementInfo, NotifyArgs, PaneId, PropertyMap, Rect,
-    SeriesAction, SurfaceSpec, UndoClearArgs, UndoPushArgs, ViewFrameArgs, ViewPanArgs,
-    ViewSetArgs, ViewZoomArgs,
+    ConfirmArgs, FileDialogArgs, FileId, FileInfo, HostSnapshot, JobFinishArgs, JobStartArgs,
+    JobUpdateArgs, MeasurementInfo, NotifyArgs, PaneId, PropertyMap, Rect, SeriesAction,
+    SurfaceSpec, UndoClearArgs, UndoPushArgs, ViewFrameArgs, ViewPanArgs, ViewSetArgs,
+    ViewZoomArgs,
 };
 use parking_lot::{Mutex, RwLock};
 use serde_json::{Map, Value};
@@ -36,7 +36,6 @@ pub trait SlideReader: Send + Sync {
 #[derive(Clone, Default)]
 pub struct PublishedFile {
     pub info: FileInfo,
-    pub path: PathBuf,
     pub properties: Arc<PropertyMap>,
     pub roi: Option<Rect>,
     pub measurements: Vec<MeasurementInfo>,
@@ -52,21 +51,16 @@ pub struct Published {
 /// A plugin's identity and revocable access.
 pub struct PluginContext {
     pub id: Arc<str>,
-    pub version: String,
+    /// The extracted package; surfaces and assets resolve inside it.
     pub root: PathBuf,
-    pub data_dir: PathBuf,
-    pub cache_dir: PathBuf,
     revoked: AtomicBool,
 }
 
 impl PluginContext {
-    pub fn new(id: &str, version: &str, root: PathBuf, data_dir: PathBuf, cache_dir: PathBuf) -> Self {
+    pub fn new(id: &str, root: PathBuf) -> Self {
         Self {
             id: Arc::from(id),
-            version: version.to_string(),
             root,
-            data_dir,
-            cache_dir,
             revoked: AtomicBool::new(false),
         }
     }
@@ -83,9 +77,17 @@ impl PluginContext {
 /// Requests a plugin's surface makes of the UI.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SurfaceCommand {
-    Open { surface_id: String, spec: SurfaceSpec },
-    Set { surface_id: String, properties: Map<String, Value> },
-    Close { surface_id: String },
+    Open {
+        surface_id: String,
+        spec: SurfaceSpec,
+    },
+    Set {
+        surface_id: String,
+        properties: Map<String, Value>,
+    },
+    Close {
+        surface_id: String,
+    },
 }
 
 /// Navigation requests.
@@ -106,13 +108,18 @@ pub enum Command {
     OpenFile(PathBuf),
     /// Toolbar, HUD, tool or filter registrations changed.
     ContributionsChanged,
-    /// A HUD button update for one pane only.
-    HudPaneUpdate(ButtonUpdate),
     ActivateTool(String),
     DeactivateTools,
     Surface(SurfaceCommand),
-    Confirm { request_id: String, args: ConfirmArgs },
-    FileDialog { request_id: String, args: FileDialogArgs, save: bool },
+    Confirm {
+        request_id: String,
+        args: ConfirmArgs,
+    },
+    FileDialog {
+        request_id: String,
+        args: FileDialogArgs,
+        save: bool,
+    },
     View(ViewCommand),
     CyclePane(i32),
     CycleTab(i32),
@@ -120,7 +127,10 @@ pub enum Command {
     Render,
     UndoPush(UndoPushArgs),
     UndoClear(UndoClearArgs),
-    JobStart { job_id: String, args: JobStartArgs },
+    JobStart {
+        job_id: String,
+        args: JobStartArgs,
+    },
     JobUpdate(JobUpdateArgs),
     JobFinish(JobFinishArgs),
     Clipboard(String),
@@ -237,15 +247,6 @@ impl HostShared {
         self.surfaces.lock().remove(surface_id)
     }
 
-    pub fn surfaces_of(&self, plugin_id: &str) -> Vec<String> {
-        self.surfaces
-            .lock()
-            .iter()
-            .filter(|(_, owner)| &***owner == plugin_id)
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
     pub fn set_subscriptions(&self, plugin_id: &Arc<str>, events: Option<HashSet<String>>) {
         self.subscriptions
             .lock()
@@ -262,9 +263,13 @@ impl HostShared {
 
     /// Forgets everything a plugin registered (it was unloaded or disabled).
     pub fn forget_plugin(&self, plugin_id: &str) {
-        self.surfaces.lock().retain(|_, owner| &**owner != plugin_id);
+        self.surfaces
+            .lock()
+            .retain(|_, owner| &**owner != plugin_id);
         self.subscriptions.lock().remove(plugin_id);
-        self.commands.lock().retain(|(owner, _)| &**owner != plugin_id);
+        self.commands
+            .lock()
+            .retain(|(owner, _)| &**owner != plugin_id);
         self.contributions.lock().remove_plugin(plugin_id);
         self.overlays
             .remove_owner(&crate::overlay::Owner::plugin(plugin_id));

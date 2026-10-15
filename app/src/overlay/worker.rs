@@ -21,7 +21,7 @@ pub struct OverlayJob {
 }
 
 pub struct OverlayFrame {
-    pub pane: u32,
+    /// The ticket of the request this frame answers.
     pub ticket: u64,
     pub view: ViewTransform,
     pub width: u32,
@@ -148,7 +148,6 @@ fn run(shared: Arc<Shared>) {
             state.finished.insert(
                 job.pane,
                 OverlayFrame {
-                    pane: job.pane,
                     ticket: job.ticket,
                     view: job.view,
                     width,

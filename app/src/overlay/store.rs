@@ -37,13 +37,6 @@ impl Owner {
     pub fn plugin(id: &str) -> Self {
         Owner::Plugin(Arc::from(id))
     }
-
-    pub fn plugin_id(&self) -> Option<&str> {
-        match self {
-            Owner::Host => None,
-            Owner::Plugin(id) => Some(id),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -111,7 +104,10 @@ impl RTreeObject for IndexEntry {
 }
 
 fn envelope_of(rect: &Rect) -> AABB<[f64; 2]> {
-    AABB::from_corners([rect.x, rect.y], [rect.x + rect.width, rect.y + rect.height])
+    AABB::from_corners(
+        [rect.x, rect.y],
+        [rect.x + rect.width, rect.y + rect.height],
+    )
 }
 
 /// One layer. Cheap to clone into render snapshots via `Arc`.
@@ -158,10 +154,7 @@ impl Layer {
         layer
     }
 
-    pub fn file_id(&self) -> FileId {
-        self.spec.file_id
-    }
-
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.objects.len()
     }
@@ -171,13 +164,12 @@ impl Layer {
     }
 
     pub fn object(&self, object_id: &str) -> Option<&Arc<StoredObject>> {
-        self.ids.get(object_id).and_then(|seq| self.objects.get(seq))
+        self.ids
+            .get(object_id)
+            .and_then(|seq| self.objects.get(seq))
     }
 
-    pub fn objects(&self) -> impl Iterator<Item = &Arc<StoredObject>> {
-        self.objects.values()
-    }
-
+    #[cfg(test)]
     pub fn rasters(&self) -> impl Iterator<Item = &Arc<StoredRaster>> {
         self.rasters.values()
     }
@@ -243,7 +235,11 @@ impl Layer {
         }
     }
 
-    fn insert_object(&mut self, object: OverlayObject, seq_source: &AtomicU64) -> Result<(), String> {
+    fn insert_object(
+        &mut self,
+        object: OverlayObject,
+        seq_source: &AtomicU64,
+    ) -> Result<(), String> {
         validate_object(&object)?;
         if let Some(style) = object.style.clone() {
             self.note_style(&style);
@@ -408,7 +404,10 @@ fn validate_object(object: &OverlayObject) -> Result<(), String> {
 
 fn validate_style(style: &Style) -> Result<(), String> {
     let sizes = [style.stroke_width, style.point_radius, style.font_size];
-    if sizes.iter().any(|v| !v.is_finite() || *v < 0.0 || *v > 10_000.0) {
+    if sizes
+        .iter()
+        .any(|v| !v.is_finite() || *v < 0.0 || *v > 10_000.0)
+    {
         return Err("style sizes must be finite, non-negative and ≤ 10000".to_string());
     }
     Ok(())
@@ -427,7 +426,10 @@ fn validate_spec(spec: &LayerSpec) -> Result<(), String> {
         return Err("min_zoom must be finite and non-negative".to_string());
     }
     validate_style(&spec.style)?;
-    for style in [&spec.selected_style, &spec.hover_style].into_iter().flatten() {
+    for style in [&spec.selected_style, &spec.hover_style]
+        .into_iter()
+        .flatten()
+    {
         validate_style(style)?;
     }
     Ok(())
@@ -628,7 +630,12 @@ impl OverlayStore {
         })
     }
 
-    pub fn remove_objects(&self, owner: &Owner, layer_id: &str, ids: &[String]) -> Result<(), String> {
+    pub fn remove_objects(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        ids: &[String],
+    ) -> Result<(), String> {
         self.with_layer(owner, layer_id, |layer, _| {
             for id in ids {
                 layer.remove_object(id);
@@ -705,9 +712,17 @@ impl OverlayStore {
             .collect()
     }
 
-    pub fn put_raster(&self, owner: &Owner, layer_id: &str, mut raster: StoredRaster) -> Result<(), String> {
+    pub fn put_raster(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        mut raster: StoredRaster,
+    ) -> Result<(), String> {
         let r = raster.rect;
-        if ![r.x, r.y, r.width, r.height].iter().all(|v| v.is_finite()) || r.width <= 0.0 || r.height <= 0.0 {
+        if ![r.x, r.y, r.width, r.height].iter().all(|v| v.is_finite())
+            || r.width <= 0.0
+            || r.height <= 0.0
+        {
             return Err("raster rectangles must be finite with a positive size".to_string());
         }
         self.with_layer(owner, layer_id, |layer, seq| {
@@ -733,7 +748,9 @@ impl OverlayStore {
     pub fn remove_file(&self, file_id: FileId) {
         let mut inner = self.inner.write();
         let before = inner.layers.len();
-        inner.layers.retain(|_, layer| layer.spec.file_id != file_id);
+        inner
+            .layers
+            .retain(|_, layer| layer.spec.file_id != file_id);
         let changed = inner.layers.len() != before;
         drop(inner);
         if changed {
@@ -767,15 +784,6 @@ impl OverlayStore {
             .layers
             .get(&key.layer)
             .and_then(|layer| layer.object(&key.object_id).cloned())
-    }
-
-    /// Whether any layer exists for `file_id`.
-    pub fn has_layers_for(&self, file_id: FileId) -> bool {
-        self.inner
-            .read()
-            .layers
-            .values()
-            .any(|layer| layer.spec.file_id == file_id)
     }
 
     /// The layers of `file_id` in draw order (bottom first).
@@ -885,7 +893,10 @@ fn pick_object(shape: &Shape, style: &Style, params: PickParams, zoom: f64) -> O
             let font = f64::from(style.font_size.max(1.0));
             let width_px = font * 0.6 * text.chars().count() as f64;
             let (dx, dy) = (to_px(p[0] - x), to_px(p[1] - y));
-            (dx >= -tolerance && dx <= width_px + tolerance && dy >= -tolerance && dy <= font * 1.3 + tolerance)
+            (dx >= -tolerance
+                && dx <= width_px + tolerance
+                && dy >= -tolerance
+                && dy <= font * 1.3 + tolerance)
                 .then_some((true, 0.0))
         }
         Shape::Polyline { points } => {
@@ -983,7 +994,9 @@ mod tests {
     #[test]
     fn upsert_cull_and_remove() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("l", 1))
+            .unwrap();
         let objects: Vec<_> = (0..1000)
             .map(|i| point(&format!("p{i}"), i as f64 * 10.0, 0.0))
             .collect();
@@ -1012,11 +1025,23 @@ mod tests {
     #[test]
     fn upserting_an_existing_id_keeps_its_draw_position() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
         store
-            .upsert(&plugin(), "l", vec![point("a", 0.0, 0.0), point("b", 1.0, 0.0)], false)
+            .create_layer(plugin(), LayerSpec::new("l", 1))
             .unwrap();
-        let before = store.layer(&plugin(), "l").unwrap().object("a").unwrap().seq;
+        store
+            .upsert(
+                &plugin(),
+                "l",
+                vec![point("a", 0.0, 0.0), point("b", 1.0, 0.0)],
+                false,
+            )
+            .unwrap();
+        let before = store
+            .layer(&plugin(), "l")
+            .unwrap()
+            .object("a")
+            .unwrap()
+            .seq;
         store
             .upsert(&plugin(), "l", vec![point("a", 500.0, 500.0)], false)
             .unwrap();
@@ -1040,10 +1065,16 @@ mod tests {
     #[test]
     fn snapshots_are_isolated_from_later_writes() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
-        store.upsert(&plugin(), "l", vec![point("a", 0.0, 0.0)], false).unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("l", 1))
+            .unwrap();
+        store
+            .upsert(&plugin(), "l", vec![point("a", 0.0, 0.0)], false)
+            .unwrap();
         let snapshot = store.file_layers(1);
-        store.upsert(&plugin(), "l", vec![point("b", 0.0, 0.0)], false).unwrap();
+        store
+            .upsert(&plugin(), "l", vec![point("b", 0.0, 0.0)], false)
+            .unwrap();
         assert_eq!(snapshot.layers[0].len(), 1);
         assert_eq!(store.file_layers(1).layers[0].len(), 2);
         assert!(store.revision() > snapshot.revision);
@@ -1052,24 +1083,57 @@ mod tests {
     #[test]
     fn invalid_input_is_rejected() {
         let store = OverlayStore::new();
-        assert!(store.create_layer(plugin(), LayerSpec { opacity: 2.0, ..LayerSpec::new("l", 1) }).is_err());
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
-        let bad = OverlayObject::new("x", Shape::Point { x: f64::NAN, y: 0.0 });
+        assert!(
+            store
+                .create_layer(
+                    plugin(),
+                    LayerSpec {
+                        opacity: 2.0,
+                        ..LayerSpec::new("l", 1)
+                    }
+                )
+                .is_err()
+        );
+        store
+            .create_layer(plugin(), LayerSpec::new("l", 1))
+            .unwrap();
+        let bad = OverlayObject::new(
+            "x",
+            Shape::Point {
+                x: f64::NAN,
+                y: 0.0,
+            },
+        );
         assert!(store.upsert(&plugin(), "l", vec![bad], false).is_err());
         assert!(store.upsert(&plugin(), "missing", vec![], false).is_err());
         // Another owner cannot touch the layer.
-        assert!(store
-            .upsert(&Owner::plugin("other"), "l", vec![point("a", 0.0, 0.0)], false)
-            .is_err());
+        assert!(
+            store
+                .upsert(
+                    &Owner::plugin("other"),
+                    "l",
+                    vec![point("a", 0.0, 0.0)],
+                    false
+                )
+                .is_err()
+        );
     }
 
     #[test]
     fn layers_are_ordered_by_z_then_creation() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("top", 1).at_z(5)).unwrap();
-        store.create_layer(plugin(), LayerSpec::new("first", 1)).unwrap();
-        store.create_layer(Owner::Host, LayerSpec::new("second", 1)).unwrap();
-        store.create_layer(plugin(), LayerSpec::new("other-file", 2)).unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("top", 1).at_z(5))
+            .unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("first", 1))
+            .unwrap();
+        store
+            .create_layer(Owner::Host, LayerSpec::new("second", 1))
+            .unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("other-file", 2))
+            .unwrap();
         let ids: Vec<_> = store
             .file_layers(1)
             .layers
@@ -1092,7 +1156,10 @@ mod tests {
             .upsert(
                 &plugin(),
                 "l",
-                vec![square("big", 0.0, 0.0, 100.0), square("small", 40.0, 40.0, 20.0)],
+                vec![
+                    square("big", 0.0, 0.0, 100.0),
+                    square("small", 40.0, 40.0, 20.0),
+                ],
                 false,
             )
             .unwrap();
@@ -1110,7 +1177,12 @@ mod tests {
             .create_layer(plugin(), LayerSpec::new("above", 1).at_z(1))
             .unwrap();
         store
-            .upsert(&plugin(), "above", vec![square("cover", 0.0, 0.0, 200.0)], false)
+            .upsert(
+                &plugin(),
+                "above",
+                vec![square("cover", 0.0, 0.0, 200.0)],
+                false,
+            )
             .unwrap();
         let hits = store.hit_test(pick(1, 50.0, 50.0), |_| true);
         assert_eq!(hits[0].key.object_id, "cover");
@@ -1123,22 +1195,39 @@ mod tests {
     fn hidden_layers_are_not_picked() {
         let store = OverlayStore::new();
         store
-            .create_layer(plugin(), LayerSpec { visible: false, ..LayerSpec::new("l", 1) })
+            .create_layer(
+                plugin(),
+                LayerSpec {
+                    visible: false,
+                    ..LayerSpec::new("l", 1)
+                },
+            )
             .unwrap();
-        store.upsert(&plugin(), "l", vec![point("a", 0.0, 0.0)], false).unwrap();
+        store
+            .upsert(&plugin(), "l", vec![point("a", 0.0, 0.0)], false)
+            .unwrap();
         assert!(store.hit_test(pick(1, 0.0, 0.0), |_| true).is_empty());
     }
 
     #[test]
     fn selection_follows_removals_and_replacement() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
         store
-            .upsert(&plugin(), "l", vec![point("a", 0.0, 0.0), point("b", 1.0, 1.0)], false)
+            .create_layer(plugin(), LayerSpec::new("l", 1))
             .unwrap();
-        assert!(store
-            .select(&plugin(), "l", &["a".into(), "b".into(), "zzz".into()])
-            .unwrap());
+        store
+            .upsert(
+                &plugin(),
+                "l",
+                vec![point("a", 0.0, 0.0), point("b", 1.0, 1.0)],
+                false,
+            )
+            .unwrap();
+        assert!(
+            store
+                .select(&plugin(), "l", &["a".into(), "b".into(), "zzz".into()])
+                .unwrap()
+        );
         assert_eq!(store.selection_of(&plugin()).len(), 2);
         store.remove_objects(&plugin(), "l", &["a".into()]).unwrap();
         assert_eq!(store.selection_of(&plugin()).len(), 1);
@@ -1152,15 +1241,22 @@ mod tests {
     #[test]
     fn bulk_load_handles_duplicate_ids() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
-        let mut objects: Vec<_> = (0..100).map(|i| point(&format!("p{i}"), i as f64, 0.0)).collect();
+        store
+            .create_layer(plugin(), LayerSpec::new("l", 1))
+            .unwrap();
+        let mut objects: Vec<_> = (0..100)
+            .map(|i| point(&format!("p{i}"), i as f64, 0.0))
+            .collect();
         objects.push(point("p5", 1000.0, 1000.0));
         store.upsert(&plugin(), "l", objects, true).unwrap();
         let layer = store.layer(&plugin(), "l").unwrap();
         assert_eq!(layer.len(), 100);
         assert_eq!(
             layer.object("p5").unwrap().object.shape,
-            Shape::Point { x: 1000.0, y: 1000.0 }
+            Shape::Point {
+                x: 1000.0,
+                y: 1000.0
+            }
         );
         let all = layer.visible_objects(
             &Rect {
@@ -1177,8 +1273,12 @@ mod tests {
     #[test]
     fn markers_sized_in_screen_pixels_are_found_at_low_zoom() {
         let store = OverlayStore::new();
-        store.create_layer(plugin(), LayerSpec::new("l", 1)).unwrap();
-        store.upsert(&plugin(), "l", vec![point("a", 1000.0, 1000.0)], false).unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("l", 1))
+            .unwrap();
+        store
+            .upsert(&plugin(), "l", vec![point("a", 1000.0, 1000.0)], false)
+            .unwrap();
         // At zoom 0.01 a 5 px marker covers 500 level-0 px.
         let hits = store.hit_test(
             PickParams {

@@ -1,0 +1,235 @@
+import { Theme } from "theme.slint";
+import { JobData, NotificationData } from "types.slint";
+
+// The bottom status bar: status text (host and plugins), background jobs
+// with progress and cancel, and the messages indicator.
+export component StatusBar inherits Rectangle {
+    in property <string> status-text;
+    in property <string> plugin-status-text;
+    in property <[JobData]> jobs: [];
+    in property <int> unread-notifications: 0;
+    in property <bool> unread-errors: false;
+    in property <bool> notifications-open: false;
+    callback job-cancel-requested(string);
+    callback notifications-toggled();
+
+    height: 24px;
+    background: Theme.toolbar-bg;
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border-subtle;
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 4px;
+        spacing: 12px;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.status-text + (root.plugin-status-text != "" ? (root.status-text != "" ? "  ·  " : "") + root.plugin-status-text : "");
+            color: Theme.text-secondary;
+            font-size: 11px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        for job in root.jobs: HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                max-width: 260px;
+                text: job.title + (job.message != "" ? " — " + job.message : "");
+                color: Theme.text-primary;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 80px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.surface;
+                    clip: true;
+
+                    Rectangle {
+                        x: job.indeterminate ? (Math.mod(animation-tick() / 1400ms, 1.0) * 1.3 - 0.3) * parent.width : 0px;
+                        width: job.indeterminate ? parent.width * 0.3 : parent.width * max(0, min(1, job.fraction));
+                        height: 100%;
+                        background: Theme.accent;
+                    }
+                }
+            }
+
+            if job.cancellable: Rectangle {
+                width: 16px;
+                background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+                border-radius: 3px;
+
+                Text {
+                    text: "×";
+                    color: Theme.text-secondary;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                cancel-touch := TouchArea {
+                    clicked => {
+                        root.job-cancel-requested(job.id);
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            width: messages-text.preferred-width + 16px;
+            background: messages-touch.has-hover || root.notifications-open ? Theme.surface-hover : transparent;
+            border-radius: 3px;
+
+            messages-text := Text {
+                text: root.unread-notifications > 0 ? "● " + root.unread-notifications + " message" + (root.unread-notifications == 1 ? "" : "s") : "Messages";
+                color: root.unread-errors ? #ff6b6b : root.unread-notifications > 0 ? #f1c40f : Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            messages-touch := TouchArea {
+                clicked => {
+                    root.notifications-toggled();
+                }
+            }
+        }
+    }
+}
+
+// The list of messages (plugin errors, warnings and notifications).
+export component NotificationsPopup inherits Rectangle {
+    in property <[NotificationData]> items: [];
+    callback cleared();
+    callback dismissed();
+
+    width: 440px;
+    height: min(420px, max(80px, list.preferred-height + 44px));
+    background: Theme.context-menu-bg;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 10px;
+    drop-shadow-color: #00000080;
+    clip: true;
+
+    TouchArea { }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            height: 24px;
+            Text {
+                horizontal-stretch: 1;
+                text: "Messages";
+                color: Theme.text-primary;
+                font-size: 13px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: clear-text.preferred-width + 14px;
+                border-radius: 3px;
+                background: clear-touch.has-hover ? Theme.surface-hover : transparent;
+
+                clear-text := Text {
+                    text: "Clear";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                clear-touch := TouchArea {
+                    clicked => {
+                        root.cleared();
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 22px;
+                border-radius: 3px;
+                background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+                Text {
+                    text: "×";
+                    color: Theme.text-secondary;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                close-touch := TouchArea {
+                    clicked => {
+                        root.dismissed();
+                    }
+                }
+            }
+        }
+
+        Flickable {
+            viewport-height: list.preferred-height;
+
+            list := VerticalLayout {
+                spacing: 4px;
+
+                if root.items.length == 0: Text {
+                    text: "No messages.";
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                }
+
+                for item in root.items: HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        width: 3px;
+                        border-radius: 1px;
+                        background: item.level == 3 ? #ff6b6b : item.level == 2 ? #f1c40f : item.level == 1 ? #2ecc71 : Theme.accent;
+                    }
+
+                    VerticalLayout {
+                        spacing: 2px;
+
+                        Text {
+                            text: item.message;
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+
+                        if item.detail != "": Text {
+                            text: item.detail;
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+
+                        Text {
+                            text: item.source + (item.source != "" ? " · " : "") + item.time;
+                            color: Theme.text-secondary;
+                            font-size: 10px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

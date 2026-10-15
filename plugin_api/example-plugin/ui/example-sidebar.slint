@@ -1,0 +1,61 @@
+import { Button, VerticalBox, CheckBox } from "std-widgets.slint";
+
+// A plugin surface: properties are set by the plugin with `Surface::set`,
+// callbacks arrive as `Plugin::ui_callback` and may return values.
+export component ExampleSidebar inherits Rectangle {
+    in property <int> marker-count: 0;
+    in property <string> active-file: "No slide";
+    in property <bool> invert-enabled: false;
+    callback clear-markers();
+    callback toggle-invert(bool);
+    callback start-job();
+    // Returns a value computed by the plugin.
+    callback describe() -> string;
+
+    property <string> description: "";
+
+    VerticalBox {
+        Text {
+            text: "Example plugin";
+            font-size: 16px;
+            font-weight: 600;
+        }
+        Text {
+            text: root.active-file;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.marker-count + " marker(s)";
+        }
+        Button {
+            text: "Clear markers";
+            clicked => {
+                root.clear-markers();
+            }
+        }
+        CheckBox {
+            text: "Invert colours";
+            checked: root.invert-enabled;
+            toggled => {
+                root.toggle-invert(self.checked);
+            }
+        }
+        Button {
+            text: "Run background job";
+            clicked => {
+                root.start-job();
+            }
+        }
+        Button {
+            text: "Describe";
+            clicked => {
+                root.description = root.describe();
+            }
+        }
+        Text {
+            text: root.description;
+            wrap: word-wrap;
+        }
+        Rectangle { }
+    }
+}

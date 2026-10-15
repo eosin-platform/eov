@@ -7,9 +7,9 @@
 //! `RootModule::load_from_file`, this keeps one module per library, so any
 //! number of plugins can be loaded.
 
+use abi_stable::std_types::RStr;
 use eov_plugin_api::abi::{self, HostBox, PluginBox, PluginModuleRef};
 use eov_plugin_api::protocol::PluginInit;
-use abi_stable::std_types::RStr;
 use semver::Version;
 use std::path::{Path, PathBuf};
 
@@ -57,7 +57,8 @@ impl Module {
 
     /// Calls the plugin's `create`.
     pub fn instantiate(&self, host: HostBox, init: &PluginInit) -> Result<PluginBox, LoadError> {
-        let init_json = serde_json::to_string(init).map_err(|e| LoadError::Create(e.to_string()))?;
+        let init_json =
+            serde_json::to_string(init).map_err(|e| LoadError::Create(e.to_string()))?;
         let create = self.module.create();
         create(host, RStr::from_str(&init_json))
             .into_result()
@@ -95,14 +96,18 @@ pub fn check_versions(abi_version: u32, api_version: &str) -> Result<(), LoadErr
 pub fn library_path(package_root: &Path, id: &str) -> Result<PathBuf, LoadError> {
     let file_name = abi::plugin_library_filename(id);
     if file_name.contains(['/', '\\', ':']) {
-        return Err(LoadError::BadPath(format!("plugin id '{id}' is not a file name")));
+        return Err(LoadError::BadPath(format!(
+            "plugin id '{id}' is not a file name"
+        )));
     }
     let root = dunce::canonicalize(package_root)
         .map_err(|e| LoadError::BadPath(format!("{}: {e}", package_root.display())))?;
     let path = dunce::canonicalize(root.join(&file_name))
         .map_err(|e| LoadError::BadPath(format!("{file_name}: {e}")))?;
     if !path.starts_with(&root) {
-        return Err(LoadError::BadPath(format!("{file_name} resolves outside the package")));
+        return Err(LoadError::BadPath(format!(
+            "{file_name} resolves outside the package"
+        )));
     }
     Ok(path)
 }
@@ -147,9 +152,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(abi::plugin_library_filename("good")), b"").unwrap();
         assert!(library_path(dir.path(), "good").is_ok());
-        assert!(matches!(library_path(dir.path(), "missing"), Err(LoadError::BadPath(_))));
-        assert!(matches!(library_path(dir.path(), "../x"), Err(LoadError::BadPath(_))));
-        assert!(matches!(library_path(dir.path(), "C:evil"), Err(LoadError::BadPath(_))));
+        assert!(matches!(
+            library_path(dir.path(), "missing"),
+            Err(LoadError::BadPath(_))
+        ));
+        assert!(matches!(
+            library_path(dir.path(), "../x"),
+            Err(LoadError::BadPath(_))
+        ));
+        assert!(matches!(
+            library_path(dir.path(), "C:evil"),
+            Err(LoadError::BadPath(_))
+        ));
     }
 
     #[test]

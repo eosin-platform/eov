@@ -299,8 +299,11 @@ impl Host {
 
     /// Invokes a host method with pre-encoded JSON.
     pub fn call_raw(&self, method: &str, args_json: &str) -> HostResult<String> {
-        from_ffi(self.ffi.call(RStr::from_str(method), RStr::from_str(args_json)))
-            .map(RString::into_string)
+        from_ffi(
+            self.ffi
+                .call(RStr::from_str(method), RStr::from_str(args_json)),
+        )
+        .map(RString::into_string)
     }
 
     /// Invokes a host method with typed arguments and result.
@@ -416,7 +419,11 @@ impl Host {
 
     /// Reads an associated image (`"label"`, `"macro"`, `"thumbnail"`, …).
     pub fn read_associated_image(&self, file_id: FileId, name: &str) -> HostResult<Image> {
-        from_ffi(self.ffi.read_associated_image(file_id, RStr::from_str(name))).map(Image::from)
+        from_ffi(
+            self.ffi
+                .read_associated_image(file_id, RStr::from_str(name)),
+        )
+        .map(Image::from)
     }
 
     /// The host region of interest of a slide.
@@ -1036,13 +1043,19 @@ impl<P: Plugin> PluginFfi for Adapter<P> {
                 stride,
                 view,
             } = frame;
-            let mut frame = Frame::new(pixels.into_mut_slice(), width, height, stride as usize, view)
-                .ok_or_else(|| {
-                    FfiError::new(
-                        FfiErrorKind::InvalidArguments,
-                        format!("frame buffer too small for {width}x{height} (stride {stride})"),
-                    )
-                })?;
+            let mut frame = Frame::new(
+                pixels.into_mut_slice(),
+                width,
+                height,
+                stride as usize,
+                view,
+            )
+            .ok_or_else(|| {
+                FfiError::new(
+                    FfiErrorKind::InvalidArguments,
+                    format!("frame buffer too small for {width}x{height} (stride {stride})"),
+                )
+            })?;
             self.plugin
                 .apply_filter(filter_id.as_str(), &mut frame)
                 .map_err(FfiError::failed)
@@ -1064,16 +1077,18 @@ pub fn into_plugin_box<P: Plugin>(plugin: P) -> PluginBox {
 #[doc(hidden)]
 pub fn create_plugin<P: Plugin>(host: HostBox, init_json: &str) -> Result<PluginBox, FfiError> {
     guarded(|| {
-        let init: PluginInit = serde_json::from_str(init_json).map_err(|e| {
-            FfiError::new(FfiErrorKind::InvalidArguments, format!("bad init: {e}"))
-        })?;
+        let init: PluginInit = serde_json::from_str(init_json)
+            .map_err(|e| FfiError::new(FfiErrorKind::InvalidArguments, format!("bad init: {e}")))?;
         let plugin = P::create(Host::from_ffi(host), init).map_err(FfiError::failed)?;
         Ok(into_plugin_box(plugin))
     })
     .into_result()
 }
 
-extern "C" fn create_instance<P: Plugin>(host: HostBox, init_json: RStr<'_>) -> FfiResult<PluginBox> {
+extern "C" fn create_instance<P: Plugin>(
+    host: HostBox,
+    init_json: RStr<'_>,
+) -> FfiResult<PluginBox> {
     create_plugin::<P>(host, init_json.as_str()).into()
 }
 

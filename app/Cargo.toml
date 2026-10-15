@@ -43,6 +43,10 @@ slint = { version = "1.17.1", default-features = false, features = [
     "unstable-winit-030",
 ] }
 
+# The interpreter's property and callback types (same pinned version as the
+# interpreter uses).
+i-slint-compiler = { version = "=1.17.1", default-features = false }
+
 # Slint interpreter for runtime plugin UI loading
 slint-interpreter = { version = "1.17.1", default-features = false, features = [
     "compat-1-2",
@@ -145,7 +149,7 @@ slint-build = "1.17.1"
 
 [dev-dependencies]
 tempfile = "3"
-eovae = { path = "../plugins/eovae", default-features = false }
+eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.17.1" }
 
 [features]

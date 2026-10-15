@@ -1,4 +1,5 @@
 use crate::config;
+use crate::host_ui::with_host;
 use crate::state::{self, AppState, HudSettings, IsolatedChannel, PaneId};
 use crate::ui_update::build_recent_folder_menu_items;
 use crate::zoom_display::parse_zoom_input;
@@ -8,13 +9,11 @@ use crate::{
     ExportPreviewInfo as SlintExportPreviewInfo, ExportSettings as SlintExportSettings,
     FilteringMode as SlintFilteringMode, IsolatedChannel as SlintIsolatedChannel,
     MeasurementUnit as SlintMeasurementUnit, RenderMode,
-    StainNormalization as SlintStainNormalization, ToolType, build_recent_menu_items,
+    StainNormalization as SlintStainNormalization, build_recent_menu_items,
     capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
-    crop_image_to_viewport_bounds, handle_tool_mouse_down, handle_tool_mouse_move,
-    handle_tool_mouse_up, insert_pane_ui_state, open_file_with_mode, pane_from_index,
+    crop_image_to_viewport_bounds, insert_pane_ui_state, open_file_with_mode, pane_from_index,
     refresh_tab_ui, request_render_loop, slider_value_to_zoom, update_filtering_mode,
-    update_recent_files, update_render_backend, update_tabs, update_tool_overlays,
-    update_tool_state,
+    update_recent_files, update_render_backend, update_tabs,
 };
 use eov_common::viewport::ZOOM_FACTOR;
 use eov_common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
@@ -28,7 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
-const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
+pub(crate) const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
     * ZOOM_FACTOR
     * ZOOM_FACTOR
     * ZOOM_FACTOR
@@ -41,107 +40,12 @@ const ACTION_ZOOM_FACTOR: f64 = ZOOM_FACTOR
 #[cfg(target_os = "macos")]
 const MACOS_TOOLBAR_HEIGHT: f64 = 40.0;
 
-fn dismiss_active_sidebar_popups(reason: &str) {
-    if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-        tracing::debug!("Failed to dismiss active sidebar popups {reason}: {err}");
-    }
-}
-
 fn active_hud_mut(state: &mut AppState) -> Option<&mut HudSettings> {
     let pane = state.focused_pane;
     let file_id = state.active_file_id_for_pane(pane)?;
     let file = state.get_file_mut(file_id)?;
     let pane_state = file.pane_state_mut(pane)?;
     Some(&mut pane_state.hud)
-}
-
-fn image_point_for_screen(
-    state: &AppState,
-    pane: PaneId,
-    x: f32,
-    y: f32,
-) -> Option<state::ImagePoint> {
-    state
-        .active_file_id_for_pane(pane)
-        .and_then(|file_id| state.get_file(file_id))
-        .and_then(|file| file.pane_state(pane))
-        .map(|pane_state| pane_state.viewport.screen_to_image(x as f64, y as f64))
-        .map(|(x_level0, y_level0)| state::ImagePoint {
-            x: x_level0,
-            y: y_level0,
-        })
-}
-
-fn polygon_closes_to_first_vertex(state: &AppState, pane: PaneId, x: f32, y: f32) -> bool {
-    if state.polygon_candidate_vertices.len() < 3 {
-        return false;
-    }
-    let Some(file_id) = state.active_file_id_for_pane(pane) else {
-        return false;
-    };
-    let Some(file) = state.get_file(file_id) else {
-        return false;
-    };
-    let Some(pane_state) = file.pane_state(pane) else {
-        return false;
-    };
-    let Some(first) = state.polygon_candidate_vertices.first().copied() else {
-        return false;
-    };
-    let screen = pane_state
-        .viewport
-        .viewport
-        .image_to_screen(first.x, first.y);
-    let dx = screen.x as f32 - x;
-    let dy = screen.y as f32 - y;
-    dx * dx + dy * dy <= 64.0
-}
-
-pub(crate) fn confirm_active_polygon_annotation(
-    state: &Arc<RwLock<AppState>>,
-    plugin_manager: &Rc<RefCell<crate::plugins::PluginManager>>,
-) -> Result<bool, String> {
-    let (plugin_id, pane, vertices) = {
-        let guard = state.read();
-        if guard.current_tool != state::Tool::PolygonAnnotation
-            || guard.polygon_candidate_vertices.len() < 3
-        {
-            return Ok(false);
-        }
-        let Some(plugin_id) = guard.active_tool_plugin_id.clone() else {
-            return Ok(false);
-        };
-        (
-            plugin_id,
-            guard.focused_pane,
-            guard.polygon_candidate_vertices.clone(),
-        )
-    };
-
-    let Some(viewport) = crate::plugin_host::viewport_snapshot_for_pane(state, pane) else {
-        return Ok(false);
-    };
-    plugin_manager
-        .borrow_mut()
-        .handle_polygon_annotation_placed(&plugin_id, &viewport, &vertices)
-        .map_err(|err| err.to_string())?;
-
-    let mut guard = state.write();
-    if guard.current_tool == state::Tool::PolygonAnnotation
-        && guard.active_tool_plugin_id.as_deref() == Some(plugin_id.as_str())
-    {
-        guard.polygon_candidate_vertices.clear();
-        guard.polygon_candidate_hover = None;
-        guard.hovered_plugin_annotation = None;
-        guard.hovered_plugin_polygon_vertex = None;
-        guard.hovered_plugin_polygon_edge = None;
-        guard.dragged_plugin_polygon_vertex = None;
-        guard.dragged_plugin_polygon_vertex_state = None;
-        guard.dragged_plugin_polygon_vertex_position = None;
-        guard.hovered_plugin_polygon_edge = None;
-        guard.request_render();
-    }
-    Ok(true)
 }
 
 fn measurement_unit_from_slint(unit: SlintMeasurementUnit) -> MeasurementUnit {
@@ -338,12 +242,13 @@ fn align_macos_window_controls(slint_window: &slint::Window) {
     });
 }
 
-fn frame_active_viewport(state: &mut AppState) -> bool {
+/// Frames the slide's region of interest, or the whole slide.
+pub(crate) fn frame_active_viewport(state: &mut AppState) -> bool {
     let pane = state.focused_pane;
     let roi = state
         .active_file_id_for_pane(pane)
         .and_then(|file_id| state.get_file(file_id))
-        .and_then(|file| file.roi.filter(|roi| roi.pane == pane));
+        .and_then(|file| file.roi);
 
     let Some(viewport) = state.active_viewport_mut() else {
         return false;
@@ -358,7 +263,7 @@ fn frame_active_viewport(state: &mut AppState) -> bool {
     true
 }
 
-fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
+pub(crate) fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
         return false;
     };
@@ -384,7 +289,7 @@ fn show_toast(ui: &AppWindow, toast_timer: &Rc<Timer>, message: &str) {
     );
 }
 
-fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+pub(crate) fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let show_minimap = {
         let mut state = state.write();
         state.toggle_minimap();
@@ -493,7 +398,6 @@ fn focus_existing_file(
         let state = state.read();
         update_tabs(ui, &state);
     }
-    let _ = crate::plugin_host::refresh_active_sidebar();
 
     ui.set_is_loading(false);
     ui.set_status_text(SharedString::from(format!(
@@ -532,7 +436,6 @@ fn open_existing_file_in_new_tab(
         let state = state.read();
         update_tabs(ui, &state);
     }
-    let _ = crate::plugin_host::refresh_active_sidebar();
 
     ui.set_is_loading(false);
     ui.set_status_text(SharedString::from(format!(
@@ -601,6 +504,20 @@ pub(crate) fn activate_series_entry_path(
             path,
             crate::file_ops::OpenFileMode::ReuseExistingTab,
         );
+    }
+}
+
+/// Selects the next (or previous) entry of the series bar and opens it.
+pub(crate) fn cycle_series(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    offset: i32,
+) {
+    let path = state.write().cycle_series_selection(offset);
+    if let Some(path) = path {
+        activate_series_entry_path(ui, state, tile_cache, render_timer, path);
     }
 }
 
@@ -741,82 +658,75 @@ fn draw_measurement_overlays(
     let h = image_data.height as u32;
     let font_size_px = settings.measurement_font_size * dpi_scale;
 
-    // Compute mpp for distance labels (same as tools.rs)
-    let mpp = file
-        .wsi
-        .properties()
-        .mpp_x
-        .zip(file.wsi.properties().mpp_y)
-        .map(|(mx, my)| (mx + my) / 2.0)
-        .unwrap_or(0.0);
-
+    let _ = pane;
+    let calibration = crate::host_ui::calibration(file);
     for m in &file.measurements {
-        if m.pane != pane {
-            continue;
+        let (points, closed) = crate::overlay::geometry::outline(&m.shape);
+        let mut screen: Vec<(f32, f32)> = points
+            .iter()
+            .map(|p| {
+                let s = export_vp.image_to_screen(p[0], p[1]);
+                (s.x as f32, s.y as f32)
+            })
+            .collect();
+        if closed && let Some(first) = screen.first().copied() {
+            screen.push(first);
         }
-        let p1 = export_vp.image_to_screen(m.start.x, m.start.y);
-        let p2 = export_vp.image_to_screen(m.end.x, m.end.y);
-
-        // Draw line
-        eov_common::overlay::draw_line(
-            &mut image_data.pixels,
-            w,
-            h,
-            p1.x as f32,
-            p1.y as f32,
-            p2.x as f32,
-            p2.y as f32,
-            color,
-            thickness,
-            stroke,
-            cap,
-        );
-
-        // Endpoint circles (white border + filled color, matching viewport style)
-        let endpoint_r = (thickness + 1.0) * 0.5 + 1.0 * dpi_scale;
-        let white = eov_common::overlay::OverlayColor::new(255, 255, 255, color.a);
-        for p in [p1, p2] {
-            eov_common::overlay::draw_filled_circle(
+        for segment in screen.windows(2) {
+            eov_common::overlay::draw_line(
                 &mut image_data.pixels,
                 w,
                 h,
-                p.x as f32,
-                p.y as f32,
-                endpoint_r + 1.5 * dpi_scale,
-                white,
-            );
-            eov_common::overlay::draw_filled_circle(
-                &mut image_data.pixels,
-                w,
-                h,
-                p.x as f32,
-                p.y as f32,
-                endpoint_r,
+                segment[0].0,
+                segment[0].1,
+                segment[1].0,
+                segment[1].1,
                 color,
+                thickness,
+                stroke,
+                cap,
             );
         }
 
-        // Distance label pill (centered between endpoints, above the line)
-        if let Some(font) = font {
-            let distance_um = m.distance() * mpp;
-            let label = if distance_um > 0.0 {
-                eov_common::overlay::format_measurement_label(distance_um)
-            } else {
-                // Fallback: distance in screen pixels
-                let dx = p2.x - p1.x;
-                let dy = p2.y - p1.y;
-                let px_dist = (dx * dx + dy * dy).sqrt();
-                format!("{:.1} px", (px_dist * 10.0).round() / 10.0)
-            };
+        // Endpoint circles of open measurements (white border + fill).
+        if !closed {
+            let endpoint_r = (thickness + 1.0) * 0.5 + 1.0 * dpi_scale;
+            let white = eov_common::overlay::OverlayColor::new(255, 255, 255, color.a);
+            for p in [screen.first(), screen.last()].into_iter().flatten() {
+                eov_common::overlay::draw_filled_circle(
+                    &mut image_data.pixels,
+                    w,
+                    h,
+                    p.0,
+                    p.1,
+                    endpoint_r + 1.5 * dpi_scale,
+                    white,
+                );
+                eov_common::overlay::draw_filled_circle(
+                    &mut image_data.pixels,
+                    w,
+                    h,
+                    p.0,
+                    p.1,
+                    endpoint_r,
+                    color,
+                );
+            }
+        }
 
-            let mid_x = (p1.x + p2.x) as f32 / 2.0;
-            let mid_y = (p1.y + p2.y) as f32 / 2.0;
+        // Value label, placed like on screen.
+        if let Some(font) = font {
+            let value = crate::interaction::measure::measure(m.mode, &m.shape, &calibration);
+            let label =
+                crate::interaction::measure::label(m.mode, &value, eov_common::MeasurementUnit::Um);
+            let (anchor, _) = crate::overlay::labels::label_anchor(&m.shape);
+            let anchor = export_vp.image_to_screen(anchor[0], anchor[1]);
             eov_common::overlay::draw_measurement_label(
                 &mut image_data.pixels,
                 w,
                 h,
-                mid_x,
-                mid_y,
+                anchor.x as f32,
+                anchor.y as f32,
                 &label,
                 font,
                 font_size_px,
@@ -1098,15 +1008,11 @@ fn apply_filtering_mode(
     }
 }
 
-type PendingPointPress = (crate::state::PluginAnnotationHandle, PaneId, f32, f32);
-type NavigateClickOrigin = (f32, f32, Option<crate::state::PluginAnnotationHandle>);
-
 pub fn setup_callbacks(
     ui: &AppWindow,
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
-    plugin_manager: Rc<RefCell<crate::plugins::PluginManager>>,
 ) {
     let ui_weak = ui.as_weak();
     let clipboard = Rc::new(RefCell::new(None));
@@ -1123,7 +1029,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_file_requested(move || {
-            dismiss_active_sidebar_popups("before open file dialog");
             let ui = ui_weak.upgrade().unwrap();
 
             let dialog = FileDialog::new()
@@ -1156,7 +1061,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_folder_requested(move || {
-            dismiss_active_sidebar_popups("before open folder dialog");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1223,7 +1127,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_viewport_interaction_started(move |_pane| {
-            dismiss_active_sidebar_popups("on viewport interaction");
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
@@ -1235,7 +1138,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_recent_menu_requested(move |x, y| {
-            dismiss_active_sidebar_popups("before open recent menu");
             if let Some(ui) = ui_weak.upgrade() {
                 let items = {
                     let state = state_handle.read();
@@ -1256,7 +1158,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_open_folder_menu_requested(move |x, y| {
-            dismiss_active_sidebar_popups("before series open folder menu");
             if let Some(ui) = ui_weak.upgrade() {
                 let items = {
                     let state = state_handle.read();
@@ -1280,7 +1181,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_scale_bar_requested(move || {
-            dismiss_active_sidebar_popups("before toggle scale bar");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_scale_bar_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1295,7 +1195,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_viewport_lock_requested(move || {
-            dismiss_active_sidebar_popups("before toggle viewport lock");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_viewport_lock(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1303,39 +1202,11 @@ pub fn setup_callbacks(
         });
     }
 
-    let suppress_polygon_mouse_up = Rc::new(Cell::new(false));
-
-    #[derive(Clone)]
-    enum PendingPolygonPress {
-        Vertex {
-            candidate: crate::plugin_host::PluginPolygonVertexDragCandidate,
-            start_screen_x: f32,
-            start_screen_y: f32,
-            start_pointer: crate::state::ImagePoint,
-        },
-        Edge {
-            candidate: crate::plugin_host::PluginPolygonEdgeInsertCandidate,
-            start_screen_x: f32,
-            start_screen_y: f32,
-        },
-        Shape {
-            candidate: crate::plugin_host::PluginPolygonDragCandidate,
-            start_screen_x: f32,
-            start_screen_y: f32,
-            start_pointer: crate::state::ImagePoint,
-        },
-    }
-
-    let pending_point_press: Rc<RefCell<Option<PendingPointPress>>> = Rc::new(RefCell::new(None));
-    let pending_polygon_press: Rc<RefCell<Option<PendingPolygonPress>>> =
-        Rc::new(RefCell::new(None));
-
     {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
-        let plugin_manager = Rc::clone(&plugin_manager);
         let clipboard = Rc::clone(&clipboard);
         let toast_timer = Rc::clone(&toast_timer);
         let cached_export = Rc::clone(&cached_export_settings);
@@ -1378,46 +1249,7 @@ pub fn setup_callbacks(
             let pane = pane_from_index(ui.get_drag_source_pane());
             let tab_id = ui.get_context_menu_tab_id();
 
-            if let Some(rest) = command.strip_prefix("plugin-ui-delete-point:") {
-                let Some((plugin_id, annotation_id)) = rest.split_once(':') else {
-                    tracing::warn!("Malformed point deletion context menu command: {command}");
-                    return;
-                };
-                let args_json = serde_json::to_string(&vec![annotation_id])
-                    .unwrap_or_else(|_| "[]".to_string());
-                if let Err(err) = crate::plugin_host::invoke_local_ui_callback(
-                    plugin_id,
-                    "delete-annotation-clicked",
-                    &args_json,
-                ) {
-                    tracing::error!("Point annotation deletion error: {err}");
-                    return;
-                }
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                return;
-            }
-
-            if let Some(rest) = command.strip_prefix("plugin-viewport:") {
-                let Some((plugin_id, item_id)) = rest.split_once(':') else {
-                    tracing::warn!("Malformed plugin viewport context menu command: {command}");
-                    return;
-                };
-                let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                else {
-                    tracing::warn!(
-                        "Viewport context menu action ignored without viewport: pane={}",
-                        pane.0
-                    );
-                    return;
-                };
-                if let Err(err) = plugin_manager
-                    .borrow_mut()
-                    .handle_viewport_context_menu_action(plugin_id, item_id, &viewport)
-                {
-                    tracing::error!("Viewport context menu plugin action error: {err}");
-                    return;
-                }
+            if with_host(|host| host.context_menu_command(&command)) == Some(true) {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 return;
             }
@@ -1555,75 +1387,10 @@ pub fn setup_callbacks(
                     let state = state_handle.read();
                     ui.set_focused_pane(state.focused_pane.as_index());
                     update_tabs(&ui, &state);
-                    let _ = crate::plugin_host::refresh_plugin_buttons();
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 _ => {}
             }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_viewport_context_menu(move |pane, x, y| {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-
-            dismiss_active_sidebar_popups("before viewport context menu");
-
-            let pane = pane_from_index(pane);
-            let point_delete_item = {
-                let state = state_handle.read();
-                (state.current_tool == state::Tool::PointAnnotation && pane == state.focused_pane)
-                    .then(|| state.hovered_plugin_annotation.clone())
-                    .flatten()
-                    .map(|handle| (handle.plugin_id, handle.annotation_id))
-            };
-
-            let items = if let Some((plugin_id, annotation_id)) = point_delete_item {
-                vec![crate::ContextMenuItem {
-                    id: format!("plugin-ui-delete-point:{plugin_id}:{annotation_id}").into(),
-                    label: "Delete Point Annotation".into(),
-                    icon: "delete".into(),
-                    shortcut: "".into(),
-                    enabled: true,
-                    separator_after: false,
-                }]
-            } else {
-                let mut items = vec![
-                    crate::ContextMenuItem {
-                        id: "viewport-copy-image".into(),
-                        label: "Copy Image".into(),
-                        icon: "copy".into(),
-                        shortcut: "".into(),
-                        enabled: true,
-                        separator_after: false,
-                    },
-                    crate::ContextMenuItem {
-                        id: "viewport-export-image".into(),
-                        label: "Export Image".into(),
-                        icon: "export".into(),
-                        shortcut: "".into(),
-                        enabled: true,
-                        separator_after: false,
-                    },
-                ];
-                items.extend({
-                    let state = state_handle.read();
-                    crate::plugin_host::viewport_context_menu_items_for_pane(&state, pane)
-                });
-                items
-            };
-
-            ui.set_context_menu_tab_id(-1);
-            ui.set_drag_source_pane(pane.as_index());
-            ui.set_context_menu_x(x);
-            ui.set_context_menu_y(y);
-            ui.set_context_menu_items(Rc::new(VecModel::from(items)).into());
-            ui.set_context_menu_visible(true);
         });
     }
 
@@ -1634,7 +1401,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_render_backend_selected(move |mode| {
-            dismiss_active_sidebar_popups("before render backend selection");
             let backend = match mode {
                 RenderMode::Cpu => RenderBackend::Cpu,
                 RenderMode::Gpu => RenderBackend::Gpu,
@@ -1685,7 +1451,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_filtering_mode_selected(move |slint_mode| {
-            dismiss_active_sidebar_popups("before filtering mode selection");
             let mode = match slint_mode {
                 SlintFilteringMode::Bilinear => FilteringMode::Bilinear,
                 SlintFilteringMode::Trilinear => FilteringMode::Trilinear,
@@ -1817,22 +1582,6 @@ pub fn setup_callbacks(
     }
 
     {
-        ui.on_plugin_confirm_accepted(move || {
-            if let Err(err) = crate::plugin_host::handle_confirmation_dialog_response(true) {
-                error!("Plugin confirmation dialog accept handling failed: {err}");
-            }
-        });
-    }
-
-    {
-        ui.on_plugin_confirm_cancelled(move || {
-            if let Err(err) = crate::plugin_host::handle_confirmation_dialog_response(false) {
-                error!("Plugin confirmation dialog cancel handling failed: {err}");
-            }
-        });
-    }
-
-    {
         let state_handle = Arc::clone(&state);
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
@@ -1850,7 +1599,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_back(move || {
-            dismiss_active_sidebar_popups("before series back");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1871,7 +1619,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_forward(move || {
-            dismiss_active_sidebar_popups("before series forward");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1892,7 +1639,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_go_up(move || {
-            dismiss_active_sidebar_popups("before series up");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -1915,7 +1661,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_minimap_requested(move || {
-            dismiss_active_sidebar_popups("before toggle minimap");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_minimap_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1930,7 +1675,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_toggle_metadata_requested(move || {
-            dismiss_active_sidebar_popups("before toggle metadata");
             if let Some(ui) = ui_weak.upgrade() {
                 toggle_metadata_visibility(&ui, &state_handle);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1958,7 +1702,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_tab_activated(move |pane, id| {
-            dismiss_active_sidebar_popups("before tab activation");
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
@@ -1968,7 +1711,6 @@ pub fn setup_callbacks(
                 let state = state_handle.read();
                 ui.set_focused_pane(pane);
                 update_tabs(&ui, &state);
-                let _ = crate::plugin_host::refresh_active_sidebar();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1983,7 +1725,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_tab_close_requested(move |pane, id| {
-            dismiss_active_sidebar_popups("before tab close");
             if let Some(ui) = ui_weak.upgrade() {
                 {
                     let mut state = state_handle.write();
@@ -2144,7 +1885,6 @@ pub fn setup_callbacks(
                 ui.set_focused_pane(focused_pane.as_index());
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
-                let _ = crate::plugin_host::refresh_plugin_buttons();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -2159,7 +1899,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_pane_focused(move |pane| {
-            dismiss_active_sidebar_popups("before pane focus");
             let focus_changed = {
                 let state = state_handle.read();
                 state.focused_pane != pane_from_index(pane)
@@ -2178,7 +1917,6 @@ pub fn setup_callbacks(
                 ui.set_focused_pane(pane);
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
-                let _ = crate::plugin_host::refresh_active_sidebar();
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -2202,110 +1940,6 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_split_position(pos);
             }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_viewport_pan(move |x, y| {
-            {
-                let mut state = state_handle.write();
-                let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.drag_to(x as f64, y as f64);
-                    changed = true;
-                }
-                changed |= state.mirror_locked_viewports_from_active();
-                if changed {
-                    state.request_render();
-                }
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_viewport_start_pan(move |x, y| {
-            {
-                let mut state = state_handle.write();
-                let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.start_drag(x as f64, y as f64);
-                    changed = true;
-                }
-                changed |= state.mirror_locked_viewports_from_active();
-                if changed {
-                    state.request_render();
-                }
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_viewport_end_pan(move || {
-            {
-                let mut state = state_handle.write();
-                let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.end_drag();
-                    changed = true;
-                }
-                changed |= state.mirror_locked_viewports_from_active();
-                if changed {
-                    state.request_render();
-                }
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_viewport_zoom(move |factor, x, y| {
-            {
-                let mut state = state_handle.write();
-                let mut changed = false;
-                if let Some(viewport) = state.active_viewport_mut() {
-                    viewport.zoom_at(factor as f64, x as f64, y as f64);
-                    changed = true;
-                }
-                changed |= state.mirror_locked_viewports_from_active();
-                if changed {
-                    state.request_render();
-                }
-            }
-
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
@@ -2514,7 +2148,6 @@ pub fn setup_callbacks(
                     ui.set_focused_pane(state.focused_pane.as_index());
                     update_tabs(&ui, &state);
                 }
-                let _ = crate::plugin_host::refresh_plugin_buttons();
                 open_path_with_series(
                     &ui,
                     &state_handle,
@@ -2535,7 +2168,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_item_activated(move |path_str| {
-            dismiss_active_sidebar_popups("before series item activation");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -2556,7 +2188,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_series_item_open_in_new_tab(move |path_str| {
-            dismiss_active_sidebar_popups("before series open in new tab");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -2599,1213 +2230,6 @@ pub fn setup_callbacks(
 
         ui.on_series_item_copy_path(move |path_str| {
             copy_text_to_clipboard(&clipboard, path_str.to_string());
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_tool_selected(move |tool_type| {
-            dismiss_active_sidebar_popups("before tool selection");
-            if let Some(ui) = ui_weak.upgrade() {
-                {
-                    let mut state = state_handle.write();
-                    let tool = match tool_type {
-                        ToolType::Navigate => state::Tool::Navigate,
-                        ToolType::RegionOfInterest => state::Tool::RegionOfInterest,
-                        ToolType::MeasureDistance => state::Tool::MeasureDistance,
-                        ToolType::PointAnnotation => state::Tool::PointAnnotation,
-                        ToolType::PolygonAnnotation => state::Tool::PolygonAnnotation,
-                    };
-                    state.set_tool(tool);
-                    crate::plugin_host::sync_tool_button_states(&mut state);
-                }
-                let state = state_handle.read();
-                update_tool_state(&ui, &state);
-                let _ = crate::plugin_host::refresh_plugin_buttons();
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    let navigate_click_origin: Rc<RefCell<Option<NavigateClickOrigin>>> =
-        Rc::new(RefCell::new(None));
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-        let plugin_manager = Rc::clone(&plugin_manager);
-        let last_polygon_vertex_click: Rc<
-            RefCell<Option<(std::time::Instant, crate::state::PluginPolygonVertexHandle)>>,
-        > = Rc::new(RefCell::new(None));
-        let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
-        let navigate_click_origin_down = Rc::clone(&navigate_click_origin);
-        let pending_point_press_down = Rc::clone(&pending_point_press);
-        let pending_polygon_press_down = Rc::clone(&pending_polygon_press);
-
-        ui.on_viewport_tool_mouse_down(move |x, y| {
-            dismiss_active_sidebar_popups("on viewport mouse down");
-
-            pending_point_press_down.borrow_mut().take();
-            pending_polygon_press_down.borrow_mut().take();
-
-            let navigate_press = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::Navigate {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let hit = crate::plugin_host::hit_test_overlay_point_for_pane(
-                        &state, pane, x, y, None,
-                    )
-                    .or_else(|| {
-                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
-                            &state, pane, x, y, None,
-                        )
-                        .map(|candidate| candidate.handle)
-                    });
-                    Some((x, y, hit))
-                }
-            };
-            *navigate_click_origin_down.borrow_mut() = navigate_press;
-
-            let polygon_vertex_drag_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation
-                    || !state.polygon_candidate_vertices.is_empty()
-                {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    state.active_tool_plugin_id.clone().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_polygon_vertex_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    })
-                }
-            };
-
-            let polygon_vertex_removal =
-                if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
-                    let now = std::time::Instant::now();
-                    let is_double_click = last_polygon_vertex_click.borrow().as_ref().is_some_and(
-                        |(last_time, handle)| {
-                            now.duration_since(*last_time).as_millis() < 400
-                                && *handle == candidate.handle
-                        },
-                    );
-
-                    if is_double_click && candidate.vertices.len() > 3 {
-                        last_polygon_vertex_click.borrow_mut().take();
-                        let mut vertices = candidate.vertices;
-                        vertices.remove(candidate.handle.vertex_index);
-                        let pane = {
-                            let state = state_handle.read();
-                            state.focused_pane
-                        };
-                        Some((
-                            candidate.handle.plugin_id,
-                            candidate.handle.annotation_id,
-                            pane,
-                            vertices,
-                        ))
-                    } else {
-                        *last_polygon_vertex_click.borrow_mut() = Some((now, candidate.handle));
-                        None
-                    }
-                } else {
-                    last_polygon_vertex_click.borrow_mut().take();
-                    None
-                };
-
-            if let Some((plugin_id, annotation_id, pane, vertices)) = polygon_vertex_removal {
-                suppress_polygon_mouse_up.set(true);
-                {
-                    let mut state = state_handle.write();
-                    state.hovered_plugin_annotation = None;
-                    state.hovered_plugin_polygon_vertex = None;
-                    state.hovered_plugin_polygon_edge = None;
-                    state.dragged_plugin_polygon_vertex = None;
-                    state.dragged_plugin_polygon_vertex_state = None;
-                    state.dragged_plugin_polygon_vertex_position = None;
-                    state.dragged_plugin_polygon = None;
-                    state.dragged_plugin_polygon_state = None;
-                    state.dragged_plugin_polygon_position = None;
-                    state.request_render();
-                }
-
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = plugin_manager.borrow_mut().handle_polygon_annotation_moved(
-                        &plugin_id,
-                        &viewport,
-                        &annotation_id,
-                        &vertices,
-                    )
-                {
-                    tracing::error!("Polygon annotation vertex removal error: {err}");
-                }
-
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let polygon_edge_insert_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation
-                    || !state.polygon_candidate_vertices.is_empty()
-                    || polygon_vertex_drag_candidate.is_some()
-                {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    state.active_tool_plugin_id.clone().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_polygon_edge_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    })
-                }
-            };
-
-            let point_drag_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PointAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    state.active_tool_plugin_id.clone().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_point_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    })
-                }
-            };
-
-            let polygon_drag_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation
-                    || !state.polygon_candidate_vertices.is_empty()
-                {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    state.active_tool_plugin_id.clone().and_then(|plugin_id| {
-                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    })
-                }
-            };
-
-            let existing_annotation_press = {
-                let mut state = state_handle.write();
-                if state.current_tool == state::Tool::PointAnnotation {
-                    if let Some(handle) = point_drag_candidate.clone() {
-                        state.hovered_plugin_annotation = Some(handle.clone());
-                        pending_point_press_down.borrow_mut().replace((
-                            handle,
-                            state.focused_pane,
-                            x,
-                            y,
-                        ));
-                        state.request_render();
-                        Some(true)
-                    } else {
-                        None
-                    }
-                } else if state.current_tool == state::Tool::PolygonAnnotation {
-                    if let Some(candidate) = polygon_vertex_drag_candidate.clone() {
-                        let Some(start_pointer) =
-                            image_point_for_screen(&state, state.focused_pane, x, y)
-                        else {
-                            return;
-                        };
-                        state.hovered_plugin_annotation =
-                            Some(crate::state::PluginAnnotationHandle {
-                                plugin_id: candidate.handle.plugin_id.clone(),
-                                annotation_id: candidate.handle.annotation_id.clone(),
-                            });
-                        state.hovered_plugin_polygon_vertex = Some(candidate.handle.clone());
-                        state.hovered_plugin_polygon_edge = None;
-                        pending_polygon_press_down.borrow_mut().replace(
-                            PendingPolygonPress::Vertex {
-                                candidate,
-                                start_screen_x: x,
-                                start_screen_y: y,
-                                start_pointer,
-                            },
-                        );
-                        state.request_render();
-                        Some(true)
-                    } else if let Some(candidate) = polygon_edge_insert_candidate.clone() {
-                        state.hovered_plugin_annotation =
-                            Some(crate::state::PluginAnnotationHandle {
-                                plugin_id: candidate.handle.plugin_id.clone(),
-                                annotation_id: candidate.handle.annotation_id.clone(),
-                            });
-                        state.hovered_plugin_polygon_vertex = None;
-                        state.hovered_plugin_polygon_edge = None;
-                        pending_polygon_press_down.borrow_mut().replace(
-                            PendingPolygonPress::Edge {
-                                candidate,
-                                start_screen_x: x,
-                                start_screen_y: y,
-                            },
-                        );
-                        state.request_render();
-                        Some(true)
-                    } else if let Some(candidate) = polygon_drag_candidate.clone() {
-                        let Some(start_pointer) =
-                            image_point_for_screen(&state, state.focused_pane, x, y)
-                        else {
-                            return;
-                        };
-                        state.hovered_plugin_annotation = Some(candidate.handle.clone());
-                        state.hovered_plugin_polygon_vertex = None;
-                        state.hovered_plugin_polygon_edge = None;
-                        pending_polygon_press_down.borrow_mut().replace(
-                            PendingPolygonPress::Shape {
-                                candidate,
-                                start_screen_x: x,
-                                start_screen_y: y,
-                                start_pointer,
-                            },
-                        );
-                        state.request_render();
-                        Some(true)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
-
-            if existing_annotation_press.is_some() {
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                {
-                    let mut state = state_handle.write();
-                    handle_tool_mouse_down(&mut state, x as f64, y as f64);
-                }
-                let state = state_handle.read();
-                update_tool_overlays(&ui, &state);
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-        let pending_point_press_move = Rc::clone(&pending_point_press);
-        let pending_polygon_press_move = Rc::clone(&pending_polygon_press);
-
-        ui.on_viewport_tool_mouse_move(move |x, y| {
-            let polygon_vertex_hover_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        return;
-                    };
-
-                    if let Some(dragging) = state.dragged_plugin_polygon_vertex.clone() {
-                        image_point_for_screen(&state, pane, x, y).map(|_| dragging)
-                    } else if state.polygon_candidate_vertices.is_empty() {
-                        crate::plugin_host::hit_test_overlay_polygon_vertex_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                        .map(|candidate| candidate.handle)
-                    } else {
-                        None
-                    }
-                }
-            };
-
-            let polygon_edge_hover_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        return;
-                    };
-
-                    if state.dragged_plugin_polygon_vertex.is_some()
-                        || state.dragged_plugin_polygon.is_some()
-                        || !state.polygon_candidate_vertices.is_empty()
-                        || polygon_vertex_hover_candidate.is_some()
-                    {
-                        None
-                    } else {
-                        crate::plugin_host::hit_test_overlay_polygon_edge_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                        .map(|candidate| candidate.handle)
-                    }
-                }
-            };
-
-            let point_hover_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PointAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        return;
-                    };
-
-                    if let Some(dragging) = state.dragged_plugin_point.clone() {
-                        let image_point = state
-                            .active_file_id_for_pane(pane)
-                            .and_then(|file_id| state.get_file(file_id))
-                            .and_then(|file| file.pane_state(pane))
-                            .map(|pane_state| {
-                                pane_state.viewport.screen_to_image(x as f64, y as f64)
-                            });
-                        if image_point.is_some() {
-                            Some(dragging)
-                        } else {
-                            None
-                        }
-                    } else {
-                        crate::plugin_host::hit_test_overlay_point_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                    }
-                }
-            };
-
-            let polygon_hover_candidate = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PolygonAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        return;
-                    };
-
-                    if let Some(dragging) = state.dragged_plugin_polygon.clone() {
-                        image_point_for_screen(&state, pane, x, y).map(|_| dragging)
-                    } else if state.polygon_candidate_vertices.is_empty() {
-                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
-                            &state,
-                            pane,
-                            x,
-                            y,
-                            Some(&plugin_id),
-                        )
-                        .map(|candidate| candidate.handle)
-                    } else {
-                        None
-                    }
-                }
-            };
-
-            let dragging_active = {
-                let mut state = state_handle.write();
-                if state.current_tool == state::Tool::PointAnnotation {
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        state.hovered_plugin_annotation = None;
-                        state.dragged_plugin_point = None;
-                        state.dragged_plugin_point_position = None;
-                        pending_point_press_move.borrow_mut().take();
-                        return;
-                    };
-
-                    if let Some(dragging) = state.dragged_plugin_point.clone() {
-                        let pane = state.focused_pane;
-                        if let Some(point) = image_point_for_screen(&state, pane, x, y) {
-                            state.dragged_plugin_point_position =
-                                Some(crate::state::PluginAnnotationPreviewPosition {
-                                    x_level0: point.x,
-                                    y_level0: point.y,
-                                });
-                        }
-                        if let Some(hovered) = point_hover_candidate.clone() {
-                            state.hovered_plugin_annotation = Some(hovered);
-                        }
-                        state.request_render();
-                        let _ = dragging;
-                        true
-                    } else {
-                        let pending_point_press = pending_point_press_move.borrow().clone();
-                        if let Some((pending_handle, pane, down_x, down_y)) = pending_point_press {
-                            let dx = x - down_x;
-                            let dy = y - down_y;
-                            if dx * dx + dy * dy > 16.0 {
-                                state.dragged_plugin_point = Some(pending_handle.clone());
-                                state.dragged_plugin_point_position =
-                                    image_point_for_screen(&state, pane, x, y).map(|point| {
-                                        crate::state::PluginAnnotationPreviewPosition {
-                                            x_level0: point.x,
-                                            y_level0: point.y,
-                                        }
-                                    });
-                                state.hovered_plugin_annotation = Some(pending_handle);
-                                pending_point_press_move.borrow_mut().take();
-                                state.request_render();
-                                return;
-                            }
-                        }
-                        let hovered =
-                            point_hover_candidate.filter(|handle| handle.plugin_id == plugin_id);
-                        if state.hovered_plugin_annotation != hovered {
-                            state.hovered_plugin_annotation = hovered;
-                            state.request_render();
-                        }
-                        if state.dragged_plugin_point_position.is_some() {
-                            state.dragged_plugin_point_position = None;
-                        }
-                        false
-                    }
-                } else if state.current_tool == state::Tool::PolygonAnnotation {
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        state.hovered_plugin_annotation = None;
-                        state.hovered_plugin_polygon_vertex = None;
-                        state.hovered_plugin_polygon_edge = None;
-                        state.dragged_plugin_polygon = None;
-                        state.dragged_plugin_polygon_state = None;
-                        state.dragged_plugin_polygon_position = None;
-                        state.dragged_plugin_polygon_vertex = None;
-                        state.dragged_plugin_polygon_vertex_state = None;
-                        state.dragged_plugin_polygon_vertex_position = None;
-                        state.polygon_candidate_hover = None;
-                        pending_polygon_press_move.borrow_mut().take();
-                        return;
-                    };
-
-                    if let Some(dragging) = state.dragged_plugin_polygon_vertex.clone() {
-                        let pane = state.focused_pane;
-                        state.dragged_plugin_polygon_vertex_position =
-                            image_point_for_screen(&state, pane, x, y);
-                        state.hovered_plugin_annotation =
-                            Some(crate::state::PluginAnnotationHandle {
-                                plugin_id: dragging.plugin_id.clone(),
-                                annotation_id: dragging.annotation_id.clone(),
-                            });
-                        state.hovered_plugin_polygon_vertex = Some(dragging);
-                        state.hovered_plugin_polygon_edge = None;
-                        state.request_render();
-                        true
-                    } else if let Some(dragging) = state.dragged_plugin_polygon.clone() {
-                        let pane = state.focused_pane;
-                        state.dragged_plugin_polygon_position =
-                            image_point_for_screen(&state, pane, x, y);
-                        if let Some(hovered) = polygon_hover_candidate.clone() {
-                            state.hovered_plugin_annotation = Some(hovered);
-                        }
-                        state.hovered_plugin_polygon_vertex =
-                            polygon_vertex_hover_candidate.clone();
-                        state.hovered_plugin_polygon_edge = None;
-                        state.request_render();
-                        let _ = dragging;
-                        true
-                    } else {
-                        let pending_polygon_press = pending_polygon_press_move.borrow().clone();
-                        if let Some(pending_press) = pending_polygon_press {
-                            let (down_x, down_y) = match &pending_press {
-                                PendingPolygonPress::Vertex {
-                                    start_screen_x,
-                                    start_screen_y,
-                                    ..
-                                }
-                                | PendingPolygonPress::Edge {
-                                    start_screen_x,
-                                    start_screen_y,
-                                    ..
-                                }
-                                | PendingPolygonPress::Shape {
-                                    start_screen_x,
-                                    start_screen_y,
-                                    ..
-                                } => (*start_screen_x, *start_screen_y),
-                            };
-                            let dx = x - down_x;
-                            let dy = y - down_y;
-                            if dx * dx + dy * dy > 16.0 {
-                                match pending_press {
-                                    PendingPolygonPress::Vertex {
-                                        candidate,
-                                        start_pointer,
-                                        ..
-                                    } => {
-                                        state.hovered_plugin_annotation =
-                                            Some(crate::state::PluginAnnotationHandle {
-                                                plugin_id: candidate.handle.plugin_id.clone(),
-                                                annotation_id: candidate
-                                                    .handle
-                                                    .annotation_id
-                                                    .clone(),
-                                            });
-                                        state.hovered_plugin_polygon_vertex =
-                                            Some(candidate.handle.clone());
-                                        state.hovered_plugin_polygon_edge = None;
-                                        state.dragged_plugin_polygon_vertex =
-                                            Some(candidate.handle.clone());
-                                        state.dragged_plugin_polygon_vertex_state =
-                                            Some(crate::state::PluginPolygonVertexDragState {
-                                                start_pointer,
-                                                vertices: candidate.vertices,
-                                                vertex_index: candidate.handle.vertex_index,
-                                            });
-                                        state.dragged_plugin_polygon_vertex_position =
-                                            image_point_for_screen(
-                                                &state,
-                                                state.focused_pane,
-                                                x,
-                                                y,
-                                            );
-                                    }
-                                    PendingPolygonPress::Edge { candidate, .. } => {
-                                        let new_vertex_handle =
-                                            crate::state::PluginPolygonVertexHandle {
-                                                plugin_id: candidate.handle.plugin_id.clone(),
-                                                annotation_id: candidate
-                                                    .handle
-                                                    .annotation_id
-                                                    .clone(),
-                                                vertex_index: candidate.handle.insert_index,
-                                            };
-                                        let mut vertices = candidate.vertices;
-                                        vertices.insert(
-                                            candidate.handle.insert_index,
-                                            candidate.handle.position,
-                                        );
-                                        state.hovered_plugin_annotation =
-                                            Some(crate::state::PluginAnnotationHandle {
-                                                plugin_id: new_vertex_handle.plugin_id.clone(),
-                                                annotation_id: new_vertex_handle
-                                                    .annotation_id
-                                                    .clone(),
-                                            });
-                                        state.hovered_plugin_polygon_vertex =
-                                            Some(new_vertex_handle.clone());
-                                        state.hovered_plugin_polygon_edge = None;
-                                        state.dragged_plugin_polygon_vertex =
-                                            Some(new_vertex_handle.clone());
-                                        state.dragged_plugin_polygon_vertex_state =
-                                            Some(crate::state::PluginPolygonVertexDragState {
-                                                start_pointer: candidate.handle.position,
-                                                vertices,
-                                                vertex_index: new_vertex_handle.vertex_index,
-                                            });
-                                        state.dragged_plugin_polygon_vertex_position =
-                                            Some(candidate.handle.position);
-                                    }
-                                    PendingPolygonPress::Shape {
-                                        candidate,
-                                        start_pointer,
-                                        ..
-                                    } => {
-                                        state.hovered_plugin_annotation =
-                                            Some(candidate.handle.clone());
-                                        state.hovered_plugin_polygon_vertex = None;
-                                        state.hovered_plugin_polygon_edge = None;
-                                        state.dragged_plugin_polygon = Some(candidate.handle);
-                                        state.dragged_plugin_polygon_state =
-                                            Some(crate::state::PluginPolygonDragState {
-                                                start_pointer,
-                                                vertices: candidate.vertices,
-                                            });
-                                        state.dragged_plugin_polygon_position =
-                                            image_point_for_screen(
-                                                &state,
-                                                state.focused_pane,
-                                                x,
-                                                y,
-                                            );
-                                        state.dragged_plugin_polygon_vertex = None;
-                                        state.dragged_plugin_polygon_vertex_state = None;
-                                        state.dragged_plugin_polygon_vertex_position = None;
-                                    }
-                                }
-                                pending_polygon_press_move.borrow_mut().take();
-                                state.request_render();
-                                return;
-                            }
-                        }
-                        let vertex_hover = polygon_vertex_hover_candidate
-                            .filter(|handle| handle.plugin_id == plugin_id);
-                        let edge_hover = polygon_edge_hover_candidate
-                            .filter(|handle| handle.plugin_id == plugin_id);
-                        let hovered = polygon_hover_candidate
-                            .filter(|handle| handle.plugin_id == plugin_id)
-                            .or_else(|| {
-                                vertex_hover.as_ref().map(|handle| {
-                                    crate::state::PluginAnnotationHandle {
-                                        plugin_id: handle.plugin_id.clone(),
-                                        annotation_id: handle.annotation_id.clone(),
-                                    }
-                                })
-                            });
-                        let hovered = hovered.or_else(|| {
-                            edge_hover
-                                .as_ref()
-                                .map(|handle| crate::state::PluginAnnotationHandle {
-                                    plugin_id: handle.plugin_id.clone(),
-                                    annotation_id: handle.annotation_id.clone(),
-                                })
-                        });
-                        let next_hover = image_point_for_screen(&state, state.focused_pane, x, y);
-                        if state.hovered_plugin_annotation != hovered
-                            || state.hovered_plugin_polygon_vertex != vertex_hover
-                            || state.hovered_plugin_polygon_edge != edge_hover
-                            || state.polygon_candidate_hover != next_hover
-                        {
-                            state.hovered_plugin_annotation = hovered;
-                            state.hovered_plugin_polygon_vertex = vertex_hover;
-                            state.hovered_plugin_polygon_edge = edge_hover;
-                            state.polygon_candidate_hover = next_hover;
-                            state.request_render();
-                        }
-                        false
-                    }
-                } else if state.current_tool == state::Tool::Navigate {
-                    let pane = state.focused_pane;
-                    let hovered = crate::plugin_host::hit_test_overlay_point_for_pane(
-                        &state, pane, x, y, None,
-                    )
-                    .or_else(|| {
-                        crate::plugin_host::hit_test_overlay_polygon_for_pane(
-                            &state, pane, x, y, None,
-                        )
-                        .map(|candidate| candidate.handle)
-                    });
-                    if state.hovered_plugin_annotation != hovered
-                        || state.hovered_plugin_polygon_vertex.is_some()
-                        || state.hovered_plugin_polygon_edge.is_some()
-                    {
-                        state.hovered_plugin_annotation = hovered;
-                        state.hovered_plugin_polygon_vertex = None;
-                        state.hovered_plugin_polygon_edge = None;
-                        state.request_render();
-                    }
-                    false
-                } else {
-                    false
-                }
-            };
-
-            if dragging_active {
-                crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state_handle.read());
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                {
-                    let mut state = state_handle.write();
-                    handle_tool_mouse_move(&mut state, x as f64, y as f64);
-                }
-                let state = state_handle.read();
-                crate::plugin_host::sync_annotations_sidebar_hover_from_state(&state);
-                update_tool_overlays(&ui, &state);
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-        let plugin_manager = Rc::clone(&plugin_manager);
-        let suppress_polygon_mouse_up = Rc::clone(&suppress_polygon_mouse_up);
-        let navigate_click_origin_up = Rc::clone(&navigate_click_origin);
-        let pending_point_press_up = Rc::clone(&pending_point_press);
-        let pending_polygon_press_up = Rc::clone(&pending_polygon_press);
-
-        ui.on_viewport_tool_mouse_up(move |x, y| {
-            if suppress_polygon_mouse_up.replace(false) {
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let handled_point_drag_release = {
-                let mut state = state_handle.write();
-                if state.current_tool != state::Tool::PointAnnotation {
-                    None
-                } else if let Some(dragged) = state.dragged_plugin_point.clone() {
-                    let preview_position = state.dragged_plugin_point_position;
-                    let pane = state.focused_pane;
-                    state.dragged_plugin_point = None;
-                    state.dragged_plugin_point_position = None;
-                    state.hovered_plugin_annotation = None;
-                    state.request_render();
-                    preview_position.map(|preview| {
-                        (
-                            dragged.plugin_id,
-                            dragged.annotation_id,
-                            pane,
-                            preview.x_level0,
-                            preview.y_level0,
-                        )
-                    })
-                } else {
-                    None
-                }
-            };
-
-            if let Some((plugin_id, annotation_id, pane, x_level0, y_level0)) =
-                handled_point_drag_release
-            {
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = plugin_manager.borrow_mut().handle_point_annotation_moved(
-                        &plugin_id,
-                        &viewport,
-                        &annotation_id,
-                        x_level0,
-                        y_level0,
-                    )
-                {
-                    tracing::error!("Point annotation move error: {err}");
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(
-                        &state_handle.read(),
-                    );
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let handled_polygon_drag_release = {
-                let mut state = state_handle.write();
-                if state.current_tool != state::Tool::PolygonAnnotation {
-                    None
-                } else if let Some(dragged_vertex) = state.dragged_plugin_polygon_vertex.clone() {
-                    let preview_vertices = match (
-                        state.dragged_plugin_polygon_vertex_state.clone(),
-                        state.dragged_plugin_polygon_vertex_position,
-                    ) {
-                        (Some(drag_state), Some(current)) => {
-                            let mut vertices = drag_state.vertices.clone();
-                            if let Some(vertex) = vertices.get_mut(drag_state.vertex_index) {
-                                *vertex = current;
-                            }
-                            Some((
-                                dragged_vertex.plugin_id,
-                                dragged_vertex.annotation_id,
-                                state.focused_pane,
-                                vertices,
-                            ))
-                        }
-                        _ => None,
-                    };
-                    state.dragged_plugin_polygon_vertex = None;
-                    state.dragged_plugin_polygon_vertex_state = None;
-                    state.dragged_plugin_polygon_vertex_position = None;
-                    state.hovered_plugin_polygon_vertex = None;
-                    state.hovered_plugin_polygon_edge = None;
-                    state.hovered_plugin_annotation = None;
-                    state.request_render();
-                    preview_vertices
-                } else if let Some(dragged) = state.dragged_plugin_polygon.clone() {
-                    let preview_vertices = match (
-                        state.dragged_plugin_polygon_state.clone(),
-                        state.dragged_plugin_polygon_position,
-                    ) {
-                        (Some(drag_state), Some(current)) => {
-                            Some(crate::plugin_host::PluginPolygonDragCandidate {
-                                handle: dragged.clone(),
-                                vertices: drag_state
-                                    .vertices
-                                    .iter()
-                                    .map(|vertex| state::ImagePoint {
-                                        x: vertex.x + (current.x - drag_state.start_pointer.x),
-                                        y: vertex.y + (current.y - drag_state.start_pointer.y),
-                                    })
-                                    .collect(),
-                            })
-                        }
-                        _ => None,
-                    };
-                    let pane = state.focused_pane;
-                    state.dragged_plugin_polygon = None;
-                    state.dragged_plugin_polygon_state = None;
-                    state.dragged_plugin_polygon_position = None;
-                    state.hovered_plugin_polygon_vertex = None;
-                    state.hovered_plugin_polygon_edge = None;
-                    state.hovered_plugin_annotation = None;
-                    state.request_render();
-                    preview_vertices.map(|candidate| {
-                        (
-                            candidate.handle.plugin_id,
-                            candidate.handle.annotation_id,
-                            pane,
-                            candidate.vertices,
-                        )
-                    })
-                } else {
-                    None
-                }
-            };
-
-            if let Some((plugin_id, annotation_id, pane, vertices)) = handled_polygon_drag_release {
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = plugin_manager.borrow_mut().handle_polygon_annotation_moved(
-                        &plugin_id,
-                        &viewport,
-                        &annotation_id,
-                        &vertices,
-                    )
-                {
-                    tracing::error!("Polygon annotation move error: {err}");
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(
-                        &state_handle.read(),
-                    );
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let point_click_selection = match pending_point_press_up.borrow_mut().take() {
-                Some((handle, pane, down_x, down_y)) => {
-                    let dx = x - down_x;
-                    let dy = y - down_y;
-                    (dx * dx + dy * dy <= 16.0).then_some((pane, handle))
-                }
-                None => None,
-            };
-
-            if let Some((pane, handle)) = point_click_selection {
-                let mut selection_applied = false;
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
-                        &handle.plugin_id,
-                        &viewport,
-                        &handle.annotation_id,
-                    )
-                {
-                    tracing::error!("Point annotation selection error: {err}");
-                } else {
-                    selection_applied = true;
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    if selection_applied {
-                        let _ = crate::plugin_host::refresh_active_sidebar();
-                    }
-                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(
-                        &state_handle.read(),
-                    );
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let polygon_click_selection = match pending_polygon_press_up.borrow_mut().take() {
-                Some(pending) => {
-                    let (pane, down_x, down_y, handle) = {
-                        let pane = state_handle.read().focused_pane;
-                        match pending {
-                            PendingPolygonPress::Vertex {
-                                candidate,
-                                start_screen_x,
-                                start_screen_y,
-                                ..
-                            } => (
-                                pane,
-                                start_screen_x,
-                                start_screen_y,
-                                crate::state::PluginAnnotationHandle {
-                                    plugin_id: candidate.handle.plugin_id,
-                                    annotation_id: candidate.handle.annotation_id,
-                                },
-                            ),
-                            PendingPolygonPress::Edge {
-                                candidate,
-                                start_screen_x,
-                                start_screen_y,
-                            } => (
-                                pane,
-                                start_screen_x,
-                                start_screen_y,
-                                crate::state::PluginAnnotationHandle {
-                                    plugin_id: candidate.handle.plugin_id,
-                                    annotation_id: candidate.handle.annotation_id,
-                                },
-                            ),
-                            PendingPolygonPress::Shape {
-                                candidate,
-                                start_screen_x,
-                                start_screen_y,
-                                ..
-                            } => (pane, start_screen_x, start_screen_y, candidate.handle),
-                        }
-                    };
-                    let dx = x - down_x;
-                    let dy = y - down_y;
-                    (dx * dx + dy * dy <= 16.0).then_some((pane, handle))
-                }
-                None => None,
-            };
-
-            if let Some((pane, handle)) = polygon_click_selection {
-                let mut selection_applied = false;
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    && let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
-                        &handle.plugin_id,
-                        &viewport,
-                        &handle.annotation_id,
-                    )
-                {
-                    tracing::error!("Polygon annotation selection error: {err}");
-                } else {
-                    selection_applied = true;
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    if selection_applied {
-                        let _ = crate::plugin_host::refresh_active_sidebar();
-                    }
-                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(
-                        &state_handle.read(),
-                    );
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let navigate_click_selection = match navigate_click_origin_up.borrow_mut().take() {
-                Some((down_x, down_y, pressed_handle)) => {
-                    let dx = x - down_x;
-                    let dy = y - down_y;
-                    if dx * dx + dy * dy > 16.0 {
-                        None
-                    } else {
-                        let state = state_handle.read();
-                        if state.current_tool != state::Tool::Navigate {
-                            None
-                        } else {
-                            let pane = state.focused_pane;
-                            Some((pane, pressed_handle))
-                        }
-                    }
-                }
-                None => None,
-            };
-
-            if let Some((pane, hit)) = navigate_click_selection {
-                let mut selection_applied = false;
-                if let Some(viewport) =
-                    crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                {
-                    let (plugin_id, annotation_id) = match hit {
-                        Some(handle) => (handle.plugin_id, handle.annotation_id),
-                        None => ("annotations".to_string(), String::new()),
-                    };
-                    if let Err(err) = crate::plugin_host::invoke_viewport_annotation_selected(
-                        &plugin_id,
-                        &viewport,
-                        &annotation_id,
-                    ) {
-                        tracing::error!("Viewport annotation selection error: {err}");
-                    } else {
-                        selection_applied = true;
-                    }
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    if selection_applied {
-                        let _ = crate::plugin_host::refresh_active_sidebar();
-                    }
-                    crate::plugin_host::sync_annotations_sidebar_hover_from_state(
-                        &state_handle.read(),
-                    );
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let point_action = {
-                let state = state_handle.read();
-                if state.current_tool != state::Tool::PointAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(plugin_id) = state.active_tool_plugin_id.clone() else {
-                        return;
-                    };
-                    let Some(point) = image_point_for_screen(&state, pane, x, y) else {
-                        return;
-                    };
-                    let Some(viewport) =
-                        crate::plugin_host::viewport_snapshot_for_pane(&state_handle, pane)
-                    else {
-                        return;
-                    };
-                    Some((plugin_id, viewport, point.x, point.y))
-                }
-            };
-
-            if let Some((plugin_id, viewport, x_level0, y_level0)) = point_action {
-                if let Err(err) = plugin_manager
-                    .borrow_mut()
-                    .handle_point_annotation_placed(&plugin_id, &viewport, x_level0, y_level0)
-                {
-                    tracing::error!("Point annotation placement error: {err}");
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            let polygon_action = {
-                let mut state = state_handle.write();
-                if state.current_tool != state::Tool::PolygonAnnotation {
-                    None
-                } else {
-                    let pane = state.focused_pane;
-                    let Some(point) = image_point_for_screen(&state, pane, x, y) else {
-                        return;
-                    };
-                    let should_close = polygon_closes_to_first_vertex(&state, pane, x, y);
-                    if should_close {
-                        Some(true)
-                    } else {
-                        state.polygon_candidate_vertices.push(point);
-                        state.polygon_candidate_hover = Some(point);
-                        state.request_render();
-                        Some(false)
-                    }
-                }
-            };
-
-            if polygon_action == Some(true) {
-                if let Err(err) = confirm_active_polygon_annotation(&state_handle, &plugin_manager)
-                {
-                    tracing::error!("Polygon annotation placement error: {err}");
-                }
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            if polygon_action == Some(false) {
-                if let Some(ui) = ui_weak.upgrade() {
-                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-                }
-                return;
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                {
-                    let mut state = state_handle.write();
-                    handle_tool_mouse_up(&mut state, x as f64, y as f64);
-                }
-                let state = state_handle.read();
-                update_tool_overlays(&ui, &state);
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_cancel_tool(move || {
-            if let Some(ui) = ui_weak.upgrade() {
-                {
-                    let mut state = state_handle.write();
-                    state.cancel_tool();
-                    crate::plugin_host::sync_tool_button_states(&mut state);
-                }
-                let state = state_handle.read();
-                update_tool_state(&ui, &state);
-                update_tool_overlays(&ui, &state);
-                let _ = crate::plugin_host::refresh_plugin_buttons();
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-        let plugin_manager = Rc::clone(&plugin_manager);
-
-        ui.on_confirm_tool(move || {
-            if let Err(err) = confirm_active_polygon_annotation(&state_handle, &plugin_manager) {
-                tracing::error!("Polygon annotation confirmation error: {err}");
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
         });
     }
 
@@ -4048,6 +2472,8 @@ pub fn setup_callbacks(
                     hud.measurement_unit = measurement_unit_from_slint(unit);
                 }
             }
+            // Measurement labels are written in the chosen unit.
+            with_host(|host| host.resync_all_host_layers());
             if let Some(ui) = ui_weak.upgrade() {
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
@@ -4529,7 +2955,6 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_dataset_export_open_dialog(move || {
-            dismiss_active_sidebar_popups("before dataset export dialog");
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
@@ -4893,103 +3318,6 @@ pub fn setup_callbacks(
                 }
                 winit::event::WindowEvent::ModifiersChanged(next_modifiers) => {
                     modifiers.set(next_modifiers.state());
-                    EventResult::Propagate
-                }
-                winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                    if crate::plugin_host::active_sidebar_captures_hotkeys()
-                        || crate::plugin_host::active_modal_captures_hotkeys()
-                    {
-                        return EventResult::Propagate;
-                    }
-
-                    let modifier_state = modifiers.get();
-                    let plain_shortcut = event.state == winit::event::ElementState::Pressed
-                        && !event.repeat
-                        && !modifier_state.control_key()
-                        && !modifier_state.alt_key()
-                        && !modifier_state.super_key();
-                    let close_app_shortcut = event.state == winit::event::ElementState::Pressed
-                        && !event.repeat
-                        && modifier_state.control_key()
-                        && modifier_state.shift_key()
-                        && matches!(
-                            event.physical_key,
-                            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
-                        );
-
-                    if close_app_shortcut {
-                        if let Some(ui) = ui_weak.upgrade() {
-                            let _ = ui.hide();
-                            let _ = slint::quit_event_loop();
-                        }
-                        return EventResult::PreventDefault;
-                    }
-
-                    let handled = if plain_shortcut {
-                        use winit::keyboard::{Key, KeyCode, PhysicalKey};
-
-                        let shortcut = match (&event.logical_key, &event.physical_key) {
-                            (Key::Character(text), _) if text.eq_ignore_ascii_case("f") => {
-                                Some("frame")
-                            }
-                            (Key::Character(text), _) if text.eq_ignore_ascii_case("m") => {
-                                Some("toggle-minimap")
-                            }
-                            (Key::Character(text), _) if text == "+" => Some("zoom-in"),
-                            (Key::Character(text), _) if text == "-" => Some("zoom-out"),
-                            (_, PhysicalKey::Code(KeyCode::NumpadAdd)) => Some("zoom-in"),
-                            (_, PhysicalKey::Code(KeyCode::NumpadSubtract)) => Some("zoom-out"),
-                            _ => None,
-                        };
-
-                        if let Some(shortcut) = shortcut {
-                            if let Some(ui) = ui_weak.upgrade() {
-                                match shortcut {
-                                    "frame" => {
-                                        let mut state = state_handle.write();
-                                        if frame_active_viewport(&mut state) {
-                                            state.request_render();
-                                        }
-                                    }
-                                    "zoom-in" => {
-                                        let mut state = state_handle.write();
-                                        if zoom_active_viewport(&mut state, ACTION_ZOOM_FACTOR) {
-                                            state.request_render();
-                                        }
-                                    }
-                                    "zoom-out" => {
-                                        let mut state = state_handle.write();
-                                        if zoom_active_viewport(
-                                            &mut state,
-                                            1.0 / ACTION_ZOOM_FACTOR,
-                                        ) {
-                                            state.request_render();
-                                        }
-                                    }
-                                    "toggle-minimap" => {
-                                        toggle_minimap_visibility(&ui, &state_handle);
-                                    }
-                                    _ => {}
-                                }
-                                request_render_loop(
-                                    &render_timer,
-                                    &ui.as_weak(),
-                                    &state_handle,
-                                    &tile_cache,
-                                );
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-
-                    if handled {
-                        return EventResult::PreventDefault;
-                    }
-
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::CursorMoved { position, .. } => {

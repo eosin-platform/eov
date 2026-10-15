@@ -1,7 +1,7 @@
 use crate::gpu::GpuRenderer;
 use crate::render_pool::CachedCpuFrame;
 use crate::state::PaneId;
-use crate::{MeasurementLine, PaneViewData, SeriesItemData, TabData};
+use crate::{PaneViewData, SeriesItemData, TabData};
 use slint::{Image, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,14 +33,12 @@ impl Clone for PaneRenderCacheEntry {
 #[derive(Clone)]
 pub(crate) struct PaneUiModels {
     pub(crate) tabs: Rc<VecModel<TabData>>,
-    pub(crate) measurements: Rc<VecModel<MeasurementLine>>,
 }
 
 impl Default for PaneUiModels {
     fn default() -> Self {
         Self {
             tabs: Rc::new(VecModel::default()),
-            measurements: Rc::new(VecModel::default()),
         }
     }
 }

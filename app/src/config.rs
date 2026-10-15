@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use eov_common::{FilteringMode, RenderBackend};
-use eov_plugin_api::ActiveSidebar;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -62,11 +61,32 @@ impl From<FilteringMode> for ConfigFilteringMode {
     }
 }
 
+/// The `[active_sidebar]` table written by eov < 1.0; only its plugin id is
+/// still meaningful.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct LegacyActiveSidebar {
+    #[serde(default)]
+    plugin_id: String,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct AppConfig {
     render_backend: Option<ConfigRenderBackend>,
     filtering_mode: Option<ConfigFilteringMode>,
-    active_sidebar: Option<ActiveSidebar>,
+    /// Plugin whose sidebar was open at the last exit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sidebar_plugin: Option<String>,
+    #[serde(default, skip_serializing)]
+    active_sidebar: Option<LegacyActiveSidebar>,
+    /// Plugins the user turned off in the Plugins panel.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    disabled_plugins: Vec<String>,
+    /// The Measure tool's mode (`line`, `polyline`, …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    measure_mode: Option<String>,
+    /// Plain scrolling pans instead of zooming (trackpad users).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scroll_pans: Option<bool>,
 }
 
 pub fn set_config_path_override(path: PathBuf) -> Result<()> {
@@ -133,23 +153,59 @@ pub fn save_filtering_mode(mode: FilteringMode) -> Result<()> {
     })
 }
 
-pub fn load_active_sidebar() -> Result<Option<ActiveSidebar>> {
+fn load_config() -> Result<AppConfig> {
     let path = resolve_config_path()?;
     if !path.exists() {
-        return Ok(None);
+        return Ok(AppConfig::default());
     }
-
     let contents = fs::read_to_string(&path)
         .with_context(|| format!("failed to read config file at {}", path.display()))?;
-    let config: AppConfig = toml::from_str(&contents)
-        .with_context(|| format!("failed to parse config file at {}", path.display()))?;
-    Ok(config.active_sidebar)
+    toml::from_str(&contents)
+        .with_context(|| format!("failed to parse config file at {}", path.display()))
 }
 
-pub fn save_active_sidebar(sidebar: Option<&ActiveSidebar>) -> Result<()> {
+/// The plugin whose sidebar should be restored at startup.
+pub fn load_sidebar_plugin() -> Result<Option<String>> {
+    let config = load_config()?;
+    Ok(config.sidebar_plugin.or_else(|| {
+        config
+            .active_sidebar
+            .map(|legacy| legacy.plugin_id)
+            .filter(|id| !id.is_empty())
+    }))
+}
+
+pub fn save_sidebar_plugin(plugin_id: Option<&str>) -> Result<()> {
     save_config_field(|config| {
-        config.active_sidebar = sidebar.cloned();
+        config.sidebar_plugin = plugin_id.map(str::to_string);
+        config.active_sidebar = None;
     })
+}
+
+pub fn load_disabled_plugins() -> Result<Vec<String>> {
+    Ok(load_config()?.disabled_plugins)
+}
+
+pub fn set_plugin_disabled(plugin_id: &str, disabled: bool) -> Result<()> {
+    save_config_field(|config| {
+        config.disabled_plugins.retain(|id| id != plugin_id);
+        if disabled {
+            config.disabled_plugins.push(plugin_id.to_string());
+            config.disabled_plugins.sort();
+        }
+    })
+}
+
+pub fn load_measure_mode() -> Result<Option<String>> {
+    Ok(load_config()?.measure_mode)
+}
+
+pub fn save_measure_mode(mode: &str) -> Result<()> {
+    save_config_field(|config| config.measure_mode = Some(mode.to_string()))
+}
+
+pub fn load_scroll_pans() -> Result<bool> {
+    Ok(load_config()?.scroll_pans.unwrap_or(false))
 }
 
 fn save_config_field(update: impl FnOnce(&mut AppConfig)) -> Result<()> {

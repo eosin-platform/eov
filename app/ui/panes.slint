@@ -1,11 +1,9 @@
 import { Theme } from "theme.slint";
 import {
-    HudToolbarButtonData,
     MeasurementUnit,
     PaneViewData,
     RecentFileData,
     StainNormalization,
-    ToolType,
 } from "types.slint";
 import { HomeScreen } from "home-screen.slint";
 import { TabBar } from "tab-controls.slint";
@@ -18,12 +16,8 @@ component PaneView inherits Rectangle {
     in property <bool> show-minimap: true;
     in property <bool> show-metadata: false;
     in property <bool> show-scale-bar: true;
-    in property <ToolType> current-tool: ToolType.navigate;
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
-    in property <component-factory> plugin-viewport-underlay-factory;
-    in property <component-factory> plugin-viewport-overlay-factory;
-    in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     in property <int> focused-pane: 0;
     in property <int> dragging-tab-id: -1;
     in property <int> drag-source-pane: -1;
@@ -40,12 +34,11 @@ component PaneView inherits Rectangle {
     callback new-tab-requested(int);
     callback open-file-requested();
     callback open-recent-file(string);
-    callback viewport-pan(float, float);
-    callback viewport-zoom(float, float, float);
     callback viewport-fit-to-view();
-    callback viewport-start-pan(float, float);
-    callback viewport-end-pan();
-    callback viewport-context-menu(int, length, length);
+    callback viewport-pointer(/* pane */ int, int, int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-wheel(/* pane */ int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-pinch(/* pane */ int, float, float, float, bool);
+    callback viewport-key(/* pane */ int, string, bool, bool, bool, bool, bool, bool) -> bool;
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
@@ -56,12 +49,6 @@ component PaneView inherits Rectangle {
     callback tab-drag-moved(length, length);
     callback tab-drag-ended(length, length);
     callback zoom-slider-changed(int, float);
-    callback tool-mouse-down(float, float);
-    callback tool-mouse-move(float, float);
-    callback tool-mouse-up(float, float);
-    callback confirm-tool();
-    callback cancel-tool();
-    callback close-active-tab();
     callback tab-tooltip-changed(bool, string, length, length);
     callback hud-toggle-dropdown(int);
     callback hud-sharpness-changed(int, float);
@@ -80,7 +67,7 @@ component PaneView inherits Rectangle {
     callback hud-deconv-e-visibility-toggled(int);
     callback hud-deconv-h-view-toggled(int);
     callback hud-deconv-e-view-toggled(int);
-    callback hud-plugin-button-clicked(int, string, string);
+    callback hud-plugin-button-clicked(int, string, string, string);
 
     border-width: 0px;
     border-color: transparent;
@@ -151,45 +138,36 @@ component PaneView inherits Rectangle {
                 show-scale-bar: root.show-scale-bar;
                 status-text: root.status-text;
                 is-loading: root.pane-data.is-loading;
-                current-tool: root.current-tool;
-                roi-rect: root.pane-data.roi-rect;
-                measurements: root.pane-data.measurements;
-                plugin-overlay-points: root.pane-data.plugin-overlay-points;
-                plugin-overlay-polygons: root.pane-data.plugin-overlay-polygons;
-                plugin-overlay-vertex-boxes: root.pane-data.plugin-overlay-vertex-boxes;
-                annotation-tool-hover-active: root.pane-data.annotation-tool-hover-active;
-                candidate-measurement: root.pane-data.candidate-measurement;
+                overlay: root.pane-data.overlay;
+                overlay-x: root.pane-data.overlay-x;
+                overlay-y: root.pane-data.overlay-y;
+                overlay-width: root.pane-data.overlay-width;
+                overlay-height: root.pane-data.overlay-height;
+                overlay-labels: root.pane-data.overlay-labels;
+                cursor: root.pane-data.cursor;
                 debug-mode: root.debug-mode;
                 fps: root.fps;
-                plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
-                plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
                 zoom-slider-position: root.pane-data.zoom-slider-position;
                 hud: root.pane-data.hud;
                 pane-id: root.pane-data.id;
-                plugin-hud-buttons: root.plugin-hud-buttons;
+                plugin-hud-buttons: root.pane-data.hud-buttons;
 
-                pan(dx, dy) => {
-                    root.pane-focused(root.pane-data.id);
-                    root.viewport-pan(dx, dy);
-                }
-                zoom(f, x, y) => {
-                    root.pane-focused(root.pane-data.id);
-                    root.viewport-zoom(f, x, y);
-                }
                 fit-to-view => {
                     root.pane-focused(root.pane-data.id);
                     root.viewport-fit-to-view();
                 }
-                start-pan(x, y) => {
-                    root.pane-focused(root.pane-data.id);
-                    root.viewport-start-pan(x, y);
+                pointer-input(kind, button, x, y, wx, wy, shift, control, alt, meta) => {
+                    root.viewport-pointer(root.pane-data.id, kind, button, x, y, wx, wy, shift, control, alt, meta);
                 }
-                end-pan => {
-                    root.viewport-end-pan();
-                }
-                viewport-context-menu(x, y) => {
+                wheel-input(dx, dy, x, y, shift, control, alt, meta) => {
                     root.pane-focused(root.pane-data.id);
-                    root.viewport-context-menu(root.pane-data.id, x, y);
+                    root.viewport-wheel(root.pane-data.id, dx, dy, x, y, shift, control, alt, meta);
+                }
+                pinch-input(scale, x, y, active) => {
+                    root.viewport-pinch(root.pane-data.id, scale, x, y, active);
+                }
+                key-input(text, shift, control, alt, meta, pressed, repeat) => {
+                    root.viewport-key(root.pane-data.id, text, shift, control, alt, meta, pressed, repeat)
                 }
                 minimap-navigate(nx, ny) => {
                     root.pane-focused(root.pane-data.id);
@@ -215,25 +193,6 @@ component PaneView inherits Rectangle {
                     // gestures are applied to this pane's slide.
                     root.pane-focused(root.pane-data.id);
                     root.viewport-interaction-started(root.pane-data.id);
-                }
-                tool-mouse-down(x, y) => {
-                    root.pane-focused(root.pane-data.id);
-                    root.tool-mouse-down(x, y);
-                }
-                tool-mouse-move(x, y) => {
-                    root.tool-mouse-move(x, y);
-                }
-                tool-mouse-up(x, y) => {
-                    root.tool-mouse-up(x, y);
-                }
-                confirm-tool => {
-                    root.confirm-tool();
-                }
-                cancel-tool => {
-                    root.cancel-tool();
-                }
-                close-tab => {
-                    root.close-active-tab();
                 }
                 hud-toggle-dropdown => {
                     root.pane-focused(root.pane-data.id);
@@ -303,9 +262,9 @@ component PaneView inherits Rectangle {
                     root.pane-focused(root.pane-data.id);
                     root.hud-deconv-e-view-toggled(root.pane-data.id);
                 }
-                hud-plugin-button-clicked(plugin-id, action-id) => {
+                hud-plugin-button-clicked(plugin-id, button-id, item-id) => {
                     root.pane-focused(root.pane-data.id);
-                    root.hud-plugin-button-clicked(root.pane-data.id, plugin-id, action-id);
+                    root.hud-plugin-button-clicked(root.pane-data.id, plugin-id, button-id, item-id);
                 }
             }
         }
@@ -426,10 +385,6 @@ export component SplitPaneContainer inherits Rectangle {
     in property <length> drag-abs-x: -1px;
     in property <int> os-file-hover-pane: -1;
     in property <int> os-file-hover-side: -1;
-    in property <ToolType> current-tool: ToolType.navigate;
-    in property <component-factory> plugin-viewport-underlay-factory;
-    in property <component-factory> plugin-viewport-overlay-factory;
-    in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     property <length> pane-gap: 6px;
     property <int> pane-count: max(1, panes.length);
     property <length> pane-width: (self.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
@@ -446,12 +401,11 @@ export component SplitPaneContainer inherits Rectangle {
     callback new-tab-requested(int);
     callback open-file-requested();
     callback open-recent-file(string);
-    callback viewport-pan(float, float);
-    callback viewport-zoom(float, float, float);
     callback viewport-fit-to-view();
-    callback viewport-start-pan(float, float);
-    callback viewport-end-pan();
-    callback viewport-context-menu(int, length, length);
+    callback viewport-pointer(int, int, int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-wheel(int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-pinch(int, float, float, float, bool);
+    callback viewport-key(int, string, bool, bool, bool, bool, bool, bool) -> bool;
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
@@ -467,12 +421,6 @@ export component SplitPaneContainer inherits Rectangle {
     callback reorder-tab(int, int, int);
     callback clear-tab-drag();
     callback zoom-slider-changed(int, float);
-    callback tool-mouse-down(float, float);
-    callback tool-mouse-move(float, float);
-    callback tool-mouse-up(float, float);
-    callback confirm-tool();
-    callback cancel-tool();
-    callback close-active-tab();
     callback tab-tooltip-changed(bool, string, length, length);
     callback hud-toggle-dropdown(int);
     callback hud-sharpness-changed(int, float);
@@ -491,7 +439,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback hud-deconv-e-visibility-toggled(int);
     callback hud-deconv-h-view-toggled(int);
     callback hud-deconv-e-view-toggled(int);
-    callback hud-plugin-button-clicked(int, string, string);
+    callback hud-plugin-button-clicked(int, string, string, string);
 
     background: Theme.background;
 
@@ -507,10 +455,6 @@ export component SplitPaneContainer inherits Rectangle {
             show-minimap: root.show-minimap;
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
-            current-tool: root.current-tool;
-            plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
-            plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
-            plugin-hud-buttons: root.plugin-hud-buttons;
             debug-mode: root.debug-mode;
             fps: root.fps;
             focused-pane: root.focused-pane;
@@ -541,23 +485,20 @@ export component SplitPaneContainer inherits Rectangle {
             open-recent-file(path) => {
                 root.open-recent-file(path);
             }
-            viewport-pan(dx, dy) => {
-                root.viewport-pan(dx, dy);
-            }
-            viewport-zoom(f, x, y) => {
-                root.viewport-zoom(f, x, y);
-            }
             viewport-fit-to-view => {
                 root.viewport-fit-to-view();
             }
-            viewport-start-pan(x, y) => {
-                root.viewport-start-pan(x, y);
+            viewport-pointer(pane-id, kind, button, x, y, wx, wy, shift, control, alt, meta) => {
+                root.viewport-pointer(pane-id, kind, button, x, y, wx, wy, shift, control, alt, meta);
             }
-            viewport-end-pan => {
-                root.viewport-end-pan();
+            viewport-wheel(pane-id, dx, dy, x, y, shift, control, alt, meta) => {
+                root.viewport-wheel(pane-id, dx, dy, x, y, shift, control, alt, meta);
             }
-            viewport-context-menu(pane-id, x, y) => {
-                root.viewport-context-menu(pane-id, x, y);
+            viewport-pinch(pane-id, scale, x, y, active) => {
+                root.viewport-pinch(pane-id, scale, x, y, active);
+            }
+            viewport-key(pane-id, text, shift, control, alt, meta, pressed, repeat) => {
+                root.viewport-key(pane-id, text, shift, control, alt, meta, pressed, repeat)
             }
             minimap-navigate(nx, ny) => {
                 root.minimap-navigate(nx, ny);
@@ -588,24 +529,6 @@ export component SplitPaneContainer inherits Rectangle {
             }
             zoom-slider-changed(pane-id, value) => {
                 root.zoom-slider-changed(pane-id, value);
-            }
-            tool-mouse-down(x, y) => {
-                root.tool-mouse-down(x, y);
-            }
-            tool-mouse-move(x, y) => {
-                root.tool-mouse-move(x, y);
-            }
-            tool-mouse-up(x, y) => {
-                root.tool-mouse-up(x, y);
-            }
-            confirm-tool => {
-                root.confirm-tool();
-            }
-            cancel-tool => {
-                root.cancel-tool();
-            }
-            close-active-tab => {
-                root.close-active-tab();
             }
             tab-tooltip-changed(visible, text, cx, ty) => {
                 root.tab-tooltip-changed(visible, text, cx, ty);
@@ -661,8 +584,8 @@ export component SplitPaneContainer inherits Rectangle {
             hud-deconv-e-view-toggled(pane-id) => {
                 root.hud-deconv-e-view-toggled(pane-id);
             }
-            hud-plugin-button-clicked(pane-id, plugin-id, action-id) => {
-                root.hud-plugin-button-clicked(pane-id, plugin-id, action-id);
+            hud-plugin-button-clicked(pane-id, plugin-id, button-id, item-id) => {
+                root.hud-plugin-button-clicked(pane-id, plugin-id, button-id, item-id);
             }
         }
     }

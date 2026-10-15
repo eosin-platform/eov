@@ -28,6 +28,13 @@ enum ClipboardCommand {
 
 static CLIPBOARD_WORKER: OnceLock<mpsc::Sender<ClipboardCommand>> = OnceLock::new();
 
+/// Copies text to the clipboard (on the clipboard worker thread).
+pub(crate) fn copy_text(text: String) {
+    if !send_text_to_clipboard_worker(text) {
+        warn!("Failed to copy text to clipboard");
+    }
+}
+
 pub(crate) fn copy_text_to_clipboard(
     clipboard: &Rc<RefCell<Option<arboard::Clipboard>>>,
     text: String,

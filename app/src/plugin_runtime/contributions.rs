@@ -5,8 +5,7 @@
 //! and hotkeys are checked against the host's shortcuts and each other.
 
 use eov_plugin_api::protocol::{
-    ButtonUpdate, FilterSpec, Hotkey, HudButtonSpec, MenuItem, PaneId, ToolSpec,
-    ToolbarButtonSpec,
+    ButtonUpdate, FilterSpec, Hotkey, HudButtonSpec, MenuItem, PaneId, ToolSpec, ToolbarButtonSpec,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -73,7 +72,10 @@ pub fn is_reserved(hotkey: &Hotkey) -> bool {
         RESERVED_PRIMARY_KEYS.contains(&key.as_str())
     } else {
         RESERVED_PLAIN_KEYS.contains(&key.as_str())
-            || matches!(key.as_str(), "escape" | "enter" | "return" | "delete" | "backspace" | "tab")
+            || matches!(
+                key.as_str(),
+                "escape" | "enter" | "return" | "delete" | "backspace" | "tab"
+            )
             || key.starts_with("arrow")
     }
 }
@@ -159,10 +161,12 @@ impl Contributions {
             .iter()
             .filter_map(|e| e.spec.hotkey.as_ref().map(|h| (e, &e.spec.button_id, h)))
             .map(|(e, id, h)| (&e.plugin_id, id, h));
-        let tools = self
-            .tools
-            .iter()
-            .filter_map(|e| e.spec.hotkey.as_ref().map(|h| (&e.plugin_id, &e.spec.tool_id, h)));
+        let tools = self.tools.iter().filter_map(|e| {
+            e.spec
+                .hotkey
+                .as_ref()
+                .map(|h| (&e.plugin_id, &e.spec.tool_id, h))
+        });
         toolbar
             .chain(tools)
             .find(|(owner, id, h)| {
@@ -172,7 +176,12 @@ impl Contributions {
     }
 
     /// Drops a conflicting hotkey, returning a warning for the user.
-    fn vet_hotkey(&self, plugin_id: &str, own_id: &str, hotkey: &mut Option<Hotkey>) -> Option<String> {
+    fn vet_hotkey(
+        &self,
+        plugin_id: &str,
+        own_id: &str,
+        hotkey: &mut Option<Hotkey>,
+    ) -> Option<String> {
         let candidate = hotkey.as_ref()?;
         let problem = if candidate.key.trim().is_empty() {
             Some("an empty key".to_string())
@@ -192,14 +201,26 @@ impl Contributions {
 
     /// Adds or replaces a toolbar button. Returns a warning if its hotkey was
     /// dropped.
-    pub fn add_toolbar(&mut self, plugin_id: &Arc<str>, mut spec: ToolbarButtonSpec) -> Result<Option<String>, String> {
+    pub fn add_toolbar(
+        &mut self,
+        plugin_id: &Arc<str>,
+        mut spec: ToolbarButtonSpec,
+    ) -> Result<Option<String>, String> {
         validate_id("button", &spec.button_id)?;
         validate_icon(&spec.icon_svg)?;
         if let Some(icon) = &spec.toggled_icon_svg {
             validate_icon(icon)?;
         }
-        if self.toolbar.iter().filter(|e| e.plugin_id == *plugin_id).count() >= 32
-            && !self.toolbar.iter().any(|e| e.plugin_id == *plugin_id && e.spec.button_id == spec.button_id)
+        if self
+            .toolbar
+            .iter()
+            .filter(|e| e.plugin_id == *plugin_id)
+            .count()
+            >= 32
+            && !self
+                .toolbar
+                .iter()
+                .any(|e| e.plugin_id == *plugin_id && e.spec.button_id == spec.button_id)
         {
             return Err("plugins may add at most 32 toolbar buttons".to_string());
         }
@@ -268,6 +289,7 @@ impl Contributions {
         entries
     }
 
+    #[cfg(test)]
     pub fn toolbar_button(&self, plugin_id: &str, button_id: &str) -> Option<&ToolbarEntry> {
         self.toolbar
             .iter()
@@ -373,14 +395,26 @@ impl Contributions {
 
     // -- tools -----------------------------------------------------------------
 
-    pub fn register_tool(&mut self, plugin_id: &Arc<str>, mut spec: ToolSpec) -> Result<Option<String>, String> {
+    pub fn register_tool(
+        &mut self,
+        plugin_id: &Arc<str>,
+        mut spec: ToolSpec,
+    ) -> Result<Option<String>, String> {
         validate_id("tool", &spec.tool_id)?;
         validate_icon(&spec.icon_svg)?;
         if !spec.freehand_tolerance_px.is_finite() || spec.freehand_tolerance_px < 0.0 {
             return Err("freehand tolerance must be finite and non-negative".to_string());
         }
-        if self.tools.iter().filter(|e| e.plugin_id == *plugin_id).count() >= 16
-            && !self.tools.iter().any(|e| e.plugin_id == *plugin_id && e.spec.tool_id == spec.tool_id)
+        if self
+            .tools
+            .iter()
+            .filter(|e| e.plugin_id == *plugin_id)
+            .count()
+            >= 16
+            && !self
+                .tools
+                .iter()
+                .any(|e| e.plugin_id == *plugin_id && e.spec.tool_id == spec.tool_id)
         {
             return Err("plugins may register at most 16 tools".to_string());
         }
@@ -430,7 +464,13 @@ impl Contributions {
     }
 
     /// The tool or toolbar button bound to a key press.
-    pub fn hotkey_target(&self, key: &str, primary: bool, shift: bool, alt: bool) -> Option<HotkeyTarget> {
+    pub fn hotkey_target(
+        &self,
+        key: &str,
+        primary: bool,
+        shift: bool,
+        alt: bool,
+    ) -> Option<HotkeyTarget> {
         let wanted = (key.to_lowercase(), primary, shift, alt);
         if let Some(tool) = self.tools().into_iter().find(|e| {
             e.spec
@@ -458,7 +498,11 @@ impl Contributions {
 
     // -- filters -----------------------------------------------------------------
 
-    pub fn register_filter(&mut self, plugin_id: &Arc<str>, spec: FilterSpec) -> Result<(), String> {
+    pub fn register_filter(
+        &mut self,
+        plugin_id: &Arc<str>,
+        spec: FilterSpec,
+    ) -> Result<(), String> {
         validate_id("filter", &spec.filter_id)?;
         let seq = self.next_seq();
         match self
@@ -477,7 +521,12 @@ impl Contributions {
     }
 
     /// Returns whether the state changed.
-    pub fn set_filter_enabled(&mut self, plugin_id: &str, filter_id: &str, enabled: bool) -> Result<bool, String> {
+    pub fn set_filter_enabled(
+        &mut self,
+        plugin_id: &str,
+        filter_id: &str,
+        enabled: bool,
+    ) -> Result<bool, String> {
         let entry = self
             .filters
             .iter_mut()
@@ -561,18 +610,27 @@ mod tests {
     #[test]
     fn ordering_is_deterministic() {
         let mut c = Contributions::default();
-        c.add_toolbar(&plugin("zeta"), button("a", 0, None)).unwrap();
-        c.add_toolbar(&plugin("alpha"), button("second", 2, None)).unwrap();
-        c.add_toolbar(&plugin("alpha"), button("first", 1, None)).unwrap();
-        let ids: Vec<_> = c.toolbar().iter().map(|e| e.spec.button_id.clone()).collect();
+        c.add_toolbar(&plugin("zeta"), button("a", 0, None))
+            .unwrap();
+        c.add_toolbar(&plugin("alpha"), button("second", 2, None))
+            .unwrap();
+        c.add_toolbar(&plugin("alpha"), button("first", 1, None))
+            .unwrap();
+        let ids: Vec<_> = c
+            .toolbar()
+            .iter()
+            .map(|e| e.spec.button_id.clone())
+            .collect();
         assert_eq!(ids, ["first", "second", "a"]);
     }
 
     #[test]
     fn ids_are_scoped_per_plugin() {
         let mut c = Contributions::default();
-        c.add_toolbar(&plugin("a"), button("toggle", 0, None)).unwrap();
-        c.add_toolbar(&plugin("b"), button("toggle", 0, None)).unwrap();
+        c.add_toolbar(&plugin("a"), button("toggle", 0, None))
+            .unwrap();
+        c.add_toolbar(&plugin("b"), button("toggle", 0, None))
+            .unwrap();
         c.update_toolbar(
             "a",
             &ButtonUpdate {
@@ -584,18 +642,27 @@ mod tests {
         .unwrap();
         assert!(c.toolbar_button("a", "toggle").unwrap().spec.active);
         assert!(!c.toolbar_button("b", "toggle").unwrap().spec.active);
-        assert!(c.add_toolbar(&plugin("a"), button("bad id", 0, None)).is_err());
+        assert!(
+            c.add_toolbar(&plugin("a"), button("bad id", 0, None))
+                .is_err()
+        );
     }
 
     #[test]
     fn hotkey_conflicts_are_rejected_with_a_warning() {
         let mut c = Contributions::default();
         // Reserved host key.
-        let warning = c.add_toolbar(&plugin("a"), button("x", 0, Some("f"))).unwrap();
+        let warning = c
+            .add_toolbar(&plugin("a"), button("x", 0, Some("f")))
+            .unwrap();
         assert!(warning.unwrap().contains("eov already uses"));
         assert!(c.toolbar_button("a", "x").unwrap().spec.hotkey.is_none());
         // First come, first served; case-insensitive.
-        assert!(c.add_toolbar(&plugin("a"), button("p", 0, Some("p"))).unwrap().is_none());
+        assert!(
+            c.add_toolbar(&plugin("a"), button("p", 0, Some("p")))
+                .unwrap()
+                .is_none()
+        );
         let warning = c
             .register_tool(
                 &plugin("b"),

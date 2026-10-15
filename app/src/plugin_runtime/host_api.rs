@@ -8,15 +8,15 @@
 use super::shared::{Command, HostShared, PluginContext, SurfaceCommand, ViewCommand};
 use crate::overlay::store::StoredRaster;
 use crate::overlay::{Owner, raster::premultiply};
+use abi_stable::{
+    sabi_trait::TD_Opaque,
+    std_types::{RErr, ROk, RStr, RString},
+};
 use eov_plugin_api::abi::{
     FfiError, FfiErrorKind, FfiResult, HostBox, HostFfi, HostFfi_TO, MAX_RASTER_PIXELS,
     MAX_REGION_PIXELS, Pixels, RasterUpload, RegionRequest,
 };
 use eov_plugin_api::protocol::{methods, *};
-use abi_stable::{
-    sabi_trait::TD_Opaque,
-    std_types::{RErr, ROk, RStr, RString},
-};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -113,19 +113,17 @@ impl HostApi {
             methods::FILE_INFO => {
                 let args: FileArgs = parse(args)?;
                 let published = self.shared.published();
-                let file = published
-                    .files
-                    .get(&args.file_id)
-                    .ok_or_else(|| FfiError::failed(format!("no open file with id {}", args.file_id)))?;
+                let file = published.files.get(&args.file_id).ok_or_else(|| {
+                    FfiError::failed(format!("no open file with id {}", args.file_id))
+                })?;
                 to_value(&file.info)?
             }
             methods::FILE_PROPERTIES => {
                 let args: FileArgs = parse(args)?;
                 let published = self.shared.published();
-                let file = published
-                    .files
-                    .get(&args.file_id)
-                    .ok_or_else(|| FfiError::failed(format!("no open file with id {}", args.file_id)))?;
+                let file = published.files.get(&args.file_id).ok_or_else(|| {
+                    FfiError::failed(format!("no open file with id {}", args.file_id))
+                })?;
                 to_value(&*file.properties)?
             }
             methods::FILE_OPEN => {
@@ -191,7 +189,10 @@ impl HostApi {
             }
             methods::HUD_REMOVE => {
                 let args: IdArgs = parse(args)?;
-                self.shared.contributions.lock().remove_hud(&self.ctx.id, &args.id);
+                self.shared
+                    .contributions
+                    .lock()
+                    .remove_hud(&self.ctx.id, &args.id);
                 self.push(Command::ContributionsChanged);
                 null
             }
@@ -339,7 +340,9 @@ impl HostApi {
                 let args: IdArgs = parse(args)?;
                 if self.own_surface(&args.id).is_ok() {
                     self.shared.unregister_surface(&args.id);
-                    self.push(Command::Surface(SurfaceCommand::Close { surface_id: args.id }));
+                    self.push(Command::Surface(SurfaceCommand::Close {
+                        surface_id: args.id,
+                    }));
                 }
                 null
             }
@@ -388,7 +391,13 @@ impl HostApi {
             methods::VIEW_ZOOM => {
                 let args: ViewZoomArgs = parse(args)?;
                 finite(&[args.factor])?;
-                finite(&args.anchor_x.into_iter().chain(args.anchor_y).collect::<Vec<_>>())?;
+                finite(
+                    &args
+                        .anchor_x
+                        .into_iter()
+                        .chain(args.anchor_y)
+                        .collect::<Vec<_>>(),
+                )?;
                 if args.factor <= 0.0 {
                     return Err(invalid("zoom factor must be positive"));
                 }
@@ -578,7 +587,9 @@ impl HostApi {
         match self.shared.surface_owner(surface_id) {
             Some(owner) if owner == self.ctx.id => Ok(()),
             Some(_) => Err(FfiError::failed("the surface belongs to another plugin")),
-            None => Err(FfiError::failed(format!("surface '{surface_id}' is not open"))),
+            None => Err(FfiError::failed(format!(
+                "surface '{surface_id}' is not open"
+            ))),
         }
     }
 
@@ -635,7 +646,9 @@ impl HostApi {
         }
         let count = u64::from(raster.pixels.width) * u64::from(raster.pixels.height);
         if count == 0 || count > MAX_RASTER_PIXELS {
-            return Err(invalid(format!("rasters must have 1–{MAX_RASTER_PIXELS} pixels")));
+            return Err(invalid(format!(
+                "rasters must have 1–{MAX_RASTER_PIXELS} pixels"
+            )));
         }
         let mut data = raster.pixels.data.into_vec();
         premultiply(&mut data);
@@ -743,7 +756,10 @@ fn finite(values: &[f64]) -> Result<(), FfiError> {
 
 fn check_style(style: &Style) -> Result<(), FfiError> {
     let sizes = [style.stroke_width, style.point_radius, style.font_size];
-    if sizes.iter().all(|v| v.is_finite() && (0.0..=10_000.0).contains(v)) {
+    if sizes
+        .iter()
+        .all(|v| v.is_finite() && (0.0..=10_000.0).contains(v))
+    {
         Ok(())
     } else {
         Err(invalid("style sizes must be finite and within 0–10000"))
@@ -817,10 +833,18 @@ mod tests {
     fn setup() -> (tempfile::TempDir, Arc<HostShared>, Arc<PluginContext>, Host) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("ui")).unwrap();
-        std::fs::write(dir.path().join("ui/panel.slint"), "export component Panel {}").unwrap();
+        std::fs::write(
+            dir.path().join("ui/panel.slint"),
+            "export component Panel {}",
+        )
+        .unwrap();
         let settings = SettingsStore::new();
         settings.load("p", &dir.path().join("data"));
-        let shared = Arc::new(HostShared::new(Arc::new(OverlayStore::new()), settings, "1.0.0"));
+        let shared = Arc::new(HostShared::new(
+            Arc::new(OverlayStore::new()),
+            settings,
+            "1.0.0",
+        ));
         let mut published = Published::default();
         published.files.insert(
             1,
@@ -840,13 +864,7 @@ mod tests {
         );
         shared.publish(published);
         shared.set_reader(1, Arc::new(Grey));
-        let ctx = Arc::new(PluginContext::new(
-            "p",
-            "1.0.0",
-            dir.path().to_path_buf(),
-            dir.path().join("data"),
-            dir.path().join("cache"),
-        ));
+        let ctx = Arc::new(PluginContext::new("p", dir.path().to_path_buf()));
         let host = Host::from_ffi(HostApi::new(Arc::clone(&ctx), Arc::clone(&shared)).into_ffi());
         (dir, shared, ctx, host)
     }
@@ -861,12 +879,28 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        assert!(shared.contributions.lock().toolbar_button("p", "go").is_some());
+        assert!(
+            shared
+                .contributions
+                .lock()
+                .toolbar_button("p", "go")
+                .is_some()
+        );
         let layer = host.create_layer(LayerSpec::new("cells", 1)).unwrap();
         layer
-            .upsert(vec![OverlayObject::new("a", Shape::Point { x: 1.0, y: 1.0 })])
+            .upsert(vec![OverlayObject::new(
+                "a",
+                Shape::Point { x: 1.0, y: 1.0 },
+            )])
             .unwrap();
-        assert_eq!(shared.overlays.layer(&Owner::plugin("p"), "cells").unwrap().len(), 1);
+        assert_eq!(
+            shared
+                .overlays
+                .layer(&Owner::plugin("p"), "cells")
+                .unwrap()
+                .len(),
+            1
+        );
         let commands: Vec<_> = shared.take_commands().into_iter().map(|(_, c)| c).collect();
         assert_eq!(commands[0], Command::ContributionsChanged);
         assert!(commands.contains(&Command::OverlaysChanged));
@@ -878,24 +912,42 @@ mod tests {
     fn surfaces_are_owned_and_paths_contained() {
         let (dir, shared, _ctx, host) = setup();
         let surface = host
-            .open_surface(SurfaceSpec::new(SurfaceKind::Sidebar, "ui/panel.slint", "Panel"))
-            .unwrap();
-        assert!(surface.is_open());
-        assert!(host
-            .open_surface(SurfaceSpec::new(SurfaceKind::Sidebar, "../escape.slint", "Panel"))
-            .is_err());
-        assert!(host
             .open_surface(SurfaceSpec::new(
                 SurfaceKind::Sidebar,
-                dir.path().join("ui/panel.slint").to_string_lossy().into_owned(),
+                "ui/panel.slint",
+                "Panel",
+            ))
+            .unwrap();
+        assert!(surface.is_open());
+        assert!(
+            host.open_surface(SurfaceSpec::new(
+                SurfaceKind::Sidebar,
+                "../escape.slint",
                 "Panel"
             ))
-            .is_err());
-        assert!(host
-            .open_surface(SurfaceSpec::new(SurfaceKind::Sidebar, "ui/panel.slint", "Bad Name"))
-            .is_err());
+            .is_err()
+        );
+        assert!(
+            host.open_surface(SurfaceSpec::new(
+                SurfaceKind::Sidebar,
+                dir.path()
+                    .join("ui/panel.slint")
+                    .to_string_lossy()
+                    .into_owned(),
+                "Panel"
+            ))
+            .is_err()
+        );
+        assert!(
+            host.open_surface(SurfaceSpec::new(
+                SurfaceKind::Sidebar,
+                "ui/panel.slint",
+                "Bad Name"
+            ))
+            .is_err()
+        );
         // Another plugin cannot touch it.
-        let other = Arc::new(PluginContext::new("q", "1", dir.path().into(), dir.path().into(), dir.path().into()));
+        let other = Arc::new(PluginContext::new("q", dir.path().into()));
         let other_host = Host::from_ffi(HostApi::new(other, Arc::clone(&shared)).into_ffi());
         assert!(other_host.surface(surface.id()).set("x", 1).is_err());
         surface.close().unwrap();
@@ -907,9 +959,18 @@ mod tests {
         let (_dir, _shared, _ctx, host) = setup();
         assert!(host.pan(None, f64::NAN, 0.0).is_err());
         assert!(host.zoom(None, 0.0).is_err());
-        assert!(host
-            .frame(None, Rect { x: 0.0, y: 0.0, width: -1.0, height: 1.0 })
-            .is_err());
+        assert!(
+            host.frame(
+                None,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: -1.0,
+                    height: 1.0
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -947,7 +1008,10 @@ mod tests {
             background: 0,
         });
         assert!(bad_level.is_err());
-        assert_eq!(host.read_associated_image(1, "label").unwrap().data, vec![1, 2, 3, 255]);
+        assert_eq!(
+            host.read_associated_image(1, "label").unwrap().data,
+            vec![1, 2, 3, 255]
+        );
     }
 
     #[test]
@@ -961,7 +1025,11 @@ mod tests {
     #[test]
     fn unknown_methods_are_unsupported_and_settings_persist() {
         let (_dir, _shared, _ctx, host) = setup();
-        assert!(host.call::<_, Value>("nope", &json!({})).unwrap_err().is_unsupported());
+        assert!(
+            host.call::<_, Value>("nope", &json!({}))
+                .unwrap_err()
+                .is_unsupported()
+        );
         host.set_setting("k", &"v").unwrap();
         assert_eq!(host.setting::<String>("k").unwrap().as_deref(), Some("v"));
     }
@@ -973,7 +1041,12 @@ mod tests {
         layer
             .put_raster(
                 "h",
-                Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
                 eov_plugin_api::sdk::Image {
                     width: 1,
                     height: 1,
@@ -987,7 +1060,12 @@ mod tests {
         assert_eq!(&raster.premultiplied[..], &[100, 50, 25, 128]);
         let bad = layer.put_raster(
             "bad",
-            Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
             eov_plugin_api::sdk::Image {
                 width: 2,
                 height: 2,

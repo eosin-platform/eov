@@ -11,16 +11,12 @@ mod distribution;
 mod file_ops;
 mod gpu;
 mod gpu_interop;
-// Integrated into the viewport by the plugin runtime switch-over.
-#[allow(dead_code)]
+mod host_ui;
 mod interaction;
-#[allow(dead_code)]
 mod overlay;
 mod pane_ui;
-#[allow(dead_code)]
-mod plugin_runtime;
 mod paths;
-mod plugin_host;
+mod plugin_runtime;
 mod plugins;
 mod render;
 mod render_pool;
@@ -29,11 +25,9 @@ mod state;
 #[cfg(test)]
 mod test_support;
 mod tile_loader;
-mod tools;
 mod ui_update;
 mod update;
 mod version;
-mod viewport_filter;
 mod zoom_display;
 
 use anyhow::Result;
@@ -47,39 +41,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-fn restore_persisted_sidebar(plugin_manager: &plugins::PluginManager) {
-    let Ok(Some(sidebar)) = config::load_active_sidebar() else {
-        return;
-    };
-    let Some(vtable) = plugin_manager
-        .loaded_vtables()
-        .find(|(plugin_id, _)| *plugin_id == sidebar.plugin_id)
-        .map(|(_, vtable)| *vtable)
-    else {
-        return;
-    };
-    let Some(descriptor) = plugin_manager.descriptor(&sidebar.plugin_id) else {
-        return;
-    };
-
-    if let Err(err) = plugin_host::show_sidebar(
-        &sidebar.plugin_id,
-        Some(&descriptor.root),
-        Some(vtable),
-        eov_plugin_api::SidebarRequest {
-            button_id: sidebar.button_id.clone(),
-            width_px: sidebar.width_px,
-            ui_path: sidebar.ui_path.clone(),
-            component: sidebar.component.clone(),
-        },
-    ) {
-        tracing::warn!(
-            "Failed to restore persisted sidebar '{}' on startup: {err}",
-            sidebar.plugin_id
-        );
-    }
-}
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::info;
 
 use backend::select_backend;
@@ -113,111 +75,10 @@ slint::include_modules!();
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
-const MOMENTARY_TOOL_HOLD_THRESHOLD: Duration = Duration::from_millis(120);
-
-fn plugin_trace(message: impl AsRef<str>) {
-    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
-        eprintln!("[main] {}", message.as_ref());
-    }
-}
 
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
     reset_pane_ui_state();
     update_tabs(ui, state);
-    let _ = crate::plugin_host::refresh_active_sidebar();
-}
-
-fn deactivate_active_plugin_tool_if_matching(
-    ui: &AppWindow,
-    state: &Arc<RwLock<AppState>>,
-    plugin_id: &str,
-    action_id: &str,
-) -> bool {
-    let should_deactivate = {
-        let state = state.read();
-        state.local_plugin_buttons.iter().find_map(|button| {
-            (button.plugin_id == plugin_id && button.action_id == action_id)
-                .then_some(button.tool_mode)
-                .flatten()
-        })
-    };
-
-    let Some(tool_mode) = should_deactivate else {
-        return false;
-    };
-
-    {
-        let mut app_state = state.write();
-        let is_active = match tool_mode {
-            eov_plugin_api::HostToolMode::Navigate => {
-                app_state.current_tool == crate::state::Tool::Navigate
-            }
-            eov_plugin_api::HostToolMode::RegionOfInterest => {
-                app_state.current_tool == crate::state::Tool::RegionOfInterest
-            }
-            eov_plugin_api::HostToolMode::MeasureDistance => {
-                app_state.current_tool == crate::state::Tool::MeasureDistance
-            }
-            eov_plugin_api::HostToolMode::PointAnnotation => {
-                app_state.current_tool == crate::state::Tool::PointAnnotation
-                    && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
-            }
-            eov_plugin_api::HostToolMode::PolygonAnnotation => {
-                app_state.current_tool == crate::state::Tool::PolygonAnnotation
-                    && app_state.active_tool_plugin_id.as_deref() == Some(plugin_id)
-            }
-        };
-        if !is_active {
-            return false;
-        }
-
-        app_state.set_tool(crate::state::Tool::Navigate);
-        plugin_host::sync_tool_button_states(&mut app_state);
-    }
-
-    let app_state = state.read();
-    update_tool_state(ui, &app_state);
-    let _ = plugin_host::refresh_plugin_buttons();
-    true
-}
-
-fn normalize_hotkey_text(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_ascii_lowercase())
-}
-
-fn tool_selection_for_button(
-    button: &eov_plugin_api::ToolbarButtonRegistration,
-) -> Option<state::ToolSelection> {
-    let tool = match button.tool_mode? {
-        eov_plugin_api::HostToolMode::Navigate => state::Tool::Navigate,
-        eov_plugin_api::HostToolMode::RegionOfInterest => state::Tool::RegionOfInterest,
-        eov_plugin_api::HostToolMode::MeasureDistance => state::Tool::MeasureDistance,
-        eov_plugin_api::HostToolMode::PointAnnotation => state::Tool::PointAnnotation,
-        eov_plugin_api::HostToolMode::PolygonAnnotation => state::Tool::PolygonAnnotation,
-    };
-    Some(state::ToolSelection {
-        tool,
-        plugin_id: matches!(
-            tool,
-            state::Tool::PointAnnotation | state::Tool::PolygonAnnotation
-        )
-        .then(|| button.plugin_id.clone()),
-    })
-}
-
-fn selection_matches_button(
-    app_state: &AppState,
-    button: &eov_plugin_api::ToolbarButtonRegistration,
-) -> bool {
-    let Some(target) = tool_selection_for_button(button) else {
-        return false;
-    };
-    app_state.current_tool == target.tool
-        && (!matches!(
-            target.tool,
-            state::Tool::PointAnnotation | state::Tool::PolygonAnnotation
-        ) || app_state.active_tool_plugin_id == target.plugin_id)
 }
 
 fn slider_value_to_zoom(value: f32) -> f64 {
@@ -318,48 +179,6 @@ fn main() -> Result<()> {
     ));
     render_pool::init_global()?;
 
-    // ----- Plugin system initialization -----
-    let plugin_manager = Rc::new(RefCell::new(plugins::PluginManager::new(
-        launch_options.plugin_dir.clone(),
-    )));
-    {
-        let mut pm = plugin_manager.borrow_mut();
-        pm.discover();
-        if let Err(e) = pm.activate_all() {
-            tracing::warn!("Plugin activation error: {e}");
-        }
-
-        // Register FFI viewport filters into the shared filter chain.
-        {
-            let state = state.read();
-            let mut chain = state.filter_chain.write();
-            for (_plugin_id, vtable) in pm.loaded_vtables() {
-                let filters = (vtable.get_viewport_filters)();
-                for f in filters.iter() {
-                    let wrapper = crate::viewport_filter::FfiViewportFilter::new(*vtable, f);
-                    chain.register(f.filter_id.to_string(), Box::new(wrapper));
-                    info!(
-                        "Registered viewport filter '{}' from plugin '{}'",
-                        f.filter_id, _plugin_id
-                    );
-                }
-            }
-        }
-
-        info!(
-            "Plugin system ready: {} toolbar button(s), {} HUD toolbar button(s) from {} plugin(s)",
-            pm.toolbar.len(),
-            pm.hud_toolbar.len(),
-            pm.descriptors.len()
-        );
-
-        state.write().local_plugin_buttons = pm.toolbar.buttons().to_vec();
-        state.write().local_hud_plugin_buttons = pm.hud_toolbar.buttons().to_vec();
-        state.write().local_plugin_undo_redo_states = pm.undo_redo_states.clone();
-        state.write().local_plugin_undo_redo_order = pm.undo_redo_order.clone();
-    }
-    let old_plugin_package_files = plugin_manager.borrow().old_plugin_package_files().to_vec();
-
     info!(
         "Creating application window (DISPLAY={:?}, WAYLAND_DISPLAY={:?})",
         std::env::var("DISPLAY").ok(),
@@ -392,32 +211,24 @@ fn main() -> Result<()> {
     info!("GPU renderer installed");
 
     let render_timer = Rc::new(Timer::default());
-    plugin_host::init_ui_runtime(&ui, &state, &tile_cache, &render_timer);
-    plugin_host::refresh_plugin_buttons().map_err(anyhow::Error::msg)?;
-    info!("Plugin UI runtime initialized");
+    let host = host_ui::init(
+        &ui,
+        &state,
+        &tile_cache,
+        &render_timer,
+        host_ui::InitOptions {
+            plugin_dir: launch_options.plugin_dir.clone(),
+            safe_mode: std::env::var_os("EOV_SAFE_MODE").is_some(),
+            disabled: config::load_disabled_plugins().unwrap_or_default(),
+        },
+    );
+    info!("Plugin host initialized");
 
-    {
-        let pm = plugin_manager.borrow();
-        for (plugin_id, vtable) in pm.loaded_vtables() {
-            let Some(descriptor) = pm.descriptor(plugin_id) else {
-                continue;
-            };
-            (vtable.set_host_api)(plugin_host::build_host_api(
-                plugin_id,
-                &descriptor.root,
-                &state,
-                *vtable,
-            ));
-        }
-        restore_persisted_sidebar(&pm);
-    }
-
-    setup_callbacks(
+    callbacks::setup_callbacks(
         &ui,
         Arc::clone(&state),
         Arc::clone(&tile_cache),
         Rc::clone(&render_timer),
-        Rc::clone(&plugin_manager),
     );
     info!("UI callbacks installed");
 
@@ -504,423 +315,15 @@ fn main() -> Result<()> {
     ui.show()?;
     info!("Application window shown");
 
-    if !old_plugin_package_files.is_empty() {
-        plugin_host::show_old_plugin_versions_dialog(old_plugin_package_files)
-            .map_err(anyhow::Error::msg)?;
-    }
+    host.ready();
 
     info!("Entering Slint UI event loop");
 
     ui.run()?;
 
     info!("Application shutting down");
+    host.shutdown();
     Ok(())
-}
-
-fn setup_callbacks(
-    ui: &AppWindow,
-    state: Arc<RwLock<AppState>>,
-    tile_cache: Arc<TileCache>,
-    render_timer: Rc<Timer>,
-    plugin_manager: Rc<RefCell<plugins::PluginManager>>,
-) {
-    callbacks::setup_callbacks(
-        ui,
-        state.clone(),
-        tile_cache.clone(),
-        render_timer.clone(),
-        Rc::clone(&plugin_manager),
-    );
-
-    // Plugin button click callback — dispatch to plugin manager and open windows
-    let pm = Rc::clone(&plugin_manager);
-    let filter_state = Arc::clone(&state);
-    let rerender_state = Arc::clone(&state);
-    let rerender_timer = Rc::clone(&render_timer);
-    let rerender_ui = ui.as_weak();
-    let rerender_cache = Arc::clone(&tile_cache);
-    ui.on_plugin_button_clicked(move |plugin_id, action_id| {
-        let plugin_id = plugin_id.to_string();
-        let action_id = action_id.to_string();
-        info!("Plugin button clicked: {plugin_id}:{action_id}");
-        plugin_trace(format!(
-            "toolbar click plugin={} action={}",
-            plugin_id, action_id
-        ));
-
-        let pm = Rc::clone(&pm);
-        let filter_state = Arc::clone(&filter_state);
-        let rerender_state = Arc::clone(&rerender_state);
-        let rerender_timer = Rc::clone(&rerender_timer);
-        let rerender_ui = rerender_ui.clone();
-        let rerender_cache = Arc::clone(&rerender_cache);
-        Timer::single_shot(Duration::from_millis(0), move || {
-            plugin_trace(format!(
-                "toolbar deferred start plugin={} action={}",
-                plugin_id, action_id
-            ));
-            if let Err(err) = crate::plugin_host::dismiss_active_sidebar_popups() {
-                tracing::debug!(
-                    "Failed to dismiss active sidebar popups before toolbar action: {err}"
-                );
-            }
-            if let Some(ui) = rerender_ui.upgrade()
-                && deactivate_active_plugin_tool_if_matching(
-                    &ui,
-                    &rerender_state,
-                    &plugin_id,
-                    &action_id,
-                )
-            {
-                request_render_loop(
-                    &rerender_timer,
-                    &rerender_ui,
-                    &rerender_state,
-                    &rerender_cache,
-                );
-                plugin_trace(format!(
-                    "toolbar deferred handled as tool toggle plugin={} action={}",
-                    plugin_id, action_id
-                ));
-                return;
-            }
-
-            let sidebar_toggle_was_active = {
-                let state = rerender_state.read();
-                state.active_sidebar_button() == Some((plugin_id.as_str(), action_id.as_str()))
-            };
-
-            let mut pm = pm.borrow_mut();
-            plugin_trace(format!(
-                "toolbar deferred calling handle_action plugin={} action={}",
-                plugin_id, action_id
-            ));
-            match pm.handle_action(&plugin_id, &action_id) {
-                Ok(plugins::ActionOutcome::RustPluginWindow { plugin_root }) => {
-                    plugin_trace(format!(
-                        "toolbar deferred rust window plugin={} action={}",
-                        plugin_id, action_id
-                    ));
-                    match crate::plugins::toggle_rust_plugin_window(&plugin_root, &action_id) {
-                        Ok(opened) => {
-                            let _ = crate::plugin_host::set_local_toolbar_button_active(
-                                &plugin_id, &action_id, opened,
-                            );
-                        }
-                        Err(err) => {
-                            tracing::error!(
-                                "Failed to toggle Rust plugin window for '{}' action '{}': {err}",
-                                plugin_id,
-                                action_id
-                            );
-                        }
-                    }
-                }
-                Ok(plugins::ActionOutcome::Handled) => {
-                    plugin_trace(format!(
-                        "toolbar deferred handled locally plugin={} action={}",
-                        plugin_id, action_id
-                    ));
-                    let (sidebar_toggle_is_active, handled_action_is_tool_button) = {
-                        let state = rerender_state.read();
-                        (
-                            state.active_sidebar_button()
-                                == Some((plugin_id.as_str(), action_id.as_str())),
-                            state.local_plugin_buttons.iter().any(|button| {
-                                button.plugin_id == plugin_id
-                                    && button.action_id == action_id
-                                    && button.tool_mode.is_some()
-                            }),
-                        )
-                    };
-                    if sidebar_toggle_was_active || sidebar_toggle_is_active {
-                        plugin_trace(format!(
-                            "toolbar deferred sidebar toggle complete plugin={} action={}",
-                            plugin_id, action_id
-                        ));
-                        return;
-                    }
-                    if handled_action_is_tool_button {
-                        plugin_trace(format!(
-                            "toolbar deferred tool activation complete plugin={} action={}",
-                            plugin_id, action_id
-                        ));
-                        return;
-                    }
-                    // Never call into plugins while holding the AppState lock:
-                    // their notification handlers may call back into the host.
-                    let filter_chain = filter_state.read().filter_chain.clone();
-                    pm.sync_filter_states(&filter_chain);
-                    filter_state.write().bump_filter_revision();
-                    if let Some(ui) = rerender_ui.upgrade() {
-                        let state = rerender_state.read();
-                        update_tool_state(&ui, &state);
-                    }
-                    request_render_loop(
-                        &rerender_timer,
-                        &rerender_ui,
-                        &rerender_state,
-                        &rerender_cache,
-                    );
-                    plugin_trace(format!(
-                        "toolbar deferred finished plugin={} action={}",
-                        plugin_id, action_id
-                    ));
-                }
-                Err(e) => {
-                    tracing::error!("Plugin action error: {e}");
-                    plugin_trace(format!(
-                        "toolbar deferred action error plugin={} action={} err={}",
-                        plugin_id, action_id, e
-                    ));
-                }
-            }
-        });
-    });
-
-    let pm = Rc::clone(&plugin_manager);
-    let rerender_state = Arc::clone(&state);
-    let rerender_timer = Rc::clone(&render_timer);
-    let rerender_ui = ui.as_weak();
-    let rerender_cache = Arc::clone(&tile_cache);
-    ui.on_plugin_undo_requested(move |plugin_id| {
-        let plugin_id = plugin_id.to_string();
-        let mut pm = pm.borrow_mut();
-        match pm.handle_undo(&plugin_id) {
-            Ok(plugins::ActionOutcome::Handled)
-            | Ok(plugins::ActionOutcome::RustPluginWindow { .. }) => {
-                if let Some(ui) = rerender_ui.upgrade() {
-                    let state = rerender_state.read();
-                    update_tool_state(&ui, &state);
-                    let _ = plugin_host::refresh_plugin_buttons();
-                }
-                request_render_loop(
-                    &rerender_timer,
-                    &rerender_ui,
-                    &rerender_state,
-                    &rerender_cache,
-                );
-            }
-            Err(err) => tracing::error!("Plugin undo error: {err}"),
-        }
-    });
-
-    let pm = Rc::clone(&plugin_manager);
-    let rerender_state = Arc::clone(&state);
-    let rerender_timer = Rc::clone(&render_timer);
-    let rerender_ui = ui.as_weak();
-    let rerender_cache = Arc::clone(&tile_cache);
-    ui.on_plugin_redo_requested(move |plugin_id| {
-        let plugin_id = plugin_id.to_string();
-        let mut pm = pm.borrow_mut();
-        match pm.handle_redo(&plugin_id) {
-            Ok(plugins::ActionOutcome::Handled)
-            | Ok(plugins::ActionOutcome::RustPluginWindow { .. }) => {
-                if let Some(ui) = rerender_ui.upgrade() {
-                    let state = rerender_state.read();
-                    update_tool_state(&ui, &state);
-                    let _ = plugin_host::refresh_plugin_buttons();
-                }
-                request_render_loop(
-                    &rerender_timer,
-                    &rerender_ui,
-                    &rerender_state,
-                    &rerender_cache,
-                );
-            }
-            Err(err) => tracing::error!("Plugin redo error: {err}"),
-        }
-    });
-
-    let hotkey_state = Arc::clone(&state);
-    let hotkey_ui = ui.as_weak();
-    ui.on_plugin_tool_hotkey_pressed(move |text, repeat| {
-        if plugin_host::active_sidebar_captures_hotkeys()
-            || plugin_host::active_modal_captures_hotkeys()
-        {
-            return false;
-        }
-
-        let Some(key) = normalize_hotkey_text(text.as_str()) else {
-            return false;
-        };
-
-        if repeat {
-            let mut app_state = hotkey_state.write();
-            if let Some(active) = app_state.temporary_tool_override_mut(&key) {
-                active.saw_repeat = true;
-                return true;
-            }
-            return false;
-        }
-
-        let Some(button) = ({
-            let app_state = hotkey_state.read();
-            plugin_host::hotkey_button_for_key(&app_state, &key)
-        }) else {
-            return false;
-        };
-
-        let Some(target) = tool_selection_for_button(&button) else {
-            return false;
-        };
-
-        let target_was_active = {
-            let app_state = hotkey_state.read();
-            selection_matches_button(&app_state, &button)
-        };
-
-        {
-            let mut app_state = hotkey_state.write();
-            let restore = (!target_was_active).then(|| app_state.current_tool_selection());
-            app_state.push_temporary_tool_override(state::TemporaryToolOverride {
-                hotkey: key,
-                plugin_id: button.plugin_id.clone(),
-                action_id: button.action_id.clone(),
-                target,
-                restore,
-                target_was_active,
-                pressed_at: Instant::now(),
-                saw_repeat: false,
-            });
-        }
-
-        if !target_was_active && let Some(ui) = hotkey_ui.upgrade() {
-            ui.invoke_plugin_button_clicked(button.plugin_id.into(), button.action_id.into());
-        }
-
-        true
-    });
-
-    let hotkey_state = Arc::clone(&state);
-    let hotkey_ui = ui.as_weak();
-    let hotkey_render_state = Arc::clone(&state);
-    let hotkey_render_timer = Rc::clone(&render_timer);
-    let hotkey_render_cache = Arc::clone(&tile_cache);
-    let hotkey_plugin_manager = Rc::clone(&plugin_manager);
-    ui.on_plugin_tool_hotkey_released(move |text| {
-        if plugin_host::active_sidebar_captures_hotkeys()
-            || plugin_host::active_modal_captures_hotkeys()
-        {
-            return false;
-        }
-
-        let Some(key) = normalize_hotkey_text(text.as_str()) else {
-            return false;
-        };
-
-        let Some(entry) = ({
-            let mut app_state = hotkey_state.write();
-            app_state.take_temporary_tool_override(&key)
-        }) else {
-            return false;
-        };
-
-        let was_held =
-            entry.saw_repeat || entry.pressed_at.elapsed() >= MOMENTARY_TOOL_HOLD_THRESHOLD;
-
-        if was_held {
-            if entry.target.tool == state::Tool::PolygonAnnotation
-                && let Err(err) = crate::callbacks::confirm_active_polygon_annotation(
-                    &hotkey_state,
-                    &hotkey_plugin_manager,
-                )
-            {
-                tracing::error!("Polygon annotation confirmation error: {err}");
-            }
-            if let Some(restore) = entry.restore
-                && let Some(ui) = hotkey_ui.upgrade()
-            {
-                {
-                    let mut app_state = hotkey_state.write();
-                    app_state.apply_tool_selection(&restore);
-                    plugin_host::sync_tool_button_states(&mut app_state);
-                }
-                {
-                    let app_state = hotkey_state.read();
-                    update_tool_state(&ui, &app_state);
-                }
-                let _ = plugin_host::refresh_plugin_buttons();
-                request_render_loop(
-                    &hotkey_render_timer,
-                    &hotkey_ui,
-                    &hotkey_render_state,
-                    &hotkey_render_cache,
-                );
-            }
-        } else if entry.target_was_active
-            && let Some(ui) = hotkey_ui.upgrade()
-            && deactivate_active_plugin_tool_if_matching(
-                &ui,
-                &hotkey_state,
-                &entry.plugin_id,
-                &entry.action_id,
-            )
-        {
-            request_render_loop(
-                &hotkey_render_timer,
-                &hotkey_ui,
-                &hotkey_render_state,
-                &hotkey_render_cache,
-            );
-        }
-
-        true
-    });
-
-    ui.on_global_hotkeys_enabled(|| {
-        !plugin_host::active_sidebar_captures_hotkeys()
-            && !plugin_host::active_modal_captures_hotkeys()
-    });
-
-    let modal_dismiss_ui = ui.as_weak();
-    ui.on_plugin_modal_dismiss_requested(move || {
-        if let Err(err) = plugin_host::dismiss_active_modal_dialog() {
-            tracing::error!("Failed to dismiss plugin modal: {err}");
-        }
-        if let Some(ui) = modal_dismiss_ui.upgrade() {
-            ui.invoke_focus_keyboard();
-        }
-    });
-
-    let pm = Rc::clone(&plugin_manager);
-    let filter_state = Arc::clone(&state);
-    let hud_plugin_ui = ui.as_weak();
-    ui.on_hud_plugin_button_clicked(move |pane, plugin_id, action_id| {
-        let pane = PaneId(pane.max(0) as usize);
-        let plugin_id = plugin_id.to_string();
-        let action_id = action_id.to_string();
-        info!(
-            "HUD plugin button clicked: pane={} {plugin_id}:{action_id}",
-            pane.0
-        );
-
-        let viewport = match crate::plugin_host::viewport_snapshot_for_pane(&filter_state, pane) {
-            Some(viewport) => viewport,
-            None => {
-                tracing::warn!(
-                    "HUD plugin button click ignored without viewport: pane={}",
-                    pane.0
-                );
-                return;
-            }
-        };
-
-        let mut pm = pm.borrow_mut();
-        if let Err(err) = pm.handle_hud_action(&plugin_id, &action_id, &viewport) {
-            tracing::error!("Local HUD plugin action error: {err}");
-            return;
-        }
-
-        let _ = crate::plugin_host::refresh_plugin_buttons();
-
-        // Any plugin may toggle its filters from a HUD action.
-        let filter_chain = filter_state.read().filter_chain.clone();
-        pm.sync_filter_states(&filter_chain);
-        filter_state.write().bump_filter_revision();
-
-        request_render_loop(&render_timer, &hud_plugin_ui, &filter_state, &tile_cache);
-    });
 }
 
 fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_count: usize) {
@@ -948,10 +351,9 @@ fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_coun
     ui.set_split_enabled(state.split_enabled);
     ui.set_focused_pane(state.focused_pane.as_index());
     update_tabs(ui, &state);
-    let _ = crate::plugin_host::refresh_plugin_buttons();
 }
 
-fn open_file(
+pub(crate) fn open_file(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
@@ -1029,26 +431,4 @@ fn update_render_backend(ui: &AppWindow, state: &AppState) {
 
 fn update_filtering_mode(ui: &AppWindow, state: &AppState) {
     ui_update::update_filtering_mode(ui, state)
-}
-
-// ============ Tool handling functions ============
-
-fn update_tool_state(ui: &AppWindow, state: &AppState) {
-    tools::update_tool_state(ui, state)
-}
-
-fn update_tool_overlays(ui: &AppWindow, state: &AppState) {
-    tools::update_tool_overlays(ui, state)
-}
-
-fn handle_tool_mouse_down(state: &mut AppState, screen_x: f64, screen_y: f64) {
-    tools::handle_tool_mouse_down(state, screen_x, screen_y)
-}
-
-fn handle_tool_mouse_move(state: &mut AppState, screen_x: f64, screen_y: f64) {
-    tools::handle_tool_mouse_move(state, screen_x, screen_y)
-}
-
-fn handle_tool_mouse_up(state: &mut AppState, screen_x: f64, screen_y: f64) {
-    tools::handle_tool_mouse_up(state, screen_x, screen_y)
 }

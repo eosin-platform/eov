@@ -40,6 +40,8 @@ export component SvgToolButton inherits Rectangle {
     in property <bool> enabled: true;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
+    // Right click, with the window position of the pointer.
+    callback secondary-clicked(length, length);
 
     width: 32px;
     height: 28px;
@@ -50,6 +52,11 @@ export component SvgToolButton inherits Rectangle {
         enabled: root.enabled;
         clicked => {
             root.clicked();
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.secondary-clicked(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
         }
     }
 
@@ -836,7 +843,7 @@ export component ContextMenu inherits Rectangle {
     in property <length> menu-x: 0px;
     in property <length> menu-y: 0px;
     callback item-clicked(string);
-    property <length> menu-width: 200px;
+    property <length> menu-width: 240px;
 
     x: menu-x;
     y: menu-y;
@@ -866,6 +873,14 @@ export component ContextMenu inherits Rectangle {
             height: 28px;
             background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
 
+            if item.separator-after: Rectangle {
+                y: parent.height - 1px;
+                x: 8px;
+                width: parent.width - 16px;
+                height: 1px;
+                background: Theme.border;
+            }
+
             item-touch := TouchArea {
                 enabled: item.enabled;
                 clicked => {
@@ -882,12 +897,25 @@ export component ContextMenu inherits Rectangle {
                     width: 14px;
                     height: parent.height;
 
-                    if item.icon != "": Image {
+                    if item.icon == "check": Text {
+                        y: (parent.height - self.height) / 2;
+                        text: "✓";
+                        color: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                        font-size: 12px;
+                    }
+
+                    if item.icon != "" && item.icon != "check": Image {
                         x: 0px;
                         y: (parent.height - self.height) / 2;
                         width: 14px;
                         height: 14px;
-                        source: item.icon == "copy" ? @image-url("icons/copy.svg") : item.icon == "export" ? @image-url("icons/export.svg") : item.icon == "point" ? @image-url("icons/point.svg") : @image-url("icons/open-file.svg");
+                        source: item.icon == "copy" ? @image-url("icons/copy.svg")
+                            : item.icon == "export" ? @image-url("icons/export.svg")
+                            : item.icon == "point" ? @image-url("icons/point.svg")
+                            : item.icon == "delete" ? @image-url("icons/delete.svg")
+                            : item.icon == "measure" ? @image-url("icons/measure.svg")
+                            : item.icon == "plugin" ? @image-url("icons/plugin.svg")
+                            : @image-url("icons/open-file.svg");
                         image-fit: contain;
                         colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
                     }

@@ -1,66 +1,57 @@
 //! Application state management
 
+use crate::interaction::HostMeasurement;
+use crate::plugin_runtime::filters::SharedFilterChain;
 use crate::tile_loader::TileLoader;
-use crate::viewport_filter::SharedFilterChain;
 use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileManager, ViewportState,
     WsiFile,
 };
-use eov_plugin_api::{PluginUndoRedoState, ToolbarButtonRegistration};
+use eov_plugin_api::protocol::Rect;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 fn normalize_series_entry_path(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-#[derive(Debug, Clone, Default)]
+static NEXT_PANE_UID: AtomicU32 = AtomicU32::new(1);
+
+/// Pane position → stable id, readable without the `AppState` lock (by
+/// render workers that tell plugin filters which pane they filter).
+static PANE_UIDS: parking_lot::RwLock<Vec<u32>> = parking_lot::RwLock::new(Vec::new());
+
+/// The stable id of the pane at `index`, as last published.
+pub fn pane_uid_for_index(index: usize) -> Option<u32> {
+    PANE_UIDS.read().get(index).copied()
+}
+
+#[derive(Debug, Clone)]
 pub struct PaneState {
+    /// Stable identity, unaffected by panes inserted or removed around it
+    /// (what plugins see as the pane id).
+    pub uid: u32,
     pub tabs: Vec<i32>,
     pub active_tab_id: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginAnnotationHandle {
-    pub plugin_id: String,
-    pub annotation_id: String,
+impl PaneState {
+    pub fn new() -> Self {
+        Self {
+            uid: NEXT_PANE_UID.fetch_add(1, Ordering::Relaxed),
+            tabs: Vec::new(),
+            active_tab_id: None,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PluginAnnotationPreviewPosition {
-    pub x_level0: f64,
-    pub y_level0: f64,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginPolygonDragState {
-    pub start_pointer: ImagePoint,
-    pub vertices: Vec<ImagePoint>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginPolygonVertexHandle {
-    pub plugin_id: String,
-    pub annotation_id: String,
-    pub vertex_index: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginPolygonEdgeHandle {
-    pub plugin_id: String,
-    pub annotation_id: String,
-    pub insert_index: usize,
-    pub position: ImagePoint,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginPolygonVertexDragState {
-    pub start_pointer: ImagePoint,
-    pub vertices: Vec<ImagePoint>,
-    pub vertex_index: usize,
+impl Default for PaneState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Per-tab HUD settings
@@ -214,89 +205,6 @@ fn dedupe_recent_files(paths: impl IntoIterator<Item = PathBuf>) -> Vec<RecentFi
     recent_files
 }
 
-/// Available tools
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Tool {
-    /// Navigate/Pan tool (default) - LMB pans viewport
-    #[default]
-    Navigate,
-    /// Region of Interest tool - click and drag to define ROI
-    RegionOfInterest,
-    /// Measure Distance tool - measure distance between two points
-    MeasureDistance,
-    /// Point annotation tool - click to place an annotation point.
-    PointAnnotation,
-    /// Polygon annotation tool - click to place vertices and confirm a closed polygon.
-    PolygonAnnotation,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolSelection {
-    pub tool: Tool,
-    pub plugin_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TemporaryToolOverride {
-    pub hotkey: String,
-    pub plugin_id: String,
-    pub action_id: String,
-    pub target: ToolSelection,
-    pub restore: Option<ToolSelection>,
-    pub target_was_active: bool,
-    pub pressed_at: Instant,
-    pub saw_repeat: bool,
-}
-
-/// Point in image coordinates
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct ImagePoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-/// Region of Interest
-#[derive(Debug, Clone, Copy, Default)]
-pub struct RegionOfInterest {
-    /// Pane where the ROI was created
-    pub pane: PaneId,
-    /// Top-left corner in image coordinates
-    pub x: f64,
-    pub y: f64,
-    /// Width in image coordinates  
-    pub width: f64,
-    /// Height in image coordinates
-    pub height: f64,
-}
-
-impl RegionOfInterest {
-    pub fn is_valid(&self) -> bool {
-        self.width > 0.0 && self.height > 0.0
-    }
-
-    pub fn from_points(p1: ImagePoint, p2: ImagePoint, pane: PaneId) -> Self {
-        let x = p1.x.min(p2.x);
-        let y = p1.y.min(p2.y);
-        let width = (p1.x - p2.x).abs();
-        let height = (p1.y - p2.y).abs();
-        Self {
-            pane,
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-}
-
-/// Measurement between two points
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Measurement {
-    pub pane: PaneId,
-    pub start: ImagePoint,
-    pub end: ImagePoint,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TileRequestSignature {
     pub level: u32,
@@ -306,26 +214,6 @@ pub struct TileRequestSignature {
     pub end_x: u64,
     pub end_y: u64,
     pub tile_size: u32,
-}
-
-impl Measurement {
-    /// Calculate distance in image pixels
-    pub fn distance(&self) -> f64 {
-        let dx = self.end.x - self.start.x;
-        let dy = self.end.y - self.start.y;
-        (dx * dx + dy * dy).sqrt()
-    }
-}
-
-/// Tool interaction state
-#[derive(Debug, Clone, Copy, Default)]
-pub enum ToolInteractionState {
-    #[default]
-    Idle,
-    /// First point placed for ROI or measurement
-    FirstPointPlaced(ImagePoint),
-    /// Currently dragging (for ROI or drag-style measurement)
-    Dragging(ImagePoint),
 }
 
 /// A single open file with its associated state
@@ -348,10 +236,11 @@ pub struct OpenFile {
     pub pane_states: Vec<Option<FilePaneState>>,
     /// Thumbnail for minimap (RGBA data)
     pub thumbnail: Option<Vec<u8>>,
-    /// Region of interest (if set)
-    pub roi: Option<RegionOfInterest>,
-    /// Measurements
-    pub measurements: Vec<Measurement>,
+    /// Region of interest in level-0 pixels (if set); shown in every pane
+    /// with this slide.
+    pub roi: Option<Rect>,
+    /// Host measurements.
+    pub measurements: Vec<HostMeasurement>,
 }
 
 pub struct NewOpenFile {
@@ -554,44 +443,6 @@ pub struct AppState {
     pub split_position: f32,
     /// Currently focused pane
     pub focused_pane: PaneId,
-    /// Current active tool
-    pub current_tool: Tool,
-    /// Owning plugin for the active plugin-provided annotation tool, if any.
-    pub active_tool_plugin_id: Option<String>,
-    /// Current tool interaction state
-    pub tool_state: ToolInteractionState,
-    /// Candidate point (for visual feedback during tool use)
-    pub candidate_point: Option<ImagePoint>,
-    /// Plugin-owned annotation currently hovered in the viewport, if any.
-    pub hovered_plugin_annotation: Option<PluginAnnotationHandle>,
-    /// Plugin-owned annotation currently hovered in a plugin sidebar, if any.
-    pub sidebar_hovered_plugin_annotation: Option<PluginAnnotationHandle>,
-    /// Plugin-owned point annotation currently being dragged, if any.
-    pub dragged_plugin_point: Option<PluginAnnotationHandle>,
-    /// Transient image-space preview position for the dragged plugin point.
-    pub dragged_plugin_point_position: Option<PluginAnnotationPreviewPosition>,
-    /// Plugin-owned polygon annotation currently being dragged, if any.
-    pub dragged_plugin_polygon: Option<PluginAnnotationHandle>,
-    /// Original polygon vertices and anchor pointer used for drag previews.
-    pub dragged_plugin_polygon_state: Option<PluginPolygonDragState>,
-    /// Current pointer position used to preview polygon dragging.
-    pub dragged_plugin_polygon_position: Option<ImagePoint>,
-    /// Plugin-owned polygon vertex currently hovered in the viewport, if any.
-    pub hovered_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
-    /// Plugin-owned polygon edge insertion candidate currently hovered, if any.
-    pub hovered_plugin_polygon_edge: Option<PluginPolygonEdgeHandle>,
-    /// Plugin-owned polygon vertex currently being dragged, if any.
-    pub dragged_plugin_polygon_vertex: Option<PluginPolygonVertexHandle>,
-    /// Original polygon vertices and anchor pointer used for vertex drag previews.
-    pub dragged_plugin_polygon_vertex_state: Option<PluginPolygonVertexDragState>,
-    /// Current pointer position used to preview polygon vertex dragging.
-    pub dragged_plugin_polygon_vertex_position: Option<ImagePoint>,
-    /// In-progress polygon vertices for the active polygon tool.
-    pub polygon_candidate_vertices: Vec<ImagePoint>,
-    /// Current hover point used to preview the next polygon segment.
-    pub polygon_candidate_hover: Option<ImagePoint>,
-    /// Animation offset for marching ants (wraps at 16)
-    pub ant_offset: f32,
     /// Frame timestamps for FPS calculation
     pub frame_times: Vec<std::time::Instant>,
     /// Current FPS value
@@ -632,26 +483,14 @@ pub struct AppState {
     pub series_content_revision: u64,
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
-    /// Currently active plugin-provided sidebar, if any.
-    pub active_sidebar: Option<eov_plugin_api::ActiveSidebar>,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
     pub render_loop_running: bool,
-    /// Static/local plugin toolbar buttons contributed by in-process plugins.
-    pub local_plugin_buttons: Vec<ToolbarButtonRegistration>,
-    /// Static/local viewport HUD toolbar buttons contributed by in-process plugins.
-    pub local_hud_plugin_buttons: Vec<ToolbarButtonRegistration>,
-    /// Plugin-owned undo/redo visibility and availability state.
-    pub local_plugin_undo_redo_states: HashMap<String, PluginUndoRedoState>,
-    /// Stable plugin order for resolving the active undo/redo owner.
-    pub local_plugin_undo_redo_order: Vec<String>,
-    /// In-process viewport filter chain (FFI plugins).
+    /// Plugin viewport filters, read lock-free by the renderer.
     pub filter_chain: SharedFilterChain,
     /// Monotonic revision for viewport filter enable-state changes.
     pub filter_revision: u64,
-    /// Host-managed stack of held temporary tool overrides.
-    pub temporary_tool_overrides: Vec<TemporaryToolOverride>,
 }
 
 impl AppState {
@@ -661,30 +500,11 @@ impl AppState {
         Self {
             open_files: Vec::new(),
             active_file_id: None,
-            panes: vec![PaneState::default()],
+            panes: vec![PaneState::new()],
             next_id: 1,
             split_enabled: false,
             split_position: 0.5,
             focused_pane: PaneId::PRIMARY,
-            current_tool: Tool::Navigate,
-            active_tool_plugin_id: None,
-            tool_state: ToolInteractionState::Idle,
-            candidate_point: None,
-            hovered_plugin_annotation: None,
-            sidebar_hovered_plugin_annotation: None,
-            dragged_plugin_point: None,
-            dragged_plugin_point_position: None,
-            dragged_plugin_polygon: None,
-            dragged_plugin_polygon_state: None,
-            dragged_plugin_polygon_position: None,
-            hovered_plugin_polygon_vertex: None,
-            hovered_plugin_polygon_edge: None,
-            dragged_plugin_polygon_vertex: None,
-            dragged_plugin_polygon_vertex_state: None,
-            dragged_plugin_polygon_vertex_position: None,
-            polygon_candidate_vertices: Vec::new(),
-            polygon_candidate_hover: None,
-            ant_offset: 0.0,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
             recent_files,
@@ -705,16 +525,10 @@ impl AppState {
             series_revision: 0,
             series_content_revision: 0,
             viewport_lock_enabled: false,
-            active_sidebar: None,
             needs_render: true,
             render_loop_running: false,
-            local_plugin_buttons: Vec::new(),
-            local_hud_plugin_buttons: Vec::new(),
-            local_plugin_undo_redo_states: HashMap::new(),
-            local_plugin_undo_redo_order: Vec::new(),
-            filter_chain: crate::viewport_filter::new_shared_filter_chain(),
+            filter_chain: Arc::new(crate::plugin_runtime::filters::FilterChain::default()),
             filter_revision: 0,
-            temporary_tool_overrides: Vec::new(),
         }
     }
 
@@ -995,6 +809,37 @@ impl AppState {
         self.set_focused_pane(PaneId(next));
     }
 
+    /// Publishes the pane ids for [`pane_uid_for_index`].
+    pub fn publish_pane_uids(&self) {
+        *PANE_UIDS.write() = self.panes.iter().map(|p| p.uid).collect();
+    }
+
+    /// The stable id of the pane at `pane`.
+    pub fn pane_uid(&self, pane: PaneId) -> Option<u32> {
+        self.panes.get(pane.0).map(|p| p.uid)
+    }
+
+    /// The current position of the pane with stable id `uid`.
+    pub fn pane_by_uid(&self, uid: u32) -> Option<PaneId> {
+        self.panes.iter().position(|p| p.uid == uid).map(PaneId)
+    }
+
+    /// The measurement unit of the first pane showing `file_id`.
+    pub fn file_pane_unit(&self, file_id: i32) -> Option<MeasurementUnit> {
+        let file = self.get_file(file_id)?;
+        (0..self.panes.len())
+            .map(PaneId)
+            .filter(|pane| self.active_file_id_for_pane(*pane) == Some(file_id))
+            .find_map(|pane| file.pane_state(pane).map(|ps| ps.hud.measurement_unit))
+            .or_else(|| {
+                file.pane_states
+                    .iter()
+                    .flatten()
+                    .next()
+                    .map(|ps| ps.hud.measurement_unit)
+            })
+    }
+
     fn ensure_file_pane_state(&mut self, id: i32, pane: PaneId, source_pane: PaneId) {
         let file_id = self.resolve_tab_file_id(id);
         if let Some(file) = self.get_file_mut(file_id) {
@@ -1004,7 +849,7 @@ impl AppState {
 
     pub fn insert_pane(&mut self, index: usize) -> PaneId {
         let insert_index = index.min(self.panes.len());
-        self.panes.insert(insert_index, PaneState::default());
+        self.panes.insert(insert_index, PaneState::new());
         self.last_rendered_file_ids.insert(insert_index, None);
         for file in &mut self.open_files {
             file.insert_pane_slot(insert_index);
@@ -1038,7 +883,7 @@ impl AppState {
     }
 
     pub fn reset_to_single_pane(&mut self) {
-        self.panes = vec![PaneState::default()];
+        self.panes = vec![PaneState::new()];
         self.last_rendered_file_ids = vec![None];
         self.focused_pane = PaneId::PRIMARY;
         for file in &mut self.open_files {
@@ -1372,136 +1217,6 @@ impl AppState {
         };
         self.activate_tab_in_pane(target_pane, id);
         id
-    }
-
-    /// Set the current tool and reset interaction state
-    pub fn set_tool(&mut self, tool: Tool) {
-        self.current_tool = tool;
-        if !matches!(tool, Tool::PointAnnotation | Tool::PolygonAnnotation) {
-            self.active_tool_plugin_id = None;
-        }
-        self.tool_state = ToolInteractionState::Idle;
-        self.candidate_point = None;
-        self.hovered_plugin_annotation = None;
-        self.sidebar_hovered_plugin_annotation = None;
-        self.dragged_plugin_point = None;
-        self.dragged_plugin_point_position = None;
-        self.dragged_plugin_polygon = None;
-        self.dragged_plugin_polygon_state = None;
-        self.dragged_plugin_polygon_position = None;
-        self.hovered_plugin_polygon_vertex = None;
-        self.hovered_plugin_polygon_edge = None;
-        self.dragged_plugin_polygon_vertex = None;
-        self.dragged_plugin_polygon_vertex_state = None;
-        self.dragged_plugin_polygon_vertex_position = None;
-        self.polygon_candidate_vertices.clear();
-        self.polygon_candidate_hover = None;
-        self.needs_render = true;
-        // Only clear ROI and measurements when switching to Navigate
-        if tool == Tool::Navigate
-            && let Some(file) = self
-                .open_files
-                .iter_mut()
-                .find(|f| Some(f.id) == self.active_file_id)
-        {
-            file.roi = None;
-            file.measurements.clear();
-        }
-    }
-
-    /// Cancel current tool operation and return to Navigate
-    pub fn cancel_tool(&mut self) {
-        self.tool_state = ToolInteractionState::Idle;
-        self.candidate_point = None;
-        self.hovered_plugin_annotation = None;
-        self.sidebar_hovered_plugin_annotation = None;
-        self.dragged_plugin_point = None;
-        self.dragged_plugin_point_position = None;
-        self.dragged_plugin_polygon = None;
-        self.dragged_plugin_polygon_state = None;
-        self.dragged_plugin_polygon_position = None;
-        self.hovered_plugin_polygon_vertex = None;
-        self.hovered_plugin_polygon_edge = None;
-        self.dragged_plugin_polygon_vertex = None;
-        self.dragged_plugin_polygon_vertex_state = None;
-        self.dragged_plugin_polygon_vertex_position = None;
-        self.polygon_candidate_vertices.clear();
-        self.polygon_candidate_hover = None;
-        self.current_tool = Tool::Navigate;
-        self.active_tool_plugin_id = None;
-        self.needs_render = true;
-        // Clear ROI and measurements when cancelling
-        if let Some(file) = self
-            .open_files
-            .iter_mut()
-            .find(|f| Some(f.id) == self.active_file_id)
-        {
-            file.roi = None;
-            file.measurements.clear();
-        }
-    }
-
-    pub fn set_plugin_annotation_tool(&mut self, tool: Tool, plugin_id: String) {
-        self.current_tool = tool;
-        self.active_tool_plugin_id = Some(plugin_id);
-        self.tool_state = ToolInteractionState::Idle;
-        self.candidate_point = None;
-        self.hovered_plugin_annotation = None;
-        self.sidebar_hovered_plugin_annotation = None;
-        self.dragged_plugin_point = None;
-        self.dragged_plugin_point_position = None;
-        self.dragged_plugin_polygon = None;
-        self.dragged_plugin_polygon_state = None;
-        self.dragged_plugin_polygon_position = None;
-        self.hovered_plugin_polygon_vertex = None;
-        self.hovered_plugin_polygon_edge = None;
-        self.dragged_plugin_polygon_vertex = None;
-        self.dragged_plugin_polygon_vertex_state = None;
-        self.dragged_plugin_polygon_vertex_position = None;
-        self.polygon_candidate_vertices.clear();
-        self.polygon_candidate_hover = None;
-        self.needs_render = true;
-    }
-
-    pub fn current_tool_selection(&self) -> ToolSelection {
-        ToolSelection {
-            tool: self.current_tool,
-            plugin_id: self.active_tool_plugin_id.clone(),
-        }
-    }
-
-    pub fn apply_tool_selection(&mut self, selection: &ToolSelection) {
-        match selection.tool {
-            Tool::PointAnnotation | Tool::PolygonAnnotation => {
-                if let Some(plugin_id) = selection.plugin_id.clone() {
-                    self.set_plugin_annotation_tool(selection.tool, plugin_id);
-                } else {
-                    self.set_tool(Tool::Navigate);
-                }
-            }
-            tool => self.set_tool(tool),
-        }
-    }
-
-    pub fn temporary_tool_override_mut(
-        &mut self,
-        hotkey: &str,
-    ) -> Option<&mut TemporaryToolOverride> {
-        self.temporary_tool_overrides
-            .iter_mut()
-            .rev()
-            .find(|entry| entry.hotkey == hotkey)
-    }
-
-    pub fn push_temporary_tool_override(&mut self, entry: TemporaryToolOverride) {
-        self.temporary_tool_overrides.push(entry);
-    }
-
-    pub fn take_temporary_tool_override(&mut self, hotkey: &str) -> Option<TemporaryToolOverride> {
-        self.temporary_tool_overrides
-            .iter()
-            .rposition(|entry| entry.hotkey == hotkey)
-            .map(|index| self.temporary_tool_overrides.remove(index))
     }
 
     /// Close a file by ID
@@ -1928,79 +1643,6 @@ impl AppState {
         }
 
         changed
-    }
-
-    pub fn set_active_sidebar(&mut self, sidebar: eov_plugin_api::ActiveSidebar) {
-        self.active_sidebar = Some(sidebar);
-        self.needs_render = true;
-    }
-
-    pub fn clear_active_sidebar(&mut self) {
-        self.active_sidebar = None;
-        self.needs_render = true;
-    }
-
-    pub fn plugin_sidebar_width_px(&self) -> f32 {
-        self.active_sidebar
-            .as_ref()
-            .map(|sidebar| sidebar.width_px as f32)
-            .unwrap_or(0.0)
-    }
-
-    pub fn has_active_sidebar(&self) -> bool {
-        self.active_sidebar.is_some()
-    }
-
-    pub fn active_sidebar(&self) -> Option<&eov_plugin_api::ActiveSidebar> {
-        self.active_sidebar.as_ref()
-    }
-
-    pub fn sidebar_matches(
-        &self,
-        plugin_id: &str,
-        button_id: Option<&str>,
-        ui_path: &str,
-        component: &str,
-    ) -> bool {
-        self.active_sidebar.as_ref().is_some_and(|sidebar| {
-            sidebar.plugin_id == plugin_id
-                && sidebar.button_id.as_deref() == button_id
-                && sidebar.ui_path == ui_path
-                && sidebar.component == component
-        })
-    }
-
-    pub fn active_sidebar_button(&self) -> Option<(&str, &str)> {
-        let sidebar = self.active_sidebar.as_ref()?;
-        let button_id = sidebar.button_id.as_deref()?;
-        Some((sidebar.plugin_id.as_str(), button_id))
-    }
-
-    pub fn has_matching_sidebar_request(
-        &self,
-        plugin_id: &str,
-        request: &eov_plugin_api::SidebarRequest,
-    ) -> bool {
-        self.sidebar_matches(
-            plugin_id,
-            request.button_id.as_deref(),
-            &request.ui_path,
-            &request.component,
-        )
-    }
-
-    pub fn set_sidebar_from_request(
-        &mut self,
-        plugin_id: String,
-        request: eov_plugin_api::SidebarRequest,
-    ) {
-        self.set_active_sidebar(eov_plugin_api::ActiveSidebar {
-            plugin_id,
-            button_id: request.button_id,
-            width_px: request.width_px,
-            ui_path: request.ui_path,
-            component: request.component,
-        });
     }
 
     pub fn select_render_backend(&mut self, backend: RenderBackend) {

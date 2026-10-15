@@ -328,7 +328,9 @@ impl Shape {
                 width,
                 height,
             } => {
-                [x, y, width, height].iter().all(|v| v.is_finite()) && *width >= 0.0 && *height >= 0.0
+                [x, y, width, height].iter().all(|v| v.is_finite())
+                    && *width >= 0.0
+                    && *height >= 0.0
             }
             Shape::Ellipse { cx, cy, rx, ry } => {
                 [cx, cy, rx, ry].iter().all(|v| v.is_finite()) && *rx >= 0.0 && *ry >= 0.0
@@ -649,7 +651,9 @@ impl Default for Style {
 /// only in panes showing it; they are discarded when the file closes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerSpec {
-    /// Plugin-scoped layer id.
+    /// Plugin-scoped layer id. Ids are unique per plugin across all open
+    /// slides, so include the file id when a layer exists for each slide
+    /// (e.g. `format!("cells-{file_id}")`).
     pub layer_id: String,
     pub file_id: FileId,
     #[serde(default)]
@@ -949,7 +953,11 @@ pub struct SurfaceSpec {
 impl SurfaceSpec {
     /// A surface showing `component` from `ui_path` (relative to the plugin
     /// root).
-    pub fn new(kind: SurfaceKind, ui_path: impl Into<String>, component: impl Into<String>) -> Self {
+    pub fn new(
+        kind: SurfaceKind,
+        ui_path: impl Into<String>,
+        component: impl Into<String>,
+    ) -> Self {
         Self {
             kind,
             ui_path: ui_path.into(),
@@ -1679,9 +1687,10 @@ mod tests {
 
     #[test]
     fn optional_fields_may_be_absent() {
-        let event: HostEvent =
-            serde_json::from_str(r#"{"type":"object_clicked","object":{"layer_id":"l","object_id":"o"},"pane":1}"#)
-                .unwrap();
+        let event: HostEvent = serde_json::from_str(
+            r#"{"type":"object_clicked","object":{"layer_id":"l","object_id":"o"},"pane":1}"#,
+        )
+        .unwrap();
         match event {
             HostEvent::ObjectClicked {
                 click_count,

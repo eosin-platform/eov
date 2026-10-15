@@ -1,0 +1,225 @@
+import { Theme } from "theme.slint";
+import { PluginRowData } from "types.slint";
+
+// Lists every plugin with its version, origin and state, and lets the user
+// turn plugins on and off.
+export component PluginsPanel inherits Rectangle {
+    in property <[PluginRowData]> rows: [];
+    in property <string> plugin-dir: "";
+    in property <string> note: "";
+    callback close-requested();
+    callback enable-requested(/* plugin id */ string, /* enable */ bool);
+    callback open-folder-requested();
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000088;
+
+    TouchArea {
+        clicked => {
+            root.close-requested();
+        }
+    }
+
+    FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.close-requested();
+                accept
+            }
+            reject
+        }
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width - 40px, 720px);
+        height: min(parent.height - 40px, 520px);
+        background: Theme.surface;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 18px;
+            spacing: 10px;
+
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Plugins";
+                    color: Theme.text-primary;
+                    font-size: 15px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: folder-text.preferred-width + 16px;
+                    height: 26px;
+                    border-radius: 4px;
+                    background: folder-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    folder-text := Text {
+                        text: "Open plugin folder";
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    folder-touch := TouchArea {
+                        clicked => {
+                            root.open-folder-requested();
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 4px;
+                    background: close-touch.has-hover ? Theme.surface-hover : transparent;
+
+                    Text {
+                        text: "×";
+                        color: Theme.text-secondary;
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    close-touch := TouchArea {
+                        clicked => {
+                            root.close-requested();
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: root.plugin-dir != "" ? "Plugin packages (.eop) are loaded from " + root.plugin-dir : "";
+                color: Theme.text-secondary;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            if root.note != "": Text {
+                text: root.note;
+                color: #f1c40f;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            Flickable {
+                vertical-stretch: 1;
+                viewport-height: plugin-list.preferred-height;
+
+                plugin-list := VerticalLayout {
+                    spacing: 6px;
+
+                    if root.rows.length == 0: Text {
+                        text: "No plugins are installed.";
+                        color: Theme.text-secondary;
+                        font-size: 12px;
+                    }
+
+                    for row in root.rows: Rectangle {
+                        height: row-layout.preferred-height + 16px;
+                        border-radius: 6px;
+                        background: Theme.background;
+                        border-width: 1px;
+                        border-color: row.status-level >= 2 ? #ff6b6b80 : Theme.border-subtle;
+
+                        row-layout := HorizontalLayout {
+                            x: 10px;
+                            y: 8px;
+                            width: parent.width - 20px;
+                            spacing: 10px;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 3px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: row.name;
+                                        color: Theme.text-primary;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                    }
+                                    Text {
+                                        text: row.version + (row.api-version != "" ? "  (plugin API " + row.api-version + ")" : "");
+                                        color: Theme.text-secondary;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                if row.description != "": Text {
+                                    text: row.description;
+                                    color: Theme.text-secondary;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+
+                                Text {
+                                    text: row.status;
+                                    color: row.status-level == 0 ? #2ecc71 : row.status-level == 1 ? Theme.text-secondary : #ff6b6b;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+
+                                Text {
+                                    text: row.id + (row.source != "" ? " · " + row.source : "");
+                                    color: Theme.text-secondary;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: start;
+
+                                if row.can-enable || row.can-disable: Rectangle {
+                                    width: toggle-text.preferred-width + 18px;
+                                    height: 26px;
+                                    border-radius: 4px;
+                                    background: toggle-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+
+                                    toggle-text := Text {
+                                        text: row.can-disable ? "Disable" : "Enable";
+                                        color: Theme.text-primary;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    toggle-touch := TouchArea {
+                                        clicked => {
+                                            root.enable-requested(row.id, !row.can-disable);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

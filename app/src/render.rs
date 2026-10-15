@@ -11,7 +11,6 @@ use crate::render_pool::{
 };
 use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
-use crate::tools;
 use eov_common::render::single_level_trilinear;
 use eov_common::{
     FilteringMode, RenderBackend, StainNormalization, TileCache, TileManager, TrilinearLevels,
@@ -57,7 +56,7 @@ struct RenderPaneRequest<'a> {
     force_render: bool,
     render_backend: RenderBackend,
     filtering_mode: FilteringMode,
-    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
 }
 
 #[derive(Clone)]
@@ -159,30 +158,31 @@ struct CpuPaneExecution {
     commit: CpuRenderCommit,
 }
 
+static FILTER_FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// What a plugin filter is told about the pane it filters.
 fn viewport_snapshot_ffi_for_render(
     file_id: i32,
-    file_path: &str,
-    filename: &str,
+    _file_path: &str,
+    _filename: &str,
     viewport: &eov_common::ViewportState,
     pane: PaneId,
-) -> eov_plugin_api::ffi::ViewportSnapshotFFI {
+) -> eov_plugin_api::abi::FilterView {
     let bounds = viewport.viewport.bounds();
-    eov_plugin_api::ffi::ViewportSnapshotFFI {
-        pane_index: pane.0 as u32,
-        file_id,
-        file_path: file_path.to_string().into(),
-        filename: filename.to_string().into(),
+    eov_plugin_api::abi::FilterView {
+        pane: crate::state::pane_uid_for_index(pane.0).unwrap_or(pane.0 as u32),
+        file_id: i64::from(file_id),
         center_x: viewport.viewport.center.x,
         center_y: viewport.viewport.center.y,
         zoom: viewport.viewport.zoom,
         width: viewport.viewport.width,
         height: viewport.viewport.height,
-        image_width: viewport.viewport.image_width,
-        image_height: viewport.viewport.image_height,
-        bounds_left: bounds.left,
-        bounds_top: bounds.top,
-        bounds_right: bounds.right,
-        bounds_bottom: bounds.bottom,
+        scale_factor: 1.0,
+        visible_x: bounds.left,
+        visible_y: bounds.top,
+        visible_width: bounds.width(),
+        visible_height: bounds.height(),
+        frame: FILTER_FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
     }
 }
 
@@ -213,7 +213,7 @@ struct RenderCachedCpuFrameWithFiltersContext<'a> {
     viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
-    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
 }
 
 fn render_cached_cpu_frame_with_filters(
@@ -276,7 +276,7 @@ struct RenderGpuSurfaceWithFiltersContext<'a> {
     viewport: &'a Viewport,
     render_width: u32,
     render_height: u32,
-    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
 }
 
 fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> Option<Image> {
@@ -558,7 +558,6 @@ pub(crate) fn update_and_render(
     }
 
     let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
-    state.ant_offset = (state.ant_offset + 0.5) % 16.0;
 
     let content_width = (ui.get_content_area_width() as f64).max(100.0);
     let content_height = (ui.get_content_area_height() as f64 - 35.0).max(100.0);
@@ -726,7 +725,11 @@ pub(crate) fn update_and_render(
     }
 
     crate::update_tabs(ui, &state);
-    keep_running |= tools::has_active_roi_overlay(&state);
+    keep_running |= crate::host_ui::with_host(|host| {
+        host.after_frame(&state);
+        host.overlay_frames_pending()
+    })
+    .unwrap_or(false);
 
     if rendered_frame {
         state.update_fps();
@@ -821,7 +824,11 @@ fn update_and_render_cpu(
 
     let mut state = state.write();
     crate::update_tabs(ui, &state);
-    keep_running |= tools::has_active_roi_overlay(&state);
+    keep_running |= crate::host_ui::with_host(|host| {
+        host.after_frame(&state);
+        host.overlay_frames_pending()
+    })
+    .unwrap_or(false);
 
     if rendered_frame {
         state.update_fps();
@@ -857,7 +864,6 @@ fn collect_cpu_frame_snapshot(
 
     let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
     let filter_revision = state.filter_revision;
-    state.ant_offset = (state.ant_offset + 0.5) % 16.0;
 
     let content_width = (ui.get_content_area_width() as f64).max(100.0);
     let content_height = (ui.get_content_area_height() as f64 - 35.0).max(100.0);
@@ -1216,7 +1222,7 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
 fn render_cpu_pane_from_snapshot(
     snapshot: &CpuPaneSnapshot,
     tile_cache: &Arc<TileCache>,
-    filter_chain: &crate::viewport_filter::SharedFilterChain,
+    filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
 ) -> CpuPaneExecution {
     let vp = &snapshot.viewport_state.viewport;
     let vp_zoom = vp.zoom;
@@ -2435,7 +2441,7 @@ struct RenderCachedPreview<'a> {
     fallback_commands: &'a [CpuBlitCommand],
     fine_commands: &'a [CpuBlitCommand],
     postprocess: &'a CpuRenderPostProcess,
-    filter_chain: &'a crate::viewport_filter::SharedFilterChain,
+    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
 }
 
 fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {

@@ -15,9 +15,9 @@ pub mod settings;
 pub mod shared;
 pub mod undo;
 
+use abi_stable::std_types::RStr;
 use eov_plugin_api::abi::{FfiError, FfiErrorKind, PluginBox};
 use eov_plugin_api::protocol::{HostEvent, PluginInit, event_names};
-use abi_stable::std_types::RStr;
 use filters::SharedFilterChain;
 use host_api::HostApi;
 use loader::{LoadError, Module};
@@ -128,12 +128,9 @@ impl PluginRuntime {
         }
     }
 
+    #[cfg(test)]
     pub fn shared(&self) -> &Arc<HostShared> {
         &self.shared
-    }
-
-    pub fn filters(&self) -> &SharedFilterChain {
-        &self.filters
     }
 
     /// Every known plugin, sorted by id.
@@ -145,6 +142,7 @@ impl PluginRuntime {
         self.slots.iter().find(|s| s.id() == plugin_id)
     }
 
+    #[cfg(test)]
     pub fn is_active(&self, plugin_id: &str) -> bool {
         self.slot(plugin_id).is_some_and(PluginSlot::is_active)
     }
@@ -189,13 +187,7 @@ impl PluginRuntime {
                 tracing::warn!("Cannot create {}: {error}", dir.display());
             }
         }
-        let ctx = Arc::new(PluginContext::new(
-            &info.id,
-            &info.version,
-            info.root.clone(),
-            data_dir.clone(),
-            cache_dir.clone(),
-        ));
+        let ctx = Arc::new(PluginContext::new(&info.id, info.root.clone()));
         let settings = self.shared.settings.load(&info.id, &data_dir);
         let init = PluginInit {
             plugin_id: info.id.clone(),
@@ -297,7 +289,9 @@ impl PluginRuntime {
             };
             match target {
                 EventTarget::All => {
-                    if SUBSCRIBABLE.contains(&event_type.as_str()) && !self.shared.wants(&ctx.id, &event_type) {
+                    if SUBSCRIBABLE.contains(&event_type.as_str())
+                        && !self.shared.wants(&ctx.id, &event_type)
+                    {
                         continue;
                     }
                 }
@@ -338,6 +332,7 @@ impl PluginRuntime {
     }
 
     /// Sends an event to one plugin and returns its reply.
+    #[cfg(test)]
     pub fn request(&mut self, plugin_id: &str, event: &HostEvent) -> Result<Value, FfiError> {
         self.deliver(&EventTarget::Plugin(Arc::from(plugin_id)), event)
             .into_iter()
@@ -452,8 +447,15 @@ mod tests {
 
     fn runtime() -> (tempfile::TempDir, PluginRuntime) {
         let dir = tempfile::tempdir().unwrap();
-        let shared = Arc::new(HostShared::new(Arc::new(OverlayStore::new()), SettingsStore::new(), "1.0.0"));
-        (dir, PluginRuntime::new(shared, Arc::new(filters::FilterChain::default())))
+        let shared = Arc::new(HostShared::new(
+            Arc::new(OverlayStore::new()),
+            SettingsStore::new(),
+            "1.0.0",
+        ));
+        (
+            dir,
+            PluginRuntime::new(shared, Arc::new(filters::FilterChain::default())),
+        )
     }
 
     fn start(rt: &mut PluginRuntime, dir: &std::path::Path, id: &str) -> Result<(), String> {
@@ -480,7 +482,10 @@ mod tests {
         assert!(start(&mut rt, dir.path(), "broken").is_err());
         let ids: Vec<_> = rt.slots().iter().map(|s| s.id().to_string()).collect();
         assert_eq!(ids, ["alpha", "broken", "zeta"]);
-        assert!(matches!(rt.slot("broken").unwrap().status, PluginStatus::Failed(_)));
+        assert!(matches!(
+            rt.slot("broken").unwrap().status,
+            PluginStatus::Failed(_)
+        ));
         assert!(dir.path().join("alpha/data").is_dir());
     }
 
@@ -505,20 +510,41 @@ mod tests {
         assert_eq!(response.items[0].item_id, "x");
 
         let error = rt
-            .request("echo", &HostEvent::ToolbarButtonClicked { button_id: "fail".into() })
+            .request(
+                "echo",
+                &HostEvent::ToolbarButtonClicked {
+                    button_id: "fail".into(),
+                },
+            )
             .unwrap_err();
         assert_eq!(error.kind(), FfiErrorKind::Failed);
         assert!(rt.is_active("echo"));
 
         let before = SHUTDOWNS.load(Ordering::SeqCst);
         let error = rt
-            .request("echo", &HostEvent::ToolbarButtonClicked { button_id: "panic".into() })
+            .request(
+                "echo",
+                &HostEvent::ToolbarButtonClicked {
+                    button_id: "panic".into(),
+                },
+            )
             .unwrap_err();
         assert_eq!(error.kind(), FfiErrorKind::Panicked);
-        assert!(matches!(rt.slot("echo").unwrap().status, PluginStatus::Quarantined(_)));
+        assert!(matches!(
+            rt.slot("echo").unwrap().status,
+            PluginStatus::Quarantined(_)
+        ));
         assert_eq!(SHUTDOWNS.load(Ordering::SeqCst), before + 1);
         // Quarantined plugins receive nothing more.
-        assert!(rt.request("echo", &HostEvent::Ready { restore_sidebar: false }).is_err());
+        assert!(
+            rt.request(
+                "echo",
+                &HostEvent::Ready {
+                    restore_sidebar: false
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -526,12 +552,22 @@ mod tests {
         let (dir, mut rt) = runtime();
         start(&mut rt, dir.path(), "echo").unwrap();
         // The plugin unsubscribes from everything optional on FileOpened.
-        let first = rt.deliver(&EventTarget::All, &HostEvent::FileOpened { file: FileInfo::default() });
+        let first = rt.deliver(
+            &EventTarget::All,
+            &HostEvent::FileOpened {
+                file: FileInfo::default(),
+            },
+        );
         assert_eq!(first.len(), 1);
         let second = rt.deliver(&EventTarget::All, &HostEvent::FileClosed { file_id: 1 });
         assert!(second.is_empty());
         // Lifecycle events still arrive.
-        let ready = rt.deliver(&EventTarget::All, &HostEvent::Ready { restore_sidebar: false });
+        let ready = rt.deliver(
+            &EventTarget::All,
+            &HostEvent::Ready {
+                restore_sidebar: false,
+            },
+        );
         assert_eq!(ready.len(), 1);
     }
 

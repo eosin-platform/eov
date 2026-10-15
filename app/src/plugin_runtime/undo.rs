@@ -29,7 +29,10 @@ pub enum HostChange {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UndoAction {
     Host(HostChange),
-    Plugin { plugin_id: Arc<str>, entry_id: String },
+    Plugin {
+        plugin_id: Arc<str>,
+        entry_id: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -50,9 +53,16 @@ pub struct UndoStack {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UndoStep {
     /// Apply this host change (already inverted for undo).
-    Host { file_id: Option<FileId>, change: HostChange },
+    Host {
+        file_id: Option<FileId>,
+        change: HostChange,
+    },
     /// Send `Undo`/`Redo` to the plugin.
-    Plugin { plugin_id: Arc<str>, entry_id: String, redo: bool },
+    Plugin {
+        plugin_id: Arc<str>,
+        entry_id: String,
+        redo: bool,
+    },
 }
 
 fn in_scope(entry: &UndoEntry, file_id: Option<FileId>) -> bool {
@@ -158,9 +168,9 @@ impl UndoStack {
     /// Drops a plugin's entries (of one file, or all).
     pub fn clear_plugin(&mut self, plugin_id: &str, file_id: Option<FileId>) {
         let keep = |e: &UndoEntry| match &e.action {
-            UndoAction::Plugin { plugin_id: owner, .. } => {
-                &**owner != plugin_id || (file_id.is_some() && e.file_id != file_id)
-            }
+            UndoAction::Plugin {
+                plugin_id: owner, ..
+            } => &**owner != plugin_id || (file_id.is_some() && e.file_id != file_id),
             UndoAction::Host(_) => true,
         };
         self.undo.retain(keep);
@@ -209,7 +219,10 @@ mod tests {
         assert!(stack.can_redo(Some(1)));
         assert!(stack.can_undo(Some(2)));
         // Redo brings it back.
-        assert!(matches!(stack.redo(Some(1)), Some(UndoStep::Plugin { redo: true, .. })));
+        assert!(matches!(
+            stack.redo(Some(1)),
+            Some(UndoStep::Plugin { redo: true, .. })
+        ));
         assert!(stack.can_undo(Some(1)));
     }
 

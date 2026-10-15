@@ -6,13 +6,36 @@ use eov_common::MeasurementUnit;
 use eov_plugin_api::protocol::{Dash, Rect, Rgba, Shape, Style};
 use serde::{Deserialize, Serialize};
 
-/// Host layer holding the region of interest (below plugin layers).
+/// Prefix of the host layer holding a slide's region of interest (drawn
+/// below plugin layers). Layer ids are unique per owner across slides, so
+/// the file id is part of the id.
 pub const ROI_LAYER: &str = "roi";
 pub const ROI_OBJECT: &str = "roi";
 pub const ROI_Z: i32 = -50;
-/// Host layer holding measurements (above plugin layers).
+/// Prefix of the host layer holding a slide's measurements (drawn above
+/// plugin layers).
 pub const MEASUREMENT_LAYER: &str = "measurements";
 pub const MEASUREMENT_Z: i32 = 80;
+
+pub fn roi_layer_id(file_id: i64) -> String {
+    format!("{ROI_LAYER}-{file_id}")
+}
+
+pub fn measurement_layer_id(file_id: i64) -> String {
+    format!("{MEASUREMENT_LAYER}-{file_id}")
+}
+
+pub fn is_roi_layer(layer_id: &str) -> bool {
+    layer_id
+        .strip_prefix(ROI_LAYER)
+        .is_some_and(|rest| rest.starts_with('-'))
+}
+
+pub fn is_measurement_layer(layer_id: &str) -> bool {
+    layer_id
+        .strip_prefix(MEASUREMENT_LAYER)
+        .is_some_and(|rest| rest.starts_with('-'))
+}
 
 /// What the Measure tool draws.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -143,7 +166,11 @@ pub fn measure(mode: MeasureMode, shape: &Shape, calibration: &Calibration) -> M
     );
     MeasurementValue {
         length_px: geometry::shape_length(shape),
-        area_px2: if closed { geometry::shape_area(shape) } else { 0.0 },
+        area_px2: if closed {
+            geometry::shape_area(shape)
+        } else {
+            0.0
+        },
         length_um: spacing.map(|(x, y, _)| geometry::shape_length_um(shape, x, y)),
         area_um2: closed
             .then(|| spacing.map(|(x, y, _)| geometry::shape_area_um2(shape, x, y)))
@@ -286,14 +313,24 @@ mod tests {
     fn missing_spacing_falls_back_to_pixels() {
         let value = measure(MeasureMode::Line, &line(250.0), &Calibration::default());
         assert_eq!(value.length_um, None);
-        assert_eq!(label(MeasureMode::Line, &value, MeasurementUnit::Um), "250 px");
+        assert_eq!(
+            label(MeasureMode::Line, &value, MeasurementUnit::Um),
+            "250 px"
+        );
     }
 
     #[test]
     fn partial_spacing_is_flagged_approximate() {
-        let value = measure(MeasureMode::Line, &line(100.0), &Calibration::new(Some(0.5), None));
+        let value = measure(
+            MeasureMode::Line,
+            &line(100.0),
+            &Calibration::new(Some(0.5), None),
+        );
         assert!(value.approximate);
-        assert_eq!(label(MeasureMode::Line, &value, MeasurementUnit::Um), "≈ 50.0 µm");
+        assert_eq!(
+            label(MeasureMode::Line, &value, MeasurementUnit::Um),
+            "≈ 50.0 µm"
+        );
     }
 
     #[test]
@@ -301,7 +338,11 @@ mod tests {
         let shape = Shape::Polyline {
             points: vec![[0.0, 0.0], [0.0, 100.0]],
         };
-        let value = measure(MeasureMode::Line, &shape, &Calibration::new(Some(0.25), Some(0.5)));
+        let value = measure(
+            MeasureMode::Line,
+            &shape,
+            &Calibration::new(Some(0.25), Some(0.5)),
+        );
         assert_eq!(value.length_um, Some(50.0));
     }
 
@@ -324,7 +365,11 @@ mod tests {
             width: 100.0,
             height: 50.0,
         };
-        let value = measure(MeasureMode::Rectangle, &rect, &Calibration::new(Some(0.5), Some(0.5)));
+        let value = measure(
+            MeasureMode::Rectangle,
+            &rect,
+            &Calibration::new(Some(0.5), Some(0.5)),
+        );
         assert_eq!(value.area_um2, Some(1250.0));
         assert_eq!(
             label(MeasureMode::Rectangle, &value, MeasurementUnit::Um),
@@ -333,7 +378,14 @@ mod tests {
         let angle = Shape::Polyline {
             points: vec![[10.0, 0.0], [0.0, 0.0], [0.0, 10.0]],
         };
-        let value = measure(MeasureMode::Angle, &angle, &Calibration::new(Some(0.5), Some(0.5)));
-        assert_eq!(label(MeasureMode::Angle, &value, MeasurementUnit::Um), "90.0°");
+        let value = measure(
+            MeasureMode::Angle,
+            &angle,
+            &Calibration::new(Some(0.5), Some(0.5)),
+        );
+        assert_eq!(
+            label(MeasureMode::Angle, &value, MeasurementUnit::Um),
+            "90.0°"
+        );
     }
 }

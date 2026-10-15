@@ -6,9 +6,9 @@
 //! disables filters that keep failing and quarantines plugins that panic.
 
 use super::contributions::Contributions;
+use abi_stable::std_types::{RSliceMut, RStr};
 use arc_swap::ArcSwap;
 use eov_plugin_api::abi::{FfiError, FfiErrorKind, FilterFrame, FilterView, PluginBox};
-use abi_stable::std_types::{RSliceMut, RStr};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,20 +38,28 @@ pub struct FilterFailure {
 #[derive(Default)]
 pub struct ChainSnapshot {
     filters: Vec<ActiveFilter>,
-    pub revision: u64,
     sink: Arc<Mutex<Vec<FilterFailure>>>,
 }
 
 impl ChainSnapshot {
-    pub fn is_empty(&self) -> bool {
-        self.filters.is_empty()
-    }
-
     pub fn has_enabled_cpu_filters(&self) -> bool {
         !self.filters.is_empty()
     }
 
+    /// Plugin filters are CPU-only (the GPU filter ABI was removed, PLG-6),
+    /// so a GPU frame with filters takes the CPU path.
+    pub fn has_enabled_cpu_only_filters(&self) -> bool {
+        self.has_enabled_cpu_filters()
+    }
+
+    /// Kept for the GPU pipeline's post-process hook; plugins cannot add GPU
+    /// passes.
+    pub fn has_enabled_gpu_filters(&self) -> bool {
+        false
+    }
+
     /// Ids (`plugin:filter`) in execution order.
+    #[cfg(test)]
     pub fn ids(&self) -> Vec<String> {
         self.filters
             .iter()
@@ -78,7 +86,10 @@ impl ChainSnapshot {
             let guard_copy = filter.failures.load(Ordering::Relaxed) > 0;
             if guard_copy {
                 backup.get_or_insert_with(Vec::new).clear();
-                backup.as_mut().expect("backup").extend_from_slice(&pixels[..expected]);
+                backup
+                    .as_mut()
+                    .expect("backup")
+                    .extend_from_slice(&pixels[..expected]);
             }
             let result = filter.instance.apply_filter(
                 RStr::from_str(&filter.filter_id),
@@ -131,7 +142,6 @@ impl Default for FilterChain {
         Self {
             current: ArcSwap::from_pointee(ChainSnapshot {
                 filters: Vec::new(),
-                revision: 0,
                 sink: Arc::clone(&sink),
             }),
             sink,
@@ -148,23 +158,28 @@ impl FilterChain {
     }
 
     /// Rebuilds the list from the registrations (UI thread).
-    pub fn rebuild(&self, contributions: &Contributions, instances: &HashMap<Arc<str>, Arc<PluginBox>>) {
+    pub fn rebuild(
+        &self,
+        contributions: &Contributions,
+        instances: &HashMap<Arc<str>, Arc<PluginBox>>,
+    ) {
         let filters = contributions
             .filters()
             .into_iter()
             .filter(|entry| entry.spec.enabled)
             .filter_map(|entry| {
-                instances.get(&entry.plugin_id).map(|instance| ActiveFilter {
-                    plugin_id: Arc::clone(&entry.plugin_id),
-                    filter_id: entry.spec.filter_id.clone(),
-                    instance: Arc::clone(instance),
-                    failures: AtomicU32::new(0),
-                })
+                instances
+                    .get(&entry.plugin_id)
+                    .map(|instance| ActiveFilter {
+                        plugin_id: Arc::clone(&entry.plugin_id),
+                        filter_id: entry.spec.filter_id.clone(),
+                        instance: Arc::clone(instance),
+                        failures: AtomicU32::new(0),
+                    })
             })
             .collect();
         self.current.store(Arc::new(ChainSnapshot {
             filters,
-            revision: contributions.revision(),
             sink: Arc::clone(&self.sink),
         }));
     }

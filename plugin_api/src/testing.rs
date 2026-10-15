@@ -196,11 +196,10 @@ impl MockHost {
             methods::SNAPSHOT => json!(state.snapshot),
             methods::FILE_INFO => {
                 let args: FileArgs = parse(args)?;
-                let file = state
-                    .snapshot
-                    .file(args.file_id)
-                    .cloned()
-                    .ok_or_else(|| FfiError::failed(format!("no open file {}", args.file_id)))?;
+                let file =
+                    state.snapshot.file(args.file_id).cloned().ok_or_else(|| {
+                        FfiError::failed(format!("no open file {}", args.file_id))
+                    })?;
                 json!(file)
             }
             methods::FILE_PROPERTIES => {
@@ -464,7 +463,11 @@ impl MockHost {
             }
             methods::SETTINGS_GET => {
                 let args: KeyArgs = parse(args)?;
-                state.settings.get(&args.key).cloned().unwrap_or(Value::Null)
+                state
+                    .settings
+                    .get(&args.key)
+                    .cloned()
+                    .unwrap_or(Value::Null)
             }
             methods::SETTINGS_SET => {
                 let args: SettingsSetArgs = parse(args)?;
@@ -528,10 +531,7 @@ impl HostFfi for MockHost {
         let args: Value = match serde_json::from_str(args_json.as_str()) {
             Ok(args) => args,
             Err(e) => {
-                return RErr(FfiError::new(
-                    FfiErrorKind::InvalidArguments,
-                    e.to_string(),
-                ));
+                return RErr(FfiError::new(FfiErrorKind::InvalidArguments, e.to_string()));
             }
         };
         match self.handle(method.as_str(), args) {
@@ -833,7 +833,11 @@ mod tests {
         assert_eq!(error.kind(), FfiErrorKind::Panicked);
         assert!(error.message.contains("boom"));
         // The instance is still usable afterwards.
-        harness.send(HostEvent::Ready { restore_sidebar: false }).unwrap();
+        harness
+            .send(HostEvent::Ready {
+                restore_sidebar: false,
+            })
+            .unwrap();
     }
 
     #[test]
@@ -900,9 +904,7 @@ mod tests {
     fn invalid_shapes_are_rejected() {
         let host = MockHost::new();
         let sdk_host = Host::from_ffi(host.to_ffi());
-        let layer = sdk_host
-            .create_layer(LayerSpec::new("l", 1))
-            .unwrap();
+        let layer = sdk_host.create_layer(LayerSpec::new("l", 1)).unwrap();
         let error = layer
             .upsert(vec![OverlayObject::new(
                 "bad",

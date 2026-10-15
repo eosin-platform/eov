@@ -2,16 +2,12 @@ import { Theme } from "theme.slint";
 import {
     HudToolbarButtonData,
     HudSettings,
-    MeasurementLine,
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
-    PluginOverlayPolygon,
-    PluginOverlayPoint,
-    PluginOverlayVertexBox,
-    ROIRect,
+    OverlayLabel,
+    PaneCursor,
     StainNormalization,
-    ToolType,
     ViewportInfo,
 } from "types.slint";
 import { Minimap, ZoomSlider } from "minimap.slint";
@@ -39,39 +35,33 @@ export component Viewport inherits Rectangle {
     in property <bool> debug-mode: false;
     in property <float> fps: 0;
     in property <float> zoom-slider-position: 0.5;
-    in property <component-factory> plugin-viewport-underlay-factory;
-    in property <component-factory> plugin-viewport-overlay-factory;
-    in property <ToolType> current-tool: ToolType.navigate;
-    in property <ROIRect> roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in property <[MeasurementLine]> measurements: [];
-    in property <[PluginOverlayPoint]> plugin-overlay-points: [];
-    in property <[PluginOverlayPolygon]> plugin-overlay-polygons: [];
-    in property <[PluginOverlayVertexBox]> plugin-overlay-vertex-boxes: [];
-    in property <bool> annotation-tool-hover-active: false;
-    in property <MeasurementLine> candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    // Host and plugin overlays: one image rendered off the UI thread for the
+    // view at the time, placed (and scaled while the view moves) here.
+    in property <image> overlay;
+    in property <float> overlay-x: 0;
+    in property <float> overlay-y: 0;
+    in property <float> overlay-width: 0;
+    in property <float> overlay-height: 0;
+    in property <[OverlayLabel]> overlay-labels: [];
+    in property <PaneCursor> cursor: PaneCursor.default;
     in property <HudSettings> hud;
     in property <[HudToolbarButtonData]> plugin-hud-buttons: [];
     in property <int> pane-id: 0;
     property <bool> hud-plugin-menu-open: false;
 
-    callback pan(float, float);
-    callback zoom(float, float, float);
     callback fit-to-view();
-    callback start-pan(float, float);
-    callback end-pan();
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
     callback zoom-slider-changed(float);
     callback file-dropped(string);
     callback interaction-started();
-    callback tool-mouse-down(float, float);
-    callback tool-mouse-move(float, float);
-    callback tool-mouse-up(float, float);
-    callback viewport-context-menu(length, length);
-    callback confirm-tool();
-    callback cancel-tool();
-    callback close-tab();
+    // Raw input, interpreted by the host's interaction controller.
+    // kind: 0 down, 1 up, 2 move, 3 leave; button: 0 none, 1 left, 2 right, 3 middle.
+    callback pointer-input(/* kind */ int, /* button */ int, /* x */ float, /* y */ float, /* window x */ float, /* window y */ float, /* shift */ bool, /* control */ bool, /* alt */ bool, /* meta */ bool);
+    callback wheel-input(/* dx */ float, /* dy */ float, /* x */ float, /* y */ float, /* shift */ bool, /* control */ bool, /* alt */ bool, /* meta */ bool);
+    callback pinch-input(/* cumulative scale */ float, /* x */ float, /* y */ float, /* active */ bool);
+    callback key-input(/* text */ string, /* shift */ bool, /* control */ bool, /* alt */ bool, /* meta */ bool, /* pressed */ bool, /* repeat */ bool) -> bool;
     callback hud-toggle-dropdown();
     callback hud-sharpness-changed(float);
     callback hud-gamma-changed(float);
@@ -89,7 +79,7 @@ export component Viewport inherits Rectangle {
     callback hud-deconv-e-visibility-toggled();
     callback hud-deconv-h-view-toggled();
     callback hud-deconv-e-view-toggled();
-    callback hud-plugin-button-clicked(string, string);
+    callback hud-plugin-button-clicked(/* plugin */ string, /* button */ string, /* menu item */ string);
 
     out property <length> viewport-width: self.width;
     out property <length> viewport-height: self.height;
@@ -110,289 +100,36 @@ export component Viewport inherits Rectangle {
             image-fit: fill;
         }
 
-        ComponentContainer {
-            width: parent.width;
-            height: parent.height;
-            component-factory: root.plugin-viewport-underlay-factory;
+        Image {
+            x: root.overlay-x * 1px;
+            y: root.overlay-y * 1px;
+            width: root.overlay-width * 1px;
+            height: root.overlay-height * 1px;
+            source: root.overlay;
+            image-fit: fill;
         }
 
-        if root.roi-rect.visible: Rectangle {
-            Rectangle {
-                x: 0;
-                y: 0;
-                width: 100%;
-                height: root.roi-rect.y * 1px;
-                background: #00000080;
-            }
+        for label in root.overlay-labels: Rectangle {
+            property <length> box-width: label-text.preferred-width + (label.backdrop ? 14px : 0px);
+            property <length> box-height: label-text.preferred-height + (label.backdrop ? 6px : 0px);
+            x: label.anchor == 1 ? label.x * 1px - self.box-width / 2 : label.x * 1px;
+            y: label.anchor == 1 ? label.y * 1px - self.box-height : label.anchor == 2 ? label.y * 1px - self.box-height / 2 : label.y * 1px;
+            width: self.box-width;
+            height: self.box-height;
+            border-radius: label.backdrop ? self.height / 2 : 0px;
+            background: label.backdrop ? #1a1a1aee : transparent;
+            border-width: label.backdrop ? 1px : 0px;
+            border-color: label.backdrop ? label.color.with-alpha(0.5) : transparent;
+            drop-shadow-blur: label.backdrop ? 4px : 0px;
+            drop-shadow-color: #00000066;
 
-            Rectangle {
-                x: 0;
-                y: (root.roi-rect.y + root.roi-rect.height) * 1px;
-                width: 100%;
-                height: parent.height - (root.roi-rect.y + root.roi-rect.height) * 1px;
-                background: #00000080;
-            }
-
-            Rectangle {
-                x: 0;
-                y: root.roi-rect.y * 1px;
-                width: root.roi-rect.x * 1px;
-                height: root.roi-rect.height * 1px;
-                background: #00000080;
-            }
-
-            Rectangle {
-                x: (root.roi-rect.x + root.roi-rect.width) * 1px;
-                y: root.roi-rect.y * 1px;
-                width: parent.width - (root.roi-rect.x + root.roi-rect.width) * 1px;
-                height: root.roi-rect.height * 1px;
-                background: #00000080;
-            }
-
-            Rectangle {
-                x: root.roi-rect.x * 1px - 1px;
-                y: root.roi-rect.y * 1px - 1px;
-                width: root.roi-rect.width * 1px + 2px;
-                height: root.roi-rect.height * 1px + 2px;
-                background: transparent;
-                border-width: 1px;
-                border-color: black;
-            }
-
-            Rectangle {
-                x: root.roi-rect.x * 1px + 1px;
-                y: root.roi-rect.y * 1px + 1px;
-                width: root.roi-rect.width * 1px - 2px;
-                height: root.roi-rect.height * 1px - 2px;
-                background: transparent;
-                border-width: 1px;
-                border-color: black;
-            }
-
-            Rectangle {
-                x: root.roi-rect.x * 1px;
-                y: root.roi-rect.y * 1px;
-                width: root.roi-rect.width * 1px;
-                height: root.roi-rect.height * 1px;
-                background: transparent;
-                border-width: 1px;
-                border-color: white;
-                clip: true;
-
-                property <length> stripe-period: 16px;
-                property <length> stripe-offset: root.roi-rect.ant-offset * 1px;
-
-                for i in 100: Rectangle {
-                    x: i * parent.stripe-period - parent.stripe-offset;
-                    y: -1px;
-                    width: parent.stripe-period / 2;
-                    height: 3px;
-                    background: black;
-                }
-
-                for i in 100: Rectangle {
-                    x: i * parent.stripe-period - parent.stripe-period + parent.stripe-offset;
-                    y: parent.height - 2px;
-                    width: parent.stripe-period / 2;
-                    height: 3px;
-                    background: black;
-                }
-
-                for i in 100: Rectangle {
-                    x: -1px;
-                    y: i * parent.stripe-period - parent.stripe-offset;
-                    width: 3px;
-                    height: parent.stripe-period / 2;
-                    background: black;
-                }
-
-                for i in 100: Rectangle {
-                    x: parent.width - 2px;
-                    y: i * parent.stripe-period - parent.stripe-period + parent.stripe-offset;
-                    width: 3px;
-                    height: parent.stripe-period / 2;
-                    background: black;
-                }
-            }
-        }
-
-        for measurement in root.measurements: Rectangle {
-            width: 100%;
-            height: 100%;
-
-            Path {
-                viewbox-width: self.width / 1px;
-                viewbox-height: self.height / 1px;
-                stroke: #2ECC71;
-                stroke-width: 2px;
-                stroke-line-cap: round;
-                MoveTo {
-                    x: measurement.x1;
-                    y: measurement.y1;
-                }
-
-                LineTo {
-                    x: measurement.x2;
-                    y: measurement.y2;
-                }
-            }
-
-            Rectangle {
-                x: measurement.x1 * 1px - 4px;
-                y: measurement.y1 * 1px - 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: #2ECC71;
-                border-width: 1.5px;
-                border-color: white;
-            }
-
-            Rectangle {
-                x: measurement.x2 * 1px - 4px;
-                y: measurement.y2 * 1px - 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: #2ECC71;
-                border-width: 1.5px;
-                border-color: white;
-            }
-
-            Rectangle {
-                x: (measurement.x1 + measurement.x2) / 2 * 1px - self.width / 2;
-                y: (measurement.y1 + measurement.y2) / 2 * 1px - self.height - 6px;
-                width: measurement-text.preferred-width + 14px;
-                height: measurement-text.preferred-height + 6px;
-                border-radius: self.height / 2;
-                background: #1a1a1aee;
-                border-width: 1px;
-                border-color: #2ECC7180;
-                drop-shadow-blur: 4px;
-                drop-shadow-color: #00000066;
-
-                measurement-text := Text {
-                    x: 7px;
-                    y: 3px;
-                    text: measurement.distance-um >= 1000 ? Math.round(measurement.distance-um / 10) / 100 + " mm" : measurement.distance-um > 0 ? Math.round(measurement.distance-um * 100) / 100 + " µm" : Math.round(Math.sqrt((measurement.x2 - measurement.x1) * (measurement.x2 - measurement.x1) + (measurement.y2 - measurement.y1) * (measurement.y2 - measurement.y1)) * 10) / 10 + " px";
-                    color: white;
-                    font-size: 11px;
-                    font-weight: 500;
-                }
-            }
-        }
-
-        for polygon in root.plugin-overlay-polygons: Rectangle {
-            width: 100%;
-            height: 100%;
-
-            Path {
-                width: parent.width;
-                height: parent.height;
-                viewbox-width: self.width / 1px;
-                viewbox-height: self.height / 1px;
-                commands: polygon.path-commands;
-                fill: polygon.fill-color;
-                stroke: polygon.stroke-color;
-                stroke-width: 1px;
-            }
-        }
-
-        for vertex-box in root.plugin-overlay-vertex-boxes: Rectangle {
-            x: (vertex-box.x - vertex-box.size-px / 2) * 1px;
-            y: (vertex-box.y - vertex-box.size-px / 2) * 1px;
-            width: vertex-box.size-px * 1px;
-            height: vertex-box.size-px * 1px;
-            background: vertex-box.fill-color;
-            border-width: 1px;
-            border-color: vertex-box.border-color;
-        }
-
-        for point in root.plugin-overlay-points: Rectangle {
-            x: (point.x - point.diameter-px / 2) * 1px - 1px;
-            y: (point.y - point.diameter-px / 2) * 1px - 1px;
-            width: point.diameter-px * 1px + 2px;
-            height: point.diameter-px * 1px + 2px;
-            background: transparent;
-            border-width: 1px;
-            border-color: #111318dd;
-            border-radius: self.width / 2;
-
-            Rectangle {
-                x: 1px;
-                y: 1px;
-                width: max(0px, parent.width - 2px);
-                height: max(0px, parent.height - 2px);
-                background: transparent;
-                border-width: 1.8375px;
-                border-color: point.ring-color;
-                border-radius: self.width / 2;
-            }
-        }
-
-        if root.candidate-measurement.visible: Rectangle {
-            width: 100%;
-            height: 100%;
-
-            Path {
-                viewbox-width: self.width / 1px;
-                viewbox-height: self.height / 1px;
-                stroke: #F1C40F;
-                stroke-width: 2px;
-                stroke-line-cap: round;
-                MoveTo {
-                    x: root.candidate-measurement.x1;
-                    y: root.candidate-measurement.y1;
-                }
-
-                LineTo {
-                    x: root.candidate-measurement.x2;
-                    y: root.candidate-measurement.y2;
-                }
-            }
-
-            Rectangle {
-                x: root.candidate-measurement.x1 * 1px - 4px;
-                y: root.candidate-measurement.y1 * 1px - 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: #F1C40F;
-                border-width: 1.5px;
-                border-color: white;
-            }
-
-            Rectangle {
-                x: root.candidate-measurement.x2 * 1px - 4px;
-                y: root.candidate-measurement.y2 * 1px - 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: #F1C40F;
-                border-width: 1.5px;
-                border-color: white;
-            }
-
-            Rectangle {
-                x: (root.candidate-measurement.x1 + root.candidate-measurement.x2) / 2 * 1px - self.width / 2;
-                y: (root.candidate-measurement.y1 + root.candidate-measurement.y2) / 2 * 1px - self.height - 6px;
-                width: candidate-text.preferred-width + 14px;
-                height: candidate-text.preferred-height + 6px;
-                border-radius: self.height / 2;
-                background: #1a1a1aee;
-                border-width: 1px;
-                border-color: #F1C40F80;
-                drop-shadow-blur: 4px;
-                drop-shadow-color: #00000066;
-
-                candidate-text := Text {
-                    x: 7px;
-                    y: 3px;
-                    text: root.candidate-measurement.distance-um >= 1000 ? Math.round(root.candidate-measurement.distance-um / 10) / 100 + " mm" : root.candidate-measurement.distance-um > 0 ? Math.round(root.candidate-measurement.distance-um * 100) / 100 + " µm" : Math.round(Math.sqrt((root.candidate-measurement.x2 - root.candidate-measurement.x1) * (root.candidate-measurement.x2 - root.candidate-measurement.x1) + (root.candidate-measurement.y2 - root.candidate-measurement.y1) * (root.candidate-measurement.y2 - root.candidate-measurement.y1)) * 10) / 10 + " px";
-                    color: white;
-                    font-size: 11px;
-                    font-weight: 500;
-                }
+            label-text := Text {
+                x: label.backdrop ? 7px : 0px;
+                y: label.backdrop ? 3px : 0px;
+                text: label.text;
+                color: label.backdrop ? white : label.color;
+                font-size: label.font-size * 1px;
+                font-weight: 500;
             }
         }
 
@@ -414,161 +151,61 @@ export component Viewport inherits Rectangle {
         }
     }
 
-    touch := TouchArea {
+    gesture := ScaleRotateGestureHandler {
         width: 100%;
-        height: parent.height;
+        height: 100%;
 
-        property <bool> is-dragging: false;
-        property <bool> is-tool-dragging: false;
-        property <bool> drag-from-secondary: false;
-        property <bool> secondary-dragged: false;
-        property <bool> lmb-down: false;
-        property <length> left-press-x: 0px;
-        property <length> left-press-y: 0px;
-        property <bool> left-pan-armed: false;
-        property <bool> left-pan-mode: false;
-        property <bool> point-dragging-existing: false;
-        mouse-cursor: root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation ? MouseCursor.crosshair : MouseCursor.default;
-
-        clicked => {
-            focus-scope.focus();
+        updated => {
+            root.pinch-input(self.scale, self.center.x / 1px, self.center.y / 1px, true);
+        }
+        ended => {
+            root.pinch-input(1.0, 0, 0, false);
+        }
+        cancelled => {
+            root.pinch-input(1.0, 0, 0, false);
         }
 
-        pointer-event(e) => {
-            if e.kind == PointerEventKind.down {
-                root.interaction-started();
-                root.hud-plugin-menu-open = false;
-                focus-scope.focus();
-            }
-            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
-                self.is-dragging = true;
-                self.drag-from-secondary = true;
-                self.secondary-dragged = false;
-                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
-                let open-menu = self.drag-from-secondary && !self.secondary-dragged;
-                self.is-dragging = false;
-                self.drag-from-secondary = false;
-                self.secondary-dragged = false;
-                root.end-pan();
-                if open-menu {
-                    root.viewport-context-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
-                }
-            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.middle {
-                self.is-dragging = true;
-                self.drag-from-secondary = false;
-                root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.middle {
-                self.is-dragging = false;
-                self.drag-from-secondary = false;
-                root.end-pan();
-            } else if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                if root.current-tool == ToolType.navigate {
-                    self.lmb-down = true;
-                    self.left-press-x = self.mouse-x;
-                    self.left-press-y = self.mouse-y;
-                    self.left-pan-armed = true;
-                    self.left-pan-mode = false;
-                    root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
-                } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
-                    self.lmb-down = true;
-                    self.left-press-x = self.mouse-x;
-                    self.left-press-y = self.mouse-y;
-                    self.left-pan-armed = !root.annotation-tool-hover-active;
-                    self.left-pan-mode = false;
-                    self.point-dragging-existing = root.annotation-tool-hover-active;
-                    if root.annotation-tool-hover-active {
-                        self.is-tool-dragging = true;
-                        root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
-                    }
-                } else {
-                    self.is-tool-dragging = true;
-                    root.tool-mouse-down(self.mouse-x / 1px, self.mouse-y / 1px);
-                }
-            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
-                if root.current-tool == ToolType.navigate {
-                    if self.left-pan-mode || self.is-dragging {
-                        self.is-dragging = false;
-                        self.left-pan-mode = false;
-                        self.left-pan-armed = false;
-                        self.lmb-down = false;
-                        root.end-pan();
-                    } else if self.left-pan-armed && self.lmb-down {
-                        self.left-pan-armed = false;
-                        self.lmb-down = false;
-                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
-                    }
-                } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
-                    if self.point-dragging-existing {
-                        self.is-tool-dragging = false;
-                        self.point-dragging-existing = false;
-                        self.left-pan-armed = false;
-                        self.left-pan-mode = false;
-                        self.lmb-down = false;
-                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
-                    } else if self.left-pan-mode || self.is-dragging {
-                        self.is-dragging = false;
-                        self.left-pan-mode = false;
-                        self.left-pan-armed = false;
-                        self.lmb-down = false;
-                        root.end-pan();
-                    } else if self.left-pan-armed && self.lmb-down {
-                        self.left-pan-armed = false;
-                        self.lmb-down = false;
-                        root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
-                    }
-                } else {
-                    self.is-tool-dragging = false;
-                    root.tool-mouse-up(self.mouse-x / 1px, self.mouse-y / 1px);
-                }
-            } else if e.kind == PointerEventKind.move {
-                if self.is-dragging {
-                    if self.drag-from-secondary {
-                        self.secondary-dragged = true;
-                    }
-                    root.pan(self.mouse-x / 1px, self.mouse-y / 1px);
-                } else if root.current-tool == ToolType.navigate {
-                    if self.lmb-down && self.left-pan-armed {
-                        let dx = self.mouse-x - self.left-press-x;
-                        let dy = self.mouse-y - self.left-press-y;
-                        if abs(dx) > 6px || abs(dy) > 6px {
-                            self.left-pan-armed = false;
-                            self.left-pan-mode = true;
-                            self.is-dragging = true;
-                            root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-                        } else {
-                            root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
-                        }
-                    } else {
-                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
-                    }
-                } else if root.current-tool == ToolType.point-annotation || root.current-tool == ToolType.polygon-annotation {
-                    if self.point-dragging-existing {
-                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
-                    } else if self.lmb-down && self.left-pan-armed {
-                        let dx = self.mouse-x - self.left-press-x;
-                        let dy = self.mouse-y - self.left-press-y;
-                        if abs(dx) > 6px || abs(dy) > 6px {
-                            self.left-pan-armed = false;
-                            self.left-pan-mode = true;
-                            self.is-dragging = true;
-                            root.start-pan(self.mouse-x / 1px, self.mouse-y / 1px);
-                        }
-                    } else {
-                        root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
-                    }
-                } else if self.is-tool-dragging || root.current-tool != ToolType.navigate {
-                    root.tool-mouse-move(self.mouse-x / 1px, self.mouse-y / 1px);
-                }
-            }
-        }
+        touch := TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: root.cursor == PaneCursor.crosshair ? MouseCursor.crosshair
+                : root.cursor == PaneCursor.pointer ? MouseCursor.pointer
+                : root.cursor == PaneCursor.move ? MouseCursor.move
+                : root.cursor == PaneCursor.grabbing ? MouseCursor.grabbing
+                : root.cursor == PaneCursor.text ? MouseCursor.text
+                : root.cursor == PaneCursor.not-allowed ? MouseCursor.not-allowed
+                : MouseCursor.default;
 
-        scroll-event(e) => {
-            let factor = e.delta-y > 0
-                ? root.mouse-wheel-zoom-factor
-                : (1.0 / root.mouse-wheel-zoom-factor);
-            root.zoom(factor, touch.mouse-x / 1px, touch.mouse-y / 1px);
-            accept
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.interaction-started();
+                    root.hud-plugin-menu-open = false;
+                    focus-scope.focus();
+                }
+                root.pointer-input(
+                    e.kind == PointerEventKind.down ? 0 : e.kind == PointerEventKind.up ? 1 : e.kind == PointerEventKind.cancel ? 3 : 2,
+                    e.button == PointerEventButton.left ? 1 : e.button == PointerEventButton.right ? 2 : e.button == PointerEventButton.middle ? 3 : 0,
+                    self.mouse-x / 1px,
+                    self.mouse-y / 1px,
+                    (self.absolute-position.x + self.mouse-x) / 1px,
+                    (self.absolute-position.y + self.mouse-y) / 1px,
+                    e.modifiers.shift,
+                    e.modifiers.control,
+                    e.modifiers.alt,
+                    e.modifiers.meta);
+            }
+
+            changed has-hover => {
+                if !self.has-hover {
+                    root.pointer-input(3, 0, 0, 0, 0, 0, false, false, false, false);
+                }
+            }
+
+            scroll-event(e) => {
+                root.wheel-input(e.delta-x / 1px, e.delta-y / 1px, self.mouse-x / 1px, self.mouse-y / 1px,
+                    e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta);
+                accept
+            }
         }
     }
 
@@ -652,8 +289,8 @@ export component Viewport inherits Rectangle {
         zoom-out => {
             root.hud-zoom-out();
         }
-        plugin-button-clicked(plugin-id, action-id) => {
-            root.hud-plugin-button-clicked(plugin-id, action-id);
+        plugin-button-clicked(plugin-id, button-id, item-id) => {
+            root.hud-plugin-button-clicked(plugin-id, button-id, item-id);
         }
     }
 
@@ -724,26 +361,17 @@ export component Viewport inherits Rectangle {
         unit: root.hud.measurement-unit;
     }
 
-    ComponentContainer {
-        width: parent.width;
-        height: parent.height;
-        component-factory: root.plugin-viewport-overlay-factory;
-    }
-
     focus-scope := FocusScope {
         width: 0px;
         height: 0px;
         key-pressed(e) => {
-            if e.text == "w" && e.modifiers.control {
-                root.close-tab();
+            if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
                 accept
             }
-            if e.text == Key.Escape {
-                root.cancel-tool();
-                accept
-            }
-            if e.text == Key.Return {
-                root.confirm-tool();
+            reject
+        }
+        key-released(e) => {
+            if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, false, false) {
                 accept
             }
             reject

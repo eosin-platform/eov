@@ -1,0 +1,15 @@
+[package]
+name = "eov-example-plugin"
+version = "1.0.0"
+edition = "2024"
+description = "A small, complete eov plugin used as documentation and as the host's test fixture"
+license = "MIT OR Apache-2.0 OR GPL-3.0"
+publish = false
+
+[lib]
+# The library file must be named after the plugin id in plugin.toml.
+name = "example_plugin"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+eov-plugin-api = { path = "..", version = "1.0.0" }

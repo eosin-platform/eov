@@ -8,9 +8,12 @@ use std::path::{Path, PathBuf};
 /// Total size limit of one plugin's settings, serialised.
 pub const MAX_SETTINGS_BYTES: usize = 1024 * 1024;
 
+/// Where a plugin's settings live and their current values.
+type PluginSettings = (PathBuf, Map<String, Value>);
+
 pub struct SettingsStore {
-    /// Plugin id → (file, values).
-    plugins: Mutex<HashMap<String, (PathBuf, Map<String, Value>)>>,
+    /// Plugin id → settings.
+    plugins: Mutex<HashMap<String, PluginSettings>>,
 }
 
 impl SettingsStore {
@@ -28,10 +31,7 @@ impl SettingsStore {
             .and_then(|text| match serde_json::from_str::<Value>(&text) {
                 Ok(Value::Object(map)) => Some(map),
                 Ok(_) | Err(_) => {
-                    tracing::warn!(
-                        "Ignoring unreadable plugin settings {}",
-                        path.display()
-                    );
+                    tracing::warn!("Ignoring unreadable plugin settings {}", path.display());
                     None
                 }
             })
@@ -76,7 +76,9 @@ impl SettingsStore {
                     values.remove(key);
                 }
             }
-            return Err(format!("plugin settings would exceed {MAX_SETTINGS_BYTES} bytes"));
+            return Err(format!(
+                "plugin settings would exceed {MAX_SETTINGS_BYTES} bytes"
+            ));
         }
         let path = path.clone();
         drop(plugins);

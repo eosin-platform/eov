@@ -184,7 +184,13 @@ pub fn render_into(target: &mut Pixmap, view: &ViewTransform, scene: &FrameScene
     }
 }
 
-fn draw_layer(target: &mut Pixmap, view: &ViewTransform, visible: &Rect, layer: &Layer, scene: &FrameScene) {
+fn draw_layer(
+    target: &mut Pixmap,
+    view: &ViewTransform,
+    visible: &Rect,
+    layer: &Layer,
+    scene: &FrameScene,
+) {
     for raster in layer.visible_rasters(visible) {
         draw_raster(target, view, &raster);
     }
@@ -270,7 +276,11 @@ fn draw_object(
     if fast_points && let Shape::Point { x, y } = shape {
         let (px, py) = view.to_px([*x, *y]);
         let r = view.size_px(style.point_radius, style.size_unit).max(1.0);
-        let color = if style.stroke.3 > 0 { style.stroke } else { style.fill };
+        let color = if style.stroke.3 > 0 {
+            style.stroke
+        } else {
+            style.fill
+        };
         fill_rect_px(target, px - r, py - r, 2.0 * r, 2.0 * r, color);
         return;
     }
@@ -366,7 +376,13 @@ pub fn draw_shape(
                 return;
             };
             if style.fill.3 > 0 {
-                target.fill_path(&circle, &paint_for(style.fill), FillRule::Winding, Transform::identity(), None);
+                target.fill_path(
+                    &circle,
+                    &paint_for(style.fill),
+                    FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
             }
             if style.stroke.3 > 0 {
                 // A dark halo keeps markers visible on any stain.
@@ -394,8 +410,15 @@ pub fn draw_shape(
         // exports).
         Shape::Text { .. } => {}
         _ if lod && bounds.width * k < LOD_DOT_PX && bounds.height * k < LOD_DOT_PX => {
-            let (px, py) = view.to_px([bounds.x + bounds.width / 2.0, bounds.y + bounds.height / 2.0]);
-            let color = if style.stroke.3 > 0 { style.stroke } else { style.fill };
+            let (px, py) = view.to_px([
+                bounds.x + bounds.width / 2.0,
+                bounds.y + bounds.height / 2.0,
+            ]);
+            let color = if style.stroke.3 > 0 {
+                style.stroke
+            } else {
+                style.fill
+            };
             let size = view.scale.max(1.0) as f32;
             fill_rect_px(target, px - size / 2.0, py - size / 2.0, size, size, color);
         }
@@ -428,7 +451,13 @@ pub fn draw_shape(
             if let Some(path) = builder.finish() {
                 let mut stroke = stroke_for(style, stroke_px);
                 stroke.line_cap = LineCap::Round;
-                target.stroke_path(&path, &paint_for(style.stroke), &stroke, Transform::identity(), None);
+                target.stroke_path(
+                    &path,
+                    &paint_for(style.stroke),
+                    &stroke,
+                    Transform::identity(),
+                    None,
+                );
             }
         }
         Shape::Polygon { exterior, holes } => {
@@ -509,7 +538,13 @@ fn fill_and_stroke(
     decoration: HostDecoration,
 ) {
     if style.fill.3 > 0 {
-        target.fill_path(path, &paint_for(style.fill), FillRule::EvenOdd, Transform::identity(), None);
+        target.fill_path(
+            path,
+            &paint_for(style.fill),
+            FillRule::EvenOdd,
+            Transform::identity(),
+            None,
+        );
     }
     if decoration.contrast_border {
         let width = stroke_px.max(1.0);
@@ -518,20 +553,38 @@ fn fill_and_stroke(
             line_join: LineJoin::Miter,
             ..Stroke::default()
         };
-        target.stroke_path(path, &paint_for(Rgba(0, 0, 0, 0xFF)), &solid, Transform::identity(), None);
+        target.stroke_path(
+            path,
+            &paint_for(Rgba(0, 0, 0, 0xFF)),
+            &solid,
+            Transform::identity(),
+            None,
+        );
         let inner = Stroke {
             width,
             line_join: LineJoin::Miter,
             ..Stroke::default()
         };
-        target.stroke_path(path, &paint_for(Rgba(0xFF, 0xFF, 0xFF, 0xFF)), &inner, Transform::identity(), None);
+        target.stroke_path(
+            path,
+            &paint_for(Rgba(0xFF, 0xFF, 0xFF, 0xFF)),
+            &inner,
+            Transform::identity(),
+            None,
+        );
         let dashed = Stroke {
             width,
             line_join: LineJoin::Miter,
             dash: StrokeDash::new(vec![width * 6.0, width * 6.0], 0.0),
             ..Stroke::default()
         };
-        target.stroke_path(path, &paint_for(Rgba(0, 0, 0, 0xFF)), &dashed, Transform::identity(), None);
+        target.stroke_path(
+            path,
+            &paint_for(Rgba(0, 0, 0, 0xFF)),
+            &dashed,
+            Transform::identity(),
+            None,
+        );
         return;
     }
     if style.stroke.3 > 0 && stroke_px > 0.0 {
@@ -566,12 +619,19 @@ fn dim_outside(target: &mut Pixmap, view: &ViewTransform, bounds: &Rect) {
     if let Some(path) = builder.finish() {
         let mut paint = paint_for(Rgba(0, 0, 0, 0x80));
         paint.anti_alias = false;
-        target.fill_path(&path, &paint, FillRule::EvenOdd, Transform::identity(), None);
+        target.fill_path(
+            &path,
+            &paint,
+            FillRule::EvenOdd,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
 fn draw_raster(target: &mut Pixmap, view: &ViewTransform, raster: &StoredRaster) {
-    let Some(source) = PixmapRef::from_bytes(&raster.premultiplied, raster.width, raster.height) else {
+    let Some(source) = PixmapRef::from_bytes(&raster.premultiplied, raster.width, raster.height)
+    else {
         return;
     };
     let k = view.px_per_image();
@@ -607,7 +667,8 @@ fn draw_raster(target: &mut Pixmap, view: &ViewTransform, raster: &StoredRaster)
     let x0 = to_src_x(visible.x).floor().max(0.0) as u32;
     let y0 = to_src_y(visible.y).floor().max(0.0) as u32;
     let x1 = (to_src_x(visible.x + visible.width).ceil() + 1.0).min(f64::from(raster.width)) as u32;
-    let y1 = (to_src_y(visible.y + visible.height).ceil() + 1.0).min(f64::from(raster.height)) as u32;
+    let y1 =
+        (to_src_y(visible.y + visible.height).ceil() + 1.0).min(f64::from(raster.height)) as u32;
     if x1 <= x0 || y1 <= y0 {
         return;
     }
@@ -650,7 +711,8 @@ pub fn premultiply(rgba: &mut [u8]) {
 }
 
 /// Composites a premultiplied overlay onto a straight-alpha RGBA image of the
-/// same size (source-over).
+/// same size (source-over); used to burn overlays into exported images.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn composite_over_straight(dst: &mut [u8], overlay_premultiplied: &[u8]) {
     for (d, s) in dst
         .as_chunks_mut::<4>()
@@ -715,7 +777,10 @@ mod tests {
         let store = OverlayStore::new();
         let owner = Owner::plugin("p");
         store
-            .create_layer(owner.clone(), LayerSpec::new("l", 1).with_style(filled(Rgba(255, 0, 0, 255))))
+            .create_layer(
+                owner.clone(),
+                LayerSpec::new("l", 1).with_style(filled(Rgba(255, 0, 0, 255))),
+            )
             .unwrap();
         store
             .upsert(
@@ -750,12 +815,17 @@ mod tests {
                 owner.clone(),
                 LayerSpec {
                     opacity: 0.5,
-                    ..LayerSpec::new("top", 1).at_z(1).with_style(filled(Rgba(0, 0, 255, 255)))
+                    ..LayerSpec::new("top", 1)
+                        .at_z(1)
+                        .with_style(filled(Rgba(0, 0, 255, 255)))
                 },
             )
             .unwrap();
         store
-            .create_layer(owner.clone(), LayerSpec::new("bottom", 1).with_style(filled(Rgba(255, 0, 0, 255))))
+            .create_layer(
+                owner.clone(),
+                LayerSpec::new("bottom", 1).with_style(filled(Rgba(255, 0, 0, 255))),
+            )
             .unwrap();
         let rect = |id: &str| {
             OverlayObject::new(
@@ -769,7 +839,9 @@ mod tests {
             )
         };
         store.upsert(&owner, "top", vec![rect("a")], false).unwrap();
-        store.upsert(&owner, "bottom", vec![rect("b")], false).unwrap();
+        store
+            .upsert(&owner, "bottom", vec![rect("b")], false)
+            .unwrap();
         let scene = FrameScene {
             layers: store.file_layers(1).layers,
             ..Default::default()
@@ -777,7 +849,10 @@ mod tests {
         let pixmap = render(&view(10.0, 10.0), &scene).unwrap();
         let [r, _, b, a] = pixel(&pixmap, 5, 5);
         assert_eq!(a, 255);
-        assert!((120..=135).contains(&r) && (120..=135).contains(&b), "{r} {b}");
+        assert!(
+            (120..=135).contains(&r) && (120..=135).contains(&b),
+            "{r} {b}"
+        );
     }
 
     #[test]
@@ -785,7 +860,10 @@ mod tests {
         let store = OverlayStore::new();
         let owner = Owner::plugin("p");
         store
-            .create_layer(owner.clone(), LayerSpec::new("l", 1).with_style(filled(Rgba(0, 255, 0, 255))))
+            .create_layer(
+                owner.clone(),
+                LayerSpec::new("l", 1).with_style(filled(Rgba(0, 255, 0, 255))),
+            )
             .unwrap();
         store
             .upsert(
@@ -839,7 +917,9 @@ mod tests {
     fn rasters_are_stretched_over_their_rectangle() {
         let store = OverlayStore::new();
         let owner = Owner::plugin("p");
-        store.create_layer(owner.clone(), LayerSpec::new("heat", 1)).unwrap();
+        store
+            .create_layer(owner.clone(), LayerSpec::new("heat", 1))
+            .unwrap();
         // 2×1 raster: red, blue; covers level-0 (0,0)-(100,50).
         let mut data = vec![255, 0, 0, 255, 0, 0, 255, 255];
         premultiply(&mut data);
@@ -931,15 +1011,21 @@ mod bench {
         let store = OverlayStore::new();
         let owner = Owner::plugin("cells");
         store
-            .create_layer(owner.clone(), LayerSpec::new("nuclei", 1).with_style(Style {
-                fill: Rgba(0x2E, 0xCC, 0x71, 0x40),
-                ..Style::default()
-            }))
+            .create_layer(
+                owner.clone(),
+                LayerSpec::new("nuclei", 1).with_style(Style {
+                    fill: Rgba(0x2E, 0xCC, 0x71, 0x40),
+                    ..Style::default()
+                }),
+            )
             .unwrap();
         // 50k 16-gon nuclei of radius 6 px on a 100k × 100k slide.
         let objects: Vec<_> = (0..50_000)
             .map(|i| {
-                let (cx, cy) = (((i * 7919) % 100_000) as f64, ((i * 104_729) % 100_000) as f64);
+                let (cx, cy) = (
+                    ((i * 7919) % 100_000) as f64,
+                    ((i * 104_729) % 100_000) as f64,
+                );
                 OverlayObject::new(
                     format!("n{i}"),
                     Shape::Polygon {
@@ -956,7 +1042,11 @@ mod bench {
             layers: store.file_layers(1).layers,
             ..Default::default()
         };
-        for (label, zoom) in [("whole slide", 0.0192), ("mid zoom", 0.25), ("cell level", 2.0)] {
+        for (label, zoom) in [
+            ("whole slide", 0.0192),
+            ("mid zoom", 0.25),
+            ("cell level", 2.0),
+        ] {
             let view = ViewTransform {
                 left: 30_000.0,
                 top: 30_000.0,
@@ -967,7 +1057,11 @@ mod bench {
                 mpp: None,
             };
             let view = if label == "whole slide" {
-                ViewTransform { left: 0.0, top: 0.0, ..view }
+                ViewTransform {
+                    left: 0.0,
+                    top: 0.0,
+                    ..view
+                }
             } else {
                 view
             };

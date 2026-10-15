@@ -5,7 +5,6 @@
 
 use crate::pane_ui::{series_items_model, series_items_revision, set_series_items_revision};
 use crate::state::{AppState, HudSettings, PaneId};
-use crate::tools::{pane_overlay_data, pane_viewport_state};
 use crate::zoom_display::zoom_display_info;
 use crate::{
     BottomPanelKind as SlintBottomPanelKind, ContextMenuItem, FilteringMode as SlintFilteringMode,
@@ -19,6 +18,7 @@ use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, format_decimal,
     format_file_size, format_u64,
 };
+use slint::ComponentHandle;
 use slint::{Image, Model, SharedString, VecModel};
 use std::{fs, rc::Rc};
 
@@ -230,11 +230,15 @@ pub fn pane_view_data_changed(existing: &PaneViewData, next: &PaneViewData) -> b
         || existing.metadata_items != next.metadata_items
         || existing.is_home_tab != next.is_home_tab
         || existing.zoom_slider_position != next.zoom_slider_position
-        || existing.roi_rect != next.roi_rect
-        || existing.plugin_overlay_points != next.plugin_overlay_points
-        || existing.plugin_overlay_polygons != next.plugin_overlay_polygons
-        || existing.plugin_overlay_vertex_boxes != next.plugin_overlay_vertex_boxes
-        || existing.candidate_measurement != next.candidate_measurement
+        || existing.uid != next.uid
+        || existing.overlay != next.overlay
+        || existing.overlay_x != next.overlay_x
+        || existing.overlay_y != next.overlay_y
+        || existing.overlay_width != next.overlay_width
+        || existing.overlay_height != next.overlay_height
+        || existing.overlay_labels != next.overlay_labels
+        || existing.cursor != next.cursor
+        || existing.hud_buttons != next.hud_buttons
         || existing.is_loading != next.is_loading
         || existing.hud != next.hud
 }
@@ -321,13 +325,6 @@ pub fn update_tabs(
         .map(|(pane_index, _)| {
             let pane = PaneId(pane_index);
             let tabs = build_pane_tabs(pane);
-            let (roi_rect, measurements, candidate_measurement) = pane_overlay_data(state, pane);
-            let plugin_overlay_points =
-                crate::plugin_host::viewport_overlay_points_for_pane(state, pane);
-            let plugin_overlay_polygons =
-                crate::plugin_host::viewport_overlay_polygons_for_pane(state, pane);
-            let plugin_overlay_vertex_boxes =
-                crate::plugin_host::viewport_overlay_polygon_vertex_boxes_for_pane(state, pane);
             let mut viewport_info = hidden_viewport_info();
             let mut minimap_rect = full_minimap_rect();
             let mut zoom_slider_position = 0.5;
@@ -386,14 +383,34 @@ pub fn update_tabs(
             if !model_matches(&pane_ui.tabs, &tabs) {
                 pane_ui.tabs.set_vec(tabs.clone());
             }
-            if !model_matches(&pane_ui.measurements, &measurements) {
-                pane_ui.measurements.set_vec(measurements.clone());
-            }
 
             let cached = pane_render_cache
                 .get(pane_index)
                 .cloned()
                 .unwrap_or_default();
+            let uid = state.pane_uid(pane).unwrap_or_default();
+            let active_file = state
+                .active_file_id_for_pane(pane)
+                .and_then(|file_id| state.get_file(file_id));
+            let overlay = crate::host_ui::with_host(|host| {
+                host.pane_overlay(
+                    pane_index,
+                    uid,
+                    active_file.map(|file| i64::from(file.id)),
+                    active_file
+                        .and_then(|file| file.pane_state(pane))
+                        .map(|ps| &ps.viewport.viewport),
+                    active_file
+                        .map(crate::host_ui::calibration)
+                        .unwrap_or_default(),
+                    active_file
+                        .and_then(|file| file.pane_state(pane))
+                        .map(|ps| ps.hud.measurement_unit)
+                        .unwrap_or_default(),
+                    f64::from(ui.window().scale_factor()),
+                )
+            });
+            let overlay = overlay.unwrap_or_else(crate::host_ui::PaneOverlayFields::empty);
             PaneViewData {
                 id: pane.as_index(),
                 tabs: pane_ui.tabs.clone().into(),
@@ -407,17 +424,15 @@ pub fn update_tabs(
                 metadata_items: metadata_items.as_slice().into(),
                 is_home_tab: state.is_home_tab_active_in_pane(pane),
                 zoom_slider_position,
-                roi_rect,
-                measurements: pane_ui.measurements.clone().into(),
-                plugin_overlay_points: plugin_overlay_points.as_slice().into(),
-                plugin_overlay_polygons: plugin_overlay_polygons.as_slice().into(),
-                plugin_overlay_vertex_boxes: plugin_overlay_vertex_boxes.as_slice().into(),
-                annotation_tool_hover_active: matches!(
-                    state.current_tool,
-                    crate::state::Tool::PointAnnotation | crate::state::Tool::PolygonAnnotation
-                ) && pane == state.focused_pane
-                    && state.hovered_plugin_annotation.is_some(),
-                candidate_measurement,
+                uid: uid as i32,
+                overlay: overlay.image,
+                overlay_x: overlay.x,
+                overlay_y: overlay.y,
+                overlay_width: overlay.width,
+                overlay_height: overlay.height,
+                overlay_labels: overlay.labels,
+                cursor: overlay.cursor,
+                hud_buttons: overlay.hud_buttons,
                 is_loading: ui.get_is_loading() && pane == state.focused_pane,
                 hud,
             }
@@ -469,8 +484,6 @@ pub fn update_tabs(
     ui.set_bottom_panel_kind(ui_bottom_panel_kind(state.bottom_panel_kind));
     ui.set_bottom_panel_height(state.bottom_panel_height_px());
     ui.set_viewport_lock_enabled(state.viewport_lock_enabled);
-    ui.set_show_plugin_sidebar(state.has_active_sidebar());
-    ui.set_plugin_sidebar_width(state.plugin_sidebar_width_px());
     let selected_series_path = state
         .selected_series_path()
         .map(|path| SharedString::from(path.display().to_string()))
@@ -507,7 +520,15 @@ pub fn update_tabs(
         ui.set_bottom_panel_status_left(SharedString::new());
         ui.set_bottom_panel_status_right(SharedString::new());
     }
-    let _ = crate::plugin_host::refresh_viewport_overlay_factories(ui, state);
+    let live: Vec<u32> = state.panes.iter().map(|p| p.uid).collect();
+    crate::host_ui::with_host(|host| host.retain_panes(&live));
+}
+
+fn pane_viewport_state(
+    file: &crate::state::OpenFile,
+    pane: PaneId,
+) -> Option<&eov_common::ViewportState> {
+    file.pane_state(pane).map(|pane_state| &pane_state.viewport)
 }
 
 /// Update the recent files list in the UI

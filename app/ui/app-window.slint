@@ -9,17 +9,17 @@ import {
     ExportPreviewInfo,
     ExportSettings,
     FilteringMode,
-    HudToolbarButtonData,
-    MeasurementLine,
+    JobData,
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
+    NotificationData,
     PluginButtonData,
+    PluginRowData,
     StainNormalization,
     PaneViewData,
     RecentFileData,
     RenderMode,
-    ROIRect,
     SeriesItemData,
     TabData,
     ToolType,
@@ -35,6 +35,8 @@ import { HomeScreen } from "home-screen.slint";
 import { BottomPanel } from "bottom-panel.slint";
 import { SplitPaneContainer } from "panes.slint";
 import { WindowToolbar } from "window-toolbar.slint";
+import { NotificationsPopup, StatusBar } from "status-bar.slint";
+import { PluginsPanel } from "plugins-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -91,6 +93,29 @@ export component AppWindow inherits Window {
     in-out property <string> context-menu-series-path: "";
     in-out property <bool> toast-visible: false;
     in-out property <string> toast-text: "";
+    // 0 info, 1 success, 2 warning, 3 error.
+    in-out property <int> toast-level: 0;
+
+    // Status bar, messages and background jobs.
+    in-out property <string> plugin-status-text: "";
+    in-out property <[NotificationData]> notifications: [];
+    in-out property <int> unread-notifications: 0;
+    in-out property <bool> unread-errors: false;
+    in-out property <bool> notifications-visible: false;
+    in-out property <[JobData]> jobs: [];
+
+    // Tooltip of the overlay object under the pointer (window coordinates).
+    in-out property <string> hover-tooltip-text: "";
+    in-out property <float> hover-tooltip-x: 0;
+    in-out property <float> hover-tooltip-y: 0;
+
+    // Plugins panel.
+    in-out property <bool> plugins-panel-visible: false;
+    in-out property <[PluginRowData]> plugin-rows: [];
+    in-out property <string> plugin-dir-text: "";
+    in-out property <string> plugins-panel-note: "";
+    in-out property <int> plugin-count: 0;
+    in-out property <bool> plugin-problems: false;
 
     in-out property <bool> filter-popup-visible: false;
     in-out property <bool> lanczos-confirm-visible: false;
@@ -137,12 +162,7 @@ export component AppWindow inherits Window {
     callback dataset-export-settings-changed(DatasetExportSettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
-    in-out property <ROIRect> primary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in-out property <ROIRect> secondary-roi-rect: { x: 0, y: 0, width: 0, height: 0, visible: false };
-    in-out property <[MeasurementLine]> primary-measurements: [];
-    in-out property <[MeasurementLine]> secondary-measurements: [];
-    in-out property <MeasurementLine> primary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
-    in-out property <MeasurementLine> secondary-candidate-measurement: { x1: 0, y1: 0, x2: 0, y2: 0, distance-um: 0, visible: false };
+    in-out property <string> measure-mode-label: "Distance";
 
     in-out property <bool> debug-mode: false;
     in-out property <float> fps: 0;
@@ -166,14 +186,11 @@ export component AppWindow inherits Window {
     in-out property <bool> show-plugin-sidebar: false;
     in-out property <float> plugin-sidebar-width: 0;
     in-out property <component-factory> plugin-sidebar-factory;
-    in-out property <component-factory> plugin-viewport-underlay-factory;
-    in-out property <component-factory> plugin-viewport-overlay-factory;
     in-out property <[PluginButtonData]> plugin-buttons: [];
-    in-out property <[HudToolbarButtonData]> plugin-hud-buttons: [];
-    in-out property <bool> plugin-undo-redo-visible: false;
-    in-out property <bool> plugin-undo-enabled: false;
-    in-out property <bool> plugin-redo-enabled: false;
-    in-out property <string> plugin-undo-redo-plugin-id: "";
+    in-out property <bool> undo-enabled: false;
+    in-out property <bool> redo-enabled: false;
+    in-out property <string> undo-label: "";
+    in-out property <string> redo-label: "";
 
     callback open-file-requested();
     callback open-folder-requested();
@@ -193,12 +210,14 @@ export component AppWindow inherits Window {
     callback copy-path(int);
     callback split-right(int, int);
     callback close-split();
-    callback viewport-pan(float, float);
-    callback viewport-zoom(float, float, float);
     callback viewport-fit-to-view();
-    callback viewport-start-pan(float, float);
-    callback viewport-end-pan();
-    callback viewport-context-menu(int, length, length);
+    // Raw viewport input for the interaction controller (see viewport.slint).
+    callback viewport-pointer(/* pane */ int, int, int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-wheel(/* pane */ int, float, float, float, float, bool, bool, bool, bool);
+    callback viewport-pinch(/* pane */ int, float, float, float, bool);
+    callback viewport-key(/* pane */ int, string, bool, bool, bool, bool, bool, bool) -> bool;
+    // Keys no focused element consumed (shortcut table in Rust).
+    callback global-key(string, bool, bool, bool, bool, bool, bool) -> bool;
     callback minimap-navigate(float, float);
     callback minimap-drag-start();
     callback minimap-drag-end();
@@ -208,20 +227,19 @@ export component AppWindow inherits Window {
     callback split-position-changed(float);
     callback request-render();
     callback tool-selected(ToolType);
-    callback viewport-tool-mouse-down(float, float);
-    callback viewport-tool-mouse-move(float, float);
-    callback viewport-tool-mouse-up(float, float);
-    callback confirm-tool();
-    callback cancel-tool();
     callback render-backend-selected(RenderMode);
     callback filtering-mode-selected(FilteringMode);
-    callback plugin-button-clicked(/* plugin-id */ string, /* action-id */ string);
-    callback plugin-undo-requested(/* plugin-id */ string);
-    callback plugin-redo-requested(/* plugin-id */ string);
-    callback hud-plugin-button-clicked(int, /* plugin-id */ string, /* action-id */ string);
-    callback plugin-tool-hotkey-pressed(string, bool) -> bool;
-    callback plugin-tool-hotkey-released(string) -> bool;
-    callback global-hotkeys-enabled() -> bool;
+    callback plugin-button-clicked(/* plugin */ string, /* button or tool */ string, /* is tool */ bool);
+    callback undo-requested();
+    callback redo-requested();
+    callback hud-plugin-button-clicked(/* pane */ int, /* plugin */ string, /* button */ string, /* menu item */ string);
+    callback measure-mode-menu-requested(length, length);
+    callback plugins-panel-requested();
+    callback plugin-enable-requested(string, bool);
+    callback plugins-folder-requested();
+    callback job-cancel-requested(string);
+    callback notifications-cleared();
+    callback notifications-opened();
     callback move-tab-to-pane(int, int, int);
     callback split-tab-by-drop(int, int);
     callback reorder-tab(int, int, int);
@@ -375,51 +393,31 @@ export component AppWindow inherits Window {
                 root.plugin-modal-dismiss-requested();
                 accept
             }
-            if !root.global-hotkeys-enabled() {
+            if e.text == Key.Escape && root.plugins-panel-visible {
+                root.plugins-panel-visible = false;
+                accept
+            }
+            if e.text == Key.Escape && root.notifications-visible {
+                root.notifications-visible = false;
+                accept
+            }
+            if e.text == Key.Escape && root.context-menu-visible {
+                root.context-menu-visible = false;
+                accept
+            }
+            // Modal surfaces own the keyboard (UI-7).
+            if root.export-dialog-visible || root.dataset-export-dialog-visible || root.dataset-export-progress-visible
+                || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible {
                 reject
             }
-            if root.plugin-undo-redo-visible && root.plugin-undo-redo-plugin-id != "" {
-                if root.plugin-undo-enabled
-                    && ((e.text == "z" || e.text == "Z")
-                        && ((root.use-native-window-controls && e.modifiers.meta)
-                            || (!root.use-native-window-controls && e.modifiers.control))
-                        && !e.modifiers.shift)
-                {
-                    root.plugin-undo-requested(root.plugin-undo-redo-plugin-id);
-                    accept
-                }
-                if root.plugin-redo-enabled
-                    && (((e.text == "z" || e.text == "Z")
-                            && ((root.use-native-window-controls && e.modifiers.meta)
-                                || (!root.use-native-window-controls && e.modifiers.control))
-                            && e.modifiers.shift)
-                        || ((e.text == "y" || e.text == "Y")
-                            && ((root.use-native-window-controls && e.modifiers.meta)
-                                || (!root.use-native-window-controls && e.modifiers.control))))
-                {
-                    root.plugin-redo-requested(root.plugin-undo-redo-plugin-id);
-                    accept
-                }
-            }
-            if (e.text == "w" || e.text == "W") && e.modifiers.control && e.modifiers.shift {
-                root.window-close();
-                accept
-            }
-            if e.text == "w" && e.modifiers.control {
-                root.close-active-tab();
-                accept
-            }
-            if root.plugin-tool-hotkey-pressed(e.text, e.repeat) {
+            if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
                 accept
             }
             reject
         }
 
         key-released(e) => {
-            if !root.global-hotkeys-enabled() {
-                reject
-            }
-            if root.plugin-tool-hotkey-released(e.text) {
+            if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, false, false) {
                 accept
             }
             reject
@@ -438,10 +436,13 @@ export component AppWindow inherits Window {
             show-scale-bar: root.show-scale-bar;
             viewport-lock-enabled: root.viewport-lock-enabled;
             use-native-window-controls: root.use-native-window-controls;
-            plugin-undo-redo-visible: root.plugin-undo-redo-visible;
-            plugin-undo-enabled: root.plugin-undo-enabled;
-            plugin-redo-enabled: root.plugin-redo-enabled;
-            plugin-undo-redo-plugin-id: root.plugin-undo-redo-plugin-id;
+            undo-enabled: root.undo-enabled;
+            redo-enabled: root.redo-enabled;
+            undo-label: root.undo-label;
+            redo-label: root.redo-label;
+            measure-mode-label: root.measure-mode-label;
+            plugin-count: root.plugin-count;
+            plugin-problems: root.plugin-problems;
             plugin-buttons: root.plugin-buttons;
             open-file-requested => {
                 root.open-file-requested();
@@ -476,14 +477,20 @@ export component AppWindow inherits Window {
             dataset-export-requested => {
                 root.dataset-export-open-dialog();
             }
-            plugin-button-clicked(plugin-id, action-id) => {
-                root.plugin-button-clicked(plugin-id, action-id);
+            plugin-button-clicked(plugin-id, button-id, is-tool) => {
+                root.plugin-button-clicked(plugin-id, button-id, is-tool);
             }
-            plugin-undo-requested(plugin-id) => {
-                root.plugin-undo-requested(plugin-id);
+            undo-requested => {
+                root.undo-requested();
             }
-            plugin-redo-requested(plugin-id) => {
-                root.plugin-redo-requested(plugin-id);
+            redo-requested => {
+                root.redo-requested();
+            }
+            measure-mode-menu-requested(x, y) => {
+                root.measure-mode-menu-requested(x, y);
+            }
+            plugins-panel-requested => {
+                root.plugins-panel-requested();
             }
             window-minimize => {
                 root.window-minimize();
@@ -540,10 +547,6 @@ export component AppWindow inherits Window {
                     show-scale-bar: root.show-scale-bar;
                     split-enabled: root.split-enabled;
                     focused-pane: root.focused-pane;
-                    current-tool: root.current-tool;
-                    plugin-viewport-underlay-factory: root.plugin-viewport-underlay-factory;
-                    plugin-viewport-overlay-factory: root.plugin-viewport-overlay-factory;
-                    plugin-hud-buttons: root.plugin-hud-buttons;
                     debug-mode: root.debug-mode;
                     fps: root.fps;
                     recent-files: root.recent-files;
@@ -637,23 +640,20 @@ export component AppWindow inherits Window {
                         root.drag-source-pane = pane;
                         root.context-menu-visible = true;
                     }
-                    viewport-pan(dx, dy) => {
-                        root.viewport-pan(dx, dy);
-                    }
-                    viewport-zoom(f, x, y) => {
-                        root.viewport-zoom(f, x, y);
-                    }
                     viewport-fit-to-view => {
                         root.viewport-fit-to-view();
                     }
-                    viewport-start-pan(x, y) => {
-                        root.viewport-start-pan(x, y);
+                    viewport-pointer(pane, kind, button, x, y, wx, wy, shift, control, alt, meta) => {
+                        root.viewport-pointer(pane, kind, button, x, y, wx, wy, shift, control, alt, meta);
                     }
-                    viewport-end-pan => {
-                        root.viewport-end-pan();
+                    viewport-wheel(pane, dx, dy, x, y, shift, control, alt, meta) => {
+                        root.viewport-wheel(pane, dx, dy, x, y, shift, control, alt, meta);
                     }
-                    viewport-context-menu(pane, x, y) => {
-                        root.viewport-context-menu(pane, x, y);
+                    viewport-pinch(pane, scale, x, y, active) => {
+                        root.viewport-pinch(pane, scale, x, y, active);
+                    }
+                    viewport-key(pane, text, shift, control, alt, meta, pressed, repeat) => {
+                        root.viewport-key(pane, text, shift, control, alt, meta, pressed, repeat)
                     }
                     minimap-navigate(nx, ny) => {
                         root.minimap-navigate(nx, ny);
@@ -733,24 +733,6 @@ export component AppWindow inherits Window {
                     zoom-slider-changed(pane, value) => {
                         root.zoom-slider-changed(pane, value);
                     }
-                    tool-mouse-down(x, y) => {
-                        root.viewport-tool-mouse-down(x, y);
-                    }
-                    tool-mouse-move(x, y) => {
-                        root.viewport-tool-mouse-move(x, y);
-                    }
-                    tool-mouse-up(x, y) => {
-                        root.viewport-tool-mouse-up(x, y);
-                    }
-                    confirm-tool => {
-                        root.confirm-tool();
-                    }
-                    cancel-tool => {
-                        root.cancel-tool();
-                    }
-                    close-active-tab => {
-                        root.close-active-tab();
-                    }
                     tab-tooltip-changed(visible, text, cx, ty) => {
                         root.tab-tooltip-visible = visible;
                         root.tab-tooltip-text = text;
@@ -808,8 +790,8 @@ export component AppWindow inherits Window {
                     hud-deconv-e-view-toggled(pane) => {
                         root.hud-deconv-e-view-toggled(pane);
                     }
-                    hud-plugin-button-clicked(pane, plugin-id, action-id) => {
-                        root.hud-plugin-button-clicked(pane, plugin-id, action-id);
+                    hud-plugin-button-clicked(pane, plugin-id, button-id, item-id) => {
+                        root.hud-plugin-button-clicked(pane, plugin-id, button-id, item-id);
                     }
                 }
 
@@ -906,6 +888,57 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
+            status-bar := StatusBar {
+                status-text: root.status-text;
+                plugin-status-text: root.plugin-status-text;
+                jobs: root.jobs;
+                unread-notifications: root.unread-notifications;
+                unread-errors: root.unread-errors;
+                notifications-open: root.notifications-visible;
+                job-cancel-requested(id) => {
+                    root.job-cancel-requested(id);
+                }
+                notifications-toggled => {
+                    root.notifications-visible = !root.notifications-visible;
+                    if root.notifications-visible {
+                        root.notifications-opened();
+                    }
+                }
+            }
+        }
+
+    if root.notifications-visible: NotificationsPopup {
+        x: root.width - self.width - 6px;
+        y: root.height - self.height - 30px;
+        items: root.notifications;
+        cleared => {
+            root.notifications-cleared();
+        }
+        dismissed => {
+            root.notifications-visible = false;
+        }
+    }
+
+    if root.hover-tooltip-text != "": Rectangle {
+        x: max(4px, min(root.width - self.width - 4px, root.hover-tooltip-x * 1px + 14px));
+        y: max(4px, min(root.height - self.height - 4px, root.hover-tooltip-y * 1px + 18px));
+        width: min(360px, hover-tooltip.preferred-width + 12px);
+        height: hover-tooltip.preferred-height + 6px;
+        background: #111111ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        hover-tooltip := Text {
+            x: 6px;
+            y: 3px;
+            width: parent.width - 12px;
+            text: root.hover-tooltip-text;
+            color: white;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
     }
 
     if toolbar.hovered-tooltip-visible: Rectangle {
@@ -951,8 +984,8 @@ export component AppWindow inherits Window {
     ContextMenu {
         items: context-menu-items;
         is-visible: context-menu-visible;
-        menu-x: context-menu-x;
-        menu-y: context-menu-y;
+        menu-x: max(0px, min(root.width - 244px, context-menu-x));
+        menu-y: max(0px, min(root.height - context-menu-items.length * 28px - 4px, context-menu-y));
 
         item-clicked(id) => {
             root.context-menu-visible = false;
@@ -995,14 +1028,14 @@ export component AppWindow inherits Window {
 
     Rectangle {
         opacity: root.toast-visible ? 1.0 : 0.0;
-        y: root.toast-visible ? root.height - self.height - 20px : root.height + 12px;
+        y: root.toast-visible ? root.height - self.height - 36px : root.height + 12px;
         x: root.width / 2 - self.width / 2;
         width: toast-label.preferred-width + 28px;
         height: toast-label.preferred-height + 14px;
         background: #111111ee;
         border-radius: self.height / 2;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: root.toast-level == 3 ? #ff6b6b : root.toast-level == 2 ? #f1c40f : root.toast-level == 1 ? #2ecc71 : Theme.border;
         animate opacity { duration: 180ms; }
         animate y { duration: 220ms; }
 
@@ -1445,6 +1478,21 @@ export component AppWindow inherits Window {
         progress: root.dataset-export-progress;
         cancel-requested => {
             root.dataset-export-cancel-progress();
+        }
+    }
+
+    if root.plugins-panel-visible: PluginsPanel {
+        rows: root.plugin-rows;
+        plugin-dir: root.plugin-dir-text;
+        note: root.plugins-panel-note;
+        close-requested => {
+            root.plugins-panel-visible = false;
+        }
+        enable-requested(id, enable) => {
+            root.plugin-enable-requested(id, enable);
+        }
+        open-folder-requested => {
+            root.plugins-folder-requested();
         }
     }
 

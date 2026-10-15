@@ -170,6 +170,30 @@ pub fn ellipse_ring(cx: f64, cy: f64, rx: f64, ry: f64, segments: usize) -> Vec<
         .collect()
 }
 
+/// The outline of a shape as points, and whether it is closed.
+pub fn outline(shape: &Shape) -> (Vec<Point>, bool) {
+    match shape {
+        Shape::Point { x, y } | Shape::Text { x, y, .. } => (vec![[*x, *y]], false),
+        Shape::Polyline { points } => (points.clone(), false),
+        Shape::Polygon { exterior, .. } => (exterior.clone(), true),
+        Shape::Rectangle {
+            x,
+            y,
+            width,
+            height,
+        } => (
+            vec![
+                [*x, *y],
+                [x + width, *y],
+                [x + width, y + height],
+                [*x, y + height],
+            ],
+            true,
+        ),
+        Shape::Ellipse { cx, cy, rx, ry } => (ellipse_ring(*cx, *cy, *rx, *ry, 96), true),
+    }
+}
+
 /// Douglas–Peucker simplification of an open polyline.
 pub fn simplify(points: &[Point], tolerance: f64) -> Vec<Point> {
     if points.len() <= 2 || tolerance <= 0.0 {
@@ -212,10 +236,6 @@ pub fn is_usable_ring(ring: &[Point]) -> bool {
 
 pub fn rect_intersects(a: &Rect, b: &Rect) -> bool {
     a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height
-}
-
-pub fn rect_contains_point(r: &Rect, p: Point) -> bool {
-    p[0] >= r.x && p[0] <= r.x + r.width && p[1] >= r.y && p[1] <= r.y + r.height
 }
 
 pub fn expand_rect(r: &Rect, margin: f64) -> Rect {
@@ -497,7 +517,11 @@ mod tests {
     #[test]
     fn polygon_containment_honours_holes() {
         let hole = vec![[4.0, 4.0], [6.0, 4.0], [6.0, 6.0], [4.0, 6.0]];
-        assert!(point_in_polygon([2.0, 2.0], &SQUARE, std::slice::from_ref(&hole)));
+        assert!(point_in_polygon(
+            [2.0, 2.0],
+            &SQUARE,
+            std::slice::from_ref(&hole)
+        ));
         assert!(!point_in_polygon([5.0, 5.0], &SQUARE, &[hole]));
         assert!(!point_in_polygon([11.0, 5.0], &SQUARE, &[]));
     }
