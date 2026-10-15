@@ -8,18 +8,21 @@
 //! * **Incremental, resumable output (DS-3).** Tile records are appended
 //!   to `metadata.csv` / `metadata.jsonl` after every chunk, slide records
 //!   to `slides.csv` / `slides.jsonl`, and `dataset.json` records the
-//!   parameters and status. A re-run with the same parameters skips tiles
-//!   that are already recorded; different parameters are refused.
+//!   parameters and status (also when a run stops with an error). A re-run
+//!   with the same parameters repairs what a crash left behind, skips the
+//!   slides an earlier run completed and the tiles it recorded, and ends
+//!   with one record per slide; different parameters are refused.
 //! * **Accurate progress (DS-6).** All slides are planned before
 //!   extraction, so the total never grows; written, existing, skipped and
 //!   failed tiles are counted separately.
 //! * **Determinism.** Grids, sampling orders and metadata order depend only
 //!   on the inputs and parameters, never on thread timing.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::time::Duration;
 
 use rayon::prelude::*;
 use tracing::warn;
@@ -556,7 +559,10 @@ struct Run<'a> {
     config: &'a DatasetPatchesConfig,
     options: &'a DatasetPatchesOptions,
     control: &'a DatasetControl,
+    /// Tiles recorded by earlier runs into the same output (when resuming).
     recorded: HashSet<String>,
+    /// The latest record of each slide from earlier runs (when resuming).
+    previous: HashMap<String, SlideRecord>,
     classes: Vec<String>,
     pool: rayon::ThreadPool,
 }
@@ -590,6 +596,30 @@ struct SlideJob<'a> {
     handles: Vec<Mutex<Option<WsiFile>>>,
 }
 
+/// How many sampled candidates to process next under a per-slide limit of
+/// `limit` tiles, after `tried` candidates gave `accepted` tiles: about as
+/// many as the acceptance rate so far says are still needed (plus a
+/// margin), at least one per thread. Whole chunks would mostly be thrown
+/// away when the limit is small.
+fn sampled_chunk_size(limit: u64, accepted: u64, tried: u64, threads: u64) -> u64 {
+    let remaining = limit.saturating_sub(accepted);
+    let rate = if tried == 0 {
+        1.0
+    } else {
+        (accepted as f64 / tried as f64).max(0.01)
+    };
+    let needed = (remaining as f64 / rate * 1.25).ceil();
+    (needed.min(u32::MAX as f64) as u64).max(threads)
+}
+
+/// The fast, sampled slide fingerprint as hex (empty if it cannot be
+/// computed).
+fn fingerprint_hex(path: &Path) -> String {
+    crate::file_id::compute_fingerprint(path)
+        .map(|d| crate::file_id::hex_digest(&d))
+        .unwrap_or_default()
+}
+
 fn read_with_retry(job: &SlideJob, x: u64, y: u64) -> crate::Result<Vec<u8>> {
     let slot_index = rayon::current_thread_index().unwrap_or(0) % job.handles.len().max(1);
     let mut slot = job.handles[slot_index]
@@ -618,13 +648,77 @@ fn read_with_retry(job: &SlideJob, x: u64, y: u64) -> crate::Result<Vec<u8>> {
 }
 
 impl Run<'_> {
-    fn tile_paths(&self, key: &str, x: u64, y: u64) -> (String, String) {
+    fn tile_path(&self, key: &str, x: u64, y: u64) -> String {
         let ext = self.options.image_format.extension();
         let name = output::tile_filename_with_extension(key, x, y, self.config.tile_size, ext);
+        format!("slides/{key}/{name}")
+    }
+
+    fn tile_paths(&self, key: &str, x: u64, y: u64) -> (String, String) {
         (
-            format!("slides/{key}/{name}"),
+            self.tile_path(key, x, y),
             output::mask_relative_path(key, x, y, self.config.tile_size),
         )
+    }
+
+    /// When resuming: the report for a slide that an earlier run completed
+    /// and whose recorded tiles are all still on disk. Such a slide needs no
+    /// work at all — no hashing, tissue mask, stain fit or pixel reads (the
+    /// positions an earlier run rejected are not recorded, so visiting the
+    /// grid again would re-read them all).
+    fn already_complete(
+        &self,
+        planned: &PlannedSlide,
+        geometry: &SlideGeometry,
+        fingerprint: &str,
+    ) -> Option<SlideReport> {
+        let previous = self.previous.get(&planned.key)?;
+        let path = &planned.input.path;
+        if previous.status != SlideStatus::Complete
+            || previous.slide_path != path.display().to_string()
+        {
+            return None;
+        }
+        if previous.fingerprint.as_deref() != Some(fingerprint) {
+            warn!(
+                "{} changed since an earlier run extracted it; checking it again (recorded \
+                 patches are kept)",
+                path.display()
+            );
+            return None;
+        }
+        let mut existing = 0u64;
+        for index in 0..geometry.grid.len() {
+            let coord = geometry.grid.get(index);
+            let tile_path = self.tile_path(&planned.key, coord.x, coord.y);
+            if self.recorded.contains(&tile_path) {
+                if !self.config.output_dir.join(&tile_path).is_file() {
+                    // Process the slide again; that rewrites missing tiles.
+                    return None;
+                }
+                existing += 1;
+            }
+        }
+        if existing != previous.written + previous.existing {
+            // The tile metadata does not match the slide record (edited or
+            // partly lost): process the slide again.
+            return None;
+        }
+        self.control.existing.fetch_add(existing, Ordering::Relaxed);
+        self.control.done(planned.planned_tiles);
+        Some(SlideReport {
+            path: path.clone(),
+            slide_id: planned.key.clone(),
+            status: SlideStatus::Complete,
+            tiles_written: 0,
+            tiles_existing: existing,
+            tiles_skipped_white: 0,
+            tiles_skipped_tissue: 0,
+            tiles_skipped_annotation: 0,
+            tiles_failed: 0,
+            skipped: None,
+            errors: Vec::new(),
+        })
     }
 
     /// Cheap filters that need no pixels (low-resolution tissue mask,
@@ -806,8 +900,28 @@ impl Run<'_> {
         writer.append_tiles(&records).map_err(write_err(&jsonl))
     }
 
-    /// Extracts one planned slide. Returns its report and record.
+    /// Processes one planned slide. Returns its report and the record to
+    /// append (`None` when the record of an earlier run stands).
     fn slide(
+        &self,
+        planned: &PlannedSlide,
+        writer: &mut MetadataWriter,
+    ) -> Result<(SlideReport, Option<SlideRecord>), DatasetError> {
+        if let Ok(geometry) = &planned.geometry
+            && self.previous.contains_key(&planned.key)
+        {
+            self.control.set_phase(DatasetPhase::Extracting);
+            let fingerprint = fingerprint_hex(&planned.input.path);
+            if let Some(report) = self.already_complete(planned, geometry, &fingerprint) {
+                return Ok((report, None));
+            }
+        }
+        let (report, record) = self.extract(planned, writer)?;
+        Ok((report, Some(record)))
+    }
+
+    /// Extracts one planned slide. Returns its report and record.
+    fn extract(
         &self,
         planned: &PlannedSlide,
         writer: &mut MetadataWriter,
@@ -829,9 +943,7 @@ impl Run<'_> {
 
         // Identity.
         self.control.set_phase(DatasetPhase::Hashing);
-        let fingerprint = crate::file_id::compute_fingerprint(path)
-            .map(|d| crate::file_id::hex_digest(&d))
-            .unwrap_or_default();
+        let fingerprint = fingerprint_hex(path);
         let sha256 = if self.options.hash_files {
             match super::hashing::slide_sha256(&planned.input.members, &self.control.cancel) {
                 Ok(Some(hash)) => hash,
@@ -906,7 +1018,8 @@ impl Run<'_> {
         };
         let mut counts = SlideCounts::default();
         let mut dirs = HashSet::new();
-        let chunk = (self.pool.current_num_threads() as u64 * 16).clamp(16, 4096);
+        let threads = self.pool.current_num_threads().max(1) as u64;
+        let chunk = (threads * 16).clamp(16, 4096);
         let error_limit = (planned.planned_tiles / 100).max(100);
         let limit = self.options.max_tiles_per_slide;
         let mut done_units = 0u64;
@@ -945,7 +1058,12 @@ impl Run<'_> {
                 failure = Some(SlideSkipReason::Cancelled);
                 break;
             }
-            let end = (start + chunk).min(total);
+            let size = match limit {
+                Some(k) => sampled_chunk_size(k, counts.written + counts.existing, start, threads)
+                    .min(chunk),
+                None => chunk,
+            };
+            let end = (start + size).min(total);
             let indices: Vec<u64> = match &sampled {
                 Some(order) => order[start as usize..end as usize].to_vec(),
                 None => (start..end).collect(),
@@ -1235,10 +1353,11 @@ pub fn run_dataset(
 
     let parameters = ExtractionParameters::new(config, options);
     let resume = prepare_output(config, options, &parameters)?;
-    let recorded = if resume {
-        metadata::recorded_tiles(&config.output_dir).map_err(write_err(&config.output_dir))?
+    let previous = if resume {
+        metadata::prepare_resume(&config.output_dir, config.metadata_format)
+            .map_err(write_err(&config.output_dir))?
     } else {
-        HashSet::new()
+        metadata::ResumeState::default()
     };
     let started = DatasetManifest::load(&config.output_dir)
         .ok()
@@ -1264,6 +1383,52 @@ pub fn run_dataset(
     manifest
         .save(&config.output_dir)
         .map_err(write_err(&manifest_path))?;
+
+    // From here on the manifest records how the run ended, also when it
+    // stops with an error.
+    let result = extract_planned(
+        config,
+        options,
+        control,
+        &plan,
+        previous,
+        resume,
+        &mut report,
+    );
+    manifest.status = match &result {
+        Err(_) => RunStatus::Failed,
+        Ok(()) => report.status(),
+    };
+    manifest.updated = now();
+    manifest.totals = RunTotals {
+        slides: report.slides.len() as u64,
+        slides_failed: report.failed_slides as u64,
+        tiles_written: report.total_tiles,
+        tiles_existing: report.total_tiles_existing,
+        tiles_skipped_white: report.total_tiles_skipped_white,
+        tiles_skipped_tissue: report.total_tiles_skipped_tissue,
+        tiles_skipped_annotation: report.total_tiles_skipped_annotation,
+        tiles_failed: report.total_tiles_failed,
+    };
+    let saved = manifest
+        .save(&config.output_dir)
+        .map_err(write_err(&manifest_path));
+    report.manifest_path = Some(manifest_path);
+    control.set_phase(DatasetPhase::Done);
+    result.and(saved).map(|()| report)
+}
+
+/// Writes the classes file, extracts every planned slide and finishes the
+/// metadata, accumulating into `report`.
+fn extract_planned(
+    config: &DatasetPatchesConfig,
+    options: &DatasetPatchesOptions,
+    control: &DatasetControl,
+    plan: &DatasetPlan,
+    previous: metadata::ResumeState,
+    resume: bool,
+    report: &mut DatasetPatchesReport,
+) -> Result<(), DatasetError> {
     if !plan.classes.is_empty() {
         let classes: serde_json::Map<String, serde_json::Value> =
             std::iter::once(("0".to_string(), "background".into()))
@@ -1296,7 +1461,8 @@ pub fn run_dataset(
         config,
         options,
         control,
-        recorded,
+        recorded: previous.tiles,
+        previous: previous.slides,
         classes: plan.classes.clone(),
         pool,
     };
@@ -1306,7 +1472,8 @@ pub fn run_dataset(
     for (index, planned) in plan.slides.iter().enumerate() {
         let outcome = if control.is_cancelled() {
             report.cancelled = true;
-            Ok(run.skipped(planned, SlideSkipReason::Cancelled))
+            let (slide_report, record) = run.skipped(planned, SlideSkipReason::Cancelled);
+            Ok((slide_report, Some(record)))
         } else {
             control
                 .current_slide
@@ -1314,9 +1481,11 @@ pub fn run_dataset(
             run.slide(planned, &mut writer)
         };
         match outcome.and_then(|(slide_report, record)| {
-            writer
-                .append_slide(&record)
-                .map_err(write_err(&slides_path))?;
+            if let Some(record) = record {
+                writer
+                    .append_slide(&record)
+                    .map_err(write_err(&slides_path))?;
+            }
             Ok(slide_report)
         }) {
             Ok(slide_report) => report.slides.push(slide_report),
@@ -1347,30 +1516,13 @@ pub fn run_dataset(
         report.total_tiles_failed += slide.tiles_failed;
     }
     control.set_phase(DatasetPhase::Finishing);
-    report.metadata_paths = writer
-        .finish()
-        .map_err(write_err(&config.output_dir.join(metadata::JSON_FILE)))?;
-    manifest.status = match &result {
-        Err(_) => RunStatus::Failed,
-        Ok(()) => report.status(),
-    };
-    manifest.updated = now();
-    manifest.totals = RunTotals {
-        slides: report.slides.len() as u64,
-        slides_failed: report.failed_slides as u64,
-        tiles_written: report.total_tiles,
-        tiles_existing: report.total_tiles_existing,
-        tiles_skipped_white: report.total_tiles_skipped_white,
-        tiles_skipped_tissue: report.total_tiles_skipped_tissue,
-        tiles_skipped_annotation: report.total_tiles_skipped_annotation,
-        tiles_failed: report.total_tiles_failed,
-    };
-    manifest
-        .save(&config.output_dir)
-        .map_err(write_err(&manifest_path))?;
-    report.manifest_path = Some(manifest_path);
-    control.set_phase(DatasetPhase::Done);
-    result.map(|()| report)
+    // Finish the metadata even after an error, so that what was written is
+    // complete and consistent; report the first error.
+    let finished = writer.finish().map_err(write_err(&config.output_dir));
+    if let Ok(paths) = &finished {
+        report.metadata_paths = paths.clone();
+    }
+    result.and(finished.map(drop))
 }
 
 // ─── Pre-1.0 entry points ────────────────────────────────────────────────────
@@ -1389,6 +1541,45 @@ pub fn run_dataset_patches(config: &DatasetPatchesConfig) -> crate::Result<Datas
     run_dataset(config, &legacy_options(), &DatasetControl::new()).map_err(Into::into)
 }
 
+/// Sets a flag when dropped — also while unwinding from a panic.
+struct SetOnDrop<'a>(&'a AtomicBool);
+
+impl Drop for SetOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Runs `work` while a helper thread forwards `cancel` to `control` and
+/// calls `mirror` every 50 ms. The helper stops when `work` returns or
+/// panics (a panic then propagates instead of leaving the scope waiting
+/// for the helper forever).
+fn with_progress_mirror<R>(
+    control: &DatasetControl,
+    cancel: &AtomicBool,
+    mirror: &(dyn Fn() + Sync),
+    work: impl FnOnce() -> R,
+) -> R {
+    let finished = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !finished.load(Ordering::Relaxed) {
+                if cancel.load(Ordering::Relaxed) {
+                    control.cancel();
+                }
+                mirror();
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let result = {
+            let _finished = SetOnDrop(&finished);
+            work()
+        };
+        mirror();
+        result
+    })
+}
+
 /// Pre-1.0 entry point with caller-owned progress counters.
 ///
 /// `progress_tiles` receives the number of processed tiles (written,
@@ -1403,7 +1594,6 @@ pub fn run_dataset_patches_with_progress(
     progress_total_tiles_expected: &AtomicU64,
 ) -> crate::Result<DatasetPatchesReport> {
     let control = DatasetControl::new();
-    let finished = AtomicBool::new(false);
     let mirror = || {
         let p = control.progress();
         progress_tiles.store(p.tiles_done, Ordering::Relaxed);
@@ -1411,21 +1601,10 @@ pub fn run_dataset_patches_with_progress(
         progress_total_slides.store(p.total_slides, Ordering::Relaxed);
         progress_total_tiles_expected.store(p.tiles_total, Ordering::Relaxed);
     };
-    std::thread::scope(|scope| {
-        scope.spawn(|| {
-            while !finished.load(Ordering::Relaxed) {
-                if cancel.load(Ordering::Relaxed) {
-                    control.cancel();
-                }
-                mirror();
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-        });
-        let result = run_dataset(config, &legacy_options(), &control);
-        finished.store(true, Ordering::Relaxed);
-        mirror();
-        result.map_err(Into::into)
+    with_progress_mirror(&control, cancel, &mirror, || {
+        run_dataset(config, &legacy_options(), &control)
     })
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

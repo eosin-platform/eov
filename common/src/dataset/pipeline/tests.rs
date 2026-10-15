@@ -198,6 +198,121 @@ fn reruns_resume_and_parameter_changes_are_refused() {
 }
 
 #[test]
+fn completed_slides_are_not_processed_again_on_resume() {
+    let temp = tempfile::tempdir().unwrap();
+    let slide = temp.path().join("s.tif");
+    // Left half glass, right half tissue: 4 patches written, 4 rejected.
+    write_tiled_tiff(&slide, 512, 256, 64, |x, _| {
+        if x < 256 {
+            [255, 255, 255]
+        } else {
+            [120, 60, 160]
+        }
+    })
+    .unwrap();
+    let out = temp.path().join("out");
+    let cfg = DatasetPatchesConfig {
+        white_threshold: Some(0.8),
+        ..config(vec![slide], out.clone())
+    };
+    let first = run(&cfg, &options());
+    assert_eq!((first.total_tiles, first.total_tiles_skipped_white), (4, 4));
+
+    // Nothing to do: the slide is recognised as complete without visiting
+    // its grid again (the glass patches are not re-read and re-rejected).
+    let again = run(&cfg, &options());
+    let slide_report = &again.slides[0];
+    assert_eq!(slide_report.status, SlideStatus::Complete);
+    assert_eq!(
+        (
+            slide_report.tiles_written,
+            slide_report.tiles_existing,
+            slide_report.tiles_skipped_white
+        ),
+        (0, 4, 0)
+    );
+    assert_eq!(again.status(), RunStatus::Complete);
+
+    // A recorded tile that disappeared is written again by a full pass.
+    let lost = records(&out)[1].tile_path.clone();
+    std::fs::remove_file(out.join(&lost)).unwrap();
+    let repaired = run(&cfg, &options());
+    assert_eq!(
+        (
+            repaired.total_tiles,
+            repaired.total_tiles_existing,
+            repaired.total_tiles_skipped_white
+        ),
+        (1, 3, 4)
+    );
+    assert!(out.join(&lost).is_file());
+
+    // The slide files list the slide once, with its latest record.
+    let slides: Vec<SlideRecord> = std::fs::read_to_string(out.join("slides.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(slides.len(), 1);
+    assert_eq!((slides[0].written, slides[0].existing), (1, 3));
+}
+
+#[test]
+fn errors_after_the_manifest_is_written_mark_the_run_failed() {
+    let temp = tempfile::tempdir().unwrap();
+    let slide = temp.path().join("s.tif");
+    write_tiled_tiff(&slide, 256, 256, 64, |_, _| [100, 50, 200]).unwrap();
+    let out = temp.path().join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    // Tiles cannot be written: `slides` is a file.
+    std::fs::write(out.join("slides"), b"in the way").unwrap();
+    let err = run_dataset(
+        &config(vec![slide], out.clone()),
+        &options(),
+        &DatasetControl::new(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DatasetError::Write { .. }), "{err}");
+    assert_eq!(
+        DatasetManifest::load(&out).unwrap().unwrap().status,
+        RunStatus::Failed
+    );
+    // The metadata was still finished.
+    assert!(out.join("metadata.json").is_file());
+}
+
+#[test]
+fn the_progress_mirror_stops_when_the_run_panics() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let control = DatasetControl::new();
+        let cancel = AtomicBool::new(false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_progress_mirror(&control, &cancel, &|| {}, || -> u32 {
+                panic!("simulated failure inside a run")
+            })
+        }));
+        let _ = tx.send(result.is_err());
+    });
+    // Without the guard the helper thread would spin forever and the scope
+    // would never return.
+    assert_eq!(rx.recv_timeout(Duration::from_secs(10)), Ok(true));
+}
+
+#[test]
+fn sampled_chunks_follow_the_remaining_budget() {
+    // Before any result: the remaining budget plus a margin.
+    assert_eq!(sampled_chunk_size(10, 0, 0, 4), 13);
+    // A quarter of the candidates are accepted: 5 more need ~20 (+25 %).
+    assert_eq!(sampled_chunk_size(10, 5, 20, 4), 25);
+    // At least one candidate per thread.
+    assert_eq!(sampled_chunk_size(1, 0, 0, 16), 16);
+    assert_eq!(sampled_chunk_size(10, 10, 30, 4), 4);
+    // Hardly anything accepted: large, but finite (callers cap it).
+    assert_eq!(sampled_chunk_size(1000, 0, 100, 8), 125_000);
+}
+
+#[test]
 fn cancellation_keeps_consistent_metadata() {
     let temp = tempfile::tempdir().unwrap();
     let slide = temp.path().join("s.tif");

@@ -2,15 +2,18 @@
 //!
 //! Records are appended (CSV and/or JSON Lines) and flushed as each chunk of
 //! a slide completes, so the metadata survives errors, crashes and
-//! cancellation, and an interrupted run can be resumed. `metadata.json` (a
-//! JSON array) is produced from `metadata.jsonl` when a run ends.
+//! cancellation, and an interrupted run can be resumed ([`prepare_resume`]
+//! repairs what a crash can leave behind). `metadata.json` (a JSON array) is
+//! produced from `metadata.jsonl` when a run ends.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use super::config::MetadataFormat;
 
@@ -166,7 +169,8 @@ impl CsvAppender {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.writer.flush()
+        self.writer.flush()?;
+        self.writer.get_ref().get_ref().sync_data()
     }
 }
 
@@ -198,6 +202,248 @@ impl JsonlAppender {
     }
 }
 
+/// Removes a last record that was only partly written (a crash during an
+/// append), so that appending continues on a fresh line instead of gluing
+/// the next record onto the fragment. In CSV files a newline inside a
+/// quoted field does not end a record. Returns the number of bytes removed.
+fn repair_tail(path: &Path, csv: bool) -> std::io::Result<u64> {
+    let mut file = match OpenOptions::new().read(true).write(true).open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    let len = file.metadata()?.len();
+    // Offset just past the last record terminator.
+    let mut end = 0u64;
+    let mut offset = 0u64;
+    let mut in_quotes = false;
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        for &byte in &buf[..n] {
+            offset += 1;
+            if csv && byte == b'"' {
+                // Quotes inside quoted fields are doubled, so the parity
+                // says whether we are inside a field.
+                in_quotes = !in_quotes;
+            } else if byte == b'\n' && !in_quotes {
+                end = offset;
+            }
+        }
+    }
+    if end == len {
+        return Ok(0);
+    }
+    file.set_len(end)?;
+    file.sync_data()?;
+    warn!(
+        "{}: removed a partly written last record ({} bytes) left by an interrupted run",
+        path.display(),
+        len - end
+    );
+    Ok(len - end)
+}
+
+/// Streams the records of a JSON Lines file; lines that do not parse are
+/// skipped with a warning. A missing file has no records.
+fn for_each_jsonl<T: DeserializeOwned>(
+    path: &Path,
+    mut f: impl FnMut(T) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let mut invalid = 0u64;
+    for line in BufReader::new(file).split(b'\n') {
+        let line = line?;
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        match serde_json::from_slice(&line) {
+            Ok(record) => f(record)?,
+            Err(_) => invalid += 1,
+        }
+    }
+    if invalid > 0 {
+        warn!("{}: skipped {invalid} unreadable lines", path.display());
+    }
+    Ok(())
+}
+
+/// Streams the records of a CSV file with a header; rows that do not parse
+/// are skipped with a warning. A missing file has no records.
+fn for_each_csv<T: DeserializeOwned>(
+    path: &Path,
+    mut f: impl FnMut(T) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let mut reader = csv::Reader::from_reader(BufReader::new(file));
+    let mut invalid = 0u64;
+    for record in reader.deserialize::<T>() {
+        match record {
+            Ok(record) => f(record)?,
+            Err(e) => match e.into_kind() {
+                csv::ErrorKind::Io(e) => return Err(e),
+                _ => invalid += 1,
+            },
+        }
+    }
+    if invalid > 0 {
+        warn!("{}: skipped {invalid} unreadable rows", path.display());
+    }
+    Ok(())
+}
+
+/// What earlier sessions recorded in an output directory.
+#[derive(Debug, Default)]
+pub(crate) struct ResumeState {
+    /// Paths (relative to the output directory) of the recorded tiles.
+    pub tiles: HashSet<String>,
+    /// The latest record of each slide, by slide id.
+    pub slides: HashMap<String, SlideRecord>,
+}
+
+/// Prepares an output directory for resuming and returns what is already
+/// recorded there.
+///
+/// * Partly written last records (a crash during an append) are removed.
+/// * Tile records found in only one of `metadata.csv` and `metadata.jsonl`
+///   — a crash between the two appends of a batch, or an earlier session
+///   that used another metadata format — are appended to the other file
+///   when this run writes it, so both list the same tiles.
+pub(crate) fn prepare_resume(
+    dir: &Path,
+    format: Option<MetadataFormat>,
+) -> std::io::Result<ResumeState> {
+    for (file, csv) in [
+        (CSV_FILE, true),
+        (JSONL_FILE, false),
+        (SLIDES_CSV_FILE, true),
+        (SLIDES_JSONL_FILE, false),
+    ] {
+        repair_tail(&dir.join(file), csv)?;
+    }
+    let (want_csv, want_jsonl, _) = wants(format);
+    let (csv_path, jsonl_path) = (dir.join(CSV_FILE), dir.join(JSONL_FILE));
+
+    let mut in_jsonl = HashSet::new();
+    for_each_jsonl::<TileRecord>(&jsonl_path, |r| {
+        in_jsonl.insert(r.tile_path);
+        Ok(())
+    })?;
+    let mut in_csv = HashSet::new();
+    let mut jsonl_out = None;
+    let mut added_to_jsonl = 0u64;
+    for_each_csv::<TileRecord>(&csv_path, |r| {
+        if in_csv.insert(r.tile_path.clone()) && want_jsonl && !in_jsonl.contains(&r.tile_path) {
+            let out = match &mut jsonl_out {
+                Some(out) => out,
+                None => jsonl_out.insert(JsonlAppender::open(&jsonl_path, true)?),
+            };
+            out.write(&r)?;
+            added_to_jsonl += 1;
+        }
+        Ok(())
+    })?;
+    if let Some(mut out) = jsonl_out {
+        out.flush()?;
+    }
+    if want_csv && in_jsonl.iter().any(|p| !in_csv.contains(p)) {
+        let mut out = CsvAppender::open(&csv_path, true)?;
+        let mut added = 0u64;
+        for_each_jsonl::<TileRecord>(&jsonl_path, |r| {
+            if !in_csv.contains(&r.tile_path) {
+                out.write(&r)?;
+                in_csv.insert(r.tile_path);
+                added += 1;
+            }
+            Ok(())
+        })?;
+        out.flush()?;
+        warn!(
+            "{}: added {added} tile records found only in {JSONL_FILE}",
+            csv_path.display()
+        );
+    }
+    if added_to_jsonl > 0 {
+        warn!(
+            "{}: added {added_to_jsonl} tile records found only in {CSV_FILE}",
+            jsonl_path.display()
+        );
+    }
+    let mut tiles = in_jsonl;
+    tiles.extend(in_csv);
+    Ok(ResumeState {
+        tiles,
+        slides: latest_slide_records(dir)?.into_iter().collect(),
+    })
+}
+
+/// The latest record of every slide, in the order slides first appear.
+/// `slides.jsonl` is authoritative; `slides.csv` fills in slides it lacks.
+fn latest_slide_records(dir: &Path) -> std::io::Result<Vec<(String, SlideRecord)>> {
+    fn collect(
+        records: &mut Vec<(String, SlideRecord)>,
+        index: &mut HashMap<String, usize>,
+        record: SlideRecord,
+    ) {
+        match index.get(&record.slide_id) {
+            Some(&i) => records[i].1 = record,
+            None => {
+                index.insert(record.slide_id.clone(), records.len());
+                records.push((record.slide_id.clone(), record));
+            }
+        }
+    }
+    let mut records = Vec::new();
+    let mut index = HashMap::new();
+    for_each_jsonl::<SlideRecord>(&dir.join(SLIDES_JSONL_FILE), |r| {
+        collect(&mut records, &mut index, r);
+        Ok(())
+    })?;
+    let from_jsonl: HashSet<String> = index.keys().cloned().collect();
+    for_each_csv::<SlideRecord>(&dir.join(SLIDES_CSV_FILE), |r| {
+        if !from_jsonl.contains(&r.slide_id) {
+            collect(&mut records, &mut index, r);
+        }
+        Ok(())
+    })?;
+    Ok(records)
+}
+
+/// Writes `path` atomically through a `.part` file. Errors name `path`.
+fn write_atomically(
+    path: &Path,
+    write: impl FnOnce(&mut BufWriter<File>) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".part");
+    let tmp = PathBuf::from(tmp);
+    let result = (|| {
+        let mut out = BufWriter::new(File::create(&tmp)?);
+        write(&mut out)?;
+        out.flush()?;
+        out.get_ref().sync_data()?;
+        drop(out);
+        std::fs::rename(&tmp, path)
+    })();
+    result.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
+    })
+}
+
 /// Appends tile and slide records as a run progresses.
 pub struct MetadataWriter {
     dir: PathBuf,
@@ -206,10 +452,12 @@ pub struct MetadataWriter {
     slides_csv: Option<CsvAppender>,
     slides_jsonl: Option<JsonlAppender>,
     final_json: bool,
+    resumed: bool,
 }
 
 impl MetadataWriter {
     /// Opens (appending when `append`) the metadata files for `format`.
+    /// Call [`prepare_resume`] first when appending.
     pub fn open(dir: &Path, format: Option<MetadataFormat>, append: bool) -> std::io::Result<Self> {
         let (csv, jsonl, final_json) = wants(format);
         Ok(Self {
@@ -227,6 +475,7 @@ impl MetadataWriter {
                 .then(|| JsonlAppender::open(&dir.join(SLIDES_JSONL_FILE), append))
                 .transpose()?,
             final_json,
+            resumed: append,
         })
     }
 
@@ -284,16 +533,29 @@ impl MetadataWriter {
         out
     }
 
-    /// Flushes everything and, if requested, converts `metadata.jsonl` into
-    /// the `metadata.json` array (streamed, not held in memory).
+    /// Flushes everything; after a resumed run, rewrites the slide files
+    /// with one record per slide (the latest); and, if requested, converts
+    /// `metadata.jsonl` into the `metadata.json` array (streamed, not held
+    /// in memory).
     pub fn finish(mut self) -> std::io::Result<Vec<PathBuf>> {
-        if let Some(w) = &mut self.tiles_csv {
+        for w in [&mut self.tiles_csv, &mut self.slides_csv]
+            .into_iter()
+            .flatten()
+        {
             w.flush()?;
         }
-        if let Some(w) = &mut self.tiles_jsonl {
+        for w in [&mut self.tiles_jsonl, &mut self.slides_jsonl]
+            .into_iter()
+            .flatten()
+        {
             w.flush()?;
         }
         let paths = self.paths();
+        let (slides_csv, slides_jsonl) = (self.slides_csv.is_some(), self.slides_jsonl.is_some());
+        drop((self.slides_csv.take(), self.slides_jsonl.take()));
+        if self.resumed {
+            compact_slides(&self.dir, slides_csv, slides_jsonl)?;
+        }
         if self.final_json {
             write_json_array(&self.dir.join(JSONL_FILE), &self.dir.join(JSON_FILE))?;
         }
@@ -301,57 +563,64 @@ impl MetadataWriter {
     }
 }
 
-/// Writes the JSON Lines file as a pretty JSON array (atomically).
+/// Rewrites the slide files with one record per slide: an interrupted
+/// slide is recorded again when a resumed run finishes it, and the latest
+/// record wins (at the position of the slide's first record).
+fn compact_slides(dir: &Path, csv: bool, jsonl: bool) -> std::io::Result<()> {
+    let records = latest_slide_records(dir)?;
+    if jsonl {
+        write_atomically(&dir.join(SLIDES_JSONL_FILE), |out| {
+            for (_, record) in &records {
+                serde_json::to_writer(&mut *out, record).map_err(std::io::Error::other)?;
+                out.write_all(b"\n")?;
+            }
+            Ok(())
+        })?;
+    }
+    if csv {
+        write_atomically(&dir.join(SLIDES_CSV_FILE), |out| {
+            let mut writer = csv::Writer::from_writer(&mut *out);
+            for (_, record) in &records {
+                writer.serialize(record).map_err(std::io::Error::other)?;
+            }
+            writer.flush()
+        })?;
+    }
+    Ok(())
+}
+
+/// Writes the JSON Lines file as a JSON array (atomically). Lines that do
+/// not parse are skipped with a warning rather than failing the run.
 fn write_json_array(jsonl: &Path, json: &Path) -> std::io::Result<()> {
-    let tmp = json.with_extension("json.part");
-    {
-        let mut out = BufWriter::new(File::create(&tmp)?);
+    write_atomically(json, |out| {
         out.write_all(b"[")?;
         let mut first = true;
-        if let Ok(file) = File::open(jsonl) {
-            for line in BufReader::new(file).lines() {
-                let line = line?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let value: serde_json::Value =
-                    serde_json::from_str(&line).map_err(std::io::Error::other)?;
-                out.write_all(if first { b"\n  " } else { b",\n  " })?;
-                serde_json::to_writer(&mut out, &value).map_err(std::io::Error::other)?;
-                first = false;
-            }
-        }
-        out.write_all(if first { b"]\n" } else { b"\n]\n" })?;
-        out.flush()?;
-    }
-    std::fs::rename(&tmp, json)
+        for_each_jsonl::<serde_json::Value>(jsonl, |value| {
+            out.write_all(if first { b"\n  " } else { b",\n  " })?;
+            serde_json::to_writer(&mut *out, &value).map_err(std::io::Error::other)?;
+            first = false;
+            Ok(())
+        })?;
+        out.write_all(if first { b"]\n" } else { b"\n]\n" })
+    })
 }
 
-/// Tile paths already recorded in an output directory (for resuming).
-/// Reads `metadata.jsonl`, or `metadata.csv` when there is no JSONL file.
-/// A truncated last line (from a crash) is ignored.
-pub fn recorded_tiles(dir: &Path) -> std::io::Result<HashSet<String>> {
+/// Tile paths recorded in an output directory, from `metadata.jsonl` and
+/// `metadata.csv`. Unreadable lines (e.g. a truncated last line) are
+/// ignored.
+#[cfg(test)]
+pub(crate) fn recorded_tiles(dir: &Path) -> std::io::Result<HashSet<String>> {
     let mut out = HashSet::new();
-    let jsonl = dir.join(JSONL_FILE);
-    if jsonl.is_file() {
-        for line in BufReader::new(File::open(&jsonl)?).lines() {
-            let line = line?;
-            if let Ok(record) = serde_json::from_str::<TileRecord>(&line) {
-                out.insert(record.tile_path);
-            }
-        }
-        return Ok(out);
-    }
-    let csv_path = dir.join(CSV_FILE);
-    if csv_path.is_file() {
-        let mut reader = csv::Reader::from_path(&csv_path).map_err(std::io::Error::other)?;
-        for record in reader.deserialize::<TileRecord>().flatten() {
-            out.insert(record.tile_path);
-        }
-    }
+    for_each_jsonl::<TileRecord>(&dir.join(JSONL_FILE), |r| {
+        out.insert(r.tile_path);
+        Ok(())
+    })?;
+    for_each_csv::<TileRecord>(&dir.join(CSV_FILE), |r| {
+        out.insert(r.tile_path);
+        Ok(())
+    })?;
     Ok(out)
 }
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -441,5 +710,188 @@ pub(crate) mod tests {
         .unwrap();
         let recorded = recorded_tiles(dir.path()).unwrap();
         assert!(recorded.contains("slides/a/a_x000000_y000000_s512.png"));
+    }
+
+    pub(crate) fn sample_slide(id: &str, status: SlideStatus, written: u64) -> SlideRecord {
+        SlideRecord {
+            slide_id: id.into(),
+            slide_path: format!("{id}.svs"),
+            status,
+            message: None,
+            vendor: None,
+            objective_power: None,
+            mpp_x: Some(0.25),
+            mpp_y: Some(0.25),
+            width: 1000,
+            height: 1000,
+            level_count: 1,
+            read_level: Some(0),
+            downsample: Some(1.0),
+            output_mpp: Some(0.25),
+            tissue_fraction: None,
+            candidates: 4,
+            written,
+            existing: 0,
+            skipped_white: 0,
+            skipped_tissue: 0,
+            skipped_annotation: 0,
+            failed: 0,
+            fingerprint: Some("f".into()),
+            file_sha256: None,
+            stain_normalization: None,
+            // Quotes, a comma and a newline exercise CSV quoting.
+            annotation_file: Some("a, \"quoted\"\nname.geojson".into()),
+        }
+    }
+
+    fn append_raw(path: &Path, bytes: &[u8]) {
+        OpenOptions::new()
+            .append(true)
+            .open(path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+
+    fn jsonl_records<T: DeserializeOwned>(path: &Path) -> Vec<T> {
+        std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    fn csv_records<T: DeserializeOwned>(path: &Path) -> Vec<T> {
+        csv::Reader::from_path(path)
+            .unwrap()
+            .deserialize()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn xs(records: Vec<TileRecord>) -> Vec<u64> {
+        records.into_iter().map(|r| r.x).collect()
+    }
+
+    #[test]
+    fn partly_written_records_are_removed_before_appending() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = |f: &str| dir.path().join(f);
+        let mut w = MetadataWriter::open(dir.path(), None, false).unwrap();
+        w.append_tiles(&[sample_record(0)]).unwrap();
+        w.append_slide(&sample_slide("a", SlideStatus::Complete, 1))
+            .unwrap();
+        drop(w);
+        // The process died in the middle of the next appends.
+        append_raw(&path(JSONL_FILE), b"{\"slide_path\":\"slides/te");
+        append_raw(&path(CSV_FILE), b"slides/test.svs,fingerprint,sha");
+        // Cut inside a quoted field that contains a newline.
+        append_raw(&path(SLIDES_CSV_FILE), b"b,b.svs,complete,\"a\nb");
+        append_raw(&path(SLIDES_JSONL_FILE), b"{\"slide_id\":");
+
+        let state = prepare_resume(dir.path(), None).unwrap();
+        assert_eq!(state.tiles.len(), 1);
+        assert_eq!(
+            state.slides.keys().collect::<Vec<_>>(),
+            vec![&"a".to_string()]
+        );
+        let mut w = MetadataWriter::open(dir.path(), None, true).unwrap();
+        w.append_tiles(&[sample_record(512)]).unwrap();
+        w.append_slide(&sample_slide("b", SlideStatus::Complete, 1))
+            .unwrap();
+        w.finish().unwrap();
+
+        // Every file parses completely and holds the records of both runs.
+        let json: Vec<TileRecord> =
+            serde_json::from_str(&std::fs::read_to_string(path(JSON_FILE)).unwrap()).unwrap();
+        assert_eq!(json, vec![sample_record(0), sample_record(512)]);
+        assert_eq!(jsonl_records::<TileRecord>(&path(JSONL_FILE)), json);
+        assert_eq!(csv_records::<TileRecord>(&path(CSV_FILE)), json);
+        let slides = vec![
+            sample_slide("a", SlideStatus::Complete, 1),
+            sample_slide("b", SlideStatus::Complete, 1),
+        ];
+        assert_eq!(csv_records::<SlideRecord>(&path(SLIDES_CSV_FILE)), slides);
+        assert_eq!(
+            jsonl_records::<SlideRecord>(&path(SLIDES_JSONL_FILE)),
+            slides
+        );
+    }
+
+    #[test]
+    fn csv_and_jsonl_tile_records_are_reconciled_on_resume() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = |f: &str| dir.path().join(f);
+        // An earlier run wrote CSV only.
+        let mut w = MetadataWriter::open(dir.path(), Some(MetadataFormat::Csv), false).unwrap();
+        w.append_tiles(&[sample_record(0), sample_record(512)])
+            .unwrap();
+        w.finish().unwrap();
+        // A JSON Lines run adopts the CSV's tiles into its own file and
+        // leaves the CSV, which it does not write, alone.
+        let state = prepare_resume(dir.path(), Some(MetadataFormat::JsonLines)).unwrap();
+        assert_eq!(state.tiles.len(), 2);
+        let mut w =
+            MetadataWriter::open(dir.path(), Some(MetadataFormat::JsonLines), true).unwrap();
+        w.append_tiles(&[sample_record(1024)]).unwrap();
+        w.finish().unwrap();
+        assert_eq!(xs(jsonl_records(&path(JSONL_FILE))), vec![0, 512, 1024]);
+        assert_eq!(xs(csv_records(&path(CSV_FILE))), vec![0, 512]);
+        // A run writing both completes each file.
+        let state = prepare_resume(dir.path(), None).unwrap();
+        assert_eq!(state.tiles.len(), 3);
+        assert_eq!(xs(csv_records(&path(CSV_FILE))), vec![0, 512, 1024]);
+        assert_eq!(xs(jsonl_records(&path(JSONL_FILE))), vec![0, 512, 1024]);
+        // Preparing again changes nothing.
+        prepare_resume(dir.path(), None).unwrap();
+        assert_eq!(xs(csv_records(&path(CSV_FILE))), vec![0, 512, 1024]);
+        assert_eq!(xs(jsonl_records(&path(JSONL_FILE))), vec![0, 512, 1024]);
+    }
+
+    #[test]
+    fn resumed_runs_keep_one_record_per_slide() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = |f: &str| dir.path().join(f);
+        let mut w = MetadataWriter::open(dir.path(), None, false).unwrap();
+        w.append_slide(&sample_slide("a", SlideStatus::Complete, 4))
+            .unwrap();
+        w.append_slide(&sample_slide("b", SlideStatus::Cancelled, 1))
+            .unwrap();
+        w.finish().unwrap();
+        let state = prepare_resume(dir.path(), None).unwrap();
+        assert_eq!(state.slides["b"].status, SlideStatus::Cancelled);
+        let mut w = MetadataWriter::open(dir.path(), None, true).unwrap();
+        w.append_slide(&sample_slide("b", SlideStatus::Complete, 3))
+            .unwrap();
+        w.append_slide(&sample_slide("c", SlideStatus::Complete, 2))
+            .unwrap();
+        w.finish().unwrap();
+        let expected = vec![
+            sample_slide("a", SlideStatus::Complete, 4),
+            sample_slide("b", SlideStatus::Complete, 3),
+            sample_slide("c", SlideStatus::Complete, 2),
+        ];
+        assert_eq!(
+            jsonl_records::<SlideRecord>(&path(SLIDES_JSONL_FILE)),
+            expected
+        );
+        assert_eq!(csv_records::<SlideRecord>(&path(SLIDES_CSV_FILE)), expected);
+    }
+
+    #[test]
+    fn unreadable_lines_do_not_fail_the_final_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = MetadataWriter::open(dir.path(), Some(MetadataFormat::Json), false).unwrap();
+        w.append_tiles(&[sample_record(0)]).unwrap();
+        drop(w);
+        // A line glued together by an interrupted append.
+        append_raw(&dir.path().join(JSONL_FILE), b"{\"slide_pa{\"x\":1}\n");
+        let mut w = MetadataWriter::open(dir.path(), Some(MetadataFormat::Json), true).unwrap();
+        w.append_tiles(&[sample_record(512)]).unwrap();
+        w.finish().unwrap();
+        let json: Vec<TileRecord> =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(JSON_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(json, vec![sample_record(0), sample_record(512)]);
     }
 }
