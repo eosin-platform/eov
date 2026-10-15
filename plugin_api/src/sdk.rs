@@ -968,7 +968,9 @@ impl Surface {
         self.set_many(properties)
     }
 
-    /// Sets several properties; unchanged values are not re-applied.
+    /// Sets several properties. A value the surface already shows is left
+    /// alone (so its bindings stay); setting a field back to a value the
+    /// user edited away from does apply.
     pub fn set_many(&self, properties: Map<String, Value>) -> HostResult<()> {
         self.host.command(
             methods::SURFACE_SET,

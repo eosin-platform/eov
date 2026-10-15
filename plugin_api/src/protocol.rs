@@ -1411,7 +1411,7 @@ pub mod methods {
 
     /// `SurfaceSpec` → `SurfaceOpened`
     pub const SURFACE_OPEN: &str = "surface.open";
-    /// `SurfaceProperties` → `null`. Only changed values are re-applied.
+    /// `SurfaceProperties` → `null`. Values the surface already shows are left alone.
     pub const SURFACE_SET: &str = "surface.set";
     /// `IdArgs { id: surface_id }` → `null`
     pub const SURFACE_CLOSE: &str = "surface.close";

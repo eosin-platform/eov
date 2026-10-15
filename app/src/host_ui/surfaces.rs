@@ -4,9 +4,10 @@
 //!   time, so reopening a surface does not recompile it.
 //! - Each surface has an id and an owner; only one sidebar and one modal are
 //!   shown at a time (others replace the sidebar, modals queue).
-//! - Properties are pushed by the plugin; only changed values are applied,
-//!   and array properties update their model row by row so Slint keeps the
-//!   existing rows (PLG-15).
+//! - Properties are pushed by the plugin. A value the surface already shows
+//!   is skipped (compared with the live value, so a field the user edited
+//!   can be reset), and array properties update their model row by row so
+//!   Slint keeps the existing rows (PLG-15).
 //! - Callbacks carry their surface id and can return values.
 
 use super::UiHost;
@@ -37,7 +38,9 @@ struct SurfaceData {
     types: HashMap<String, Type>,
     returns: HashMap<String, Type>,
     instance: Option<slint::Weak<ComponentInstance>>,
-    applied: HashMap<String, Json>,
+    /// The last value of each array property, to skip unchanged arrays
+    /// without converting every row.
+    applied_arrays: HashMap<String, Json>,
     models: HashMap<String, Rc<VecModel<Value>>>,
 }
 
@@ -63,7 +66,7 @@ impl SurfaceData {
             types,
             returns,
             instance: None,
-            applied: HashMap::new(),
+            applied_arrays: HashMap::new(),
             models: HashMap::new(),
         }
     }
@@ -82,10 +85,10 @@ impl SurfaceData {
         let Some(ty) = self.types.get(name).cloned() else {
             return Err(format!("the component has no public property '{name}'"));
         };
-        if self.applied.get(name) == Some(json) {
-            return Ok(());
-        }
         if let (Type::Array(inner), Json::Array(rows)) = (&ty, json) {
+            if self.models.contains_key(name) && self.applied_arrays.get(name) == Some(json) {
+                return Ok(());
+            }
             let values = rows
                 .iter()
                 .map(|row| slint_interpreter::json::value_from_json(inner, row))
@@ -115,23 +118,26 @@ impl SurfaceData {
                     self.models.insert(name.to_string(), model);
                 }
             }
+            self.applied_arrays.insert(name.to_string(), json.clone());
         } else {
             let value = slint_interpreter::json::value_from_json(&ty, json)
                 .map_err(|e| format!("property '{name}': {e}"))?;
-            instance
-                .set_property(name, value)
-                .map_err(|e| format!("property '{name}': {e}"))?;
+            // Skip what the surface shows already: setting a property breaks
+            // its bindings, and the user may have edited it since.
+            if instance.get_property(name).ok().as_ref() != Some(&value) {
+                instance
+                    .set_property(name, value)
+                    .map_err(|e| format!("property '{name}': {e}"))?;
+            }
         }
-        self.applied.insert(name.to_string(), json.clone());
         Ok(())
     }
 
-    /// Applies every property that changed; returns the problems.
-    fn apply_pending(&mut self) -> Vec<String> {
+    /// Applies `properties` to the live instance; returns the problems.
+    fn apply(&mut self, properties: &Map<String, Json>) -> Vec<String> {
         let Some(instance) = self.live_instance() else {
             return Vec::new();
         };
-        let properties = self.properties.clone();
         properties
             .iter()
             .filter_map(|(name, value)| self.apply_one(&instance, name, value).err())
@@ -147,9 +153,10 @@ impl SurfaceData {
         {
             let mut d = data.borrow_mut();
             d.instance = Some(instance.as_weak());
-            d.applied.clear();
+            d.applied_arrays.clear();
             d.models.clear();
-            let problems = d.apply_pending();
+            let properties = d.properties.clone();
+            let problems = d.apply(&properties);
             for problem in problems {
                 tracing::warn!("Plugin '{}' surface {}: {problem}", d.plugin, d.surface_id);
             }
@@ -314,8 +321,11 @@ impl Surfaces {
                 };
                 let problems = {
                     let mut data = surface.data.borrow_mut();
+                    let problems = data.apply(&properties);
+                    // Kept for instances created later (a sidebar shown
+                    // again).
                     data.properties.extend(properties);
-                    data.apply_pending()
+                    problems
                 };
                 for problem in problems.into_iter().take(3) {
                     host.notify(
@@ -692,6 +702,47 @@ mod tests {
             }
         }
         assert!(compiled > 0, "the example plugin's sidebar at least");
+    }
+
+    /// A plugin can reset a field the user edited (the edited value is not
+    /// mistaken for the one the plugin sent before), and arrays update in
+    /// place.
+    #[test]
+    fn properties_are_compared_with_what_the_surface_shows() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let source = r#"
+                export component Panel {
+                    in-out property <string> name;
+                    in property <[string]> rows;
+                }
+            "#;
+            let result = spin_on(
+                slint_interpreter::Compiler::default().build_from_source(source.into(), "panel.slint".into()),
+            );
+            let definition = result.component("Panel").expect("compiles");
+            let instance = definition.create().unwrap();
+            let plugin: Arc<str> = Arc::from("p");
+            let data = Rc::new(RefCell::new(SurfaceData::new("s", &plugin, &definition)));
+            SurfaceData::attach(&data, &instance, &definition);
+            let set = |json: Json| {
+                let Json::Object(map) = json else { unreachable!() };
+                data.borrow_mut().apply(&map)
+            };
+            assert!(set(serde_json::json!({"name": "Original", "rows": ["a", "b"]})).is_empty());
+            // The user types into the field (a two-way binding writes the
+            // property), then the plugin resets it.
+            instance.set_property("name", Value::String("Edited".into())).unwrap();
+            assert!(set(serde_json::json!({"name": "Original"})).is_empty());
+            assert_eq!(
+                instance.get_property("name").unwrap(),
+                Value::String("Original".into())
+            );
+            let model = Rc::clone(data.borrow().models.get("rows").unwrap());
+            assert!(set(serde_json::json!({"rows": ["a", "c", "d"]})).is_empty());
+            assert_eq!(model.row_count(), 3);
+            assert_eq!(model.row_data(1), Some(Value::String("c".into())));
+            assert!(!set(serde_json::json!({"missing": 1})).is_empty());
+        });
     }
 
     #[test]
