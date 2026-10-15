@@ -12,9 +12,7 @@ use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
-
-/// Memory budget for the tile texture array (~128 MB).
-const MAX_TILE_ARRAY_BYTES: u64 = 128 * 1024 * 1024;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Colour of the viewport outside the slide (the same as the CPU path's).
 const CLEAR_COLOR: wgpu::Color = wgpu::Color {
@@ -192,9 +190,6 @@ pub struct TileDraw {
 pub struct SurfaceSlot(pub usize);
 
 impl SurfaceSlot {
-    pub const PRIMARY: Self = Self(0);
-    pub const SECONDARY: Self = Self(1);
-
     fn index(self) -> usize {
         self.0
     }
@@ -210,6 +205,62 @@ pub(crate) struct QueuedFrame {
     pub(crate) color: GpuColorUniform,
     /// Screen-space sharpening of the composited frame (stage 6), 0 = off.
     pub(crate) sharpness: f32,
+    /// Read the finished frame back for the CPU filter chain (RND-6); see
+    /// [`GpuRenderer::poll_readbacks`].
+    pub(crate) readback: Option<ReadbackTag>,
+}
+
+/// Identifies a pane frame read back from the GPU for plugin filters.
+#[derive(Clone, Debug)]
+pub(crate) struct ReadbackTag {
+    pub(crate) pane_uid: u32,
+    pub(crate) file_id: i32,
+    /// The view the frame shows (in the frame's, physical, pixels).
+    pub(crate) viewport: eov_common::Viewport,
+    /// Physical pixels of the frame per logical pixel.
+    pub(crate) scale: f64,
+    /// Increases with every readback a pane requests.
+    pub(crate) generation: u64,
+}
+
+/// A frame read back from the GPU: tightly packed RGBA.
+pub(crate) struct ReadbackFrame {
+    pub(crate) tag: ReadbackTag,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) pixels: Vec<u8>,
+}
+
+/// A surface copy on its way to the CPU.
+struct PendingReadback {
+    tag: ReadbackTag,
+    buffer: wgpu::Buffer,
+    padded_bytes_per_row: u32,
+    width: u32,
+    height: u32,
+    /// 0 while mapping, 1 mapped, 2 failed.
+    state: Arc<AtomicU8>,
+}
+
+impl PendingReadback {
+    fn into_frame(self) -> ReadbackFrame {
+        let row = self.width as usize * 4;
+        let mut pixels = vec![0u8; row * self.height as usize];
+        {
+            let mapped = self.buffer.slice(..).get_mapped_range();
+            for (y, dst) in pixels.chunks_exact_mut(row).enumerate() {
+                let src = y * self.padded_bytes_per_row as usize;
+                dst.copy_from_slice(&mapped[src..src + row]);
+            }
+        }
+        self.buffer.unmap();
+        ReadbackFrame {
+            tag: self.tag,
+            width: self.width,
+            height: self.height,
+            pixels,
+        }
+    }
 }
 
 impl QueuedFrame {
@@ -279,11 +330,51 @@ struct QuadParams {
     layer_size: u32,
     fine_border: u32,
     coarse_border: u32,
+    /// Weight of the coarse level (0 when the draw has none, or it did not
+    /// fit into the fine tile's page).
+    mip_blend: f32,
 }
 
 // ---------------------------------------------------------------------------
-// Tile texture array — all tiles live in layers of a single 2D-array texture.
+// Tile pages — tiles live in the layers of 2D-array textures ("pages"),
+// grouped by layer size. A frame's draws get as many pages as they need
+// (RND-2); pages that recent frames did not use are freed above a memory
+// budget (RND-7).
 // ---------------------------------------------------------------------------
+
+/// Layer sizes are multiples of this many texels.
+const LAYER_SIZE_STEP: u32 = 32;
+/// Size of one page; pages of large tiles hold at least `MIN_PAGE_LAYERS`.
+const PAGE_BYTES: u64 = 64 * 1024 * 1024;
+const MIN_PAGE_LAYERS: u32 = 4;
+/// Tile memory kept between frames: above it, the least recently used
+/// pages are freed.
+const TILE_BUDGET_BYTES: u64 = 512 * 1024 * 1024;
+/// Most tile memory, even when one frame needs more (its remaining draws
+/// are then dropped, and counted).
+const TILE_MEMORY_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Shortest interval between two reports of dropped draws.
+const OVERFLOW_REPORT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The layer size a tile is stored at: its level's padded tile size, so that
+/// a level's edge tiles share its pages, rounded up to `LAYER_SIZE_STEP`.
+fn layer_size_class(tile: &TileData) -> u32 {
+    let nominal = tile.coord.tile_size.saturating_add(2 * tile.border);
+    let actual = tile.data_width().max(tile.data_height());
+    nominal.max(actual).max(64).div_ceil(LAYER_SIZE_STEP) * LAYER_SIZE_STEP
+}
+
+fn layer_bytes(layer_size: u32) -> u64 {
+    u64::from(layer_size) * u64::from(layer_size) * 4
+}
+
+/// Layers of a page of `layer_size` layers, within the device's limit.
+fn page_layers(layer_size: u32, max_layers: u32) -> u32 {
+    (PAGE_BYTES / layer_bytes(layer_size)).clamp(
+        u64::from(MIN_PAGE_LAYERS.min(max_layers)),
+        u64::from(max_layers),
+    ) as u32
+}
 
 struct TileSlot {
     layer: u32,
@@ -292,127 +383,196 @@ struct TileSlot {
     last_used_frame: u64,
 }
 
-/// A 2D-array texture used as a tile atlas.  Every layer has the same
-/// dimensions (`layer_size × layer_size`); tiles smaller than that are
-/// uploaded to the top-left corner and UV coordinates are scaled to the
-/// valid sub-region.
-struct TileArray {
+/// Which layers of a page hold which tiles. Tiles a frame uses are never
+/// evicted during that frame, so its earlier draws stay valid.
+struct LayerSlots {
+    layers: u32,
+    slots: HashMap<TileCoord, TileSlot>,
+    free: Vec<u32>,
+    /// The last frame that used the page, and how many of its tiles it uses.
+    frame: u64,
+    used_in_frame: u32,
+}
+
+impl LayerSlots {
+    fn new(layers: u32, frame: u64) -> Self {
+        Self {
+            layers,
+            slots: HashMap::new(),
+            free: (0..layers).rev().collect(),
+            frame,
+            used_in_frame: 0,
+        }
+    }
+
+    fn contains(&self, coord: &TileCoord) -> bool {
+        self.slots.contains_key(coord)
+    }
+
+    fn begin(&mut self, frame: u64) {
+        if self.frame != frame {
+            self.frame = frame;
+            self.used_in_frame = 0;
+        }
+    }
+
+    /// Marks a stored tile as used by `frame`; its layer and size.
+    fn touch(&mut self, coord: &TileCoord, frame: u64) -> Option<(u32, u32, u32)> {
+        self.begin(frame);
+        let slot = self.slots.get_mut(coord)?;
+        if slot.last_used_frame != frame {
+            slot.last_used_frame = frame;
+            self.used_in_frame += 1;
+        }
+        Some((slot.layer, slot.width, slot.height))
+    }
+
+    /// Layers `frame` could still take: free ones and ones holding tiles
+    /// it does not use.
+    fn room(&self, frame: u64) -> u32 {
+        let used = if self.frame == frame {
+            self.used_in_frame
+        } else {
+            0
+        };
+        self.free.len() as u32 + (self.slots.len() as u32 - used)
+    }
+
+    /// A layer for a new tile of `width × height` texels, used by `frame`;
+    /// evicts the least recently used tiles `frame` does not use if needed.
+    fn allocate(&mut self, coord: TileCoord, width: u32, height: u32, frame: u64) -> Option<u32> {
+        self.begin(frame);
+        if self.free.is_empty() {
+            self.evict_unused((self.layers as usize / 4).max(1), frame);
+        }
+        let layer = self.free.pop()?;
+        if let Some(old) = self.slots.insert(
+            coord,
+            TileSlot {
+                layer,
+                width,
+                height,
+                last_used_frame: frame,
+            },
+        ) {
+            // Re-uploaded (not expected): keep the counts right.
+            self.free.push(old.layer);
+            if old.last_used_frame == frame {
+                self.used_in_frame -= 1;
+            }
+        }
+        self.used_in_frame += 1;
+        Some(layer)
+    }
+
+    fn evict_unused(&mut self, count: usize, frame: u64) {
+        let mut candidates: Vec<(TileCoord, u64)> = self
+            .slots
+            .iter()
+            .filter(|(_, slot)| slot.last_used_frame != frame)
+            .map(|(coord, slot)| (*coord, slot.last_used_frame))
+            .collect();
+        if candidates.len() > count {
+            candidates.select_nth_unstable_by_key(count - 1, |(_, last)| *last);
+            candidates.truncate(count);
+        }
+        for (coord, _) in candidates {
+            if let Some(slot) = self.slots.remove(&coord) {
+                self.free.push(slot.layer);
+            }
+        }
+    }
+}
+
+/// A 2D-array texture of `layer_size²` layers. Tiles smaller than that
+/// are uploaded to a layer's top-left corner, and their UVs scaled to it.
+struct TilePage {
     texture: wgpu::Texture,
     #[allow(dead_code)] // Kept alive — referenced by the bind groups.
     array_view: wgpu::TextureView,
     layer_size: u32,
-    max_layers: u32,
-    slots: HashMap<TileCoord, TileSlot>,
-    free_list: Vec<u32>,
+    slots: LayerSlots,
     /// Pre-built bind groups — one per sampler variant.
     bilinear_bind_group: wgpu::BindGroup,
     trilinear_bind_group: wgpu::BindGroup,
 }
 
-impl TileArray {
-    fn new(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        bilinear_sampler: &wgpu::Sampler,
-        trilinear_sampler: &wgpu::Sampler,
-        color_buffer: &wgpu::Buffer,
-        layer_size: u32,
-        max_layers: u32,
-    ) -> Self {
+impl TilePage {
+    /// A new page, or `None` when the device is out of memory.
+    fn new(runtime: &GpuRuntime, layer_size: u32, frame: u64) -> Option<Self> {
+        let device = &runtime.device;
+        let layers = page_layers(layer_size, runtime.max_texture_array_layers);
+        let scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         // No per-layer mipmaps — inter-level filtering is handled
-        // explicitly via the fine/coarse trilinear blend.  Generating
-        // mipmaps over the full layer_size×layer_size region would
-        // contaminate higher mip levels with stale/uninitialized
-        // padding data because tiles are smaller than the layer.
+        // explicitly via the fine/coarse trilinear blend.
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("tile-array"),
+            label: Some("tile-page"),
             size: wgpu::Extent3d {
                 width: layer_size,
                 height: layer_size,
-                depth_or_array_layers: max_layers,
+                depth_or_array_layers: layers,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        if let Some(Some(error)) = poll_now(scope.pop()) {
+            tracing::warn!("No GPU memory for {layers} tile layers of {layer_size}²: {error}");
+            return None;
+        }
         let array_view = texture.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let bilinear_bind_group =
-            Self::create_bind_group(device, layout, &array_view, bilinear_sampler, color_buffer);
-        let trilinear_bind_group =
-            Self::create_bind_group(device, layout, &array_view, trilinear_sampler, color_buffer);
-        let free_list = (0..max_layers).rev().collect();
-        Self {
+        let bind_group = |sampler: &wgpu::Sampler| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("tile-page-bind-group"),
+                layout: &runtime.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&array_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: runtime.color_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+        let bilinear_bind_group = bind_group(&runtime.bilinear_sampler);
+        let trilinear_bind_group = bind_group(&runtime.sampler);
+        Some(Self {
             texture,
             array_view,
             layer_size,
-            max_layers,
-            slots: HashMap::new(),
-            free_list,
+            slots: LayerSlots::new(layers, frame),
             bilinear_bind_group,
             trilinear_bind_group,
-        }
-    }
-
-    fn create_bind_group(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        array_view: &wgpu::TextureView,
-        sampler: &wgpu::Sampler,
-        color_buffer: &wgpu::Buffer,
-    ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("tile-array-bind-group"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(array_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: color_buffer.as_entire_binding(),
-                },
-            ],
         })
     }
 
-    /// Get the layer for a tile, uploading it if necessary.
-    /// Returns `(layer_index, is_new)` or `None` if the array is exhausted.
-    fn get_or_insert(
+    fn bytes(&self) -> u64 {
+        layer_bytes(self.layer_size) * u64::from(self.slots.layers)
+    }
+
+    /// Uploads a tile (with its border) into a free or evicted layer.
+    fn insert(
         &mut self,
         queue: &wgpu::Queue,
-        tile: &Arc<TileData>,
-        frame_id: u64,
-    ) -> Option<(u32, bool)> {
-        if let Some(slot) = self.slots.get_mut(&tile.coord) {
-            slot.last_used_frame = frame_id;
-            return Some((slot.layer, false));
-        }
-
-        // Need a free layer — evict LRU if none available.
-        // Protect tiles uploaded this frame so earlier draws' layer
-        // references remain valid.
-        if self.free_list.is_empty() {
-            self.evict_lru(self.max_layers as usize / 4, frame_id);
-        }
-        let layer = self.free_list.pop()?;
-
-        // Upload the full padded data (including border pixels).
-        let data_w = tile.data_width().min(self.layer_size);
-        let data_h = tile.data_height().min(self.layer_size);
-
+        tile: &TileData,
+        frame: u64,
+    ) -> Option<(u32, u32, u32)> {
+        let width = tile.data_width().min(self.layer_size);
+        let height = tile.data_height().min(self.layer_size);
+        let layer = self.slots.allocate(tile.coord, width, height, frame)?;
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
@@ -431,51 +591,261 @@ impl TileArray {
                 rows_per_image: None,
             },
             wgpu::Extent3d {
-                width: data_w,
-                height: data_h,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
         );
-
-        self.slots.insert(
-            tile.coord,
-            TileSlot {
-                layer,
-                width: data_w,
-                height: data_h,
-                last_used_frame: frame_id,
-            },
-        );
-
-        Some((layer, true))
+        Some((layer, width, height))
     }
 
-    fn evict_lru(&mut self, count: usize, protect_frame: u64) {
-        let mut entries: Vec<_> = self
-            .slots
-            .iter()
-            .filter(|(_, slot)| slot.last_used_frame != protect_frame)
-            .map(|(coord, slot)| (*coord, slot.layer, slot.last_used_frame))
-            .collect();
-        if entries.len() <= count {
-            // Evict everything eligible.
-            for (coord, layer, _) in &entries {
-                self.slots.remove(coord);
-                self.free_list.push(*layer);
+    /// The tile's layer and size, uploading it when the page lacks it.
+    fn get_or_insert(
+        &mut self,
+        queue: &wgpu::Queue,
+        tile: &TileData,
+        frame: u64,
+    ) -> Option<(u32, u32, u32)> {
+        self.slots
+            .touch(&tile.coord, frame)
+            .or_else(|| self.insert(queue, tile, frame))
+    }
+}
+
+/// Where a draw's tiles are: a page, and the fine and coarse layers with
+/// the texel size of their data.
+struct Placement {
+    layer_size: u32,
+    page: usize,
+    fine: (u32, u32, u32),
+    coarse: Option<(u32, u32, u32)>,
+}
+
+/// All tile pages, by layer size.
+#[derive(Default)]
+struct TileStore {
+    pages: HashMap<u32, Vec<TilePage>>,
+    bytes: u64,
+    /// Since the last report: draws left out, and draws drawn without their
+    /// coarse level.
+    dropped: u64,
+    unblended: u64,
+    last_report: Option<std::time::Instant>,
+    /// A frame whose page allocation failed; it does not retry.
+    failed_frame: Option<u64>,
+}
+
+impl TileStore {
+    /// Finds or makes room for a draw's tiles: both in one page, or the
+    /// fine tile alone when the coarse one does not fit (then drawn without
+    /// the blend). `None` when not even the fine tile fits.
+    fn place(
+        &mut self,
+        runtime: &GpuRuntime,
+        fine: &TileData,
+        coarse: Option<&TileData>,
+        frame: u64,
+    ) -> Option<Placement> {
+        let layer_size = layer_size_class(fine).max(coarse.map_or(0, layer_size_class));
+        if layer_size > runtime.max_texture_dimension_2d {
+            return None;
+        }
+        let queue = &runtime.queue;
+        let pages = self.pages.entry(layer_size).or_default();
+        let placed = |page: usize, fine, coarse| {
+            Some(Placement {
+                layer_size,
+                page,
+                fine,
+                coarse,
+            })
+        };
+
+        // A page that holds the draw's tiles, or one of them and has room
+        // for the other.
+        for (index, page) in pages.iter_mut().enumerate() {
+            let has_fine = page.slots.contains(&fine.coord);
+            let has_coarse = coarse.is_some_and(|c| page.slots.contains(&c.coord));
+            if !has_fine && !has_coarse {
+                continue;
             }
-        } else {
-            // Partial sort: partition so the k oldest are at [0..count] in O(n).
-            entries.select_nth_unstable_by_key(count - 1, |(_, _, frame)| *frame);
-            for (coord, layer, _) in entries[..count].iter() {
-                self.slots.remove(coord);
-                self.free_list.push(*layer);
+            let fine_slot = has_fine
+                .then(|| page.slots.touch(&fine.coord, frame))
+                .flatten();
+            let coarse_slot = coarse
+                .filter(|_| has_coarse)
+                .and_then(|c| page.slots.touch(&c.coord, frame));
+            match (coarse, fine_slot, coarse_slot) {
+                (None, Some(f), _) | (Some(_), Some(f), Some(_)) => {
+                    return placed(index, f, coarse_slot);
+                }
+                (Some(_), Some(f), None) if page.slots.room(frame) >= 1 => {
+                    let c = coarse.and_then(|c| page.insert(queue, c, frame));
+                    return placed(index, f, c);
+                }
+                (Some(_), None, Some(c)) if page.slots.room(frame) >= 1 => {
+                    if let Some(f) = page.insert(queue, fine, frame) {
+                        return placed(index, f, Some(c));
+                    }
+                }
+                _ => {}
             }
         }
+
+        // A page with room for both, or a new one.
+        let needed = 1 + u32::from(coarse.is_some());
+        let index = match pages
+            .iter()
+            .position(|page| page.slots.room(frame) >= needed)
+        {
+            Some(index) => Some(index),
+            None => self.add_page(runtime, layer_size, frame),
+        };
+        let pages = self.pages.entry(layer_size).or_default();
+        if let Some(index) = index {
+            let page = &mut pages[index];
+            if let Some(f) = page.get_or_insert(queue, fine, frame) {
+                let c = coarse.and_then(|c| page.get_or_insert(queue, c, frame));
+                return placed(index, f, c);
+            }
+        }
+
+        // Out of tile memory: the fine tile alone.
+        if coarse.is_some() {
+            for (index, page) in pages.iter_mut().enumerate() {
+                if (page.slots.contains(&fine.coord) || page.slots.room(frame) >= 1)
+                    && let Some(f) = page.get_or_insert(queue, fine, frame)
+                {
+                    return placed(index, f, None);
+                }
+            }
+        }
+        None
     }
 
-    fn tile_dimensions(&self, coord: &TileCoord) -> Option<(u32, u32)> {
-        self.slots.get(coord).map(|s| (s.width, s.height))
+    /// Adds a page of `layer_size` within the memory limit; its index.
+    /// (Pages are only freed between frames, so that the indices the
+    /// frame's draws refer to stay valid.)
+    fn add_page(&mut self, runtime: &GpuRuntime, layer_size: u32, frame: u64) -> Option<usize> {
+        if self.failed_frame == Some(frame) {
+            return None;
+        }
+        let bytes = layer_bytes(layer_size)
+            * u64::from(page_layers(layer_size, runtime.max_texture_array_layers));
+        let page = (self.bytes + bytes <= TILE_MEMORY_LIMIT_BYTES)
+            .then(|| TilePage::new(runtime, layer_size, frame))
+            .flatten();
+        let Some(page) = page else {
+            self.failed_frame = Some(frame);
+            return None;
+        };
+        self.bytes += page.bytes();
+        let pages = self.pages.entry(layer_size).or_default();
+        pages.push(page);
+        Some(pages.len() - 1)
     }
+
+    /// Frees the least recently used pages that `frame` does not use until
+    /// at most `target` bytes are left.
+    fn free_unused(&mut self, frame: u64, target: u64) {
+        while self.bytes > target {
+            let oldest = self
+                .pages
+                .iter()
+                .flat_map(|(size, pages)| {
+                    pages
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, page)| page.slots.frame != frame)
+                        .map(move |(index, page)| (page.slots.frame, *size, index))
+                })
+                .min();
+            let Some((_, size, index)) = oldest else {
+                break;
+            };
+            if let Some(pages) = self.pages.get_mut(&size) {
+                let page = pages.remove(index);
+                self.bytes -= page.bytes();
+            }
+        }
+        self.pages.retain(|_, pages| !pages.is_empty());
+    }
+
+    fn page(&self, layer_size: u32, index: usize) -> Option<&TilePage> {
+        self.pages.get(&layer_size)?.get(index)
+    }
+
+    /// After a frame: frees pages above the budget, and reports draws that
+    /// did not fit.
+    fn end_frame(&mut self, frame: u64) {
+        self.free_unused(frame, TILE_BUDGET_BYTES);
+        if self.dropped + self.unblended == 0 {
+            return;
+        }
+        let now = std::time::Instant::now();
+        if self
+            .last_report
+            .is_some_and(|last| now.duration_since(last) < OVERFLOW_REPORT_INTERVAL)
+        {
+            return;
+        }
+        tracing::warn!(
+            dropped = self.dropped,
+            unblended = self.unblended,
+            tile_memory_mib = self.bytes / (1024 * 1024),
+            "GPU tile memory is full: tile draws were left out or drawn without their coarse level"
+        );
+        self.dropped = 0;
+        self.unblended = 0;
+        self.last_report = Some(now);
+    }
+}
+
+/// The output of a future that is ready at once (wgpu's native error
+/// scopes), or `None`.
+fn poll_now<F: std::future::Future>(future: F) -> Option<F::Output> {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(output) => Some(output),
+        std::task::Poll::Pending => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPU failures — wgpu errors and a lost device switch the slides to the
+// CPU renderer instead of panicking (RND-7).
+// ---------------------------------------------------------------------------
+
+static GPU_FAILURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub(crate) fn record_failure(reason: String) {
+    if let Ok(mut failure) = GPU_FAILURE.lock()
+        && failure.is_none()
+    {
+        *failure = Some(reason);
+    }
+}
+
+/// Why the GPU renderer failed, once: wgpu reported an error or lost the
+/// device.
+pub(crate) fn take_failure() -> Option<String> {
+    GPU_FAILURE.lock().ok()?.take()
+}
+
+/// Logs wgpu errors (the default handler panics) and device loss instead
+/// of crashing; the render loop then switches to the CPU renderer.
+fn install_error_handlers(device: &wgpu::Device) {
+    device.on_uncaptured_error(Arc::new(|error: wgpu::Error| {
+        tracing::error!("GPU error: {error}");
+        record_failure(format!("GPU error: {error}"));
+    }));
+    device.set_device_lost_callback(|reason, message| {
+        if reason != wgpu::DeviceLostReason::Destroyed {
+            tracing::error!("The GPU device was lost: {message}");
+            record_failure(format!("the GPU device was lost ({message})"));
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +872,8 @@ struct GpuRuntime {
     sharpen_buffer: wgpu::Buffer,
     /// Per surface slot: the composited frame the sharpening pass reads.
     frames: HashMap<usize, ImportedSurface>,
+    max_texture_array_layers: u32,
+    max_texture_dimension_2d: u32,
 }
 
 impl GpuRuntime {
@@ -747,6 +1119,8 @@ impl GpuRuntime {
             sharpen_bind_group_layout,
             sharpen_buffer,
             frames: HashMap::new(),
+            max_texture_array_layers: device.limits().max_texture_array_layers.max(1),
+            max_texture_dimension_2d: device.limits().max_texture_dimension_2d,
         }
     }
 
@@ -789,22 +1163,26 @@ impl GpuRuntime {
 }
 
 // ---------------------------------------------------------------------------
-// Public renderer — owns the runtime, tile array, and pending frame queue.
+// Public renderer — owns the runtime, tile pages, and pending frame queue.
 // ---------------------------------------------------------------------------
 
 pub struct GpuRenderer {
     runtime: Option<GpuRuntime>,
     pending_frames: HashMap<usize, QueuedFrame>,
-    /// One `TileArray` per distinct power-of-two layer size (e.g. 256, 512, 1024).
-    /// This avoids forcing all tiles into the largest layer size which would
-    /// waste most of the memory budget and limit the number of available layers.
-    tile_arrays: HashMap<u32, TileArray>,
+    /// Tile pages by layer size class.
+    tiles: TileStore,
+    /// The renderer failed (see [`take_failure`]) and stays off.
+    disabled: bool,
     frame_counter: u64,
     /// Fingerprint of the last successfully rendered frame per slot.
     /// Used to skip redundant vertex rebuilds and render passes.
     last_rendered_fingerprint: HashMap<usize, u64>,
     /// Last uploaded colour uniform, used to skip redundant uploads.
     last_color: Option<[f32; 36]>,
+    /// Surfaces to read back as they are (their frame did not change).
+    readback_requests: Vec<(usize, ReadbackTag)>,
+    /// Readbacks waiting for the GPU.
+    pending_readbacks: Vec<PendingReadback>,
 }
 
 impl GpuRenderer {
@@ -812,10 +1190,13 @@ impl GpuRenderer {
         Self {
             runtime: None,
             pending_frames: HashMap::new(),
-            tile_arrays: HashMap::new(),
+            tiles: TileStore::default(),
+            disabled: false,
             frame_counter: 0,
             last_rendered_fingerprint: HashMap::new(),
             last_color: None,
+            readback_requests: Vec::new(),
+            pending_readbacks: Vec::new(),
         }
     }
 
@@ -852,6 +1233,10 @@ impl GpuRenderer {
                 .get(&slot.index())
                 .is_some_and(|prev| *prev == fp)
             {
+                // The surface already shows this frame; read it back as is.
+                if let Some(tag) = frame.readback {
+                    self.readback_requests.push((slot.index(), tag));
+                }
                 return self.surface_image(slot);
             }
         }
@@ -869,23 +1254,52 @@ impl GpuRenderer {
     // -----------------------------------------------------------------------
 
     fn initialize(&mut self, graphics_api: &GraphicsAPI) {
-        if self.runtime.is_some() {
+        if self.runtime.is_some() || self.disabled {
             return;
         }
 
         let GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api else {
+            record_failure("the window does not render with wgpu".to_string());
             return;
         };
 
+        install_error_handlers(device);
         self.runtime = Some(GpuRuntime::new(device, queue));
     }
 
     fn teardown(&mut self) {
+        self.pending_readbacks.clear();
+        self.readback_requests.clear();
         self.runtime = None;
         self.pending_frames.clear();
-        self.tile_arrays.clear();
+        self.tiles = TileStore::default();
         self.last_rendered_fingerprint.clear();
         self.last_color = None;
+    }
+
+    /// The largest surface edge the device supports.
+    pub(crate) fn max_surface_dimension(&self) -> Option<u32> {
+        self.runtime
+            .as_ref()
+            .map(|runtime| runtime.max_texture_dimension_2d)
+    }
+
+    /// Releases everything and stays off: the GPU failed.
+    pub(crate) fn disable(&mut self) {
+        self.teardown();
+        self.disabled = true;
+    }
+
+    /// Frees the surfaces of slots `count` and above (closed panes).
+    pub(crate) fn retain_slots(&mut self, count: usize) {
+        self.pending_frames.retain(|slot, _| *slot < count);
+        self.last_rendered_fingerprint
+            .retain(|slot, _| *slot < count);
+        self.readback_requests.retain(|(slot, _)| *slot < count);
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.surfaces.retain(|slot, _| *slot < count);
+            runtime.frames.retain(|slot, _| *slot < count);
+        }
     }
 
     fn ensure_surface(&mut self, slot: SurfaceSlot, width: u32, height: u32) -> Option<bool> {
@@ -901,8 +1315,15 @@ impl GpuRenderer {
         if !needs_recreate {
             return Some(false);
         }
+        if width > runtime.max_texture_dimension_2d || height > runtime.max_texture_dimension_2d {
+            tracing::warn!(
+                "A {width}×{height} pane exceeds the GPU's {} px limit",
+                runtime.max_texture_dimension_2d
+            );
+            return None;
+        }
 
-        let texture = runtime.device.create_texture(&wgpu::TextureDescriptor {
+        let descriptor = wgpu::TextureDescriptor {
             label: Some("pane-viewport-surface"),
             size: wgpu::Extent3d {
                 width,
@@ -918,7 +1339,29 @@ impl GpuRenderer {
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
-        });
+        };
+        let create = |device: &wgpu::Device| {
+            let scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+            let texture = device.create_texture(&descriptor);
+            match poll_now(scope.pop()) {
+                Some(Some(error)) => Err(error),
+                _ => Ok(texture),
+            }
+        };
+        let texture = match create(&runtime.device) {
+            Ok(texture) => texture,
+            Err(_) => {
+                // Make room: tile pages are refilled on demand.
+                self.tiles = TileStore::default();
+                match create(&runtime.device) {
+                    Ok(texture) => texture,
+                    Err(error) => {
+                        record_failure(format!("out of GPU memory ({error})"));
+                        return None;
+                    }
+                }
+            }
+        };
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         runtime.surfaces.insert(
@@ -1022,13 +1465,17 @@ impl GpuRenderer {
         let frame_id = self.frame_counter;
 
         let pending_frames = std::mem::take(&mut self.pending_frames);
+        let mut readbacks = std::mem::take(&mut self.readback_requests);
 
-        for (slot_index, frame) in pending_frames {
+        for (slot_index, mut frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
                 let fp = frame.fingerprint();
+                if let Some(tag) = frame.readback.take() {
+                    readbacks.push((slot_index, tag));
+                }
                 Self::render_frame(
                     runtime,
-                    &mut self.tile_arrays,
+                    &mut self.tiles,
                     &mut self.last_color,
                     SurfaceSlot(slot_index),
                     frame,
@@ -1037,6 +1484,109 @@ impl GpuRenderer {
                 self.last_rendered_fingerprint.insert(slot_index, fp);
             }
         }
+        self.tiles.end_frame(frame_id);
+        for (slot_index, tag) in readbacks {
+            if let Some(pending) = Self::start_readback(runtime, slot_index, tag) {
+                self.pending_readbacks.push(pending);
+            }
+        }
+    }
+
+    /// Copies a surface into a mappable buffer and starts mapping it.
+    fn start_readback(
+        runtime: &GpuRuntime,
+        slot_index: usize,
+        tag: ReadbackTag,
+    ) -> Option<PendingReadback> {
+        let surface = runtime.surfaces.get(&slot_index)?;
+        let bytes_per_row = surface.width.checked_mul(4)?;
+        let padded_bytes_per_row = bytes_per_row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = runtime.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pane-filter-readback"),
+            size: u64::from(padded_bytes_per_row) * u64::from(surface.height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = runtime
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("pane-filter-readback-encoder"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &surface.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(surface.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: surface.width,
+                height: surface.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        runtime.queue.submit(Some(encoder.finish()));
+        let state = Arc::new(AtomicU8::new(0));
+        let flag = Arc::clone(&state);
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                flag.store(if result.is_ok() { 1 } else { 2 }, Ordering::Release);
+            });
+        Some(PendingReadback {
+            tag,
+            buffer,
+            padded_bytes_per_row,
+            width: surface.width,
+            height: surface.height,
+            state,
+        })
+    }
+
+    /// Frames read back since the last call, without blocking: readbacks
+    /// still on the GPU stay pending.
+    pub(crate) fn poll_readbacks(&mut self) -> Vec<ReadbackFrame> {
+        if self.pending_readbacks.is_empty() {
+            return Vec::new();
+        }
+        let Some(runtime) = self.runtime.as_ref() else {
+            self.pending_readbacks.clear();
+            return Vec::new();
+        };
+        let _ = runtime.device.poll(wgpu::PollType::Poll);
+        let mut done = Vec::new();
+        let mut index = 0;
+        while index < self.pending_readbacks.len() {
+            match self.pending_readbacks[index].state.load(Ordering::Acquire) {
+                0 => index += 1,
+                1 => {
+                    let pending = self.pending_readbacks.swap_remove(index);
+                    done.push(pending.into_frame());
+                }
+                _ => {
+                    let pending = self.pending_readbacks.swap_remove(index);
+                    tracing::warn!(
+                        "reading pane {} back from the GPU failed",
+                        pending.tag.pane_uid
+                    );
+                }
+            }
+        }
+        done
+    }
+
+    /// Whether readbacks are still on their way.
+    pub(crate) fn readbacks_pending(&self) -> bool {
+        !self.pending_readbacks.is_empty() || !self.readback_requests.is_empty()
     }
 
     // -----------------------------------------------------------------------
@@ -1046,7 +1596,7 @@ impl GpuRenderer {
 
     fn render_frame(
         runtime: &mut GpuRuntime,
-        tile_arrays: &mut HashMap<u32, TileArray>,
+        tiles: &mut TileStore,
         last_color: &mut Option<[f32; 36]>,
         slot: SurfaceSlot,
         frame: QueuedFrame,
@@ -1069,64 +1619,43 @@ impl GpuRenderer {
             surface_view.clone()
         };
 
-        // Phase 1 & 2: Upload tiles and build vertices, tracking which array
-        // each draw belongs to so we can switch bind groups during the pass.
+        // Phase 1 & 2: Upload tiles and build vertices, tracking which page
+        // each draw uses so that the pass can switch bind groups.
         struct DrawBatch {
-            array_ls: u32,
+            page: (u32, usize),
             vertices: [Vertex; 6],
         }
         let mut batches: Vec<DrawBatch> = Vec::with_capacity(frame.draws.len());
+        let runtime_ref: &GpuRuntime = runtime;
 
         for draw in &frame.draws {
-            // Both fine and coarse tiles for a single draw must live in the
-            // same texture array (the shader samples both from one binding).
-            // Use the larger of the two padded dimensions as the array key.
-            let fine_dim = draw.tile.data_width().max(draw.tile.data_height());
-            let coarse_dim = draw
-                .coarse_tile
-                .as_ref()
-                .map(|t| t.data_width().max(t.data_height()))
-                .unwrap_or(0);
-            let array_ls = fine_dim.max(coarse_dim).max(64);
-
-            // Lazily create the array for this layer size.
-            let array = tile_arrays.entry(array_ls).or_insert_with(|| {
-                let bytes_per_layer = array_ls as u64 * array_ls as u64 * 4;
-                let max_layers = (MAX_TILE_ARRAY_BYTES / bytes_per_layer).clamp(16, 256) as u32;
-                TileArray::new(
-                    &runtime.device,
-                    &runtime.bind_group_layout,
-                    &runtime.bilinear_sampler,
-                    &runtime.sampler,
-                    &runtime.color_buffer,
-                    array_ls,
-                    max_layers,
-                )
-            });
-
-            // Upload tiles.
-            let Some((fine_layer, _)) = array.get_or_insert(&runtime.queue, &draw.tile, frame_id)
-            else {
+            // A draw's fine and coarse tiles share a page: the shader samples
+            // both from one binding.
+            let Some(placement) = tiles.place(
+                runtime_ref,
+                &draw.tile,
+                draw.coarse_tile.as_deref(),
+                frame_id,
+            ) else {
+                tiles.dropped += 1;
                 continue;
             };
-            let coarse_layer = draw
-                .coarse_tile
-                .as_ref()
-                .and_then(|t| array.get_or_insert(&runtime.queue, t, frame_id))
-                .map(|(l, _)| l)
-                .unwrap_or(fine_layer);
-
-            let (fine_w, fine_h) = array
-                .tile_dimensions(&draw.tile.coord)
-                .unwrap_or((array_ls, array_ls));
-            let (coarse_w, coarse_h) = draw
-                .coarse_tile
-                .as_ref()
-                .and_then(|t| array.tile_dimensions(&t.coord))
-                .unwrap_or((array_ls, array_ls));
+            let (fine_layer, fine_w, fine_h) = placement.fine;
+            let (coarse_layer, coarse_size, coarse_border, mip_blend) =
+                match (placement.coarse, &draw.coarse_tile) {
+                    (Some((layer, w, h)), Some(coarse)) => {
+                        (layer, (w, h), coarse.border, draw.mip_blend)
+                    }
+                    (_, coarse) => {
+                        if coarse.is_some() {
+                            tiles.unblended += 1;
+                        }
+                        (fine_layer, (fine_w, fine_h), draw.tile.border, 0.0)
+                    }
+                };
 
             batches.push(DrawBatch {
-                array_ls,
+                page: (placement.layer_size, placement.page),
                 vertices: quad_vertices(
                     draw,
                     &QuadParams {
@@ -1134,10 +1663,11 @@ impl GpuRenderer {
                         fine_layer: fine_layer as i32,
                         coarse_layer: coarse_layer as i32,
                         fine_size: (fine_w, fine_h),
-                        coarse_size: (coarse_w, coarse_h),
-                        layer_size: array_ls,
+                        coarse_size,
+                        layer_size: placement.layer_size,
                         fine_border: draw.tile.border,
-                        coarse_border: draw.coarse_tile.as_ref().map(|t| t.border).unwrap_or(0),
+                        coarse_border,
+                        mip_blend,
                     },
                 ),
             });
@@ -1175,19 +1705,19 @@ impl GpuRenderer {
             *last_color = Some(color);
         }
 
-        // Build draw ranges — batch consecutive quads that share the same
-        // array so we can issue one `draw()` per contiguous run.
-        let mut draw_ranges: Vec<(u32, std::ops::Range<u32>)> = Vec::new();
+        // Build draw ranges — batch consecutive quads that share a page so
+        // that one `draw()` covers each contiguous run.
+        let mut draw_ranges: Vec<((u32, usize), std::ops::Range<u32>)> = Vec::new();
         for (i, b) in batches.iter().enumerate() {
             let start = (i * 6) as u32;
             let end = start + 6;
             if let Some(last) = draw_ranges.last_mut()
-                && last.0 == b.array_ls
+                && last.0 == b.page
             {
                 last.1.end = end;
                 continue;
             }
-            draw_ranges.push((b.array_ls, start..end));
+            draw_ranges.push((b.page, start..end));
         }
 
         // Phase 4: Render pass — switch bind group per array batch.
@@ -1230,12 +1760,12 @@ impl GpuRenderer {
             }
             render_pass.set_vertex_buffer(0, runtime.vertex_buffer.slice(..));
 
-            for (ls, range) in &draw_ranges {
-                if let Some(array) = tile_arrays.get(ls) {
+            for ((layer_size, index), range) in &draw_ranges {
+                if let Some(page) = tiles.page(*layer_size, *index) {
                     let bg = if is_bilinear {
-                        &array.bilinear_bind_group
+                        &page.bilinear_bind_group
                     } else {
-                        &array.trilinear_bind_group
+                        &page.trilinear_bind_group
                     };
                     render_pass.set_bind_group(0, bg, &[]);
                     render_pass.draw(range.clone(), 0..1);
@@ -1352,7 +1882,7 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
         (cb + draw.coarse_uv_max[1] * coarse_inner_h) / ls,
     ];
 
-    let mip_blend = draw.mip_blend;
+    let mip_blend = params.mip_blend;
     let fine_tex_size = [fine_w as f32, fine_h as f32];
 
     [
@@ -1449,6 +1979,7 @@ mod tests {
             draws: Vec::new(),
             color,
             sharpness,
+            readback: None,
         }
     }
 
@@ -1577,6 +2108,7 @@ mod tests {
                 }],
                 color: pipeline.gpu_uniform(),
                 sharpness: pipeline.sharpness(),
+                readback: None,
             },
         );
         renderer.flush_pending_frames();
@@ -1657,5 +2189,206 @@ mod tests {
         // Far from the slide the background stays exactly as cleared.
         let last = gpu.len() - 4;
         assert_eq!(&gpu[last..], &[30, 30, 30, 255]);
+    }
+
+    fn tagged_frame(width: u32, generation: u64) -> QueuedFrame {
+        let (tile, _) = tile();
+        QueuedFrame {
+            width,
+            height: TILE,
+            draws: vec![TileDraw {
+                tile,
+                coarse_tile: None,
+                screen_x: 0.0,
+                screen_y: 0.0,
+                screen_w: TILE as f32,
+                screen_h: TILE as f32,
+                coarse_uv_min: [0.0, 0.0],
+                coarse_uv_max: [1.0, 1.0],
+                mip_blend: 0.0,
+                filtering_mode: FilteringMode::Bilinear,
+            }],
+            color: ProcessingPipeline::identity().gpu_uniform(),
+            sharpness: 0.0,
+            readback: Some(ReadbackTag {
+                pane_uid: 7,
+                file_id: 1,
+                viewport: eov_common::Viewport::new(width as f64, TILE as f64, 100.0, 100.0),
+                scale: 1.0,
+                generation,
+            }),
+        }
+    }
+
+    fn wait_for_readbacks(renderer: &mut GpuRenderer) -> Vec<ReadbackFrame> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let frames = renderer.poll_readbacks();
+            if !frames.is_empty() || std::time::Instant::now() > deadline {
+                return frames;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn edge_tiles_share_their_level_s_layer_size() {
+        let tile = |size: u32, w: u32, h: u32| {
+            TileData::new(
+                TileCoord::new(1, 0, 0, 0, size),
+                vec![0; ((w + 2) * (h + 2) * 4) as usize],
+                w,
+                h,
+                1,
+            )
+        };
+        assert_eq!(layer_size_class(&tile(256, 256, 256)), 288);
+        assert_eq!(layer_size_class(&tile(256, 100, 256)), 288);
+        assert_eq!(layer_size_class(&tile(256, 37, 12)), 288);
+        assert_eq!(layer_size_class(&tile(1024, 1024, 1024)), 1056);
+        assert_eq!(layer_size_class(&tile(8, 8, 8)), 64);
+        // Pages hold 64 MiB, within the device's layer limit.
+        assert_eq!(page_layers(288, 256), 202);
+        assert_eq!(page_layers(1056, 256), 15);
+        assert_eq!(page_layers(64, 256), 256);
+        assert_eq!(page_layers(4096, 256), MIN_PAGE_LAYERS);
+    }
+
+    #[test]
+    fn layers_the_current_frame_uses_are_never_evicted() {
+        let coord = |x| TileCoord::new(1, 0, x, 0, 256);
+        let mut slots = LayerSlots::new(4, 1);
+        for x in 0..4 {
+            assert!(slots.allocate(coord(x), 258, 258, 1).is_some());
+        }
+        assert_eq!(slots.room(1), 0);
+        assert!(
+            slots.allocate(coord(9), 258, 258, 1).is_none(),
+            "all in use"
+        );
+
+        // The next frame uses two of them; the other two can make room.
+        assert!(slots.touch(&coord(0), 2).is_some());
+        assert!(slots.touch(&coord(1), 2).is_some());
+        assert_eq!(slots.room(2), 2);
+        assert!(slots.allocate(coord(9), 258, 258, 2).is_some());
+        assert!(slots.contains(&coord(0)) && slots.contains(&coord(1)));
+        assert!(slots.contains(&coord(9)));
+        assert_eq!(slots.room(2), 1);
+    }
+
+    /// RND-2: a frame needing more tiles than one texture array holds gets
+    /// more pages, and draws every tile.
+    #[test]
+    fn frames_with_more_tiles_than_a_page_draw_them_all() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the tile page test");
+            return;
+        };
+        const SIDE: u32 = 8;
+        let (cols, rows) = (24u32, 16u32);
+        let color = |i: u32| {
+            [
+                (i * 37 % 251) as u8,
+                (i * 11 % 241) as u8,
+                (i / 3 % 239) as u8,
+            ]
+        };
+        let draws: Vec<TileDraw> = (0..cols * rows)
+            .map(|i| {
+                let (x, y) = (i % cols, i / cols);
+                let c = color(i);
+                let data = (0..(SIDE + 2) * (SIDE + 2))
+                    .flat_map(|_| [c[0], c[1], c[2], 255])
+                    .collect();
+                TileDraw {
+                    tile: Arc::new(TileData::new(
+                        TileCoord::new(1, 0, x.into(), y.into(), SIDE),
+                        data,
+                        SIDE,
+                        SIDE,
+                        1,
+                    )),
+                    coarse_tile: None,
+                    screen_x: (x * SIDE) as f32,
+                    screen_y: (y * SIDE) as f32,
+                    screen_w: SIDE as f32,
+                    screen_h: SIDE as f32,
+                    coarse_uv_min: [0.0, 0.0],
+                    coarse_uv_max: [1.0, 1.0],
+                    mip_blend: 0.0,
+                    filtering_mode: FilteringMode::Bilinear,
+                }
+            })
+            .collect();
+        let (width, height) = (cols * SIDE, rows * SIDE);
+        let slot = SurfaceSlot(0);
+        renderer.ensure_surface(slot, width, height).unwrap();
+        renderer.pending_frames.insert(
+            slot.index(),
+            QueuedFrame {
+                width,
+                height,
+                draws,
+                color: ProcessingPipeline::identity().gpu_uniform(),
+                sharpness: 0.0,
+                readback: None,
+            },
+        );
+        renderer.flush_pending_frames();
+        assert!(
+            renderer.tiles.pages[&64].len() >= 2,
+            "{} tiles need two pages",
+            cols * rows
+        );
+        let (_, _, pixels) = renderer.read_surface_rgba(slot).unwrap();
+        for i in 0..cols * rows {
+            let x = (i % cols) * SIDE + SIDE / 2;
+            let y = (i / cols) * SIDE + SIDE / 2;
+            let at = ((y * width + x) * 4) as usize;
+            assert!(
+                max_difference(&pixels[at..at + 3], &color(i)) <= 1,
+                "tile {i} is {:?}, not {:?}",
+                &pixels[at..at + 3],
+                color(i)
+            );
+        }
+
+        // Closing the pane frees its surface.
+        renderer.retain_slots(0);
+        assert!(renderer.surface_image(slot).is_none());
+    }
+
+    #[test]
+    fn rendered_frames_are_read_back_without_blocking() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the readback test");
+            return;
+        };
+        let slot = SurfaceSlot(0);
+        let width = TILE + 16;
+        renderer.ensure_surface(slot, width, TILE).unwrap();
+        renderer
+            .pending_frames
+            .insert(slot.index(), tagged_frame(width, 1));
+        renderer.flush_pending_frames();
+        assert!(renderer.readbacks_pending());
+        let frames = wait_for_readbacks(&mut renderer);
+        assert_eq!(frames.len(), 1);
+        let frame = &frames[0];
+        assert_eq!((frame.tag.pane_uid, frame.tag.generation), (7, 1));
+        assert_eq!((frame.width, frame.height), (width, TILE));
+        let (_, _, surface) = renderer.read_surface_rgba(slot).unwrap();
+        assert_eq!(frame.pixels, surface, "rows are unpadded");
+        assert!(!renderer.readbacks_pending());
+
+        // An unchanged frame is not rendered again, but still read back.
+        let _ = renderer.queue_frame(slot, tagged_frame(width, 2));
+        assert!(renderer.pending_frames.is_empty(), "nothing to render");
+        renderer.flush_pending_frames();
+        let frames = wait_for_readbacks(&mut renderer);
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].tag.generation, 2);
+        assert_eq!(frames[0].pixels, surface);
     }
 }

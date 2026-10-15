@@ -47,23 +47,16 @@ pub(crate) fn copy_image(image: PaneClipboardImage, done: impl FnOnce(bool) + Se
     }
 }
 
-/// The pane's last rendered frame, without overlays.
+/// The pane's frame on screen (with its plugin filters), without overlays.
 pub(crate) fn capture_pane_clipboard_image(pane: PaneId) -> Option<PaneClipboardImage> {
+    // CPU frames (also filtered GPU frames) are shown from pixel buffers;
+    // a GPU surface is read back instead.
     let cached_image = with_pane_render_cache(pane.0 + 1, |cache| {
-        let entry = cache.get(pane.0)?;
-        if !entry.preview_buffer.is_empty() && entry.preview_width > 0 && entry.preview_height > 0 {
-            return Some(PaneClipboardImage {
-                width: entry.preview_width as usize,
-                height: entry.preview_height as usize,
-                pixels: entry.preview_buffer.clone(),
-            });
-        }
-
-        let cpu_frame = entry.cpu_frame.as_ref()?;
+        let buffer = cache.get(pane.0)?.content.as_ref()?.to_rgba8()?;
         Some(PaneClipboardImage {
-            width: cpu_frame.width as usize,
-            height: cpu_frame.height as usize,
-            pixels: cpu_frame.pixels.clone(),
+            width: buffer.width() as usize,
+            height: buffer.height() as usize,
+            pixels: buffer.as_bytes().to_vec(),
         })
     });
 

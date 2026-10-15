@@ -79,6 +79,9 @@ export component Minimap inherits Rectangle {
 export component ZoomSlider inherits Rectangle {
     in property <float> value: 0.5;
     in property <float> zoom-level: 1.0;
+    // The magnification as the HUD shows it (optical when the slide records
+    // its objective); a percentage of `zoom-level` when empty.
+    in property <string> zoom-text: "";
     callback value-changed(float);
 
     width: 20px;
@@ -188,7 +191,7 @@ export component ZoomSlider inherits Rectangle {
         zoom-tooltip-text := Text {
             x: 6px;
             y: 3px;
-            text: root.zoom-level >= 1.0 ? Math.round(root.zoom-level * 100) + "%" : Math.round(root.zoom-level * 1000) / 10 + "%";
+            text: root.zoom-text != "" ? root.zoom-text : root.zoom-level >= 1.0 ? Math.round(root.zoom-level * 100) + "%" : Math.round(root.zoom-level * 1000) / 10 + "%";
             color: white;
             font-size: 11px;
         }

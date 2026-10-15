@@ -20,7 +20,7 @@ use eov_common::{
 };
 use slint::ComponentHandle;
 use slint::{Image, Model, SharedString, VecModel};
-use std::{fs, rc::Rc};
+use std::rc::Rc;
 
 fn ui_bottom_panel_kind(kind: crate::state::BottomPanelKind) -> SlintBottomPanelKind {
     match kind {
@@ -136,9 +136,10 @@ fn build_metadata_items(
         properties.levels.len(),
         viewport_info.level.max(0)
     );
-    let file_size = fs::metadata(&file.path)
-        .map(|metadata| format_file_size(metadata.len()))
-        .unwrap_or_else(|_| "Unknown".to_string());
+    let file_size = file
+        .file_size
+        .map(format_file_size)
+        .unwrap_or_else(|| "Unknown".to_string());
 
     vec![
         MetadataItem {
@@ -338,11 +339,10 @@ pub fn update_tabs(
                     zoom: vp.zoom as f32,
                     image_width: vp.image_width as f32,
                     image_height: vp.image_height as f32,
-                    level: file
-                        .tile_manager
-                        .wsi()
-                        .best_level_for_downsample(vp.effective_downsample())
-                        as i32,
+                    // Frames are rendered at physical resolution (RND-3).
+                    level: file.tile_manager.wsi().best_level_for_downsample(
+                        vp.effective_downsample() / f64::from(ui.window().scale_factor()).max(1e-6),
+                    ) as i32,
                 };
                 // Relative to what the thumbnail shows (the content bounds
                 // of sparse slides).

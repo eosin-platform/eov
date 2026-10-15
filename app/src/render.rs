@@ -2,15 +2,21 @@
 //!
 //! This module contains helper functions for rendering tiles and compositing
 //! the viewport image.
+//!
+//! Each backend keeps to its own path: the GPU backend composites on the
+//! GPU even when plugin filters (CPU-only) are enabled — the finished frame
+//! is read back and filtered on a worker (RND-6) — and the CPU backend
+//! composites, processes and filters frames on the render pool. Fallback
+//! tiles that finer tiles hide completely are not drawn.
 
 use crate::AppWindow;
 use crate::blitter;
-use crate::gpu::{QueuedFrame, SurfaceSlot, TileDraw};
+use crate::gpu::{QueuedFrame, ReadbackFrame, ReadbackTag, SurfaceSlot, TileDraw};
 use crate::render_pool::{
     CachedCpuFrame, CpuBlitCommand, CpuBlitKind, CpuRenderJob, CpuRenderPostProcess,
-    CpuRenderResult,
+    CpuRenderResult, FrameFilters,
 };
-use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
+use crate::state::{AppState, OpenFile, PaneId};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use eov_common::render::single_level_trilinear;
 use eov_common::{
@@ -22,7 +28,6 @@ use slint::{ComponentHandle, Image};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tracing::debug;
 
 fn trilinear_lod_bias_enabled(filtering_mode: FilteringMode) -> bool {
     filtering_mode == FilteringMode::Trilinear
@@ -56,17 +61,22 @@ struct RenderPaneRequest<'a> {
     target_width: f64,
     target_height: f64,
     force_render: bool,
-    render_backend: RenderBackend,
     filtering_mode: FilteringMode,
     filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
+    /// Stable id of the pane (what plugins and render jobs know it by).
+    pane_uid: u32,
+    /// `AppState::filter_revision` of this frame.
+    filter_revision: u64,
+    /// Physical pixels to render per logical pixel (RND-3).
+    scale: f64,
 }
 
 #[derive(Clone)]
 struct CpuPaneSnapshot {
     pane: PaneId,
+    /// Stable id of the pane (what plugins and render jobs know it by).
+    pane_uid: u32,
     file_id: i32,
-    file_path: String,
-    filename: String,
     file_switched: bool,
     content_missing: bool,
     minimap_missing: bool,
@@ -74,6 +84,10 @@ struct CpuPaneSnapshot {
     tile_manager: Arc<TileManager>,
     tile_loader: Arc<TileLoader>,
     viewport_state: eov_common::ViewportState,
+    /// The view in physical pixels, which frames are rendered at (RND-3).
+    render_viewport: Viewport,
+    /// Physical pixels per logical pixel.
+    scale: f64,
     frame_count: u32,
     last_render_zoom: f64,
     last_render_center_x: f64,
@@ -123,6 +137,8 @@ struct CpuRenderCommit {
     frame_update: Option<CpuFrameStateUpdate>,
     pending_cpu_job_id: Option<Option<u64>>,
     needs_settled_cpu_render: Option<bool>,
+    /// The filter revision the pane now shows (refiltered cached frame).
+    last_render_filter_revision: Option<u64>,
 }
 
 struct CpuFrameStateUpdate {
@@ -158,32 +174,82 @@ struct CpuPaneExecution {
     commit: CpuRenderCommit,
 }
 
+// ─── Physical-resolution frames (RND-3) ─────────────────────────────────────
+
+/// Largest edge of a CPU-rendered frame, in pixels.
+const MAX_CPU_FRAME_DIMENSION: u32 = 16384;
+
+/// The view at the display's physical resolution: the same image region
+/// over `scale` times as many pixels in each direction. Frames, levels and
+/// tile requests use it; interaction, overlays and what the HUD shows stay
+/// in logical pixels.
+fn physical_viewport(viewport: &Viewport, scale: f64) -> Viewport {
+    Viewport {
+        center: viewport.center,
+        zoom: viewport.zoom * scale,
+        width: (viewport.width * scale).round().max(1.0),
+        height: (viewport.height * scale).round().max(1.0),
+        image_width: viewport.image_width,
+        image_height: viewport.image_height,
+    }
+}
+
+/// Physical pixels per logical pixel to render a `width × height` logical
+/// pane with: the window's scale factor, less if the frame would be larger
+/// than `max_dimension`.
+fn render_scale(scale_factor: f32, width: f64, height: f64, max_dimension: u32) -> f64 {
+    let scale = f64::from(scale_factor);
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    scale.min(f64::from(max_dimension) / width.max(height).max(1.0))
+}
+
 static FILTER_FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// What a plugin filter is told about the pane it filters.
-fn viewport_snapshot_ffi_for_render(
+/// What a plugin filter is told about the frame it filters: the view the
+/// frame shows (which may be older than the pane's current view), in logical
+/// pixels, and the frame's physical pixels per logical pixel.
+fn filter_view(
     file_id: i32,
-    _file_path: &str,
-    _filename: &str,
-    viewport: &eov_common::ViewportState,
-    pane: PaneId,
+    pane_uid: u32,
+    viewport: &Viewport,
+    scale: f64,
 ) -> eov_plugin_api::abi::FilterView {
-    let bounds = viewport.viewport.bounds();
+    let bounds = viewport.bounds();
     eov_plugin_api::abi::FilterView {
-        pane: crate::state::pane_uid_for_index(pane.0).unwrap_or(pane.0 as u32),
+        pane: pane_uid,
         file_id: i64::from(file_id),
-        center_x: viewport.viewport.center.x,
-        center_y: viewport.viewport.center.y,
-        zoom: viewport.viewport.zoom,
-        width: viewport.viewport.width,
-        height: viewport.viewport.height,
-        scale_factor: 1.0,
+        center_x: viewport.center.x,
+        center_y: viewport.center.y,
+        zoom: viewport.zoom / scale,
+        width: viewport.width / scale,
+        height: viewport.height / scale,
+        scale_factor: scale,
         visible_x: bounds.left,
         visible_y: bounds.top,
         visible_width: bounds.width(),
         visible_height: bounds.height(),
         frame: FILTER_FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
     }
+}
+
+/// The enabled plugin filters for a frame of `viewport` (physical pixels,
+/// `scale` per logical pixel), if any.
+fn frame_filters(
+    filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
+    file_id: i32,
+    pane_uid: u32,
+    viewport: &Viewport,
+    scale: f64,
+) -> Option<FrameFilters> {
+    let chain = filter_chain.read();
+    chain.has_enabled_cpu_filters().then(|| FrameFilters {
+        chain,
+        view: filter_view(file_id, pane_uid, viewport, scale),
+    })
 }
 
 fn cached_cpu_frame_matches(
@@ -205,130 +271,332 @@ fn cached_cpu_frame_matches(
         && (cpu_frame.viewport.image_height - viewport.image_height).abs() <= 1e-6
 }
 
-struct RenderCachedCpuFrameWithFiltersContext<'a> {
+/// Runs the (changed) plugin filters again over the pane's last frame,
+/// when that frame still shows `viewport`. `None` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn refilter_cached_frame(
     pane: PaneId,
+    pane_uid: u32,
     file_id: i32,
-    file_path: &'a str,
-    filename: &'a str,
-    viewport: &'a Viewport,
+    viewport: &Viewport,
     render_width: u32,
     render_height: u32,
-    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
-}
-
-fn render_cached_cpu_frame_with_filters(
-    ctx: RenderCachedCpuFrameWithFiltersContext,
+    filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
+    scale: f64,
 ) -> Option<Image> {
-    let RenderCachedCpuFrameWithFiltersContext {
-        pane,
-        file_id,
-        file_path,
-        filename,
-        viewport,
-        render_width,
-        render_height,
-        filter_chain,
-    } = ctx;
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
         let cpu_frame = entry.cpu_frame.as_ref()?;
         if !cached_cpu_frame_matches(cpu_frame, file_id, viewport, render_width, render_height) {
             return None;
         }
-
         let needed = (render_width as usize) * (render_height as usize) * 4;
-        if entry.preview_buffer.len() < needed {
-            entry.preview_buffer.resize(needed, 0);
+        let mut buffer =
+            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
+        let pixels = buffer.make_mut_bytes();
+        pixels.copy_from_slice(&cpu_frame.pixels[..needed]);
+        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
+            filters.apply(pixels, render_width, render_height);
         }
-        let preview = &mut entry.preview_buffer[..needed];
-        preview.copy_from_slice(&cpu_frame.pixels[..needed]);
-
-        {
-            let chain = filter_chain.read();
-            if chain.has_enabled_cpu_filters() {
-                let mut viewport_state = eov_common::ViewportState::new(
-                    viewport.width,
-                    viewport.height,
-                    viewport.image_width,
-                    viewport.image_height,
-                );
-                viewport_state.viewport = viewport.clone();
-                let filter_viewport = viewport_snapshot_ffi_for_render(
-                    file_id,
-                    file_path,
-                    filename,
-                    &viewport_state,
-                    pane,
-                );
-                chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
-            }
-        }
-
-        blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
+        Some(Image::from_rgba8(buffer))
     })
 }
 
-struct RenderGpuSurfaceWithFiltersContext<'a> {
-    pane: PaneId,
-    file_id: i32,
-    file_path: &'a str,
-    filename: &'a str,
-    viewport: &'a Viewport,
-    render_width: u32,
-    render_height: u32,
-    filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
-}
+// ─── CPU filters on GPU frames (RND-6) ──────────────────────────────────────
 
-fn render_gpu_surface_with_filters(ctx: RenderGpuSurfaceWithFiltersContext) -> Option<Image> {
-    let RenderGpuSurfaceWithFiltersContext {
-        pane,
-        file_id,
-        file_path,
-        filename,
-        viewport,
-        render_width,
-        render_height,
-        filter_chain,
-    } = ctx;
-    let slot = match pane {
-        PaneId::PRIMARY => SurfaceSlot::PRIMARY,
-        PaneId::SECONDARY => SurfaceSlot::SECONDARY,
-        _ => SurfaceSlot(pane.0),
-    };
-    let (width, height, mut pixels) =
-        crate::with_gpu_renderer(|renderer| renderer.borrow_mut().read_surface_rgba(slot))
-            .flatten()?;
-    if width != render_width || height != render_height {
-        return None;
+/// GPU panes with plugin filters: their frames are read back and filtered on
+/// the render pool, one at a time per pane; the pane shows the newest
+/// filtered frame.
+mod gpu_filters {
+    use super::*;
+
+    #[derive(Default)]
+    struct PaneFilterState {
+        /// Generation of the readback on its way from the GPU, if any.
+        awaiting_readback: Option<u64>,
+        /// A filter job is running for the pane.
+        filtering: bool,
+        /// The pane's frame changed while busy: read it back again after.
+        dirty: bool,
+        /// Newest generation shown; older results are dropped.
+        shown: u64,
     }
 
-    {
-        let chain = filter_chain.read();
-        if chain.has_enabled_cpu_filters() {
-            let mut viewport_state = eov_common::ViewportState::new(
-                viewport.width,
-                viewport.height,
-                viewport.image_width,
-                viewport.image_height,
-            );
-            viewport_state.viewport = viewport.clone();
-            let filter_viewport = viewport_snapshot_ffi_for_render(
-                file_id,
-                file_path,
-                filename,
-                &viewport_state,
-                pane,
-            );
-            chain.apply_cpu(
-                &mut pixels,
-                render_width,
-                render_height,
-                Some(&filter_viewport),
-            );
+    struct FilterPanes {
+        panes: HashMap<u32, PaneFilterState>,
+        next_generation: u64,
+        results: (
+            crossbeam_channel::Sender<FilteredFrame>,
+            crossbeam_channel::Receiver<FilteredFrame>,
+        ),
+    }
+
+    impl Default for FilterPanes {
+        fn default() -> Self {
+            Self {
+                panes: HashMap::new(),
+                next_generation: 0,
+                results: crossbeam_channel::unbounded(),
+            }
         }
     }
 
-    blitter::create_image_buffer(&pixels, render_width, render_height).map(Image::from_rgba8)
+    /// A filtered frame, back from the pool.
+    pub(super) struct FilteredFrame {
+        pub(super) tag: ReadbackTag,
+        pub(super) width: u32,
+        pub(super) height: u32,
+        /// The frame before filtering.
+        pub(super) unfiltered: Vec<u8>,
+        pub(super) display: slint::SharedPixelBuffer<slint::Rgba8Pixel>,
+    }
+
+    thread_local! {
+        // UI thread only.
+        static PANES: RefCell<FilterPanes> = RefCell::new(FilterPanes::default());
+    }
+
+    /// A readback tag for the pane's next frame, or `None` (the frame is
+    /// remembered as dirty) while the pane's previous frame is still being
+    /// read back or filtered.
+    pub(super) fn request(
+        pane_uid: u32,
+        file_id: i32,
+        viewport: &Viewport,
+        scale: f64,
+    ) -> Option<ReadbackTag> {
+        PANES.with(|panes| {
+            let mut panes = panes.borrow_mut();
+            panes.next_generation += 1;
+            let generation = panes.next_generation;
+            let pane = panes.panes.entry(pane_uid).or_default();
+            if pane.awaiting_readback.is_some() || pane.filtering {
+                pane.dirty = true;
+                return None;
+            }
+            pane.awaiting_readback = Some(generation);
+            Some(ReadbackTag {
+                pane_uid,
+                file_id,
+                viewport: viewport.clone(),
+                scale,
+                generation,
+            })
+        })
+    }
+
+    /// Hands read-back frames to the render pool for filtering. Readbacks
+    /// the renderer lost (`readbacks_pending == false` while one is
+    /// awaited) are forgotten; returns whether there were any.
+    pub(super) fn dispatch(
+        frames: Vec<ReadbackFrame>,
+        readbacks_pending: bool,
+        filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
+    ) -> bool {
+        let mut lost = false;
+        PANES.with(|panes| {
+            let mut panes = panes.borrow_mut();
+            let sender = panes.results.0.clone();
+            for frame in frames {
+                let Some(pane) = panes.panes.get_mut(&frame.tag.pane_uid) else {
+                    continue;
+                };
+                pane.awaiting_readback = None;
+                pane.filtering = true;
+                let filters = frame_filters(
+                    filter_chain,
+                    frame.tag.file_id,
+                    frame.tag.pane_uid,
+                    &frame.tag.viewport,
+                    frame.tag.scale,
+                );
+                let sender = sender.clone();
+                let job = move || {
+                    let mut display = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(
+                        frame.width,
+                        frame.height,
+                    );
+                    let bytes = display.make_mut_bytes();
+                    bytes.copy_from_slice(&frame.pixels);
+                    if let Some(filters) = filters {
+                        filters.apply(bytes, frame.width, frame.height);
+                    }
+                    let _ = sender.send(FilteredFrame {
+                        tag: frame.tag,
+                        width: frame.width,
+                        height: frame.height,
+                        unfiltered: frame.pixels,
+                        display,
+                    });
+                };
+                match crate::render_pool::global() {
+                    Some(pool) => pool.spawn(job),
+                    None => job(),
+                }
+            }
+            if !readbacks_pending {
+                // Readbacks the renderer dropped (a reset) never arrive.
+                for pane in panes.panes.values_mut() {
+                    if pane.awaiting_readback.take().is_some() {
+                        pane.dirty = true;
+                        lost = true;
+                    }
+                }
+            }
+        });
+        lost
+    }
+
+    /// The filtered frames that are ready, newest per pane, and whether a
+    /// pane must render again (its frame changed while it was filtered).
+    pub(super) fn receive() -> (Vec<FilteredFrame>, bool) {
+        PANES.with(|panes| {
+            let mut panes = panes.borrow_mut();
+            let mut again = false;
+            let mut ready: Vec<FilteredFrame> = Vec::new();
+            while let Ok(frame) = panes.results.1.try_recv() {
+                let Some(pane) = panes.panes.get_mut(&frame.tag.pane_uid) else {
+                    continue;
+                };
+                pane.filtering = false;
+                again |= std::mem::take(&mut pane.dirty);
+                if frame.tag.generation > pane.shown {
+                    pane.shown = frame.tag.generation;
+                    ready.retain(|older| older.tag.pane_uid != frame.tag.pane_uid);
+                    ready.push(frame);
+                }
+            }
+            (ready, again)
+        })
+    }
+
+    /// Shows the filtered frames that are ready. Returns whether one was
+    /// shown, and whether a pane must render again.
+    pub(super) fn apply(state: &mut AppState) -> (bool, bool) {
+        let (frames, again) = receive();
+        let mut shown = false;
+        for frame in frames {
+            let Some(pane) = state.pane_by_uid(frame.tag.pane_uid) else {
+                continue;
+            };
+            if state.active_file_id_for_pane(pane) != Some(frame.tag.file_id) {
+                continue;
+            }
+            crate::set_cached_pane_cpu_result(
+                pane,
+                Image::from_rgba8(frame.display),
+                CachedCpuFrame {
+                    file_id: frame.tag.file_id,
+                    width: frame.width,
+                    height: frame.height,
+                    viewport: frame.tag.viewport,
+                    pixels: frame.unfiltered,
+                    source: Vec::new(),
+                },
+            );
+            state.set_last_rendered_file_id(pane, Some(frame.tag.file_id));
+            shown = true;
+        }
+        (shown, again)
+    }
+
+    /// Whether any pane is waiting for a readback or a filter job.
+    pub(super) fn busy() -> bool {
+        PANES.with(|panes| {
+            panes
+                .borrow()
+                .panes
+                .values()
+                .any(|pane| pane.awaiting_readback.is_some() || pane.filtering)
+        })
+    }
+
+    /// Forgets panes that no longer exist.
+    pub(super) fn retain_panes(live: &[u32]) {
+        PANES.with(|panes| panes.borrow_mut().panes.retain(|uid, _| live.contains(uid)));
+    }
+}
+
+// ─── Fallback culling ───────────────────────────────────────────────────────
+
+/// Most fallback tiles drawn of one level; they only show while the fine
+/// tiles load.
+const MAX_FALLBACK_TILES_PER_LEVEL: usize = 1024;
+
+/// The view's coverage by the fine tiles drawn this frame. A fallback tile
+/// that fine tiles hide completely is not drawn: on the CPU it would only
+/// cost compositing time, on the GPU texture layers (RND-2, RND-6).
+struct FineCoverage {
+    cached: HashSet<(u64, u64)>,
+    /// Level-0 size of a fine tile.
+    tile_extent: f64,
+    tiles_x: u64,
+    tiles_y: u64,
+    view: eov_common::viewport::ViewportBounds,
+}
+
+impl FineCoverage {
+    fn new(
+        tile_manager: &TileManager,
+        level: u32,
+        fine_tiles: &[(eov_common::TileCoord, Arc<eov_common::TileData>)],
+        view: eov_common::viewport::ViewportBounds,
+    ) -> Option<Self> {
+        let info = tile_manager.wsi().level(level)?;
+        let tile_size = tile_manager.tile_size_for_level(level);
+        Some(Self {
+            cached: fine_tiles
+                .iter()
+                .filter(|(coord, _)| coord.level == level)
+                .map(|(coord, _)| (coord.x, coord.y))
+                .collect(),
+            tile_extent: f64::from(tile_size) * info.downsample,
+            tiles_x: info.tiles_x(tile_size),
+            tiles_y: info.tiles_y(tile_size),
+            view,
+        })
+    }
+
+    /// Whether the visible part of a tile of a level with downsample
+    /// `downsample` lies entirely under cached fine tiles.
+    fn covers_tile(
+        &self,
+        coord: &eov_common::TileCoord,
+        tile: &eov_common::TileData,
+        downsample: f64,
+    ) -> bool {
+        let left = coord.x as f64 * coord.tile_size as f64 * downsample;
+        let top = coord.y as f64 * coord.tile_size as f64 * downsample;
+        self.covers(
+            left,
+            top,
+            left + tile.width as f64 * downsample,
+            top + tile.height as f64 * downsample,
+        )
+    }
+
+    /// Whether the visible part of a level-0 rectangle lies entirely under
+    /// cached fine tiles.
+    fn covers(&self, left: f64, top: f64, right: f64, bottom: f64) -> bool {
+        let l = left.max(self.view.left);
+        let t = top.max(self.view.top);
+        let r = right.min(self.view.right);
+        let b = bottom.min(self.view.bottom);
+        if r <= l || b <= t {
+            return true;
+        }
+        if self.tile_extent <= 0.0 {
+            return false;
+        }
+        let x0 = (l / self.tile_extent).floor().max(0.0) as u64;
+        let y0 = (t / self.tile_extent).floor().max(0.0) as u64;
+        let x1 = ((r / self.tile_extent).ceil().max(0.0) as u64).min(self.tiles_x);
+        let y1 = ((b / self.tile_extent).ceil().max(0.0) as u64).min(self.tiles_y);
+        if x1 <= x0 || y1 <= y0 {
+            return false;
+        }
+        (y0..y1).all(|y| (x0..x1).all(|x| self.cached.contains(&(x, y))))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -359,6 +627,51 @@ struct RenderAdjustments {
 }
 
 impl RenderAdjustments {
+    fn from_hud(hud: &crate::state::HudSettings) -> Self {
+        Self {
+            sharpness: hud.sharpness,
+            gamma: hud.gamma,
+            brightness: hud.brightness,
+            contrast: hud.contrast,
+            stain_normalization: hud.stain_normalization,
+            deconv_h_intensity: hud.deconv_hematoxylin_intensity,
+            deconv_h_visible: hud.deconv_hematoxylin_visible,
+            deconv_e_intensity: hud.deconv_eosin_intensity,
+            deconv_e_visible: hud.deconv_eosin_visible,
+            deconv_isolated: hud.deconv_isolated_channel,
+        }
+    }
+
+    /// The adjustments of the pane's last rendered frame.
+    fn last_rendered(pane: &crate::state::FilePaneState) -> Self {
+        Self {
+            sharpness: pane.last_render_sharpness,
+            gamma: pane.last_render_gamma,
+            brightness: pane.last_render_brightness,
+            contrast: pane.last_render_contrast,
+            stain_normalization: pane.last_render_stain_normalization,
+            deconv_h_intensity: pane.last_render_deconv_h_intensity,
+            deconv_h_visible: pane.last_render_deconv_h_visible,
+            deconv_e_intensity: pane.last_render_deconv_e_intensity,
+            deconv_e_visible: pane.last_render_deconv_e_visible,
+            deconv_isolated: pane.last_render_deconv_isolated,
+        }
+    }
+
+    /// Records these as the adjustments of the pane's last rendered frame.
+    fn record(self, pane: &mut crate::state::FilePaneState) {
+        pane.last_render_sharpness = self.sharpness;
+        pane.last_render_gamma = self.gamma;
+        pane.last_render_brightness = self.brightness;
+        pane.last_render_contrast = self.contrast;
+        pane.last_render_stain_normalization = self.stain_normalization;
+        pane.last_render_deconv_h_intensity = self.deconv_h_intensity;
+        pane.last_render_deconv_h_visible = self.deconv_h_visible;
+        pane.last_render_deconv_e_intensity = self.deconv_e_intensity;
+        pane.last_render_deconv_e_visible = self.deconv_e_visible;
+        pane.last_render_deconv_isolated = self.deconv_isolated;
+    }
+
     fn changed_from(self, previous: Self) -> bool {
         (self.sharpness - previous.sharpness).abs() > 0.001
             || (self.gamma - previous.gamma).abs() > 0.001
@@ -454,33 +767,29 @@ fn collect_cached_visible_tiles(
     }
 }
 
-fn tile_request_signature(
-    tile_manager: &TileManager,
-    viewport: &Viewport,
-    level: u32,
-    margin_tiles: i32,
-) -> Option<TileRequestSignature> {
-    let level_info = tile_manager.wsi().level(level)?;
-    let bounds = viewport.bounds();
-    let tile_size = tile_manager.tile_size_for_level(level);
-    let tile_size_f64 = tile_size as f64;
-    let level_left = bounds.left / level_info.downsample;
-    let level_top = bounds.top / level_info.downsample;
-    let level_right = bounds.right / level_info.downsample;
-    let level_bottom = bounds.bottom / level_info.downsample;
-    let margin_tiles_i64 = margin_tiles.max(0) as i64;
-
-    Some(TileRequestSignature {
-        level,
-        margin_tiles,
-        start_x: ((level_left / tile_size_f64).floor() as i64 - margin_tiles_i64).max(0) as u64,
-        start_y: ((level_top / tile_size_f64).floor() as i64 - margin_tiles_i64).max(0) as u64,
-        end_x: ((level_right / tile_size_f64).ceil() as u64 + margin_tiles_i64 as u64)
-            .min(level_info.tiles_x(tile_size)),
-        end_y: ((level_bottom / tile_size_f64).ceil() as u64 + margin_tiles_i64 as u64)
-            .min(level_info.tiles_y(tile_size)),
-        tile_size,
-    })
+/// One wanted-tile list for a slide from its panes' lists (each most
+/// important first): taken in turns, so every pane's centre comes before any
+/// pane's margins and fallbacks, without duplicates.
+fn merge_wanted_tiles(lists: Vec<Vec<eov_common::TileCoord>>) -> Vec<eov_common::TileCoord> {
+    if lists.len() == 1 {
+        return lists.into_iter().next().unwrap_or_default();
+    }
+    let total = lists.iter().map(Vec::len).sum();
+    let mut seen = HashSet::with_capacity(total);
+    let mut merged = Vec::with_capacity(total);
+    let mut lists: Vec<_> = lists.into_iter().map(Vec::into_iter).collect();
+    while !lists.is_empty() {
+        lists.retain_mut(|list| match list.next() {
+            Some(coord) => {
+                if seen.insert(coord) {
+                    merged.push(coord);
+                }
+                true
+            }
+            None => false,
+        });
+    }
+    merged
 }
 
 pub(crate) fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
@@ -528,6 +837,14 @@ fn begin_cache_frame(ui: &AppWindow, state: &AppState, tile_cache: &TileCache) {
 fn begin_color_frame(state: &mut AppState) {
     let open: HashSet<i32> = state.open_files.iter().map(|file| file.id).collect();
     crate::color::retain_files(&open);
+    // Render jobs and filter state of panes that are gone (RND-9).
+    let live: Vec<u32> = state.panes.iter().map(|pane| pane.uid).collect();
+    if let Some(pool) = crate::render_pool::global() {
+        pool.retain_panes(&live);
+    }
+    gpu_filters::retain_panes(&live);
+    // GPU surfaces of closed panes (RND-7).
+    crate::with_gpu_renderer(|renderer| renderer.borrow_mut().retain_slots(live.len()));
     let refitted = crate::color::files_with_new_fits();
     if refitted.is_empty() {
         return;
@@ -542,17 +859,47 @@ fn begin_color_frame(state: &mut AppState) {
     state.request_render();
 }
 
+/// Message shown when the GPU renderer fails while running.
+const GPU_FAILED_MESSAGE: &str = "The GPU renderer failed; slides are drawn by the CPU renderer";
+
+/// The GPU failed (a wgpu error or a lost device): slides are drawn by the
+/// CPU renderer from now on (RND-7).
+fn use_cpu_after_gpu_failure(ui: &AppWindow, state: &mut AppState, reason: &str) {
+    tracing::warn!("{GPU_FAILED_MESSAGE}: {reason}");
+    crate::with_gpu_renderer(|renderer| renderer.borrow_mut().disable());
+    state.gpu_backend_available = false;
+    state.select_render_backend(RenderBackend::Cpu);
+    crate::ui_update::update_render_backend(ui, state);
+    ui.set_status_text(GPU_FAILED_MESSAGE.into());
+}
+
 pub(crate) fn update_and_render(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
 ) -> bool {
+    if let Some(reason) = crate::gpu::take_failure() {
+        use_cpu_after_gpu_failure(ui, &mut state.write(), &reason);
+        crate::host_ui::with_host(|host| {
+            host.notify(
+                eov_plugin_api::protocol::NotifyLevel::Warning,
+                GPU_FAILED_MESSAGE,
+                Some(&reason),
+                None,
+            )
+        });
+    }
     let (completed_cpu_frame, cpu_jobs_pending, render_backend) = {
         let mut state = state.write();
         begin_color_frame(&mut state);
         let (completed_cpu_frame, cpu_jobs_pending) = apply_completed_cpu_renders(&mut state);
+        let filtered_frame = apply_gpu_filter_results(&mut state);
         begin_cache_frame(ui, &state, tile_cache);
-        (completed_cpu_frame, cpu_jobs_pending, state.render_backend)
+        (
+            completed_cpu_frame || filtered_frame,
+            cpu_jobs_pending,
+            state.render_backend,
+        )
     };
 
     if render_backend == RenderBackend::Cpu {
@@ -586,79 +933,69 @@ pub(crate) fn update_and_render(
         / pane_count.max(1) as f64)
         .max(100.0);
 
-    let mut wanted_tiles_by_file: HashMap<i32, HashSet<eov_common::TileCoord>> = HashMap::new();
+    // Physical pixels per logical pixel of the frames (RND-3).
+    let scale = render_scale(
+        ui.window().scale_factor(),
+        pane_width,
+        content_height,
+        crate::with_gpu_renderer(|renderer| renderer.borrow().max_surface_dimension())
+            .flatten()
+            .unwrap_or(MAX_CPU_FRAME_DIMENSION),
+    );
+
+    // Each pane's wanted tiles, most important first, per file.
+    let mut wanted_tiles_by_file: HashMap<i32, Vec<Vec<eov_common::TileCoord>>> = HashMap::new();
     for (pane_index, file_id) in active_file_ids.iter().copied().enumerate() {
         let Some(file_id) = file_id else {
             continue;
         };
         let pane = PaneId(pane_index);
-        let Some(file_index) = state.open_files.iter().position(|f| f.id == file_id) else {
+        let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
             continue;
         };
-
-        let Some((viewport_state, last_request)) = ({
-            let file = &mut state.open_files[file_index];
-            match file.pane_state_mut(pane) {
-                Some(pane_state) => {
-                    pane_state.viewport.set_size(pane_width, content_height);
-                    Some((pane_state.viewport.clone(), pane_state.last_request))
-                }
-                None => None,
-            }
-        }) else {
+        let Some(pane_state) = file.pane_state_mut(pane) else {
             continue;
         };
-
-        let vp = &viewport_state.viewport;
+        pane_state.viewport.set_size(pane_width, content_height);
+        let viewport_state = pane_state.viewport.clone();
+        let vp = &physical_viewport(&viewport_state.viewport, scale);
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-        let request = {
-            let file = &state.open_files[file_index];
-            let trilinear = calculate_trilinear_levels(
-                file.tile_manager.wsi(),
-                vp.effective_downsample(),
-                trilinear_lod_bias_enabled(filtering_mode),
-            );
-            let level = trilinear.level_fine;
-            tile_request_signature(&file.tile_manager, vp, level, margin_tiles).map(|signature| {
-                let wanted = calculate_wanted_tiles(
-                    &file.tile_manager,
-                    level,
-                    vp.bounds().left,
-                    vp.bounds().top,
-                    vp.bounds().right,
-                    vp.bounds().bottom,
-                    margin_tiles,
-                );
-                (signature, wanted)
-            })
-        };
-        if let Some((signature, wanted)) = request {
-            if last_request != Some(signature)
-                && let Some(file) = state.open_files.get_mut(file_index)
-                && let Some(pane_state) = file.pane_state_mut(pane)
-            {
-                pane_state.last_request = Some(signature);
-            }
-            wanted_tiles_by_file
-                .entry(file_id)
-                .or_default()
-                .extend(wanted);
-        }
+        let trilinear = calculate_trilinear_levels(
+            file.tile_manager.wsi(),
+            vp.effective_downsample(),
+            trilinear_lod_bias_enabled(filtering_mode),
+        );
+        let bounds = vp.bounds();
+        wanted_tiles_by_file
+            .entry(file_id)
+            .or_default()
+            .push(calculate_wanted_tiles(
+                &file.tile_manager,
+                trilinear.level_fine,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            ));
     }
 
     for (file_id, wanted_tiles) in wanted_tiles_by_file {
         if let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) {
             file.tile_loader
-                .set_wanted_tiles(wanted_tiles.into_iter().collect());
+                .set_wanted_tiles(merge_wanted_tiles(wanted_tiles));
         }
     }
 
-    let mut keep_running = render_requested || cpu_jobs_pending || crate::color::fits_pending();
+    let mut keep_running =
+        render_requested || cpu_jobs_pending || crate::color::fits_pending() || gpu_filters::busy();
     let mut rendered_frame = completed_cpu_frame;
     let filter_chain = state.filter_chain.clone();
+    let filter_revision = state.filter_revision;
 
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
         let pane = PaneId(pane_index);
+        let pane_uid = state.pane_uid(pane).unwrap_or(pane_index as u32);
         let file_switched = state.last_rendered_file_id(pane) != file_id;
         keep_running |= file_switched;
 
@@ -688,18 +1025,6 @@ pub(crate) fn update_and_render(
         });
         let force_render = file_switched || content_missing || render_requested;
 
-        if pane.0 == 1 {
-            debug!(
-                pane = pane.0,
-                file_id,
-                file_switched,
-                force_render,
-                content_missing,
-                minimap_missing,
-                "pane cache state before render"
-            );
-        }
-
         if file_switched && let Some(pane_state) = file.pane_state_mut(pane) {
             pane_state.frame_count = 0;
         }
@@ -707,7 +1032,7 @@ pub(crate) fn update_and_render(
             crate::set_cached_pane_minimap(pane, thumbnail_image_for_file(file));
         }
 
-        let outcome = render_pane_to_image(
+        let outcome = render_pane_gpu(
             file,
             pane,
             RenderPaneRequest {
@@ -716,22 +1041,13 @@ pub(crate) fn update_and_render(
                 target_width: pane_width,
                 target_height: content_height,
                 force_render,
-                render_backend,
                 filtering_mode,
                 filter_chain: &filter_chain,
+                pane_uid,
+                filter_revision,
+                scale,
             },
         );
-
-        if pane.0 == 1 {
-            debug!(
-                pane = pane.0,
-                file_id,
-                rendered = outcome.rendered,
-                image = outcome.image.is_some(),
-                keep_running = outcome.keep_running,
-                "pane render outcome"
-            );
-        }
 
         keep_running |= outcome.keep_running;
         rendered_frame |= outcome.rendered;
@@ -776,11 +1092,11 @@ fn update_and_render_cpu(
         state.filter_chain.clone()
     };
 
-    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<eov_common::TileCoord>)> =
+    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, Vec<Vec<eov_common::TileCoord>>)> =
         HashMap::new();
 
     for snapshot in frame.panes.iter().flatten() {
-        let vp = &snapshot.viewport_state.viewport;
+        let vp = &snapshot.render_viewport;
         let margin_tiles = if snapshot.viewport_state.is_moving() {
             1
         } else {
@@ -801,14 +1117,15 @@ fn update_and_render_cpu(
             margin_tiles,
         );
 
-        let entry = wanted_tiles_by_file
+        wanted_tiles_by_file
             .entry(snapshot.file_id)
-            .or_insert_with(|| (Arc::clone(&snapshot.tile_loader), HashSet::new()));
-        entry.1.extend(wanted);
+            .or_insert_with(|| (Arc::clone(&snapshot.tile_loader), Vec::new()))
+            .1
+            .push(wanted);
     }
 
     for (_, (tile_loader, wanted_tiles)) in wanted_tiles_by_file {
-        tile_loader.set_wanted_tiles(wanted_tiles.into_iter().collect());
+        tile_loader.set_wanted_tiles(merge_wanted_tiles(wanted_tiles));
     }
 
     let mut keep_running =
@@ -892,6 +1209,12 @@ fn collect_cpu_frame_snapshot(
     let pane_width = ((content_width - pane_gap * (pane_count.saturating_sub(1) as f64))
         / pane_count.max(1) as f64)
         .max(100.0);
+    let scale = render_scale(
+        ui.window().scale_factor(),
+        pane_width,
+        content_height,
+        MAX_CPU_FRAME_DIMENSION,
+    );
 
     let mut panes = Vec::with_capacity(pane_count);
     for (pane_index, file_id) in active_file_ids.into_iter().enumerate() {
@@ -901,6 +1224,7 @@ fn collect_cpu_frame_snapshot(
             continue;
         };
 
+        let pane_uid = state.pane_uid(pane).unwrap_or(pane_index as u32);
         let file_switched = state.last_rendered_file_id(pane) != Some(file_id);
         let minimap_missing = crate::with_pane_render_cache(pane_count, |cache| {
             cache
@@ -1013,26 +1337,12 @@ fn collect_cpu_frame_snapshot(
         };
 
         let color = crate::color::pane_color(file, pane);
-        let vp = &viewport_state.viewport;
-        let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-        let trilinear = calculate_trilinear_levels(
-            tile_manager.wsi(),
-            vp.effective_downsample(),
-            trilinear_lod_bias_enabled(filtering_mode),
-        );
-        let request_signature =
-            tile_request_signature(&tile_manager, vp, trilinear.level_fine, margin_tiles);
-        if let Some(pane_state) = file.pane_state_mut(pane)
-            && pane_state.last_request != request_signature
-        {
-            pane_state.last_request = request_signature;
-        }
+        let render_viewport = physical_viewport(&viewport_state.viewport, scale);
 
         panes.push(Some(CpuPaneSnapshot {
             pane,
+            pane_uid,
             file_id,
-            file_path: file.path.to_string_lossy().into_owned(),
-            filename: file.filename.clone(),
             file_switched,
             content_missing,
             minimap_missing,
@@ -1040,6 +1350,8 @@ fn collect_cpu_frame_snapshot(
             tile_manager,
             tile_loader,
             viewport_state,
+            render_viewport,
+            scale,
             frame_count,
             last_render_zoom,
             last_render_center_x,
@@ -1126,11 +1438,32 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
         if let Some(needs_settled_cpu_render) = execution.commit.needs_settled_cpu_render {
             pane_state.needs_settled_cpu_render = needs_settled_cpu_render;
         }
+        if let Some(revision) = execution.commit.last_render_filter_revision {
+            pane_state.last_render_filter_revision = revision;
+        }
     }
 
     if execution.outcome.image.is_some() || execution.content_missing {
         state.set_last_rendered_file_id(pane, Some(file_id));
     }
+}
+
+/// Hands GPU frames read back for plugin filters to the render pool and
+/// shows the filtered frames that came back. Returns whether one was shown.
+fn apply_gpu_filter_results(state: &mut AppState) -> bool {
+    let (frames, pending) = crate::with_gpu_renderer(|renderer| {
+        let mut renderer = renderer.borrow_mut();
+        let frames = renderer.poll_readbacks();
+        (frames, renderer.readbacks_pending())
+    })
+    .unwrap_or_default();
+    let lost = gpu_filters::dispatch(frames, pending, &state.filter_chain);
+    let (shown, again) = gpu_filters::apply(state);
+    if again || lost {
+        // A pane's frame changed while it was being filtered.
+        state.request_render();
+    }
+    shown
 }
 
 fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
@@ -1145,8 +1478,12 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
         pool.recycle_buffer(result.source);
     };
 
-    while let Some(mut result) = pool.try_recv() {
-        let pane = PaneId(result.pane_index);
+    while let Some(result) = pool.try_recv() {
+        // The pane may have moved since the job started (RND-9).
+        let Some(pane) = state.pane_by_uid(result.pane_uid) else {
+            recycle(result);
+            continue;
+        };
         let is_active = state.active_file_id_for_pane(pane) == Some(result.file_id);
         let Some(file) = state
             .open_files
@@ -1156,8 +1493,6 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             recycle(result);
             continue;
         };
-        let file_path = file.path.to_string_lossy().into_owned();
-        let filename = file.filename.clone();
         let Some(pane_state) = file.pane_state_mut(pane) else {
             recycle(result);
             continue;
@@ -1176,45 +1511,17 @@ fn apply_completed_cpu_renders(state: &mut AppState) -> (bool, bool) {
             continue;
         }
 
-        let filter_viewport = viewport_snapshot_ffi_for_render(
-            result.file_id,
-            &file_path,
-            &filename,
-            &pane_state.viewport,
-            pane,
-        );
-        let cached_base_pixels = result.pixels.clone();
-
-        // Apply in-process viewport filters (e.g. grayscale from FFI plugins).
-        {
-            let chain = state.filter_chain.read();
-            if chain.has_enabled_cpu_filters() {
-                chain.apply_cpu(
-                    &mut result.pixels,
-                    result.width,
-                    result.height,
-                    Some(&filter_viewport),
-                );
-            }
-        }
-
-        let Some(buffer) =
-            blitter::create_image_buffer(&result.pixels, result.width, result.height)
-        else {
-            recycle(result);
-            continue;
-        };
-        pool.recycle_buffer(result.pixels);
-
+        // Composited, processed and filtered on the worker: only the image
+        // swap is left for the UI thread (RND-6).
         crate::set_cached_pane_cpu_result(
             pane,
-            Image::from_rgba8(buffer),
+            Image::from_rgba8(result.display),
             CachedCpuFrame {
                 file_id: result.file_id,
                 width: result.width,
                 height: result.height,
                 viewport: result.viewport,
-                pixels: cached_base_pixels,
+                pixels: result.pixels,
                 source: result.source,
             },
         );
@@ -1240,7 +1547,7 @@ fn render_cpu_pane_from_snapshot(
     tile_cache: &Arc<TileCache>,
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
 ) -> CpuPaneExecution {
-    let vp = &snapshot.viewport_state.viewport;
+    let vp = &snapshot.render_viewport;
     let vp_zoom = vp.zoom;
     let vp_center_x = vp.center.x;
     let vp_center_y = vp.center.y;
@@ -1320,6 +1627,7 @@ fn render_cpu_pane_from_snapshot(
         frame_update: None,
         pending_cpu_job_id: None,
         needs_settled_cpu_render: None,
+        last_render_filter_revision: None,
     };
 
     if !snapshot.file_switched
@@ -1369,18 +1677,18 @@ fn render_cpu_pane_from_snapshot(
         && !new_tiles_loaded
         && !adjustments_changed
         && !snapshot.needs_settled_cpu_render
-        && let Some(image) =
-            render_cached_cpu_frame_with_filters(RenderCachedCpuFrameWithFiltersContext {
-                pane: snapshot.pane,
-                file_id: snapshot.file_id,
-                file_path: &snapshot.file_path,
-                filename: &snapshot.filename,
-                viewport: vp,
-                render_width,
-                render_height,
-                filter_chain,
-            })
+        && let Some(image) = refilter_cached_frame(
+            snapshot.pane,
+            snapshot.pane_uid,
+            snapshot.file_id,
+            vp,
+            render_width,
+            render_height,
+            filter_chain,
+            snapshot.scale,
+        )
     {
+        commit.last_render_filter_revision = Some(snapshot.filter_revision);
         return CpuPaneExecution {
             pane: snapshot.pane,
             file_id: snapshot.file_id,
@@ -1434,7 +1742,9 @@ fn render_cpu_pane_from_snapshot(
     };
 
     let mut pending_cpu_job_id = snapshot.pending_cpu_job_id;
-    if pending_cpu_job_id.is_some() && (viewport_changed || level_changed || adjustments_changed) {
+    if pending_cpu_job_id.is_some()
+        && (viewport_changed || level_changed || adjustments_changed || filters_changed)
+    {
         commit.pending_cpu_job_id = Some(None);
         pending_cpu_job_id = None;
     }
@@ -1452,143 +1762,28 @@ fn render_cpu_pane_from_snapshot(
     };
     let effective_trilinear = filter_uses_trilinear(filtering_mode, effective_lanczos_weight);
 
-    let level_count = snapshot.tile_manager.wsi().level_count();
-    let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
-    for fallback_level in (0..level_count).rev() {
-        if fallback_level <= level {
-            continue;
-        }
-        let Some(fallback_level_info) = snapshot.tile_manager.wsi().level(fallback_level).cloned()
-        else {
-            continue;
-        };
-        let fallback_tiles = snapshot.tile_manager.visible_tiles(
-            fallback_level,
-            bounds.left,
-            bounds.top,
-            bounds.right,
-            bounds.bottom,
-        );
-        for fb_coord in fallback_tiles.iter().take(100) {
-            let Some(fallback_tile) = tile_cache.peek(fb_coord) else {
-                continue;
-            };
-            let fb_origin_x = fb_coord.x as f64 * fb_coord.tile_size as f64;
-            let fb_origin_y = fb_coord.y as f64 * fb_coord.tile_size as f64;
-            let fb_image_x = fb_origin_x * fallback_level_info.downsample;
-            let fb_image_y = fb_origin_y * fallback_level_info.downsample;
-            let fb_image_x_end =
-                (fb_origin_x + fallback_tile.width as f64) * fallback_level_info.downsample;
-            let fb_image_y_end =
-                (fb_origin_y + fallback_tile.height as f64) * fallback_level_info.downsample;
-            let exact_sx = (fb_image_x - bounds.left) * vp.zoom;
-            let exact_sy = (fb_image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (fb_image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (fb_image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            let screen_w = screen_x_end - screen_x;
-            let screen_h = screen_y_end - screen_y;
-            if screen_w <= 0 || screen_h <= 0 {
-                continue;
-            }
-
-            fallback_commands.push(CpuBlitCommand {
-                tile: fallback_tile,
-                rect: blitter::BlitRect {
-                    x: screen_x,
-                    y: screen_y,
-                    width: screen_w,
-                    height: screen_h,
-                    exact_x: exact_sx,
-                    exact_y: exact_sy,
-                    exact_width: exact_sx_end - exact_sx,
-                    exact_height: exact_sy_end - exact_sy,
-                },
-                kind: CpuBlitKind::Bilinear,
-            });
-        }
-    }
-
-    let fine_blit_rect =
-        |coord: &eov_common::TileCoord, tile_data: &eov_common::TileData| -> blitter::BlitRect {
-            let origin_x = coord.x as f64 * coord.tile_size as f64;
-            let origin_y = coord.y as f64 * coord.tile_size as f64;
-            let image_x = origin_x * level_info.downsample;
-            let image_y = origin_y * level_info.downsample;
-            let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
-            let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
-            let exact_sx = (image_x - bounds.left) * vp.zoom;
-            let exact_sy = (image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            blitter::BlitRect {
-                x: screen_x,
-                y: screen_y,
-                width: screen_x_end - screen_x,
-                height: screen_y_end - screen_y,
-                exact_x: exact_sx,
-                exact_y: exact_sy,
-                exact_width: exact_sx_end - exact_sx,
-                exact_height: exact_sy_end - exact_sy,
-            }
-        };
-
-    let cached_coarse_tile_map: HashMap<_, _> = cached_tiles.coarse_tiles.iter().cloned().collect();
-    let do_fused_trilinear = effective_trilinear
-        && trilinear.level_fine != trilinear.level_coarse
-        && trilinear.blend > 0.01
-        && !cached_coarse_tile_map.is_empty();
-    let coarse_blends: HashMap<_, _> = if do_fused_trilinear {
-        cached_tiles
-            .fine_tiles
-            .iter()
-            .filter_map(|(coord, tile)| {
-                coarse_blend_for_tile(
-                    &snapshot.tile_manager,
-                    &cached_coarse_tile_map,
-                    trilinear,
-                    level_info.downsample,
-                    *coord,
-                    tile,
-                )
-                .map(|blend| (*coord, blend))
-            })
-            .collect()
-    } else {
-        HashMap::new()
-    };
-
-    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.fine_tiles.len());
-    for (coord, tile_data) in cached_tiles.fine_tiles.iter() {
-        let rect = fine_blit_rect(coord, tile_data);
-        if rect.width <= 0 || rect.height <= 0 {
-            continue;
-        }
-        let kind = if let Some((coarse_tile, uv_min, uv_max, blend)) = coarse_blends.get(coord) {
-            CpuBlitKind::Trilinear {
-                coarse_tile: Arc::clone(coarse_tile),
-                uv_min: *uv_min,
-                uv_max: *uv_max,
-                blend: *blend,
-            }
-        } else if is_adaptive_lanczos && effective_lanczos_weight >= 1.0 {
-            CpuBlitKind::Lanczos3
-        } else {
-            CpuBlitKind::Bilinear
-        };
-        fine_commands.push(CpuBlitCommand {
-            tile: Arc::clone(tile_data),
-            rect,
-            kind,
-        });
-    }
+    let coverage = FineCoverage::new(
+        &snapshot.tile_manager,
+        level,
+        &cached_tiles.fine_tiles,
+        bounds,
+    );
+    let fallback_commands = fallback_blits(
+        &snapshot.tile_manager,
+        tile_cache,
+        vp,
+        level,
+        coverage.as_ref(),
+    );
+    let fine_commands = fine_blits(
+        &snapshot.tile_manager,
+        vp,
+        &level_info,
+        trilinear,
+        &cached_tiles,
+        effective_trilinear,
+        is_adaptive_lanczos && effective_lanczos_weight >= 1.0,
+    );
 
     let postprocess = CpuRenderPostProcess {
         pipeline: Arc::clone(&snapshot.color.pipeline),
@@ -1598,10 +1793,10 @@ fn render_cpu_pane_from_snapshot(
     let preview_image = if is_moving {
         render_cached_preview(RenderCachedPreview {
             pane: snapshot.pane,
+            pane_uid: snapshot.pane_uid,
             file_id: snapshot.file_id,
-            file_path: &snapshot.file_path,
-            filename: &snapshot.filename,
             viewport: vp,
+            scale: snapshot.scale,
             render_width,
             render_height,
             fallback_commands: &fallback_commands,
@@ -1618,7 +1813,7 @@ fn render_cpu_pane_from_snapshot(
     {
         let job_id = pool.next_job_id();
         pool.submit(CpuRenderJob {
-            pane_index: snapshot.pane.0,
+            pane_uid: snapshot.pane_uid,
             file_id: snapshot.file_id,
             job_id,
             width: render_width,
@@ -1627,6 +1822,13 @@ fn render_cpu_pane_from_snapshot(
             fallback_blits: fallback_commands,
             fine_blits: fine_commands,
             postprocess,
+            filters: frame_filters(
+                filter_chain,
+                snapshot.file_id,
+                snapshot.pane_uid,
+                vp,
+                snapshot.scale,
+            ),
             settled_quality: !is_moving,
         });
         commit.pending_cpu_job_id = Some(Some(job_id));
@@ -1659,7 +1861,134 @@ fn render_cpu_pane_from_snapshot(
     }
 }
 
-fn render_pane_to_image(
+/// Screen rectangle of a tile of a level with downsample `downsample`.
+fn tile_blit_rect(
+    viewport: &Viewport,
+    coord: &eov_common::TileCoord,
+    tile: &eov_common::TileData,
+    downsample: f64,
+) -> blitter::BlitRect {
+    let bounds = viewport.bounds();
+    let origin_x = coord.x as f64 * coord.tile_size as f64;
+    let origin_y = coord.y as f64 * coord.tile_size as f64;
+    let exact_sx = (origin_x * downsample - bounds.left) * viewport.zoom;
+    let exact_sy = (origin_y * downsample - bounds.top) * viewport.zoom;
+    let exact_sx_end = ((origin_x + tile.width as f64) * downsample - bounds.left) * viewport.zoom;
+    let exact_sy_end = ((origin_y + tile.height as f64) * downsample - bounds.top) * viewport.zoom;
+    let screen_x = exact_sx.floor() as i32;
+    let screen_y = exact_sy.floor() as i32;
+    blitter::BlitRect {
+        x: screen_x,
+        y: screen_y,
+        width: exact_sx_end.floor() as i32 - screen_x,
+        height: exact_sy_end.floor() as i32 - screen_y,
+        exact_x: exact_sx,
+        exact_y: exact_sy,
+        exact_width: exact_sx_end - exact_sx,
+        exact_height: exact_sy_end - exact_sy,
+    }
+}
+
+/// Cached tiles of the levels coarser than `level`, coarsest first, drawn
+/// under the fine tiles while those load; tiles the fine tiles cover
+/// completely are left out.
+fn fallback_blits(
+    tile_manager: &TileManager,
+    tile_cache: &TileCache,
+    viewport: &Viewport,
+    level: u32,
+    coverage: Option<&FineCoverage>,
+) -> Vec<CpuBlitCommand> {
+    let bounds = viewport.bounds();
+    let mut commands = Vec::new();
+    for fallback_level in (level + 1..tile_manager.wsi().level_count()).rev() {
+        let Some(info) = tile_manager.wsi().level(fallback_level).cloned() else {
+            continue;
+        };
+        let tiles = tile_manager.visible_tiles(
+            fallback_level,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+        );
+        let uncovered = tiles
+            .iter()
+            .filter_map(|coord| Some((coord, tile_cache.peek(coord)?)))
+            .filter(|(coord, tile)| {
+                !coverage.is_some_and(|coverage| coverage.covers_tile(coord, tile, info.downsample))
+            })
+            .take(MAX_FALLBACK_TILES_PER_LEVEL);
+        for (coord, tile) in uncovered {
+            let rect = tile_blit_rect(viewport, coord, &tile, info.downsample);
+            if rect.width <= 0 || rect.height <= 0 {
+                continue;
+            }
+            commands.push(CpuBlitCommand {
+                tile,
+                rect,
+                kind: CpuBlitKind::Bilinear,
+            });
+        }
+    }
+    commands
+}
+
+/// The fine tiles, with their coarse partners when blending trilinearly.
+fn fine_blits(
+    tile_manager: &TileManager,
+    viewport: &Viewport,
+    level_info: &eov_common::WsiLevel,
+    trilinear: TrilinearLevels,
+    cached_tiles: &CachedVisibleTiles,
+    use_trilinear: bool,
+    use_lanczos: bool,
+) -> Vec<CpuBlitCommand> {
+    let coarse_tiles: HashMap<_, _> = cached_tiles.coarse_tiles.iter().cloned().collect();
+    let blend_coarse = use_trilinear
+        && trilinear.level_fine != trilinear.level_coarse
+        && trilinear.blend > 0.01
+        && !coarse_tiles.is_empty();
+    let mut commands = Vec::with_capacity(cached_tiles.fine_tiles.len());
+    for (coord, tile) in &cached_tiles.fine_tiles {
+        let rect = tile_blit_rect(viewport, coord, tile, level_info.downsample);
+        if rect.width <= 0 || rect.height <= 0 {
+            continue;
+        }
+        let coarse = blend_coarse
+            .then(|| {
+                coarse_blend_for_tile(
+                    tile_manager,
+                    &coarse_tiles,
+                    trilinear,
+                    level_info.downsample,
+                    *coord,
+                    tile,
+                )
+            })
+            .flatten();
+        let kind = if let Some((coarse_tile, uv_min, uv_max, blend)) = coarse {
+            CpuBlitKind::Trilinear {
+                coarse_tile,
+                uv_min,
+                uv_max,
+                blend,
+            }
+        } else if use_lanczos {
+            CpuBlitKind::Lanczos3
+        } else {
+            CpuBlitKind::Bilinear
+        };
+        commands.push(CpuBlitCommand {
+            tile: Arc::clone(tile),
+            rect,
+            kind,
+        });
+    }
+    commands
+}
+
+fn render_pane_gpu(
     file: &mut OpenFile,
     pane: PaneId,
     request: RenderPaneRequest<'_>,
@@ -1670,102 +1999,31 @@ fn render_pane_to_image(
         target_width,
         target_height,
         force_render,
-        render_backend,
         filtering_mode,
         filter_chain,
+        pane_uid,
+        filter_revision,
+        scale,
     } = request;
 
-    let (
-        animating,
-        viewport_state,
-        frame_count,
-        last_render_zoom,
-        last_render_center_x,
-        last_render_center_y,
-        last_render_width,
-        last_render_height,
-        last_render_level,
-        previous_tiles_loaded,
-        last_seen_tile_epoch,
-        hud_sharpness,
-        hud_gamma,
-        hud_brightness,
-        hud_contrast,
-        hud_stain_normalization,
-        hud_deconv_h_intensity,
-        hud_deconv_h_visible,
-        hud_deconv_e_intensity,
-        hud_deconv_e_visible,
-        hud_deconv_isolated,
-        last_render_sharpness,
-        last_render_gamma,
-        last_render_brightness,
-        last_render_contrast,
-        last_render_stain_normalization,
-        last_render_deconv_h_intensity,
-        last_render_deconv_h_visible,
-        last_render_deconv_e_intensity,
-        last_render_deconv_e_visible,
-        last_render_deconv_isolated,
-        pending_cpu_job_id,
-        needs_settled_cpu_render,
-    ) = {
-        let Some(pane_state) = file.pane_state_mut(pane) else {
-            return PaneRenderOutcome::default();
-        };
-
-        let animating = pane_state.viewport.update();
-        pane_state.viewport.set_size(target_width, target_height);
-        (
-            animating,
-            pane_state.viewport.clone(),
-            pane_state.frame_count,
-            pane_state.last_render_zoom,
-            pane_state.last_render_center_x,
-            pane_state.last_render_center_y,
-            pane_state.last_render_width,
-            pane_state.last_render_height,
-            pane_state.last_render_level,
-            pane_state.tiles_loaded_since_render,
-            pane_state.last_seen_tile_epoch,
-            pane_state.hud.sharpness,
-            pane_state.hud.gamma,
-            pane_state.hud.brightness,
-            pane_state.hud.contrast,
-            pane_state.hud.stain_normalization,
-            pane_state.hud.deconv_hematoxylin_intensity,
-            pane_state.hud.deconv_hematoxylin_visible,
-            pane_state.hud.deconv_eosin_intensity,
-            pane_state.hud.deconv_eosin_visible,
-            pane_state.hud.deconv_isolated_channel,
-            pane_state.last_render_sharpness,
-            pane_state.last_render_gamma,
-            pane_state.last_render_brightness,
-            pane_state.last_render_contrast,
-            pane_state.last_render_stain_normalization,
-            pane_state.last_render_deconv_h_intensity,
-            pane_state.last_render_deconv_h_visible,
-            pane_state.last_render_deconv_e_intensity,
-            pane_state.last_render_deconv_e_visible,
-            pane_state.last_render_deconv_isolated,
-            pane_state.pending_cpu_job_id,
-            pane_state.needs_settled_cpu_render,
-        )
+    let Some(pane_state) = file.pane_state_mut(pane) else {
+        return PaneRenderOutcome::default();
     };
+    let animating = pane_state.viewport.update();
+    pane_state.viewport.set_size(target_width, target_height);
+    let last = pane_state.clone();
 
-    let vp = &viewport_state.viewport;
-    let vp_zoom = vp.zoom;
-    let vp_center_x = vp.center.x;
-    let vp_center_y = vp.center.y;
-    let vp_width = vp.width;
-    let vp_height = vp.height;
-    let is_first_frame = frame_count == 0;
+    let viewport_state = &last.viewport;
+    // Frames, levels and change detection are in physical pixels.
+    let physical = physical_viewport(&viewport_state.viewport, scale);
+    let vp = &physical;
+    let is_first_frame = last.frame_count == 0;
     let viewport_changed = animating
-        || (last_render_zoom - vp_zoom).abs() > 0.001
-        || (last_render_center_x - vp_center_x).abs() > 1.0
-        || (last_render_center_y - vp_center_y).abs() > 1.0
-        || (last_render_width - vp_width).abs() > 1.0
-        || (last_render_height - vp_height).abs() > 1.0;
+        || (last.last_render_zoom - vp.zoom).abs() > 0.001
+        || (last.last_render_center_x - vp.center.x).abs() > 1.0
+        || (last.last_render_center_y - vp.center.y).abs() > 1.0
+        || (last.last_render_width - vp.width).abs() > 1.0
+        || (last.last_render_height - vp.height).abs() > 1.0;
 
     let trilinear = calculate_trilinear_levels(
         file.tile_manager.wsi(),
@@ -1774,10 +2032,8 @@ fn render_pane_to_image(
     );
     let level = trilinear.level_fine;
     let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-    let level_changed = level != last_render_level;
-
-    let bounds = vp.bounds();
-    let (lanczos_weight, use_trilinear_blend) = requested_trilinear_blend(filtering_mode, vp_zoom);
+    let level_changed = level != last.last_render_level;
+    let (lanczos_weight, use_trilinear_blend) = requested_trilinear_blend(filtering_mode, vp.zoom);
     let cached_tiles = collect_cached_visible_tiles(
         &file.tile_manager,
         tile_cache,
@@ -1787,107 +2043,35 @@ fn render_pane_to_image(
         use_trilinear_blend,
     );
     let cached_count = cached_tiles.fine_tiles.len() as u32;
-
     let loaded_tile_epoch = file.tile_loader.loaded_epoch();
-    let tile_epoch_advanced = loaded_tile_epoch > last_seen_tile_epoch;
     let new_tiles_loaded = cached_count
         > if level_changed {
             0
         } else {
-            previous_tiles_loaded
+            last.tiles_loaded_since_render
         }
-        || tile_epoch_advanced;
+        || loaded_tile_epoch > last.last_seen_tile_epoch;
     let tiles_pending = file.tile_loader.pending_count() > 0;
-
     let keep_running = animating || new_tiles_loaded || tiles_pending;
+    let adjustments = RenderAdjustments::from_hud(&last.hud);
+    let adjustments_changed = adjustments.changed_from(RenderAdjustments::last_rendered(&last));
+    let filters_changed = filter_revision != last.last_render_filter_revision;
+    let frame_changed = is_first_frame
+        || viewport_changed
+        || level_changed
+        || new_tiles_loaded
+        || adjustments_changed;
 
-    if pane.0 == 1 {
-        debug!(
-            pane = pane.0,
-            zoom = vp_zoom,
-            width = vp_width,
-            height = vp_height,
-            level,
-            trilinear_lod_before_bias = trilinear.lod_before_bias,
-            trilinear_lod_after_bias = trilinear.lod_after_bias,
-            cached_count,
-            coarse_tiles = cached_tiles.coarse_tiles.len(),
-            previous_tiles_loaded,
-            tile_epoch_advanced,
-            tiles_pending,
-            viewport_changed,
-            level_changed,
-            force_render,
-            keep_running,
-            "pane render decision inputs"
-        );
-    }
-
-    let adjustments_changed = RenderAdjustments {
-        sharpness: hud_sharpness,
-        gamma: hud_gamma,
-        brightness: hud_brightness,
-        contrast: hud_contrast,
-        stain_normalization: hud_stain_normalization,
-        deconv_h_intensity: hud_deconv_h_intensity,
-        deconv_h_visible: hud_deconv_h_visible,
-        deconv_e_intensity: hud_deconv_e_intensity,
-        deconv_e_visible: hud_deconv_e_visible,
-        deconv_isolated: hud_deconv_isolated,
-    }
-    .changed_from(RenderAdjustments {
-        sharpness: last_render_sharpness,
-        gamma: last_render_gamma,
-        brightness: last_render_brightness,
-        contrast: last_render_contrast,
-        stain_normalization: last_render_stain_normalization,
-        deconv_h_intensity: last_render_deconv_h_intensity,
-        deconv_h_visible: last_render_deconv_h_visible,
-        deconv_e_intensity: last_render_deconv_e_intensity,
-        deconv_e_visible: last_render_deconv_e_visible,
-        deconv_isolated: last_render_deconv_isolated,
-    });
-
-    if !force_render
-        && !is_first_frame
-        && !viewport_changed
-        && !level_changed
-        && !new_tiles_loaded
-        && !adjustments_changed
-        && !needs_settled_cpu_render
-    {
+    if !force_render && !frame_changed && !filters_changed {
         return PaneRenderOutcome {
             image: None,
-            keep_running: keep_running || pending_cpu_job_id.is_some(),
+            keep_running,
             rendered: false,
         };
     }
 
-    if let Some(pane_state) = file.pane_state_mut(pane) {
-        pane_state.frame_count += 1;
-        pane_state.last_render_time = std::time::Instant::now();
-        pane_state.last_render_zoom = vp_zoom;
-        pane_state.last_render_center_x = vp_center_x;
-        pane_state.last_render_center_y = vp_center_y;
-        pane_state.last_render_width = vp_width;
-        pane_state.last_render_height = vp_height;
-        pane_state.last_render_level = level;
-        pane_state.tiles_loaded_since_render = cached_count;
-        pane_state.last_seen_tile_epoch = loaded_tile_epoch;
-        pane_state.last_render_gamma = hud_gamma;
-        pane_state.last_render_brightness = hud_brightness;
-        pane_state.last_render_contrast = hud_contrast;
-        pane_state.last_render_sharpness = hud_sharpness;
-        pane_state.last_render_stain_normalization = hud_stain_normalization;
-        pane_state.last_render_deconv_h_intensity = hud_deconv_h_intensity;
-        pane_state.last_render_deconv_h_visible = hud_deconv_h_visible;
-        pane_state.last_render_deconv_e_intensity = hud_deconv_e_intensity;
-        pane_state.last_render_deconv_e_visible = hud_deconv_e_visible;
-        pane_state.last_render_deconv_isolated = hud_deconv_isolated;
-    }
-
-    let render_width = vp_width as u32;
-    let render_height = vp_height.max(1.0) as u32;
+    let render_width = vp.width as u32;
+    let render_height = vp.height.max(1.0) as u32;
     if render_width == 0 || render_height == 0 {
         return PaneRenderOutcome {
             image: None,
@@ -1896,392 +2080,107 @@ fn render_pane_to_image(
         };
     }
 
-    let is_moving = viewport_state.is_moving() || animating;
-
-    if force_render
-        && !is_first_frame
-        && !viewport_changed
-        && !level_changed
-        && !new_tiles_loaded
-        && !adjustments_changed
-        && !needs_settled_cpu_render
-        && let Some(image) =
-            render_cached_cpu_frame_with_filters(RenderCachedCpuFrameWithFiltersContext {
-                pane,
-                file_id: file.id,
-                file_path: &file.path.to_string_lossy(),
-                filename: &file.filename,
-                viewport: vp,
-                render_width,
-                render_height,
-                filter_chain,
-            })
-    {
-        return PaneRenderOutcome {
-            image: Some(image),
-            keep_running: keep_running || pending_cpu_job_id.is_some(),
-            rendered: true,
-        };
-    }
-
-    let has_cpu_only_filters =
-        render_backend == RenderBackend::Gpu && filter_chain.read().has_enabled_cpu_only_filters();
-
-    if force_render
-        && has_cpu_only_filters
-        && !is_first_frame
-        && !viewport_changed
-        && !level_changed
-        && !new_tiles_loaded
-        && !adjustments_changed
-        && !needs_settled_cpu_render
-        && file
-            .pane_state(pane)
-            .map(|pane_state| pane_state.gpu_surface_valid)
-            .unwrap_or(false)
-        && let Some(image) = render_gpu_surface_with_filters(RenderGpuSurfaceWithFiltersContext {
-            pane,
-            file_id: file.id,
-            file_path: &file.path.to_string_lossy(),
-            filename: &file.filename,
-            viewport: vp,
-            render_width,
-            render_height,
-            filter_chain,
-        })
-    {
-        return PaneRenderOutcome {
-            image: Some(image),
-            keep_running: keep_running || pending_cpu_job_id.is_some(),
-            rendered: true,
-        };
-    }
-
-    // CPU-only filters need the live CPU preview path even while moving so
-    // newly visible tiles are composited into the frame instead of reprojecting
-    // the last settled image.
-    let effective_render_backend = if has_cpu_only_filters {
-        RenderBackend::Cpu
-    } else {
-        render_backend
-    };
-
-    if effective_render_backend == RenderBackend::Gpu {
-        // Adaptive Lanczos: at low zoom, switch to trilinear on GPU
-        let gpu_filtering = if filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0 {
-            FilteringMode::Trilinear
-        } else {
-            filtering_mode
-        };
-        let gpu_use_trilinear = gpu_filtering == FilteringMode::Trilinear;
-        let gpu_trilinear = if gpu_use_trilinear {
-            trilinear
-        } else {
-            single_level_trilinear(trilinear.level_fine)
-        };
-        let draws = collect_tile_draws_from_cached(
-            file,
-            tile_cache,
-            vp,
-            gpu_trilinear,
-            gpu_filtering,
-            &cached_tiles.fine_tiles,
-            &cached_tiles.coarse_tiles,
-        );
-        let color = crate::color::pane_color(file, pane);
-        let slot = match pane {
-            PaneId::PRIMARY => SurfaceSlot::PRIMARY,
-            PaneId::SECONDARY => SurfaceSlot::SECONDARY,
-            _ => SurfaceSlot(pane.0),
-        };
-        let image = crate::with_gpu_renderer(|renderer| {
-            renderer.borrow_mut().queue_frame(
-                slot,
-                QueuedFrame {
-                    width: render_width,
-                    height: render_height,
-                    draws,
-                    color: color.pipeline.gpu_uniform(),
-                    sharpness: color.pipeline.sharpness(),
-                },
-            )
-        })
-        .flatten();
-
-        if image.is_some() {
-            if let Some(pane_state) = file.pane_state_mut(pane) {
-                pane_state.gpu_surface_valid = true;
-            }
-            ui.window().request_redraw();
-        } else if let Some(pane_state) = file.pane_state_mut(pane) {
-            pane_state.frame_count = 0;
-            pane_state.last_render_level = u32::MAX;
-            pane_state.tiles_loaded_since_render = 0;
-            pane_state.gpu_surface_valid = false;
-        }
-        let rendered = image.is_some();
-
-        return PaneRenderOutcome {
-            image,
-            keep_running: keep_running || !rendered,
-            rendered,
-        };
-    }
-
     if let Some(pane_state) = file.pane_state_mut(pane) {
-        pane_state.gpu_surface_valid = false;
+        pane_state.frame_count += 1;
+        pane_state.last_render_time = std::time::Instant::now();
+        pane_state.last_render_zoom = vp.zoom;
+        pane_state.last_render_center_x = vp.center.x;
+        pane_state.last_render_center_y = vp.center.y;
+        pane_state.last_render_width = vp.width;
+        pane_state.last_render_height = vp.height;
+        pane_state.last_render_level = level;
+        pane_state.tiles_loaded_since_render = cached_count;
+        pane_state.last_seen_tile_epoch = loaded_tile_epoch;
+        pane_state.last_render_filter_revision = filter_revision;
+        adjustments.record(pane_state);
     }
 
-    let level_info = match file.tile_manager.wsi().level(level) {
-        Some(info) => info.clone(),
-        None => {
-            return PaneRenderOutcome {
-                image: None,
-                keep_running: keep_running || pending_cpu_job_id.is_some(),
-                rendered: false,
-            };
-        }
-    };
-
-    let mut pending_cpu_job_id = pending_cpu_job_id;
-
-    if pending_cpu_job_id.is_some() && (viewport_changed || level_changed || adjustments_changed) {
-        if let Some(pane_state) = file.pane_state_mut(pane) {
-            pane_state.pending_cpu_job_id = None;
-        }
-        pending_cpu_job_id = None;
-    }
-
-    if is_moving && let Some(pane_state) = file.pane_state_mut(pane) {
-        pane_state.needs_settled_cpu_render = true;
-    }
-
-    let effective_filtering =
-        effective_cpu_filtering_mode(filtering_mode, use_trilinear_blend, is_moving);
-
-    let is_adaptive_lanczos = effective_filtering == FilteringMode::Lanczos3;
-    let effective_lanczos_weight = if is_adaptive_lanczos {
-        lanczos_weight
+    // Adaptive Lanczos: at low zoom, switch to trilinear on GPU
+    let gpu_filtering = if filtering_mode == FilteringMode::Lanczos3 && lanczos_weight < 1.0 {
+        FilteringMode::Trilinear
     } else {
-        1.0
+        filtering_mode
     };
-    let effective_trilinear = filter_uses_trilinear(effective_filtering, effective_lanczos_weight);
-
-    let level_count = file.tile_manager.wsi().level_count();
-    let mut fallback_commands: Vec<CpuBlitCommand> = Vec::new();
-    for fallback_level in (0..level_count).rev() {
-        if fallback_level <= level {
-            continue;
-        }
-
-        let Some(fallback_level_info) = file.tile_manager.wsi().level(fallback_level).cloned()
-        else {
-            continue;
-        };
-
-        let fallback_tiles = file.tile_manager.visible_tiles(
-            fallback_level,
-            bounds.left,
-            bounds.top,
-            bounds.right,
-            bounds.bottom,
-        );
-
-        for fb_coord in fallback_tiles.iter().take(100) {
-            let Some(fallback_tile) = tile_cache.peek(fb_coord) else {
-                continue;
-            };
-
-            let fb_origin_x = fb_coord.x as f64 * fb_coord.tile_size as f64;
-            let fb_origin_y = fb_coord.y as f64 * fb_coord.tile_size as f64;
-            let fb_image_x = fb_origin_x * fallback_level_info.downsample;
-            let fb_image_y = fb_origin_y * fallback_level_info.downsample;
-            let fb_image_x_end =
-                (fb_origin_x + fallback_tile.width as f64) * fallback_level_info.downsample;
-            let fb_image_y_end =
-                (fb_origin_y + fallback_tile.height as f64) * fallback_level_info.downsample;
-            let exact_sx = (fb_image_x - bounds.left) * vp.zoom;
-            let exact_sy = (fb_image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (fb_image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (fb_image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            let screen_w = screen_x_end - screen_x;
-            let screen_h = screen_y_end - screen_y;
-            if screen_w <= 0 || screen_h <= 0 {
-                continue;
-            }
-
-            fallback_commands.push(CpuBlitCommand {
-                tile: fallback_tile,
-                rect: blitter::BlitRect {
-                    x: screen_x,
-                    y: screen_y,
-                    width: screen_w,
-                    height: screen_h,
-                    exact_x: exact_sx,
-                    exact_y: exact_sy,
-                    exact_width: exact_sx_end - exact_sx,
-                    exact_height: exact_sy_end - exact_sy,
-                },
-                kind: CpuBlitKind::Bilinear,
-            });
-        }
-    }
-
-    let fine_blit_rect =
-        |coord: &eov_common::TileCoord, tile_data: &eov_common::TileData| -> blitter::BlitRect {
-            let origin_x = coord.x as f64 * coord.tile_size as f64;
-            let origin_y = coord.y as f64 * coord.tile_size as f64;
-            let image_x = origin_x * level_info.downsample;
-            let image_y = origin_y * level_info.downsample;
-            let image_x_end = (origin_x + tile_data.width as f64) * level_info.downsample;
-            let image_y_end = (origin_y + tile_data.height as f64) * level_info.downsample;
-            let exact_sx = (image_x - bounds.left) * vp.zoom;
-            let exact_sy = (image_y - bounds.top) * vp.zoom;
-            let exact_sx_end = (image_x_end - bounds.left) * vp.zoom;
-            let exact_sy_end = (image_y_end - bounds.top) * vp.zoom;
-            let screen_x = exact_sx.floor() as i32;
-            let screen_y = exact_sy.floor() as i32;
-            let screen_x_end = exact_sx_end.floor() as i32;
-            let screen_y_end = exact_sy_end.floor() as i32;
-            blitter::BlitRect {
-                x: screen_x,
-                y: screen_y,
-                width: screen_x_end - screen_x,
-                height: screen_y_end - screen_y,
-                exact_x: exact_sx,
-                exact_y: exact_sy,
-                exact_width: exact_sx_end - exact_sx,
-                exact_height: exact_sy_end - exact_sy,
-            }
-        };
-
-    let cached_coarse_tile_map: HashMap<_, _> = cached_tiles.coarse_tiles.iter().cloned().collect();
-    let do_fused_trilinear = effective_trilinear
-        && trilinear.level_fine != trilinear.level_coarse
-        && trilinear.blend > 0.01
-        && !cached_coarse_tile_map.is_empty();
-    let coarse_blends: HashMap<_, _> = if do_fused_trilinear {
-        cached_tiles
-            .fine_tiles
-            .iter()
-            .filter_map(|(coord, tile)| {
-                coarse_blend_for_tile(
-                    &file.tile_manager,
-                    &cached_coarse_tile_map,
-                    trilinear,
-                    level_info.downsample,
-                    *coord,
-                    tile,
-                )
-                .map(|blend| (*coord, blend))
-            })
-            .collect()
+    let gpu_trilinear = if gpu_filtering == FilteringMode::Trilinear {
+        trilinear
     } else {
-        HashMap::new()
+        single_level_trilinear(trilinear.level_fine)
     };
+    let draws = collect_tile_draws_from_cached(
+        file,
+        tile_cache,
+        vp,
+        gpu_trilinear,
+        gpu_filtering,
+        &cached_tiles.fine_tiles,
+        &cached_tiles.coarse_tiles,
+    );
+    let color = crate::color::pane_color(file, pane);
+    let slot = SurfaceSlot(pane.0);
 
-    let mut fine_commands: Vec<CpuBlitCommand> = Vec::with_capacity(cached_tiles.fine_tiles.len());
-    for (coord, tile_data) in cached_tiles.fine_tiles.iter() {
-        let rect = fine_blit_rect(coord, tile_data);
-        if rect.width <= 0 || rect.height <= 0 {
-            continue;
-        }
-
-        let kind = if let Some((coarse_tile, uv_min, uv_max, blend)) = coarse_blends.get(coord) {
-            CpuBlitKind::Trilinear {
-                coarse_tile: Arc::clone(coarse_tile),
-                uv_min: *uv_min,
-                uv_max: *uv_max,
-                blend: *blend,
-            }
-        } else if is_adaptive_lanczos && effective_lanczos_weight >= 1.0 {
-            CpuBlitKind::Lanczos3
-        } else {
-            CpuBlitKind::Bilinear
-        };
-
-        fine_commands.push(CpuBlitCommand {
-            tile: Arc::clone(tile_data),
-            rect,
-            kind,
+    // Plugin filters are CPU-only. The frame is still composited on the GPU;
+    // it is read back and filtered on the render pool (also when only the
+    // filters changed), and the pane shows the newest filtered frame
+    // meanwhile (RND-6).
+    let filtered = filter_chain.read().has_enabled_cpu_filters();
+    let readback = if filtered {
+        let current = crate::with_pane_render_cache(pane.0 + 1, |cache| {
+            cache
+                .get(pane.0)
+                .and_then(|entry| entry.cpu_frame.as_ref())
+                .is_some_and(|frame| {
+                    cached_cpu_frame_matches(frame, file.id, vp, render_width, render_height)
+                })
         });
-    }
-
-    let postprocess = CpuRenderPostProcess {
-        pipeline: Arc::clone(&crate::color::pane_color(file, pane).pipeline),
-        background: crate::color::VIEWPORT_BACKGROUND,
-    };
-
-    let preview_image = if is_moving {
-        render_cached_preview(RenderCachedPreview {
-            pane,
-            file_id: file.id,
-            file_path: &file.path.to_string_lossy(),
-            filename: &file.filename,
-            viewport: vp,
-            render_width,
-            render_height,
-            fallback_commands: &fallback_commands,
-            fine_commands: &fine_commands,
-            postprocess: &postprocess,
-            filter_chain,
-        })
+        (frame_changed || filters_changed || !current)
+            .then(|| gpu_filters::request(pane_uid, file.id, vp, scale))
+            .flatten()
     } else {
         None
     };
+    let image = crate::with_gpu_renderer(|renderer| {
+        renderer.borrow_mut().queue_frame(
+            slot,
+            QueuedFrame {
+                width: render_width,
+                height: render_height,
+                draws,
+                color: color.pipeline.gpu_uniform(),
+                sharpness: color.pipeline.sharpness(),
+                readback,
+            },
+        )
+    })
+    .flatten();
 
-    let submit_cpu_job = !is_moving || pending_cpu_job_id.is_none();
-    if submit_cpu_job && pending_cpu_job_id.is_none() {
-        let Some(pool) = crate::render_pool::global() else {
-            return PaneRenderOutcome::default();
-        };
-
-        let job_id = pool.next_job_id();
-        pool.submit(CpuRenderJob {
-            pane_index: pane.0,
-            file_id: file.id,
-            job_id,
-            width: render_width,
-            height: render_height,
-            viewport: vp.clone(),
-            fallback_blits: fallback_commands,
-            fine_blits: fine_commands,
-            postprocess,
-            settled_quality: !is_moving,
-        });
-
+    if image.is_some() {
         if let Some(pane_state) = file.pane_state_mut(pane) {
-            pane_state.pending_cpu_job_id = Some(job_id);
-            pane_state.needs_settled_cpu_render = is_moving;
+            pane_state.gpu_surface_valid = true;
         }
-        pending_cpu_job_id = Some(job_id);
+        ui.window().request_redraw();
+    } else if let Some(pane_state) = file.pane_state_mut(pane) {
+        pane_state.frame_count = 0;
+        pane_state.last_render_level = u32::MAX;
+        pane_state.tiles_loaded_since_render = 0;
+        pane_state.gpu_surface_valid = false;
     }
-
-    if let Some(image) = preview_image {
-        return PaneRenderOutcome {
-            image: Some(image),
-            keep_running: true,
-            rendered: true,
-        };
-    }
+    let rendered = image.is_some();
 
     PaneRenderOutcome {
-        image: None,
-        keep_running: keep_running || pending_cpu_job_id.is_some() || needs_settled_cpu_render,
-        rendered: false,
+        // A filtered pane keeps showing its last filtered frame until the
+        // new one is ready.
+        image: if filtered { None } else { image },
+        keep_running: keep_running || !rendered,
+        rendered,
     }
 }
 
 struct RenderCachedPreview<'a> {
     pane: PaneId,
+    pane_uid: u32,
     file_id: i32,
-    file_path: &'a str,
-    filename: &'a str,
     viewport: &'a Viewport,
+    scale: f64,
     render_width: u32,
     render_height: u32,
     fallback_commands: &'a [CpuBlitCommand],
@@ -2290,13 +2189,16 @@ struct RenderCachedPreview<'a> {
     filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
 }
 
+/// The frame shown while the view moves: the pane's last unprocessed frame
+/// reprojected to the new view, with the cached tiles composited over it,
+/// colour-processed and filtered. `None` when there is no usable last frame.
 fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
     let RenderCachedPreview {
         pane,
+        pane_uid,
         file_id,
-        file_path,
-        filename,
         viewport,
+        scale,
         render_width,
         render_height,
         fallback_commands,
@@ -2307,7 +2209,8 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
         let cpu_frame = entry.cpu_frame.as_ref()?;
-        if cpu_frame.file_id != file_id {
+        let source_len = (cpu_frame.width as usize) * (cpu_frame.height as usize) * 4;
+        if cpu_frame.file_id != file_id || cpu_frame.source.len() < source_len {
             return None;
         }
 
@@ -2328,157 +2231,40 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         if entry.preview_buffer.len() < needed {
             entry.preview_buffer.resize(needed, 0);
         }
-        entry.preview_width = render_width;
-        entry.preview_height = render_height;
         let preview = &mut entry.preview_buffer[..needed];
-        blitter::reproject_frame(
+        let source = &cpu_frame.source[..source_len];
+        let reproject = |band: &mut [u8], band_height: u32, first_row: u32| {
+            eov_common::blitter::reproject_frame(
+                band,
+                render_width,
+                band_height,
+                source,
+                cpu_frame.width,
+                cpu_frame.height,
+                src_bounds.left,
+                src_bounds.top,
+                cpu_frame.viewport.zoom,
+                dest_bounds.left,
+                dest_bounds.top + f64::from(first_row) / viewport.zoom,
+                viewport.zoom,
+                [0, 0, 0, 0],
+            );
+        };
+        crate::render_pool::composite_preview(
             preview,
             render_width,
             render_height,
-            blitter::FrameSrc {
-                pixels: &cpu_frame.source,
-                width: cpu_frame.width,
-                height: cpu_frame.height,
-            },
-            cpu_frame,
-            viewport,
-            [0, 0, 0, 0],
-        );
-
-        composite_commands_into_preview_parallel(
-            preview,
-            render_width,
-            render_height,
+            &reproject,
             fallback_commands,
-        );
-        composite_commands_into_preview_parallel(
-            preview,
-            render_width,
-            render_height,
             fine_commands,
         );
-
         crate::render_pool::apply_postprocess(preview, render_width, render_height, postprocess);
-
-        // Apply viewport filters (same chain used in the settled CPU path).
-        {
-            let chain = filter_chain.read();
-            if chain.has_enabled_cpu_filters() {
-                let mut viewport_state = eov_common::ViewportState::new(
-                    viewport.width,
-                    viewport.height,
-                    viewport.image_width,
-                    viewport.image_height,
-                );
-                viewport_state.viewport = viewport.clone();
-                let filter_viewport = viewport_snapshot_ffi_for_render(
-                    file_id,
-                    file_path,
-                    filename,
-                    &viewport_state,
-                    pane,
-                );
-                chain.apply_cpu(preview, render_width, render_height, Some(&filter_viewport));
-            }
+        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
+            filters.apply(preview, render_width, render_height);
         }
 
         blitter::create_image_buffer(preview, render_width, render_height).map(Image::from_rgba8)
     })
-}
-
-fn composite_commands_into_preview_parallel(
-    buffer: &mut [u8],
-    render_width: u32,
-    render_height: u32,
-    commands: &[CpuBlitCommand],
-) {
-    if commands.is_empty() || render_width == 0 || render_height == 0 {
-        return;
-    }
-
-    let stride = render_width as usize * 4;
-    let rows_per_chunk = ((render_height as usize) / rayon::current_num_threads()).max(32);
-    for (chunk_index, chunk) in buffer.chunks_mut(rows_per_chunk * stride).enumerate() {
-        let start_row = chunk_index * rows_per_chunk;
-        let chunk_rows = chunk.len() / stride;
-        let chunk_height = chunk_rows as u32;
-        let row_offset = start_row as i32;
-
-        for command in commands {
-            composite_command_into_preview_chunk(
-                chunk,
-                render_width,
-                chunk_height,
-                row_offset,
-                command,
-            );
-        }
-    }
-}
-
-fn composite_command_into_preview_chunk(
-    buffer: &mut [u8],
-    render_width: u32,
-    render_height: u32,
-    row_offset: i32,
-    command: &CpuBlitCommand,
-) {
-    let mut rect = command.rect;
-    rect.y -= row_offset;
-    rect.exact_y -= row_offset as f64;
-
-    match &command.kind {
-        CpuBlitKind::Bilinear => blitter::blit_tile(
-            buffer,
-            render_width,
-            render_height,
-            blitter::TileSrc {
-                data: &command.tile.data,
-                width: command.tile.width,
-                height: command.tile.height,
-                border: command.tile.border,
-            },
-            rect,
-        ),
-        CpuBlitKind::Lanczos3 => blitter::blit_tile_lanczos3(
-            buffer,
-            render_width,
-            render_height,
-            blitter::TileSrc {
-                data: &command.tile.data,
-                width: command.tile.width,
-                height: command.tile.height,
-                border: command.tile.border,
-            },
-            rect,
-        ),
-        CpuBlitKind::Trilinear {
-            coarse_tile,
-            uv_min,
-            uv_max,
-            blend,
-        } => blitter::blit_tile_trilinear(
-            buffer,
-            render_width,
-            render_height,
-            blitter::TileSrc {
-                data: &command.tile.data,
-                width: command.tile.width,
-                height: command.tile.height,
-                border: command.tile.border,
-            },
-            &blitter::CoarseSrc {
-                data: &coarse_tile.data,
-                width: coarse_tile.width,
-                height: coarse_tile.height,
-                border: coarse_tile.border,
-                uv_min: *uv_min,
-                uv_max: *uv_max,
-                blend: *blend,
-            },
-            rect,
-        ),
-    }
 }
 
 fn collect_tile_draws_from_cached(
@@ -2509,6 +2295,12 @@ fn collect_tile_draws_from_cached(
             HashMap::new()
         };
 
+    let coverage = FineCoverage::new(
+        &file.tile_manager,
+        trilinear.level_fine,
+        cached_tiles,
+        bounds,
+    );
     for fallback_level in (0..level_count).rev() {
         if fallback_level <= trilinear.level_fine {
             continue;
@@ -2526,10 +2318,17 @@ fn collect_tile_draws_from_cached(
             bounds.bottom,
         );
 
-        for coord in fallback_tiles.iter().take(100) {
-            let Some(tile_data) = tile_cache.peek(coord) else {
-                continue;
-            };
+        let downsample = fallback_level_info.downsample;
+        let uncovered = fallback_tiles
+            .iter()
+            .filter_map(|coord| Some((coord, tile_cache.peek(coord)?)))
+            .filter(|(coord, tile)| {
+                !coverage
+                    .as_ref()
+                    .is_some_and(|coverage| coverage.covers_tile(coord, tile, downsample))
+            })
+            .take(MAX_FALLBACK_TILES_PER_LEVEL);
+        for (coord, tile_data) in uncovered {
             let projection = TileProjection {
                 downsample: fallback_level_info.downsample,
                 ..base_projection
@@ -2704,4 +2503,281 @@ fn tile_draw_from_tile(
         mip_blend,
         filtering_mode,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eov_common::TileCoord;
+    use std::time::{Duration, Instant};
+
+    fn tile(coord: TileCoord) -> Arc<eov_common::TileData> {
+        Arc::new(eov_common::TileData::new(coord, vec![0; 4], 1, 1, 0))
+    }
+
+    fn bounds(
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+    ) -> eov_common::viewport::ViewportBounds {
+        eov_common::viewport::ViewportBounds {
+            left,
+            right,
+            top,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn fallback_tiles_hidden_by_fine_tiles_are_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&path, 512, 512, 256, |_, _| [200, 200, 200])
+            .unwrap();
+        let manager = TileManager::new(eov_common::WsiFile::open(&path).unwrap(), 1);
+        // Level 0 is 2 × 2 tiles; the bottom-right one is not loaded.
+        let fine: Vec<_> = [(0, 0), (1, 0), (0, 1)]
+            .into_iter()
+            .map(|(x, y)| {
+                let coord = TileCoord::new(1, 0, x, y, 256);
+                (coord, tile(coord))
+            })
+            .collect();
+        let whole = FineCoverage::new(&manager, 0, &fine, bounds(0.0, 0.0, 512.0, 512.0)).unwrap();
+        assert!(
+            whole.covers(0.0, 0.0, 512.0, 256.0),
+            "the top row is loaded"
+        );
+        assert!(
+            whole.covers(0.0, 0.0, 256.0, 512.0),
+            "so is the left column"
+        );
+        assert!(!whole.covers(0.0, 0.0, 512.0, 512.0));
+        assert!(!whole.covers(300.0, 300.0, 400.0, 400.0));
+
+        // Only the visible part of a fallback tile counts.
+        let coarse = TileCoord::new(1, 1, 0, 0, 256);
+        let coarse_tile = Arc::new(eov_common::TileData::new(coarse, vec![0; 4], 256, 256, 0));
+        assert!(!whole.covers_tile(&coarse, &coarse_tile, 2.0));
+        let top = FineCoverage::new(&manager, 0, &fine, bounds(0.0, 0.0, 512.0, 250.0)).unwrap();
+        assert!(top.covers_tile(&coarse, &coarse_tile, 2.0));
+        let corner = FineCoverage::new(&manager, 0, &fine, bounds(0.0, 0.0, 256.0, 256.0)).unwrap();
+        assert!(
+            corner.covers(300.0, 300.0, 400.0, 400.0),
+            "nothing of it is visible"
+        );
+    }
+
+    /// RND-3: frames cover the pane's region at physical resolution, levels
+    /// follow the physical zoom, and filters still see logical sizes.
+    #[test]
+    fn frames_are_rendered_at_physical_resolution() {
+        let mut logical = Viewport::new(800.0, 600.0, 10_000.0, 8_000.0);
+        logical.zoom = 0.25;
+        logical.center.x = 3000.0;
+        logical.center.y = 2000.0;
+        let physical = physical_viewport(&logical, 2.0);
+        assert_eq!((physical.width, physical.height), (1600.0, 1200.0));
+        assert_eq!(physical.effective_downsample(), 2.0);
+        let (a, b) = (logical.bounds(), physical.bounds());
+        assert_eq!(
+            (a.left, a.top, a.right, a.bottom),
+            (b.left, b.top, b.right, b.bottom),
+            "the same region"
+        );
+
+        let view = filter_view(1, 7, &physical, 2.0);
+        assert_eq!(
+            (view.zoom, view.width, view.height, view.scale_factor),
+            (0.25, 800.0, 600.0, 2.0)
+        );
+        assert_eq!((view.visible_x, view.visible_width), (a.left, a.width()));
+
+        // Frames stay within the GPU's texture limit.
+        assert_eq!(render_scale(2.0, 800.0, 600.0, 8192), 2.0);
+        assert_eq!(render_scale(2.0, 6000.0, 600.0, 8192), 8192.0 / 6000.0);
+        assert_eq!(render_scale(f32::NAN, 800.0, 600.0, 8192), 1.0);
+    }
+
+    #[test]
+    fn panes_share_a_slide_s_tile_requests_in_turns() {
+        let coord = |x| TileCoord::new(1, 0, x, 0, 256);
+        let merged = merge_wanted_tiles(vec![
+            vec![coord(1), coord(2), coord(3), coord(4)],
+            vec![coord(7), coord(2), coord(8)],
+        ]);
+        let xs: Vec<u64> = merged.iter().map(|c| c.x).collect();
+        assert_eq!(xs, vec![1, 7, 2, 3, 8, 4], "in turns, without duplicates");
+        let single = merge_wanted_tiles(vec![vec![coord(3), coord(1), coord(2)]]);
+        assert_eq!(
+            single.iter().map(|c| c.x).collect::<Vec<_>>(),
+            vec![3, 1, 2],
+            "one pane's order is kept"
+        );
+    }
+
+    /// RND-1: once the view is loaded and rendered the render loop stops,
+    /// also between pyramid levels in Trilinear mode, where coarse tiles
+    /// are cached too.
+    #[test]
+    fn the_render_loop_idles_once_the_view_is_loaded() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            crate::render_pool::init_global().unwrap();
+            crate::clear_cached_pane(PaneId::PRIMARY);
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("pyramid.tif");
+            eov_common::test_support::write_tiff(
+                &path,
+                &eov_common::test_support::TiffSpec::pyramid(1024, 1024, 256, 3),
+                |x, y| [(x % 251) as u8, (y % 241) as u8, 128],
+            )
+            .unwrap();
+
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(256, 256 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            {
+                let mut state = state.write();
+                state.render_backend = RenderBackend::Cpu;
+                state.filtering_mode = FilteringMode::Trilinear;
+                let id = state.allocate_file_id();
+                let wsi = eov_common::WsiFile::open(&path).unwrap();
+                let tile_manager = Arc::new(
+                    TileManager::new(wsi.with_synthetic_levels(), id)
+                        .with_tile_cache(Arc::clone(&tile_cache)),
+                );
+                let tile_loader = Arc::new(TileLoader::new(
+                    Arc::clone(&tile_manager),
+                    Arc::clone(&tile_cache),
+                ));
+                let mut viewport = eov_common::ViewportState::new(400.0, 300.0, 1024.0, 1024.0);
+                // Between levels 0 and 1.
+                viewport.set_center_zoom(512.0, 512.0, 0.7);
+                state.add_file(crate::state::NewOpenFile {
+                    id,
+                    path: path.clone(),
+                    wsi,
+                    tile_manager,
+                    tile_loader,
+                    viewport,
+                    thumbnail: None,
+                    target_pane: PaneId::PRIMARY,
+                });
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let mut ticks = 0;
+            while update_and_render(&ui, &state, &tile_cache) {
+                ticks += 1;
+                assert!(
+                    Instant::now() < deadline,
+                    "the render loop still runs after {ticks} ticks"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            for _ in 0..5 {
+                std::thread::sleep(Duration::from_millis(20));
+                assert!(
+                    !update_and_render(&ui, &state, &tile_cache),
+                    "and stays idle"
+                );
+            }
+
+            // The case RND-1 was about: the view blends with cached coarse
+            // tiles, and the pane shows a frame.
+            let state = state.read();
+            let file = &state.open_files[0];
+            let vp = &file.pane_state(PaneId::PRIMARY).unwrap().viewport.viewport;
+            let trilinear = calculate_trilinear_levels(
+                file.tile_manager.wsi(),
+                vp.effective_downsample(),
+                true,
+            );
+            assert_ne!(trilinear.level_fine, trilinear.level_coarse);
+            let cached = collect_cached_visible_tiles(
+                &file.tile_manager,
+                &tile_cache,
+                vp,
+                trilinear,
+                0,
+                true,
+            );
+            assert!(!cached.coarse_tiles.is_empty());
+            assert!(!cached.fine_tiles.is_empty());
+            let shown = crate::with_pane_render_cache(1, |cache| cache[0].content.is_some());
+            assert!(shown);
+        });
+    }
+
+    /// RND-7: a GPU error switches the slides to the CPU renderer instead
+    /// of crashing, and the GPU stays off.
+    #[test]
+    fn a_failed_gpu_hands_the_slides_to_the_cpu_renderer() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            {
+                let mut state = state.write();
+                state.gpu_backend_available = true;
+                state.select_render_backend(RenderBackend::Gpu);
+            }
+            crate::gpu::record_failure("GPU error: test".to_string());
+            update_and_render(&ui, &state, &tile_cache);
+            let state = state.read();
+            assert_eq!(state.render_backend, RenderBackend::Cpu);
+            assert!(!state.gpu_backend_available);
+            assert!(!ui.get_gpu_rendering_available());
+            assert_eq!(ui.get_status_text(), GPU_FAILED_MESSAGE);
+            assert!(crate::gpu::take_failure().is_none(), "reported once");
+        });
+    }
+
+    fn receive_filtered() -> (Vec<gpu_filters::FilteredFrame>, bool) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let (frames, again) = gpu_filters::receive();
+            if !frames.is_empty() || Instant::now() > deadline {
+                return (frames, again);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn gpu_frames_are_filtered_one_at_a_time_per_pane() {
+        let viewport = Viewport::new(4.0, 2.0, 100.0, 100.0);
+        let chain = crate::plugin_runtime::filters::SharedFilterChain::default();
+        let first = gpu_filters::request(5, 1, &viewport, 1.0).expect("an idle pane reads back");
+        assert!(
+            gpu_filters::request(5, 1, &viewport, 1.0).is_none(),
+            "one frame per pane at a time"
+        );
+        assert!(
+            gpu_filters::request(6, 1, &viewport, 1.0).is_some(),
+            "panes are independent"
+        );
+        assert!(gpu_filters::busy());
+
+        let pixels: Vec<u8> = (0..32).collect();
+        let frame = ReadbackFrame {
+            tag: first,
+            width: 4,
+            height: 2,
+            pixels: pixels.clone(),
+        };
+        assert!(!gpu_filters::dispatch(vec![frame], true, &chain));
+        let (frames, again) = receive_filtered();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].tag.pane_uid, 5);
+        assert_eq!(frames[0].display.as_bytes(), &pixels[..]);
+        assert_eq!(frames[0].unfiltered, pixels);
+        assert!(again, "pane 5 changed while its frame was filtered");
+
+        // The renderer lost pane 6's readback: the pane renders again.
+        assert!(gpu_filters::dispatch(Vec::new(), false, &chain));
+        assert!(!gpu_filters::busy());
+        assert!(gpu_filters::request(6, 1, &viewport, 1.0).is_some());
+    }
 }

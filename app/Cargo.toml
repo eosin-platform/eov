@@ -46,6 +46,8 @@ slint = { version = "1.17.1", default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg-wgpu",
+    # Draws the window when no GPU adapter is usable (RND-4).
+    "renderer-software",
     "unstable-wgpu-29",
     "unstable-winit-030",
 ] }

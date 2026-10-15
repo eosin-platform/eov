@@ -178,7 +178,9 @@ fn main() -> Result<()> {
         );
     }
 
-    select_backend(launch_options.window_geometry)?;
+    // The software renderer draws the window when no GPU can (RND-4).
+    let ui_renderer = select_backend(launch_options.window_geometry)
+        .inspect_err(backend::report_startup_error)?;
     slint::set_xdg_app_id(APP_XDG_ID)?;
 
     let mut initial_state = AppState::new();
@@ -195,7 +197,9 @@ fn main() -> Result<()> {
         std::env::var("DISPLAY").ok(),
         std::env::var("WAYLAND_DISPLAY").ok()
     );
-    let ui = AppWindow::new()?;
+    let ui = AppWindow::new()
+        .map_err(anyhow::Error::from)
+        .inspect_err(backend::report_startup_error)?;
     info!("Application window created");
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));
 
@@ -217,7 +221,13 @@ fn main() -> Result<()> {
     let ui_weak = ui.as_weak();
     let gpu_renderer = Rc::new(RefCell::new(GpuRenderer::new()));
     info!("Installing GPU renderer");
-    GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))?;
+    // Slides can be drawn on the GPU only when the window is drawn with wgpu.
+    let gpu_unavailable = match &ui_renderer {
+        backend::UiRenderer::Gpu => GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))
+            .err()
+            .map(|err| format!("the window does not support GPU rendering ({err})")),
+        backend::UiRenderer::Software(reason) => Some(reason.clone()),
+    };
     set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
     info!("GPU renderer installed");
 
@@ -245,17 +255,25 @@ fn main() -> Result<()> {
     ui.set_debug_mode(launch_options.debug_mode);
     {
         let mut state = state.write();
-        state.gpu_backend_available = true;
+        state.gpu_backend_available = gpu_unavailable.is_none();
         state.select_render_backend(initial_backend);
         if let Some(filtering) = initial_filtering {
             state.select_filtering_mode(filtering);
         }
         update_render_backend(&ui, &state);
         update_filtering_mode(&ui, &state);
-        if initial_backend == RenderBackend::Gpu && state.render_backend != RenderBackend::Gpu {
-            ui.set_status_text(SharedString::from(
-                "GPU renderer unavailable; using CPU renderer",
-            ));
+        if let Some(reason) = &gpu_unavailable {
+            tracing::warn!("GPU renderer unavailable: {reason}");
+            let message = "GPU renderer unavailable; slides are drawn by the CPU renderer";
+            ui.set_status_text(SharedString::from(message));
+            host_ui::with_host(|host| {
+                host.notify(
+                    eov_plugin_api::protocol::NotifyLevel::Warning,
+                    message,
+                    Some(reason),
+                    None,
+                )
+            });
         }
     }
 

@@ -46,12 +46,6 @@ impl ChainSnapshot {
         !self.filters.is_empty()
     }
 
-    /// Plugin filters are CPU-only (the GPU filter ABI was removed, PLG-6),
-    /// so a GPU frame with filters takes the CPU path.
-    pub fn has_enabled_cpu_only_filters(&self) -> bool {
-        self.has_enabled_cpu_filters()
-    }
-
     /// Ids (`plugin:filter`) in execution order.
     #[cfg(test)]
     pub fn ids(&self) -> Vec<String> {
