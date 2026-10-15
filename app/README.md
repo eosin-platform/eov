@@ -108,7 +108,7 @@ If OpenSlide can open a file, `eov` should be able to load it.
 
 ## Configuration and plugins
 
-By default, `eov` stores its render preferences in `~/.eov/config.toml` and recently opened files in `~/.eov/recent_files.txt`. Set `EOV_CONFIG` or pass `--config <PATH>` to use a different configuration file.
+By default, `eov` stores its preferences in `~/.eov/config.toml` and recently opened files in `~/.eov/recent_files.toml` (`remember_recent_files = false` in the config turns the history off). Set `EOV_CONFIG` or pass `--config <PATH>` to use a different configuration file.
 
 Example configuration:
 

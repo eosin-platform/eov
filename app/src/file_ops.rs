@@ -284,59 +284,99 @@ fn spawn_series_thumbnail_worker(
     });
 }
 
+/// Lists `folder_path` on a worker and installs the entries if the series
+/// is still at `revision` (UI-14: never a synchronous scan on the UI
+/// thread). With `open_first`, the first slide is then opened.
 pub fn load_series_entries_async(
     ui_weak: slint::Weak<crate::AppWindow>,
     state: Arc<RwLock<AppState>>,
     folder_path: PathBuf,
     revision: u64,
+    open_first: bool,
 ) {
     std::thread::spawn(move || {
         let entries = enumerate_series_entries(&folder_path);
-        let paths = entries
-            .iter()
-            .filter(|entry| !entry.is_directory)
-            .map(|entry| entry.path.clone())
-            .collect::<Vec<_>>();
-
         let state_handle = Arc::clone(&state);
         let update_folder = folder_path.clone();
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = ui_weak.upgrade() else {
                 return;
             };
-
+            let first_slide = entries
+                .iter()
+                .find(|entry| !entry.is_directory)
+                .map(|entry| entry.path.clone());
             let updated = {
                 let mut state = state_handle.write();
                 state.replace_opened_series_entries(revision, &update_folder, entries)
             };
-
             if !updated {
                 return;
             }
-
             {
                 let state = state_handle.read();
                 crate::update_tabs(&ui, &state);
             }
-
-            if !paths.is_empty() {
-                spawn_series_thumbnail_worker(
-                    ui.as_weak(),
-                    Arc::clone(&state_handle),
-                    revision,
-                    paths,
-                );
+            ensure_series_thumbnails(&ui, &state_handle);
+            if open_first {
+                match first_slide {
+                    Some(path) => {
+                        crate::host_ui::with_host(|host| {
+                            crate::open_file(
+                                &ui,
+                                &state_handle,
+                                &host.tile_cache,
+                                &host.render_timer,
+                                path,
+                            )
+                        });
+                    }
+                    None => ui.set_status_text(SharedString::from(format!(
+                        "Browsing {}",
+                        update_folder.display()
+                    ))),
+                }
             }
         });
     });
 }
 
+/// Starts thumbnailing the series entries once, while the series bar is
+/// visible (each thumbnail opens a slide).
+pub fn ensure_series_thumbnails(ui: &crate::AppWindow, state: &Arc<RwLock<AppState>>) {
+    let work = {
+        let mut state = state.write();
+        let visible = state.bottom_panel_visible
+            && state.bottom_panel_kind == crate::state::BottomPanelKind::Series;
+        let revision = state.series_revision;
+        match state.opened_series.as_mut() {
+            Some(series) if visible && !series.thumbnails_requested => {
+                series.thumbnails_requested = true;
+                let paths: Vec<PathBuf> = series
+                    .entries
+                    .iter()
+                    .filter(|entry| !entry.is_directory)
+                    .map(|entry| entry.path.clone())
+                    .collect();
+                (!paths.is_empty()).then_some((revision, paths))
+            }
+            _ => None,
+        }
+    };
+    if let Some((revision, paths)) = work {
+        spawn_series_thumbnail_worker(ui.as_weak(), Arc::clone(state), revision, paths);
+    }
+}
+
+/// Shows `folder_path` in the series bar; its entries load in the
+/// background.
 pub fn set_series_from_folder(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
     folder_path: PathBuf,
     navigation: SeriesNavigationMode,
-) -> Vec<PathBuf> {
+    open_first: bool,
+) {
     let normalized_folder = fs::canonicalize(&folder_path).unwrap_or(folder_path);
     if navigation != SeriesNavigationMode::Initialize
         && state
@@ -344,63 +384,58 @@ pub fn set_series_from_folder(
             .current_series_path()
             .is_some_and(|current| current == normalized_folder.as_path())
     {
-        return state
-            .read()
-            .opened_series
-            .as_ref()
-            .map(|series| {
+        if open_first {
+            let first = state.read().opened_series.as_ref().and_then(|series| {
                 series
                     .entries
                     .iter()
-                    .filter(|entry| !entry.is_directory)
+                    .find(|entry| !entry.is_directory)
                     .map(|entry| entry.path.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+            });
+            if let Some(path) = first {
+                crate::host_ui::with_host(|host| {
+                    crate::open_file(ui, state, &host.tile_cache, &host.render_timer, path)
+                });
+            }
+        }
+        return;
     }
 
-    let entries = enumerate_series_entries(&normalized_folder);
-    let paths = entries
-        .iter()
-        .filter(|entry| !entry.is_directory)
-        .map(|entry| entry.path.clone())
-        .collect::<Vec<_>>();
     let revision = {
         let mut state = state.write();
-        state.set_opened_series(normalized_folder, entries, navigation)
+        state.set_opened_series(normalized_folder.clone(), Vec::new(), navigation)
     };
-
     {
         let state = state.read();
         crate::update_tabs(ui, &state);
     }
-
-    if !paths.is_empty() {
-        spawn_series_thumbnail_worker(ui.as_weak(), Arc::clone(state), revision, paths.clone());
-    }
-
-    paths
+    load_series_entries_async(
+        ui.as_weak(),
+        Arc::clone(state),
+        normalized_folder,
+        revision,
+        open_first,
+    );
 }
 
 pub fn set_series_from_file_parent(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
     path: &Path,
-) -> Vec<PathBuf> {
-    path.parent()
-        .map(|parent| {
-            let navigation = if state
-                .read()
-                .current_series_path()
-                .is_some_and(|current| current == parent)
-            {
-                SeriesNavigationMode::Replace
-            } else {
-                SeriesNavigationMode::Push
-            };
-            set_series_from_folder(ui, state, parent.to_path_buf(), navigation)
-        })
-        .unwrap_or_default()
+) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    let navigation = if state
+        .read()
+        .current_series_path()
+        .is_some_and(|current| current == parent)
+    {
+        SeriesNavigationMode::Replace
+    } else {
+        SeriesNavigationMode::Push
+    };
+    set_series_from_folder(ui, state, parent.to_path_buf(), navigation, false);
 }
 
 /// Open a file and add it to the application state

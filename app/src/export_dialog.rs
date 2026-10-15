@@ -179,7 +179,7 @@ fn apply_hud(settings: &mut SlintExportSettings, state: &AppState, pane: PaneId)
         .active_file_id_for_pane(pane)
         .and_then(|id| state.get_file(id))
         .and_then(|file| file.pane_state(pane))
-        .map(|pane_state| pane_state.hud.clone())
+        .map(|pane_state| pane_state.hud)
         .unwrap_or_default();
     settings.sharpness = hud.sharpness;
     settings.gamma = hud.gamma;

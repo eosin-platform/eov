@@ -8,14 +8,16 @@ use eov_common::{
     ViewportState, WsiFile,
 };
 use eov_plugin_api::protocol::Rect;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+/// Series entries and open files store canonical paths already, so they
+/// compare as they are; no file-system calls per comparison (UI-14).
 fn normalize_series_entry_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    path.to_path_buf()
 }
 
 static NEXT_PANE_UID: AtomicU32 = AtomicU32::new(1);
@@ -118,17 +120,7 @@ impl HudSettings {
 }
 
 /// Maximum number of recently opened files to track
-const MAX_RECENT_FILES: usize = 10;
 pub const BOTTOM_PANEL_HEIGHT_PX: f32 = 232.0;
-
-/// Recently opened file entry
-#[derive(Debug, Clone)]
-pub struct RecentFile {
-    /// Full path to the file
-    pub path: PathBuf,
-    /// Display name (filename)
-    pub name: String,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BottomPanelKind {
@@ -182,38 +174,13 @@ pub struct OpenedSeries {
     pub entries: Vec<SeriesEntry>,
     pub back_history: Vec<PathBuf>,
     pub forward_history: Vec<PathBuf>,
+    /// Thumbnails of `entries` were requested (they load while the series
+    /// bar is visible).
+    pub thumbnails_requested: bool,
 }
 
-impl RecentFile {
-    pub fn new(path: PathBuf) -> Self {
-        let name = path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
-        Self { path, name }
-    }
-}
-
-fn normalize_recent_path(path: &PathBuf) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.clone())
-}
-
-fn dedupe_recent_files(paths: impl IntoIterator<Item = PathBuf>) -> Vec<RecentFile> {
-    let mut seen_paths = HashSet::new();
-    let mut recent_files = Vec::new();
-
-    for path in paths {
-        let normalized_path = normalize_recent_path(&path);
-        if seen_paths.insert(normalized_path.clone()) {
-            recent_files.push(RecentFile::new(normalized_path));
-        }
-
-        if recent_files.len() >= MAX_RECENT_FILES {
-            break;
-        }
-    }
-
-    recent_files
+fn normalize_recent_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -462,7 +429,7 @@ pub struct AppState {
     /// Current FPS value
     pub current_fps: f32,
     /// Recently opened files (most recent first)
-    pub recent_files: Vec<RecentFile>,
+    pub recent_files: Vec<crate::recent::RecentFile>,
     /// IDs of tabs that are "home" tabs (no file open)
     pub home_tabs: Vec<i32>,
     /// Duplicate tab instances mapped to their backing file ID
@@ -510,7 +477,7 @@ pub struct AppState {
 impl AppState {
     /// Create a new application state
     pub fn new() -> Self {
-        let recent_files = Self::load_recent_files();
+        let recent_files = crate::recent::load();
         Self {
             open_files: Vec::new(),
             active_file_id: None,
@@ -547,69 +514,18 @@ impl AppState {
     }
 
     /// Get the config directory for storing recent files
-    fn config_dir() -> Option<PathBuf> {
-        crate::paths::legacy_config_dir()
-    }
-
-    /// Get the path to the recent files store
-    fn recent_files_path() -> Option<PathBuf> {
-        Self::config_dir().map(|p| p.join("recent_files.txt"))
-    }
-
-    /// Load recently opened files from disk
-    fn load_recent_files() -> Vec<RecentFile> {
-        let Some(path) = Self::recent_files_path() else {
-            return Vec::new();
-        };
-
-        let Ok(content) = fs::read_to_string(&path) else {
-            return Vec::new();
-        };
-
-        dedupe_recent_files(content.lines().filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-
-            let path = PathBuf::from(trimmed);
-            path.exists().then_some(path)
-        }))
-    }
-
-    /// Save recently opened files to disk
-    fn save_recent_files(&self) {
-        let Some(dir) = Self::config_dir() else {
-            return;
-        };
-
-        if !dir.exists() && fs::create_dir_all(&dir).is_err() {
-            return;
-        }
-
-        let Some(path) = Self::recent_files_path() else {
-            return;
-        };
-
-        let content: String = self
-            .recent_files
-            .iter()
-            .map(|f| f.path.to_string_lossy().to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let _ = fs::write(path, content);
-    }
-
-    /// Add a file to the recently opened list
-    pub fn add_to_recent(&mut self, path: &PathBuf) {
+    /// Puts a slide or folder first in the recently opened list (SH-14).
+    pub fn add_to_recent(&mut self, path: &Path) {
         let normalized_path = normalize_recent_path(path);
+        let is_dir = normalized_path.is_dir();
+        if crate::recent::record(&mut self.recent_files, &normalized_path, is_dir) {
+            crate::recent::save(&self.recent_files);
+        }
+    }
 
-        self.recent_files.retain(|f| f.path != normalized_path);
-        self.recent_files
-            .insert(0, RecentFile::new(normalized_path));
-        self.recent_files.truncate(MAX_RECENT_FILES);
-        self.save_recent_files();
+    /// Forgets the recently opened list.
+    pub fn clear_recent(&mut self) {
+        crate::recent::clear(&mut self.recent_files);
     }
 
     fn tab_ids_for_pane(&self, pane: PaneId) -> &[i32] {
@@ -1533,6 +1449,7 @@ impl AppState {
                 }
                 series.current_path = folder_path;
                 series.entries = entries;
+                series.thumbnails_requested = false;
             }
             None => {
                 self.opened_series = Some(OpenedSeries {
@@ -1540,6 +1457,7 @@ impl AppState {
                     entries,
                     back_history: Vec::new(),
                     forward_history: Vec::new(),
+                    thumbnails_requested: false,
                 });
             }
         }
@@ -1563,14 +1481,11 @@ impl AppState {
             return false;
         }
 
-        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let Some(series) = self.opened_series.as_mut() else {
             return false;
         };
 
-        let Some(entry) = series.entries.iter_mut().find(|entry| {
-            fs::canonicalize(&entry.path).unwrap_or_else(|_| entry.path.clone()) == normalized_path
-        }) else {
+        let Some(entry) = series.entries.iter_mut().find(|entry| entry.path == path) else {
             return false;
         };
 
@@ -1594,17 +1509,16 @@ impl AppState {
             return false;
         }
 
-        let normalized_path =
-            fs::canonicalize(folder_path).unwrap_or_else(|_| folder_path.to_path_buf());
         let Some(series) = self.opened_series.as_mut() else {
             return false;
         };
 
-        if series.current_path != normalized_path {
+        if series.current_path != folder_path {
             return false;
         }
 
         series.entries = entries;
+        series.thumbnails_requested = false;
         self.reconcile_series_selection();
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
@@ -1766,8 +1680,7 @@ impl Default for AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, PaneId, PaneState, dedupe_recent_files};
-    use std::path::PathBuf;
+    use super::{AppState, PaneId, PaneState};
 
     /// Panes holding Home tabs with the given ids.
     fn state_with(layout: &[&[i32]]) -> AppState {
@@ -1829,26 +1742,5 @@ mod tests {
         assert!(state.remove_empty_pane(empty));
         assert_eq!(layout(&state), vec![vec![1]]);
         assert!(!state.split_enabled);
-    }
-
-    #[test]
-    fn dedupe_recent_files_preserves_first_occurrence_order() {
-        let recent_files = dedupe_recent_files([
-            PathBuf::from("/tmp/slide-c.svs"),
-            PathBuf::from("/tmp/slide-b.svs"),
-            PathBuf::from("/tmp/slide-c.svs"),
-            PathBuf::from("/tmp/slide-a.svs"),
-            PathBuf::from("/tmp/slide-b.svs"),
-        ]);
-
-        let paths: Vec<_> = recent_files.into_iter().map(|file| file.path).collect();
-        assert_eq!(
-            paths,
-            vec![
-                PathBuf::from("/tmp/slide-c.svs"),
-                PathBuf::from("/tmp/slide-b.svs"),
-                PathBuf::from("/tmp/slide-a.svs"),
-            ]
-        );
     }
 }

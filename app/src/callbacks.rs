@@ -333,6 +333,7 @@ pub(crate) fn toggle_series_bar_requested(
     if state.read().bottom_panel_visible {
         initialized_home = state.read().current_series_path().is_none();
         ensure_series_home_if_needed(ui, state);
+        crate::file_ops::ensure_series_thumbnails(ui, state);
     }
     if !initialized_home {
         let state = state.read();
@@ -443,8 +444,8 @@ fn navigate_series_to_folder(
     state: &Arc<RwLock<AppState>>,
     folder: PathBuf,
     navigation: state::SeriesNavigationMode,
-) -> Vec<PathBuf> {
-    crate::file_ops::set_series_from_folder(ui, state, folder, navigation)
+) {
+    crate::file_ops::set_series_from_folder(ui, state, folder, navigation, false);
 }
 
 fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
@@ -465,7 +466,13 @@ fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
             update_tabs(ui, &state);
         }
 
-        crate::file_ops::load_series_entries_async(ui.as_weak(), Arc::clone(state), home, revision);
+        crate::file_ops::load_series_entries_async(
+            ui.as_weak(),
+            Arc::clone(state),
+            home,
+            revision,
+            false,
+        );
     }
 }
 
@@ -482,7 +489,7 @@ pub(crate) fn activate_series_entry_path(
     }
 
     if path.is_dir() {
-        let _ = navigate_series_to_folder(ui, state, path, state::SeriesNavigationMode::Push);
+        navigate_series_to_folder(ui, state, path, state::SeriesNavigationMode::Push);
     } else if !focus_existing_file(ui, state, tile_cache, render_timer, &path) {
         open_path_with_series(
             ui,
@@ -509,11 +516,32 @@ pub(crate) fn cycle_series(
     }
 }
 
-pub(crate) fn open_folder_as_series(
+/// Opens a recently used slide or folder. A missing file is reported by
+/// the open itself; the entry stays (its drive may just be unmounted).
+fn open_recent(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     render_timer: &Rc<Timer>,
+    entry: crate::recent::RecentFile,
+) {
+    if entry.is_dir {
+        open_folder_as_series(ui, state, entry.path);
+    } else {
+        open_path_with_series(
+            ui,
+            state,
+            tile_cache,
+            render_timer,
+            entry.path,
+            crate::file_ops::OpenFileMode::ReuseExistingTab,
+        );
+    }
+}
+
+pub(crate) fn open_folder_as_series(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
     folder: PathBuf,
 ) {
     let normalized_folder = std::fs::canonicalize(&folder).unwrap_or(folder.clone());
@@ -532,22 +560,8 @@ pub(crate) fn open_folder_as_series(
     } else {
         state::SeriesNavigationMode::Initialize
     };
-    let paths = navigate_series_to_folder(ui, state, normalized_folder.clone(), navigation);
-    if let Some(first_path) = paths.first().cloned() {
-        open_file_with_mode(
-            ui,
-            state,
-            tile_cache,
-            render_timer,
-            first_path,
-            crate::file_ops::OpenFileMode::ReuseExistingTab,
-        );
-    } else {
-        ui.set_status_text(SharedString::from(format!(
-            "Browsing {}",
-            normalized_folder.display()
-        )));
-    }
+    // The folder is listed in the background; its first slide opens then.
+    crate::file_ops::set_series_from_folder(ui, state, normalized_folder, navigation, true);
 }
 
 fn apply_filtering_mode(
@@ -615,8 +629,6 @@ pub fn setup_callbacks(
 
     {
         let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
 
         ui.on_open_folder_requested(move || {
@@ -625,7 +637,7 @@ pub fn setup_callbacks(
             };
 
             if let Some(folder) = FileDialog::new().pick_folder() {
-                open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, folder);
+                open_folder_as_series(&ui, &state_handle, folder);
             }
         });
     }
@@ -659,23 +671,22 @@ pub fn setup_callbacks(
         let ui_weak = ui_weak.clone();
 
         ui.on_open_recent_file(move |path_str| {
-            let path = PathBuf::from(path_str.as_str());
-            if path.exists()
-                && let Some(ui) = ui_weak.upgrade()
-            {
-                if path.is_dir() {
-                    open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
-                } else {
-                    open_path_with_series(
-                        &ui,
-                        &state,
-                        &tile_cache,
-                        &render_timer,
-                        path,
-                        crate::file_ops::OpenFileMode::ReuseExistingTab,
-                    );
-                }
-            }
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            // The home screen shows display strings; map back to the entry.
+            let entry = state
+                .read()
+                .recent_files
+                .iter()
+                .find(|entry| entry.path.display().to_string() == path_str.as_str())
+                .cloned()
+                .unwrap_or_else(|| {
+                    let path = PathBuf::from(path_str.as_str());
+                    let is_dir = path.is_dir();
+                    crate::recent::RecentFile::new(path, is_dir)
+                });
+            open_recent(&ui, &state, &tile_cache, &render_timer, entry);
         });
     }
 
@@ -775,28 +786,25 @@ pub fn setup_callbacks(
             ui.set_context_menu_visible(false);
 
             let command = id.to_string();
-            if let Some(path_str) = command.strip_prefix("recent-file:") {
-                let path = PathBuf::from(path_str);
-                if path.exists() {
-                    if path.is_dir() {
-                        open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, path);
-                    } else {
-                        open_path_with_series(
-                            &ui,
-                            &state_handle,
-                            &tile_cache,
-                            &render_timer,
-                            path,
-                            crate::file_ops::OpenFileMode::ReuseExistingTab,
-                        );
-                    }
+            if let Some(index) = command.strip_prefix("recent-file:") {
+                let entry = index
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| state_handle.read().recent_files.get(index).cloned());
+                if let Some(entry) = entry {
+                    open_recent(&ui, &state_handle, &tile_cache, &render_timer, entry);
                 }
+                return;
+            }
+            if command == "recent-clear" {
+                state_handle.write().clear_recent();
+                update_recent_files(&ui, &state_handle.read());
                 return;
             }
 
             if command == "open-folder-dialog" {
                 if let Some(folder) = FileDialog::new().pick_folder() {
-                    open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, folder);
+                    open_folder_as_series(&ui, &state_handle, folder);
                 }
                 return;
             }
@@ -1132,7 +1140,7 @@ pub fn setup_callbacks(
             let Some(target) = state_handle.read().series_back_target() else {
                 return;
             };
-            let _ = navigate_series_to_folder(
+            navigate_series_to_folder(
                 &ui,
                 &state_handle,
                 target,
@@ -1152,7 +1160,7 @@ pub fn setup_callbacks(
             let Some(target) = state_handle.read().series_forward_target() else {
                 return;
             };
-            let _ = navigate_series_to_folder(
+            navigate_series_to_folder(
                 &ui,
                 &state_handle,
                 target,
@@ -1172,7 +1180,7 @@ pub fn setup_callbacks(
             let Some(target) = state_handle.read().series_up_target() else {
                 return;
             };
-            let _ = navigate_series_to_folder(
+            navigate_series_to_folder(
                 &ui,
                 &state_handle,
                 target,
@@ -1615,7 +1623,7 @@ pub fn setup_callbacks(
                     && let Some(ui) = ui_weak.upgrade()
                 {
                     if path.is_dir() {
-                        open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
+                        open_folder_as_series(&ui, &state, path);
                     } else {
                         open_path_with_series(
                             &ui,
@@ -1647,7 +1655,7 @@ pub fn setup_callbacks(
             };
 
             if path.is_dir() {
-                open_folder_as_series(&ui, &state_handle, &tile_cache, &render_timer, path);
+                open_folder_as_series(&ui, &state_handle, path);
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 return;
             }

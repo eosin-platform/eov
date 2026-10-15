@@ -475,18 +475,20 @@ The packaged plugin buttons should appear in the toolbar, and the plugin sidebar
 
 ## Configuration And Persistence
 
-eov currently persists two kinds of state:
+eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 
-- Preferred render backend in `~/.eov/config.toml` by default.
-- Recently opened files in the directory under `~/.eov/recent_files.txt`.
+- `config.toml`: preferences (render backend, filtering mode, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
+- `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
+- `plugins/`: installed plugin packages and their registry (`eov plugin …`).
 
-You can override the render-backend config path with the `EOV_CONFIG` environment variable.
+Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux).
 
 Example config file:
 
 ```toml
 render_backend = "gpu"
-filtering_mode = "trilinear"
+filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
+remember_recent_files = true
 ```
 
 ## Architecture

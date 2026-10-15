@@ -567,13 +567,16 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
         return items;
     }
 
+    // Entries are referred to by position, so any path (including ones
+    // that are not UTF-8) opens exactly.
     items.extend(
         state
             .recent_files
             .iter()
+            .enumerate()
             .take(10)
-            .map(|file| ContextMenuItem {
-                id: SharedString::from(format!("recent-file:{}", file.path.display())),
+            .map(|(index, file)| ContextMenuItem {
+                id: SharedString::from(format!("recent-file:{index}")),
                 label: SharedString::from(file.name.clone()),
                 icon: SharedString::new(),
                 shortcut: SharedString::new(),
@@ -581,6 +584,17 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
                 separator_after: false,
             }),
     );
+    if let Some(last) = items.last_mut() {
+        last.separator_after = true;
+    }
+    items.push(ContextMenuItem {
+        id: SharedString::from("recent-clear"),
+        label: SharedString::from("Clear Recent Files"),
+        icon: SharedString::new(),
+        shortcut: SharedString::new(),
+        enabled: true,
+        separator_after: false,
+    });
     items
 }
 
@@ -588,7 +602,8 @@ pub fn build_recent_folder_menu_items(state: &AppState) -> Vec<ContextMenuItem> 
     let recent_folders: Vec<_> = state
         .recent_files
         .iter()
-        .filter(|file| file.path.is_dir())
+        .enumerate()
+        .filter(|(_, file)| file.is_dir)
         .take(10)
         .collect();
 
@@ -613,14 +628,18 @@ pub fn build_recent_folder_menu_items(state: &AppState) -> Vec<ContextMenuItem> 
         return items;
     }
 
-    items.extend(recent_folders.into_iter().map(|file| ContextMenuItem {
-        id: SharedString::from(format!("recent-file:{}", file.path.display())),
-        label: SharedString::from(file.name.clone()),
-        icon: SharedString::new(),
-        shortcut: SharedString::new(),
-        enabled: true,
-        separator_after: false,
-    }));
+    items.extend(
+        recent_folders
+            .into_iter()
+            .map(|(index, file)| ContextMenuItem {
+                id: SharedString::from(format!("recent-file:{index}")),
+                label: SharedString::from(file.name.clone()),
+                icon: SharedString::new(),
+                shortcut: SharedString::new(),
+                enabled: true,
+                separator_after: false,
+            }),
+    );
 
     items
 }

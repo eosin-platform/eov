@@ -21,6 +21,7 @@ mod pane_ui;
 mod paths;
 mod plugin_runtime;
 mod plugins;
+mod recent;
 mod render;
 mod render_pool;
 mod stain;
@@ -278,7 +279,7 @@ fn main() -> Result<()> {
 
         for path in pane_spec.files {
             if path.is_dir() {
-                callbacks::open_folder_as_series(&ui, &state, &tile_cache, &render_timer, path);
+                callbacks::open_folder_as_series(&ui, &state, path);
                 continue;
             }
 

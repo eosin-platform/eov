@@ -1,6 +1,5 @@
 use crate::backend::WindowGeometry;
 use crate::config;
-use crate::state::AppState;
 use crate::update;
 use anyhow::{Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
@@ -1238,13 +1237,13 @@ fn validate_launch_input_path(path: &Path) -> Result<()> {
 }
 
 fn print_recent_files() {
-    let state = AppState::new();
-    if state.recent_files.is_empty() {
+    let recent_files = crate::recent::load();
+    if recent_files.is_empty() {
         println!("No recent files.");
         return;
     }
 
-    for recent_file in state.recent_files {
+    for recent_file in recent_files {
         println!("{}", recent_file.path.display());
     }
 }
