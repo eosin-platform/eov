@@ -17,6 +17,8 @@ mod interaction;
 #[allow(dead_code)]
 mod overlay;
 mod pane_ui;
+#[allow(dead_code)]
+mod plugin_runtime;
 mod paths;
 mod plugin_host;
 mod plugins;
