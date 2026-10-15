@@ -343,6 +343,31 @@ impl UiHost {
             }
         }
         runtime.rebuild_filters();
+        // What this session runs with, for the audit log.
+        let plugins: Vec<serde_json::Value> = runtime
+            .slots()
+            .iter()
+            .map(|slot| {
+                let package = inventory.selected(&slot.info.id);
+                serde_json::json!({
+                    "plugin": slot.info.id,
+                    "version": slot.info.version,
+                    "state": slot.status.label(),
+                    "sha256": package.map(|package| package.sha256.clone()),
+                    "origin": package.map(|package| package.provenance.describe()),
+                })
+            })
+            .collect();
+        crate::audit::record(
+            "session_started",
+            serde_json::json!({
+                "eov": crate::version::BUILD_VERSION,
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+                "safe_mode": options.safe_mode,
+                "plugins": plugins,
+            }),
+        );
         drop(runtime);
         self.report_failed_plugins();
     }
@@ -568,6 +593,10 @@ impl UiHost {
         let name = self.plugin_name(plugin_id);
         match kind {
             FfiErrorKind::Panicked => {
+                crate::audit::record(
+                    "plugin_stopped",
+                    serde_json::json!({ "plugin": plugin_id, "reason": message }),
+                );
                 self.on_plugin_stopped(plugin_id);
                 self.notify(
                     NotifyLevel::Error,
@@ -779,11 +808,23 @@ mod tests {
     use crate::test_support::run_on_slint_ui_test_thread;
     use slint::Model;
 
+    /// Clears the thread's host when a test ends, even by a panic: the
+    /// Slint test thread is shared, and a host left behind would take part
+    /// in other tests' frames.
+    struct ClearHost;
+
+    impl Drop for ClearHost {
+        fn drop(&mut self) {
+            HOST.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
     /// The Plugins panel lists a package eov cannot read, and Remove
     /// deletes it after the user confirms in eov's own dialog.
     #[test]
     fn unreadable_packages_are_listed_and_can_be_removed() {
         run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
             let ui = AppWindow::new().unwrap();
             let state = Arc::new(RwLock::new(AppState::new()));
             let tile_cache = Arc::new(TileCache::with_limits(64, 64 << 20));
@@ -830,6 +871,7 @@ mod tests {
     #[test]
     fn example_plugin_runs_end_to_end() {
         run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
             let ui = AppWindow::new().unwrap();
             let state = Arc::new(RwLock::new(AppState::new()));
             let tile_cache = Arc::new(TileCache::with_limits(64, 64 << 20));
@@ -915,7 +957,6 @@ mod tests {
             assert!(!ui.get_show_plugin_sidebar());
 
             host.shutdown();
-            HOST.with(|slot| *slot.borrow_mut() = None);
         });
     }
 }

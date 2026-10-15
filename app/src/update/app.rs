@@ -1477,8 +1477,21 @@ fn unix_now() -> u64 {
 /// can show it at startup.
 pub fn take_helper_report(updates_dir: &Path) -> Option<HelperReport> {
     let path = updates_dir.join(REPORT_FILE);
-    let report = toml::from_str(&fs::read_to_string(&path).ok()?).ok();
+    let report: Option<HelperReport> = toml::from_str(&fs::read_to_string(&path).ok()?).ok();
     let _ = fs::remove_file(&path);
+    // Taken once, by whichever eov runs next: the place to record it.
+    if let Some(report) = &report {
+        crate::audit::record(
+            "eov_update_finished",
+            serde_json::json!({
+                "from": report.from_version,
+                "to": report.to_version,
+                "applied": report.applied(),
+                "message": report.message,
+                "finished_unix": report.finished_at,
+            }),
+        );
+    }
     report
 }
 

@@ -973,6 +973,16 @@ pub fn activate_package(
         }
     }
     let replaced = finish_backups(backups, previous_store);
+    crate::audit::record(
+        "plugin_installed",
+        serde_json::json!({
+            "plugin": id,
+            "version": staged.inspected.manifest.version,
+            "sha256": staged.sha256,
+            "origin": provenance.describe(),
+            "replaced": replaced.len(),
+        }),
+    );
     Ok(Activated {
         id,
         version: staged.inspected.manifest.version.clone(),
@@ -1816,6 +1826,17 @@ pub fn apply_removal(plugin_dir: &Path, removal: &Removal) -> Result<()> {
     for path in &removal.paths {
         let _ = invalidate_plugin_package_cache(path);
     }
+    crate::audit::record(
+        "plugin_removed",
+        serde_json::json!({
+            "plugin": removal.id,
+            "packages": removal
+                .paths
+                .iter()
+                .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+                .collect::<Vec<_>>(),
+        }),
+    );
     Ok(())
 }
 
@@ -1882,6 +1903,14 @@ pub fn set_plugin_enabled(plugin_dir: &Path, id: &str, enabled: bool) -> Result<
     };
     if changed {
         registry::save(plugin_dir, &registry)?;
+        crate::audit::record(
+            if enabled {
+                "plugin_enabled"
+            } else {
+                "plugin_disabled"
+            },
+            serde_json::json!({ "plugin": id }),
+        );
     }
     Ok(changed)
 }

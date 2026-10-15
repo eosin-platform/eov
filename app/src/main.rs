@@ -1,6 +1,7 @@
 // Prevent console window in addition to Slint window in Windows release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audit;
 mod backend;
 mod blitter;
 mod bookmarks;
