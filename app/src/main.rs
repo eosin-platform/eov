@@ -27,6 +27,7 @@ mod pane_ui;
 mod paths;
 mod plugin_runtime;
 mod plugins;
+mod quantify_panel;
 mod recent;
 mod render;
 mod render_pool;

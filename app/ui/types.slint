@@ -48,6 +48,18 @@ export struct PropertyRow {
     value: string,
 }
 
+// One choice in a row of options (stain models, stains).
+export struct ChoiceItem {
+    id: string,
+    label: string,
+}
+
+// One result of the Quantify Stain panel.
+export struct ResultRow {
+    label: string,
+    value: string,
+}
+
 // One line of the Measurements panel (the region of interest has id "roi").
 export struct MeasurementRow {
     id: string,

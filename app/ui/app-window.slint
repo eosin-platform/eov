@@ -5,8 +5,10 @@ import {
     BottomPanelKind,
     ContextMenuItem,
     DatasetExportSettings,
+    ChoiceItem,
     MeasurementRow,
     PropertyRow,
+    ResultRow,
     ShortcutLabels,
     ShortcutRow,
     ExportPreviewInfo,
@@ -43,6 +45,7 @@ import { SlideInfoPanel } from "slide-info-panel.slint";
 import { BookmarkDialog } from "bookmark-dialog.slint";
 import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
+import { QuantifyPanel } from "quantify-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -144,6 +147,19 @@ export component AppWindow inherits Window {
     in-out property <bool> bookmark-dialog-visible: false;
     in-out property <bool> shortcuts-panel-visible: false;
     in-out property <bool> measurements-panel-visible: false;
+    in-out property <bool> quantify-visible: false;
+    in-out property <string> quantify-title;
+    in-out property <[ChoiceItem]> quantify-presets: [];
+    in-out property <string> quantify-preset;
+    in-out property <[ChoiceItem]> quantify-stains: [];
+    in-out property <string> quantify-stain;
+    in-out property <string> quantify-weak;
+    in-out property <string> quantify-moderate;
+    in-out property <string> quantify-strong;
+    in-out property <string> quantify-region-text;
+    in-out property <string> quantify-note;
+    in-out property <bool> quantify-running: false;
+    in-out property <[ResultRow]> quantify-results: [];
     in-out property <string> measurements-title;
     in-out property <[MeasurementRow]> measurement-rows: [];
     in-out property <string> measurements-empty-text;
@@ -155,6 +171,12 @@ export component AppWindow inherits Window {
 
     callback bookmark-dialog-accepted(string);
     callback shortcuts-copy-config-path();
+    callback quantify-preset-chosen(string);
+    callback quantify-stain-chosen(string);
+    callback quantify-thresholds-edited(string, string, string);
+    callback quantify-run();
+    callback quantify-copy();
+    callback quantify-close();
     callback measurement-go(string);
     callback measurement-copy(string);
     callback measurement-delete(string);
@@ -452,6 +474,10 @@ export component AppWindow inherits Window {
                 root.measurements-panel-visible = false;
                 accept
             }
+            if e.text == Key.Escape && root.quantify-visible {
+                root.quantify-close();
+                accept
+            }
             if e.text == Key.Escape && root.show-plugin-modal {
                 root.plugin-modal-dismiss-requested();
                 accept
@@ -471,7 +497,8 @@ export component AppWindow inherits Window {
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
-                || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible {
+                || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
+                || root.quantify-visible {
                 reject
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -1511,6 +1538,43 @@ export component AppWindow inherits Window {
         }
         cancelled => {
             root.bookmark-dialog-cancelled();
+        }
+    }
+
+    if root.quantify-visible: QuantifyPanel {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        title: root.quantify-title;
+        presets: root.quantify-presets;
+        preset: root.quantify-preset;
+        stains: root.quantify-stains;
+        stain: root.quantify-stain;
+        weak <=> root.quantify-weak;
+        moderate <=> root.quantify-moderate;
+        strong <=> root.quantify-strong;
+        region-text: root.quantify-region-text;
+        note: root.quantify-note;
+        running: root.quantify-running;
+        results: root.quantify-results;
+        preset-chosen(id) => {
+            root.quantify-preset-chosen(id);
+        }
+        stain-chosen(id) => {
+            root.quantify-stain-chosen(id);
+        }
+        thresholds-edited(weak, moderate, strong) => {
+            root.quantify-thresholds-edited(weak, moderate, strong);
+        }
+        run-requested => {
+            root.quantify-run();
+        }
+        copy-requested => {
+            root.quantify-copy();
+        }
+        close-requested => {
+            root.quantify-close();
         }
     }
 

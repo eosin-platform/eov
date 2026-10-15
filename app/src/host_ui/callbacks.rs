@@ -147,7 +147,7 @@ impl UiHost {
     }
 }
 
-pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
+pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_viewport_pointer(
         |pane, kind, button, x, y, wx, wy, shift, control, alt, meta| {
             with_host(|host| {
@@ -233,6 +233,38 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     });
     ui.on_shortcuts_copy_config_path(|| {
         with_host(|host| host.copy_config_path());
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_preset_chosen(move |id| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::preset_chosen(&ui, &state, &id);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_stain_chosen(move |id| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::stain_chosen(&ui, &state, &id);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_thresholds_edited(move |weak, moderate, strong| {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::thresholds_edited(&ui, &state, &weak, &moderate, &strong);
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_quantify_run(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::run(&ui, &state);
+        }
+    });
+    let state = Arc::clone(&host.state);
+    ui.on_quantify_copy(move || crate::quantify_panel::copy(&state));
+    let ui_weak = ui.as_weak();
+    ui.on_quantify_close(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::quantify_panel::close(&ui);
+        }
     });
     ui.on_measurement_go(|id| {
         with_host(|host| host.measurement_go(&id));

@@ -156,6 +156,12 @@ impl UiHost {
                 Action::Measurements,
             ));
         }
+        if has_roi {
+            host_items.push(with_key(
+                item("host:quantify", "Quantify Stain in Region…", ""),
+                Action::Quantify,
+            ));
+        }
         if has_measurements {
             host_items.push(item(
                 "host:measurements-clear",
@@ -281,6 +287,12 @@ impl UiHost {
         }
         if host_command == "measurements-panel" {
             self.open_measurements_panel();
+            return true;
+        }
+        if host_command == "quantify" {
+            if let Some(ui) = self.ui() {
+                crate::quantify_panel::open(&ui, &self.state);
+            }
             return true;
         }
         if let Some(action) = host_command.strip_prefix("view-") {
