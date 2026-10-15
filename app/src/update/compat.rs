@@ -107,12 +107,13 @@ pub fn environment_matches(text: &str, host: &Version) -> bool {
     bounded_requirement(text).is_ok_and(|requirement| version_matches(&requirement, host))
 }
 
-/// Reads the optional `[environment] api` requirement from raw manifest text.
+/// Reads the optional plugin-API requirement from raw manifest text: the
+/// top-level `api` key of plugin API 1.0 manifests, or `[environment] api`.
 pub fn api_requirement(raw_manifest: &str) -> Option<String> {
     let value: toml::Value = toml::from_str(raw_manifest).ok()?;
     value
-        .get("environment")?
-        .get("api")?
+        .get("api")
+        .or_else(|| value.get("environment")?.get("api"))?
         .as_str()
         .map(str::to_string)
 }
@@ -276,6 +277,9 @@ mod tests {
     fn api_requirement_is_read_from_the_manifest_and_checked() {
         let raw = "id = \"x\"\n[environment]\nversion = \">=1.0.0, <2\"\napi = \">=2.0, <3\"\n";
         assert_eq!(api_requirement(raw).as_deref(), Some(">=2.0, <3"));
+        // Plugin API 1.0 manifests declare it at the top level.
+        let raw = "id = \"x\"\napi = \">=1.0, <2\"\n[environment]\nversion = \">=1.0.0, <2\"\n";
+        assert_eq!(api_requirement(raw).as_deref(), Some(">=1.0, <2"));
         let result = check(">=1.0.0, <2", Some(">=2.0, <3"), &v("1.0.0"), &v("1.0.0"));
         assert!(result.reason().unwrap().contains("plugin API"));
         assert!(check(">=1.0.0, <2", Some("^1"), &v("1.0.0"), &v("1.0.0")).is_compatible());

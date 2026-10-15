@@ -3,7 +3,7 @@ name = "eov-example-plugin"
 version = "1.0.0"
 edition = "2024"
 description = "A small, complete eov plugin used as documentation and as the host's test fixture"
-license = "MIT OR Apache-2.0 OR GPL-3.0"
+license = "MIT OR Apache-2.0 OR GPL-3.0-only"
 publish = false
 
 [lib]

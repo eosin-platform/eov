@@ -67,10 +67,8 @@ pub(crate) fn with_host<R>(f: impl FnOnce(&Rc<UiHost>) -> R) -> Option<R> {
 /// Options for [`init`].
 pub(crate) struct InitOptions {
     pub plugin_dir: PathBuf,
-    /// Start without loading any plugin.
+    /// Start without loading any plugin (`--safe-mode`).
     pub safe_mode: bool,
-    /// Plugins the user turned off.
-    pub disabled: Vec<String>,
 }
 
 pub(crate) struct UiHost {
@@ -175,14 +173,69 @@ pub(crate) fn init(
     host
 }
 
+/// Panel information for a package that is not started.
+fn inactive_info(package: &crate::update::plugins::InstalledPackage) -> PluginInfo {
+    PluginInfo {
+        id: package.id.clone(),
+        name: package.name.clone(),
+        version: package.version.clone(),
+        description: package.description.clone(),
+        repository: package.provenance.repository.clone(),
+        root: PathBuf::new(),
+        package: Some(package.package_path.clone()),
+    }
+}
+
 impl UiHost {
     fn start_plugins(&self, options: &InitOptions) {
         let mut runtime = self.runtime.borrow_mut();
         if options.safe_mode {
             tracing::warn!("Safe mode: plugins are not loaded");
         }
-        let discovered = crate::plugins::discovery::discover_plugins(&options.plugin_dir);
-        for descriptor in discovered.descriptors {
+        // The same inventory as `eov plugin ls`: per id the highest
+        // compatible version, the user's directory before the policy's
+        // read-only ones, with provenance and the shared disabled list.
+        let policy = crate::update::policy::current();
+        let host_version =
+            semver::Version::parse(crate::version::BUILD_VERSION).expect("valid version");
+        let inventory = match crate::update::plugins::inventory(
+            &options.plugin_dir,
+            &policy.plugin_dirs,
+            &host_version,
+        ) {
+            Ok(inventory) => inventory,
+            Err(error) => {
+                tracing::error!("Could not list plugins: {error:#}");
+                self.notices.borrow_mut().push(
+                    NotifyLevel::Error,
+                    "Plugins could not be loaded",
+                    Some(&format!("{error:#}")),
+                    None,
+                );
+                return;
+            }
+        };
+        for broken in &inventory.broken {
+            tracing::warn!(
+                "Unreadable plugin package {}: {}",
+                broken.package_path.display(),
+                broken.error
+            );
+        }
+        let mut listed = std::collections::BTreeSet::new();
+        for package in inventory.packages.iter().filter(|package| package.selected) {
+            listed.insert(package.id.clone());
+            let descriptor = match crate::plugins::discovery::load_descriptor(&package.package_path)
+            {
+                Ok(descriptor) => descriptor,
+                Err(error) => {
+                    runtime.add_inactive(
+                        inactive_info(package),
+                        PluginStatus::Failed(format!("could not unpack the package: {error}")),
+                    );
+                    continue;
+                }
+            };
             let manifest = &descriptor.manifest;
             let info = PluginInfo {
                 id: manifest.id.clone(),
@@ -191,14 +244,19 @@ impl UiHost {
                 description: manifest.description.clone(),
                 repository: manifest.repository.clone(),
                 root: descriptor.root.clone(),
-                package: None,
+                package: Some(package.package_path.clone()),
             };
-            if options.safe_mode {
+            if options.safe_mode || package.disabled {
                 runtime.add_inactive(info, PluginStatus::Disabled);
                 continue;
             }
-            if options.disabled.iter().any(|id| id == &manifest.id) {
-                runtime.add_inactive(info, PluginStatus::Disabled);
+            // Packages from the policy's own directories are provisioned by
+            // the administrator; anything else must be official.
+            if !package.system
+                && package.provenance.kind != "official"
+                && let Err(error) = policy.ensure_third_party_allowed("Loading this plugin")
+            {
+                runtime.add_inactive(info, PluginStatus::Failed(error.to_string()));
                 continue;
             }
             if let Some(requirement) = &manifest.ui.slint {
@@ -243,8 +301,14 @@ impl UiHost {
                 tracing::error!("Plugin '{}' did not start: {error}", manifest.id);
             }
         }
-        for old in discovered.old_plugin_files {
-            tracing::info!("Older plugin package left in place: {}", old.display());
+        for package in &inventory.packages {
+            if listed.insert(package.id.clone()) {
+                let reason = package
+                    .incompatibility
+                    .clone()
+                    .unwrap_or_else(|| "not compatible with this eov".to_string());
+                runtime.add_inactive(inactive_info(package), PluginStatus::Failed(reason));
+            }
         }
         runtime.rebuild_filters();
         drop(runtime);
@@ -287,8 +351,25 @@ impl UiHost {
         }
     }
 
+    /// Tells the user, once, how an update applied by the helper after the
+    /// last exit went (the CLI prints the same on the next `eov update`).
+    fn report_last_update(&self) {
+        let Some(report) = crate::update::take_helper_report(&crate::paths::updates_dir()) else {
+            return;
+        };
+        let (level, title) = if report.applied() {
+            (NotifyLevel::Success, "eov was updated")
+        } else if report.left_damage() {
+            (NotifyLevel::Error, "The last update failed")
+        } else {
+            (NotifyLevel::Warning, "The last update was rolled back")
+        };
+        self.notify(level, title, Some(&report.summary()), None);
+    }
+
     /// Sends `Ready` (after the window is shown).
     pub(crate) fn ready(&self) {
+        self.report_last_update();
         let ids: Vec<String> = self
             .runtime
             .borrow()
@@ -623,7 +704,6 @@ mod tests {
                 InitOptions {
                     plugin_dir: plugin_dir.path().to_path_buf(),
                     safe_mode: false,
-                    disabled: Vec::new(),
                 },
             );
             let root =

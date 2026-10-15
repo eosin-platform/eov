@@ -513,10 +513,10 @@ At a high level, the flow is:
 To **manually** build eov and run the binary, you need:
 
 - A recent Rust toolchain with Cargo.
-- OpenSlide installed on the system, including the development package needed for linking.
+- **OpenSlide 4.0 or newer**, including the files needed for linking. Many distributions still ship OpenSlide 3.4 (Ubuntu 24.04's `libopenslide-dev` is 3.4.1), which eov cannot use: install OpenSlide 4 from your distribution if it has it (Fedora 40+, Debian 13+, Homebrew), or build it from source (`packaging/shared/build-openslide.sh` builds the pinned version the release packages use). The build finds it with `pkg-config`; set `OPENSLIDE_LIB_DIR` to point at the library directory otherwise.
 - The native libraries required by Slint, winit, and the selected graphics stack on your platform.
 
-On Linux, the most important dependency is usually OpenSlide itself. Depending on your distribution, you may also need the usual X11, Wayland, Vulkan, and font development packages used by Rust GUI applications. Generally, you can just run this you're good to go:
+On Debian or Ubuntu the other build dependencies are:
 
 ```bash
 sudo apt-get update
@@ -527,7 +527,6 @@ sudo apt-get install -y \
     file \
     libvulkan-dev \
     libfontconfig-dev \
-    libopenslide-dev \
     libwayland-dev \
     libx11-dev \
     libxkbcommon-dev \

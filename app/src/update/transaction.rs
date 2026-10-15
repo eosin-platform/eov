@@ -285,6 +285,17 @@ pub struct HelperReport {
 }
 
 impl HelperReport {
+    /// Whether the update was applied (otherwise it failed, rolled back or
+    /// not).
+    pub fn applied(&self) -> bool {
+        matches!(self.outcome, Outcome::Applied)
+    }
+
+    /// Whether a failed update left the installation partly replaced.
+    pub fn left_damage(&self) -> bool {
+        matches!(self.outcome, Outcome::Failed)
+    }
+
     /// A one-paragraph summary for people.
     pub fn summary(&self) -> String {
         let versions = match (&self.from_version, &self.to_version) {

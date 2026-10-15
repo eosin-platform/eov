@@ -221,8 +221,7 @@ fn main() -> Result<()> {
         &render_timer,
         host_ui::InitOptions {
             plugin_dir: launch_options.plugin_dir.clone(),
-            safe_mode: std::env::var_os("EOV_SAFE_MODE").is_some(),
-            disabled: config::load_disabled_plugins().unwrap_or_default(),
+            safe_mode: launch_options.safe_mode,
         },
     );
     info!("Plugin host initialized");

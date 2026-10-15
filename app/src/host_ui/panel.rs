@@ -63,46 +63,56 @@ impl UiHost {
     }
 
     /// Turns a plugin on or off from the Plugins panel. Disabling takes
-    /// effect immediately and is remembered; enabling takes effect on the
-    /// next start (a library cannot be safely reloaded in-process).
+    /// effect immediately; enabling on the next start (a library cannot be
+    /// safely reloaded in-process). Both are remembered in the plugin
+    /// directory's registry, shared with `eov plugin enable/disable`.
     pub(crate) fn set_plugin_enabled(&self, plugin_id: &str, enabled: bool) {
         let name = self.plugin_name(plugin_id);
-        if enabled {
-            if let Err(error) = crate::config::set_plugin_disabled(plugin_id, false) {
-                self.notify(
-                    NotifyLevel::Error,
-                    "Could not save plugin settings",
-                    Some(&error.to_string()),
-                    None,
-                );
-                return;
-            }
+        if !enabled && self.runtime.borrow_mut().disable(plugin_id) {
+            self.on_plugin_stopped(plugin_id);
+        }
+        self.refresh_plugin_panel();
+        // The registry is locked against concurrent `eov plugin` commands,
+        // which can take a while: save on a worker.
+        let plugin_dir = self.plugin_dir.clone();
+        let plugin_id = plugin_id.to_string();
+        let spawned = std::thread::Builder::new()
+            .name("eov-plugin-registry".to_string())
+            .spawn(move || {
+                let result =
+                    crate::update::plugins::set_plugin_enabled(&plugin_dir, &plugin_id, enabled)
+                        .map_err(|error| format!("{error:#}"));
+                let _ = slint::invoke_from_event_loop(move || {
+                    super::with_host(|host| match result {
+                        Ok(_) if enabled => host.notify(
+                            NotifyLevel::Info,
+                            &format!("{name} will be enabled when eov restarts"),
+                            None,
+                            None,
+                        ),
+                        Ok(_) => host.notify(
+                            NotifyLevel::Info,
+                            &format!("{name} was disabled"),
+                            None,
+                            None,
+                        ),
+                        Err(error) => host.notify(
+                            NotifyLevel::Error,
+                            "Could not save plugin settings",
+                            Some(&error),
+                            None,
+                        ),
+                    });
+                });
+            });
+        if let Err(error) = spawned {
             self.notify(
-                NotifyLevel::Info,
-                &format!("{name} will be enabled when eov restarts"),
-                None,
-                None,
-            );
-        } else {
-            if self.runtime.borrow_mut().disable(plugin_id) {
-                self.on_plugin_stopped(plugin_id);
-            }
-            if let Err(error) = crate::config::set_plugin_disabled(plugin_id, true) {
-                self.notify(
-                    NotifyLevel::Error,
-                    "Could not save plugin settings",
-                    Some(&error.to_string()),
-                    None,
-                );
-            }
-            self.notify(
-                NotifyLevel::Info,
-                &format!("{name} was disabled"),
-                None,
+                NotifyLevel::Error,
+                "Could not save plugin settings",
+                Some(&error.to_string()),
                 None,
             );
         }
-        self.refresh_plugin_panel();
     }
 
     pub(crate) fn open_plugin_folder(&self) {

@@ -78,9 +78,6 @@ struct AppConfig {
     sidebar_plugin: Option<String>,
     #[serde(default, skip_serializing)]
     active_sidebar: Option<LegacyActiveSidebar>,
-    /// Plugins the user turned off in the Plugins panel.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    disabled_plugins: Vec<String>,
     /// The Measure tool's mode (`line`, `polyline`, …).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     measure_mode: Option<String>,
@@ -179,20 +176,6 @@ pub fn save_sidebar_plugin(plugin_id: Option<&str>) -> Result<()> {
     save_config_field(|config| {
         config.sidebar_plugin = plugin_id.map(str::to_string);
         config.active_sidebar = None;
-    })
-}
-
-pub fn load_disabled_plugins() -> Result<Vec<String>> {
-    Ok(load_config()?.disabled_plugins)
-}
-
-pub fn set_plugin_disabled(plugin_id: &str, disabled: bool) -> Result<()> {
-    save_config_field(|config| {
-        config.disabled_plugins.retain(|id| id != plugin_id);
-        if disabled {
-            config.disabled_plugins.push(plugin_id.to_string());
-            config.disabled_plugins.sort();
-        }
     })
 }
 
