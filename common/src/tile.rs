@@ -32,6 +32,10 @@ pub const LANCZOS_TILE_BORDER: u32 = 3;
 /// Largest border [`TileManager`] accepts.
 pub const MAX_TILE_BORDER: u32 = 64;
 
+/// Largest level (in pixels) [`TileManager::pin_fallback_levels`] pins: a
+/// 2048 x 2048 level is 16 MiB of RGBA.
+pub const PINNED_LEVEL_MAX_PIXELS: u64 = 2048 * 2048;
+
 /// Minimum spacing of "too many visible tiles" warnings.
 const CAP_WARN_INTERVAL_MS: u64 = 10_000;
 
@@ -429,6 +433,31 @@ impl TileManager {
     /// The attached tile cache, if any.
     pub fn tile_cache(&self) -> Option<&Arc<TileCache>> {
         self.cache.as_ref()
+    }
+
+    /// The levels of at most `max_pixels` pixels, coarsest first: the
+    /// fallback levels drawn under every frame while finer tiles load.
+    pub fn fallback_levels(&self, max_pixels: u64) -> Vec<u32> {
+        self.wsi
+            .properties()
+            .levels
+            .iter()
+            .rev()
+            .filter(|level| level.width.saturating_mul(level.height) <= max_pixels)
+            .map(|level| level.level)
+            .collect()
+    }
+
+    /// Pins the fallback levels (each at most [`PINNED_LEVEL_MAX_PIXELS`])
+    /// of this file in the attached cache, so they are never evicted, and
+    /// returns them. Call [`TileCache::remove_file`] when the file closes;
+    /// it also drops the pins.
+    pub fn pin_fallback_levels(&self) -> Vec<u32> {
+        let levels = self.fallback_levels(PINNED_LEVEL_MAX_PIXELS);
+        if let Some(cache) = &self.cache {
+            cache.set_pinned_levels(self.file_id, &levels);
+        }
+        levels
     }
 
     /// Returns a tile from the attached cache, or loads it, inserts it and
@@ -1030,6 +1059,30 @@ mod tests {
             manager.load_tile_cached(TileCoord::new(3, 0, 999, 0, 256)),
             Err(Error::InvalidCoordinates { .. })
         ));
+    }
+
+    #[test]
+    fn fallback_levels_are_pinned_in_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pyramid.tiff");
+        write_tiff(&path, &TiffSpec::pyramid(4096, 2048, 64, 3), gradient).unwrap();
+        let cache = Arc::new(TileCache::with_limits(1_000_000, 300 * 300 * 4));
+        let manager =
+            TileManager::new(WsiFile::open(&path).unwrap(), 4).with_tile_cache(Arc::clone(&cache));
+        // 4096x2048 (8 Mpx) is too big; 2048x1024 and 1024x512 qualify.
+        assert_eq!(manager.fallback_levels(PINNED_LEVEL_MAX_PIXELS), [2, 1]);
+        assert_eq!(manager.pin_fallback_levels(), [2, 1]);
+        let coarse = TileCoord::new(4, 2, 0, 0, manager.tile_size_for_level(2));
+        manager.load_tile_cached(coarse).unwrap();
+        // Fill the (tiny) cache with level-0 tiles: the pinned tile stays.
+        for x in 0..8 {
+            manager
+                .load_tile_cached(TileCoord::new(4, 0, x, 0, 256))
+                .unwrap();
+        }
+        assert!(cache.contains(&coarse));
+        assert!(cache.remove_file(4) > 0);
+        assert!(!cache.contains(&coarse));
     }
 
     #[test]
