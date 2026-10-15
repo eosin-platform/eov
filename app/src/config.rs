@@ -197,6 +197,22 @@ pub fn save_filtering_mode(mode: FilteringMode) -> Result<()> {
     save(|document| document["filtering_mode"] = value(name))
 }
 
+/// Whether panes show the slide's pixels as squares above 100%
+/// (`show_pixels`, off by default).
+pub fn load_pixel_view() -> bool {
+    with_document(|_, document| {
+        document
+            .get("show_pixels")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(false)
+    })
+    .unwrap_or(false)
+}
+
+pub fn save_pixel_view(on: bool) -> Result<()> {
+    save(|document| document["show_pixels"] = value(on))
+}
+
 /// The plugin whose sidebar should be restored at startup.
 pub fn load_sidebar_plugin() -> Result<Option<String>> {
     with_document(|_, document| {

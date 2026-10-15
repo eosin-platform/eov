@@ -746,6 +746,8 @@ fn ui_hud_settings(
         modified: color.modified,
         color_badge: SharedString::from(color.badge.as_str()),
         color_warning: SharedString::from(color.warnings.join("\n")),
+        color_management: color.color_management.code(),
+        color_management_tooltip: SharedString::from(color.color_management.tooltip()),
         scale_bar_width: 0.0,
         scale_bar_label: SharedString::new(),
         plugin_badges: SharedString::new(),
@@ -763,9 +765,10 @@ fn ui_isolated_channel(ic: crate::state::IsolatedChannel) -> SlintIsolatedChanne
     }
 }
 
-/// Update the filtering mode UI state
+/// Update the filtering mode UI state (and the pixel view next to it)
 pub fn update_filtering_mode(ui: &crate::AppWindow, state: &AppState) {
     ui.set_filtering_mode(ui_filtering_mode(state.filtering_mode));
+    ui.set_pixel_view(state.pixel_view);
 }
 
 #[cfg(test)]
@@ -778,12 +781,15 @@ mod tests {
             modified: true,
             badge: "Colour-normalised (Macenko) · Sharpened".into(),
             warnings: vec!["first".into(), "second".into()],
+            color_management: crate::color::ColorManagementInfo::On("ScanScope v1".into()),
         };
         let hud = ui_hud_settings(&crate::state::HudSettings::default(), 0.25, 0.5, &color);
         assert!(hud.modified);
         assert_eq!(hud.color_badge, "Colour-normalised (Macenko) · Sharpened");
         assert_eq!(hud.color_warning, "first\nsecond");
         assert_eq!((hud.mpp_x, hud.mpp_y), (0.25, 0.5));
+        assert_eq!(hud.color_management, 1);
+        assert!(hud.color_management_tooltip.contains("ScanScope v1"));
 
         let plain = ui_hud_settings(
             &crate::state::HudSettings::default(),

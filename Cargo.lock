@@ -1667,6 +1667,7 @@ dependencies = [
  "flate2",
  "glam",
  "image",
+ "moxcms",
  "naga 29.0.4",
  "parking_lot",
  "pkg-config",

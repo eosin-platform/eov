@@ -1,6 +1,7 @@
 use crate::AppWindow;
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
+use eov_common::color_management::{DisplayTransform, LUT_SIZE};
 use eov_common::processing::{GpuColorUniform, wgsl};
 use eov_common::viewport::Orientation;
 use eov_common::{FilteringMode, TileCoord, TileData};
@@ -26,11 +27,13 @@ const CLEAR_COLOR: wgpu::Color = wgpu::Color {
 // ---------------------------------------------------------------------------
 // Shaders
 //
-// The colour stages (stain transform, tone) come verbatim from
-// `eov_common::processing::wgsl`, the reference that the CPU pipeline is
-// tested against, so the two backends cannot drift apart. Sharpening (stage
-// 6) runs as a separate full-screen pass over the composited frame
-// (`wgsl::SHARPEN_POST_PASS`), in screen space as on the CPU.
+// The colour stages (stain transform, tone) and the colour management
+// (the slide's ICC profile → sRGB, through its 3D table in bind group 1)
+// come verbatim from `eov_common::processing::wgsl`, the reference that the
+// CPU pipeline is tested against, so the two backends cannot drift apart.
+// Sharpening (stage 6) runs as a separate full-screen pass over the
+// composited frame (`wgsl::SHARPEN_POST_PASS`), in screen space as on the
+// CPU.
 // ---------------------------------------------------------------------------
 
 /// Vertex stage and bindings shared by the tile shaders. The fragment
@@ -77,6 +80,10 @@ var tile_sampler: sampler;
 
 @group(0) @binding(2)
 var<uniform> color_params: EovColorParams;
+
+// The slide's colour management table (`color_params.icc`).
+@group(1) @binding(0)
+var icc_lut: texture_3d<f32>;
 "#;
 
 /// Bilinear / trilinear tile sampling.
@@ -96,7 +103,7 @@ fn sample_tile(
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let texel = sample_tile(input.fine_uv, input.coarse_uv, input.fine_layer, input.coarse_layer, input.mip_blend);
-    return vec4<f32>(eov_color(texel.rgb), texel.a);
+    return vec4<f32>(eov_icc(eov_color(texel.rgb)), texel.a);
 }
 "#;
 
@@ -154,16 +161,18 @@ fn lanczos_sample(uv: vec2<f32>, layer: i32, tile_size: vec2<f32>) -> vec4<f32> 
 @fragment
 fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
     let texel = lanczos_sample(input.fine_uv, input.fine_layer, input.fine_tex_size);
-    return vec4<f32>(eov_color(texel.rgb), texel.a);
+    return vec4<f32>(eov_icc(eov_color(texel.rgb)), texel.a);
 }
 "#;
 
-/// A complete tile shader: the canonical colour stages plus `fragment`.
+/// A complete tile shader: the canonical colour stages and colour
+/// management plus `fragment`.
 fn tile_shader_source(fragment: &str) -> String {
     [
         wgsl::COLOR_PARAMS_STRUCT,
         TILE_STAGE_WGSL,
         wgsl::COLOR_FUNCTIONS,
+        wgsl::ICC_FUNCTIONS,
         fragment,
     ]
     .concat()
@@ -207,9 +216,18 @@ pub(crate) struct QueuedFrame {
     /// The pane's colour pipeline as the shaders' `EovColorParams` (stages
     /// 2–4; see `eov_common::processing::ProcessingPipeline::gpu_uniform`).
     pub(crate) color: GpuColorUniform,
+    /// The colour management table `color.icc` refers to.
+    pub(crate) icc: Option<Arc<DisplayTransform>>,
     /// Screen-space sharpening of the composited frame (stage 6), 0 = off.
     pub(crate) sharpness: f32,
-    /// Read the finished frame back for the CPU filter chain (RND-6); see
+    /// Composite the background and sharpen (stages 5–6). Off for frames
+    /// read back for plugin filters: they stay transparent outside the
+    /// slide, and the filter job finishes them after the filters.
+    pub(crate) composite: bool,
+    /// Sample the tiles nearest-neighbour (the pixel view above 1:1),
+    /// whatever the draws' filtering.
+    pub(crate) nearest: bool,
+    /// Read the frame back for the CPU filter chain (RND-6); see
     /// [`GpuRenderer::poll_readbacks`].
     pub(crate) readback: Option<ReadbackTag>,
 }
@@ -225,6 +243,8 @@ pub(crate) struct ReadbackTag {
     pub(crate) scale: f64,
     /// Increases with every readback a pane requests.
     pub(crate) generation: u64,
+    /// What follows the filters: the background and the sharpening.
+    pub(crate) finish: crate::render_pool::CpuRenderPostProcess,
 }
 
 /// A frame read back from the GPU: tightly packed RGBA.
@@ -279,6 +299,9 @@ impl QueuedFrame {
             v.to_bits().hash(&mut hasher);
         }
         self.sharpness.to_bits().hash(&mut hasher);
+        self.composite.hash(&mut hasher);
+        self.nearest.hash(&mut hasher);
+        self.icc.as_ref().map(|icc| icc.id()).hash(&mut hasher);
         self.draws.len().hash(&mut hasher);
         for draw in &self.draws {
             draw.tile.coord.hash(&mut hasher);
@@ -301,7 +324,27 @@ impl QueuedFrame {
 
     /// Whether the frame needs the sharpening post pass.
     fn sharpens(&self) -> bool {
-        self.sharpness > 0.001
+        self.composite && self.sharpness > 0.001
+    }
+
+    /// What the frame is cleared to: the background, or transparent for a
+    /// frame that the filter job finishes.
+    fn clear_color(&self) -> wgpu::Color {
+        if self.composite {
+            CLEAR_COLOR
+        } else {
+            wgpu::Color::TRANSPARENT
+        }
+    }
+
+    /// The uniform the shaders get. A frame for plugin filters is converted
+    /// on the CPU, after the filters (colour management follows them).
+    fn shader_color(&self) -> GpuColorUniform {
+        let mut color = self.color;
+        if !self.composite || self.icc.is_none() {
+            color.icc = [0.0; 4];
+        }
+        color
     }
 }
 
@@ -502,6 +545,7 @@ struct TilePage {
     /// Pre-built bind groups — one per sampler variant.
     bilinear_bind_group: wgpu::BindGroup,
     trilinear_bind_group: wgpu::BindGroup,
+    nearest_bind_group: wgpu::BindGroup,
 }
 
 impl TilePage {
@@ -556,6 +600,7 @@ impl TilePage {
         };
         let bilinear_bind_group = bind_group(&runtime.bilinear_sampler);
         let trilinear_bind_group = bind_group(&runtime.sampler);
+        let nearest_bind_group = bind_group(&runtime.nearest_sampler);
         Some(Self {
             texture,
             array_view,
@@ -563,6 +608,7 @@ impl TilePage {
             slots: LayerSlots::new(layers, frame),
             bilinear_bind_group,
             trilinear_bind_group,
+            nearest_bind_group,
         })
     }
 
@@ -867,6 +913,8 @@ struct GpuRuntime {
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     bilinear_sampler: wgpu::Sampler,
+    /// The pixel view: the texel holding the sample point.
+    nearest_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     /// `EovColorParams` (`GpuColorUniform`, 144 bytes).
@@ -879,9 +927,19 @@ struct GpuRuntime {
     sharpen_buffer: wgpu::Buffer,
     /// Per surface slot: the composited frame the sharpening pass reads.
     frames: HashMap<usize, ImportedSurface>,
+    /// Bind group 1: the colour management table.
+    icc_bind_group_layout: wgpu::BindGroupLayout,
+    /// A table that is never read (colour management off).
+    icc_none: wgpu::BindGroup,
+    /// Tables of the slides' profiles, by profile id, with the frame they
+    /// were last used in.
+    icc_tables: HashMap<u64, (wgpu::BindGroup, u64)>,
     max_texture_array_layers: u32,
     max_texture_dimension_2d: u32,
 }
+
+/// Colour management tables kept for slides no frame showed recently.
+const KEPT_ICC_TABLES: usize = 8;
 
 impl GpuRuntime {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
@@ -951,9 +1009,45 @@ impl GpuRuntime {
             ..Default::default()
         });
 
+        let icc_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("viewport-icc-bind-group-layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                }],
+            });
+        let icc_none = icc_bind_group(
+            device,
+            queue,
+            &icc_bind_group_layout,
+            2,
+            &[[0.0, 0.0, 0.0, 1.0]; 8],
+        );
+
+        // Nearest sampler: the texel holding the sample point, as the CPU's
+        // `blit_tile_nearest` picks it.
+        let nearest_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("viewport-tile-nearest-sampler"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            anisotropy_clamp: 1,
+            ..Default::default()
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("viewport-tile-pipeline-layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
+            bind_group_layouts: &[Some(&bind_group_layout), Some(&icc_bind_group_layout)],
             immediate_size: 0,
         });
 
@@ -1118,6 +1212,7 @@ impl GpuRuntime {
             bind_group_layout,
             sampler,
             bilinear_sampler,
+            nearest_sampler,
             vertex_buffer,
             vertex_capacity: 6,
             color_buffer,
@@ -1126,9 +1221,49 @@ impl GpuRuntime {
             sharpen_bind_group_layout,
             sharpen_buffer,
             frames: HashMap::new(),
+            icc_bind_group_layout,
+            icc_none,
+            icc_tables: HashMap::new(),
             max_texture_array_layers: device.limits().max_texture_array_layers.max(1),
             max_texture_dimension_2d: device.limits().max_texture_dimension_2d,
         }
+    }
+
+    /// The bind group of `frame`'s colour management table, uploaded the
+    /// first time a frame uses it.
+    fn icc_table(&mut self, frame: &QueuedFrame, frame_id: u64) -> wgpu::BindGroup {
+        let Some(transform) = frame
+            .icc
+            .as_ref()
+            .filter(|_| frame.shader_color().icc[0] > 0.5)
+        else {
+            return self.icc_none.clone();
+        };
+        let entry = self.icc_tables.entry(transform.id()).or_insert_with(|| {
+            let bind_group = icc_bind_group(
+                &self.device,
+                &self.queue,
+                &self.icc_bind_group_layout,
+                LUT_SIZE as u32,
+                &transform.gpu_texels(),
+            );
+            (bind_group, frame_id)
+        });
+        entry.1 = frame_id;
+        let bind_group = entry.0.clone();
+        if self.icc_tables.len() > KEPT_ICC_TABLES {
+            // Forget the table shown longest ago (never this frame's).
+            if let Some(oldest) = self
+                .icc_tables
+                .iter()
+                .filter(|(_, (_, used))| *used != frame_id)
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(id, _)| *id)
+            {
+                self.icc_tables.remove(&oldest);
+            }
+        }
+        bind_group
     }
 
     /// The composited-frame texture of `slot` (the sharpening pass's input),
@@ -1169,6 +1304,56 @@ impl GpuRuntime {
     }
 }
 
+/// A `size³` RGBA32F 3D texture holding `texels` (x fastest, then y, then
+/// z), bound for the tile shaders' `icc_lut`.
+fn icc_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    size: u32,
+    texels: &[[f32; 4]],
+) -> wgpu::BindGroup {
+    let extent = wgpu::Extent3d {
+        width: size,
+        height: size,
+        depth_or_array_layers: size,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("viewport-icc-table"),
+        size: extent,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba32Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        bytemuck::cast_slice(texels),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(size * 16),
+            rows_per_image: Some(size),
+        },
+        extent,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("viewport-icc-bind-group"),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(&view),
+        }],
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Public renderer — owns the runtime, tile pages, and pending frame queue.
 // ---------------------------------------------------------------------------
@@ -1185,7 +1370,7 @@ pub struct GpuRenderer {
     /// Used to skip redundant vertex rebuilds and render passes.
     last_rendered_fingerprint: HashMap<usize, u64>,
     /// Last uploaded colour uniform, used to skip redundant uploads.
-    last_color: Option<[f32; 36]>,
+    last_color: Option<[f32; 40]>,
     /// Surfaces to read back as they are (their frame did not change).
     readback_requests: Vec<(usize, ReadbackTag)>,
     /// Readbacks waiting for the GPU.
@@ -1591,9 +1776,15 @@ impl GpuRenderer {
         done
     }
 
-    /// Whether readbacks are still on their way.
+    /// Whether readbacks are still on their way, including those of frames
+    /// waiting for the window's next rendering.
     pub(crate) fn readbacks_pending(&self) -> bool {
-        !self.pending_readbacks.is_empty() || !self.readback_requests.is_empty()
+        !self.pending_readbacks.is_empty()
+            || !self.readback_requests.is_empty()
+            || self
+                .pending_frames
+                .values()
+                .any(|frame| frame.readback.is_some())
     }
 
     // -----------------------------------------------------------------------
@@ -1604,7 +1795,7 @@ impl GpuRenderer {
     fn render_frame(
         runtime: &mut GpuRuntime,
         tiles: &mut TileStore,
-        last_color: &mut Option<[f32; 36]>,
+        last_color: &mut Option<[f32; 40]>,
         slot: SurfaceSlot,
         frame: QueuedFrame,
         frame_id: u64,
@@ -1705,7 +1896,8 @@ impl GpuRenderer {
         }
 
         // Upload the colour-pipeline uniform only when values changed.
-        let color = frame.color.to_array();
+        let color = frame.shader_color().to_array();
+        let icc_table = runtime.icc_table(&frame, frame_id);
         if last_color.as_ref() != Some(&color) {
             runtime
                 .queue
@@ -1734,7 +1926,8 @@ impl GpuRenderer {
             .first()
             .map(|d| d.filtering_mode)
             .unwrap_or(FilteringMode::Bilinear);
-        let use_lanczos = matches!(filtering_mode, FilteringMode::Lanczos3);
+        // The pixel view samples the fine tiles as they are (no Lanczos).
+        let use_lanczos = !frame.nearest && matches!(filtering_mode, FilteringMode::Lanczos3);
         let is_bilinear = filtering_mode == FilteringMode::Bilinear;
 
         let mut encoder = runtime
@@ -1751,7 +1944,7 @@ impl GpuRenderer {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
+                        load: wgpu::LoadOp::Clear(frame.clear_color()),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1767,10 +1960,13 @@ impl GpuRenderer {
                 render_pass.set_pipeline(&runtime.pipeline);
             }
             render_pass.set_vertex_buffer(0, runtime.vertex_buffer.slice(..));
+            render_pass.set_bind_group(1, &icc_table, &[]);
 
             for ((layer_size, index), range) in &draw_ranges {
                 if let Some(page) = tiles.page(*layer_size, *index) {
-                    let bg = if is_bilinear {
+                    let bg = if frame.nearest {
+                        &page.nearest_bind_group
+                    } else if is_bilinear {
                         &page.bilinear_bind_group
                     } else {
                         &page.trilinear_bind_group
@@ -1999,7 +2195,10 @@ mod tests {
             orientation: Orientation::IDENTITY,
             draws: Vec::new(),
             color,
+            icc: None,
             sharpness,
+            composite: true,
+            nearest: false,
             readback: None,
         }
     }
@@ -2016,6 +2215,11 @@ mod tests {
         assert_ne!(base, frame(neutral, 0.5).fingerprint());
         assert!(!frame(neutral, 0.0).sharpens());
         assert!(frame(neutral, 0.5).sharpens());
+        // Frames for plugin filters are finished on the CPU.
+        let mut for_filters = frame(neutral, 0.5);
+        for_filters.composite = false;
+        assert!(!for_filters.sharpens());
+        assert_ne!(for_filters.fingerprint(), frame(neutral, 0.5).fingerprint());
     }
 
     // ---- Headless GPU: the shaders against the CPU reference ------------
@@ -2129,7 +2333,10 @@ mod tests {
                     filtering_mode: FilteringMode::Bilinear,
                 }],
                 color: pipeline.gpu_uniform(),
+                icc: pipeline.color_management().cloned(),
                 sharpness: pipeline.sharpness(),
+                composite: true,
+                nearest: false,
                 readback: None,
             },
         );
@@ -2182,7 +2389,10 @@ mod tests {
                         filtering_mode: FilteringMode::Bilinear,
                     }],
                     color: pipeline.gpu_uniform(),
+                    icc: None,
                     sharpness: 0.0,
+                    composite: true,
+                    nearest: false,
                     readback: None,
                 },
             );
@@ -2263,6 +2473,128 @@ mod tests {
         assert_eq!(&gpu[last..], &[30, 30, 30, 255]);
     }
 
+    /// The colour management on the GPU (the slide's table, interpolated in
+    /// the tile shader) against the CPU reference.
+    #[test]
+    fn colour_managed_gpu_frames_match_the_cpu_pipeline() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the colour management comparison");
+            return;
+        };
+        let (_, inner) = tile();
+        let transform = Arc::new(
+            DisplayTransform::from_icc(&eov_common::color_management::test_profiles::adobe_rgb())
+                .unwrap(),
+        );
+        for settings in [
+            ColorSettings::default(),
+            ColorSettings {
+                tone: ToneAdjustments::new(1.25, 0.03, 1.15),
+                ..ColorSettings::default()
+            },
+        ] {
+            let pipeline = settings
+                .pipeline(None)
+                .with_color_management(Some(Arc::clone(&transform)));
+            let gpu = render(&mut renderer, TILE * 2, &pipeline);
+            let mut cpu = vec![0u8; (TILE * 2 * TILE * 4) as usize];
+            for y in 0..TILE as usize {
+                let row = &inner[y * TILE as usize * 4..(y + 1) * TILE as usize * 4];
+                cpu[y * TILE as usize * 8..y * TILE as usize * 8 + row.len()].copy_from_slice(row);
+            }
+            pipeline.apply_rgba(&mut cpu, TILE * 2, TILE, crate::color::VIEWPORT_BACKGROUND);
+            assert!(
+                max_difference(&gpu, &cpu) <= 1,
+                "colour-managed GPU and CPU frames differ by {}",
+                max_difference(&gpu, &cpu)
+            );
+            // The conversion changed the slide, not the background.
+            let unmanaged = render(&mut renderer, TILE * 2, &settings.pipeline(None));
+            assert!(max_difference(&gpu[..16], &unmanaged[..16]) > 1);
+            let last = gpu.len() - 4;
+            assert_eq!(&gpu[last..], &[30, 30, 30, 255]);
+        }
+    }
+
+    /// The pixel view on the GPU (nearest sampler) picks the same texels as
+    /// the CPU's `blit_tile_nearest`.
+    #[test]
+    fn nearest_gpu_frames_match_the_cpu_blitter() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the pixel view comparison");
+            return;
+        };
+        let (tile, _) = tile();
+        // A scale whose pixel centres never fall on a texel edge.
+        let scale = 2.37_f32;
+        let side = (TILE as f32 * scale).ceil() as u32;
+        let slot = SurfaceSlot(0);
+        renderer.ensure_surface(slot, side, side).unwrap();
+        renderer.pending_frames.insert(
+            slot.index(),
+            QueuedFrame {
+                width: side,
+                height: side,
+                orientation: Orientation::IDENTITY,
+                draws: vec![TileDraw {
+                    tile: Arc::clone(&tile),
+                    coarse_tile: None,
+                    screen_x: 0.0,
+                    screen_y: 0.0,
+                    screen_w: TILE as f32 * scale,
+                    screen_h: TILE as f32 * scale,
+                    coarse_uv_min: [0.0, 0.0],
+                    coarse_uv_max: [1.0, 1.0],
+                    mip_blend: 0.0,
+                    filtering_mode: FilteringMode::Trilinear,
+                }],
+                color: ProcessingPipeline::identity().gpu_uniform(),
+                icc: None,
+                sharpness: 0.0,
+                composite: true,
+                nearest: true,
+                readback: None,
+            },
+        );
+        renderer.flush_pending_frames();
+        let (_, _, gpu) = renderer.read_surface_rgba(slot).unwrap();
+
+        let mut cpu = vec![0u8; (side * side * 4) as usize];
+        let extent = f64::from(TILE as f32 * scale);
+        eov_common::blitter::blit_tile_nearest(
+            &mut cpu,
+            side,
+            side,
+            eov_common::blitter::TileSrc {
+                data: &tile.data,
+                width: tile.width,
+                height: tile.height,
+                border: tile.border,
+            },
+            eov_common::blitter::BlitRect {
+                x: 0,
+                y: 0,
+                width: extent.ceil() as i32,
+                height: extent.ceil() as i32,
+                exact_x: 0.0,
+                exact_y: 0.0,
+                exact_width: extent,
+                exact_height: extent,
+            },
+        );
+        let inside = (extent.floor() as usize).min(side as usize);
+        let mut differing = 0;
+        for y in 0..inside {
+            for x in 0..inside {
+                let i = (y * side as usize + x) * 4;
+                if gpu[i..i + 3] != cpu[i..i + 3] {
+                    differing += 1;
+                }
+            }
+        }
+        assert_eq!(differing, 0, "{differing} pixels sample another texel");
+    }
+
     fn tagged_frame(width: u32, generation: u64) -> QueuedFrame {
         let (tile, _) = tile();
         QueuedFrame {
@@ -2282,13 +2614,20 @@ mod tests {
                 filtering_mode: FilteringMode::Bilinear,
             }],
             color: ProcessingPipeline::identity().gpu_uniform(),
+            icc: None,
             sharpness: 0.0,
+            composite: false,
+            nearest: false,
             readback: Some(ReadbackTag {
                 pane_uid: 7,
                 file_id: 1,
                 viewport: eov_common::Viewport::new(width as f64, TILE as f64, 100.0, 100.0),
                 scale: 1.0,
                 generation,
+                finish: crate::render_pool::CpuRenderPostProcess {
+                    pipeline: Arc::new(ProcessingPipeline::identity()),
+                    background: crate::color::VIEWPORT_BACKGROUND,
+                },
             }),
         }
     }
@@ -2405,7 +2744,10 @@ mod tests {
                 orientation: Orientation::IDENTITY,
                 draws,
                 color: ProcessingPipeline::identity().gpu_uniform(),
+                icc: None,
                 sharpness: 0.0,
+                composite: true,
+                nearest: false,
                 readback: None,
             },
         );
@@ -2445,6 +2787,10 @@ mod tests {
         renderer
             .pending_frames
             .insert(slot.index(), tagged_frame(width, 1));
+        assert!(
+            renderer.readbacks_pending(),
+            "a frame waiting for the window's rendering is not lost"
+        );
         renderer.flush_pending_frames();
         assert!(renderer.readbacks_pending());
         let frames = wait_for_readbacks(&mut renderer);
@@ -2455,6 +2801,10 @@ mod tests {
         let (_, _, surface) = renderer.read_surface_rgba(slot).unwrap();
         assert_eq!(frame.pixels, surface, "rows are unpadded");
         assert!(!renderer.readbacks_pending());
+        // Frames for plugin filters stay transparent outside the slide.
+        let row_end = width as usize * 4;
+        assert_eq!(&frame.pixels[row_end - 4..row_end], &[0, 0, 0, 0]);
+        assert_eq!(frame.pixels[3], 255, "the slide is opaque");
 
         // An unchanged frame is not rendered again, but still read back.
         let _ = renderer.queue_frame(slot, tagged_frame(width, 2));

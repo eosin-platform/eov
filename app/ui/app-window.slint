@@ -137,6 +137,9 @@ export component AppWindow inherits Window {
     in-out property <bool> plugin-problems: false;
 
     in-out property <bool> filter-popup-visible: false;
+    // Above 100%, the slide's pixels show as squares.
+    in-out property <bool> pixel-view: false;
+    callback pixel-view-toggled();
     in-out property <bool> lanczos-confirm-visible: false;
     in-out property <bool> lanczos-confirm-from-backend-switch: false;
     in-out property <bool> plugin-confirm-visible: false;
@@ -389,6 +392,7 @@ export component AppWindow inherits Window {
     callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
     callback hud-orientation-changed(int, int);
+    callback hud-color-management-toggled(int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
     callback hud-deconv-e-intensity-changed(int, float);
@@ -958,6 +962,9 @@ export component AppWindow inherits Window {
                     hud-orientation-changed(pane, action) => {
                         root.hud-orientation-changed(pane, action);
                     }
+                    hud-color-management-toggled(pane) => {
+                        root.hud-color-management-toggled(pane);
+                    }
                     hud-zoom-out(pane) => {
                         root.hud-zoom-out(pane);
                     }
@@ -1274,7 +1281,7 @@ export component AppWindow inherits Window {
         x: toolbar.filter-combo-abs-x;
         y: toolbar.filter-combo-abs-y;
         width: toolbar.filter-combo-width + 74px;
-        height: 3 * 26px + 4px;
+        height: 4 * 26px + 9px;
         background: Theme.context-menu-bg;
         border-radius: 4px;
         border-width: 1px;
@@ -1345,6 +1352,36 @@ export component AppWindow inherits Window {
                     padding-left: 8px;
                     Text {
                         text: root.filtering-mode == FilteringMode.lanczos3 ? "✓ Lanczos-3 (High Quality)" : "   Lanczos-3 (High Quality)";
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            // Above 1:1 the slide's pixels show as squares, whatever the
+            // filtering.
+            Rectangle {
+                height: 26px;
+                background: pixel-view-touch.has-hover ? Theme.context-menu-hover : transparent;
+                border-radius: 2px;
+
+                pixel-view-touch := TouchArea {
+                    clicked => {
+                        root.filter-popup-visible = false;
+                        root.pixel-view-toggled();
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: root.pixel-view ? "✓ Show Pixels Above 100%" : "   Show Pixels Above 100%";
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -1477,121 +1514,6 @@ export component AppWindow inherits Window {
 
                         Text {
                             text: "Confirm";
-                            color: white;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if root.plugin-confirm-visible: Rectangle {
-        x: 0px;
-        y: 0px;
-        width: root.width;
-        height: root.height;
-        background: #00000088;
-
-        TouchArea {
-            clicked => {
-                root.plugin-confirm-visible = false;
-                root.plugin-confirm-cancelled();
-            }
-        }
-
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 640px;
-            height: 360px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
-
-            TouchArea { }
-
-            VerticalLayout {
-                padding: 20px;
-                spacing: 12px;
-
-                Text {
-                    text: root.plugin-confirm-title;
-                    color: Theme.text-primary;
-                    font-size: 14px;
-                    font-weight: 600;
-                    horizontal-alignment: left;
-                }
-
-                Flickable {
-                    height: 180px;
-                    viewport-height: plugin-confirm-scroll-content.preferred-height;
-
-                    plugin-confirm-scroll-content := VerticalLayout {
-                        padding: 8px;
-
-                        Text {
-                            text: root.plugin-confirm-message;
-                            color: Theme.text-secondary;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            horizontal-alignment: left;
-                        }
-                    }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
-
-                    Rectangle {
-                        min-width: cancel-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-
-                        plugin-cancel-touch := TouchArea {
-                            clicked => {
-                                root.plugin-confirm-visible = false;
-                                root.plugin-confirm-cancelled();
-                            }
-                        }
-
-                        cancel-text := Text {
-                            text: root.plugin-confirm-cancel-label;
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    Rectangle {
-                        min-width: confirm-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.plugin-confirm-destructive
-                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
-                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
-
-                        plugin-confirm-touch := TouchArea {
-                            clicked => {
-                                root.plugin-confirm-visible = false;
-                                root.plugin-confirm-accepted();
-                            }
-                        }
-
-                        confirm-text := Text {
-                            text: root.plugin-confirm-confirm-label;
                             color: white;
                             font-size: 12px;
                             horizontal-alignment: center;
@@ -1937,6 +1859,124 @@ export component AppWindow inherits Window {
         }
         open-folder-requested => {
             root.plugins-folder-requested();
+        }
+    }
+
+    // Confirmations (the host's and plugins'): above every panel, since
+    // panels ask for them too (the Plugins panel's Check for Updates and
+    // Remove).
+    if root.plugin-confirm-visible: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #00000088;
+
+        TouchArea {
+            clicked => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 640px;
+            height: 360px;
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                Text {
+                    text: root.plugin-confirm-title;
+                    color: Theme.text-primary;
+                    font-size: 14px;
+                    font-weight: 600;
+                    horizontal-alignment: left;
+                }
+
+                Flickable {
+                    height: 180px;
+                    viewport-height: plugin-confirm-scroll-content.preferred-height;
+
+                    plugin-confirm-scroll-content := VerticalLayout {
+                        padding: 8px;
+
+                        Text {
+                            text: root.plugin-confirm-message;
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-alignment: left;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        min-width: cancel-text.preferred-width + 16px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        plugin-cancel-touch := TouchArea {
+                            clicked => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-cancelled();
+                            }
+                        }
+
+                        cancel-text := Text {
+                            text: root.plugin-confirm-cancel-label;
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        min-width: confirm-text.preferred-width + 16px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: root.plugin-confirm-destructive
+                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
+                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
+
+                        plugin-confirm-touch := TouchArea {
+                            clicked => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-accepted();
+                            }
+                        }
+
+                        confirm-text := Text {
+                            text: root.plugin-confirm-confirm-label;
+                            color: white;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
         }
     }
 

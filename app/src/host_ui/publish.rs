@@ -587,6 +587,10 @@ impl UiHost {
                         },
                         modified: color.modified,
                         badge: color.badge,
+                        color_managed: matches!(
+                            color.color_management,
+                            crate::color::ColorManagementInfo::On(_)
+                        ),
                     },
                 ))
             })

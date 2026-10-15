@@ -81,7 +81,7 @@ impl UiHost {
                 !state.slide_link.landmarks.is_empty(),
             )
         };
-        let (file_id, view, has_roi, has_measurements, turned, multichannel) = {
+        let (file_id, view, has_roi, has_measurements, turned, multichannel, color_managed) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -95,6 +95,15 @@ impl UiHost {
                 file.and_then(|f| f.pane_state(PaneId(pane)))
                     .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
                 file.is_some_and(|f| f.wsi.is_multichannel()),
+                // Whether the slide is colour-managed, for slides with a
+                // usable profile.
+                file.and_then(|f| {
+                    matches!(
+                        crate::color::slide_profile(f.id, &f.wsi),
+                        crate::color::SlideProfile::Ready(_)
+                    )
+                    .then_some(f.color_management)
+                }),
             )
         };
         let keys = crate::shortcuts::current();
@@ -136,6 +145,18 @@ impl UiHost {
             if turned {
                 items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
             }
+            mark_last_separator(&mut items);
+        }
+        if let Some(on) = color_managed {
+            items.push(item(
+                "host:color-management",
+                if on {
+                    "Show Colours as Scanned"
+                } else {
+                    "Convert Colours to sRGB"
+                },
+                "",
+            ));
             mark_last_separator(&mut items);
         }
         // Linked navigation: align this slide to the others (Phase 3 #5).
@@ -375,6 +396,15 @@ impl UiHost {
         if host_command == "quantify" {
             if let Some(ui) = self.ui() {
                 crate::quantify_panel::open(&ui, &self.state);
+            }
+            return true;
+        }
+        if host_command == "color-management" {
+            let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
+            if let (Some(pane), Some(ui)) = (pane, self.ui()) {
+                self.state.write().set_focused_pane(PaneId(pane));
+                crate::callbacks::toggle_color_management(&ui, &self.state);
+                self.request_render();
             }
             return true;
         }

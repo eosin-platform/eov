@@ -54,6 +54,8 @@ roxmltree = "0.21"
 weezl = "0.1"
 zune-jpeg = "0.5"
 zstd = { version = "0.13", default-features = false }
+# ICC colour management (slide profiles to sRGB, see `color_management`)
+moxcms = "0.7"
 
 [build-dependencies]
 pkg-config = "0.3"

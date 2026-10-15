@@ -94,7 +94,20 @@ macro_rules! dbg_print {
 
 slint::include_modules!();
 
-/// Frame rate for viewport updates
+/// Frame rate for viewport updates.
+///
+/// Frame pacing: the render loop is a repeating 16 ms Slint timer, not
+/// vsync-aligned. Slint 1.17 has no frame callback for applications (its
+/// rendering notifier runs inside the window's rendering, too late to
+/// change that frame's properties), and winit 0.30 has none on X11 or
+/// Windows. Slint presents the window with `AutoVsync`, so frames are never
+/// torn, but a display above 60 Hz shows eov's updates at 60 fps. A window
+/// the compositor does not present (covered, on another workspace) can
+/// block the UI thread in the present: frames about a second apart were
+/// seen under GNOME's Xwayland, which delays plugin commands too (a shown
+/// window applies a plugin's `set_view` within a frame, ~17 ms). The loop
+/// stops altogether while nothing changes and while the window is
+/// minimised (see `render::update_and_render`).
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
@@ -242,6 +255,7 @@ fn main() -> Result<()> {
 
     let mut initial_state = AppState::new();
     initial_state.viewport_lock_enabled = launch_options.viewport_lock_enabled;
+    initial_state.pixel_view = config::load_pixel_view();
     let state = Arc::new(RwLock::new(initial_state));
     let tile_cache = Arc::new(TileCache::with_budget(cache_budget::init(
         launch_options.cache_size_bytes,

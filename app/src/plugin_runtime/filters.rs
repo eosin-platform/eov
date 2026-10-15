@@ -177,6 +177,18 @@ impl FilterChain {
     }
 }
 
+/// A chain of the test plugin's filters (`invert` inverts red, `plus-one`
+/// adds one to it), for other modules' tests.
+#[cfg(test)]
+pub(crate) fn test_chain(ids: &[&str]) -> FilterChain {
+    let ids: Vec<(&str, i32)> = ids
+        .iter()
+        .enumerate()
+        .map(|(priority, id)| (*id, priority as i32))
+        .collect();
+    tests::chain_with(&ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,7 +225,7 @@ mod tests {
         }
     }
 
-    fn chain_with(ids: &[(&str, i32)]) -> FilterChain {
+    pub(super) fn chain_with(ids: &[(&str, i32)]) -> FilterChain {
         let host = MockHost::new();
         let init = serde_json::to_string(&test_init("f")).unwrap();
         let instance = Arc::new(create_plugin::<Filters>(host.to_ffi(), &init).unwrap());

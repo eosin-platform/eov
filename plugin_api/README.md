@@ -139,7 +139,16 @@ mapping to the pane changes. Use `ViewInfo::image_to_screen` and
 (`visible` is the bounding box of the visible area). Filter frames arrive
 as shown on screen, turned; their `FilterView` carries no orientation
 (the FFI struct is frozen), so read it from the pane's `ViewInfo` in the
-snapshot.
+snapshot. They hold the slide's pixels after eov's stain and tone
+adjustments, and are transparent outside the slide: eov converts the
+colours to sRGB (colour management), composites the background and
+sharpens after the filters.
+
+Pixels from `read_region` are the slide's own colours, as scanned. When a
+slide has an ICC profile (`FileInfo::has_icc_profile`), eov shows and
+exports it converted to sRGB unless the user turns that off;
+`DisplayAdjustments::color_managed` (from `display_adjustments`, and in
+`HostEvent::DisplayChanged`) says whether a pane does.
 
 ## Plugin manifest
 

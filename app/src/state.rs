@@ -296,6 +296,9 @@ pub struct OpenFile {
     /// Pixel size (µm/px, both axes) set by the user for a slide that does
     /// not record one, or records a wrong one.
     pub calibration_override: Option<f64>,
+    /// Convert the slide's colours from its ICC profile to sRGB, when it
+    /// has a usable one (on by default; see `crate::color`).
+    pub color_management: bool,
 }
 
 pub struct NewOpenFile {
@@ -424,8 +427,6 @@ pub struct FilePaneState {
     pub needs_settled_cpu_render: bool,
     /// Filter revision last incorporated into a settled pane render.
     pub last_render_filter_revision: u64,
-    /// Whether the GPU surface still matches this pane's current viewport.
-    pub gpu_surface_valid: bool,
 }
 
 impl FilePaneState {
@@ -457,7 +458,6 @@ impl FilePaneState {
             pending_cpu_job_id: None,
             needs_settled_cpu_render: false,
             last_render_filter_revision: 0,
-            gpu_surface_valid: false,
         }
     }
 
@@ -474,7 +474,6 @@ impl FilePaneState {
         self.pending_cpu_job_id = None;
         self.needs_settled_cpu_render = false;
         self.last_render_filter_revision = 0;
-        self.gpu_surface_valid = false;
     }
 }
 
@@ -534,6 +533,9 @@ pub struct AppState {
     pub gpu_backend_available: bool,
     /// The selected texture filtering mode
     pub filtering_mode: FilteringMode,
+    /// Show the slide's pixels as squares (nearest neighbour) where a pane
+    /// magnifies it beyond full resolution (`show_pixels` in config.toml).
+    pub pixel_view: bool,
     /// Whether the minimap/zoom controls are shown in viewports
     pub show_minimap: bool,
     /// Whether the metadata HUD is shown in viewports
@@ -587,6 +589,7 @@ impl AppState {
             render_backend: RenderBackend::Cpu,
             gpu_backend_available: false,
             filtering_mode: FilteringMode::default(),
+            pixel_view: false,
             show_minimap: true,
             show_metadata: false,
             show_scale_bar: true,
@@ -1299,6 +1302,7 @@ impl AppState {
             roi: None,
             measurements: Vec::new(),
             calibration_override: None,
+            color_management: true,
         });
 
         let target_pane = if target_pane.0 < self.panes.len() {

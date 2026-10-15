@@ -203,7 +203,10 @@ pub struct FilterView {
 
 /// A rendered frame handed to a CPU filter, to be modified in place.
 ///
-/// Pixels are RGBA8 with straight alpha; rendered slide pixels are opaque.
+/// Pixels are RGBA8 with straight alpha: the slide's pixels, after eov's
+/// stain and tone adjustments, are opaque, and the rest of the pane is
+/// transparent. eov composites the viewport background and sharpens after
+/// the filters, so a filter never sees or changes the background.
 /// Rows are `stride` bytes apart (`stride >= width·4`).
 #[repr(C)]
 #[derive(StableAbi)]

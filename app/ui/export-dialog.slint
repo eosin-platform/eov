@@ -1208,6 +1208,17 @@ export component ExportDialog inherits Rectangle {
                             icon-source: @image-url("icons/settings.svg");
                         }
 
+                        // Off: the colours as scanned, with the slide's
+                        // profile embedded in the file.
+                        if root.settings.has-color-profile: ToggleSwitch {
+                            label: "Convert to sRGB (ICC profile)";
+                            checked: root.settings.color-management;
+                            toggled(v) => {
+                                root.settings.color-management = v;
+                                root.notify-settings();
+                            }
+                        }
+
                         LabelRow {
                             label: "Sharpness";
                         }

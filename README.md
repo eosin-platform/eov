@@ -217,6 +217,8 @@ eov provides three texture filtering modes, selectable in the window toolbar (or
 
 Both CPU and GPU backends support all three modes. On the GPU path, trilinear blending is performed by sampling fine and coarse mip textures and mixing in the fragment shader. Lanczos resampling is implemented as a separable kernel evaluated per-pixel in a dedicated shader.
 
+**Show Pixels Above 100%** (in the same menu, `show_pixels` in `config.toml`) draws the slide's pixels as sharp squares wherever a pane magnifies it beyond its full resolution (more than one screen pixel per slide pixel), instead of smoothing them; below that the filtering mode applies. Both renderers sample the same pixels, and exports that magnify a view do the same while the setting is on.
+
 ## Image Adjustments
 
 Real-time image adjustment controls are available in the HUD settings panel:
@@ -248,6 +250,12 @@ eov supports real-time H&E color deconvolution, which separates a histology imag
 - **Channel visibility**: click a channel's letter (H, E) to hide or show it.
 
 When stain normalization is active, the deconvolution reuses the slide-specific stain matrix estimated by the normalization step, so channel separation reflects the actual stain vectors of the current slide. Otherwise the default Ruifrok & Johnston reference matrix is used. Both CPU and GPU backends are supported.
+
+## Colour Management
+
+Many scanners record an ICC colour profile with the slide (Aperio's "ScanScope v1", Roche's DP 200 profiles, …). eov converts such a slide's colours from its profile to sRGB, on both renderers, in the viewport, the minimap, copies and exports. The HUD shows **ICC** while a slide is colour-managed; click it (or **Show Colours as Scanned** in the viewport menu) to see the colours as scanned, and again to convert them. Slides without a profile have no indicator.
+
+The conversion is the last colour step before the background: stain normalisation, deconvolution, tone adjustments and plugin filters work on the slide's own colours, and so do region reads by plugins, stain quantification and dataset extraction. eov samples each profile's conversion into a 33×33×33 table that both renderers interpolate the same way (within 2 levels of the exact conversion on stained tissue). It assumes an sRGB display, and supports RGB profiles of the matrix/TRC and LUT kinds; other profiles are reported on the HUD and the slide is shown as scanned.
 
 ## Stain Quantification
 

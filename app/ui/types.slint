@@ -273,6 +273,10 @@ export struct HudSettings {
     modified: bool,
     color-badge: string,
     color-warning: string,
+    // Colour management (ICC profile -> sRGB): 0 no profile, 1 on, 2 off,
+    // 3 profile being read, 4 profile unusable; and the indicator's tooltip.
+    color-management: int,
+    color-management-tooltip: string,
     // On-screen scale bar (UI-6): length in logical pixels (0 = none) and
     // its exact label.
     scale-bar-width: float,
@@ -362,6 +366,10 @@ export struct ExportSettings {
     brightness: float,
     contrast: float,
     stain-normalization: StainNormalization,
+    // Colour management: the slide's ICC profile converted to sRGB (offered
+    // for slides with a usable profile).
+    color-management: bool,
+    has-color-profile: bool,
     // Measurement overlay
     show-measurement: bool,
     has-measurement: bool,
