@@ -2107,14 +2107,12 @@ fn render_pane_to_image(
             _ => SurfaceSlot(pane.0),
         };
         let image = crate::with_gpu_renderer(|renderer| {
-            let gpu_post_process_enabled = filter_chain.read().has_enabled_gpu_filters();
             renderer.borrow_mut().queue_frame(
                 slot,
                 QueuedFrame {
                     width: render_width,
                     height: render_height,
                     draws,
-                    gpu_post_process_enabled,
                     gamma: hud_gamma,
                     brightness: hud_brightness,
                     contrast: hud_contrast,

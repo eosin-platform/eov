@@ -1326,7 +1326,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0b1fab2ae45819af2d0731d60f2afe17227ebb1a1538a236da84c93e9a60162"
 dependencies = [
  "dispatch2",
- "nix 0.31.3",
+ "nix",
  "windows-sys 0.61.2",
 ]
 
@@ -1597,7 +1597,6 @@ dependencies = [
  "anyhow",
  "arboard",
  "arc-swap",
- "ash",
  "bytemuck",
  "clap",
  "crossbeam-channel",
@@ -1614,7 +1613,6 @@ dependencies = [
  "indicatif",
  "libc",
  "natord",
- "nix 0.29.0",
  "objc",
  "open",
  "parking_lot",
@@ -2490,7 +2488,7 @@ dependencies = [
  "i-slint-renderer-skia",
  "input",
  "memmap2",
- "nix 0.31.3",
+ "nix",
  "xkbcommon",
 ]
 
@@ -3732,19 +3730,6 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
-
-[[package]]
-name = "nix"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
-dependencies = [
- "bitflags 2.13.2",
- "cfg-if",
- "cfg_aliases",
- "libc",
- "memoffset",
-]
 
 [[package]]
 name = "nix"

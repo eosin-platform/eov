@@ -120,12 +120,7 @@ bytemuck = { version = "1", features = ["derive"] }
 # UUID for filter IDs
 uuid = { version = "1", features = ["v4"] }
 
-# Raw Vulkan bindings (same version as wgpu-hal uses internally)
-ash = "0.38"
-
 [target.'cfg(unix)'.dependencies]
-# Unix domain socket fd passing (SCM_RIGHTS) for DMA-BUF
-nix = { version = "0.29", features = ["socket", "uio"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]

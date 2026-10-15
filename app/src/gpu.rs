@@ -1,5 +1,4 @@
 use crate::AppWindow;
-use crate::gpu_interop::{ExportableImage, VulkanHandles};
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use eov_common::{FilteringMode, TileCoord, TileData};
@@ -357,56 +356,6 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// Fullscreen post-process shader for viewport filters (e.g. grayscale).
-/// Reads from a source texture and writes to the render target.
-/// The `enabled` uniform controls whether the effect is active.
-const POST_PROCESS_SHADER: &str = r#"
-struct PostProcessUniforms {
-    enabled: f32,
-    _pad0: f32,
-    _pad1: f32,
-    _pad2: f32,
-};
-
-@group(0) @binding(0) var src_texture: texture_2d<f32>;
-@group(0) @binding(1) var src_sampler: sampler;
-@group(0) @binding(2) var<uniform> uniforms: PostProcessUniforms;
-
-struct FullscreenOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_fullscreen(@builtin(vertex_index) idx: u32) -> FullscreenOutput {
-    // Fullscreen triangle covering the viewport.
-    var positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-    var uvs = array<vec2<f32>, 3>(
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(2.0, 1.0),
-        vec2<f32>(0.0, -1.0),
-    );
-    var out: FullscreenOutput;
-    out.position = vec4<f32>(positions[idx], 0.0, 1.0);
-    out.uv = uvs[idx];
-    return out;
-}
-
-@fragment
-fn fs_grayscale(input: FullscreenOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(src_texture, src_sampler, input.uv);
-    if uniforms.enabled < 0.5 {
-        return color;
-    }
-    let lum = dot(color.rgb, vec3<f32>(0.299, 0.587, 0.114));
-    return vec4<f32>(lum, lum, lum, color.a);
-}
-"#;
-
 // ---------------------------------------------------------------------------
 // Rust-side data structures
 // ---------------------------------------------------------------------------
@@ -454,7 +403,6 @@ pub(crate) struct QueuedFrame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) draws: Vec<TileDraw>,
-    pub(crate) gpu_post_process_enabled: bool,
     pub(crate) gamma: f32,
     pub(crate) brightness: f32,
     pub(crate) contrast: f32,
@@ -472,7 +420,6 @@ impl QueuedFrame {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.width.hash(&mut hasher);
         self.height.hash(&mut hasher);
-        self.gpu_post_process_enabled.hash(&mut hasher);
         self.gamma.to_bits().hash(&mut hasher);
         self.brightness.to_bits().hash(&mut hasher);
         self.contrast.to_bits().hash(&mut hasher);
@@ -772,17 +719,6 @@ struct GpuRuntime {
     vertex_capacity: usize,
     adjustments_buffer: wgpu::Buffer,
     surfaces: HashMap<usize, ImportedSurface>,
-    // Post-process pipeline for viewport filters
-    post_process_pipeline: wgpu::RenderPipeline,
-    post_process_bind_group_layout: wgpu::BindGroupLayout,
-    post_process_sampler: wgpu::Sampler,
-    post_process_uniforms_buffer: wgpu::Buffer,
-    /// Scratch textures for post-processing (per surface slot).
-    post_process_scratch: HashMap<usize, ImportedSurface>,
-    /// Raw Vulkan handles for plugin GPU filter interop.
-    vulkan_handles: Option<VulkanHandles>,
-    /// Per-slot exportable images for GPU filter plugins (DMA-BUF capable).
-    filter_images: HashMap<usize, ExportableImage>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,98 +968,6 @@ impl GpuRenderer {
             cache: None,
         });
 
-        // ----- Post-process pipeline (fullscreen filter pass) -----
-        let pp_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("post-process-shader"),
-            source: wgpu::ShaderSource::Wgsl(POST_PROCESS_SHADER.into()),
-        });
-
-        let post_process_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("post-process-bind-group-layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        let pp_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("post-process-pipeline-layout"),
-            bind_group_layouts: &[Some(&post_process_bind_group_layout)],
-            immediate_size: 0,
-        });
-
-        let post_process_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("post-process-grayscale-pipeline"),
-                layout: Some(&pp_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &pp_shader,
-                    entry_point: Some("vs_fullscreen"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &pp_shader,
-                    entry_point: Some("fs_grayscale"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            });
-
-        let post_process_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("post-process-sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let post_process_uniforms_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("post-process-uniforms"),
-            size: 16, // PostProcessUniforms: 4 floats
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Extract raw Vulkan handles for GPU filter plugin interop.
-        let vulkan_handles = unsafe { crate::gpu_interop::extract_vulkan_handles(device) };
-        if vulkan_handles.is_none() {
-            tracing::warn!("Failed to extract Vulkan handles for GPU filter interop");
-        }
-
         self.runtime = Some(GpuRuntime {
             device: device.clone(),
             queue: queue.clone(),
@@ -1136,24 +980,10 @@ impl GpuRenderer {
             vertex_capacity: 6,
             adjustments_buffer,
             surfaces: HashMap::new(),
-            post_process_pipeline,
-            post_process_bind_group_layout,
-            post_process_sampler,
-            post_process_uniforms_buffer,
-            post_process_scratch: HashMap::new(),
-            vulkan_handles,
-            filter_images: HashMap::new(),
         });
     }
 
     fn teardown(&mut self) {
-        if let Some(runtime) = &self.runtime
-            && let Some(handles) = &runtime.vulkan_handles
-        {
-            for img in runtime.filter_images.values() {
-                unsafe { img.destroy(&handles.device_fn) };
-            }
-        }
         self.runtime = None;
         self.pending_frames.clear();
         self.tile_arrays.clear();
@@ -1299,7 +1129,6 @@ impl GpuRenderer {
         for (slot_index, frame) in pending_frames {
             if runtime.surfaces.contains_key(&slot_index) {
                 let fp = frame.fingerprint();
-                let gpu_post_process_enabled = frame.gpu_post_process_enabled;
                 Self::render_frame(
                     runtime,
                     &mut self.tile_arrays,
@@ -1307,7 +1136,6 @@ impl GpuRenderer {
                     SurfaceSlot(slot_index),
                     frame,
                     frame_id,
-                    gpu_post_process_enabled,
                 );
                 self.last_rendered_fingerprint.insert(slot_index, fp);
             }
@@ -1325,7 +1153,6 @@ impl GpuRenderer {
         slot: SurfaceSlot,
         frame: QueuedFrame,
         frame_id: u64,
-        gpu_filters_enabled: bool,
     ) {
         let Some(surface_view) = runtime
             .surfaces
@@ -1533,129 +1360,6 @@ impl GpuRenderer {
         }
 
         runtime.queue.submit(Some(encoder.finish()));
-
-        // ----- Post-process pass (e.g. grayscale viewport filter) ----------
-        if gpu_filters_enabled {
-            let surface = runtime.surfaces.get(&slot.index()).unwrap();
-            let (sw, sh) = (surface.width, surface.height);
-
-            // Ensure scratch texture exists and matches surface dimensions.
-            let scratch_key = slot.index();
-            let needs_recreate = runtime
-                .post_process_scratch
-                .get(&scratch_key)
-                .is_none_or(|s| s.width != sw || s.height != sh);
-            if needs_recreate {
-                let tex = runtime.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("post-process-scratch"),
-                    size: wgpu::Extent3d {
-                        width: sw,
-                        height: sh,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-                    view_formats: &[],
-                });
-                let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-                runtime.post_process_scratch.insert(
-                    scratch_key,
-                    ImportedSurface {
-                        texture: tex,
-                        view,
-                        width: sw,
-                        height: sh,
-                    },
-                );
-            }
-
-            let scratch = runtime.post_process_scratch.get(&scratch_key).unwrap();
-
-            // Update uniforms: enabled = 1.0
-            runtime.queue.write_buffer(
-                &runtime.post_process_uniforms_buffer,
-                0,
-                bytemuck::bytes_of(&[1.0f32, 0.0f32, 0.0f32, 0.0f32]),
-            );
-
-            // Bind group: surface texture as input.
-            let bind_group = runtime
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("post-process-bind-group"),
-                    layout: &runtime.post_process_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&surface_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&runtime.post_process_sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: runtime.post_process_uniforms_buffer.as_entire_binding(),
-                        },
-                    ],
-                });
-
-            let mut pp_encoder =
-                runtime
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("post-process-encoder"),
-                    });
-
-            {
-                let mut pass = pp_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("post-process-pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &scratch.view,
-                        resolve_target: None,
-                        depth_slice: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                    multiview_mask: None,
-                });
-                pass.set_pipeline(&runtime.post_process_pipeline);
-                pass.set_bind_group(0, &bind_group, &[]);
-                pass.draw(0..3, 0..1);
-            }
-
-            // Copy scratch back to surface.
-            let surface_tex = &runtime.surfaces.get(&slot.index()).unwrap().texture;
-            pp_encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &scratch.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: surface_tex,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: sw,
-                    height: sh,
-                    depth_or_array_layers: 1,
-                },
-            );
-
-            runtime.queue.submit(Some(pp_encoder.finish()));
-        }
     }
 }
 
