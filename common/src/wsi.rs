@@ -309,6 +309,8 @@ pub(crate) struct SharedSlide {
     icc_profile: parking_lot::Mutex<Option<Option<Vec<u8>>>>,
     /// Properties of the view with synthetic levels, built on first use.
     synthetic_view: OnceLock<Arc<WsiProperties>>,
+    /// Slide identity, computed on first use.
+    identity: OnceLock<crate::file_id::SlideIdentity>,
 }
 
 /// How [`WsiFile::open_with`] opens a slide.
@@ -502,6 +504,7 @@ impl WsiFile {
             associated_images,
             icc_profile: parking_lot::Mutex::new(None),
             synthetic_view: OnceLock::new(),
+            identity: OnceLock::new(),
         });
         Ok(Self {
             shared: registry::register(shared),
@@ -581,6 +584,18 @@ impl WsiFile {
     /// Whether two `WsiFile`s share the same OpenSlide handle.
     pub fn shares_handle_with(&self, other: &WsiFile) -> bool {
         Arc::ptr_eq(&self.shared, &other.shared)
+    }
+
+    /// The slide's stable [`SlideIdentity`](crate::file_id::SlideIdentity),
+    /// the key for annotations and analysis results. Computed on first use
+    /// (it samples every member file: call it off the UI thread) and cached
+    /// for the lifetime of the open slide.
+    pub fn identity(&self) -> std::io::Result<crate::file_id::SlideIdentity> {
+        if let Some(identity) = self.shared.identity.get() {
+            return Ok(identity.clone());
+        }
+        let identity = crate::file_id::SlideIdentity::compute(self)?;
+        Ok(self.shared.identity.get_or_init(|| identity).clone())
     }
 
     /// A snapshot of the health of the slide's OpenSlide handle.

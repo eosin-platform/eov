@@ -27,6 +27,7 @@ pub(crate) mod test_support;
 pub use cache::TileCache;
 pub use error::{Error, Result};
 pub use export::ExportSettings;
+pub use file_id::SlideIdentity;
 pub use formatting::{format_decimal, format_file_size, format_optional_decimal, format_u64};
 pub use imaging::{
     MeasurementUnit, RgbaImageData, StainNormalization, crop_image_to_viewport_bounds,
