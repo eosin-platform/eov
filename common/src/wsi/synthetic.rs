@@ -64,6 +64,13 @@ pub(crate) fn synthetic_levels(levels: &[WsiLevel]) -> Vec<WsiLevel> {
     out
 }
 
+/// A base-level pixel coordinate in level-0 pixels (what OpenSlide reads
+/// take, whatever the level).
+#[inline]
+fn to_level0(base_px: i64, base_downsample: f64) -> i64 {
+    (base_px as f64 * base_downsample).round() as i64
+}
+
 /// Packs premultiplied RGBA back into OpenSlide's ARGB for conversion.
 #[inline]
 fn to_argb(p: [u32; 4]) -> u32 {
@@ -116,7 +123,7 @@ impl WsiFile {
             .unwrap_or(u64::MAX);
         if cost <= EXACT_SYNTHESIS_BUDGET {
             self.synthesize_exact(
-                base.level,
+                (base.level, base.downsample),
                 (bx, by),
                 factor,
                 width,
@@ -127,7 +134,7 @@ impl WsiFile {
             )
         } else {
             self.synthesize_sparse(
-                base.level,
+                (base.level, base.downsample),
                 (bx, by),
                 factor,
                 width,
@@ -139,10 +146,11 @@ impl WsiFile {
         }
     }
 
+    /// `(bx, by)` is in base-level pixels; reads take level-0 coordinates.
     #[allow(clippy::too_many_arguments)]
     fn synthesize_exact(
         &self,
-        base_level: u32,
+        (base_level, base_downsample): (u32, f64),
         (bx, by): (i64, i64),
         factor: u64,
         width: u32,
@@ -168,8 +176,8 @@ impl WsiFile {
             let rows = rows_per_band.min(height - row0);
             let band_h = rows * factor as u32;
             let band = self.read_region_with(
-                bx,
-                by + i64::from(row0) * factor as i64,
+                to_level0(bx, base_downsample),
+                to_level0(by + i64::from(row0) * factor as i64, base_downsample),
                 base_level,
                 band_w,
                 band_h,
@@ -203,10 +211,11 @@ impl WsiFile {
         Ok(())
     }
 
+    /// `(bx, by)` is in base-level pixels; reads take level-0 coordinates.
     #[allow(clippy::too_many_arguments)]
     fn synthesize_sparse(
         &self,
-        base_level: u32,
+        (base_level, base_downsample): (u32, f64),
         (bx, by): (i64, i64),
         factor: u64,
         width: u32,
@@ -235,7 +244,14 @@ impl WsiFile {
                 let cx = bx + ((f64::from(i) + 0.5) * span_x as f64 / f64::from(gw)) as i64;
                 let cy = by + ((f64::from(j) + 0.5) * span_y as f64 / f64::from(gh)) as i64;
                 let sample = self
-                    .read_region_with(cx - 1, cy - 1, base_level, 2, 2, AlphaMode::Premultiplied)
+                    .read_region_with(
+                        to_level0(cx - 1, base_downsample),
+                        to_level0(cy - 1, base_downsample),
+                        base_level,
+                        2,
+                        2,
+                        AlphaMode::Premultiplied,
+                    )
                     .map(|p| {
                         let mut sum = [0u32; 4];
                         for px in p.as_chunks::<4>().0 {
@@ -355,7 +371,7 @@ mod tests {
         let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
         let mut out = vec![0u8; 1024 * 16 * 4];
         wsi.synthesize_sparse(
-            0,
+            (0, 1.0),
             (0, 0),
             4,
             1024,
@@ -367,5 +383,62 @@ mod tests {
         .unwrap();
         assert_eq!(&out[..4], [255, 0, 0, 255]);
         assert_eq!(&out[out.len() - 4..], [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn synthetic_levels_of_pyramids_read_the_right_place() {
+        // Two real levels (downsample 1 and 2): the synthetic level is built
+        // from level 1, whose pixel coordinates differ from level 0's. (With
+        // base-level coordinates passed as level-0 ones, x = 12000 read the
+        // red half.)
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pyramid.tiff");
+        write_tiff(&path, &TiffSpec::pyramid(16384, 256, 64, 2), |x, _| {
+            if x < 8192 { [255, 0, 0] } else { [0, 0, 255] }
+        })
+        .unwrap();
+        let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
+        assert_eq!(wsi.real_level_count(), 2);
+        let synthetic = wsi.level(2).unwrap();
+        assert!(synthetic.synthetic);
+        assert_eq!(synthetic.downsample, 8.0);
+
+        // Exact path: level-0 x = 12000 is in the blue half.
+        let exact = wsi.read_region(12_000, 0, 2, 4, 1).unwrap();
+        assert!(
+            exact
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [0, 0, 255, 255])
+        );
+        let exact = wsi.read_region(1_000, 0, 2, 4, 1).unwrap();
+        assert!(
+            exact
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [255, 0, 0, 255])
+        );
+
+        // Sampling path: base-level x = 6000 is level-0 x = 12000.
+        let mut out = vec![0u8; 4 * 4];
+        wsi.synthesize_sparse(
+            (1, 2.0),
+            (6000, 0),
+            4,
+            4,
+            1,
+            AlphaMode::Composited,
+            &mut out,
+            [255; 3],
+        )
+        .unwrap();
+        assert!(
+            out.as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [0, 0, 255, 255])
+        );
     }
 }
