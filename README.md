@@ -132,7 +132,7 @@ Current capabilities include:
 - Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
 - Color deconvolution: separate and visualize individual H&E stain channels with per-channel intensity control and channel isolation, on both CPU and GPU.
-- Multichannel fluorescence and multiplex OME-TIFF: the channels are composited with a colour, display window and gamma each, set in the Channels panel and kept per slide (see [OME-TIFF, fluorescence and multiplex](#ome-tiff-fluorescence-and-multiplex)).
+- Multichannel fluorescence and multiplex OME-TIFF: the channels are composited with a colour, display window and gamma each, set in the Channels panel and kept per slide, and Z-stacks are stepped through plane by plane (see [OME-TIFF, fluorescence and multiplex](#ome-tiff-fluorescence-and-multiplex)).
 - A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available, and a pixel size you can set for slides that lack one (Slide Information, kept per slide).
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Slide Information (I): the label and macro images (with a privacy toggle to hide the label), and every property, searchable and copyable.
@@ -141,11 +141,12 @@ Current capabilities include:
 - A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
 - Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
 - Heat maps from other tools over a slide (a model's probabilities, an attention map), from PNG, JPEG or TIFF, coloured, placed and kept per slide (see [Heat Maps](#heat-maps)).
+- Tissue QC: pen marks, possible folds and out-of-focus areas marked over the slide, summarised per slide and cohort (`eov qc`), and left out of datasets on request (see [Tissue QC](#tissue-qc)).
 - A series bar for the slides of a folder: filter, order by name, date, stain or case (the case is read from the file name: `C3L-00011-21.svs` belongs to `C3L-00011`, a TCGA barcode to its participant, or what `series_case_pattern` in `config.toml` captures), one entry per DICOM series, and PageUp/PageDown to step through them.
 - Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
-- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
+- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering and tissue-QC exclusion, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata, optional de-identification and packing into a zarr store (from the toolbar or the CLI).
 - Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
-- Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`).
+- Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`, or Check for Updates on the Home screen).
 - Scripting: drive the running viewer and read slide regions from Python or the shell, over a local, authenticated endpoint (see [Scripting](#scripting)).
 - An audit log of what eov ran with (`<data>/audit.jsonl`: versions and plugins, installs and updates), and a session log and crash reports in the log folder.
 
