@@ -467,6 +467,9 @@ pub struct Hit {
     pub on_outline: bool,
     /// Screen distance to the outline, in logical pixels.
     pub distance_px: f64,
+    /// The pointer is inside the object (its interior, marker or text
+    /// box), not merely near its outline.
+    pub contains: bool,
     /// Area of the object in level-0 px² (0 for open shapes).
     pub area: f64,
     pub z: i32,
@@ -916,7 +919,7 @@ impl OverlayStore {
             let probe = geometry::expand_rect(&probe, pad);
             for object in layer.visible_objects(&probe, zoom) {
                 let style = object.object.style.as_ref().unwrap_or(&layer.spec.style);
-                if let Some((on_outline, distance_px)) =
+                if let Some((on_outline, distance_px, contains)) =
                     pick_object(&object.object.shape, style, params, zoom)
                 {
                     hits.push(Hit {
@@ -926,6 +929,7 @@ impl OverlayStore {
                         },
                         on_outline,
                         distance_px,
+                        contains,
                         area: geometry::shape_area(&object.object.shape),
                         z: layer.spec.z,
                         layer_order: layer.order,
@@ -951,6 +955,27 @@ impl OverlayStore {
     }
 }
 
+/// Orders hits for a hover tooltip: the most specific object under the
+/// pointer first. Objects containing the pointer come before ones it is
+/// merely near, the smallest of them first, so a cell's tooltip shows
+/// inside a large region of interest, and the cell the pointer is in wins
+/// over its neighbour at a shared edge.
+pub fn sort_for_tooltips(hits: &mut [Hit]) {
+    hits.sort_by(|a, b| {
+        b.contains
+            .cmp(&a.contains)
+            .then_with(|| {
+                if a.contains {
+                    a.area.total_cmp(&b.area)
+                } else {
+                    a.distance_px.total_cmp(&b.distance_px)
+                }
+            })
+            .then_with(|| (b.z, b.layer_order).cmp(&(a.z, a.layer_order)))
+            .then_with(|| b.seq.cmp(&a.seq))
+    });
+}
+
 /// Converts a style size to logical screen pixels.
 pub fn size_to_screen(value: f32, unit: SizeUnit, zoom: f64, mpp: Option<f64>) -> f64 {
     let value = f64::from(value);
@@ -964,8 +989,14 @@ pub fn size_to_screen(value: f32, unit: SizeUnit, zoom: f64, mpp: Option<f64>) -
     }
 }
 
-/// Tests one shape; returns `(on_outline, outline distance in px)`.
-fn pick_object(shape: &Shape, style: &Style, params: PickParams, zoom: f64) -> Option<(bool, f64)> {
+/// Tests one shape; returns `(on_outline, outline distance in px, contains
+/// the point)`.
+fn pick_object(
+    shape: &Shape,
+    style: &Style,
+    params: PickParams,
+    zoom: f64,
+) -> Option<(bool, f64, bool)> {
     let p = params.point;
     let stroke_px = size_to_screen(style.stroke_width, style.size_unit, zoom, params.mpp);
     let tolerance = params.tolerance_px + stroke_px / 2.0;
@@ -974,18 +1005,19 @@ fn pick_object(shape: &Shape, style: &Style, params: PickParams, zoom: f64) -> O
         Shape::Point { x, y } => {
             let radius = size_to_screen(style.point_radius, style.size_unit, zoom, params.mpp);
             let d = to_px(geometry::distance(p, [*x, *y]));
-            (d <= radius + tolerance).then_some((true, (d - radius).max(0.0)))
+            (d <= radius + tolerance).then_some((true, (d - radius).max(0.0), d <= radius))
         }
         Shape::Text { x, y, text } => {
             // Approximate the text box at the style's font size.
             let font = f64::from(style.font_size.max(1.0));
             let width_px = font * 0.6 * text.chars().count() as f64;
             let (dx, dy) = (to_px(p[0] - x), to_px(p[1] - y));
+            let inside = dx >= 0.0 && dx <= width_px && dy >= 0.0 && dy <= font * 1.3;
             (dx >= -tolerance
                 && dx <= width_px + tolerance
                 && dy >= -tolerance
                 && dy <= font * 1.3 + tolerance)
-                .then_some((true, 0.0))
+                .then_some((true, 0.0, inside))
         }
         Shape::Polyline { points } => {
             let d = points
@@ -993,7 +1025,7 @@ fn pick_object(shape: &Shape, style: &Style, params: PickParams, zoom: f64) -> O
                 .map(|w| geometry::distance_to_segment(p, w[0], w[1]))
                 .fold(f64::INFINITY, f64::min);
             let d = to_px(d);
-            (d <= tolerance).then_some((true, d))
+            (d <= tolerance).then_some((true, d, false))
         }
         Shape::Polygon { exterior, holes } => {
             let mut d = f64::INFINITY;
@@ -1005,10 +1037,11 @@ fn pick_object(shape: &Shape, style: &Style, params: PickParams, zoom: f64) -> O
                 }
             }
             let d = to_px(d);
+            let inside = geometry::point_in_polygon(p, exterior, holes);
             if d <= tolerance {
-                Some((true, d))
-            } else if geometry::point_in_polygon(p, exterior, holes) {
-                Some((false, d))
+                Some((true, d, inside))
+            } else if inside {
+                Some((false, d, true))
             } else {
                 None
             }
@@ -1283,6 +1316,50 @@ mod tests {
         store.remove_file(1);
         assert!(store.file_layers(1).layers.is_empty());
         assert_eq!(store.file_layers(2).layers.len(), 1);
+    }
+
+    #[test]
+    fn tooltips_come_from_the_most_specific_object_under_the_pointer() {
+        let store = OverlayStore::new();
+        // A region of interest above a layer of cells (as cellaris lays
+        // out its values), all with tooltips.
+        let mut roi = LayerSpec::new("roi", 1);
+        roi.z = -50;
+        let mut cells = LayerSpec::new("cells", 1);
+        cells.z = -59;
+        store.create_layer(Owner::Host, roi).unwrap();
+        store.create_layer(plugin(), cells).unwrap();
+        store
+            .upsert(
+                &Owner::Host,
+                "roi",
+                vec![square("roi", 0.0, 0.0, 1000.0)],
+                false,
+            )
+            .unwrap();
+        store
+            .upsert(
+                &plugin(),
+                "cells",
+                vec![
+                    square("a", 100.0, 100.0, 50.0),
+                    square("b", 150.0, 100.0, 50.0),
+                ],
+                false,
+            )
+            .unwrap();
+        let first = |x: f64, y: f64| {
+            let mut hits = store.hit_test(pick(1, x, y), |_| true);
+            sort_for_tooltips(&mut hits);
+            hits.first().map(|hit| hit.key.object_id.clone())
+        };
+        // Inside a cell inside the region: the cell.
+        assert_eq!(first(120.0, 120.0).as_deref(), Some("a"));
+        // 2 px either side of the shared edge: the cell the pointer is in.
+        assert_eq!(first(148.0, 120.0).as_deref(), Some("a"));
+        assert_eq!(first(152.0, 120.0).as_deref(), Some("b"));
+        // Elsewhere in the region: the region.
+        assert_eq!(first(500.0, 500.0).as_deref(), Some("roi"));
     }
 
     #[test]

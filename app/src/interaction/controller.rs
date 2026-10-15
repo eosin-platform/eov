@@ -1379,14 +1379,13 @@ impl Controller {
     /// that cannot be picked (no interaction, just information).
     fn passive_tooltip_at(&self, view: &PaneView, file_id: FileId, point: Point) -> Option<String> {
         let params = self.pick_params(view, file_id, point);
-        self.store
-            .hit_test(params, |layer| !self.can_pick(layer))
-            .into_iter()
-            .find_map(|hit| {
-                self.store
-                    .object(&hit.key)
-                    .and_then(|object| object.object.tooltip.clone())
-            })
+        let mut hits = self.store.hit_test(params, |layer| !self.can_pick(layer));
+        crate::overlay::store::sort_for_tooltips(&mut hits);
+        hits.into_iter().find_map(|hit| {
+            self.store
+                .object(&hit.key)
+                .and_then(|object| object.object.tooltip.clone())
+        })
     }
 
     /// The topmost pickable object of each owner under `point`.
