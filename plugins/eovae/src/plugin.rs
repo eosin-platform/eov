@@ -672,11 +672,18 @@ impl<B: Backend> Core<B> {
             if state.hover.is_some_and(|(f, _)| f == file_id) {
                 state.hover = None;
             }
-            state
+            let key = state
                 .files
                 .remove(&file_id)
                 .and_then(|file| file.identity)
-                .map(|identity| identity.key)
+                .map(|identity| identity.key);
+            // The same slide may be open twice; keep what the other uses.
+            key.filter(|key| {
+                !state
+                    .files
+                    .values()
+                    .any(|f| f.identity.as_ref().is_some_and(|i| i.key == *key))
+            })
         };
         // Memory goes; the disk cache keeps the results.
         if let Some(key) = slide_key {
@@ -693,6 +700,7 @@ impl<B: Backend> Core<B> {
     ) -> Result<(), String> {
         if let Some(file_id) = file_id {
             self.ensure_file(file_id);
+            self.refresh_identity(file_id);
         }
         {
             let mut state = lock(&self.state);
@@ -713,8 +721,52 @@ impl<B: Backend> Core<B> {
         Ok(())
     }
 
+    /// Adopts a slide identity the host provides after the slide was
+    /// registered under eovae's fallback fingerprint: in-memory results move
+    /// to the new key (the disk cache migrates on its next lookup).
+    fn refresh_identity(self: &Arc<Self>, file_id: FileId) {
+        // Only slides keyed by eovae's own fallback can gain an identity.
+        let pending = lock(&self.state)
+            .files
+            .get(&file_id)
+            .and_then(|file| file.identity.as_ref())
+            .is_some_and(|identity| identity.keys.identity.is_none());
+        if !pending {
+            return;
+        }
+        let Ok(info) = self.host.file_info(file_id) else {
+            return;
+        };
+        let Some(identity) = info.identity.clone().filter(|id| !id.trim().is_empty()) else {
+            return;
+        };
+        let renamed = {
+            let mut state = lock(&self.state);
+            let Some(file) = state.files.get_mut(&file_id) else {
+                return;
+            };
+            let Some(current) = file.identity.as_mut() else {
+                return;
+            };
+            if current.key == identity {
+                return;
+            }
+            let old = std::mem::replace(&mut current.key, identity.clone());
+            current.keys.identity = Some(identity.clone());
+            current.persistent = true;
+            file.info = info;
+            (old, identity)
+        };
+        lock(&self.results).rename_slide(&renamed.0, &renamed.1);
+        self.dirty.mark(|d| {
+            d.overlays.insert(file_id);
+            d.sidebar = true;
+        });
+    }
+
     fn on_view_changed(self: &Arc<Self>, view: ViewInfo) -> Result<(), String> {
         self.ensure_file(view.file_id);
+        self.refresh_identity(view.file_id);
         {
             let mut state = lock(&self.state);
             state.panes.insert(

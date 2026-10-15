@@ -9,8 +9,19 @@
 
 use crate::contract::decode_error;
 use crate::tiling::{TileCoord, TileGrid, TileRange};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Revisions are unique across all runs, so a view cached from a run that
+/// was dropped and rebuilt (a slide closed and reopened) never matches the
+/// rebuilt run by accident.
+static REVISION: AtomicU64 = AtomicU64::new(0);
+
+fn next_revision() -> u64 {
+    REVISION.fetch_add(1, Ordering::Relaxed) + 1
+}
 
 /// Identifies one run's results on one slide.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -139,7 +150,7 @@ pub struct RunResults {
     pub grid: TileGrid,
     tiles: HashMap<u64, TileState>,
     counts: Counts,
-    /// Increases with every change.
+    /// Increases with every change (unique across runs).
     pub revision: u64,
     /// Whether the disk cache was consulted for this run.
     pub loaded_from_disk: bool,
@@ -151,7 +162,7 @@ impl RunResults {
             grid,
             tiles: HashMap::new(),
             counts: Counts::default(),
-            revision: 0,
+            revision: next_revision(),
             loaded_from_disk: false,
         }
     }
@@ -176,7 +187,7 @@ impl RunResults {
             self.counts.add(previous, -1);
         }
         self.counts.add(state, 1);
-        self.revision += 1;
+        self.revision = next_revision();
     }
 }
 
@@ -257,6 +268,36 @@ impl PayloadCache {
             }
         }
     }
+
+    /// Moves a slide's payloads to another slide key, keeping their place in
+    /// the LRU order. A payload already stored under the new key is kept.
+    fn rename_slide(&mut self, from: &str, to: &Arc<str>) {
+        let moved: Vec<PayloadKey> = self
+            .entries
+            .keys()
+            .filter(|(result, _)| &*result.slide == from)
+            .cloned()
+            .collect();
+        for key in moved {
+            let Some((tick, payload)) = self.entries.remove(&key) else {
+                continue;
+            };
+            let renamed = (
+                ResultKey {
+                    slide: Arc::clone(to),
+                    run: key.0.run,
+                },
+                key.1,
+            );
+            if self.entries.contains_key(&renamed) {
+                self.order.remove(&tick);
+                self.bytes -= payload.bytes();
+            } else {
+                self.order.insert(tick, renamed.clone());
+                self.entries.insert(renamed, (tick, payload));
+            }
+        }
+    }
 }
 
 /// All results in memory.
@@ -264,6 +305,10 @@ impl PayloadCache {
 pub struct ResultStore {
     runs: HashMap<ResultKey, RunResults>,
     payloads: PayloadCache,
+    /// Slide keys replaced by [`ResultStore::rename_slide`] and their
+    /// current key: work started under the old key (a running job, a load
+    /// from disk) lands where the results are shown.
+    aliases: HashMap<Arc<str>, Arc<str>>,
 }
 
 /// A tile a job must (re)compute, and why.
@@ -280,6 +325,18 @@ impl ResultStore {
         Self {
             runs: HashMap::new(),
             payloads: PayloadCache::new(payload_budget),
+            aliases: HashMap::new(),
+        }
+    }
+
+    /// `key` with a renamed slide replaced by its current key.
+    fn resolve<'k>(&self, key: &'k ResultKey) -> Cow<'k, ResultKey> {
+        match self.aliases.get(&key.slide) {
+            Some(slide) => Cow::Owned(ResultKey {
+                slide: Arc::clone(slide),
+                run: Arc::clone(&key.run),
+            }),
+            None => Cow::Borrowed(key),
         }
     }
 
@@ -293,20 +350,25 @@ impl ResultStore {
     }
 
     pub fn run(&self, key: &ResultKey) -> Option<&RunResults> {
-        self.runs.get(key)
+        self.runs.get(&*self.resolve(key))
+    }
+
+    /// Whether results are stored under exactly `key` (no renamed slides).
+    pub fn holds(&self, key: &ResultKey) -> bool {
+        self.runs.contains_key(key)
     }
 
     /// The run's results, created empty for `grid` if new (or if the grid
     /// changed).
     pub fn ensure_run(&mut self, key: &ResultKey, grid: TileGrid) -> &mut RunResults {
-        let replace = self.runs.get(key).is_some_and(|run| run.grid != grid);
+        let key = self.resolve(key).into_owned();
+        let replace = self.runs.get(&key).is_some_and(|run| run.grid != grid);
         if replace {
-            self.runs.remove(key);
-            let key = key.clone();
+            self.runs.remove(&key);
             self.payloads.retain(|k| *k != key);
         }
         self.runs
-            .entry(key.clone())
+            .entry(key)
             .or_insert_with(|| RunResults::new(grid))
     }
 
@@ -319,13 +381,14 @@ impl ResultStore {
         state: TileState,
         payload: Option<Arc<TilePayload>>,
     ) {
-        let run = self.ensure_run(key, grid);
+        let key = self.resolve(key).into_owned();
+        let run = self.ensure_run(&key, grid);
         if !run.grid.contains(coord) {
             return;
         }
         run.set(coord, state);
         if let Some(payload) = payload {
-            self.payloads.insert((key.clone(), coord.key()), payload);
+            self.payloads.insert((key, coord.key()), payload);
         }
     }
 
@@ -347,11 +410,13 @@ impl ResultStore {
     }
 
     pub fn payload(&mut self, key: &ResultKey, coord: TileCoord) -> Option<Arc<TilePayload>> {
-        self.payloads.get(&(key.clone(), coord.key()))
+        let key = self.resolve(key).into_owned();
+        self.payloads.get(&(key, coord.key()))
     }
 
     pub fn has_payload(&self, key: &ResultKey, coord: TileCoord) -> bool {
-        self.payloads.contains(&(key.clone(), coord.key()))
+        let key = self.resolve(key).into_owned();
+        self.payloads.contains(&(key, coord.key()))
     }
 
     /// What a job over `tiles` must compute. Background tiles count as done
@@ -363,7 +428,8 @@ impl ResultStore {
         need_payloads: bool,
         skip_background: bool,
     ) -> Vec<(TileCoord, Need)> {
-        let run = self.runs.get(key);
+        let key = self.resolve(key);
+        let run = self.runs.get(&*key);
         tiles
             .into_iter()
             .filter_map(|coord| match run.and_then(|run| run.state(coord)) {
@@ -371,7 +437,9 @@ impl ResultStore {
                 Some(TileState::Background) if !skip_background => Some((coord, Need::Score)),
                 Some(TileState::Background) => None,
                 Some(TileState::Analysed { .. }) => (need_payloads
-                    && !self.payloads.contains(&(key.clone(), coord.key())))
+                    && !self
+                        .payloads
+                        .contains(&(key.clone().into_owned(), coord.key())))
                 .then_some((coord, Need::Payload)),
             })
             .collect()
@@ -379,7 +447,7 @@ impl ResultStore {
 
     /// Scores of a run's analysed tiles inside `range` (all when `None`).
     pub fn scores(&self, key: &ResultKey, range: Option<TileRange>) -> Vec<(f32, TileCoord)> {
-        let Some(run) = self.runs.get(key) else {
+        let Some(run) = self.run(key) else {
             return Vec::new();
         };
         run.iter()
@@ -392,40 +460,70 @@ impl ResultStore {
     pub fn drop_slide(&mut self, slide: &str) {
         self.runs.retain(|key, _| &*key.slide != slide);
         self.payloads.retain(|key| &*key.slide != slide);
+        self.aliases
+            .retain(|from, to| &**from != slide && &**to != slide);
     }
 
     /// Forgets one run.
     pub fn drop_run(&mut self, key: &ResultKey) {
-        self.runs.remove(key);
-        self.payloads.retain(|k| k != key);
+        let key = self.resolve(key).into_owned();
+        self.runs.remove(&key);
+        self.payloads.retain(|k| *k != key);
     }
 
-    /// Re-keys a slide's results (its identity became known).
+    /// Re-keys a slide's results (its identity became known). Results the new
+    /// key already has win over the old key's; later work under the old key
+    /// is recorded under the new one.
     pub fn rename_slide(&mut self, from: &str, to: &str) {
+        if from == to {
+            return;
+        }
+        let to: Arc<str> = Arc::from(to);
         let keys: Vec<ResultKey> = self
             .runs
             .keys()
             .filter(|key| &*key.slide == from)
             .cloned()
             .collect();
-        let to: Arc<str> = Arc::from(to);
         for key in keys {
-            if let Some(run) = self.runs.remove(&key) {
-                self.runs.insert(
-                    ResultKey {
-                        slide: Arc::clone(&to),
-                        run: key.run.clone(),
-                    },
-                    run,
-                );
+            let Some(run) = self.runs.remove(&key) else {
+                continue;
+            };
+            let renamed = ResultKey {
+                slide: Arc::clone(&to),
+                run: key.run,
+            };
+            match self.runs.get_mut(&renamed) {
+                Some(existing) if existing.grid == run.grid => {
+                    for (coord, state) in run.iter() {
+                        if !existing.tiles.contains_key(&coord.key()) {
+                            existing.set(coord, state);
+                        }
+                    }
+                    existing.loaded_from_disk |= run.loaded_from_disk;
+                }
+                Some(_) => {}
+                None => {
+                    self.runs.insert(renamed, run);
+                }
             }
         }
-        self.payloads.retain(|key| &*key.slide != from);
+        self.payloads.rename_slide(from, &to);
+        // Single-step aliases: everything that pointed at `from` now points
+        // at `to`, and `to` itself is current.
+        for target in self.aliases.values_mut() {
+            if &**target == from {
+                *target = Arc::clone(&to);
+            }
+        }
+        self.aliases.remove(&to);
+        self.aliases.insert(Arc::from(from), to);
     }
 
     pub fn clear(&mut self) {
         self.runs.clear();
         self.payloads.retain(|_| false);
+        self.aliases.clear();
     }
 }
 
@@ -595,6 +693,7 @@ mod tests {
     fn slides_can_be_renamed_when_their_identity_arrives() {
         let mut store = ResultStore::new(1 << 20);
         let old = ResultKey::new("fp1:abc", "r");
+        let new = ResultKey::new("quickhash1:def", "r");
         store.record(
             &old,
             grid(),
@@ -602,9 +701,43 @@ mod tests {
             TileState::Background,
             None,
         );
+        let analysed = TileState::Analysed { mae: 0.1, max: 0.5 };
+        store.record(
+            &old,
+            grid(),
+            TileCoord::new(1, 0),
+            analysed,
+            Some(payload(1)),
+        );
+        // The new key already knows one tile (e.g. a second pane's job).
+        let fresh = TileState::Analysed { mae: 0.2, max: 0.6 };
+        store.record(&new, grid(), TileCoord::new(1, 0), fresh, None);
+        let bytes = store.payload_bytes();
+
         store.rename_slide("fp1:abc", "quickhash1:def");
+        assert!(store.runs.keys().all(|key| &*key.slide == "quickhash1:def"));
+        let run = store.run(&new).unwrap();
+        assert_eq!(run.counts().total(), 2);
+        assert_eq!(run.state(TileCoord::new(1, 0)), Some(fresh));
+        // Pixels survive the rename, in the same LRU budget.
+        assert!(store.has_payload(&new, TileCoord::new(1, 0)));
+        assert_eq!(store.payload_bytes(), bytes);
+
+        // A job started under the old key records where results are shown.
+        store.record(&old, grid(), TileCoord::new(2, 0), analysed, None);
+        assert_eq!(store.run(&new).unwrap().counts().total(), 3);
+        assert!(store.runs.keys().all(|key| &*key.slide == "quickhash1:def"));
+
+        // A second rename keeps the first alias pointing at the current key.
+        store.rename_slide("quickhash1:def", "quickhash1:ghi");
+        let latest = ResultKey::new("quickhash1:ghi", "r");
+        store.record(&old, grid(), TileCoord::new(3, 0), analysed, None);
+        assert_eq!(store.run(&latest).unwrap().counts().total(), 4);
+        assert_eq!(store.runs.len(), 1);
+
+        store.drop_slide("quickhash1:ghi");
+        assert!(store.aliases.is_empty());
         assert!(store.run(&old).is_none());
-        assert!(store.run(&ResultKey::new("quickhash1:def", "r")).is_some());
     }
 
     #[test]

@@ -760,3 +760,52 @@ fn region_of_interest_runs_cover_only_the_roi() {
         "{result}"
     );
 }
+
+#[test]
+fn a_host_identity_arriving_later_keeps_the_results() {
+    let s = setup();
+    let surface = s.start();
+    s.analyse_viewport(&surface);
+    // The host learns the slide's identity after eovae keyed the slide by
+    // its own fingerprint.
+    s.harness.state().snapshot.files[0].identity = Some("quickhash1:a".into());
+    s.harness
+        .send(HostEvent::ViewChanged {
+            view: view(1, 1024.0, 512.0, 1024.0, 512.0),
+        })
+        .unwrap();
+    s.callback(&surface, "analyze-viewport", vec![]);
+    // The first results stay with the slide, next to the new ones.
+    s.wait_property("both viewports", "coverage-text", |v| {
+        v.as_str().is_some_and(|t| t.contains("64 tissue tiles"))
+    });
+    s.wait_property("the job to stop", "job-running", |v| v == &json!(false));
+    let Setup {
+        harness, dir, init, ..
+    } = s;
+    drop(harness);
+    // New results were stored under the identity.
+    let db =
+        rusqlite::Connection::open(Path::new(&init.cache_dir).join(crate::db::DB_FILE)).unwrap();
+    let identity: Option<String> = db
+        .query_row("SELECT identity FROM slide", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(identity.as_deref(), Some("quickhash1:a"));
+    drop(db);
+
+    // After a restart everything is found again, with no new reads.
+    let (host, requests) = mock_host(dir.path(), Reads::Slide);
+    host.state().snapshot.files[0].identity = Some("quickhash1:a".into());
+    let again = Setup {
+        harness: Harness::with_host(host, init.clone()).unwrap(),
+        requests,
+        dir,
+        init,
+    };
+    let surface = again.start();
+    again.wait_property("stored results", "coverage-text", |v| {
+        v.as_str().is_some_and(|t| t.contains("64 tissue tiles"))
+    });
+    again.analyse_viewport(&surface);
+    assert!(again.reads().is_empty(), "{:?}", again.reads());
+}

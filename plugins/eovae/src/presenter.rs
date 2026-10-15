@@ -180,6 +180,11 @@ pub fn run<B: Backend>(core: Arc<Core<B>>) {
         if flags.sidebar {
             refresh_sidebar(&core, &mut memo);
         }
+        // Statistics of runs that are gone (closed slides, a cleared cache).
+        if !memo.stats.is_empty() {
+            let results = lock(&core.results);
+            memo.stats.retain(|key, _| results.holds(key));
+        }
         if timed {
             core.dirty.mark(|_| {});
             std::thread::sleep(Duration::from_millis(100));
