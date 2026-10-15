@@ -4,7 +4,7 @@
 
 use crate::state::{
     AppState, MinimapThumbnail, NewOpenFile, PaneId, SeriesEntry, SeriesNavigationMode,
-    SeriesThumbnail,
+    SeriesThumbnail, TabActivation,
 };
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use crate::ui_update::{update_recent_files, update_tabs};
@@ -25,9 +25,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-const WSI_EXTENSIONS: &[&str] = &[
-    "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff", "svslide", "bif", "czi",
-];
+/// The slide formats eov opens (also in the file dialog, the dataset
+/// extractor and the operating system's file associations).
+const WSI_EXTENSIONS: &[&str] = eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS;
 
 pub struct OpenFileUiContext<'a> {
     pub pane_render_cache: &'a mut Vec<PaneRenderCacheEntry>,
@@ -39,6 +39,76 @@ pub struct OpenFileUiContext<'a> {
 pub enum OpenFileMode {
     ReuseExistingTab,
     ForceNewTab,
+}
+
+/// Where a slide of a launch goes (SH-7). Slides open in parallel and
+/// finish in any order; their tabs still end up in the order they were
+/// given, the first one selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Placement {
+    /// The launch ([`new_batch`]).
+    pub(crate) batch: u64,
+    /// Position among the launch's slides in the same pane.
+    pub(crate) position: usize,
+    /// Select the tab (the first slide of its pane).
+    pub(crate) select: bool,
+    /// Focus its pane too (the first slide of the launch).
+    pub(crate) focus: bool,
+}
+
+impl Placement {
+    fn activation(self) -> TabActivation {
+        match (self.select, self.focus) {
+            (true, true) => TabActivation::Focus,
+            (true, false) => TabActivation::Select,
+            (false, _) => TabActivation::Background,
+        }
+    }
+}
+
+/// Launches whose tabs are remembered for ordering.
+const KEPT_BATCHES: u64 = 16;
+
+/// Starts a launch: slides opened with its id keep their order.
+pub(crate) fn new_batch() -> u64 {
+    let id = NEXT_BATCH.with(|next| {
+        let id = next.get();
+        next.set(id + 1);
+        id
+    });
+    BATCH_TABS.with(|batches| {
+        let mut batches = batches.borrow_mut();
+        batches.retain(|&batch, _| batch + KEPT_BATCHES > id);
+        batches.insert(id, Vec::new());
+    });
+    id
+}
+
+/// Moves a launch's new tab between the launch's tabs given before and
+/// after it, and remembers it.
+fn place_in_launch_order(state: &mut AppState, pane: PaneId, tab_id: i32, placement: Placement) {
+    BATCH_TABS.with(|batches| {
+        let mut batches = batches.borrow_mut();
+        let placed = batches.entry(placement.batch).or_default();
+        let position_of = |tab: i32| {
+            placed
+                .iter()
+                .find(|(placed_tab, _)| *placed_tab == tab)
+                .map(|(_, position)| *position)
+        };
+        let tabs = state.tabs_for_pane(pane);
+        let after_earlier = tabs
+            .iter()
+            .rposition(|&tab| position_of(tab).is_some_and(|p| p < placement.position))
+            .map(|index| index + 1);
+        let before_later = tabs
+            .iter()
+            .position(|&tab| position_of(tab).is_some_and(|p| p > placement.position));
+        if let Some(slot) = after_earlier.or(before_later) {
+            state.reorder_tab(pane, tab_id, slot as i32);
+        }
+        placed.push((tab_id, placement.position));
+    });
 }
 
 pub fn is_supported_wsi_path(path: &Path) -> bool {
@@ -439,6 +509,7 @@ pub fn set_series_from_file_parent(
 }
 
 /// Open a file and add it to the application state
+#[allow(clippy::too_many_arguments)]
 pub fn open_file(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -446,6 +517,7 @@ pub fn open_file(
     render_timer: &Rc<Timer>,
     path: PathBuf,
     mode: OpenFileMode,
+    placement: Option<Placement>,
     ui_context: OpenFileUiContext<'_>,
 ) {
     let OpenFileUiContext {
@@ -463,14 +535,24 @@ pub fn open_file(
 
     if let Some((pane, tab_id)) = existing_tab {
         let mut status_text = format!("Focused {}", normalized_path.display());
+        let view = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&normalized_path));
 
-        {
+        let warnings = {
             let mut state_guard = state.write();
-            match mode {
-                OpenFileMode::ReuseExistingTab => {
+            match (placement, mode) {
+                // Part of a launch: only the first slide of a pane is
+                // selected.
+                (Some(placement), _) => {
+                    if placement.select && placement.focus {
+                        state_guard.activate_tab_in_pane(pane, tab_id);
+                    } else if placement.select {
+                        state_guard.show_tab_in_pane(pane, tab_id);
+                    }
+                }
+                (None, OpenFileMode::ReuseExistingTab) => {
                     state_guard.activate_tab_in_pane(pane, tab_id);
                 }
-                OpenFileMode::ForceNewTab => {
+                (None, OpenFileMode::ForceNewTab) => {
                     let target_pane = if state_guard.split_enabled {
                         state_guard.focused_pane
                     } else {
@@ -482,7 +564,13 @@ pub fn open_file(
                 }
             }
             state_guard.add_to_recent(&normalized_path);
-        }
+            match view {
+                Some(PendingView::Requested(request)) => {
+                    show_view_on_open_tab(&mut state_guard, &normalized_path, &request)
+                }
+                _ => Vec::new(),
+            }
+        };
 
         {
             let state_guard = state.read();
@@ -500,6 +588,7 @@ pub fn open_file(
         // re-entrant).
         ui.set_is_loading(false);
         ui.set_status_text(SharedString::from(status_text));
+        report_view_warnings(&normalized_path, &warnings);
         request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
         return;
     }
@@ -547,6 +636,7 @@ pub fn open_file(
                 path: normalized_path.clone(),
                 target_pane,
                 extra_panes: Vec::new(),
+                placement,
                 state: Arc::clone(state),
                 tile_cache: Arc::clone(tile_cache),
                 render_timer: Rc::clone(render_timer),
@@ -589,6 +679,8 @@ struct PendingOpen {
     target_pane: Option<u32>,
     /// Panes (stable ids) that asked for the same slide while it opened.
     extra_panes: Vec<Option<u32>>,
+    /// Its place in a launch.
+    placement: Option<Placement>,
     state: Arc<RwLock<AppState>>,
     tile_cache: Arc<TileCache>,
     render_timer: Rc<Timer>,
@@ -600,21 +692,95 @@ struct OpenedSlide {
     thumbnail: Option<MinimapThumbnail>,
 }
 
+/// A view waiting for its slide to open.
+enum PendingView {
+    /// Exactly where the slide was (a restored session).
+    Saved(crate::session::SavedView),
+    /// `--goto`/`--zoom` or a link, placed once the slide's size, pixel
+    /// size and objective are known.
+    Requested(crate::launch::ViewRequest),
+}
+
 thread_local! {
     /// Opens in flight, by request (UI thread only).
     static PENDING_OPENS: RefCell<HashMap<u64, PendingOpen>> = RefCell::new(HashMap::new());
     static NEXT_OPEN_ID: Cell<u64> = const { Cell::new(1) };
-    /// Views to show when these slides (canonical paths) open, e.g. from
-    /// a restored session.
-    static INITIAL_VIEWS: RefCell<HashMap<PathBuf, crate::session::SavedView>> =
+    /// Views to show when these slides (canonical paths) open.
+    static INITIAL_VIEWS: RefCell<HashMap<PathBuf, PendingView>> =
         RefCell::new(HashMap::new());
+    static NEXT_BATCH: Cell<u64> = const { Cell::new(1) };
+    /// Tabs of recent launches with their positions, by launch.
+    static BATCH_TABS: RefCell<std::collections::BTreeMap<u64, Vec<(i32, usize)>>> =
+        const { RefCell::new(std::collections::BTreeMap::new()) };
 }
 
 /// Opens `path` at `view` instead of fitting it to the pane, the next time
 /// it is opened.
 pub(crate) fn set_initial_view(path: &Path, view: crate::session::SavedView) {
     let path = crate::paths::canonical(path);
-    INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, view));
+    INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, PendingView::Saved(view)));
+}
+
+/// Shows `path` at `request` when it opens next, or right away when it is
+/// open already (`--goto`, `--zoom`, links).
+pub(crate) fn request_view(path: &Path, request: crate::launch::ViewRequest) {
+    if request.is_empty() {
+        return;
+    }
+    let path = crate::paths::canonical(path);
+    INITIAL_VIEWS.with(|views| {
+        views
+            .borrow_mut()
+            .insert(path, PendingView::Requested(request))
+    });
+}
+
+/// Moves the view of an open slide to `request`, where the slide is the
+/// selected tab of its pane. Returns what could not be applied.
+fn show_view_on_open_tab(
+    state: &mut AppState,
+    path: &Path,
+    request: &crate::launch::ViewRequest,
+) -> Vec<String> {
+    let Some((pane, tab_id)) = state.find_tab_by_path(path) else {
+        return Vec::new();
+    };
+    if state.active_tab_id_for_pane(pane) != Some(tab_id) {
+        return Vec::new();
+    }
+    let file_id = state.resolve_tab_file_id(tab_id);
+    let Some(file) = state.get_file_mut(file_id) else {
+        return Vec::new();
+    };
+    let scale = crate::launch::SlideScale::of_open_file(file);
+    let Some(pane_state) = file.pane_state_mut(pane) else {
+        return Vec::new();
+    };
+    let viewport = &mut pane_state.viewport;
+    let current = (
+        viewport.viewport.center.x,
+        viewport.viewport.center.y,
+        viewport.viewport.zoom,
+    );
+    let view = crate::launch::resolve_view(request, &scale, current, viewport.fit_view());
+    viewport.smooth_set_center_zoom(view.center_x, view.center_y, view.zoom);
+    state.request_render();
+    view.warnings
+}
+
+/// Tells the user what of a requested view could not be applied.
+fn report_view_warnings(path: &Path, warnings: &[String]) {
+    if warnings.is_empty() {
+        return;
+    }
+    crate::host_ui::with_host(|host| {
+        host.notify(
+            eov_plugin_api::protocol::NotifyLevel::Warning,
+            &format!("Could not show {} exactly as asked", display_name(path)),
+            Some(&warnings.join("\n")),
+            None,
+        )
+    });
 }
 
 fn display_name(path: &Path) -> String {
@@ -664,6 +830,7 @@ fn finish_open(
         path,
         target_pane,
         extra_panes,
+        placement,
         state,
         tile_cache,
         render_timer,
@@ -673,8 +840,20 @@ fn finish_open(
         Ok(opened) => opened,
         Err(err) => {
             error!("Failed to open {}: {err}", path.display());
-            // A pane made for this slide (an edge drop) must not stay empty.
-            let removed = target_pane.is_some_and(|uid| state.write().remove_empty_pane(uid));
+            // A view asked for this slide must not apply to a later open.
+            INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path));
+            // A pane made for this slide (an edge drop) must not stay empty,
+            // nor the window when nothing opened (a launch whose slides all
+            // failed).
+            let removed = {
+                let mut state_guard = state.write();
+                let removed = target_pane.is_some_and(|uid| state_guard.remove_empty_pane(uid));
+                let nothing_shown = state_guard.panes.iter().all(|pane| pane.tabs.is_empty());
+                if nothing_shown && !still_opening {
+                    state_guard.create_home_tab();
+                }
+                removed || nothing_shown
+            };
             if removed {
                 let state_guard = state.read();
                 ui.set_split_enabled(state_guard.split_enabled);
@@ -696,20 +875,22 @@ fn finish_open(
 
     // Opened meanwhile under another spelling of the path.
     let existing_tab = state.read().find_tab_by_path(&path);
-    let level_count = if let Some((pane, tab_id)) = existing_tab {
+    let (level_count, warnings) = if let Some((pane, tab_id)) = existing_tab {
         let mut state_guard = state.write();
         state_guard.activate_tab_in_pane(pane, tab_id);
         state_guard.add_to_recent(&path);
-        None
+        (None, Vec::new())
     } else {
-        Some(install_slide(
+        let (levels, warnings) = install_slide(
             &ui,
             &state,
             &tile_cache,
             path.clone(),
             target_pane,
+            placement,
             opened,
-        ))
+        );
+        (Some(levels), warnings)
     };
 
     {
@@ -743,19 +924,22 @@ fn finish_open(
         None => format!("Focused {name}"),
     };
     ui.set_status_text(SharedString::from(status));
+    report_view_warnings(&path, &warnings);
     request_render_loop(&render_timer, &ui.as_weak(), &state, &tile_cache);
 }
 
 /// Adds an opened slide to the state and starts loading its tiles.
-/// Returns its number of levels.
+/// Returns its number of levels and what of a requested view could not be
+/// applied.
 fn install_slide(
     ui: &crate::AppWindow,
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
     path: PathBuf,
     target_pane: Option<u32>,
+    placement: Option<Placement>,
     opened: OpenedSlide,
-) -> u32 {
+) -> (u32, Vec<String>) {
     let OpenedSlide { wsi, thumbnail } = opened;
     let mut state_guard = state.write();
 
@@ -787,11 +971,19 @@ fn install_slide(
         props.height as f64,
         Some(props.content_bounds()),
     );
-    if let Some(view) = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path))
-        && view.zoom.is_finite()
-        && view.zoom > 0.0
-    {
-        viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+    let mut warnings = Vec::new();
+    match INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path)) {
+        Some(PendingView::Saved(view)) if view.zoom.is_finite() && view.zoom > 0.0 => {
+            viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+        }
+        Some(PendingView::Requested(request)) => {
+            let fit = viewport.fit_view();
+            let scale = crate::launch::SlideScale::of_properties(props);
+            let view = crate::launch::resolve_view(&request, &scale, fit, fit);
+            viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+            warnings = view.warnings;
+        }
+        _ => {}
     }
 
     // Rendering uses a view with synthetic coarse levels for slides whose
@@ -832,9 +1024,17 @@ fn install_slide(
         viewport,
         thumbnail,
         target_pane,
+        activation: placement.map_or(TabActivation::Focus, Placement::activation),
     });
+    if let Some(placement) = placement
+        && let Some(pane) = state_guard.pane_of_tab(file_id)
+    {
+        place_in_launch_order(&mut state_guard, pane, file_id, placement);
+    }
+    // A pane that showed its Home tab now shows the slide, whatever the
+    // activation (see `AppState::add_file`).
     if let Some(home_tab_id) = home_tab_to_close {
         state_guard.close_home_tab(home_tab_id);
     }
-    level_count
+    (level_count, warnings)
 }

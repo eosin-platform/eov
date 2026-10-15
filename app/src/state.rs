@@ -234,6 +234,21 @@ pub struct NewOpenFile {
     /// Pane that shows the new tab (the focused pane when it no longer
     /// exists).
     pub target_pane: PaneId,
+    /// How the new tab is shown.
+    pub activation: TabActivation,
+}
+
+/// How a newly opened slide's tab is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabActivation {
+    /// Selected, and its pane focused (a slide opened on its own).
+    Focus,
+    /// Selected in its pane; the focus stays where it is (the first slide
+    /// of a further pane at launch).
+    Select,
+    /// Added behind the selected tab (the other slides of a launch), unless
+    /// the pane shows nothing or a Home tab.
+    Background,
 }
 
 impl OpenFile {
@@ -1159,6 +1174,7 @@ impl AppState {
             viewport,
             thumbnail,
             target_pane,
+            activation,
         } = new_file;
 
         let normalized_path = normalize_recent_path(&path);
@@ -1193,8 +1209,28 @@ impl AppState {
         } else {
             PaneId::PRIMARY
         };
-        self.activate_tab_in_pane(target_pane, id);
+        let pane_is_empty = self
+            .active_tab_id_for_pane(target_pane)
+            .is_none_or(|tab| self.is_home_tab(tab));
+        match activation {
+            TabActivation::Focus => self.activate_tab_in_pane(target_pane, id),
+            TabActivation::Select => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background if pane_is_empty => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background => self.add_tab_to_pane_if_missing(target_pane, id),
+        }
         id
+    }
+
+    /// Selects a tab in its pane without moving the keyboard focus to
+    /// that pane.
+    pub fn show_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if !self.is_known_tab(id) || pane.0 >= self.panes.len() {
+            return;
+        }
+        self.add_tab_to_pane_if_missing(pane, id);
+        self.select_tab_in_pane(pane, id);
+        self.sync_active_file_id();
+        self.needs_render = true;
     }
 
     /// Close a file by ID

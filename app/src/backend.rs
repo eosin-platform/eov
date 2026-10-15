@@ -21,6 +21,40 @@ pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<()> {
     Ok(())
 }
 
+/// Wayland compositors place windows themselves and ignore positions
+/// requested by programs: say so when `--window-x`/`--window-y` were given
+/// (SH-17). Checked once the event loop runs, when the window exists.
+pub(crate) fn warn_if_position_ignored(ui: &crate::AppWindow, geometry: WindowGeometry) {
+    if geometry.x.is_none() && geometry.y.is_none() {
+        return;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use slint::ComponentHandle;
+        let ui = ui.as_weak();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            use slint::winit_030::WinitWindowAccessor;
+            let Some(ui) = ui.upgrade() else {
+                return;
+            };
+            let wayland = ui.window().with_winit_window(|window| {
+                window
+                    .window_handle()
+                    .is_ok_and(|handle| matches!(handle.as_raw(), RawWindowHandle::Wayland(_)))
+            });
+            if wayland == Some(true) {
+                tracing::warn!(
+                    "--window-x and --window-y have no effect on Wayland: the compositor \
+                     places windows"
+                );
+            }
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = ui;
+}
+
 fn preferred_backends() -> wgpu::Backends {
     #[cfg(target_os = "macos")]
     {

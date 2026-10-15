@@ -152,15 +152,13 @@ pub(crate) fn restore(
         return false;
     }
     crate::prepare_launch_panes(ui, state, session.panes.len());
+    // Slides open in parallel; the placements keep each pane's tabs in
+    // their order, with the active one selected.
+    let batch = crate::file_ops::new_batch();
     for (index, pane) in session.panes.iter().enumerate() {
         state.write().set_focused_pane(PaneId(index));
-        // Inactive tabs first, so the active one ends up selected.
-        let mut tabs: Vec<&TabSession> = pane.tabs.iter().collect();
-        tabs.sort_by_key(|tab| tab.active);
-        for tab in tabs {
-            let Some(path) = tab.path() else {
-                continue;
-            };
+        let tabs = pane.tabs.iter().filter_map(|tab| Some((tab, tab.path()?)));
+        for (position, (tab, path)) in tabs.enumerate() {
             crate::file_ops::set_initial_view(
                 &path,
                 SavedView {
@@ -169,7 +167,13 @@ pub(crate) fn restore(
                     zoom: tab.zoom,
                 },
             );
-            crate::open_file(ui, state, tile_cache, render_timer, path);
+            let placement = crate::file_ops::Placement {
+                batch,
+                position,
+                select: tab.active,
+                focus: tab.active && index == session.focused_pane,
+            };
+            crate::open_file_placed(ui, state, tile_cache, render_timer, path, placement);
         }
     }
     let focused = session.focused_pane.min(session.panes.len() - 1);

@@ -272,6 +272,39 @@ pub fn load_restore_session() -> bool {
     .unwrap_or(true)
 }
 
+/// Whether `eov FILES` hands the files to an eov that is running
+/// (`single_instance`, on by default; SH-8).
+pub fn load_single_instance() -> bool {
+    with_document(|_, document| {
+        document
+            .get("single_instance")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true)
+    })
+    .unwrap_or(true)
+}
+
+/// Servers whose network folders `eov://` links may open on Windows
+/// (`trusted_link_servers`, none by default; see
+/// [`crate::launch::link_path_refusal`]).
+pub fn load_trusted_link_servers() -> Vec<String> {
+    with_document(|_, document| {
+        document
+            .get("trusted_link_servers")
+            .and_then(|item| item.as_array())
+            .map(|servers| {
+                servers
+                    .iter()
+                    .filter_map(|server| server.as_str())
+                    .map(|server| server.trim().trim_start_matches('\\').to_string())
+                    .filter(|server| !server.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+    .unwrap_or_default()
+}
+
 pub fn load_scroll_pans() -> Result<bool> {
     with_document(|_, document| {
         document

@@ -38,24 +38,42 @@ const SUBCOMMANDS: &[&str] = &[
     "probe",
     "recent",
     "config-path",
+    "paths",
+    "register-file-types",
+    "unregister-file-types",
     "dataset",
     "help",
     "plugin-window",
 ];
 
+/// Whether an argument is a URI eov decodes (`file:` from file managers,
+/// `eov:` links), rather than a path.
+fn is_uri(text: &str) -> bool {
+    let starts_with = |prefix: &str| {
+        text.get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+    };
+    starts_with("eov:") || starts_with("file:")
+}
+
 /// Whether the command line asks for console behaviour rather than just
 /// opening files in the viewer: any flag (`--help`, `--version`,
 /// `--log-level ...`), any subcommand, or anything that is not an existing
-/// file or directory (it will produce an error message).
+/// file or directory (eov reports it, see `launch.rs`). As in `launch.rs`,
+/// an argument that exists is a path even with commas in its name.
 pub fn wants_console(args: &[OsString], exists: impl Fn(&Path) -> bool) -> bool {
     args.iter().any(|arg| {
         let text = arg.to_string_lossy();
-        text.starts_with('-')
-            || SUBCOMMANDS.contains(&text.as_ref())
-            || text.split(',').any(|part| {
-                let part = part.trim();
-                !part.is_empty() && !part.starts_with("file:") && !exists(Path::new(part))
-            })
+        if text.starts_with('-') || SUBCOMMANDS.contains(&text.as_ref()) {
+            return true;
+        }
+        if is_uri(&text) || exists(Path::new(arg)) {
+            return false;
+        }
+        text.split(',').any(|part| {
+            let part = part.trim();
+            !part.is_empty() && !is_uri(part) && !exists(Path::new(part))
+        })
     })
 }
 
@@ -317,6 +335,12 @@ mod tests {
         assert!(!wants_console(&args(&["file:///C:/slides/a.svs"]), |_| {
             false
         }));
+        assert!(!wants_console(
+            &args(&["eov://open?path=C%3A%5Ca.svs&zoom=20x"]),
+            |_| false
+        ));
+        assert!(!wants_console(&args(&["Case 12, H&E.svs"]), |path| path
+            == Path::new("Case 12, H&E.svs")));
     }
 
     #[test]

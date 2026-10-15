@@ -270,14 +270,10 @@ pub(crate) fn frame_active_viewport(state: &mut AppState) -> bool {
 /// the scanner's objective power, or about 10 µm ÷ pixel size when only
 /// the pixel size is known (0.25 µm/px ≈ 40×), including a manual one.
 pub(crate) fn native_magnification(file: &state::OpenFile) -> Option<f64> {
-    file.wsi
-        .properties()
-        .objective_power
-        .filter(|power| power.is_finite() && *power > 0.0)
-        .or_else(|| {
-            let mpp = crate::host_ui::calibration(file).average()?;
-            (mpp.is_finite() && mpp > 0.0).then(|| 10.0 / mpp)
-        })
+    crate::launch::native_magnification(
+        file.wsi.properties().objective_power,
+        crate::host_ui::calibration(file).average(),
+    )
 }
 
 /// Zooms the focused pane to an objective-equivalent `magnification`
@@ -650,13 +646,7 @@ pub fn setup_callbacks(
             let ui = ui_weak.upgrade().unwrap();
 
             let dialog = FileDialog::new()
-                .add_filter(
-                    "WSI Files",
-                    &[
-                        "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
-                        "svslide", "bif", "czi",
-                    ],
-                )
+                .add_filter("WSI Files", eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS)
                 .add_filter("All Files", &["*"]);
 
             if let Some(path) = dialog.pick_file() {
