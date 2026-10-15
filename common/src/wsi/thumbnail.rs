@@ -145,8 +145,26 @@ impl WsiFile {
             .map(|thumbnail| thumbnail.image)
     }
 
-    /// A bounded thumbnail; see the [module documentation](self) for the
-    /// strategy. Run it off the UI thread: it performs slide I/O.
+    /// A thumbnail with bounded memory and I/O for every slide. Run it off
+    /// the UI thread: it performs slide I/O.
+    ///
+    /// The pixels come from, in order of preference:
+    /// 1. the `thumbnail` (or `macro`) associated image, when its aspect
+    ///    ratio shows that it depicts the same area as the slide and it is at
+    ///    least as large as requested;
+    /// 2. the coarsest pyramid level that is still at least the requested
+    ///    size, if reading it stays within
+    ///    [`ThumbnailOptions::max_source_pixels`];
+    /// 3. a too-small associated image, as is;
+    /// 4. sparse samples of that level, at most
+    ///    [`ThumbnailOptions::max_sparse_samples`] of them (a single-level
+    ///    100k x 80k slide therefore never decodes more than that many
+    ///    small regions).
+    ///
+    /// Only real levels are used, even on a
+    /// [`with_synthetic_levels`](WsiFile::with_synthetic_levels) view. The
+    /// result carries its real dimensions, which can be smaller than
+    /// requested.
     pub fn thumbnail_with(&self, options: &ThumbnailOptions) -> Result<Thumbnail> {
         // Real levels only: synthetic ones would make "cheap" reads expensive.
         let props = self.real_properties();

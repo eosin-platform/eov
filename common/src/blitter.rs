@@ -112,7 +112,7 @@ pub struct CoarseSrc<'a> {
     pub height: u32,
     pub border: u32,
     /// UV sub-region of the coarse tile that covers this fine tile:
-    /// (u_min, v_min, u_max, v_max) in [0,1] normalised coordinates.
+    /// (u_min, v_min, u_max, v_max) in 0..=1 normalised coordinates.
     pub uv_min: [f32; 2],
     pub uv_max: [f32; 2],
     /// Mip blend factor: 0.0 = 100 % fine, 1.0 = 100 % coarse.

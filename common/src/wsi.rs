@@ -546,6 +546,14 @@ impl WsiFile {
     /// [`TileManager`](crate::TileManager)); keep the plain view for
     /// metadata displays and analysis, which should see real levels only.
     /// Slides whose pyramid is deep enough get no synthetic levels.
+    ///
+    /// Reading a synthetic level box-filters the coarsest real level:
+    /// exactly when that decodes at most [`EXACT_SYNTHESIS_BUDGET`] base
+    /// pixels (estimate with [`synthesis_cost`](Self::synthesis_cost)),
+    /// otherwise approximately from at most [`SPARSE_SYNTHESIS_SAMPLES`]
+    /// point samples. A [`TileManager`](crate::TileManager) with a tile
+    /// cache builds coarse synthetic tiles exactly from cached tiles of the
+    /// next finer level instead.
     pub fn with_synthetic_levels(&self) -> WsiFile {
         let view = self
             .shared
