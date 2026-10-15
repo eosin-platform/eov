@@ -13,20 +13,27 @@ mod clipboard;
 mod color;
 mod config;
 mod dataset_dialog;
+mod desktop;
 mod distribution;
 mod export_dialog;
 mod file_ops;
+mod file_types;
 mod gpu;
 mod history;
 mod host_ui;
+mod instance;
 mod interaction;
+mod launch;
 mod logging;
+#[cfg(target_os = "macos")]
+mod macos_open;
 mod measurement_store;
 mod overlay;
 mod pane_ui;
 mod paths;
 mod plugin_runtime;
 mod plugins;
+mod probe;
 mod quantify_panel;
 mod recent;
 mod render;
@@ -56,7 +63,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 use backend::select_backend;
 use cli::{apply_config_override, maybe_run_cli_command, parse_launch_options};
@@ -139,6 +146,9 @@ fn request_render_loop(
 }
 
 fn main() -> Result<()> {
+    // Before anything can change it: programs eov starts get this
+    // environment back (SH-15).
+    desktop::remember_launch_environment();
     // Windows GUI build: attach to the terminal for CLI use, or show fatal
     // errors in a message box (SH-2). No-op elsewhere.
     win_console::init();
@@ -152,6 +162,32 @@ fn main() -> Result<()> {
     if maybe_run_cli_command(&launch_options)? {
         return Ok(());
     }
+
+    // Arguments that cannot be used are reported here for the terminal and
+    // in the window once it is up (SH-7).
+    let open_request = launch_options.open_request();
+    for problem in &open_request.problems {
+        eprintln!("eov: {problem}");
+    }
+
+    // One eov per user and setup (SH-8): hand the request to the running
+    // eov, before this one loads plugins, opens a window or a log file.
+    let mut instance_server = None;
+    if launch_options.may_forward() && config::load_single_instance() {
+        let endpoint = instance::Endpoint::for_setup(
+            &config::resolve_config_path()?,
+            &launch_options.plugin_dir,
+        );
+        match instance::claim(&endpoint, &open_request, instance::Timing::default()) {
+            instance::Claim::Forwarded => {
+                info!("Handed the files to the running eov");
+                return Ok(());
+            }
+            instance::Claim::Primary(server) => instance_server = Some(server),
+            instance::Claim::Standalone(reason) => warn!("{reason}"),
+        }
+    }
+    logging::start_session_log();
 
     info!("Starting EOV WSI Viewer");
 
@@ -169,16 +205,11 @@ fn main() -> Result<()> {
         info!("Debug mode enabled - FPS overlay will be shown");
     }
 
-    if !launch_options.panes_to_open.is_empty() {
-        let total_files: usize = launch_options
-            .panes_to_open
-            .iter()
-            .map(|p| p.files.len())
-            .sum();
+    if !open_request.opens_nothing() {
         info!(
-            "Opening {} file(s) across {} pane(s) from command line",
-            total_files,
-            launch_options.panes_to_open.len()
+            "Opening {} file(s) in {} pane(s) from the command line",
+            open_request.tabs.len() + open_request.panes.iter().map(Vec::len).sum::<usize>(),
+            1 + open_request.panes.len()
         );
     }
 
@@ -289,10 +320,12 @@ fn main() -> Result<()> {
         update_recent_files(&ui, &state);
     }
 
-    if launch_options.panes_to_open.is_empty() {
+    let problems = open_request.problems.clone();
+    if open_request.opens_nothing() {
         // Reopen the last session's slides where they were (AUDIT §14.1);
-        // the Home tab otherwise.
-        if !session::restore(&ui, &state, &tile_cache, &render_timer) {
+        // the Home tab otherwise, or when the files given could not be
+        // used.
+        if !problems.is_empty() || !session::restore(&ui, &state, &tile_cache, &render_timer) {
             {
                 let mut state = state.write();
                 state.create_home_tab();
@@ -302,49 +335,16 @@ fn main() -> Result<()> {
             info!("Initialized home tab state");
         }
     } else {
-        prepare_launch_panes(&ui, &state, launch_options.panes_to_open.len());
-        info!("Prepared launch panes from CLI input");
-    }
-
-    for (pane_index, pane_spec) in launch_options.panes_to_open.into_iter().enumerate() {
-        let pane = PaneId(pane_index);
-        {
-            let mut state = state.write();
-            state.set_focused_pane(pane);
-        }
-        ui.set_focused_pane(pane.as_index());
-
-        for path in pane_spec.files {
-            if path.is_dir() {
-                callbacks::open_folder_as_series(&ui, &state, path);
-                continue;
-            }
-
-            let existing_tab = {
-                let state = state.read();
-                state.find_tab_by_path(&path)
-            };
-
-            if let Some((source_pane, tab_id)) = existing_tab
-                && source_pane != pane
-            {
-                let mut state = state.write();
-                state.duplicate_tab_to_pane(tab_id, pane);
-            } else {
-                open_file(&ui, &state, &tile_cache, &render_timer, path);
-            }
-        }
-    }
-
-    if state.read().split_enabled {
-        {
-            let mut state = state.write();
-            state.set_focused_pane(PaneId::PRIMARY);
-        }
-        let state = state.read();
-        ui.set_split_enabled(state.split_enabled);
-        ui.set_focused_pane(state.focused_pane.as_index());
-        update_tabs(&ui, &state);
+        launch::open(
+            &ui,
+            &state,
+            &tile_cache,
+            &render_timer,
+            launch::OpenRequest {
+                problems: Vec::new(),
+                ..open_request
+            },
+        );
     }
 
     request_render_loop(&render_timer, &ui_weak, &state, &tile_cache);
@@ -353,8 +353,24 @@ fn main() -> Result<()> {
     info!("Showing application window");
     ui.show()?;
     info!("Application window shown");
+    backend::warn_if_position_ignored(&ui, launch_options.window_geometry);
 
     host.ready();
+    launch::report_problems(&problems);
+
+    // Files handed over by eovs started from now on open here (the
+    // listener only queues them; the event loop opens them).
+    if let Some(server) = instance_server.as_mut() {
+        server.serve(instance::Timing::default(), |request, answer| {
+            let _ = slint::invoke_from_event_loop(move || {
+                let _ = answer.send(launch::open_handed_over(request));
+            });
+        });
+    }
+    // Slides opened from the Finder and eov:// links arrive as Apple
+    // events, also while the event loop starts (SH-8).
+    #[cfg(target_os = "macos")]
+    macos_open::install();
 
     info!("Entering Slint UI event loop");
 
@@ -369,6 +385,8 @@ fn main() -> Result<()> {
 
     ui.run()?;
 
+    // A new eov may take over while this one finishes.
+    drop(instance_server);
     info!("Application shutting down");
     session::save(&state.read());
     host.shutdown();
@@ -429,6 +447,26 @@ pub(crate) fn open_file(
     );
 }
 
+/// Opens one slide of a launch (see [`file_ops::Placement`]).
+pub(crate) fn open_file_placed(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+    placement: file_ops::Placement,
+) {
+    open_file_in(
+        ui,
+        state,
+        tile_cache,
+        render_timer,
+        path,
+        file_ops::OpenFileMode::ReuseExistingTab,
+        Some(placement),
+    );
+}
+
 fn open_file_with_mode(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -436,6 +474,18 @@ fn open_file_with_mode(
     render_timer: &Rc<Timer>,
     path: PathBuf,
     mode: file_ops::OpenFileMode,
+) {
+    open_file_in(ui, state, tile_cache, render_timer, path, mode, None);
+}
+
+fn open_file_in(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+    render_timer: &Rc<Timer>,
+    path: PathBuf,
+    mode: file_ops::OpenFileMode,
+    placement: Option<file_ops::Placement>,
 ) {
     let pane_count = state.read().panes.len().max(1);
     with_pane_render_cache(pane_count, |pane_render_cache| {
@@ -448,6 +498,7 @@ fn open_file_with_mode(
                     render_timer,
                     path,
                     mode,
+                    placement,
                     file_ops::OpenFileUiContext {
                         pane_render_cache,
                         pane_ui_models,

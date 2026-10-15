@@ -2737,6 +2737,7 @@ mod tests {
                     viewport,
                     thumbnail: None,
                     target_pane: PaneId::PRIMARY,
+                    activation: crate::state::TabActivation::Focus,
                 });
             }
 

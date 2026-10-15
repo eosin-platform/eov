@@ -9,7 +9,6 @@ use eov_common::{
 };
 use eov_plugin_api::protocol::Rect;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -254,7 +253,7 @@ impl OpenedSeries {
 }
 
 fn normalize_recent_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::paths::canonical(path)
 }
 
 /// A single open file with its associated state
@@ -301,6 +300,21 @@ pub struct NewOpenFile {
     /// Pane that shows the new tab (the focused pane when it no longer
     /// exists).
     pub target_pane: PaneId,
+    /// How the new tab is shown.
+    pub activation: TabActivation,
+}
+
+/// How a newly opened slide's tab is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabActivation {
+    /// Selected, and its pane focused (a slide opened on its own).
+    Focus,
+    /// Selected in its pane; the focus stays where it is (the first slide
+    /// of a further pane at launch).
+    Select,
+    /// Added behind the selected tab (the other slides of a launch), unless
+    /// the pane shows nothing or a Home tab.
+    Background,
 }
 
 impl OpenFile {
@@ -934,7 +948,7 @@ impl AppState {
     }
 
     pub fn find_tab_by_path(&self, path: &std::path::Path) -> Option<(PaneId, i32)> {
-        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let normalized_path = crate::paths::canonical(path);
         self.panes
             .iter()
             .enumerate()
@@ -1243,6 +1257,7 @@ impl AppState {
             viewport,
             thumbnail,
             target_pane,
+            activation,
         } = new_file;
 
         let normalized_path = normalize_recent_path(&path);
@@ -1281,8 +1296,28 @@ impl AppState {
         } else {
             PaneId::PRIMARY
         };
-        self.activate_tab_in_pane(target_pane, id);
+        let pane_is_empty = self
+            .active_tab_id_for_pane(target_pane)
+            .is_none_or(|tab| self.is_home_tab(tab));
+        match activation {
+            TabActivation::Focus => self.activate_tab_in_pane(target_pane, id),
+            TabActivation::Select => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background if pane_is_empty => self.show_tab_in_pane(target_pane, id),
+            TabActivation::Background => self.add_tab_to_pane_if_missing(target_pane, id),
+        }
         id
+    }
+
+    /// Selects a tab in its pane without moving the keyboard focus to
+    /// that pane.
+    pub fn show_tab_in_pane(&mut self, pane: PaneId, id: i32) {
+        if !self.is_known_tab(id) || pane.0 >= self.panes.len() {
+            return;
+        }
+        self.add_tab_to_pane_if_missing(pane, id);
+        self.select_tab_in_pane(pane, id);
+        self.sync_active_file_id();
+        self.needs_render = true;
     }
 
     /// Close a file by ID
@@ -1890,6 +1925,7 @@ mod tests {
             viewport: eov_common::ViewportState::new(400.0, 300.0, 256.0, 256.0),
             thumbnail: None,
             target_pane: PaneId::PRIMARY,
+            activation: crate::state::TabActivation::Focus,
         });
         let second = state.insert_pane(1).unwrap();
         let tab = state.active_tab_id_for_pane(PaneId::PRIMARY).unwrap();

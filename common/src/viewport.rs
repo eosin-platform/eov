@@ -681,6 +681,17 @@ impl ViewportState {
         }
     }
 
+    /// The centre (x, y) and zoom of [`fit_to_view`](Self::fit_to_view),
+    /// without moving the view.
+    pub fn fit_view(&self) -> (f64, f64, f64) {
+        let (x, y, width, height) = self.fit_target();
+        (
+            x + width / 2.0,
+            y + height / 2.0,
+            self.viewport.fit_zoom_for(width, height),
+        )
+    }
+
     /// Start a drag operation
     pub fn start_drag(&mut self, x: f64, y: f64) {
         let now = Instant::now();
@@ -1523,6 +1534,11 @@ mod bounds_tests {
             ViewportState::with_content_bounds(1000.0, 500.0, 100_000.0, 80_000.0, Some(island));
         assert_eq!(state.viewport.center, DVec2::new(65_000.0, 22_500.0));
         assert_eq!(state.content_bounds(), Some(island));
+        assert_eq!(
+            state.fit_view(),
+            (65_000.0, 22_500.0, state.viewport.zoom),
+            "fit_view describes the fitted view"
+        );
         // Panning far away stops half a bounds-size outside the island.
         state.start_drag(500.0, 250.0);
         state.drag_to(500.0 + 1e7, 250.0 + 1e7);

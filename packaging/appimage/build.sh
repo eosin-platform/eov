@@ -20,6 +20,8 @@ APP_ID="${APP_ID:-io.eosin.eov}"
 PRODUCT_NAME="${PRODUCT_NAME:-eov}"
 DESKTOP_FILE="${DESKTOP_FILE:-$REPO_ROOT/assets/linux/$APP_ID.desktop}"
 METAINFO_FILE="${METAINFO_FILE:-$REPO_ROOT/assets/linux/$APP_ID.metainfo.xml}"
+# Slide formats for file managers (shared-mime-info; see app/src/file_types).
+MIME_FILE="${MIME_FILE:-$REPO_ROOT/assets/linux/$APP_ID.xml}"
 THIRD_PARTY_FILE="${THIRD_PARTY_FILE:-$REPO_ROOT/assets/COPYING.third-party}"
 LICENSES_DIR="${LICENSES_DIR:-$REPO_ROOT/assets/licenses}"
 ICON_SOURCE="${ICON_SOURCE:-$REPO_ROOT/images/logo_256.png}"
@@ -33,6 +35,7 @@ APPDIR_DOC_DIR="$APPDIR_SHARE_DIR/doc/$APP_NAME"
 APPDIR_ICON_DIR="$APPDIR_SHARE_DIR/icons/hicolor/256x256/apps"
 APPDIR_APPLICATIONS_DIR="$APPDIR_SHARE_DIR/applications"
 APPDIR_METAINFO_DIR="$APPDIR_SHARE_DIR/metainfo"
+APPDIR_MIME_DIR="$APPDIR_SHARE_DIR/mime/packages"
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
 BINARY_PATH="${BINARY_PATH:-$CARGO_TARGET_DIR/release/$APP_NAME}"
 OPENSLIDE_LIB_PATH="${OPENSLIDE_LIB_PATH:-}"
@@ -264,6 +267,9 @@ copy_metadata() {
     install -Dm644 "$DESKTOP_FILE" "$APPDIR/$APP_ID.desktop"
     install -Dm644 "$DESKTOP_FILE" "$APPDIR_APPLICATIONS_DIR/$APP_ID.desktop"
     install -Dm644 "$METAINFO_FILE" "$APPDIR_METAINFO_DIR/$APP_ID.metainfo.xml"
+    # Desktop integration tools install it with the desktop entry; without
+    # one, `eov register-file-types` does.
+    install -Dm644 "$MIME_FILE" "$APPDIR_MIME_DIR/$APP_ID.xml"
 
     local license
     for license in LICENSE-MIT LICENSE-APACHE-2.0 LICENSE-GPLv3; do

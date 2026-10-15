@@ -56,7 +56,7 @@ struct Slide {
 }
 
 fn store_path() -> PathBuf {
-    crate::paths::data_dir().join("bookmarks.toml")
+    crate::paths::bookmarks_file()
 }
 
 fn read(path: &Path) -> Store {

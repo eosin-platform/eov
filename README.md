@@ -72,6 +72,8 @@ Extract the zip; it contains a single `eov` folder. Keep that folder dedicated t
 
 If you want the `eov` command to be available via PATH (e.g. for command prompt or PowerShell) you can do this by [adding `C:/path/to/eov` to System Variables](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574%28v%3Doffice.14%29) (given `C:/path/to/eov/eov.exe` reflects your directory structure). In a terminal, `eov` then runs `eov.com`, a small console launcher shipped next to `eov.exe`: command output, `--help` and the prompts of `eov update` appear in the terminal, and the terminal waits for the command to finish. Errors that stop the viewer from starting are shown in a dialog.
 
+To have Explorer offer eov for slide files ("Open with", double-click) and open `eov://` links, run `eov register-file-types` once (for your account only; run it again after moving the folder, and `eov unregister-file-types` to undo). See [File associations](#file-associations).
+
 ### Linux
 There are two methods of installation.
 
@@ -97,6 +99,9 @@ sudo mv eov /usr/local/bin/eov
 
 # Start the installed app with a nice, short command from any directory:
 eov
+
+# Optional: let file managers open slides and eov:// links with this AppImage
+eov register-file-types
 ```
 <!-- release-install-links:end -->
 
@@ -114,10 +119,12 @@ eov opens pyramid-based whole-slide image files through OpenSlide and presents t
 
 Current capabilities include:
 
-- Open WSI files from the file picker, drag and drop, recent-files list, or the command line.
+- Open WSI files from the file picker, drag and drop, the recent-files list, the command line, the file manager ("Open With", double-click) or `eov://` links that point at a place on a slide (see [Opening slides](#opening-slides)).
+- One eov window: opening more slides while eov runs adds them as tabs instead of starting another eov.
 - A tab- and pane-based layout
 - Duplicate tabs into additional panes for side-by-side comparison.
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
+- Show a slide in the file manager: **Open Containing Folder** opens its folder with the slide selected.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
 - Toggle between CPU and GPU rendering (Vulkan, DirectX 12 or Metal). Without a usable GPU (virtual desktops, remote sessions, VMs) eov draws its window with a software renderer and slides on the CPU, and says why; `EOV_RENDERER=software` forces this.
 - Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) texture filtering.
@@ -249,17 +256,20 @@ eov relies on [OpenSlide](https://openslide.org/) for slide access, so the forma
 - `.bif`
 - `.czi`
 
-If OpenSlide can open the file, eov should be able to load it.
+If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)).
 
 ## CLI
 
 The application can be launched as a desktop viewer or used through a small CLI surface:
 
 ```text
-eov [OPTIONS] [FILES]...
-eov probe <FILE>
+eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
+eov probe [--json] <FILE>
 eov recent list
 eov config-path
+eov paths [--json]
+eov register-file-types [--dry-run]
+eov unregister-file-types [--dry-run]
 eov update [--release <VERSION>] [--app-only] [--from <DIR>] [--rollback] [--dry-run] [--json] [--allow-network] [-y]
 eov plugin ls|list [--json] [--allow-network]
 eov plugin install|add <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
@@ -270,33 +280,78 @@ eov plugin disable|enable <PLUGIN>
 eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
+eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
 ```
 
 Examples:
 
 ```bash
 eov slide.svs
-eov slide1.svs slide2.svs slide3.svs
+eov slide1.svs slide2.svs slide3.svs              # one pane, three tabs
+eov he.svs --pane ki67.svs                        # two panes side by side
+eov slide.svs --goto 1200,800 --zoom 20x          # open at a place, at 20x
+eov 'eov://open?path=%2Fslides%2Fslide.svs&x=300um&y=200um&zoom=20x'
 eov --debug --backend gpu slide.svs
 eov --cache-size 512 --max-tiles 4096 slide.svs
 eov --cpu slide.svs
 eov --gpu --filtering-mode lanczos slide.svs
 eov --log-level debug probe fixtures/C3L-00088-22.svs
+eov probe --json slide.svs > slide.json
 eov --config /tmp/config.toml config-path
+eov paths
 eov recent list
 ```
 
-Notable options:
+`eov --help` explains every option. Notable ones:
 
+- `--pane <FILES>` to open more panes side by side (repeatable; see [Opening slides](#opening-slides))
+- `--goto <X,Y>` and `--zoom <ZOOM>` to open the first slide at a place and magnification
+- `--new-instance` to start a separate eov even when one is running
 - `--backend auto|cpu|gpu`
 - `--cpu` and `--gpu` as shorthands for `--backend cpu|gpu`
 - `--debug` to enable debug overlays in the UI
 - `--log-level error|warn|info|debug|trace`
-- `--cache-size <MB>` to fix the tile-cache budget in megabytes. By default the budget follows the window: about two full frames per visible pane, between 256 MB and 4 GB.
-- `--max-tiles <COUNT>` to fix the maximum number of cached tiles (default: sized with the budget).
-- `--config <PATH>` to override the active config file path for the current process
+- `--cache-size <MB>` to fix the tile-cache budget in megabytes (at most 1048576). By default the budget follows the window: about two full frames per visible pane, between 256 MB and 4 GB.
+- `--max-tiles <COUNT>` to fix the maximum number of cached tiles (1 to 16777216; default: sized with the budget).
+- `--config <PATH>` to override the active config file path for the current process (a leading `~` is expanded, also in `--config=~/...`)
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
+- `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
+
+`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash and every OpenSlide property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)).
+
+### Opening slides
+
+**Tabs and panes.** Every file on the command line opens as a tab of the current pane, in the order given; the first one is selected and the others open behind it. `--pane FILES` opens another pane side by side, and can be repeated. An argument that exists on disk is always taken as it is, so names with commas (`"Case 12, H&E.svs"`) work; an argument that does not exist but contains commas is a list of files, as in eov < 1.0 (`eov a.svs,b.svs`, `--pane c.svs,d.svs`). A folder opens in the series bar with its first slide. `file://` URIs, which file managers pass, are decoded, and paths that are not valid UTF-8 work. Files that cannot be opened (missing, unreadable, not a slide) are reported in the window, and everything else still opens.
+
+**Deep links.** `--goto X,Y` centres the first slide on a point given in level-0 pixels (`--goto 1200,800`, OpenSlide's coordinates) or in micrometres from the slide's top-left corner (`--goto 300um,200um`, which needs the slide's pixel size). `--zoom` takes an objective-equivalent magnification (`20x`; from the slide's objective, or about 10 µm ÷ pixel size), screen pixels per slide pixel (`0.5`; `1` or `1:1` is full resolution) or `fit`. If the slide is already open, its view moves there. When a slide lacks what a position or magnification needs, eov says so in the window and opens it as usual.
+
+An `eov://` link carries the same information, for laboratory systems, spreadsheets of findings or teaching material:
+
+```text
+eov://open?path=<percent-encoded absolute path>&x=<X>&y=<Y>&zoom=<ZOOM>
+eov://open?path=%2Fslides%2FS12-3456%20A1.svs&x=300um&y=200um&zoom=20x
+eov://open?path=C%3A%5Cslides%5CS12-3456%20A1.svs&x=14000&y=9000&zoom=10x
+```
+
+Percent-encode the path (in a spreadsheet, `=HYPERLINK("eov://open?path=" & ENCODEURL(A2) & "&x=" & B2 & "&y=" & C2 & "&zoom=20x", "Open")`); `+` means a space. `x` and `y` take the values of `--goto`, `zoom` those of `--zoom`, and both are optional; unknown parameters are ignored. Clicking a link starts eov, or hands the link to the eov that runs. On Windows, a link to a network path (`\\server\share\...`) is only followed if the server is listed in `trusted_link_servers` in `config.toml`: merely looking at such a path makes Windows sign in to that server with your credentials, which a link on a web page could abuse. Mapped drive letters need no setting.
+
+**Single instance.** While eov runs, `eov FILES` (from a terminal, a file manager or a link) hands the files to it: they open as tabs, the window comes to the front (on Wayland, which lets no program raise itself, it asks for attention instead) and the second eov exits. `eov` without files just brings the running one forward. Options that configure the viewer itself (`--cpu`, `--gpu`, `--backend`, `--filtering-mode`, `--debug`, `--log-level`, `--cache-size`, `--max-tiles`, `--window-*`, `--viewport-lock`, `--safe-mode`) start a separate eov, as do `--new-instance` and `single_instance = false` in `config.toml`; subcommands never hand anything over. eovs with a different home, configuration file or plugin folder (`EOV_HOME`, `--config`, `--plugin-dir`) run separately.
+
+The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost port (Windows, or where the socket's path would be too long) in a folder only you can use: `$XDG_RUNTIME_DIR/eov` on Linux (`$XDG_RUNTIME_DIR/app/io.eosin.eov` in the Flatpak), `$TMPDIR/eov` on macOS, `%LOCALAPPDATA%\eov\run` on Windows, or `$EOV_RUNTIME_DIR`. Both sides prove that they know a secret stored there before any path is exchanged, so other users and programs that merely squat on the port learn nothing. If eov crashed, the next start takes over its leftovers; if the running eov does not answer within 20 seconds, the new one starts on its own.
+
+### File associations
+
+| Platform | How eov is offered for slides and `eov://` links |
+|---|---|
+| Flatpak | Automatic: the Flatpak exports its MIME types (`io.eosin.eov.xml`) and desktop entry. |
+| AppImage, `cargo install` | Run `eov register-file-types` once: it writes the MIME package, a desktop entry that starts this eov and its icon to `~/.local/share` and updates the desktop's caches. AppImage integration tools that install the AppImage's desktop entry (with `usr/share/mime/packages/io.eosin.eov.xml`) work too. |
+| macOS | Automatic: the app declares the formats and the `eov` URL scheme in its `Info.plist`, and macOS registers them when it first sees the app (for example after moving it to Applications). |
+| Windows (portable zip) | Run `eov register-file-types` once. It writes only `HKEY_CURRENT_USER\Software\Classes`: an `eov.Slide` file type, an "Open with" entry for every slide extension, `Applications\eov.exe` and the `eov` URL protocol. eov becomes the default program only for the vendor formats (`.svs`, `.ndpi`, `.mrxs`, ...) that have none; TIFF and DICOM keep theirs. Run it again after moving the eov folder; `eov unregister-file-types` removes exactly these entries. |
+
+`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
+
+On macOS, slides opened from the Finder or the Dock and `eov://` links arrive as Apple events rather than on the command line. winit 0.30, the windowing library under Slint, does not pass these on, so eov adds the `application:openURLs:` handler to winit's application delegate at startup (winit patches AppKit the same way) and opens what arrives like files handed over by a second eov. Two consequences: a slide double-clicked while eov is not running opens as a tab next to the restored last session, because macOS starts the app without arguments first; and if a future winit implements the handler itself, eov keeps winit's and logs a warning (files from the Finder would then be ignored until eov is updated).
 
 ### Application and plugin updates
 
@@ -531,10 +586,15 @@ eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 - `config.toml`: preferences (render backend, filtering mode, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
 - `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
 - `plugins/`: installed plugin packages and their registry (`eov plugin …`).
+- `session.toml`: the slides, panes and views of the last session, reopened on a start without files (`restore_session = false` turns that off).
 
-Logs go to standard error (`--log-level`, default warnings). GUI sessions also write `eov.log` at info level in the log folder (`~/.local/share/eov/logs` on Linux; **Open Log Folder** in the Messages popup), keeping the previous five sessions. Info-level messages name files, not full paths. If eov crashes, it writes a `crash-<time>.txt` report there and mentions it at the next start.
+`eov paths` lists every location below, with what it holds and its size (`--json` for scripts).
 
-Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux).
+Logs go to standard error (`--log-level`, default warnings). GUI sessions also write `eov.log` at info level in the log folder (`~/.local/share/eov/logs` on Linux; **Open Log Folder** in the Messages popup), keeping the previous five sessions; a launch that hands its files to a running eov writes none. Info-level messages name files, not full paths. If eov crashes, it writes a `crash-<time>.txt` report there and mentions it at the next start.
+
+Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux), as do bookmarks and pixel sizes entered for slides. The series-bar thumbnail cache is not pruned; it is safe to delete. `EOV_HOME`, `EOV_CONFIG`, `EOV_DATA_DIR`, `EOV_CACHE_DIR`, `EOV_PLUGIN_DIR` and `EOV_RUNTIME_DIR` move these locations, for example for a portable installation.
+
+Programs eov starts (the file manager, `xdg-open`) get the environment eov was started with: in the AppImage without the AppImage runtime's `APPIMAGE`, `APPDIR`, `ARGV0` and `OWD`, and with library paths as they were at launch.
 
 eov also remembers, per slide, in that data folder, keyed by the slide's identity so that it follows a slide that is renamed or moved:
 
@@ -550,6 +610,9 @@ Example config file:
 render_backend = "gpu"
 filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
 remember_recent_files = true
+restore_session = true
+single_instance = true         # false: every launch starts its own eov
+trusted_link_servers = ["slides01", "pacs.example.org"]   # Windows: network paths eov:// links may open
 
 [shortcuts]                    # see Keyboard Shortcuts
 bookmark-add = "Ctrl+D"
@@ -627,9 +690,9 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 
 | Package | Entry point | Notes |
 |---|---|---|
-| AppImage | `packaging/appimage/build.sh` | Built in an AlmaLinux 8 container; checked against glibc 2.28; bundled libraries found through `RUNPATH`, never `LD_LIBRARY_PATH`. |
-| Flatpak | `packaging/flatpak/build.sh` | Freedesktop 25.08; network, input devices, home and read-only removable drives. |
-| macOS app | `packaging/macos/build.sh` | `otool -L` and deployment-target checks, helper smoke test, optional Developer ID signing and notarization. |
+| AppImage | `packaging/appimage/build.sh` | Built in an AlmaLinux 8 container; checked against glibc 2.28; bundled libraries found through `RUNPATH`, never `LD_LIBRARY_PATH`; ships the MIME package of the slide formats. |
+| Flatpak | `packaging/flatpak/build.sh` | Freedesktop 25.08; network, input devices, home and read-only removable drives; exports the MIME package and the `eov://` handler, and may ask the file manager to show a slide (`org.freedesktop.FileManager1`). |
+| macOS app | `packaging/macos/build.sh` | `otool -L` and deployment-target checks, helper smoke test, optional Developer ID signing and notarization; `Info.plist` declares the slide formats and the `eov` URL scheme. |
 | Windows zip | `.github/workflows/build-windows-zip.yml` | `eov.exe`, `eov.com`, `eov-update-helper.exe` and DLLs, smoke-tested; optional Authenticode signing. |
 
 - Every package ships OpenSlide as a separate shared library (LGPL-2.1), built from a pinned commit of the [Yanstart fork](https://github.com/Yanstart/openslide) by `packaging/shared/build-openslide.sh`, whose inputs are all verified by checksum. The OpenSlide source of each release is published with it.

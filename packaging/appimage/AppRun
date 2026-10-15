@@ -3,6 +3,13 @@
 # usr/bin/eov ($ORIGIN/../lib) and on every bundled library ($ORIGIN), not
 # through LD_LIBRARY_PATH: that would leak into every program eov starts
 # (xdg-open, file managers, browsers) and make them load eov's copies.
+#
+# This script changes no environment variable. If it ever has to, save the
+# launch value first: export EOV_ORIG_<NAME> with the old value (only when
+# <NAME> was set) and add <NAME> to the space-separated EOV_SAVED_ENV. eov
+# gives the programs it starts the saved values back (app/src/desktop.rs),
+# and also drops the AppImage runtime's APPIMAGE, APPDIR, ARGV0 and OWD for
+# them. scripts/check_packaging.py rejects an export without a saved value.
 set -eu
 
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"

@@ -3,7 +3,8 @@
 //! Logs go to stderr, so command output (`eov plugin info -o toml > file`)
 //! stays clean, at the level chosen with `--log-level` or `RUST_LOG`
 //! (default: warnings). GUI sessions also write `eov.log` in the log folder
-//! at info level and keep the previous sessions' logs (`eov.1.log` …).
+//! at info level and keep the previous sessions' logs (`eov.1.log` …); a
+//! launch that hands its files to a running eov writes none.
 //! Messages at info level name files, not full paths, which can carry
 //! patient identifiers; full paths are logged at debug level.
 //!
@@ -66,21 +67,84 @@ fn session_log() -> Option<File> {
     File::create(dir.join("eov.log")).ok()
 }
 
-/// Sets up logging; `gui` adds the session log file.
+/// The session log. Until [`start_session_log`] opens the file, events are
+/// kept in memory, so that a launch which hands its files to a running eov
+/// and exits (SH-8) does not rotate that eov's log.
+enum SessionLog {
+    Early(Vec<u8>),
+    Open(File),
+    Off,
+}
+
+static SESSION_LOG: Mutex<SessionLog> = Mutex::new(SessionLog::Off);
+
+/// What is kept in memory before the log file opens.
+const EARLY_LOG_LIMIT: usize = 256 * 1024;
+
+struct SessionLogWriter;
+
+impl Write for SessionLogWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let mut log = SESSION_LOG
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match &mut *log {
+            SessionLog::Early(early) => {
+                if early.len() + bytes.len() <= EARLY_LOG_LIMIT {
+                    early.extend_from_slice(bytes);
+                }
+                Ok(bytes.len())
+            }
+            SessionLog::Open(file) => file.write(bytes),
+            SessionLog::Off => Ok(bytes.len()),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut log = SESSION_LOG
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match &mut *log {
+            SessionLog::Open(file) => file.flush(),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Sets up logging; `gui` adds the session log, which starts writing to
+/// its file with [`start_session_log`].
 pub(crate) fn init(log_level: Option<CliLogLevel>, gui: bool) {
     let stderr = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .with_filter(stderr_filter(log_level));
-    let file = gui.then(session_log).flatten().map(|file| {
+    let file = gui.then(|| {
+        *SESSION_LOG
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = SessionLog::Early(Vec::new());
         tracing_subscriber::fmt::layer()
             .with_ansi(false)
-            .with_writer(Mutex::new(file))
+            .with_writer(|| SessionLogWriter)
             .with_filter(quiet_noisy_crates(EnvFilter::new("info")))
     });
     let _ = tracing_subscriber::registry()
         .with(stderr)
         .with(file)
         .try_init();
+}
+
+/// Opens this session's log file (rotating older ones) and writes what was
+/// logged so far into it. Call once this eov knows it keeps running.
+pub(crate) fn start_session_log() {
+    let mut log = SESSION_LOG
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let SessionLog::Early(early) = std::mem::replace(&mut *log, SessionLog::Off) else {
+        return;
+    };
+    if let Some(mut file) = session_log() {
+        let _ = file.write_all(&early);
+        *log = SessionLog::Open(file);
+    }
 }
 
 /// Writes a crash report when the process panics, then runs the default
@@ -133,11 +197,13 @@ pub(crate) fn take_crash_report() -> Option<PathBuf> {
     Some(newest)
 }
 
-/// Opens the log folder in the file manager.
+/// Opens the log folder in the file manager (on a worker; a failure is
+/// reported in the window).
 pub(crate) fn open_log_folder() -> Result<(), String> {
     let dir = log_dir();
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    open::that(&dir).map_err(|error| error.to_string())
+    crate::desktop::open_folder(dir, "Could not open the log folder");
+    Ok(())
 }
 
 /// A file's name for info-level messages (full paths only at debug level).
