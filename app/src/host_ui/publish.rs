@@ -325,7 +325,7 @@ impl UiHost {
                     roi: file.roi,
                     measurements: measurement_infos(file),
                     path: file.path.clone(),
-                    host_measurements: file.measurements.clone(),
+                    measurement_modes: file.measurements.iter().map(|m| m.mode).collect(),
                     unit: state.file_pane_unit(file.id).unwrap_or_default(),
                     file_size: file.file_size,
                     mpp_set_by_hand: file.calibration_override.is_some(),

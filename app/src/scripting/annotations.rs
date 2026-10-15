@@ -16,7 +16,7 @@ use crate::host_ui::HostEdit;
 use crate::interaction::measure::{self, Calibration, HostMeasurement, MeasureMode};
 use crate::plugin_runtime::shared::Published;
 use eov_common::MeasurementUnit;
-use eov_plugin_api::protocol::{FileId, Rect, Shape};
+use eov_plugin_api::protocol::{FileId, MeasurementInfo, Rect, Shape};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -104,28 +104,28 @@ pub(super) fn roi_set(session: &Session, params: RoiSet) -> CallResult {
 /// A measurement as scripts see it: the plugin API's `MeasurementInfo`
 /// with the mode, the values in pixels and the label the viewer shows.
 fn measurement_json(
-    file_id: FileId,
-    measurement: &HostMeasurement,
+    measurement: &MeasurementInfo,
+    mode: MeasureMode,
     calibration: &Calibration,
     unit: MeasurementUnit,
 ) -> Value {
-    let value = measure::measure(measurement.mode, &measurement.shape, calibration);
+    let value = measure::measure(mode, &measurement.shape, calibration);
     let closed = matches!(
-        measurement.mode,
+        mode,
         MeasureMode::Polygon | MeasureMode::Rectangle | MeasureMode::Ellipse
     );
     json!({
-        "measurement_id": measurement.id,
-        "file_id": file_id,
-        "mode": measurement.mode.id(),
+        "measurement_id": measurement.measurement_id,
+        "file_id": measurement.file_id,
+        "mode": mode.id(),
         "shape": measurement.shape,
-        "length_px": (measurement.mode != MeasureMode::Angle).then_some(value.length_px),
+        "length_px": (mode != MeasureMode::Angle).then_some(value.length_px),
         "area_px2": closed.then_some(value.area_px2),
         "length_um": value.length_um,
         "area_um2": value.area_um2,
         "angle_deg": value.angle_deg,
         "approximate": value.approximate,
-        "label": measure::label(measurement.mode, &value, unit),
+        "label": measure::label(mode, &value, unit),
     })
 }
 
@@ -137,9 +137,10 @@ fn measurements_of(published: &Published, file_id: FileId) -> Result<Vec<Value>,
         .ok_or_else(|| RpcError::not_found("the slide was closed"))?;
     let calibration = Calibration::new(file.info.mpp_x, file.info.mpp_y);
     Ok(file
-        .host_measurements
+        .measurements
         .iter()
-        .map(|measurement| measurement_json(file_id, measurement, &calibration, file.unit))
+        .zip(&file.measurement_modes)
+        .map(|(measurement, mode)| measurement_json(measurement, *mode, &calibration, file.unit))
         .collect())
 }
 

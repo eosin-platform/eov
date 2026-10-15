@@ -47,8 +47,9 @@ pub struct PublishedFile {
     /// The slide's path exactly (`info.path` is text, lossy for paths that
     /// are not Unicode).
     pub path: PathBuf,
-    /// The host's own view of them (for scripts).
-    pub host_measurements: Vec<crate::interaction::HostMeasurement>,
+    /// The mode of each of `measurements`, in the same order (for
+    /// scripts).
+    pub measurement_modes: Vec<crate::interaction::MeasureMode>,
     /// The unit measurement labels use (the pane's).
     pub unit: eov_common::MeasurementUnit,
     /// Size of the slide file in bytes.

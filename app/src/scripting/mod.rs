@@ -720,9 +720,11 @@ mod session_tests {
     /// UI thread is busy (here: never runs a job).
     #[test]
     fn reads_never_wait_for_the_window() {
-        use crate::interaction::{HostMeasurement, MeasureMode};
+        use crate::interaction::MeasureMode;
         use crate::plugin_runtime::shared::PublishedFile;
-        use eov_plugin_api::protocol::{FileInfo, PaneInfo, Rect, Shape, ViewInfo};
+        use eov_plugin_api::protocol::{
+            FileInfo, MeasurementInfo, PaneInfo, Rect, Shape, ViewInfo,
+        };
         let shared = shared();
         let view = ViewInfo {
             pane: 4,
@@ -758,13 +760,17 @@ mod session_tests {
                     width: 3.0,
                     height: 4.0,
                 }),
-                host_measurements: vec![HostMeasurement {
-                    id: "line:1".into(),
-                    mode: MeasureMode::Line,
+                measurements: vec![MeasurementInfo {
+                    measurement_id: "line:1".into(),
+                    file_id: 7,
                     shape: Shape::Polyline {
                         points: vec![[0.0, 0.0], [40.0, 0.0]],
                     },
+                    length_um: Some(10.0),
+                    area_um2: None,
+                    angle_deg: None,
                 }],
+                measurement_modes: vec![MeasureMode::Line],
                 ..Default::default()
             },
         );
