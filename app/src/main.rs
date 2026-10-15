@@ -43,6 +43,7 @@ mod recent;
 mod render;
 mod render_pool;
 mod save_copy;
+mod series_case;
 mod session;
 mod shortcuts;
 mod slide_info;

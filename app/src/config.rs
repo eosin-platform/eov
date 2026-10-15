@@ -284,6 +284,20 @@ pub fn load_restore_session() -> bool {
     .unwrap_or(true)
 }
 
+/// `series_case_pattern`: a regular expression whose first group is a
+/// slide's case in the series bar's Case order.
+pub fn load_series_case_pattern() -> Option<String> {
+    with_document(|_, document| {
+        document
+            .get("series_case_pattern")
+            .and_then(|item| item.as_str())
+            .map(str::to_string)
+    })
+    .ok()
+    .flatten()
+    .filter(|pattern| !pattern.trim().is_empty())
+}
+
 /// The `[shortcuts]` table: action ids with their keys (a key or a list of
 /// keys; an empty list leaves the action without one), and entries that
 /// are not keys, as problems for the user.

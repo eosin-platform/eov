@@ -186,6 +186,8 @@ pub enum SeriesSort {
     Newest,
     /// By stain label, then name.
     Stain,
+    /// By case (accession), then name ([`crate::series_case`]).
+    Case,
 }
 
 impl SeriesSort {
@@ -193,7 +195,8 @@ impl SeriesSort {
         match self {
             Self::Name => Self::Newest,
             Self::Newest => Self::Stain,
-            Self::Stain => Self::Name,
+            Self::Stain => Self::Case,
+            Self::Case => Self::Name,
         }
     }
 
@@ -202,6 +205,7 @@ impl SeriesSort {
             Self::Name => "A–Z",
             Self::Newest => "Newest",
             Self::Stain => "Stain",
+            Self::Case => "Case",
         }
     }
 }
@@ -226,6 +230,11 @@ impl OpenedSeries {
                             .cmp(&(stain(b).is_empty(), stain(b).to_lowercase()))
                             .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename))
                     }
+                    SeriesSort::Case => natord::compare_ignore_case(
+                        &crate::series_case::case_of(&a.filename),
+                        &crate::series_case::case_of(&b.filename),
+                    )
+                    .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename)),
                 })
         });
     }
