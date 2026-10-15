@@ -1142,8 +1142,7 @@ fn ensure_directory_writable(directory: &Path) -> Result<()> {
 }
 
 fn flatpak_destination(version: &Version) -> Result<PathBuf> {
-    let home = dirs::home_dir().context("could not determine home directory")?;
-    let directory = home.join(".eov").join("updates");
+    let directory = crate::paths::updates_dir();
     fs::create_dir_all(&directory)?;
     Ok(directory.join(format!("eov-v{version}.flatpak")))
 }

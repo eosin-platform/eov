@@ -349,9 +349,12 @@ fn latent_cache_db_path() -> Result<PathBuf, String> {
         return Ok(path);
     }
 
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| "could not determine config directory for latent cache".to_string())?
-        .join("eov");
+    #[cfg(test)]
+    {
+        eov_common::paths::isolate_for_tests();
+    }
+    let config_dir = eov_common::paths::legacy_config_dir()
+        .ok_or_else(|| "could not determine config directory for latent cache".to_string())?;
     fs::create_dir_all(&config_dir).map_err(|err| {
         format!(
             "failed to create latent cache config directory '{}': {err}",

@@ -312,11 +312,8 @@ fn is_plugin_package(path: &Path) -> bool {
     path.is_file() && path.extension().and_then(OsStr::to_str) == Some(PLUGIN_PACKAGE_EXTENSION)
 }
 
-fn plugin_cache_dir(plugin_dir: &Path) -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| plugin_dir.join(".cache"))
-        .join("eov")
-        .join("plugin-packages")
+fn plugin_cache_dir(_plugin_dir: &Path) -> PathBuf {
+    crate::paths::plugin_package_cache_dir()
 }
 
 /// Try to load a single plugin descriptor from a plugin package tarball.

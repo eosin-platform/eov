@@ -83,10 +83,7 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
 }
 
 fn thumbnail_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("eov")
-        .join("series_thumbnails")
+    crate::paths::thumbnail_cache_dir()
 }
 
 fn thumbnail_cache_key(path: &Path) -> Option<String> {

@@ -25,6 +25,9 @@ pub(crate) fn run_on_slint_ui_test_thread<R>(f: impl FnOnce() -> R + Send + 'sta
 where
     R: Send + 'static,
 {
+    // Plugins compiled as ordinary dependencies resolve their own files
+    // through `eov_common::paths`; isolate before any of them run.
+    crate::paths::isolate_for_tests();
     let (tx, rx) = mpsc::sync_channel::<std::thread::Result<R>>(1);
     let job = Box::new(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));

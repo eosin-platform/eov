@@ -720,7 +720,7 @@ impl AppState {
 
     /// Get the config directory for storing recent files
     fn config_dir() -> Option<PathBuf> {
-        dirs::config_dir().map(|p| p.join("eov"))
+        crate::paths::legacy_config_dir()
     }
 
     /// Get the path to the recent files store

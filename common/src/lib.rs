@@ -12,6 +12,7 @@ pub mod file_id;
 pub mod formatting;
 pub mod imaging;
 pub mod overlay;
+pub mod paths;
 pub mod postprocess;
 pub mod render;
 pub mod stain;

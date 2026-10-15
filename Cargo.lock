@@ -1761,6 +1761,7 @@ dependencies = [
  "criterion",
  "csv",
  "dashmap",
+ "dirs",
  "glam 0.30.10",
  "image 0.25.8",
  "lru",

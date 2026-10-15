@@ -564,12 +564,9 @@ pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 }
 
-/// Default plugin directory: `~/.eov/plugins/`
+/// Default plugin directory: `~/.eov/plugins/` (or `$EOV_PLUGIN_DIR`).
 pub(crate) fn default_plugin_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".eov")
-        .join("plugins")
+    crate::paths::plugin_dir()
 }
 
 /// Resolve `--plugin-dir` with `~` expansion, falling back to the default.
@@ -582,18 +579,12 @@ pub(crate) fn resolve_plugin_dir(explicit: Option<&Path>) -> PathBuf {
 
 /// Expand a leading `~` to the user's home directory.
 fn expand_tilde(path: &Path) -> PathBuf {
-    let s = path.to_string_lossy();
-    if (s.starts_with("~/") || s == "~")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(s.strip_prefix("~/").unwrap_or(""));
-    }
-    path.to_path_buf()
+    crate::paths::expand_tilde(path)
 }
 
 pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()> {
     if let Some(path) = config_path {
-        config::set_config_path_override(path.clone())?;
+        config::set_config_path_override(expand_tilde(path))?;
     }
 
     Ok(())
@@ -919,11 +910,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_plugin_dir_ends_with_eov_plugins() {
+    fn default_plugin_dir_is_plugins_below_isolated_home() {
         let dir = default_plugin_dir();
+        let root = crate::paths::isolate_for_tests();
         assert!(
-            dir.ends_with(".eov/plugins"),
-            "expected default plugin dir to end with .eov/plugins, got {}",
+            dir.ends_with("plugins") && dir.starts_with(root),
+            "expected the default plugin dir inside the test root, got {}",
             dir.display()
         );
     }

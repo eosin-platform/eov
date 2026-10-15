@@ -12,6 +12,7 @@ mod file_ops;
 mod gpu;
 mod gpu_interop;
 mod pane_ui;
+mod paths;
 mod plugin_host;
 mod plugins;
 mod render;

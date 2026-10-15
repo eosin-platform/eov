@@ -351,11 +351,17 @@ pub fn save_persisted_model_path(model_path: Option<&str>) -> Result<(), String>
     })
 }
 
+fn legacy_config_dir() -> Result<PathBuf, String> {
+    #[cfg(test)]
+    {
+        eov_common::paths::isolate_for_tests();
+    }
+    eov_common::paths::legacy_config_dir()
+        .ok_or_else(|| "could not determine config directory".to_string())
+}
+
 fn persisted_config_path() -> Result<PathBuf, String> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| "could not determine config directory for eovae".to_string())?
-        .join("eov");
-    Ok(config_dir.join("eovae.json"))
+    Ok(legacy_config_dir()?.join("eovae.json"))
 }
 
 #[cfg(test)]

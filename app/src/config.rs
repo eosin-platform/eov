@@ -92,12 +92,7 @@ pub fn resolve_config_path() -> Result<PathBuf> {
         return Ok(path.clone());
     }
 
-    if let Some(path) = std::env::var_os("EOV_CONFIG") {
-        return Ok(PathBuf::from(path));
-    }
-
-    let home = dirs::home_dir().context("failed to determine the home directory for EOV config")?;
-    Ok(home.join(".eov").join("config.toml"))
+    Ok(crate::paths::config_file())
 }
 
 pub fn load_render_backend() -> Result<Option<RenderBackend>> {
