@@ -20,7 +20,7 @@ use eov_common::{
 };
 use slint::ComponentHandle;
 use slint::{Image, Model, SharedString, VecModel};
-use std::{fs, rc::Rc};
+use std::rc::Rc;
 
 fn ui_bottom_panel_kind(kind: crate::state::BottomPanelKind) -> SlintBottomPanelKind {
     match kind {
@@ -136,9 +136,10 @@ fn build_metadata_items(
         properties.levels.len(),
         viewport_info.level.max(0)
     );
-    let file_size = fs::metadata(&file.path)
-        .map(|metadata| format_file_size(metadata.len()))
-        .unwrap_or_else(|_| "Unknown".to_string());
+    let file_size = file
+        .file_size
+        .map(format_file_size)
+        .unwrap_or_else(|| "Unknown".to_string());
 
     vec![
         MetadataItem {

@@ -5,7 +5,6 @@ use crate::{PaneViewData, SeriesItemData, TabData};
 use slint::{Image, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
-use tracing::debug;
 
 #[derive(Default)]
 pub(crate) struct PaneRenderCacheEntry {
@@ -158,10 +157,6 @@ pub(crate) fn set_cached_pane_content(pane: PaneId, image: Image) {
     with_pane_render_cache(pane.0 + 1, |cache| {
         cache[pane.0].content = Some(image);
     });
-
-    if pane.0 == 1 {
-        debug!(pane = pane.0, "set pane cached content");
-    }
 }
 
 pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: CachedCpuFrame) {
@@ -178,14 +173,9 @@ pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: Cach
 }
 
 pub(crate) fn set_cached_pane_minimap(pane: PaneId, image: Option<Image>) {
-    let has_minimap = image.is_some();
     with_pane_render_cache(pane.0 + 1, |cache| {
         cache[pane.0].minimap_thumbnail = image;
     });
-
-    if pane.0 == 1 {
-        debug!(pane = pane.0, has_minimap, "set pane cached minimap");
-    }
 }
 
 pub(crate) fn with_pane_view_model<T>(f: impl FnOnce(&Rc<VecModel<PaneViewData>>) -> T) -> T {
@@ -227,10 +217,6 @@ pub(crate) fn clear_cached_pane(pane: PaneId) {
         }
         cache[pane.0] = PaneRenderCacheEntry::default();
     });
-
-    if pane.0 == 1 {
-        debug!(pane = pane.0, "cleared pane cache");
-    }
 }
 
 pub(crate) fn set_gpu_renderer_handle(renderer: Rc<RefCell<GpuRenderer>>) {

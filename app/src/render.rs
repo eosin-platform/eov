@@ -16,7 +16,7 @@ use crate::render_pool::{
     CachedCpuFrame, CpuBlitCommand, CpuBlitKind, CpuRenderJob, CpuRenderPostProcess,
     CpuRenderResult, FrameFilters,
 };
-use crate::state::{AppState, OpenFile, PaneId, TileRequestSignature};
+use crate::state::{AppState, OpenFile, PaneId};
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
 use eov_common::render::single_level_trilinear;
 use eov_common::{
@@ -28,7 +28,6 @@ use slint::{ComponentHandle, Image};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tracing::debug;
 
 fn trilinear_lod_bias_enabled(filtering_mode: FilteringMode) -> bool {
     filtering_mode == FilteringMode::Trilinear
@@ -717,33 +716,29 @@ fn collect_cached_visible_tiles(
     }
 }
 
-fn tile_request_signature(
-    tile_manager: &TileManager,
-    viewport: &Viewport,
-    level: u32,
-    margin_tiles: i32,
-) -> Option<TileRequestSignature> {
-    let level_info = tile_manager.wsi().level(level)?;
-    let bounds = viewport.bounds();
-    let tile_size = tile_manager.tile_size_for_level(level);
-    let tile_size_f64 = tile_size as f64;
-    let level_left = bounds.left / level_info.downsample;
-    let level_top = bounds.top / level_info.downsample;
-    let level_right = bounds.right / level_info.downsample;
-    let level_bottom = bounds.bottom / level_info.downsample;
-    let margin_tiles_i64 = margin_tiles.max(0) as i64;
-
-    Some(TileRequestSignature {
-        level,
-        margin_tiles,
-        start_x: ((level_left / tile_size_f64).floor() as i64 - margin_tiles_i64).max(0) as u64,
-        start_y: ((level_top / tile_size_f64).floor() as i64 - margin_tiles_i64).max(0) as u64,
-        end_x: ((level_right / tile_size_f64).ceil() as u64 + margin_tiles_i64 as u64)
-            .min(level_info.tiles_x(tile_size)),
-        end_y: ((level_bottom / tile_size_f64).ceil() as u64 + margin_tiles_i64 as u64)
-            .min(level_info.tiles_y(tile_size)),
-        tile_size,
-    })
+/// One wanted-tile list for a slide from its panes' lists (each most
+/// important first): taken in turns, so every pane's centre comes before any
+/// pane's margins and fallbacks, without duplicates.
+fn merge_wanted_tiles(lists: Vec<Vec<eov_common::TileCoord>>) -> Vec<eov_common::TileCoord> {
+    if lists.len() == 1 {
+        return lists.into_iter().next().unwrap_or_default();
+    }
+    let total = lists.iter().map(Vec::len).sum();
+    let mut seen = HashSet::with_capacity(total);
+    let mut merged = Vec::with_capacity(total);
+    let mut lists: Vec<_> = lists.into_iter().map(Vec::into_iter).collect();
+    while !lists.is_empty() {
+        lists.retain_mut(|list| match list.next() {
+            Some(coord) => {
+                if seen.insert(coord) {
+                    merged.push(coord);
+                }
+                true
+            }
+            None => false,
+        });
+    }
+    merged
 }
 
 pub(crate) fn thumbnail_image_for_file(file: &OpenFile) -> Option<Image> {
@@ -860,70 +855,47 @@ pub(crate) fn update_and_render(
         / pane_count.max(1) as f64)
         .max(100.0);
 
-    let mut wanted_tiles_by_file: HashMap<i32, HashSet<eov_common::TileCoord>> = HashMap::new();
+    // Each pane's wanted tiles, most important first, per file.
+    let mut wanted_tiles_by_file: HashMap<i32, Vec<Vec<eov_common::TileCoord>>> = HashMap::new();
     for (pane_index, file_id) in active_file_ids.iter().copied().enumerate() {
         let Some(file_id) = file_id else {
             continue;
         };
         let pane = PaneId(pane_index);
-        let Some(file_index) = state.open_files.iter().position(|f| f.id == file_id) else {
+        let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) else {
             continue;
         };
-
-        let Some((viewport_state, last_request)) = ({
-            let file = &mut state.open_files[file_index];
-            match file.pane_state_mut(pane) {
-                Some(pane_state) => {
-                    pane_state.viewport.set_size(pane_width, content_height);
-                    Some((pane_state.viewport.clone(), pane_state.last_request))
-                }
-                None => None,
-            }
-        }) else {
+        let Some(pane_state) = file.pane_state_mut(pane) else {
             continue;
         };
-
+        pane_state.viewport.set_size(pane_width, content_height);
+        let viewport_state = pane_state.viewport.clone();
         let vp = &viewport_state.viewport;
         let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-        let request = {
-            let file = &state.open_files[file_index];
-            let trilinear = calculate_trilinear_levels(
-                file.tile_manager.wsi(),
-                vp.effective_downsample(),
-                trilinear_lod_bias_enabled(filtering_mode),
-            );
-            let level = trilinear.level_fine;
-            tile_request_signature(&file.tile_manager, vp, level, margin_tiles).map(|signature| {
-                let wanted = calculate_wanted_tiles(
-                    &file.tile_manager,
-                    level,
-                    vp.bounds().left,
-                    vp.bounds().top,
-                    vp.bounds().right,
-                    vp.bounds().bottom,
-                    margin_tiles,
-                );
-                (signature, wanted)
-            })
-        };
-        if let Some((signature, wanted)) = request {
-            if last_request != Some(signature)
-                && let Some(file) = state.open_files.get_mut(file_index)
-                && let Some(pane_state) = file.pane_state_mut(pane)
-            {
-                pane_state.last_request = Some(signature);
-            }
-            wanted_tiles_by_file
-                .entry(file_id)
-                .or_default()
-                .extend(wanted);
-        }
+        let trilinear = calculate_trilinear_levels(
+            file.tile_manager.wsi(),
+            vp.effective_downsample(),
+            trilinear_lod_bias_enabled(filtering_mode),
+        );
+        let bounds = vp.bounds();
+        wanted_tiles_by_file
+            .entry(file_id)
+            .or_default()
+            .push(calculate_wanted_tiles(
+                &file.tile_manager,
+                trilinear.level_fine,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                margin_tiles,
+            ));
     }
 
     for (file_id, wanted_tiles) in wanted_tiles_by_file {
         if let Some(file) = state.open_files.iter_mut().find(|f| f.id == file_id) {
             file.tile_loader
-                .set_wanted_tiles(wanted_tiles.into_iter().collect());
+                .set_wanted_tiles(merge_wanted_tiles(wanted_tiles));
         }
     }
 
@@ -965,18 +937,6 @@ pub(crate) fn update_and_render(
         });
         let force_render = file_switched || content_missing || render_requested;
 
-        if pane.0 == 1 {
-            debug!(
-                pane = pane.0,
-                file_id,
-                file_switched,
-                force_render,
-                content_missing,
-                minimap_missing,
-                "pane cache state before render"
-            );
-        }
-
         if file_switched && let Some(pane_state) = file.pane_state_mut(pane) {
             pane_state.frame_count = 0;
         }
@@ -999,17 +959,6 @@ pub(crate) fn update_and_render(
                 filter_revision,
             },
         );
-
-        if pane.0 == 1 {
-            debug!(
-                pane = pane.0,
-                file_id,
-                rendered = outcome.rendered,
-                image = outcome.image.is_some(),
-                keep_running = outcome.keep_running,
-                "pane render outcome"
-            );
-        }
 
         keep_running |= outcome.keep_running;
         rendered_frame |= outcome.rendered;
@@ -1054,7 +1003,7 @@ fn update_and_render_cpu(
         state.filter_chain.clone()
     };
 
-    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, HashSet<eov_common::TileCoord>)> =
+    let mut wanted_tiles_by_file: HashMap<i32, (Arc<TileLoader>, Vec<Vec<eov_common::TileCoord>>)> =
         HashMap::new();
 
     for snapshot in frame.panes.iter().flatten() {
@@ -1079,14 +1028,15 @@ fn update_and_render_cpu(
             margin_tiles,
         );
 
-        let entry = wanted_tiles_by_file
+        wanted_tiles_by_file
             .entry(snapshot.file_id)
-            .or_insert_with(|| (Arc::clone(&snapshot.tile_loader), HashSet::new()));
-        entry.1.extend(wanted);
+            .or_insert_with(|| (Arc::clone(&snapshot.tile_loader), Vec::new()))
+            .1
+            .push(wanted);
     }
 
     for (_, (tile_loader, wanted_tiles)) in wanted_tiles_by_file {
-        tile_loader.set_wanted_tiles(wanted_tiles.into_iter().collect());
+        tile_loader.set_wanted_tiles(merge_wanted_tiles(wanted_tiles));
     }
 
     let mut keep_running =
@@ -1292,20 +1242,6 @@ fn collect_cpu_frame_snapshot(
         };
 
         let color = crate::color::pane_color(file, pane);
-        let vp = &viewport_state.viewport;
-        let margin_tiles = if viewport_state.is_moving() { 1 } else { 0 };
-        let trilinear = calculate_trilinear_levels(
-            tile_manager.wsi(),
-            vp.effective_downsample(),
-            trilinear_lod_bias_enabled(filtering_mode),
-        );
-        let request_signature =
-            tile_request_signature(&tile_manager, vp, trilinear.level_fine, margin_tiles);
-        if let Some(pane_state) = file.pane_state_mut(pane)
-            && pane_state.last_request != request_signature
-        {
-            pane_state.last_request = request_signature;
-        }
 
         panes.push(Some(CpuPaneSnapshot {
             pane,
@@ -2520,6 +2456,116 @@ mod tests {
             corner.covers(300.0, 300.0, 400.0, 400.0),
             "nothing of it is visible"
         );
+    }
+
+    #[test]
+    fn panes_share_a_slide_s_tile_requests_in_turns() {
+        let coord = |x| TileCoord::new(1, 0, x, 0, 256);
+        let merged = merge_wanted_tiles(vec![
+            vec![coord(1), coord(2), coord(3), coord(4)],
+            vec![coord(7), coord(2), coord(8)],
+        ]);
+        let xs: Vec<u64> = merged.iter().map(|c| c.x).collect();
+        assert_eq!(xs, vec![1, 7, 2, 3, 8, 4], "in turns, without duplicates");
+        let single = merge_wanted_tiles(vec![vec![coord(3), coord(1), coord(2)]]);
+        assert_eq!(
+            single.iter().map(|c| c.x).collect::<Vec<_>>(),
+            vec![3, 1, 2],
+            "one pane's order is kept"
+        );
+    }
+
+    /// RND-1: once the view is loaded and rendered the render loop stops,
+    /// also between pyramid levels in Trilinear mode, where coarse tiles
+    /// are cached too.
+    #[test]
+    fn the_render_loop_idles_once_the_view_is_loaded() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            crate::render_pool::init_global().unwrap();
+            crate::clear_cached_pane(PaneId::PRIMARY);
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("pyramid.tif");
+            eov_common::test_support::write_tiff(
+                &path,
+                &eov_common::test_support::TiffSpec::pyramid(1024, 1024, 256, 3),
+                |x, y| [(x % 251) as u8, (y % 241) as u8, 128],
+            )
+            .unwrap();
+
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(256, 256 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            {
+                let mut state = state.write();
+                state.render_backend = RenderBackend::Cpu;
+                state.filtering_mode = FilteringMode::Trilinear;
+                let id = state.allocate_file_id();
+                let wsi = eov_common::WsiFile::open(&path).unwrap();
+                let tile_manager = Arc::new(
+                    TileManager::new(wsi.with_synthetic_levels(), id)
+                        .with_tile_cache(Arc::clone(&tile_cache)),
+                );
+                let tile_loader = Arc::new(TileLoader::new(
+                    Arc::clone(&tile_manager),
+                    Arc::clone(&tile_cache),
+                ));
+                let mut viewport = eov_common::ViewportState::new(400.0, 300.0, 1024.0, 1024.0);
+                // Between levels 0 and 1.
+                viewport.set_center_zoom(512.0, 512.0, 0.7);
+                state.add_file(crate::state::NewOpenFile {
+                    id,
+                    path: path.clone(),
+                    wsi,
+                    tile_manager,
+                    tile_loader,
+                    viewport,
+                    thumbnail: None,
+                    target_pane: PaneId::PRIMARY,
+                });
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let mut ticks = 0;
+            while update_and_render(&ui, &state, &tile_cache) {
+                ticks += 1;
+                assert!(
+                    Instant::now() < deadline,
+                    "the render loop still runs after {ticks} ticks"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            for _ in 0..5 {
+                std::thread::sleep(Duration::from_millis(20));
+                assert!(
+                    !update_and_render(&ui, &state, &tile_cache),
+                    "and stays idle"
+                );
+            }
+
+            // The case RND-1 was about: the view blends with cached coarse
+            // tiles, and the pane shows a frame.
+            let state = state.read();
+            let file = &state.open_files[0];
+            let vp = &file.pane_state(PaneId::PRIMARY).unwrap().viewport.viewport;
+            let trilinear = calculate_trilinear_levels(
+                file.tile_manager.wsi(),
+                vp.effective_downsample(),
+                true,
+            );
+            assert_ne!(trilinear.level_fine, trilinear.level_coarse);
+            let cached = collect_cached_visible_tiles(
+                &file.tile_manager,
+                &tile_cache,
+                vp,
+                trilinear,
+                0,
+                true,
+            );
+            assert!(!cached.coarse_tiles.is_empty());
+            assert!(!cached.fine_tiles.is_empty());
+            let shown = crate::with_pane_render_cache(1, |cache| cache[0].content.is_some());
+            assert!(shown);
+        });
     }
 
     fn receive_filtered() -> (Vec<gpu_filters::FilteredFrame>, bool) {

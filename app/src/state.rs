@@ -174,17 +174,6 @@ fn normalize_recent_path(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TileRequestSignature {
-    pub level: u32,
-    pub margin_tiles: i32,
-    pub start_x: u64,
-    pub start_y: u64,
-    pub end_x: u64,
-    pub end_y: u64,
-    pub tile_size: u32,
-}
-
 /// A single open file with its associated state
 pub struct OpenFile {
     /// Unique identifier
@@ -193,6 +182,9 @@ pub struct OpenFile {
     pub path: PathBuf,
     /// Display filename
     pub filename: String,
+    /// Size of the slide file in bytes, read once when it opens (a `stat`
+    /// per frame blocks the UI on a hung network mount, RND-1).
+    pub file_size: Option<u64>,
     /// WSI file handle
     pub wsi: WsiFile,
     /// Tile manager for this file
@@ -303,7 +295,6 @@ pub struct FilePaneState {
     pub frame_count: u32,
     pub last_render_time: std::time::Instant,
     pub last_seen_tile_epoch: u64,
-    pub last_request: Option<TileRequestSignature>,
     pub last_render_gamma: f32,
     pub last_render_brightness: f32,
     pub last_render_contrast: f32,
@@ -340,7 +331,6 @@ impl FilePaneState {
             frame_count: 0,
             last_render_time: std::time::Instant::now(),
             last_seen_tile_epoch: 0,
-            last_request: None,
             last_render_gamma: 1.0,
             last_render_brightness: 0.0,
             last_render_contrast: 1.0,
@@ -369,7 +359,6 @@ impl FilePaneState {
         self.tiles_loaded_since_render = 0;
         self.frame_count = 0;
         self.last_seen_tile_epoch = 0;
-        self.last_request = None;
         self.pending_cpu_job_id = None;
         self.needs_settled_cpu_render = false;
         self.last_render_filter_revision = 0;
@@ -1143,11 +1132,15 @@ impl AppState {
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
+        let file_size = std::fs::metadata(&normalized_path)
+            .ok()
+            .map(|metadata| metadata.len());
 
         self.open_files.push(OpenFile {
             id,
             path: normalized_path,
             filename,
+            file_size,
             wsi,
             tile_manager,
             tile_loader,
