@@ -276,6 +276,150 @@ pub(crate) fn write_pyramid_tiff(
     out.flush()
 }
 
+/// Writes a tiled TIFF of any size whose tiles all share one data block of
+/// colour `rgb` (so a 100k × 100k slide is a few MB), with one IFD per
+/// downsample in `levels` (starting with 1). With `bad_tile = Some(i)`,
+/// level-0 tile `i` points past the end of the file and cannot be read
+/// (keep a coarser level: OpenSlide hashes the smallest level when opening).
+pub(crate) fn write_uniform_tiff(
+    path: &Path,
+    width: u32,
+    height: u32,
+    tile: u32,
+    rgb: [u8; 3],
+    bad_tile: Option<usize>,
+    levels: &[u32],
+) -> io::Result<()> {
+    assert!(tile.is_multiple_of(16));
+    assert_eq!(levels.first(), Some(&1));
+    let tile_bytes = (tile * tile * 3) as usize;
+    let mut out = BufWriter::new(File::create(path)?);
+    out.write_all(b"II")?;
+    write_u16(&mut out, 42)?;
+    let mut pending_ifd_pointer: u64 = 4;
+    write_u32(&mut out, 0)?;
+    let data_at = out.stream_position()? as u32;
+    let block: Vec<u8> = (0..tile_bytes).map(|i| rgb[i % 3]).collect();
+    out.write_all(&block)?;
+    for (index, &ds) in levels.iter().enumerate() {
+        let (lw, lh) = (width.div_ceil(ds), height.div_ceil(ds));
+        let tiles = (lw.div_ceil(tile) * lh.div_ceil(tile)) as usize;
+        let offsets_at = out.stream_position()? as u32;
+        for i in 0..tiles {
+            let bad = index == 0 && Some(i) == bad_tile;
+            write_u32(&mut out, if bad { 0x7FFF_0000 } else { data_at })?;
+        }
+        let counts_at = out.stream_position()? as u32;
+        for _ in 0..tiles {
+            write_u32(&mut out, tile_bytes as u32)?;
+        }
+        let bps_at = out.stream_position()? as u32;
+        for _ in 0..3 {
+            write_u16(&mut out, 8)?;
+        }
+        let mut entries = vec![
+            Entry {
+                tag: 256,
+                ty: 4,
+                count: 1,
+                value: lw,
+            },
+            Entry {
+                tag: 257,
+                ty: 4,
+                count: 1,
+                value: lh,
+            },
+            Entry {
+                tag: 258,
+                ty: 3,
+                count: 3,
+                value: bps_at,
+            },
+            Entry {
+                tag: 259,
+                ty: 3,
+                count: 1,
+                value: 1,
+            },
+            Entry {
+                tag: 262,
+                ty: 3,
+                count: 1,
+                value: 2,
+            },
+            Entry {
+                tag: 277,
+                ty: 3,
+                count: 1,
+                value: 3,
+            },
+            Entry {
+                tag: 284,
+                ty: 3,
+                count: 1,
+                value: 1,
+            },
+            Entry {
+                tag: 322,
+                ty: 4,
+                count: 1,
+                value: tile,
+            },
+            Entry {
+                tag: 323,
+                ty: 4,
+                count: 1,
+                value: tile,
+            },
+            Entry {
+                tag: 324,
+                ty: 4,
+                count: tiles as u32,
+                value: if tiles == 1 { data_at } else { offsets_at },
+            },
+            Entry {
+                tag: 325,
+                ty: 4,
+                count: tiles as u32,
+                value: if tiles == 1 {
+                    tile_bytes as u32
+                } else {
+                    counts_at
+                },
+            },
+        ];
+        if index > 0 {
+            entries.push(Entry {
+                tag: 254,
+                ty: 4,
+                count: 1,
+                value: 1,
+            });
+        }
+        entries.sort_by_key(|e| e.tag);
+        let ifd_at = out.stream_position()?;
+        out.seek(SeekFrom::Start(pending_ifd_pointer))?;
+        write_u32(&mut out, ifd_at as u32)?;
+        out.seek(SeekFrom::Start(ifd_at))?;
+        write_u16(&mut out, entries.len() as u16)?;
+        for e in &entries {
+            write_u16(&mut out, e.tag)?;
+            write_u16(&mut out, e.ty)?;
+            write_u32(&mut out, e.count)?;
+            if e.ty == 3 && e.count == 1 {
+                write_u16(&mut out, e.value as u16)?;
+                write_u16(&mut out, 0)?;
+            } else {
+                write_u32(&mut out, e.value)?;
+            }
+        }
+        pending_ifd_pointer = out.stream_position()?;
+        write_u32(&mut out, 0)?;
+    }
+    out.flush()
+}
+
 /// A deterministic synthetic "H&E tissue on glass" image: a disc of tissue
 /// with nuclei-like hematoxylin-rich spots on an eosin-rich stroma, on a
 /// background of `glass`.

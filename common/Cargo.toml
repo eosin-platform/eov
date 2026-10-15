@@ -21,6 +21,9 @@ path = "src/lib.rs"
 openslide-rs = "0.2"
 # Image processing
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Streaming export encoders (PNG pHYs/text chunks; Deflate for TIFF strips)
+png = "0.18"
+flate2 = "1"
 # Font rendering for overlays
 ab_glyph = "0.2"
 # Async runtime for background loading
@@ -55,6 +58,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tempfile = "3"
 # Validates the canonical WGSL shipped in `processing::wgsl`.
 naga = { version = "29", features = ["wgsl-in"] }
+# Decodes exported TIFFs in tests.
+tiff = "0.10"
 
 [features]
 default = []

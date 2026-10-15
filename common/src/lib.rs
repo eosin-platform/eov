@@ -11,6 +11,7 @@ pub mod export;
 pub mod file_id;
 pub mod formatting;
 pub mod imaging;
+pub mod job;
 pub mod overlay;
 pub mod paths;
 pub mod postprocess;
