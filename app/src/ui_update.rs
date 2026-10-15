@@ -453,7 +453,7 @@ pub fn update_tabs(
                 overlay_labels: overlay.labels,
                 cursor: overlay.cursor,
                 hud_buttons: overlay.hud_buttons,
-                is_loading: ui.get_is_loading() && pane == state.focused_pane,
+                is_loading: crate::file_ops::opening_in_pane(uid, pane == state.focused_pane),
                 hud,
             }
         })

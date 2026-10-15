@@ -387,7 +387,13 @@ pub(crate) fn prepare_launch_panes(
         while state.panes.len() < pane_count {
             let next_index = state.panes.len();
             let source_pane = PaneId(next_index.saturating_sub(1));
-            let new_pane = state.insert_pane(next_index);
+            let Some(new_pane) = state.insert_pane(next_index) else {
+                tracing::warn!(
+                    "{}; the other panes' slides open as tabs",
+                    crate::state::MAX_PANES_MESSAGE
+                );
+                break;
+            };
             inserted_panes.push((state.pane_uid(new_pane), state.pane_uid(source_pane)));
         }
         state.set_focused_pane(PaneId::PRIMARY);

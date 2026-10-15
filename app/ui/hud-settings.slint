@@ -128,6 +128,14 @@ export component HudSettingsPanel inherits Rectangle {
     drop-shadow-blur: 16px;
     drop-shadow-color: #00000070;
 
+    // Clicks and scrolling on the panel's background stay here instead of
+    // reaching the slide underneath.
+    TouchArea {
+        scroll-event(e) => {
+            accept
+        }
+    }
+
     layout := VerticalLayout {
         padding: 4px;
         spacing: 2px;
@@ -415,17 +423,6 @@ export component HudSettingsPanel inherits Rectangle {
         Rectangle {
             height: 28px;
 
-            Text {
-                x: 8px;
-                y: (parent.height - self.height) / 2;
-                width: 24px;
-                text: "H";
-                color: #6a5acd;
-                font-size: 11px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-
             // Slider area
             h-slider-area := Rectangle {
                 property <float> normalized: (root.deconv-hematoxylin-intensity - 0.0) / 3.0;
@@ -513,22 +510,45 @@ export component HudSettingsPanel inherits Rectangle {
                     }
                 }
             }
+
+            // The channel's letter shows and hides it.
+            Rectangle {
+                x: 3px;
+                y: (parent.height - self.height) / 2;
+                width: 18px;
+                height: 20px;
+                border-radius: 4px;
+                background: h-eye-touch.has-hover ? #ffffff18 : transparent;
+
+                Text {
+                    text: "H";
+                    color: #6a5acd;
+                    opacity: root.deconv-hematoxylin-visible ? 1.0 : 0.35;
+                    font-size: 11px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if !root.deconv-hematoxylin-visible: Rectangle {
+                    x: 3px;
+                    y: parent.height / 2;
+                    width: parent.width - 6px;
+                    height: 1px;
+                    background: #dddddd;
+                }
+
+                h-eye-touch := TouchArea {
+                    clicked => {
+                        root.deconv-h-visibility-toggled();
+                    }
+                }
+            }
         }
 
         // Eosin row
         Rectangle {
             height: 28px;
-
-            Text {
-                x: 8px;
-                y: (parent.height - self.height) / 2;
-                width: 24px;
-                text: "E";
-                color: #e05070;
-                font-size: 11px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
 
             // Slider area
             e-slider-area := Rectangle {
@@ -614,6 +634,40 @@ export component HudSettingsPanel inherits Rectangle {
                 e-view-touch := TouchArea {
                     clicked => {
                         root.deconv-e-view-toggled();
+                    }
+                }
+            }
+
+            // The channel's letter shows and hides it.
+            Rectangle {
+                x: 3px;
+                y: (parent.height - self.height) / 2;
+                width: 18px;
+                height: 20px;
+                border-radius: 4px;
+                background: e-eye-touch.has-hover ? #ffffff18 : transparent;
+
+                Text {
+                    text: "E";
+                    color: #e05070;
+                    opacity: root.deconv-eosin-visible ? 1.0 : 0.35;
+                    font-size: 11px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if !root.deconv-eosin-visible: Rectangle {
+                    x: 3px;
+                    y: parent.height / 2;
+                    width: parent.width - 6px;
+                    height: 1px;
+                    background: #dddddd;
+                }
+
+                e-eye-touch := TouchArea {
+                    clicked => {
+                        root.deconv-e-visibility-toggled();
                     }
                 }
             }

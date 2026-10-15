@@ -369,6 +369,16 @@ impl FilePaneState {
     }
 }
 
+/// Panes side by side, at most: beyond this they are too narrow to read.
+pub const MAX_PANES: usize = 8;
+
+/// Logical pixels between panes; `pane-gap` in panes.slint and
+/// app-window.slint must match.
+pub const PANE_GAP: f64 = 6.0;
+
+/// The message for a pane that could not be added.
+pub const MAX_PANES_MESSAGE: &str = "eov shows at most 8 panes side by side";
+
 /// Pane identifier (0-based pane index)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PaneId(pub usize);
@@ -393,8 +403,6 @@ pub struct AppState {
     next_id: i32,
     /// Whether split view is enabled
     pub split_enabled: bool,
-    /// Split position (0.0-1.0, percentage from left)
-    pub split_position: f32,
     /// Currently focused pane
     pub focused_pane: PaneId,
     /// Frame timestamps for FPS calculation
@@ -457,7 +465,6 @@ impl AppState {
             panes: vec![PaneState::new()],
             next_id: 1,
             split_enabled: false,
-            split_position: 0.5,
             focused_pane: PaneId::PRIMARY,
             frame_times: Vec::with_capacity(60),
             current_fps: 0.0,
@@ -508,12 +515,14 @@ impl AppState {
             .unwrap_or(&[])
     }
 
-    fn tab_ids_for_pane_mut(&mut self, pane: PaneId) -> &mut Vec<i32> {
-        &mut self.panes[pane.0].tabs
+    fn tab_ids_for_pane_mut(&mut self, pane: PaneId) -> Option<&mut Vec<i32>> {
+        self.panes.get_mut(pane.0).map(|pane| &mut pane.tabs)
     }
 
-    fn active_tab_id_for_pane_mut(&mut self, pane: PaneId) -> &mut Option<i32> {
-        &mut self.panes[pane.0].active_tab_id
+    fn active_tab_id_for_pane_mut(&mut self, pane: PaneId) -> Option<&mut Option<i32>> {
+        self.panes
+            .get_mut(pane.0)
+            .map(|pane| &mut pane.active_tab_id)
     }
 
     fn next_tab_after_removal(tabs: &[i32], removed_index: usize) -> Option<i32> {
@@ -590,7 +599,9 @@ impl AppState {
         }
 
         self.restore_tab_instance_state(id, pane);
-        *self.active_tab_id_for_pane_mut(pane) = Some(id);
+        if let Some(active) = self.active_tab_id_for_pane_mut(pane) {
+            *active = Some(id);
+        }
     }
 
     fn sync_active_file_id(&mut self) {
@@ -755,7 +766,12 @@ impl AppState {
         }
     }
 
-    pub fn insert_pane(&mut self, index: usize) -> PaneId {
+    /// Inserts an empty pane at `index`; `None` when there are already
+    /// [`MAX_PANES`].
+    pub fn insert_pane(&mut self, index: usize) -> Option<PaneId> {
+        if self.panes.len() >= MAX_PANES {
+            return None;
+        }
         let insert_index = index.min(self.panes.len());
         self.panes.insert(insert_index, PaneState::new());
         self.last_rendered_file_ids.insert(insert_index, None);
@@ -767,7 +783,7 @@ impl AppState {
         }
         self.split_enabled = self.panes.len() > 1;
         self.sync_active_file_id();
-        PaneId(insert_index)
+        Some(PaneId(insert_index))
     }
 
     /// Removes the pane with stable id `uid` if it has no tabs and is not
@@ -822,7 +838,9 @@ impl AppState {
     }
 
     fn add_tab_to_pane_if_missing(&mut self, pane: PaneId, id: i32) {
-        let tabs = self.tab_ids_for_pane_mut(pane);
+        let Some(tabs) = self.tab_ids_for_pane_mut(pane) else {
+            return;
+        };
         if !tabs.contains(&id) {
             tabs.push(id);
         }
@@ -848,19 +866,22 @@ impl AppState {
     }
 
     fn remove_tab_from_pane(&mut self, pane: PaneId, id: i32) {
-        let removed_index = {
-            let tabs = self.tab_ids_for_pane_mut(pane);
-            tabs.iter()
-                .position(|&tab_id| tab_id == id)
-                .inspect(|&index| {
-                    tabs.remove(index);
-                })
-        };
+        let removed_index = self.tab_ids_for_pane_mut(pane).and_then(|tabs| {
+            let index = tabs.iter().position(|&tab_id| tab_id == id)?;
+            tabs.remove(index);
+            Some(index)
+        });
 
         if let Some(index) = removed_index {
             if self.active_tab_id_for_pane(pane) == Some(id) {
                 let replacement = Self::next_tab_after_removal(self.tab_ids_for_pane(pane), index);
-                *self.active_tab_id_for_pane_mut(pane) = replacement;
+                // The tab shown instead comes back where it was left.
+                if let Some(tab) = replacement {
+                    self.restore_tab_instance_state(tab, pane);
+                }
+                if let Some(active) = self.active_tab_id_for_pane_mut(pane) {
+                    *active = replacement;
+                }
             }
             self.sync_active_file_id();
         }
@@ -973,7 +994,7 @@ impl AppState {
             return None;
         }
         let source_uid = self.panes[source.0].uid;
-        let target = self.insert_pane(insert_at);
+        let target = self.insert_pane(insert_at)?;
         let target_uid = self.panes[target.0].uid;
         let source = self.pane_by_uid(source_uid)?;
         self.move_tab_between_panes(id, source, target);
@@ -987,7 +1008,9 @@ impl AppState {
 
     /// Reorder a tab within the same pane by moving it to a new index position.
     pub fn reorder_tab(&mut self, pane: PaneId, id: i32, new_index: i32) {
-        let tabs = self.tab_ids_for_pane_mut(pane);
+        let Some(tabs) = self.tab_ids_for_pane_mut(pane) else {
+            return;
+        };
         if let Some(current_pos) = tabs.iter().position(|&tab_id| tab_id == id) {
             let slot = (new_index.max(0) as usize).min(tabs.len());
             if slot == current_pos || slot == current_pos + 1 {
@@ -1196,7 +1219,9 @@ impl AppState {
                 }
                 if self.active_tab_id_for_pane(PaneId(pane_index)).is_none() {
                     let replacement = self.tabs_for_pane(PaneId(pane_index)).first().copied();
-                    *self.active_tab_id_for_pane_mut(PaneId(pane_index)) = replacement;
+                    if let Some(active) = self.active_tab_id_for_pane_mut(PaneId(pane_index)) {
+                        *active = replacement;
+                    }
                 }
             }
 
@@ -1723,7 +1748,7 @@ mod tests {
     fn split_home_tabs_are_independent() {
         let mut state = state_with(&[&[1]]);
         state.next_id = 10;
-        let new_pane = state.insert_pane(1);
+        let new_pane = state.insert_pane(1).unwrap();
         let copy = state.duplicate_tab_to_pane(1, new_pane);
         assert_ne!(copy, 1);
         assert!(state.is_home_tab(copy));
@@ -1732,6 +1757,20 @@ mod tests {
         state.home_tabs.push(5);
         state.close_home_tab(1);
         assert_eq!(layout(&state), vec![vec![5], vec![copy]]);
+    }
+
+    #[test]
+    fn panes_are_capped() {
+        let mut state = state_with(&[&[1, 2]]);
+        state.next_id = 10;
+        for _ in 1..super::MAX_PANES {
+            assert!(state.insert_pane(1).is_some());
+        }
+        assert_eq!(state.panes.len(), super::MAX_PANES);
+        assert_eq!(state.insert_pane(0), None);
+        // Dropping a tab on an edge then leaves everything as it was.
+        assert_eq!(state.split_tab_to_new_pane(2, 0), None);
+        assert_eq!(state.panes[0].tabs, vec![1, 2]);
     }
 
     #[test]

@@ -385,6 +385,7 @@ export component SplitPaneContainer inherits Rectangle {
     in property <length> drag-abs-x: -1px;
     in property <int> os-file-hover-pane: -1;
     in property <int> os-file-hover-side: -1;
+    // PANE_GAP in state.rs, and pane-gap in app-window.slint, must match.
     property <length> pane-gap: 6px;
     property <int> pane-count: max(1, panes.length);
     property <length> pane-width: (self.width - max(0px, (pane-count - 1) * pane-gap)) / pane-count;
@@ -412,7 +413,6 @@ export component SplitPaneContainer inherits Rectangle {
     callback file-dropped(string);
     callback viewport-interaction-started(int);
     callback pane-focused(int);
-    callback split-position-changed(float);
     callback tab-drag-started(int, int, string, int, length, length);
     callback tab-drag-moved(length, length);
     callback tab-drag-ended(length, length);

@@ -475,7 +475,8 @@ pub struct MeasurementInfo {
 pub struct MenuItem {
     pub item_id: String,
     pub label: String,
-    /// Built-in icon name (`"delete"`, `"copy"`, `"export"`, …) or empty.
+    /// Built-in icon name (`"copy"`, `"export"`, `"delete"`, `"point"`,
+    /// `"measure"`, `"plugin"`, `"open"`) or empty; other names show none.
     #[serde(default)]
     pub icon: String,
     #[serde(default = "default_true")]

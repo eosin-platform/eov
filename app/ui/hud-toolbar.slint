@@ -74,10 +74,23 @@ export component HudToolbar inherits Rectangle {
     property <length> plugin-menu-x: 0px;
     property <length> plugin-menu-y: root.height + 6px;
 
+    /// The plugin button under the pointer (-1: none) and its centre.
+    property <int> hovered-plugin: -1;
+    property <length> hovered-plugin-x: 0px;
     property <string> active-tooltip:
-        zoom-touch.has-hover ? root.zoom-tooltip : adjust-btn.hovered ? adjust-btn.tooltip-text : "";
+        zoom-touch.has-hover ? root.zoom-tooltip
+        : zoom-out-btn.hovered ? zoom-out-btn.tooltip-text
+        : zoom-in-btn.hovered ? zoom-in-btn.tooltip-text
+        : adjust-btn.hovered ? adjust-btn.tooltip-text
+        : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
+            ? root.plugin-buttons[root.hovered-plugin].tooltip
+        : "";
     property <length> tooltip-center-x:
-        zoom-touch.has-hover ? zoom-touch.absolute-position.x - root.absolute-position.x + zoom-touch.width / 2 : adjust-btn.hovered ? adjust-btn.x + adjust-btn.width / 2 : 0px;
+        zoom-touch.has-hover ? zoom-touch.absolute-position.x - root.absolute-position.x + zoom-touch.width / 2
+        : zoom-out-btn.hovered ? zoom-out-btn.absolute-position.x - root.absolute-position.x + zoom-out-btn.width / 2
+        : zoom-in-btn.hovered ? zoom-in-btn.absolute-position.x - root.absolute-position.x + zoom-in-btn.width / 2
+        : adjust-btn.hovered ? adjust-btn.absolute-position.x - root.absolute-position.x + adjust-btn.width / 2
+        : root.hovered-plugin-x;
 
     width: bar.preferred-width;
     height: 38px;
@@ -100,6 +113,15 @@ export component HudToolbar inherits Rectangle {
         HorizontalLayout {
             padding: 0px;
             spacing: 0px;
+
+            zoom-out-btn := HudButton {
+                width: 30px;
+                text: "−";
+                tooltip-text: "Zoom out";
+                clicked => {
+                    root.zoom-out();
+                }
+            }
 
             // Zoom label / text input
             Rectangle {
@@ -181,6 +203,15 @@ export component HudToolbar inherits Rectangle {
                 }
             }
 
+            zoom-in-btn := HudButton {
+                width: 30px;
+                text: "+";
+                tooltip-text: "Zoom in";
+                clicked => {
+                    root.zoom-in();
+                }
+            }
+
             for btn[idx] in root.plugin-buttons: HorizontalLayout {
                 spacing: 0px;
 
@@ -190,6 +221,14 @@ export component HudToolbar inherits Rectangle {
                     icon-source: btn.icon;
                     tooltip-text: btn.tooltip;
                     active: btn.active || (root.plugin-menu-open && root.plugin-menu-index == idx);
+                    changed hovered => {
+                        if self.hovered {
+                            root.hovered-plugin = idx;
+                            root.hovered-plugin-x = self.absolute-position.x - root.absolute-position.x + self.width / 2;
+                        } else if root.hovered-plugin == idx {
+                            root.hovered-plugin = -1;
+                        }
+                    }
                     clicked => {
                         if btn.menu.length > 0 {
                             if root.plugin-menu-open && root.plugin-menu-index == idx {

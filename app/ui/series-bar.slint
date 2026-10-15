@@ -6,6 +6,8 @@ component SeriesCard inherits Rectangle {
     in property <SeriesItemData> item;
     in property <bool> selected: false;
     out property <bool> hovered: touch.has-hover;
+    /// The slide's size, levels, vendor, objective, pixel size and stain.
+    property <string> tooltip: root.item.metadata-tooltip != "" ? root.item.metadata-tooltip : root.item.name;
     callback activated(string);
     callback context-menu(string, length, length);
     callback horizontal-scroll(length);
@@ -25,12 +27,12 @@ component SeriesCard inherits Rectangle {
         changed has-hover => {
             if self.has-hover {
                 root.show-tooltip(
-                    root.item.name,
+                    root.tooltip,
                     root.absolute-position.x + root.width / 2,
                     root.absolute-position.y - 8px,
                 );
             } else {
-                root.clear-tooltip(root.item.name);
+                root.clear-tooltip(root.tooltip);
             }
         }
 
@@ -418,8 +420,8 @@ export component SeriesBar inherits Rectangle {
     if root.active-tooltip != "": Rectangle {
         x: max(8px, min(root.width - self.width - 8px, root.tooltip-x - self.width / 2));
         y: max(8px, root.tooltip-y - self.height);
-        width: tooltip-text.preferred-width + 16px;
-        height: tooltip-text.preferred-height + 12px;
+        width: min(360px, tooltip-text.preferred-width + 16px);
+        height: tooltip-text.height + 12px;
         background: #101216f2;
         border-radius: 6px;
         border-width: 1px;
@@ -429,6 +431,8 @@ export component SeriesBar inherits Rectangle {
             x: 8px;
             y: 6px;
             width: parent.width - 16px;
+            // Wrapped text in an `if` needs its height set (Slint 1.17).
+            height: self.preferred-height;
             text: root.active-tooltip;
             color: white;
             font-size: 11px;

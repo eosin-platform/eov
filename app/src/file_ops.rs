@@ -71,9 +71,9 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
                 filename,
                 is_directory,
                 metadata_tooltip: if is_directory {
-                    format!("{}\nFolder", path.display())
+                    format!("{}\nFolder", display_name(&path))
                 } else {
-                    "Loading metadata...".to_string()
+                    "Loading metadata…".to_string()
                 },
                 objective_label: None,
                 stain_label: None,
@@ -139,9 +139,9 @@ fn persist_thumbnail(path: &Path, thumbnail: &SeriesThumbnail) {
 }
 
 fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
-    let header = path.display().to_string();
+    let header = display_name(path);
     let Some(wsi) = wsi else {
-        return format!("{}\nFailed to load metadata", header);
+        return format!("{}\nThe slide could not be read", header);
     };
 
     let properties = wsi.properties();
@@ -154,7 +154,7 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
         .zip(properties.mpp_y)
         .map(|(x, y)| {
             format!(
-                "{} x {} um/px",
+                "{} × {} µm/px",
                 eov_common::format_decimal(x),
                 eov_common::format_decimal(y)
             )
@@ -164,7 +164,7 @@ fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
     let stain = properties.stain.as_deref().unwrap_or("N/A");
 
     format!(
-        "{}\n{} x {} px\n{} levels\nVendor: {}\nObjective: {}\nMPP: {}\nStain: {}",
+        "{}\n{} × {} px, {} levels\nVendor: {}\nObjective: {}\nPixel size: {}\nStain: {}",
         header,
         eov_common::format_u64(properties.width),
         eov_common::format_u64(properties.height),
@@ -218,7 +218,7 @@ fn spawn_series_thumbnail_worker(
             let cached_thumbnail = load_cached_thumbnail(&path);
             let had_cached_thumbnail = cached_thumbnail.is_some();
             if let Some(cached_thumbnail) = cached_thumbnail.clone() {
-                let metadata_tooltip = format!("{}\nLoading metadata...", path.display());
+                let metadata_tooltip = format!("{}\nLoading metadata…", display_name(&path));
                 let state_handle = Arc::clone(&state);
                 let ui_weak = ui_weak.clone();
                 let update_path = path.clone();
@@ -558,6 +558,8 @@ pub fn open_file(
         "Opening {}…",
         display_name(&normalized_path)
     )));
+    // Shows the loading indicator in the pane the slide opens in.
+    crate::update_tabs(ui, &state.read());
 
     // Opening can take seconds (network shares, MRXS, DICOM): do it, and
     // the thumbnail, on a worker and install the result on the UI thread
@@ -573,6 +575,17 @@ pub fn open_file(
     if let Err(err) = spawned {
         finish_open(ui.as_weak(), request, Err(err.to_string()));
     }
+}
+
+/// Whether a slide is being opened into the pane with stable id `uid`;
+/// one opened without a target pane goes to the `focused` one.
+pub(crate) fn opening_in_pane(uid: u32, focused: bool) -> bool {
+    PENDING_OPENS.with(|pending| {
+        pending
+            .borrow()
+            .values()
+            .any(|open| open.target_pane.map_or(focused, |target| target == uid))
+    })
 }
 
 /// Longest side of minimap thumbnails, in pixels.
@@ -675,10 +688,13 @@ fn finish_open(
             error!("Failed to open {}: {err}", path.display());
             // A pane made for this slide (an edge drop) must not stay empty.
             let removed = target_pane.is_some_and(|uid| state.write().remove_empty_pane(uid));
-            if removed {
+            {
                 let state_guard = state.read();
-                ui.set_split_enabled(state_guard.split_enabled);
-                ui.set_focused_pane(state_guard.focused_pane.as_index());
+                if removed {
+                    ui.set_split_enabled(state_guard.split_enabled);
+                    ui.set_focused_pane(state_guard.focused_pane.as_index());
+                }
+                // Also takes the loading indicator away.
                 crate::update_tabs(&ui, &state_guard);
             }
             ui.set_status_text(SharedString::from(format!("Could not open {name}: {err}")));
@@ -771,7 +787,7 @@ fn install_slide(
 
     // Viewport size of one pane (defaults until the window is laid out).
     let pane_count = state_guard.panes.len().max(1) as f64;
-    let pane_gap = 6.0;
+    let pane_gap = crate::state::PANE_GAP;
     let ui_width =
         ((ui.get_content_area_width() as f64) - pane_gap * (pane_count - 1.0)) / pane_count;
     let ui_height = ui.get_content_area_height() as f64 - 35.0;

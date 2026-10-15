@@ -926,12 +926,13 @@ pub(crate) fn update_and_render(
 
     let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
 
-    let content_width = (ui.get_content_area_width() as f64).max(100.0);
-    let content_height = (ui.get_content_area_height() as f64 - 35.0).max(100.0);
-    let pane_gap = 6.0;
+    // The panes' real size (as Slint lays them out), never zero.
+    let content_width = (ui.get_content_area_width() as f64).max(1.0);
+    let content_height = (ui.get_content_area_height() as f64 - 35.0).max(1.0);
+    let pane_gap = crate::state::PANE_GAP;
     let pane_width = ((content_width - pane_gap * (pane_count.saturating_sub(1) as f64))
         / pane_count.max(1) as f64)
-        .max(100.0);
+        .max(1.0);
 
     // Physical pixels per logical pixel of the frames (RND-3).
     let scale = render_scale(
@@ -1203,12 +1204,13 @@ fn collect_cpu_frame_snapshot(
     let render_requested = std::mem::take(&mut state.needs_render) || completed_cpu_frame;
     let filter_revision = state.filter_revision;
 
-    let content_width = (ui.get_content_area_width() as f64).max(100.0);
-    let content_height = (ui.get_content_area_height() as f64 - 35.0).max(100.0);
-    let pane_gap = 6.0;
+    // The panes' real size (as Slint lays them out), never zero.
+    let content_width = (ui.get_content_area_width() as f64).max(1.0);
+    let content_height = (ui.get_content_area_height() as f64 - 35.0).max(1.0);
+    let pane_gap = crate::state::PANE_GAP;
     let pane_width = ((content_width - pane_gap * (pane_count.saturating_sub(1) as f64))
         / pane_count.max(1) as f64)
-        .max(100.0);
+        .max(1.0);
     let scale = render_scale(
         ui.window().scale_factor(),
         pane_width,

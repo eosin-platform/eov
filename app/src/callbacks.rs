@@ -949,18 +949,23 @@ pub fn setup_callbacks(
                     }
                 }
                 "split-right" => {
-                    let (split_enabled, source_uid, new_uid) = {
+                    let split = {
                         let mut state = state_handle.write();
                         let source_pane = pane;
-                        let new_pane = state.insert_pane(source_pane.0 + 1);
-                        state.duplicate_tab_to_pane(tab_id, new_pane);
-                        state.set_focused_pane(new_pane);
-                        state.request_render();
-                        (
-                            state.split_enabled,
-                            state.pane_uid(source_pane),
-                            state.pane_uid(new_pane),
-                        )
+                        state.insert_pane(source_pane.0 + 1).map(|new_pane| {
+                            state.duplicate_tab_to_pane(tab_id, new_pane);
+                            state.set_focused_pane(new_pane);
+                            state.request_render();
+                            (
+                                state.split_enabled,
+                                state.pane_uid(source_pane),
+                                state.pane_uid(new_pane),
+                            )
+                        })
+                    };
+                    let Some((split_enabled, source_uid, new_uid)) = split else {
+                        ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                        return;
                     };
                     insert_pane_ui_state(new_uid, source_uid);
                     ui.set_split_enabled(split_enabled);
@@ -1483,19 +1488,24 @@ pub fn setup_callbacks(
 
         ui.on_split_right(move |pane, id| {
             if let Some(ui) = ui_weak.upgrade() {
-                let (split_enabled, focused_pane, source_uid, new_uid) = {
+                let split = {
                     let mut state = state_handle.write();
                     let source_pane = pane_from_index(pane);
-                    let new_pane = state.insert_pane(source_pane.0 + 1);
-                    state.duplicate_tab_to_pane(id, new_pane);
-                    state.set_focused_pane(new_pane);
-                    state.request_render();
-                    (
-                        state.split_enabled,
-                        state.focused_pane,
-                        state.pane_uid(source_pane),
-                        state.pane_uid(new_pane),
-                    )
+                    state.insert_pane(source_pane.0 + 1).map(|new_pane| {
+                        state.duplicate_tab_to_pane(id, new_pane);
+                        state.set_focused_pane(new_pane);
+                        state.request_render();
+                        (
+                            state.split_enabled,
+                            state.focused_pane,
+                            state.pane_uid(source_pane),
+                            state.pane_uid(new_pane),
+                        )
+                    })
+                };
+                let Some((split_enabled, focused_pane, source_uid, new_uid)) = split else {
+                    ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                    return;
                 };
                 insert_pane_ui_state(new_uid, source_uid);
                 ui.set_split_enabled(split_enabled);
@@ -1534,28 +1544,6 @@ pub fn setup_callbacks(
                 ui.set_focused_pane(pane);
                 let state = state_handle.read();
                 update_tabs(&ui, &state);
-            }
-            if let Some(ui) = ui_weak.upgrade() {
-                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
-            }
-        });
-    }
-
-    {
-        let state_handle = Arc::clone(&state);
-        let tile_cache = Arc::clone(&tile_cache);
-        let render_timer = Rc::clone(&render_timer);
-        let ui_weak = ui_weak.clone();
-
-        ui.on_split_position_changed(move |pos| {
-            {
-                let mut state = state_handle.write();
-                state.split_position = pos;
-                state.request_render();
-            }
-
-            if let Some(ui) = ui_weak.upgrade() {
-                ui.set_split_position(pos);
             }
             if let Some(ui) = ui_weak.upgrade() {
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
@@ -1772,16 +1760,25 @@ pub fn setup_callbacks(
                             } else {
                                 target_pane.0 + 1
                             };
-                            let new_pane = state.insert_pane(insert_index);
-                            // The target pane moved right if the new one
-                            // went before it.
-                            let source = if insert_index <= target_pane.0 {
-                                PaneId(target_pane.0 + 1)
-                            } else {
-                                target_pane
-                            };
-                            insert_pane_ui_state(state.pane_uid(new_pane), state.pane_uid(source));
-                            new_pane
+                            match state.insert_pane(insert_index) {
+                                Some(new_pane) => {
+                                    // The target pane moved right if the
+                                    // new one went before it.
+                                    let source = if insert_index <= target_pane.0 {
+                                        PaneId(target_pane.0 + 1)
+                                    } else {
+                                        target_pane
+                                    };
+                                    insert_pane_ui_state(
+                                        state.pane_uid(new_pane),
+                                        state.pane_uid(source),
+                                    );
+                                    new_pane
+                                }
+                                // With the most panes, the slide opens in
+                                // the pane it was dropped on.
+                                None => target_pane,
+                            }
                         }
                     };
                     state.set_focused_pane(pane);
@@ -1913,12 +1910,20 @@ pub fn setup_callbacks(
 
         ui.on_split_tab_by_drop(move |id, to| {
             if let Some(ui) = ui_weak.upgrade() {
-                let (source_uid, new_uid) = {
+                let (source_uid, new_uid, full) = {
                     let mut state = state_handle.write();
+                    let full = state.panes.len() >= crate::state::MAX_PANES;
                     let source_uid = state.pane_of_tab(id).and_then(|pane| state.pane_uid(pane));
                     let target = state.split_tab_to_new_pane(id, to.max(0) as usize);
-                    (source_uid, target.and_then(|pane| state.pane_uid(pane)))
+                    (
+                        source_uid,
+                        target.and_then(|pane| state.pane_uid(pane)),
+                        full,
+                    )
                 };
+                if full {
+                    ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                }
                 insert_pane_ui_state(new_uid, source_uid);
                 let state = state_handle.read();
                 ui.set_split_enabled(state.split_enabled);

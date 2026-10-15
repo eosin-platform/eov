@@ -910,7 +910,9 @@ export component ContextMenu inherits Rectangle {
                             font-size: 12px;
                         }
 
-                        if item.icon != "" && item.icon != "check": Image {
+                        // Unknown names (plugins may send any) show no icon.
+                        if item.icon == "copy" || item.icon == "export" || item.icon == "point" || item.icon == "delete"
+                            || item.icon == "measure" || item.icon == "plugin" || item.icon == "open": Image {
                             x: 0px;
                             y: (parent.height - self.height) / 2;
                             width: 14px;

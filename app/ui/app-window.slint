@@ -69,7 +69,6 @@ export component AppWindow inherits Window {
     in-out property <string> status-text: "Ready";
     in-out property <bool> is-loading: false;
     in-out property <bool> split-enabled: false;
-    in-out property <float> split-position: 0.5;
     in-out property <int> focused-pane: 0;
     in-out property <bool> primary-is-home-tab: false;
     in-out property <bool> secondary-is-home-tab: false;
@@ -247,7 +246,6 @@ export component AppWindow inherits Window {
     callback open-containing-folder(int);
     callback copy-path(int);
     callback split-right(int, int);
-    callback close-split();
     callback viewport-fit-to-view();
     // Raw viewport input for the interaction controller (see viewport.slint).
     callback viewport-pointer(/* pane */ int, int, int, float, float, float, float, bool, bool, bool, bool);
@@ -262,7 +260,6 @@ export component AppWindow inherits Window {
     callback file-dropped(string);
     callback viewport-interaction-started(int);
     callback pane-focused(int);
-    callback split-position-changed(float);
     callback request-render();
     callback tool-selected(ToolType);
     callback render-backend-selected(RenderMode);
@@ -317,7 +314,8 @@ export component AppWindow inherits Window {
     callback hud-deconv-e-view-toggled(int);
 
     property <length> toolbar-height: 40px;
-    property <length> pane-gap: 1px;
+    // As panes.slint lays the panes out (and PANE_GAP in state.rs).
+    property <length> pane-gap: 6px;
     property <length> plugin-sidebar-width-length: plugin-sidebar-width * 1px;
     property <length> content-panel-gap: show-plugin-sidebar ? pane-gap : 0px;
     property <int> pane-count: max(1, panes.length);
@@ -327,10 +325,6 @@ export component AppWindow inherits Window {
 
     out property <float> content-area-width: pane-region-width / 1px;
     out property <float> content-area-height: pane-region.height / 1px;
-    out property <float> viewport-width: split-enabled ? (pane-region-width * split-position - 3px) / 1px : pane-region-width / 1px;
-    out property <float> viewport-height: (pane-region.height - 35px) / 1px;
-    out property <float> secondary-viewport-width: (pane-region-width * (1 - split-position) - 3px) / 1px;
-    out property <float> secondary-viewport-height: (pane-region.height - 35px) / 1px;
 
     property <bool> tab-tooltip-visible: false;
     property <string> tab-tooltip-text: "";
@@ -750,9 +744,6 @@ export component AppWindow inherits Window {
                     pane-focused(pane) => {
                         root.pane-focused(pane);
                     }
-                    split-position-changed(pos) => {
-                        root.split-position-changed(pos);
-                    }
                     tab-drag-started(id, pane, title, index, abs-x, abs-y) => {
                         root.dragging-tab-id = id;
                         root.drag-source-pane = pane;
@@ -776,6 +767,8 @@ export component AppWindow inherits Window {
                             let insert-at = root.split-drop-side == 0 ? root.drop-target-pane : root.drop-target-pane + 1;
                             root.focused-pane = insert-at;
                             root.split-tab-by-drop(root.dragging-tab-id, insert-at);
+                        } else if root.drop-target-pane == -1 {
+                            // Dropped outside the panes: the tab stays.
                         } else if root.drop-target-pane != root.drag-source-pane {
                             root.move-tab-to-pane(root.dragging-tab-id, root.drag-source-pane, root.drop-target-pane);
                         } else if split-pane.active-drop-index >= 0 {
