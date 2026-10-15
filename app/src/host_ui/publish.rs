@@ -93,11 +93,15 @@ impl SlideReader for FileReader {
             .map_err(|e| e.to_string())?;
         Ok((image.width as u32, image.height as u32, image.pixels))
     }
+
+    fn wsi(&self) -> Option<WsiFile> {
+        Some(self.wsi.without_synthetic_levels())
+    }
 }
 
 /// Converts premultiplied RGBA to the plugin convention: straight alpha, or
 /// composited onto `background` (`0xRRGGBBAA`, alpha ≠ 0).
-fn finish_alpha(pixels: &mut [u8], background: u32) {
+pub(crate) fn finish_alpha(pixels: &mut [u8], background: u32) {
     let bg = [
         (background >> 24) as u8,
         (background >> 16) as u8,
@@ -216,9 +220,8 @@ fn measurement_infos(file: &OpenFile) -> Vec<MeasurementInfo> {
 }
 
 impl UiHost {
-    /// A slide's identity is known: publish it and announce the file.
     /// The slide identity key of an open file, once it is known.
-    pub(super) fn identity_key(&self, file_id: FileId) -> Option<String> {
+    pub(crate) fn identity_key(&self, file_id: FileId) -> Option<String> {
         self.tracker
             .borrow()
             .identities
@@ -227,6 +230,7 @@ impl UiHost {
             .flatten()
     }
 
+    /// A slide's identity is known: publish it and announce the file.
     fn identity_ready(&self, file_id: FileId, identity: Option<String>) {
         // A manual pixel size saved for this slide applies from now on.
         if let Some(um) = identity
@@ -320,6 +324,11 @@ impl UiHost {
                     properties,
                     roi: file.roi,
                     measurements: measurement_infos(file),
+                    path: file.path.clone(),
+                    host_measurements: file.measurements.clone(),
+                    unit: state.file_pane_unit(file.id).unwrap_or_default(),
+                    file_size: file.file_size,
+                    mpp_set_by_hand: file.calibration_override.is_some(),
                 },
             );
         }
@@ -561,10 +570,24 @@ impl UiHost {
         tracker
             .displays
             .retain(|pane, _| displays.contains_key(pane));
+        // Each pane's tabs, for scripts.
+        let tabs = (0..state.panes.len())
+            .filter_map(|index| {
+                let pane = PaneId(index);
+                let tabs = state
+                    .tabs_for_pane(pane)
+                    .iter()
+                    .filter(|tab| !state.is_home_tab(**tab))
+                    .map(|tab| FileId::from(state.resolve_tab_file_id(*tab)))
+                    .collect();
+                Some((state.pane_uid(pane)?, tabs))
+            })
+            .collect();
         self.shared.publish(Published {
             snapshot,
             files,
             displays,
+            tabs,
         });
 
         let arm_timer = unsettled && !tracker.settle_timer_armed;

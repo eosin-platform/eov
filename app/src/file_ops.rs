@@ -615,6 +615,7 @@ pub fn open_file(
         ui.set_status_text(SharedString::from(status_text));
         report_view_warnings(&normalized_path, &warnings);
         request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
+        resolve_open_waiters(&normalized_path, opened_file_id(state, &normalized_path));
         return;
     }
 
@@ -747,7 +748,13 @@ enum PendingView {
     Requested(crate::launch::ViewRequest),
 }
 
+/// Called on the UI thread with a slide's file id once it has opened, or
+/// with the reason it could not be opened.
+pub(crate) type OpenWaiter = Box<dyn FnOnce(Result<i32, String>)>;
+
 thread_local! {
+    /// Waiting for slides (canonical paths) to open: scripts' `open`.
+    static OPEN_WAITERS: RefCell<Vec<(PathBuf, OpenWaiter)>> = const { RefCell::new(Vec::new()) };
     /// Opens in flight, by request (UI thread only).
     static PENDING_OPENS: RefCell<HashMap<u64, PendingOpen>> = RefCell::new(HashMap::new());
     static NEXT_OPEN_ID: Cell<u64> = const { Cell::new(1) };
@@ -758,6 +765,38 @@ thread_local! {
     /// Tabs of recent launches with their positions, by launch.
     static BATCH_TABS: RefCell<std::collections::BTreeMap<u64, Vec<(i32, usize)>>> =
         const { RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// Calls `waiter` once the slide at `path` has opened, or failed to: the
+/// next [`open_file`] of it, or the open in flight (UI thread).
+pub(crate) fn when_open(path: &Path, waiter: OpenWaiter) {
+    let path = crate::paths::canonical(path);
+    OPEN_WAITERS.with(|waiters| waiters.borrow_mut().push((path, waiter)));
+}
+
+/// Tells those waiting for `path` (canonical) how its open went. Call with
+/// no state lock held: waiters may take it.
+fn resolve_open_waiters(path: &Path, result: Result<i32, String>) {
+    let waiting: Vec<OpenWaiter> = OPEN_WAITERS.with(|waiters| {
+        let mut waiters = waiters.borrow_mut();
+        let (matched, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *waiters)
+            .into_iter()
+            .partition(|(waited, _)| waited == path);
+        *waiters = rest;
+        matched.into_iter().map(|(_, waiter)| waiter).collect()
+    });
+    for waiter in waiting {
+        waiter(result.clone());
+    }
+}
+
+/// The file id of the slide open at `path` (canonical), for its waiters.
+fn opened_file_id(state: &Arc<RwLock<AppState>>, path: &Path) -> Result<i32, String> {
+    let state = state.read();
+    state
+        .find_tab_by_path(path)
+        .map(|(_, tab_id)| state.resolve_tab_file_id(tab_id))
+        .ok_or_else(|| "the slide was closed".to_string())
 }
 
 /// Opens `path` at `view` instead of fitting it to the pane, the next time
@@ -867,6 +906,7 @@ fn finish_open(
         return;
     };
     let Some(ui) = ui_weak.upgrade() else {
+        resolve_open_waiters(&pending.path, Err("the window is closed".to_string()));
         return;
     };
     let still_opening = PENDING_OPENS.with(|pending| !pending.borrow().is_empty());
@@ -918,6 +958,7 @@ fn finish_open(
                     None,
                 )
             });
+            resolve_open_waiters(&path, Err(err));
             return;
         }
     };
@@ -975,6 +1016,7 @@ fn finish_open(
     ui.set_status_text(SharedString::from(status));
     report_view_warnings(&path, &warnings);
     request_render_loop(&render_timer, &ui.as_weak(), &state, &tile_cache);
+    resolve_open_waiters(&path, opened_file_id(&state, &path));
 }
 
 /// Adds an opened slide to the state and starts loading its tiles.

@@ -53,9 +53,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub(crate) use annotations::HostEdit;
 pub(crate) use input::modifiers_from_slint;
 pub(crate) use overlays::PaneOverlayFields;
-pub(crate) use publish::calibration;
+pub(crate) use publish::{calibration, finish_alpha};
 
 thread_local! {
     static HOST: RefCell<Option<Rc<UiHost>>> = const { RefCell::new(None) };
@@ -797,6 +798,26 @@ impl UiHost {
         if let Some(ui) = self.ui() {
             ui.set_status_text(text.into());
         }
+    }
+}
+
+/// Forgets this thread's host (tests: the Slint test thread is shared, and
+/// a host left behind would take part in other tests' frames).
+#[cfg(test)]
+pub(crate) fn clear_host() {
+    HOST.with(|slot| *slot.borrow_mut() = None);
+}
+
+#[cfg(test)]
+impl UiHost {
+    /// The events waiting for plugins (tests run no event loop, so they
+    /// are not delivered).
+    pub(crate) fn queued_events(&self) -> Vec<HostEvent> {
+        self.events
+            .borrow()
+            .iter()
+            .map(|(_, event)| event.clone())
+            .collect()
     }
 }
 

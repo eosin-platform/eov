@@ -30,6 +30,11 @@ pub trait SlideReader: Send + Sync {
     fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String>;
     /// Decodes an associated image as opaque RGBA: `(width, height, data)`.
     fn associated_image(&self, name: &str) -> Result<(u32, u32, Vec<u8>), String>;
+    /// The slide itself (its stored levels), for the host's own readers
+    /// (scripts' `region.read`).
+    fn wsi(&self) -> Option<eov_common::WsiFile> {
+        None
+    }
 }
 
 /// What plugins may know about one open file beyond [`FileInfo`].
@@ -39,6 +44,17 @@ pub struct PublishedFile {
     pub properties: Arc<PropertyMap>,
     pub roi: Option<Rect>,
     pub measurements: Vec<MeasurementInfo>,
+    /// The slide's path exactly (`info.path` is text, lossy for paths that
+    /// are not Unicode).
+    pub path: PathBuf,
+    /// The host's own view of them (for scripts).
+    pub host_measurements: Vec<crate::interaction::HostMeasurement>,
+    /// The unit measurement labels use (the pane's).
+    pub unit: eov_common::MeasurementUnit,
+    /// Size of the slide file in bytes.
+    pub file_size: Option<u64>,
+    /// The pixel size was set by hand (Slide Information).
+    pub mpp_set_by_hand: bool,
 }
 
 /// A consistent copy of the host state, replaced wholesale by the UI thread.
@@ -48,6 +64,8 @@ pub struct Published {
     pub files: HashMap<FileId, PublishedFile>,
     /// How each pane (stable id) displays its slide.
     pub displays: HashMap<PaneId, DisplayAdjustments>,
+    /// The slides of each pane's tabs (stable id), in tab order.
+    pub tabs: HashMap<PaneId, Vec<FileId>>,
 }
 
 /// A plugin's identity and revocable access.

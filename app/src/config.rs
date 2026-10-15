@@ -332,6 +332,18 @@ pub fn load_single_instance() -> bool {
     .unwrap_or(true)
 }
 
+/// Whether scripts may drive eov through its local endpoint (`scripting`,
+/// on by default; see [`crate::scripting`]).
+pub fn load_scripting() -> bool {
+    with_document(|_, document| {
+        document
+            .get("scripting")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true)
+    })
+    .unwrap_or(true)
+}
+
 /// Servers whose network folders `eov://` links may open on Windows
 /// (`trusted_link_servers`, none by default; see
 /// [`crate::launch::link_path_refusal`]).
