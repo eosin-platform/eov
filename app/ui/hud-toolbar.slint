@@ -5,6 +5,11 @@ component HudButton inherits Rectangle {
     in property <string> text: "";
     in property <string> tooltip-text;
     in property <bool> active: false;
+    /// A toggle: assistive technology is told whether it is on (`active`).
+    in property <bool> checkable: false;
+    /// The button opens a menu or panel (`expanded` while it is open).
+    in property <bool> expandable: false;
+    in property <bool> expanded: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -12,6 +17,20 @@ component HudButton inherits Rectangle {
     height: 38px;
     border-radius: 0px;
     background: touch.has-hover ? #ffffff22 : active ? #ffffff15 : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip-text != "" ? root.tooltip-text : root.text;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.active;
+    accessible-expandable: root.expandable;
+    accessible-expanded: root.expanded;
+    accessible-action-default => {
+        root.clicked();
+    }
+    accessible-action-expand => {
+        if root.expandable && !root.expanded {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         clicked => {
@@ -27,6 +46,7 @@ component HudButton inherits Rectangle {
         source: root.icon-source;
         image-fit: contain;
         colorize: root.active ? white : #cccccc;
+        accessible-role: none;
     }
 
     if root.text != "": Text {
@@ -38,6 +58,7 @@ component HudButton inherits Rectangle {
         font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -113,6 +134,14 @@ export component HudToolbar inherits Rectangle {
         root.plugin-menu-open = false;
     }
 
+    function start-zoom-edit() {
+        root.cancel-zoom-edit = false;
+        zoom-text-input.text = root.zoom-input-text;
+        root.editing-zoom = true;
+        zoom-text-input.focus();
+        zoom-text-input.select-all();
+    }
+
     // Clipped bar container for rounded corners
     bar := Rectangle {
         width: 100%;
@@ -142,6 +171,19 @@ export component HudToolbar inherits Rectangle {
                 height: 38px;
                 border-radius: 0px;
                 background: zoom-touch.has-hover || root.editing-zoom ? #ffffff15 : transparent;
+                accessible-role: spinbox;
+                accessible-label: "Zoom";
+                accessible-description: root.zoom-tooltip;
+                accessible-value: root.zoom-display-text;
+                accessible-action-increment => {
+                    root.zoom-in();
+                }
+                accessible-action-decrement => {
+                    root.zoom-out();
+                }
+                accessible-action-default => {
+                    root.start-zoom-edit();
+                }
 
                 Text {
                     visible: !root.editing-zoom;
@@ -151,6 +193,7 @@ export component HudToolbar inherits Rectangle {
                     font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
 
                 Rectangle {
@@ -172,6 +215,7 @@ export component HudToolbar inherits Rectangle {
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         text: root.zoom-input-text;
+                        accessible-label: "Zoom";
 
                         accepted => {
                             root.cancel-zoom-edit = false;
@@ -207,11 +251,7 @@ export component HudToolbar inherits Rectangle {
                 zoom-touch := TouchArea {
                     enabled: !root.editing-zoom;
                     clicked => {
-                        root.cancel-zoom-edit = false;
-                        zoom-text-input.text = root.zoom-input-text;
-                        root.editing-zoom = true;
-                        zoom-text-input.focus();
-                        zoom-text-input.select-all();
+                        root.start-zoom-edit();
                     }
                 }
             }
@@ -247,6 +287,7 @@ export component HudToolbar inherits Rectangle {
                 icon-source: @image-url("icons/flip-horizontal.svg");
                 tooltip-text: root.flipped ? "Unflip" : "Flip horizontally";
                 active: root.flipped;
+                checkable: true;
                 clicked => {
                     root.orientation-changed(2);
                 }
@@ -258,6 +299,12 @@ export component HudToolbar inherits Rectangle {
                 height: 38px;
                 visible: root.rotation-degrees != 0;
                 background: angle-touch.has-hover ? #ffffff22 : transparent;
+                accessible-role: button;
+                accessible-label: "Reset rotation";
+                accessible-description: root.rotation-degrees + "°";
+                accessible-action-default => {
+                    root.orientation-changed(3);
+                }
 
                 Text {
                     text: root.rotation-degrees + "°";
@@ -266,6 +313,7 @@ export component HudToolbar inherits Rectangle {
                     font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
 
                 angle-touch := TouchArea {
@@ -284,6 +332,9 @@ export component HudToolbar inherits Rectangle {
                     icon-source: btn.icon;
                     tooltip-text: btn.tooltip;
                     active: btn.active || (root.plugin-menu-open && root.plugin-menu-index == idx);
+                    checkable: btn.menu.length == 0 && btn.active;
+                    expandable: btn.menu.length > 0;
+                    expanded: root.plugin-menu-open && root.plugin-menu-index == idx;
                     changed hovered => {
                         if self.hovered {
                             root.hovered-plugin = idx;
@@ -317,6 +368,9 @@ export component HudToolbar inherits Rectangle {
                 icon-source: @image-url("icons/settings.svg");
                 tooltip-text: "Adjustments";
                 active: root.dropdown-open || root.has-adjustments;
+                expandable: true;
+                expanded: root.dropdown-open;
+                accessible-description: root.has-adjustments ? "The colours are adjusted" : "";
                 clicked => {
                     root.toggle-dropdown();
                 }
@@ -366,6 +420,18 @@ export component HudToolbar inherits Rectangle {
                 height: 30px;
                 border-radius: 4px;
                 background: item-touch.has-hover && item.enabled ? #ffffff16 : transparent;
+                accessible-role: button;
+                accessible-label: item.label;
+                accessible-description: item.shortcut;
+                accessible-enabled: item.enabled;
+                accessible-checkable: item.icon == "check";
+                accessible-checked: item.icon == "check";
+                accessible-action-default => {
+                    if item.enabled {
+                        root.plugin-menu-open = false;
+                        root.plugin-button-clicked(root.plugin-menu-plugin-id, root.plugin-menu-button-id, item.id);
+                    }
+                }
 
                 Text {
                     x: 8px;
@@ -374,6 +440,7 @@ export component HudToolbar inherits Rectangle {
                     text: item.icon == "check" ? "✓" : "";
                     color: white;
                     font-size: 12px;
+                    accessible-role: none;
                 }
 
                 Text {
@@ -382,6 +449,7 @@ export component HudToolbar inherits Rectangle {
                     text: item.label;
                     color: item.enabled ? white : #ffffff66;
                     font-size: 12px;
+                    accessible-role: none;
                 }
 
                 item-touch := TouchArea {

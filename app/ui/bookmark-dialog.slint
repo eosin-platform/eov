@@ -73,6 +73,7 @@ export component BookmarkDialog inherits Rectangle {
                         font-size: 12px;
                         vertical-alignment: center;
                         single-line: true;
+                        accessible-label: "Bookmark name";
                         accepted => {
                             root.accepted(self.text);
                         }
@@ -94,6 +95,11 @@ export component BookmarkDialog inherits Rectangle {
                         background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Cancel";
+                        accessible-action-default => {
+                            root.cancelled();
+                        }
 
                         cancel-touch := TouchArea {
                             clicked => {
@@ -103,6 +109,7 @@ export component BookmarkDialog inherits Rectangle {
 
                         cancel-text := Text {
                             text: "Cancel";
+                            accessible-role: none;
                             color: Theme.text-primary;
                             font-size: 12px;
                             horizontal-alignment: center;
@@ -115,6 +122,11 @@ export component BookmarkDialog inherits Rectangle {
                         height: 28px;
                         border-radius: 4px;
                         background: add-touch.has-hover ? #1177bb : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: "Add";
+                        accessible-action-default => {
+                            root.accepted(root.name);
+                        }
 
                         add-touch := TouchArea {
                             clicked => {
@@ -124,6 +136,7 @@ export component BookmarkDialog inherits Rectangle {
 
                         add-text := Text {
                             text: "Add";
+                            accessible-role: none;
                             color: white;
                             font-size: 12px;
                             horizontal-alignment: center;

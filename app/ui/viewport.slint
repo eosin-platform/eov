@@ -98,8 +98,10 @@ export component Viewport inherits Rectangle {
             height: 100%;
             source: content;
             image-fit: fill;
+            accessible-label: "Slide view";
         }
 
+        // Annotations and measurements are listed in their panels.
         Image {
             x: root.overlay-x * 1px;
             y: root.overlay-y * 1px;
@@ -107,6 +109,7 @@ export component Viewport inherits Rectangle {
             height: root.overlay-height * 1px;
             source: root.overlay;
             image-fit: fill;
+            accessible-role: none;
         }
 
         for label in root.overlay-labels: Rectangle {

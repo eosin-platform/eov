@@ -12,10 +12,24 @@ component HudSlider inherits Rectangle {
     in property <float> max-value: 1.0;
     in property <float> default-value: 0.0;
     in property <string> display-text;
+    /// What one increment (assistive technology) changes.
+    in property <float> step: 0.05;
     callback changed(float);
 
     height: 28px;
     background: transparent;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: root.display-text;
+    accessible-value-minimum: root.min-value;
+    accessible-value-maximum: root.max-value;
+    accessible-value-step: root.step;
+    accessible-action-increment => {
+        root.changed(max(root.min-value, min(root.max-value, root.value + root.step)));
+    }
+    accessible-action-decrement => {
+        root.changed(min(root.max-value, max(root.min-value, root.value - root.step)));
+    }
 
     property <float> normalized: (value - min-value) / max(max-value - min-value, 0.001);
     property <length> track-left: 80px;
@@ -30,6 +44,7 @@ component HudSlider inherits Rectangle {
         color: #8ea0b2;
         font-size: 11px;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     Rectangle {
@@ -88,6 +103,7 @@ component HudSlider inherits Rectangle {
         font-size: 10px;
         horizontal-alignment: right;
         vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -225,6 +241,7 @@ export component HudSettingsPanel inherits Rectangle {
                 color: #8ea0b2;
                 font-size: 11px;
                 vertical-alignment: center;
+                accessible-role: none;
             }
 
             HorizontalLayout {
@@ -241,6 +258,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.measurement-unit == MeasurementUnit.um ? #4da3d940 : um-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.measurement-unit == MeasurementUnit.um ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Micrometres (µm)";
+                    accessible-checkable: true;
+                    accessible-checked: root.measurement-unit == MeasurementUnit.um;
+                    accessible-action-default => {
+                        root.measurement-unit-changed(MeasurementUnit.um);
+                    }
 
                     um-touch := TouchArea {
                         clicked => {
@@ -250,6 +274,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "µm";
+                        accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.um ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -264,6 +289,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.measurement-unit == MeasurementUnit.mm ? #4da3d940 : mm-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.measurement-unit == MeasurementUnit.mm ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Millimetres (mm)";
+                    accessible-checkable: true;
+                    accessible-checked: root.measurement-unit == MeasurementUnit.mm;
+                    accessible-action-default => {
+                        root.measurement-unit-changed(MeasurementUnit.mm);
+                    }
 
                     mm-touch := TouchArea {
                         clicked => {
@@ -273,6 +305,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "mm";
+                        accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.mm ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -287,6 +320,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.measurement-unit == MeasurementUnit.inches ? #4da3d940 : in-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.measurement-unit == MeasurementUnit.inches ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Inches and mils";
+                    accessible-checkable: true;
+                    accessible-checked: root.measurement-unit == MeasurementUnit.inches;
+                    accessible-action-default => {
+                        root.measurement-unit-changed(MeasurementUnit.inches);
+                    }
 
                     in-touch := TouchArea {
                         clicked => {
@@ -296,6 +336,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "in/mil";
+                        accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.inches ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -320,6 +361,7 @@ export component HudSettingsPanel inherits Rectangle {
                 color: #8ea0b2;
                 font-size: 11px;
                 vertical-alignment: center;
+                accessible-role: none;
             }
 
             HorizontalLayout {
@@ -336,6 +378,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.stain-normalization == StainNormalization.none ? #4da3d940 : sn-none-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.stain-normalization == StainNormalization.none ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Stain normalization: none";
+                    accessible-checkable: true;
+                    accessible-checked: root.stain-normalization == StainNormalization.none;
+                    accessible-action-default => {
+                        root.stain-normalization-changed(StainNormalization.none);
+                    }
 
                     sn-none-touch := TouchArea {
                         clicked => {
@@ -345,6 +394,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "None";
+                        accessible-role: none;
                         color: root.stain-normalization == StainNormalization.none ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -359,6 +409,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.stain-normalization == StainNormalization.macenko ? #4da3d940 : sn-macenko-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.stain-normalization == StainNormalization.macenko ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Stain normalization: Macenko";
+                    accessible-checkable: true;
+                    accessible-checked: root.stain-normalization == StainNormalization.macenko;
+                    accessible-action-default => {
+                        root.stain-normalization-changed(StainNormalization.macenko);
+                    }
 
                     sn-macenko-touch := TouchArea {
                         clicked => {
@@ -368,6 +425,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "Macenko";
+                        accessible-role: none;
                         color: root.stain-normalization == StainNormalization.macenko ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -382,6 +440,13 @@ export component HudSettingsPanel inherits Rectangle {
                     background: root.stain-normalization == StainNormalization.vahadane ? #4da3d940 : sn-vahadane-touch.has-hover ? #ffffff15 : transparent;
                     border-width: root.stain-normalization == StainNormalization.vahadane ? 1px : 0px;
                     border-color: #4da3d9;
+                    accessible-role: radio-button;
+                    accessible-label: "Stain normalization: Vahadane";
+                    accessible-checkable: true;
+                    accessible-checked: root.stain-normalization == StainNormalization.vahadane;
+                    accessible-action-default => {
+                        root.stain-normalization-changed(StainNormalization.vahadane);
+                    }
 
                     sn-vahadane-touch := TouchArea {
                         clicked => {
@@ -391,6 +456,7 @@ export component HudSettingsPanel inherits Rectangle {
 
                     Text {
                         text: "Vahadane";
+                        accessible-role: none;
                         color: root.stain-normalization == StainNormalization.vahadane ? white : #cccccc;
                         font-size: 10px;
                         horizontal-alignment: center;
@@ -429,6 +495,18 @@ export component HudSettingsPanel inherits Rectangle {
                 property <length> track-left: 24px;
                 property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
+                accessible-role: slider;
+                accessible-label: "Hematoxylin intensity";
+                accessible-value: h-intensity-text.text;
+                accessible-value-minimum: 0;
+                accessible-value-maximum: 3;
+                accessible-value-step: 0.05;
+                accessible-action-increment => {
+                    root.deconv-h-intensity-changed(min(3.0, root.deconv-hematoxylin-intensity + 0.05));
+                }
+                accessible-action-decrement => {
+                    root.deconv-h-intensity-changed(max(0.0, root.deconv-hematoxylin-intensity - 0.05));
+                }
 
                 x: 0px;
                 y: 0px;
@@ -481,11 +559,12 @@ export component HudSettingsPanel inherits Rectangle {
                     }
                 }
 
-                Text {
+                h-intensity-text := Text {
                     x: parent.width - parent.track-right + 4px;
                     y: (parent.height - self.height) / 2;
                     width: 28px;
                     text: Math.round(root.deconv-hematoxylin-intensity * 100) / 100 + "x";
+                    accessible-role: none;
                     color: #e0e0e0;
                     font-size: 10px;
                     horizontal-alignment: right;
@@ -502,6 +581,13 @@ export component HudSettingsPanel inherits Rectangle {
                 border-radius: 8px;
                 background: root.deconv-isolated-channel == IsolatedChannel.hematoxylin ? #6a5acd : h-view-touch.has-hover ? #ffffff15 : transparent;
                 border-width: 1px;
+                accessible-role: button;
+                accessible-label: "View hematoxylin alone";
+                accessible-checkable: true;
+                accessible-checked: root.deconv-isolated-channel == IsolatedChannel.hematoxylin;
+                accessible-action-default => {
+                    root.deconv-h-view-toggled();
+                }
                 border-color: root.deconv-isolated-channel == IsolatedChannel.hematoxylin ? #6a5acd : #666666;
 
                 h-view-touch := TouchArea {
@@ -519,9 +605,17 @@ export component HudSettingsPanel inherits Rectangle {
                 height: 20px;
                 border-radius: 4px;
                 background: h-eye-touch.has-hover ? #ffffff18 : transparent;
+                accessible-role: checkbox;
+                accessible-label: "Show hematoxylin";
+                accessible-checkable: true;
+                accessible-checked: root.deconv-hematoxylin-visible;
+                accessible-action-default => {
+                    root.deconv-h-visibility-toggled();
+                }
 
                 Text {
                     text: "H";
+                    accessible-role: none;
                     color: #6a5acd;
                     opacity: root.deconv-hematoxylin-visible ? 1.0 : 0.35;
                     font-size: 11px;
@@ -556,6 +650,18 @@ export component HudSettingsPanel inherits Rectangle {
                 property <length> track-left: 24px;
                 property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
+                accessible-role: slider;
+                accessible-label: "Eosin intensity";
+                accessible-value: e-intensity-text.text;
+                accessible-value-minimum: 0;
+                accessible-value-maximum: 3;
+                accessible-value-step: 0.05;
+                accessible-action-increment => {
+                    root.deconv-e-intensity-changed(min(3.0, root.deconv-eosin-intensity + 0.05));
+                }
+                accessible-action-decrement => {
+                    root.deconv-e-intensity-changed(max(0.0, root.deconv-eosin-intensity - 0.05));
+                }
 
                 x: 0px;
                 y: 0px;
@@ -608,11 +714,12 @@ export component HudSettingsPanel inherits Rectangle {
                     }
                 }
 
-                Text {
+                e-intensity-text := Text {
                     x: parent.width - parent.track-right + 4px;
                     y: (parent.height - self.height) / 2;
                     width: 28px;
                     text: Math.round(root.deconv-eosin-intensity * 100) / 100 + "x";
+                    accessible-role: none;
                     color: #e0e0e0;
                     font-size: 10px;
                     horizontal-alignment: right;
@@ -629,6 +736,13 @@ export component HudSettingsPanel inherits Rectangle {
                 border-radius: 8px;
                 background: root.deconv-isolated-channel == IsolatedChannel.eosin ? #e05070 : e-view-touch.has-hover ? #ffffff15 : transparent;
                 border-width: 1px;
+                accessible-role: button;
+                accessible-label: "View eosin alone";
+                accessible-checkable: true;
+                accessible-checked: root.deconv-isolated-channel == IsolatedChannel.eosin;
+                accessible-action-default => {
+                    root.deconv-e-view-toggled();
+                }
                 border-color: root.deconv-isolated-channel == IsolatedChannel.eosin ? #e05070 : #666666;
 
                 e-view-touch := TouchArea {
@@ -646,9 +760,17 @@ export component HudSettingsPanel inherits Rectangle {
                 height: 20px;
                 border-radius: 4px;
                 background: e-eye-touch.has-hover ? #ffffff18 : transparent;
+                accessible-role: checkbox;
+                accessible-label: "Show eosin";
+                accessible-checkable: true;
+                accessible-checked: root.deconv-eosin-visible;
+                accessible-action-default => {
+                    root.deconv-e-visibility-toggled();
+                }
 
                 Text {
                     text: "E";
+                    accessible-role: none;
                     color: #e05070;
                     opacity: root.deconv-eosin-visible ? 1.0 : 0.35;
                     font-size: 11px;
@@ -692,6 +814,11 @@ export component HudSettingsPanel inherits Rectangle {
         background: defaults-touch.has-hover ? #ffffff15 : transparent;
         border-bottom-left-radius: root.border-radius;
         border-bottom-right-radius: root.border-radius;
+        accessible-role: button;
+        accessible-label: "Reset to Defaults";
+        accessible-action-default => {
+            root.reset-adjustments();
+        }
 
         defaults-touch := TouchArea {
             clicked => {
@@ -701,6 +828,7 @@ export component HudSettingsPanel inherits Rectangle {
 
         Text {
             text: "Reset to Defaults";
+            accessible-role: none;
             color: Theme.error;
             font-size: 11px;
             font-weight: 600;

@@ -18,6 +18,14 @@ component SeriesCard inherits Rectangle {
     height: 150px;
     border-radius: 8px;
     background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    accessible-role: list-item;
+    accessible-label: root.item.is-directory ? "Folder " + root.item.name : root.item.name;
+    accessible-description: root.item.metadata-tooltip;
+    accessible-item-selectable: !root.item.is-directory;
+    accessible-item-selected: root.selected;
+    accessible-action-default => {
+        root.activated(root.item.path);
+    }
 
     touch := TouchArea {
         clicked => {
@@ -72,6 +80,7 @@ component SeriesCard inherits Rectangle {
                 font-size: 11px;
                 font-weight: 700;
                 vertical-alignment: center;
+                accessible-role: none;
             }
 
             Text {
@@ -83,6 +92,7 @@ component SeriesCard inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
+                accessible-role: none;
             }
         }
 
@@ -102,6 +112,7 @@ component SeriesCard inherits Rectangle {
                 source: @image-url("icons/open-file.svg");
                 image-fit: contain;
                 opacity: 0.92;
+                accessible-role: none;
             }
 
             if !item.is-directory && !item.is-loading && item.has-thumbnail: Image {
@@ -111,6 +122,7 @@ component SeriesCard inherits Rectangle {
                 height: parent.height;
                 source: item.thumbnail;
                 image-fit: contain;
+                accessible-role: none;
             }
 
             if !item.is-directory && item.objective_label != "": Rectangle {
@@ -128,6 +140,7 @@ component SeriesCard inherits Rectangle {
                     color: white;
                     font-size: 11px;
                     font-weight: 700;
+                    accessible-role: none;
                 }
             }
 
@@ -146,6 +159,7 @@ component SeriesCard inherits Rectangle {
                     color: white;
                     font-size: 11px;
                     font-weight: 600;
+                    accessible-role: none;
                 }
             }
 
@@ -337,6 +351,8 @@ export component SeriesBar inherits Rectangle {
                     font-size: 11px;
                     vertical-alignment: center;
                     single-line: true;
+                    accessible-label: "Filter the series";
+                    accessible-placeholder-text: "Filter (name, stain)";
                     edited => {
                         root.filter-edited(self.text);
                     }
@@ -357,6 +373,7 @@ export component SeriesBar inherits Rectangle {
                     color: Theme.text-secondary;
                     font-size: 11px;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
             }
 
@@ -369,6 +386,12 @@ export component SeriesBar inherits Rectangle {
                 border-width: 1px;
                 border-color: Theme.border;
                 background: sort-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: "Order: " + root.sort-label;
+                accessible-description: "Order: by name, newest first or by stain";
+                accessible-action-default => {
+                    root.sort-cycled();
+                }
 
                 sort-text := Text {
                     text: "↕ " + root.sort-label;
@@ -376,6 +399,7 @@ export component SeriesBar inherits Rectangle {
                     font-size: 11px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
 
                 sort-touch := TouchArea {
@@ -462,6 +486,8 @@ export component SeriesBar inherits Rectangle {
 
         series-layout := HorizontalLayout {
             x: -root.scroll-x;
+            accessible-role: list;
+            accessible-label: "Slides and folders";
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 12px;

@@ -80,6 +80,11 @@ export component QuantifyPanel inherits Rectangle {
                         height: 24px;
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Close";
+                        accessible-action-default => {
+                            root.close-requested();
+                        }
 
                         Text {
                             text: "✕";
@@ -87,6 +92,7 @@ export component QuantifyPanel inherits Rectangle {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
 
                         close-touch := TouchArea {

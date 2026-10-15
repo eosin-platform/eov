@@ -24,6 +24,7 @@ component AssociatedImageCard inherits Rectangle {
         height: parent.height - 30px;
         source: root.source;
         image-fit: contain;
+        accessible-label: root.caption;
     }
 
     if root.available && root.hidden: Text {
@@ -132,11 +133,17 @@ export component SlideInfoPanel inherits Rectangle {
                     height: 26px;
                     border-radius: 4px;
                     background: save-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Save a Copy…";
+                    accessible-action-default => {
+                        root.save-copy-requested();
+                    }
                     border-width: 1px;
                     border-color: Theme.border;
 
                     save-text := Text {
                         text: "Save a Copy…";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -155,11 +162,20 @@ export component SlideInfoPanel inherits Rectangle {
                     height: 26px;
                     border-radius: 4px;
                     background: hide-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Hide label";
+                    accessible-description: "The label and macro images can identify the patient";
+                    accessible-checkable: true;
+                    accessible-checked: root.hide-label;
+                    accessible-action-default => {
+                        root.hide-label-toggled(!root.hide-label);
+                    }
                     border-width: 1px;
                     border-color: root.hide-label ? Theme.accent : Theme.border;
 
                     hide-text := Text {
                         text: root.hide-label ? "Show label" : "Hide label";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -178,6 +194,11 @@ export component SlideInfoPanel inherits Rectangle {
                     height: 26px;
                     border-radius: 4px;
                     background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: "Close";
+                    accessible-action-default => {
+                        root.close-requested();
+                    }
 
                     Text {
                         text: "×";
@@ -185,6 +206,7 @@ export component SlideInfoPanel inherits Rectangle {
                         font-size: 16px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
 
                     close-touch := TouchArea {
@@ -242,11 +264,17 @@ export component SlideInfoPanel inherits Rectangle {
                     width: channels-text.preferred-width + 16px;
                     border-radius: 4px;
                     background: channels-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Channels…";
+                    accessible-action-default => {
+                        root.channels-requested();
+                    }
                     border-width: 1px;
                     border-color: Theme.border;
 
                     channels-text := Text {
                         text: "Channels…";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -288,6 +316,8 @@ export component SlideInfoPanel inherits Rectangle {
                         color: Theme.text-primary;
                         font-size: 12px;
                         vertical-alignment: center;
+                        accessible-label: "Pixel size";
+                        accessible-placeholder-text: "µm/px";
                         accepted => {
                             root.pixel-size-set(self.text);
                         }
@@ -299,6 +329,7 @@ export component SlideInfoPanel inherits Rectangle {
                         color: Theme.text-secondary;
                         font-size: 12px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
 
@@ -306,11 +337,17 @@ export component SlideInfoPanel inherits Rectangle {
                     width: set-text.preferred-width + 16px;
                     border-radius: 4px;
                     background: set-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Set the pixel size";
+                    accessible-action-default => {
+                        root.pixel-size-set(root.pixel-size-input);
+                    }
                     border-width: 1px;
                     border-color: Theme.border;
 
                     set-text := Text {
                         text: "Set";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -328,11 +365,17 @@ export component SlideInfoPanel inherits Rectangle {
                     width: clear-text.preferred-width + 16px;
                     border-radius: 4px;
                     background: clear-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Use the file's pixel size";
+                    accessible-action-default => {
+                        root.pixel-size-cleared();
+                    }
                     border-width: 1px;
                     border-color: Theme.border;
 
                     clear-text := Text {
                         text: "Use the file's";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -365,6 +408,8 @@ export component SlideInfoPanel inherits Rectangle {
                         color: Theme.text-primary;
                         font-size: 12px;
                         vertical-alignment: center;
+                        accessible-label: "Filter properties";
+                        accessible-placeholder-text: "Filter properties";
                         edited => {
                             root.filter-edited(self.text);
                         }
@@ -376,6 +421,7 @@ export component SlideInfoPanel inherits Rectangle {
                         color: Theme.text-secondary;
                         font-size: 12px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
 
@@ -390,11 +436,17 @@ export component SlideInfoPanel inherits Rectangle {
                     width: copy-text.preferred-width + 16px;
                     border-radius: 4px;
                     background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                    accessible-role: button;
+                    accessible-label: "Copy all properties";
+                    accessible-action-default => {
+                        root.copy-all-requested();
+                    }
                     border-width: 1px;
                     border-color: Theme.border;
 
                     copy-text := Text {
                         text: "Copy all";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -419,6 +471,12 @@ export component SlideInfoPanel inherits Rectangle {
                     for row[index] in root.rows: Rectangle {
                         height: 22px;
                         background: row-touch.has-hover ? Theme.surface-hover : Math.mod(index, 2) == 0 ? transparent : #ffffff06;
+                        accessible-role: button;
+                        accessible-label: row.key + ": " + row.value;
+                        accessible-description: "Copies the value";
+                        accessible-action-default => {
+                            root.copy-row-requested(index);
+                        }
 
                         HorizontalLayout {
                             padding-left: 6px;
@@ -432,6 +490,7 @@ export component SlideInfoPanel inherits Rectangle {
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 overflow: elide;
+                                accessible-role: none;
                             }
 
                             Text {
@@ -441,6 +500,7 @@ export component SlideInfoPanel inherits Rectangle {
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 overflow: elide;
+                                accessible-role: none;
                             }
                         }
 

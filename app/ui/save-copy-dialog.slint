@@ -32,6 +32,17 @@ component Choice inherits Rectangle {
 
     height: root.detail == "" ? 24px : 38px;
     opacity: root.enabled ? 1.0 : 0.45;
+    accessible-role: radio-button;
+    accessible-label: root.text;
+    accessible-description: root.detail;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     HorizontalLayout {
         spacing: 8px;
@@ -63,6 +74,7 @@ component Choice inherits Rectangle {
                 text: root.text;
                 color: Theme.text-primary;
                 font-size: 12px;
+                accessible-role: none;
             }
 
             if root.detail != "": Text {
@@ -70,6 +82,7 @@ component Choice inherits Rectangle {
                 color: Theme.text-secondary;
                 font-size: 11px;
                 overflow: elide;
+                accessible-role: none;
             }
         }
     }
@@ -102,6 +115,11 @@ component DialogButton inherits Rectangle {
     background: root.primary
         ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
         : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     label := Text {
         text: root.text;
@@ -109,6 +127,7 @@ component DialogButton inherits Rectangle {
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -252,6 +271,14 @@ export component SaveCopyDialog inherits Rectangle {
             HorizontalLayout {
                 spacing: 8px;
                 height: 22px;
+                accessible-role: checkbox;
+                accessible-label: "De-identify";
+                accessible-checkable: true;
+                accessible-checked: root.settings.deidentify;
+                accessible-action-default => {
+                    root.settings.deidentify = !root.settings.deidentify;
+                    root.settings-changed(root.settings);
+                }
 
                 Rectangle {
                     width: 16px;
@@ -268,6 +295,7 @@ export component SaveCopyDialog inherits Rectangle {
                         font-size: 11px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
 
@@ -276,6 +304,7 @@ export component SaveCopyDialog inherits Rectangle {
                     color: Theme.text-primary;
                     font-size: 12px;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
 
                 TouchArea {

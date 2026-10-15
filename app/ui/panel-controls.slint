@@ -32,6 +32,7 @@ export component Chip inherits Rectangle {
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -57,6 +58,7 @@ export component NumberField inherits Rectangle {
             text: root.label;
             color: Theme.text-secondary;
             font-size: 10px;
+            accessible-role: none;
         }
 
         Rectangle {
@@ -113,6 +115,7 @@ export component PanelButton inherits Rectangle {
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -161,6 +164,7 @@ export component PanelSlider inherits Rectangle {
         text: root.label;
         color: Theme.text-secondary;
         font-size: 10px;
+        accessible-role: none;
     }
 
     Text {
@@ -169,6 +173,7 @@ export component PanelSlider inherits Rectangle {
         text: root.value-text;
         color: Theme.text-primary;
         font-size: 10px;
+        accessible-role: none;
     }
 
     track := Rectangle {
@@ -259,6 +264,7 @@ export component PanelCheck inherits Rectangle {
             font-size: 10px;
             horizontal-alignment: center;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 
@@ -268,6 +274,7 @@ export component PanelCheck inherits Rectangle {
         color: Theme.text-primary;
         font-size: 12px;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     TouchArea {

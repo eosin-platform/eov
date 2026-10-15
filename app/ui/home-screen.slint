@@ -28,6 +28,7 @@ export component HomeScreen inherits Rectangle {
                 text: "🔬";
                 font-size: 48px;
                 horizontal-alignment: center;
+                accessible-role: none;
             }
 
             Rectangle {
@@ -53,6 +54,11 @@ export component HomeScreen inherits Rectangle {
                     height: 40px;
                     background: open-touch.has-hover ? Theme.accent-hover : Theme.accent;
                     border-radius: 6px;
+                    accessible-role: button;
+                    accessible-label: "Open File";
+                    accessible-action-default => {
+                        root.open-file-requested();
+                    }
 
                     open-touch := TouchArea {
                         clicked => {
@@ -74,6 +80,7 @@ export component HomeScreen inherits Rectangle {
                                 height: 18px;
                                 source: @image-url("icons/open-file.svg");
                                 image-fit: contain;
+                                accessible-role: none;
                             }
                         }
 
@@ -83,6 +90,7 @@ export component HomeScreen inherits Rectangle {
                             font-size: 14px;
                             font-weight: 500;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
                 }
@@ -136,6 +144,12 @@ export component HomeScreen inherits Rectangle {
                                 height: 28px;
                                 background: file-touch.has-hover ? Theme.surface-hover : transparent;
                                 border-radius: 4px;
+                                accessible-role: button;
+                                accessible-label: file.name;
+                                accessible-description: file.path;
+                                accessible-action-default => {
+                                    root.open-recent-file(file.path);
+                                }
 
                                 file-touch := TouchArea {
                                     clicked => {
@@ -153,6 +167,7 @@ export component HomeScreen inherits Rectangle {
                                         text: "📄";
                                         font-size: 12px;
                                         vertical-alignment: center;
+                                        accessible-role: none;
                                     }
 
                                     Text {
@@ -162,6 +177,7 @@ export component HomeScreen inherits Rectangle {
                                         vertical-alignment: center;
                                         overflow: elide;
                                         horizontal-stretch: 1;
+                                        accessible-role: none;
                                     }
                                 }
                             }
@@ -213,6 +229,7 @@ export component HomeScreen inherits Rectangle {
                 text: "·";
                 color: Theme.text-secondary;
                 font-size: 10px;
+                accessible-role: none;
             }
 
             Text {

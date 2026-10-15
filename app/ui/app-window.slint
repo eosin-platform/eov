@@ -1244,6 +1244,11 @@ export component AppWindow inherits Window {
         border-color: root.toast-level == 3 ? #ff6b6b : root.toast-level == 2 ? #f1c40f : root.toast-level == 1 ? #2ecc71 : Theme.border;
         animate opacity { duration: 180ms; }
         animate y { duration: 220ms; }
+        accessible-role: text;
+        accessible-label: root.toast-text;
+        // The border's colour, for assistive technology.
+        accessible-description: root.toast-level == 3 ? "Error" : root.toast-level == 2 ? "Warning" : "";
+        accessible-live-region: polite;
 
         toast-label := Text {
             x: 14px;
@@ -1251,6 +1256,7 @@ export component AppWindow inherits Window {
             text: root.toast-text;
             color: white;
             font-size: 12px;
+            accessible-role: none;
         }
     }
 
@@ -1287,6 +1293,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: bilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: "Bilinear (Low Quality)";
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.bilinear;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.bilinear);
+                }
 
                 bilinear-touch := TouchArea {
                     clicked => {
@@ -1302,6 +1316,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1310,6 +1325,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: trilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: "Trilinear (Balanced)";
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.trilinear;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.trilinear);
+                }
 
                 trilinear-touch := TouchArea {
                     clicked => {
@@ -1325,6 +1348,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1333,6 +1357,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: lanczos3-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: "Lanczos-3 (High Quality)";
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.lanczos3;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.lanczos3);
+                }
 
                 lanczos3-touch := TouchArea {
                     clicked => {
@@ -1348,6 +1380,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1418,6 +1451,13 @@ export component AppWindow inherits Window {
                         background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Cancel";
+                        accessible-action-default => {
+                            root.lanczos-confirm-visible = false;
+                            root.lanczos-confirm-cancelled();
+                            root.lanczos-confirm-from-backend-switch = false;
+                        }
 
                         cancel-touch := TouchArea {
                             clicked => {
@@ -1433,6 +1473,7 @@ export component AppWindow inherits Window {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
 
@@ -1443,6 +1484,13 @@ export component AppWindow inherits Window {
                         background: use-trilinear-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Use Trilinear";
+                        accessible-action-default => {
+                            root.lanczos-confirm-visible = false;
+                            root.lanczos-confirm-use-trilinear();
+                            root.lanczos-confirm-from-backend-switch = false;
+                        }
 
                         use-trilinear-touch := TouchArea {
                             clicked => {
@@ -1458,6 +1506,7 @@ export component AppWindow inherits Window {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
 
@@ -1466,6 +1515,13 @@ export component AppWindow inherits Window {
                         height: 28px;
                         border-radius: 4px;
                         background: confirm-touch.has-hover ? #1177bb : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: "Confirm";
+                        accessible-action-default => {
+                            root.lanczos-confirm-visible = false;
+                            root.lanczos-confirm-accepted();
+                            root.lanczos-confirm-from-backend-switch = false;
+                        }
 
                         confirm-touch := TouchArea {
                             clicked => {
@@ -1481,6 +1537,7 @@ export component AppWindow inherits Window {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
                 }
@@ -1558,6 +1615,12 @@ export component AppWindow inherits Window {
                         background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: root.plugin-confirm-cancel-label;
+                        accessible-action-default => {
+                            root.plugin-confirm-visible = false;
+                            root.plugin-confirm-cancelled();
+                        }
 
                         plugin-cancel-touch := TouchArea {
                             clicked => {
@@ -1572,6 +1635,7 @@ export component AppWindow inherits Window {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
 
@@ -1582,6 +1646,12 @@ export component AppWindow inherits Window {
                         background: root.plugin-confirm-destructive
                             ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
                             : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
+                        accessible-role: button;
+                        accessible-label: root.plugin-confirm-confirm-label;
+                        accessible-action-default => {
+                            root.plugin-confirm-visible = false;
+                            root.plugin-confirm-accepted();
+                        }
 
                         plugin-confirm-touch := TouchArea {
                             clicked => {
@@ -1596,6 +1666,7 @@ export component AppWindow inherits Window {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
                 }

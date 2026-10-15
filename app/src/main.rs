@@ -52,6 +52,8 @@ mod state;
 #[cfg(test)]
 mod test_support;
 mod tile_loader;
+#[cfg(test)]
+mod ui_tests;
 mod ui_update;
 mod update;
 mod version;

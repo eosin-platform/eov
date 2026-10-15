@@ -6,6 +6,8 @@ import { MeasurementRow } from "types.slint";
 
 component SmallButton inherits Rectangle {
     in property <string> text;
+    /// What the button acts on, for assistive technology.
+    in property <string> description;
     callback clicked();
 
     width: label.preferred-width + 14px;
@@ -14,6 +16,12 @@ component SmallButton inherits Rectangle {
     background: touch.has-hover ? Theme.surface-hover : transparent;
     border-width: 1px;
     border-color: Theme.border;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-description: root.description;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     label := Text {
         text: root.text;
@@ -21,6 +29,7 @@ component SmallButton inherits Rectangle {
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -40,6 +49,11 @@ component Button inherits Rectangle {
     background: touch.has-hover ? Theme.surface-hover : Theme.surface;
     border-width: 1px;
     border-color: Theme.border;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     label := Text {
         text: root.text;
@@ -47,6 +61,7 @@ component Button inherits Rectangle {
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -121,6 +136,11 @@ export component MeasurementsPanel inherits Rectangle {
                         height: 24px;
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Close";
+                        accessible-action-default => {
+                            root.close-requested();
+                        }
 
                         Text {
                             text: "✕";
@@ -128,6 +148,7 @@ export component MeasurementsPanel inherits Rectangle {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
 
                         close-touch := TouchArea {
@@ -163,6 +184,12 @@ export component MeasurementsPanel inherits Rectangle {
                                 height: 30px;
                                 border-radius: 4px;
                                 background: row-touch.has-hover ? #ffffff08 : transparent;
+                                // A double click goes there.
+                                accessible-role: list-item;
+                                accessible-label: row.kind + ": " + row.value;
+                                accessible-action-default => {
+                                    root.go-requested(row.id);
+                                }
 
                                 row-touch := TouchArea {
                                     double-clicked => {
@@ -182,6 +209,7 @@ export component MeasurementsPanel inherits Rectangle {
                                         font-size: 12px;
                                         vertical-alignment: center;
                                         overflow: elide;
+                                        accessible-role: none;
                                     }
 
                                     Text {
@@ -191,12 +219,14 @@ export component MeasurementsPanel inherits Rectangle {
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                         overflow: elide;
+                                        accessible-role: none;
                                     }
 
                                     VerticalLayout {
                                         alignment: center;
                                         SmallButton {
                                             text: "Go";
+                                            description: row.kind + " " + row.value;
                                             clicked => {
                                                 root.go-requested(row.id);
                                             }
@@ -207,6 +237,7 @@ export component MeasurementsPanel inherits Rectangle {
                                         alignment: center;
                                         SmallButton {
                                             text: "Copy";
+                                            description: row.kind + " " + row.value;
                                             clicked => {
                                                 root.copy-requested(row.id);
                                             }
@@ -217,6 +248,7 @@ export component MeasurementsPanel inherits Rectangle {
                                         alignment: center;
                                         SmallButton {
                                             text: "Delete";
+                                            description: row.kind + " " + row.value;
                                             clicked => {
                                                 root.delete-requested(row.id);
                                             }

@@ -62,6 +62,11 @@ export component ShortcutsPanel inherits Rectangle {
                         height: 24px;
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Close";
+                        accessible-action-default => {
+                            root.close();
+                        }
 
                         Text {
                             text: "✕";
@@ -69,6 +74,7 @@ export component ShortcutsPanel inherits Rectangle {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
 
                         close-touch := TouchArea {
@@ -155,9 +161,15 @@ export component ShortcutsPanel inherits Rectangle {
                         background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Copy Config Path";
+                        accessible-action-default => {
+                            root.copy-config-path();
+                        }
 
                         copy-text := Text {
                             text: "Copy Config Path";
+                            accessible-role: none;
                             color: Theme.text-primary;
                             font-size: 12px;
                             horizontal-alignment: center;

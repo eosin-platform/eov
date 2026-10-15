@@ -73,9 +73,18 @@ export component PluginsPanel inherits Rectangle {
                     background: check-touch.has-hover && !root.checking ? Theme.surface-hover : Theme.surface;
                     border-width: 1px;
                     border-color: Theme.border;
+                    accessible-role: button;
+                    accessible-label: check-text.text;
+                    accessible-enabled: !root.checking;
+                    accessible-action-default => {
+                        if !root.checking {
+                            root.check-updates-requested();
+                        }
+                    }
 
                     check-text := Text {
                         text: root.checking ? "Checking…" : "Check for updates";
+                        accessible-role: none;
                         color: root.checking ? Theme.text-secondary : Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -97,9 +106,15 @@ export component PluginsPanel inherits Rectangle {
                     background: folder-touch.has-hover ? Theme.surface-hover : Theme.surface;
                     border-width: 1px;
                     border-color: Theme.border;
+                    accessible-role: button;
+                    accessible-label: "Open plugin folder";
+                    accessible-action-default => {
+                        root.open-folder-requested();
+                    }
 
                     folder-text := Text {
                         text: "Open plugin folder";
+                        accessible-role: none;
                         color: Theme.text-primary;
                         font-size: 11px;
                         horizontal-alignment: center;
@@ -118,6 +133,11 @@ export component PluginsPanel inherits Rectangle {
                     height: 26px;
                     border-radius: 4px;
                     background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: "Close";
+                    accessible-action-default => {
+                        root.close-requested();
+                    }
 
                     Text {
                         text: "×";
@@ -125,6 +145,7 @@ export component PluginsPanel inherits Rectangle {
                         font-size: 16px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
 
                     close-touch := TouchArea {
@@ -251,9 +272,16 @@ export component PluginsPanel inherits Rectangle {
                                     height: 26px;
                                     border-radius: 4px;
                                     background: update-touch.has-hover ? #1177bb : Theme.accent;
+                                    accessible-role: button;
+                                    accessible-label: "Update " + row.name;
+                                    accessible-description: row.update;
+                                    accessible-action-default => {
+                                        root.update-requested(row.id);
+                                    }
 
                                     update-text := Text {
                                         text: "Update";
+                                        accessible-role: none;
                                         color: white;
                                         font-size: 11px;
                                         horizontal-alignment: center;
@@ -274,9 +302,15 @@ export component PluginsPanel inherits Rectangle {
                                     background: toggle-touch.has-hover ? Theme.surface-hover : Theme.surface;
                                     border-width: 1px;
                                     border-color: Theme.border;
+                                    accessible-role: button;
+                                    accessible-label: (row.can-disable ? "Disable " : "Enable ") + row.name;
+                                    accessible-action-default => {
+                                        root.enable-requested(row.id, !row.can-disable);
+                                    }
 
                                     toggle-text := Text {
                                         text: row.can-disable ? "Disable" : "Enable";
+                                        accessible-role: none;
                                         color: Theme.text-primary;
                                         font-size: 11px;
                                         horizontal-alignment: center;
@@ -297,9 +331,15 @@ export component PluginsPanel inherits Rectangle {
                                     background: remove-touch.has-hover ? Theme.surface-hover : Theme.surface;
                                     border-width: 1px;
                                     border-color: Theme.border;
+                                    accessible-role: button;
+                                    accessible-label: "Remove " + row.name;
+                                    accessible-action-default => {
+                                        root.remove-requested(row.id);
+                                    }
 
                                     remove-text := Text {
                                         text: "Remove";
+                                        accessible-role: none;
                                         color: #ff8a8a;
                                         font-size: 11px;
                                         horizontal-alignment: center;

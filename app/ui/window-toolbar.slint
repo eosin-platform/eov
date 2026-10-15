@@ -144,6 +144,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: @image-url("icons/series.svg");
                     tooltip-text: root.show-series-bar ? "Hide Series Bar" : "Show Series Bar";
                     is-active: root.show-series-bar;
+                    checkable: true;
                     clicked => {
                         root.toggle-series-bar-requested();
                     }
@@ -152,6 +153,7 @@ export component WindowToolbar inherits Rectangle {
                 minimap-button := MinimapToolButton {
                     tooltip-text: "Toggle minimap";
                     is-active: root.show-minimap;
+                    checkable: true;
                     clicked => {
                         root.toggle-minimap-requested();
                     }
@@ -161,6 +163,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: root.viewport-lock-enabled ? @image-url("icons/viewport-lock-enabled.svg") : @image-url("icons/viewport-lock-disabled.svg");
                     tooltip-text: "Viewport lock";
                     is-active: root.viewport-lock-enabled;
+                    checkable: true;
                     clicked => {
                         root.toggle-viewport-lock-requested();
                     }
@@ -170,6 +173,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: @image-url("icons/link-slides.svg");
                     tooltip-text: root.slide-link-enabled ? "Unlink panes" : "Link panes with different slides";
                     is-active: root.slide-link-enabled;
+                    checkable: true;
                     clicked => {
                         root.toggle-slide-link-requested();
                     }
@@ -184,6 +188,7 @@ export component WindowToolbar inherits Rectangle {
                         ? "Done adjusting (saves the alignment)"
                         : "Adjust alignment: move one pane alone";
                     is-active: root.alignment-adjust-enabled;
+                    checkable: true;
                     clicked => {
                         root.toggle-alignment-adjust-requested();
                     }
@@ -202,6 +207,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: @image-url("icons/navigate.svg");
                     tooltip-text: "Navigate" + (root.shortcuts.navigate != "" ? " (" + root.shortcuts.navigate + ")" : "");
                     is-active: root.current-tool == ToolType.navigate;
+                    checkable: true;
                     clicked => {
                         root.tool-selected(ToolType.navigate);
                     }
@@ -210,6 +216,7 @@ export component WindowToolbar inherits Rectangle {
                 roi-button := RoiToolButton {
                     tooltip-text: "Region of interest" + (root.shortcuts.roi != "" ? " (" + root.shortcuts.roi + ")" : "");
                     is-active: root.current-tool == ToolType.region-of-interest;
+                    checkable: true;
                     clicked => {
                         root.tool-selected(ToolType.region-of-interest);
                     }
@@ -220,6 +227,7 @@ export component WindowToolbar inherits Rectangle {
                     tooltip-text: "Measure: " + root.measure-mode-label
                         + (root.shortcuts.measure != "" ? " (" + root.shortcuts.measure + "; right-click for more)" : " (right-click for more)");
                     is-active: root.current-tool == ToolType.measure;
+                    checkable: true;
                     clicked => {
                         root.tool-selected(ToolType.measure);
                     }
@@ -240,6 +248,7 @@ export component WindowToolbar inherits Rectangle {
                 metadata-button := MetadataToolButton {
                     tooltip-text: "Toggle metadata HUD";
                     is-active: root.show-metadata;
+                    checkable: true;
                     clicked => {
                         root.toggle-metadata-requested();
                     }
@@ -249,6 +258,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: @image-url("icons/toggle-measure.svg");
                     tooltip-text: "Toggle scale bar";
                     is-active: root.show-scale-bar;
+                    checkable: true;
                     clicked => {
                         root.toggle-scale-bar-requested();
                     }
@@ -276,6 +286,7 @@ export component WindowToolbar inherits Rectangle {
                     icon: "CPU";
                     tooltip-text: "Use CPU renderer";
                     is-active: root.render-mode == RenderMode.cpu;
+                    checkable: true;
                     clicked => {
                         root.render-backend-selected(RenderMode.cpu);
                     }
@@ -287,6 +298,7 @@ export component WindowToolbar inherits Rectangle {
                     tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
                     enabled: root.gpu-rendering-available;
                     is-active: root.render-mode == RenderMode.gpu;
+                    checkable: true;
                     clicked => {
                         if root.gpu-rendering-available {
                             root.render-backend-selected(RenderMode.gpu);
@@ -303,6 +315,17 @@ export component WindowToolbar inherits Rectangle {
                         background: filter-combo-touch.has-hover ? Theme.surface-hover : Theme.surface;
                         border-width: 1px;
                         border-color: root.filter-popup-visible ? Theme.accent : Theme.border;
+                        accessible-role: combobox;
+                        accessible-label: "Filtering mode";
+                        accessible-value: filter-mode-text.text;
+                        accessible-expandable: true;
+                        accessible-expanded: root.filter-popup-visible;
+                        accessible-action-default => {
+                            root.filter-popup-visible = !root.filter-popup-visible;
+                        }
+                        accessible-action-expand => {
+                            root.filter-popup-visible = true;
+                        }
 
                         filter-combo-touch := TouchArea {
                             clicked => {
@@ -315,13 +338,14 @@ export component WindowToolbar inherits Rectangle {
                             padding-right: 6px;
                             spacing: 4px;
 
-                            Text {
+                            filter-mode-text := Text {
                                 text: root.filtering-mode == FilteringMode.bilinear ? "Bilinear" : root.filtering-mode == FilteringMode.trilinear ? "Trilinear" : "Lanczos-3";
                                 color: Theme.text-primary;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 horizontal-stretch: 1;
                                 overflow: elide;
+                                accessible-role: none;
                             }
 
                             Text {
@@ -329,6 +353,7 @@ export component WindowToolbar inherits Rectangle {
                                 color: Theme.text-secondary;
                                 font-size: 10px;
                                 vertical-alignment: center;
+                                accessible-role: none;
                             }
                         }
                     }
@@ -352,6 +377,7 @@ export component WindowToolbar inherits Rectangle {
                     icon-source: btn.icon;
                     tooltip-text: btn.tooltip;
                     is-active: btn.active;
+                    checkable: btn.is-tool || btn.active;
                     enabled: btn.enabled;
                     changed hovered => {
                         if self.hovered {
@@ -397,6 +423,7 @@ export component WindowToolbar inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     height: 20px;
                     image-fit: contain;
+                    accessible-role: none;
                 }
             }
         }
@@ -406,6 +433,11 @@ export component WindowToolbar inherits Rectangle {
             visible: !root.use-native-window-controls;
             background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
+            accessible-role: button;
+            accessible-label: "Minimize window";
+            accessible-action-default => {
+                root.window-minimize();
+            }
 
             minimize-touch := TouchArea {
                 clicked => {
@@ -419,6 +451,7 @@ export component WindowToolbar inherits Rectangle {
                 font-size: 12px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                accessible-role: none;
             }
         }
 
@@ -427,6 +460,11 @@ export component WindowToolbar inherits Rectangle {
             visible: !root.use-native-window-controls;
             background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
+            accessible-role: button;
+            accessible-label: "Maximize window";
+            accessible-action-default => {
+                root.window-maximize();
+            }
 
             maximize-touch := TouchArea {
                 clicked => {
@@ -440,6 +478,7 @@ export component WindowToolbar inherits Rectangle {
                 font-size: 13px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                accessible-role: none;
             }
         }
 
@@ -448,6 +487,11 @@ export component WindowToolbar inherits Rectangle {
             visible: !root.use-native-window-controls;
             background: close-win-touch.has-hover ? #e81123 : transparent;
             border-radius: 0px;
+            accessible-role: button;
+            accessible-label: "Close window";
+            accessible-action-default => {
+                root.window-close();
+            }
 
             close-win-touch := TouchArea {
                 clicked => {

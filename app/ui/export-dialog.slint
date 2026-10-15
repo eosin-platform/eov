@@ -26,12 +26,40 @@ component ExportSlider inherits Rectangle {
     in property <string> value-suffix: "";
     in property <float> display-divisor: 1.0;
     in property <bool> enabled: true;
+    /// What one increment (assistive technology) changes.
+    in property <float> step: (root.max-value - root.min-value) / 20;
     callback changed(float);
     callback released();
 
     height: 32px;
     background: transparent;
     opacity: root.enabled ? 1.0 : 0.4;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: root.display-text;
+    accessible-value-minimum: root.min-value;
+    accessible-value-maximum: root.max-value;
+    accessible-value-step: root.step;
+    accessible-enabled: root.enabled;
+    accessible-action-increment => {
+        if root.enabled {
+            root.changed(max(root.min-value, min(root.max-value, root.value + root.step)));
+            root.released();
+        }
+    }
+    accessible-action-decrement => {
+        if root.enabled {
+            root.changed(min(root.max-value, max(root.min-value, root.value - root.step)));
+            root.released();
+        }
+    }
+    // As typing into the value field.
+    accessible-action-set-value(text) => {
+        if root.enabled {
+            root.changed(max(root.min-value, min(root.max-value, text.to-float() * root.display-divisor)));
+            root.released();
+        }
+    }
 
     property <float> normalized: (value - min-value) / max(max-value - min-value, 0.001);
     property <length> track-left: 0px;
@@ -108,6 +136,7 @@ component ExportSlider inherits Rectangle {
             font-size: 11px;
             horizontal-alignment: center;
             vertical-alignment: center;
+            accessible-role: none;
         }
 
         val-input := TextInput {
@@ -119,6 +148,7 @@ component ExportSlider inherits Rectangle {
             horizontal-alignment: center;
             vertical-alignment: center;
             input-type: InputType.decimal;
+            accessible-label: root.label;
 
             accepted => {
                 root.editing = false;
@@ -158,6 +188,7 @@ component SectionHeader inherits Rectangle {
             source: root.icon-source;
             image-fit: contain;
             colorize: #4da3d9;
+            accessible-role: none;
         }
 
         Text {
@@ -177,6 +208,8 @@ component SectionDivider inherits Rectangle {
 
 component SegmentButton inherits Rectangle {
     in property <string> text;
+    /// The choice it belongs to ("Format"), for assistive technology.
+    in property <string> group;
     in property <bool> active: false;
     out property <bool> hovered: seg-touch.has-hover;
     callback clicked();
@@ -186,6 +219,13 @@ component SegmentButton inherits Rectangle {
     background: root.active ? #4da3d940 : seg-touch.has-hover ? #ffffff15 : transparent;
     border-width: root.active ? 1px : 0px;
     border-color: #4da3d9;
+    accessible-role: radio-button;
+    accessible-label: root.group != "" ? root.group + ": " + root.text : root.text;
+    accessible-checkable: true;
+    accessible-checked: root.active;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     seg-touch := TouchArea {
         clicked => {
@@ -199,6 +239,7 @@ component SegmentButton inherits Rectangle {
         font-size: 10px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -214,6 +255,13 @@ component DpiChip inherits Rectangle {
     background: root.active ? #4da3d940 : chip-touch.has-hover ? #ffffff15 : #ffffff0a;
     border-width: root.active ? 1px : 0px;
     border-color: #4da3d9;
+    accessible-role: radio-button;
+    accessible-label: root.chip-value + " DPI";
+    accessible-checkable: true;
+    accessible-checked: root.active;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     chip-touch := TouchArea {
         clicked => {
@@ -227,6 +275,7 @@ component DpiChip inherits Rectangle {
         font-size: 10px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -251,6 +300,17 @@ component ToggleSwitch inherits Rectangle {
 
     height: 28px;
     opacity: root.enabled ? 1.0 : 0.4;
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
 
     HorizontalLayout {
         padding-left: 4px;
@@ -289,12 +349,15 @@ component ToggleSwitch inherits Rectangle {
             color: root.enabled ? Theme.text-primary : Theme.text-secondary;
             font-size: 11px;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 }
 
 component PickerSwatch inherits Rectangle {
     in property <color> swatch-color;
+    /// The colour's name, for assistive technology.
+    in property <string> name;
     in property <bool> selected: false;
     callback picked(color);
 
@@ -304,6 +367,13 @@ component PickerSwatch inherits Rectangle {
     background: root.swatch-color;
     border-width: root.selected ? 2px : (swatch-ta.has-hover ? 1.5px : 1px);
     border-color: root.selected ? white : (swatch-ta.has-hover ? #ffffffa0 : #ffffff30);
+    accessible-role: button;
+    accessible-label: root.name;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => {
+        root.picked(root.swatch-color);
+    }
 
     swatch-ta := TouchArea {
         clicked => {
@@ -335,6 +405,12 @@ component ColorField inherits Rectangle {
             background: root.current-color;
             border-width: 1px;
             border-color: swatch-touch.has-hover ? #ffffff80 : #ffffff30;
+            accessible-role: button;
+            accessible-label: "Colour";
+            accessible-description: "Opens the colours to choose from";
+            accessible-action-default => {
+                color-popup.show();
+            }
 
             swatch-touch := TouchArea {
                 clicked => {
@@ -348,6 +424,7 @@ component ColorField inherits Rectangle {
             color: #8ea0b2;
             font-size: 11px;
             vertical-alignment: center;
+            accessible-role: none;
         }
 
         Rectangle {
@@ -367,6 +444,7 @@ component ColorField inherits Rectangle {
                 font-size: 10px;
                 horizontal-alignment: right;
                 vertical-alignment: center;
+                accessible-label: "Opacity (%)";
 
                 accepted => {
                     root.opacity-changed(max(0, min(100, self.text.to-float())));
@@ -383,6 +461,7 @@ component ColorField inherits Rectangle {
                 color: #8ea0b2;
                 font-size: 10px;
                 vertical-alignment: center;
+                accessible-role: none;
             }
         }
     }
@@ -417,6 +496,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #E74C3C;
+                        name: "Red";
                         selected: root.current-color == #E74C3C;
                         picked(c) => {
                             root.current-color = c;
@@ -427,6 +507,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #E67E22;
+                        name: "Orange";
                         selected: root.current-color == #E67E22;
                         picked(c) => {
                             root.current-color = c;
@@ -437,6 +518,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #F1C40F;
+                        name: "Yellow";
                         selected: root.current-color == #F1C40F;
                         picked(c) => {
                             root.current-color = c;
@@ -447,6 +529,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2ECC71;
+                        name: "Green";
                         selected: root.current-color == #2ECC71;
                         picked(c) => {
                             root.current-color = c;
@@ -457,6 +540,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #1ABC9C;
+                        name: "Turquoise";
                         selected: root.current-color == #1ABC9C;
                         picked(c) => {
                             root.current-color = c;
@@ -467,6 +551,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #3498DB;
+                        name: "Blue";
                         selected: root.current-color == #3498DB;
                         picked(c) => {
                             root.current-color = c;
@@ -481,6 +566,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #9B59B6;
+                        name: "Purple";
                         selected: root.current-color == #9B59B6;
                         picked(c) => {
                             root.current-color = c;
@@ -491,6 +577,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #E91E8A;
+                        name: "Pink";
                         selected: root.current-color == #E91E8A;
                         picked(c) => {
                             root.current-color = c;
@@ -501,6 +588,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #C0392B;
+                        name: "Dark red";
                         selected: root.current-color == #C0392B;
                         picked(c) => {
                             root.current-color = c;
@@ -511,6 +599,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #27AE60;
+                        name: "Dark green";
                         selected: root.current-color == #27AE60;
                         picked(c) => {
                             root.current-color = c;
@@ -521,6 +610,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2980B9;
+                        name: "Dark blue";
                         selected: root.current-color == #2980B9;
                         picked(c) => {
                             root.current-color = c;
@@ -531,6 +621,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #8E44AD;
+                        name: "Dark purple";
                         selected: root.current-color == #8E44AD;
                         picked(c) => {
                             root.current-color = c;
@@ -545,6 +636,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #FFFFFF;
+                        name: "White";
                         selected: root.current-color == #FFFFFF;
                         picked(c) => {
                             root.current-color = c;
@@ -555,6 +647,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #ECF0F1;
+                        name: "Light grey";
                         selected: root.current-color == #ECF0F1;
                         picked(c) => {
                             root.current-color = c;
@@ -565,6 +658,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #95A5A6;
+                        name: "Grey";
                         selected: root.current-color == #95A5A6;
                         picked(c) => {
                             root.current-color = c;
@@ -575,6 +669,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #7F8C8D;
+                        name: "Dark grey";
                         selected: root.current-color == #7F8C8D;
                         picked(c) => {
                             root.current-color = c;
@@ -585,6 +680,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2C3E50;
+                        name: "Navy";
                         selected: root.current-color == #2C3E50;
                         picked(c) => {
                             root.current-color = c;
@@ -595,6 +691,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #000000;
+                        name: "Black";
                         selected: root.current-color == #000000;
                         picked(c) => {
                             root.current-color = c;
@@ -614,6 +711,7 @@ component ColorField inherits Rectangle {
                         color: #8ea0b2;
                         font-size: 9px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
 
                     Rectangle {
@@ -627,6 +725,7 @@ component ColorField inherits Rectangle {
                         rgb-r-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
+                            accessible-label: "Red (0–255)";
                             text: root.current-color.red;
                             color: #e0e0e0;
                             font-size: 9px;
@@ -647,6 +746,7 @@ component ColorField inherits Rectangle {
                         color: #8ea0b2;
                         font-size: 9px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
 
                     Rectangle {
@@ -660,6 +760,7 @@ component ColorField inherits Rectangle {
                         rgb-g-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
+                            accessible-label: "Green (0–255)";
                             text: root.current-color.green;
                             color: #e0e0e0;
                             font-size: 9px;
@@ -680,6 +781,7 @@ component ColorField inherits Rectangle {
                         color: #8ea0b2;
                         font-size: 9px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
 
                     Rectangle {
@@ -693,6 +795,7 @@ component ColorField inherits Rectangle {
                         rgb-b-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
+                            accessible-label: "Blue (0–255)";
                             text: root.current-color.blue;
                             color: #e0e0e0;
                             font-size: 9px;
@@ -715,6 +818,8 @@ component ColorField inherits Rectangle {
 
 component SmallTextInput inherits Rectangle {
     in property <string> label: "";
+    /// What the number is, for assistive technology.
+    in property <string> name;
     in-out property <float> value: 0;
     callback value-changed(float);
     callback request-preview();
@@ -735,10 +840,12 @@ component SmallTextInput inherits Rectangle {
             color: #8ea0b2;
             font-size: 9px;
             vertical-alignment: center;
+            accessible-role: none;
         }
 
         small-input := TextInput {
             text: Math.round(root.value * 10) / 10;
+            accessible-label: root.name;
             color: #e0e0e0;
             font-size: 10px;
             horizontal-alignment: right;
@@ -781,6 +888,7 @@ component StrokeStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Solid";
+            group: "Stroke";
             active: root.stroke-style == StrokeStyle.solid;
             clicked => {
                 root.style-changed(StrokeStyle.solid);
@@ -791,6 +899,7 @@ component StrokeStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Dashed";
+            group: "Stroke";
             active: root.stroke-style == StrokeStyle.dashed;
             clicked => {
                 root.style-changed(StrokeStyle.dashed);
@@ -801,6 +910,7 @@ component StrokeStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Dotted";
+            group: "Stroke";
             active: root.stroke-style == StrokeStyle.dotted;
             clicked => {
                 root.style-changed(StrokeStyle.dotted);
@@ -810,6 +920,7 @@ component StrokeStyleSelector inherits Rectangle {
 
         if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
             label: "L";
+            name: "Dash length";
             value: root.dash-length;
             value-changed(v) => {
                 root.dash-length-changed(v);
@@ -821,6 +932,7 @@ component StrokeStyleSelector inherits Rectangle {
 
         if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
             label: "G";
+            name: "Gap between dashes";
             value: root.dash-gap;
             value-changed(v) => {
                 root.dash-gap-changed(v);
@@ -832,6 +944,7 @@ component StrokeStyleSelector inherits Rectangle {
 
         if root.stroke-style == StrokeStyle.dotted: SmallTextInput {
             label: "S";
+            name: "Spacing of the dots";
             value: root.dot-spacing;
             value-changed(v) => {
                 root.dot-spacing-changed(v);
@@ -866,6 +979,7 @@ component CapStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Round";
+            group: "Caps";
             active: root.cap-style == CapStyle.round;
             clicked => {
                 root.cap-changed(CapStyle.round);
@@ -876,6 +990,7 @@ component CapStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Square";
+            group: "Caps";
             active: root.cap-style == CapStyle.square;
             clicked => {
                 root.cap-changed(CapStyle.square);
@@ -886,6 +1001,7 @@ component CapStyleSelector inherits Rectangle {
         SegmentButton {
             width: 52px;
             text: "Flat";
+            group: "Caps";
             active: root.cap-style == CapStyle.flat;
             clicked => {
                 root.cap-changed(CapStyle.flat);
@@ -1011,6 +1127,7 @@ export component ExportDialog inherits Rectangle {
                             horizontal-tiling: repeat;
                             vertical-tiling: repeat;
                             image-rendering: pixelated;
+                            accessible-role: none;
                         }
 
                         Image {
@@ -1020,6 +1137,7 @@ export component ExportDialog inherits Rectangle {
                             y: 8px;
                             source: root.preview-info.preview-image;
                             image-fit: contain;
+                            accessible-label: "Export preview";
                         }
                     }
 
@@ -1098,6 +1216,8 @@ export component ExportDialog inherits Rectangle {
 
                             ExportSlider {
                                 horizontal-stretch: 1;
+                                label: "Resolution (DPI)";
+                                step: 10;
                                 value: root.settings.dpi;
                                 min-value: 72;
                                 max-value: 600;
@@ -1172,6 +1292,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Bilinear";
+                                group: "Filtering mode";
                                 active: root.settings.filtering-mode == ExportFilteringMode.bilinear;
                                 clicked => {
                                     root.settings.filtering-mode = ExportFilteringMode.bilinear;
@@ -1182,6 +1303,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Trilinear";
+                                group: "Filtering mode";
                                 active: root.settings.filtering-mode == ExportFilteringMode.trilinear;
                                 clicked => {
                                     root.settings.filtering-mode = ExportFilteringMode.trilinear;
@@ -1192,6 +1314,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Lanczos";
+                                group: "Filtering mode";
                                 active: root.settings.filtering-mode == ExportFilteringMode.lanczos;
                                 clicked => {
                                     root.settings.filtering-mode = ExportFilteringMode.lanczos;
@@ -1213,6 +1336,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Sharpness";
+                            step: 0.05;
                             value: root.settings.sharpness;
                             min-value: 0.0;
                             max-value: 1.0;
@@ -1231,6 +1356,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Gamma";
+                            step: 0.05;
                             value: root.settings.gamma;
                             min-value: 0.2;
                             max-value: 3.0;
@@ -1250,6 +1377,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Brightness";
+                            step: 0.05;
                             value: root.settings.brightness;
                             min-value: -1.0;
                             max-value: 1.0;
@@ -1268,6 +1397,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Contrast";
+                            step: 0.05;
                             value: root.settings.contrast;
                             min-value: 0.2;
                             max-value: 3.0;
@@ -1297,6 +1428,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "None";
+                                group: "Stain normalization";
                                 active: root.settings.stain-normalization == StainNormalization.none;
                                 clicked => {
                                     root.settings.stain-normalization = StainNormalization.none;
@@ -1307,6 +1439,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Macenko";
+                                group: "Stain normalization";
                                 active: root.settings.stain-normalization == StainNormalization.macenko;
                                 clicked => {
                                     root.settings.stain-normalization = StainNormalization.macenko;
@@ -1317,6 +1450,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Vahadane";
+                                group: "Stain normalization";
                                 active: root.settings.stain-normalization == StainNormalization.vahadane;
                                 clicked => {
                                     root.settings.stain-normalization = StainNormalization.vahadane;
@@ -1353,6 +1487,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Hematoxylin intensity";
+                            step: 0.05;
                             value: root.settings.deconv-hematoxylin-intensity;
                             min-value: 0.0;
                             max-value: 3.0;
@@ -1387,6 +1523,8 @@ export component ExportDialog inherits Rectangle {
                         }
 
                         ExportSlider {
+                            label: "Eosin intensity";
+                            step: 0.05;
                             value: root.settings.deconv-eosin-intensity;
                             min-value: 0.0;
                             max-value: 3.0;
@@ -1412,6 +1550,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "None";
+                                group: "Isolated channel";
                                 active: root.settings.deconv-isolated-channel == IsolatedChannel.none;
                                 clicked => {
                                     root.settings.deconv-isolated-channel = IsolatedChannel.none;
@@ -1422,6 +1561,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Hematoxylin";
+                                group: "Isolated channel";
                                 active: root.settings.deconv-isolated-channel == IsolatedChannel.hematoxylin;
                                 clicked => {
                                     root.settings.deconv-isolated-channel = IsolatedChannel.hematoxylin;
@@ -1432,6 +1572,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "Eosin";
+                                group: "Isolated channel";
                                 active: root.settings.deconv-isolated-channel == IsolatedChannel.eosin;
                                 clicked => {
                                     root.settings.deconv-isolated-channel = IsolatedChannel.eosin;
@@ -1497,6 +1638,8 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             ExportSlider {
+                                label: "Measurement line thickness";
+                                step: 0.5;
                                 value: root.settings.measurement-thickness;
                                 min-value: 0.5;
                                 max-value: 10.0;
@@ -1548,6 +1691,8 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             ExportSlider {
+                                label: "Measurement font size";
+                                step: 1;
                                 value: root.settings.measurement-font-size;
                                 min-value: 6;
                                 max-value: 32;
@@ -1621,6 +1766,8 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             ExportSlider {
+                                label: "Region outline thickness";
+                                step: 0.5;
                                 value: root.settings.roi-thickness;
                                 min-value: 0.5;
                                 max-value: 10.0;
@@ -1745,6 +1892,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "JPEG (Smaller)";
+                                group: "Format";
                                 active: root.settings.format == ExportFormat.jpeg;
                                 clicked => {
                                     root.settings.format = ExportFormat.jpeg;
@@ -1755,6 +1903,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "PNG (Lossless)";
+                                group: "Format";
                                 active: root.settings.format == ExportFormat.png;
                                 clicked => {
                                     root.settings.format = ExportFormat.png;
@@ -1765,6 +1914,7 @@ export component ExportDialog inherits Rectangle {
                             SegmentButton {
                                 horizontal-stretch: 1;
                                 text: "TIFF (Lossless)";
+                                group: "Format";
                                 active: root.settings.format == ExportFormat.tiff;
                                 clicked => {
                                     root.settings.format = ExportFormat.tiff;
@@ -1782,6 +1932,8 @@ export component ExportDialog inherits Rectangle {
 
                             ExportSlider {
                                 enabled: root.settings.format == ExportFormat.jpeg;
+                                label: "JPEG quality";
+                                step: 5;
                                 value: root.settings.jpeg-quality;
                                 min-value: 1;
                                 max-value: 100;
@@ -1830,6 +1982,12 @@ export component ExportDialog inherits Rectangle {
                         background: reset-touch.has-hover ? #ffffff15 : transparent;
                         border-width: 1px;
                         border-color: #ffffff1a;
+                        accessible-role: button;
+                        accessible-label: "Reset";
+                        accessible-description: "Restores the default export settings";
+                        accessible-action-default => {
+                            root.reset-requested();
+                        }
 
                         reset-touch := TouchArea {
                             clicked => {
@@ -1839,6 +1997,7 @@ export component ExportDialog inherits Rectangle {
 
                         reset-text := Text {
                             text: "Reset";
+                            accessible-role: none;
                             color: Theme.error;
                             font-size: 12px;
                             font-weight: 500;
@@ -1860,6 +2019,11 @@ export component ExportDialog inherits Rectangle {
                         background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
                         border-width: 1px;
                         border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: "Cancel";
+                        accessible-action-default => {
+                            root.cancel-requested();
+                        }
 
                         cancel-touch := TouchArea {
                             clicked => {
@@ -1869,6 +2033,7 @@ export component ExportDialog inherits Rectangle {
 
                         cancel-text := Text {
                             text: "Cancel";
+                            accessible-role: none;
                             color: Theme.text-primary;
                             font-size: 12px;
                             horizontal-alignment: center;
@@ -1882,6 +2047,11 @@ export component ExportDialog inherits Rectangle {
                         height: 32px;
                         border-radius: 4px;
                         background: export-touch.has-hover ? #1177bb : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: "Export";
+                        accessible-action-default => {
+                            root.export-requested();
+                        }
 
                         export-touch := TouchArea {
                             clicked => {
@@ -1902,10 +2072,12 @@ export component ExportDialog inherits Rectangle {
                                 source: @image-url("icons/export.svg");
                                 image-fit: contain;
                                 colorize: white;
+                                accessible-role: none;
                             }
 
                             Text {
                                 text: "Export";
+                                accessible-role: none;
                                 color: white;
                                 font-size: 12px;
                                 font-weight: 600;
