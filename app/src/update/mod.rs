@@ -4,18 +4,24 @@
 //! embed HTTP or loosely typed TOML logic.
 
 mod app;
+pub mod compat;
 mod homebrew;
+pub mod keys;
 pub mod manifest;
 pub mod network;
-mod plugins;
+pub mod platform;
+pub mod plugins;
 pub mod policy;
 pub mod prompt;
+pub mod registry;
+pub mod signature;
 pub mod transport;
 
-pub use plugins::{
-    OutputFormat as PluginOutputFormat, info as plugin_info, install as plugin_install,
-    list as plugin_list, remove as plugin_remove,
-};
+pub use plugins::OutputFormat as PluginOutputFormat;
+/// Integration points for the plugin host: plugins the user disabled with
+/// `eov plugin disable` must not be loaded.
+#[allow(unused_imports)]
+pub use registry::{disabled_plugins, is_plugin_disabled};
 
 #[derive(Debug, Clone)]
 pub struct ApplicationUpdateOptions {

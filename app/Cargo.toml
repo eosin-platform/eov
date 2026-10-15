@@ -103,7 +103,9 @@ tar = "0.4"
 zstd = { version = "0.13", default-features = false }
 # Random, race-free temporary files and directories for staging.
 tempfile = "3"
-semver = "1"
+# Verification of minisign signatures on release manifests.
+minisign-verify = "0.3"
+semver = { version = "1", features = ["serde"] }
 url = "2"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 # TLS roots for the updater: Mozilla's bundle plus the OS certificate store

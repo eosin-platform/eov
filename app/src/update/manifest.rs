@@ -1,4 +1,19 @@
 //! Typed release manifest parsing and validation.
+//!
+//! Every release publishes a `release.toml` (schema 1):
+//!
+//! - `[manifest]` identifies the kind (`eov` or `plugin`), version and
+//!   repository, and may declare `signature = "minisign"` when a
+//!   `release.toml.minisig` signature is published next to it.
+//! - `[platform.<os>.<arch>]` (and `[platform.linux.appimage|flatpak.<arch>]`)
+//!   tables give each artifact's `version`, `sha256` and immutable `url`.
+//! - eov releases carry the official plugin catalog in `[plugins.<id>]`, which
+//!   pins each plugin's version, `release_tag` and `environment`, and, since
+//!   eov 1.0.1, the SHA-256 of every per-platform plugin artifact in
+//!   `[plugins.<id>.platform.<os>.<arch>]`. Official plugins are therefore
+//!   verified against the (signed) eov catalog, not only against hashes
+//!   published by the plugin repository itself.
+//! - plugin releases carry `[plugin]` metadata (id, name, environment).
 
 use anyhow::{Context, Result, bail};
 use semver::{Version, VersionReq};
@@ -9,6 +24,8 @@ use url::Url;
 /// The first EOV release that publishes the self-update manifest format.
 pub const MIN_SELF_UPDATE_RELEASE: &str = "0.4.5";
 pub const EOV_REPOSITORY: &str = "https://github.com/eosin-platform/eov";
+/// File name of a release manifest asset.
+pub const MANIFEST_FILE: &str = "release.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ManifestMetadata {
@@ -16,6 +33,15 @@ pub struct ManifestMetadata {
     pub kind: String,
     pub version: String,
     pub repository: String,
+    /// `"minisign"` when the release publishes `release.toml.minisig`.
+    #[serde(default)]
+    pub signature: Option<String>,
+}
+
+impl ManifestMetadata {
+    pub fn declares_signature(&self) -> bool {
+        self.signature.is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -27,14 +53,55 @@ pub struct PlatformArtifact {
     pub environment: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+impl PlatformArtifact {
+    /// The artifact's file name (the last URL segment).
+    pub fn file_name(&self) -> Option<&str> {
+        self.url
+            .rsplit('/')
+            .next()
+            .filter(|name| !name.is_empty() && *name != "." && *name != "..")
+    }
+}
+
+/// One official plugin in an eov release's catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfficialPluginCatalogEntry {
-    #[serde(default)]
     pub name: Option<String>,
     pub repository: String,
     pub version: String,
-    #[serde(default)]
     pub description: Option<String>,
+    /// The plugin's eov requirement, copied from its release manifest.
+    pub environment: Option<String>,
+    /// The plugin release tag (defaults to `v<version>`).
+    pub release_tag: Option<String>,
+    /// Per-platform artifacts pinned by the eov release, keyed like
+    /// `platform.linux.x86_64`. Empty for catalogs older than eov 1.0.1.
+    pub artifacts: BTreeMap<String, PlatformArtifact>,
+}
+
+impl OfficialPluginCatalogEntry {
+    /// The plugin release tag this catalog entry refers to.
+    pub fn tag(&self) -> String {
+        self.release_tag
+            .clone()
+            .unwrap_or_else(|| format!("v{}", self.version))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RawCatalogEntry {
+    #[serde(default)]
+    name: Option<String>,
+    repository: String,
+    version: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    environment: Option<String>,
+    #[serde(default)]
+    release_tag: Option<String>,
+    #[serde(default)]
+    platform: RawPlatform,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -78,20 +145,11 @@ impl EovReleaseManifest {
         validate_manifest_metadata(raw.manifest.as_ref(), "eov", &version, EOV_REPOSITORY)?;
         validate_artifacts(&artifacts, EOV_REPOSITORY, &version)?;
 
-        let mut plugins = raw.plugins;
-        for (id, entry) in &mut plugins {
-            if entry.name.is_none() {
-                entry.name = Some(title_case_id(id));
-            }
-            let plugin_version = Version::parse(&entry.version).with_context(|| {
-                format!(
-                    "official plugin '{id}' has invalid version {}",
-                    entry.version
-                )
-            })?;
-            let _ = plugin_version;
-            canonical_repository(&entry.repository)
-                .with_context(|| format!("official plugin '{id}' has invalid repository"))?;
+        let mut plugins = BTreeMap::new();
+        for (id, raw_entry) in raw.plugins {
+            let entry = parse_catalog_entry(&id, raw_entry)
+                .with_context(|| format!("invalid official plugin catalog entry '{id}'"))?;
+            plugins.insert(id, entry);
         }
 
         Ok(Self {
@@ -108,6 +166,56 @@ impl EovReleaseManifest {
             .get(key)
             .with_context(|| format!("release.toml has no artifact [{key}]"))
     }
+
+    /// Whether the manifest declares a published signature.
+    pub fn declares_signature(&self) -> bool {
+        self.metadata
+            .as_ref()
+            .is_some_and(ManifestMetadata::declares_signature)
+    }
+}
+
+fn parse_catalog_entry(id: &str, raw: RawCatalogEntry) -> Result<OfficialPluginCatalogEntry> {
+    let version =
+        Version::parse(&raw.version).with_context(|| format!("invalid version {}", raw.version))?;
+    let repository = canonical_repository(&raw.repository).context("invalid repository")?;
+    if let Some(environment) = &raw.environment {
+        VersionReq::parse(environment)
+            .with_context(|| format!("invalid environment requirement {environment}"))?;
+    }
+    if let Some(tag) = &raw.release_tag
+        && !valid_tag(tag)
+    {
+        bail!("invalid release tag {tag:?}");
+    }
+    let tag = raw
+        .release_tag
+        .clone()
+        .unwrap_or_else(|| format!("v{version}"));
+    let artifacts = raw.platform.into_artifacts();
+    for (key, artifact) in &artifacts {
+        if key.starts_with("platform.linux.appimage") || key.starts_with("platform.linux.flatpak") {
+            bail!("plugin artifacts cannot use the [{key}] application namespace");
+        }
+        if normalize_version(&artifact.version)? != version {
+            bail!("artifact [{key}] has a mismatched version");
+        }
+        validate_sha256(&artifact.sha256).with_context(|| format!("artifact [{key}]"))?;
+        let artifact_tag = validate_artifact_url(&artifact.url, &repository)
+            .with_context(|| format!("invalid URL for artifact [{key}]"))?;
+        if artifact_tag != tag {
+            bail!("artifact [{key}] belongs to release {artifact_tag}, expected {tag}");
+        }
+    }
+    Ok(OfficialPluginCatalogEntry {
+        name: Some(raw.name.unwrap_or_else(|| title_case_id(id))),
+        repository,
+        version: raw.version,
+        description: raw.description,
+        environment: raw.environment,
+        release_tag: raw.release_tag,
+        artifacts,
+    })
 }
 
 impl PluginReleaseManifest {
@@ -225,6 +333,8 @@ pub fn validate_self_update_target(version: &Version) -> Result<()> {
     Ok(())
 }
 
+/// Normalises a GitHub repository URL to `https://github.com/<owner>/<repo>`
+/// (a trailing `/` or `.git` is removed).
 pub fn canonical_repository(repository: &str) -> Result<String> {
     let url =
         Url::parse(repository).with_context(|| format!("invalid repository URL '{repository}'"))?;
@@ -234,20 +344,54 @@ pub fn canonical_repository(repository: &str) -> Result<String> {
     if url.query().is_some() || url.fragment().is_some() {
         bail!("repository URL must not contain a query or fragment: {repository}");
     }
-    let segments: Vec<_> = url.path_segments().into_iter().flatten().collect();
+    let mut segments: Vec<_> = url.path_segments().into_iter().flatten().collect();
+    if segments.last() == Some(&"") {
+        segments.pop();
+    }
     if segments.len() != 2 || segments.iter().any(|segment| segment.is_empty()) {
         bail!("repository must identify exactly one GitHub repository: {repository}");
     }
-    Ok(format!(
-        "https://github.com/{}/{}",
-        segments[0], segments[1]
-    ))
+    let name = segments[1].strip_suffix(".git").unwrap_or(segments[1]);
+    if name.is_empty() {
+        bail!("repository must identify exactly one GitHub repository: {repository}");
+    }
+    Ok(format!("https://github.com/{}/{name}", segments[0]))
 }
 
-/// Validate an artifact URL against the repository that supplied its manifest.
-pub fn validate_artifact_url(url: &str, repository: &str) -> Result<()> {
+/// Whether two repository URLs name the same GitHub repository (GitHub owner
+/// and repository names are case-insensitive).
+pub fn same_repository(left: &str, right: &str) -> bool {
+    match (canonical_repository(left), canonical_repository(right)) {
+        (Ok(left), Ok(right)) => left.eq_ignore_ascii_case(&right),
+        _ => false,
+    }
+}
+
+fn valid_tag(tag: &str) -> bool {
+    !tag.is_empty()
+        && tag.len() <= 255
+        && !tag.starts_with('/')
+        && !tag.ends_with('/')
+        && tag
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+        && !tag
+            .chars()
+            .any(|ch| ch.is_control() || ch.is_whitespace() || "?#%\\".contains(ch))
+}
+
+fn validate_sha256(value: &str) -> Result<()> {
+    if value.len() != 64 || !value.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        bail!("invalid SHA-256 digest {value:?}");
+    }
+    Ok(())
+}
+
+/// Validates an artifact URL against the repository that supplied its
+/// manifest and returns the release tag it points into. Tags may contain
+/// `/` (for example `plugin/v1.0.0`).
+pub fn validate_artifact_url(url: &str, repository: &str) -> Result<String> {
     let expected_repository = canonical_repository(repository)?;
-    let expected = Url::parse(&expected_repository).expect("canonical repository URL");
     let actual = Url::parse(url).with_context(|| format!("invalid artifact URL '{url}'"))?;
     if actual.scheme() != "https" || actual.host_str() != Some("github.com") {
         bail!("artifact URL must use HTTPS GitHub releases: {url}");
@@ -255,26 +399,22 @@ pub fn validate_artifact_url(url: &str, repository: &str) -> Result<()> {
     if actual.query().is_some() || actual.fragment().is_some() {
         bail!("artifact URL must not contain a query or fragment: {url}");
     }
-    if actual.host_str() != expected.host_str()
-        || actual
-            .path_segments()
-            .map(|segments| segments.take(2).collect::<Vec<_>>())
-            != expected
-                .path_segments()
-                .map(|segments| segments.collect::<Vec<_>>())
+    let segments: Vec<_> = actual.path_segments().into_iter().flatten().collect();
+    if segments.len() < 6
+        || !same_repository(
+            &format!("https://github.com/{}/{}", segments[0], segments[1]),
+            &expected_repository,
+        )
     {
         bail!("artifact URL does not belong to repository {expected_repository}: {url}");
     }
-    let segments: Vec<_> = actual.path_segments().into_iter().flatten().collect();
-    if segments.len() != 6
-        || segments[2] != "releases"
-        || segments[3] != "download"
-        || segments[4].is_empty()
-        || segments[5].is_empty()
+    let file = segments[segments.len() - 1];
+    let tag = segments[4..segments.len() - 1].join("/");
+    if segments[2] != "releases" || segments[3] != "download" || file.is_empty() || !valid_tag(&tag)
     {
         bail!("artifact URL is not an immutable GitHub release asset URL: {url}");
     }
-    Ok(())
+    Ok(tag)
 }
 
 pub fn release_manifest_url(repository: &str, tag: Option<&str>) -> Result<String> {
@@ -399,10 +539,8 @@ fn validate_artifacts(
         if normalize_version(&artifact.version)? != *version {
             bail!("artifact [{key}] has a mismatched version");
         }
-        if artifact.sha256.len() != 64 || !artifact.sha256.chars().all(|ch| ch.is_ascii_hexdigit())
-        {
-            bail!("artifact [{key}] has an invalid SHA-256 digest");
-        }
+        validate_sha256(&artifact.sha256)
+            .with_context(|| format!("artifact [{key}] has an invalid SHA-256 digest"))?;
         validate_artifact_url(&artifact.url, repository)
             .with_context(|| format!("invalid URL for artifact [{key}]"))?;
     }
@@ -522,7 +660,7 @@ struct RawReleaseManifest {
     #[serde(default)]
     platform: RawPlatform,
     #[serde(default)]
-    plugins: BTreeMap<String, OfficialPluginCatalogEntry>,
+    plugins: BTreeMap<String, RawCatalogEntry>,
     #[serde(default)]
     plugin: Option<PluginReleaseMetadata>,
 }
@@ -629,6 +767,62 @@ mod tests {
         .unwrap();
         assert_eq!(manifest.plugin_id(), Some("gamepad"));
         assert_eq!(manifest.environment(), Some(">=0.4.1"));
+    }
+
+    #[test]
+    fn catalog_pins_per_platform_plugin_artifacts() {
+        let manifest = EovReleaseManifest::parse(
+            include_str!("../../tests/data/signing/release.toml"),
+            Some(&Version::parse("1.0.1").unwrap()),
+        )
+        .unwrap();
+        assert!(manifest.declares_signature());
+        let gamepad = &manifest.plugins["gamepad"];
+        assert_eq!(gamepad.tag(), "v1.0.1");
+        assert_eq!(gamepad.environment.as_deref(), Some(">=1.0.0, <2.0.0"));
+        assert_eq!(gamepad.artifacts.len(), 6);
+        let linux = &gamepad.artifacts["platform.linux.x86_64"];
+        assert_eq!(linux.file_name(), Some("gamepad-v1.0.1-linux-x86_64.eop"));
+    }
+
+    #[test]
+    fn catalog_rejects_plugin_artifacts_from_another_release_or_repository() {
+        let base = include_str!("../../tests/data/signing/release.toml");
+        let wrong_tag = base.replace(
+            "eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-linux-x86_64.eop",
+            "eov-gamepad-plugin/releases/download/v0.9.0/gamepad-v1.0.1-linux-x86_64.eop",
+        );
+        assert!(EovReleaseManifest::parse(&wrong_tag, None).is_err());
+        let wrong_repository = base.replace(
+            "https://github.com/eosin-platform/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-arm64.eop",
+            "https://github.com/attacker/eov-gamepad-plugin/releases/download/v1.0.1/gamepad-v1.0.1-macos-arm64.eop",
+        );
+        assert!(EovReleaseManifest::parse(&wrong_repository, None).is_err());
+    }
+
+    #[test]
+    fn artifact_urls_may_use_tags_with_slashes() {
+        let tag = validate_artifact_url(
+            "https://github.com/foo/bar/releases/download/plugin/v1.2.0/bar.eop",
+            "https://github.com/Foo/Bar.git",
+        )
+        .unwrap();
+        assert_eq!(tag, "plugin/v1.2.0");
+        assert!(
+            validate_artifact_url(
+                "https://github.com/foo/bar/releases/download/../x/bar.eop",
+                "https://github.com/foo/bar",
+            )
+            .is_err()
+        );
+        assert!(same_repository(
+            "https://github.com/Foo/Bar",
+            "https://github.com/foo/bar.git"
+        ));
+        assert!(!same_repository(
+            "https://github.com/foo/bar",
+            "https://github.com/foo/baz"
+        ));
     }
 
     #[test]

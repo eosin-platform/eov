@@ -5,10 +5,9 @@ use super::manifest::{
     release_manifest_url, release_tag, validate_self_update_target,
 };
 use super::network::{NetworkPermission, ReleaseClient};
-use super::plugins::{
-    self, RegistryReplacement, RemotePackagePlan, RemotePluginRequest, install_verified_stage,
-};
+use super::plugins::{self, PackageFetch, PluginContext, Provenance, StagedPackage};
 use super::prompt::Interaction;
+use super::registry;
 use crate::distribution::{self, Distribution};
 use crate::plugins::discovery::{
     InspectedPluginPackage, inspect_plugin_package, inspect_staged_plugin_package,
@@ -173,7 +172,7 @@ pub fn resolve_plan(
     let app_action = classify_versions(&current_version, &manifest.version);
     let artifact = app_artifact(manifest, distribution)?;
     let local_packages = inspect_packages(plugin_dir)?;
-    let registry = plugins::load_registry(plugin_dir)?;
+    let registry = registry::load(plugin_dir)?;
     let mut plugins = Vec::new();
     for package in local_packages {
         let id = package.manifest.id.clone();
@@ -186,8 +185,13 @@ pub fn resolve_plan(
                 && managed.source == "github"
                 && let Some(repository) = managed.repository.as_deref()
             {
-                match resolve_third_party_target(client, permission, repository, &manifest.version)
-                {
+                match resolve_third_party_target(
+                    client,
+                    permission,
+                    repository,
+                    &id,
+                    &manifest.version,
+                ) {
                     Ok(Some(remote)) => {
                         plugins.push(PluginUpdatePlan {
                             id,
@@ -596,33 +600,54 @@ fn apply_staged_plugins(
     plugin_dir: &Path,
     staged_plugins: &mut Vec<StagedPlugin<'_>>,
 ) -> Result<()> {
+    let _lock = registry::PluginDirLock::acquire(plugin_dir)?;
     for (plugin, stage, sha256) in staged_plugins.drain(..) {
-        let result = install_verified_stage(
-            plugin_dir,
-            &stage,
-            if plugin.official {
-                "official"
-            } else {
-                "github"
-            },
-            plugin.repository.clone(),
-            plugin.release_tag.clone(),
-            &sha256,
-        );
-        if result.is_err() {
-            let _ = fs::remove_file(&stage);
+        let path = tempfile::TempPath::try_from_path(&stage)?;
+        let inspected = inspect_staged_plugin_package(&stage, true)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if !inspected
+            .sha256
+            .as_deref()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(&sha256))
+        {
+            bail!("SHA-256 mismatch for staged plugin {}", plugin.id);
         }
-        result?;
+        let provenance = Provenance {
+            kind: if plugin.official {
+                registry::SOURCE_OFFICIAL
+            } else {
+                registry::SOURCE_GITHUB
+            }
+            .to_string(),
+            repository: plugin.repository.clone(),
+            release_tag: plugin.release_tag.clone(),
+        };
+        plugins::activate_package(
+            plugin_dir,
+            StagedPackage {
+                path,
+                inspected,
+                sha256,
+            },
+            &provenance,
+            None,
+        )?;
     }
     Ok(())
+}
+
+pub(crate) struct RegistryStage {
+    pub(crate) staged: PathBuf,
+    pub(crate) target: PathBuf,
+    pub(crate) backup: PathBuf,
 }
 
 fn build_helper_plugin_transaction(
     plugin_dir: &Path,
     staged_plugins: &[StagedPlugin<'_>],
-) -> Result<(Vec<HelperPluginReplacement>, Option<plugins::RegistryStage>)> {
+) -> Result<(Vec<HelperPluginReplacement>, Option<RegistryStage>)> {
     let mut plugin_replacements = Vec::new();
-    let mut registry_replacements = Vec::new();
+    let mut updated = registry::load(plugin_dir)?;
     for (plugin, stage, sha256) in staged_plugins {
         let superseded = inspect_packages(plugin_dir)?
             .into_iter()
@@ -639,27 +664,36 @@ fn build_helper_plugin_transaction(
             backup: plugin_dir.join(format!(".{}.eop.backup-{}", plugin.id, unique_suffix())),
             remove_after: superseded,
         });
-        registry_replacements.push(RegistryReplacement {
-            id: plugin.id.clone(),
-            source: if plugin.official {
-                "official"
-            } else {
-                "github"
-            }
-            .to_string(),
-            repository: plugin.repository.clone(),
-            release_tag: plugin.release_tag.clone(),
-            version: plugin.target_version.clone().unwrap_or_default(),
-            sha256: sha256.clone(),
-        });
+        updated.plugins.insert(
+            plugin.id.clone(),
+            registry::ManagedPlugin {
+                source: if plugin.official {
+                    registry::SOURCE_OFFICIAL
+                } else {
+                    registry::SOURCE_GITHUB
+                }
+                .to_string(),
+                repository: plugin.repository.clone(),
+                release_tag: plugin.release_tag.clone(),
+                version: plugin.target_version.clone().unwrap_or_default(),
+                sha256: sha256.clone(),
+                file: format!("{}.eop", plugin.id),
+                installed_at: None,
+            },
+        );
     }
-    let registry = if registry_replacements.is_empty() {
+    let registry = if staged_plugins.is_empty() {
         None
     } else {
-        Some(plugins::stage_registry_update(
-            plugin_dir,
-            &registry_replacements,
-        )?)
+        let staged = registry::stage(plugin_dir, &updated)?
+            .into_temp_path()
+            .keep()
+            .context("could not keep the staged registry")?;
+        Some(RegistryStage {
+            staged,
+            target: plugin_dir.join(registry::REGISTRY_FILENAME),
+            backup: plugin_dir.join(format!(".eov-managed-backup-{}.toml", unique_suffix())),
+        })
     };
     Ok((plugin_replacements, registry))
 }
@@ -1012,75 +1046,55 @@ fn requirement_matches(requirement: &str, version: &Version) -> bool {
         .unwrap_or(false)
 }
 
+struct RemotePackagePlan {
+    name: Option<String>,
+    repository: String,
+    release_tag: String,
+    version: Version,
+    environment: Option<String>,
+    artifact: PlatformArtifact,
+}
+
 fn resolve_third_party_target(
     client: &ReleaseClient,
     permission: &NetworkPermission,
     repository: &str,
+    id: &str,
     target_eov: &Version,
 ) -> Result<Option<RemotePackagePlan>> {
-    let mut candidates = Vec::new();
-    if let Ok(latest) = plugins::fetch_remote_plugin_plan(
-        client,
-        permission,
-        RemotePluginRequest {
-            repository,
-            tag: None,
-            expected_id: None,
-            catalog_entry: None,
-            official: false,
-            require_catalog_version: false,
-        },
-    ) {
-        candidates.push(latest);
-    }
-
-    let releases_url = format!("{repository}/releases");
-    let api_url = releases_url.replace("https://github.com/", "https://api.github.com/repos/");
-    let releases = client.get_json(permission, &api_url)?;
-    let Some(releases) = releases.as_array() else {
-        bail!("GitHub releases response for {repository} is not an array");
+    let policy = super::policy::current().clone();
+    let ctx = PluginContext {
+        plugin_dir: PathBuf::new(),
+        system_plugin_dirs: Vec::new(),
+        host: target_eov.clone(),
+        platform: super::platform::Platform::current()?,
+        verifier: super::signature::Verifier::for_build(&policy)?,
+        policy,
+        interaction: Interaction::terminal(true),
+        client: client.clone(),
+        json: false,
     };
-    for release in releases {
-        if release.get("draft").and_then(|value| value.as_bool()) == Some(true)
-            || release.get("prerelease").and_then(|value| value.as_bool()) == Some(true)
-        {
-            continue;
-        }
-        let Some(tag) = release.get("tag_name").and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if candidates
-            .iter()
-            .any(|candidate| candidate.release_tag == tag)
-        {
-            continue;
-        }
-        if let Ok(candidate) = plugins::fetch_remote_plugin_plan(
-            client,
-            permission,
-            RemotePluginRequest {
-                repository,
-                tag: Some(tag),
-                expected_id: None,
-                catalog_entry: None,
-                official: false,
-                require_catalog_version: false,
-            },
-        ) {
-            candidates.push(candidate);
-        }
-    }
-    candidates.retain(|candidate| {
-        if !candidate.version.pre.is_empty() {
-            return false;
-        }
-        candidate
-            .environment
-            .as_deref()
-            .is_some_and(|requirement| requirement_matches(requirement, target_eov))
-    });
-    candidates.sort_by(|left, right| right.version.cmp(&left.version));
-    Ok(candidates.into_iter().next())
+    let Some(resolved) =
+        plugins::resolve_github_compatible(&ctx, permission, repository, id, target_eov)?
+    else {
+        return Ok(None);
+    };
+    let PackageFetch::Download { url, sha256 } = resolved.fetch else {
+        return Ok(None);
+    };
+    Ok(Some(RemotePackagePlan {
+        name: Some(resolved.name),
+        repository: resolved.provenance.repository.unwrap_or_default(),
+        release_tag: resolved.provenance.release_tag.unwrap_or_default(),
+        artifact: PlatformArtifact {
+            version: resolved.version.to_string(),
+            sha256,
+            url,
+            environment: resolved.environment.clone(),
+        },
+        version: resolved.version,
+        environment: resolved.environment,
+    }))
 }
 
 fn print_plan(plan: &UpdatePlan, app_only: bool) {
