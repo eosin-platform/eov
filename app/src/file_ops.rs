@@ -673,8 +673,16 @@ pub fn open_file(
         "Opening {}…",
         display_name(&normalized_path)
     )));
-    // Shows the loading indicator in the pane the slide opens in.
-    crate::update_tabs(ui, &state.read());
+    // Shows the loading indicator in the pane the slide opens in, with the
+    // pane models this function was given (`crate::update_tabs` would
+    // borrow them a second time and panic).
+    update_tabs(
+        ui,
+        &state.read(),
+        pane_render_cache,
+        pane_ui_models,
+        pane_view_model,
+    );
 
     // Opening can take seconds (network shares, MRXS, DICOM): do it, and
     // the thumbnail, on a worker and install the result on the UI thread
