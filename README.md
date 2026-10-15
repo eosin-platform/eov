@@ -161,6 +161,7 @@ installed plugins. On macOS, **Ctrl** below means **⌘**.
 | Arrows (Shift: further) | Pan |
 | 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
 | [, ], Shift+H | Rotate the view 90° left or right, mirror it |
+| Ctrl+L | Link the panes' slides, so they move together (different slides too) |
 | Alt+←, Alt+→ | Back and forward through the pane's views |
 | Ctrl+B, Ctrl+Shift+B | Bookmark the view, list the slide's bookmarks |
 | N, R, D | Navigate, region of interest and measure tools |
