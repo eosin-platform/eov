@@ -74,6 +74,8 @@ pub struct MockLayer {
     pub hidden_panes: std::collections::BTreeSet<PaneId>,
     /// Objects drawn highlighted (`layer.highlight`).
     pub highlighted: Vec<String>,
+    /// The only panes showing the layer (`layer.set_panes`).
+    pub only_panes: Option<Vec<PaneId>>,
 }
 
 /// A surface as the mock host stores it.
@@ -334,6 +336,7 @@ impl MockHost {
                         selection: Vec::new(),
                         hidden_panes: Default::default(),
                         highlighted: Vec::new(),
+                        only_panes: None,
                     },
                 );
                 null
@@ -371,6 +374,11 @@ impl MockHost {
             methods::LAYER_SET_MIN_ZOOM => {
                 let args: MinZoomArgs = parse(args)?;
                 layer_mut(&mut state, &args.layer_id)?.spec.min_zoom = args.min_zoom;
+                null
+            }
+            methods::LAYER_SET_PANES => {
+                let args: PaneFilterArgs = parse(args)?;
+                layer_mut(&mut state, &args.layer_id)?.only_panes = args.panes;
                 null
             }
             methods::LAYER_SET_PANE_VISIBILITY => {

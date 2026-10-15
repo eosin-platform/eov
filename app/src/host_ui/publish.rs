@@ -48,6 +48,8 @@ pub(super) struct Tracker {
     pending_open: Vec<FileId>,
     /// Each file's region of interest at the last frame (`RoiChanged`).
     rois: HashMap<FileId, Option<Rect>>,
+    /// Each pane's display settings at the last frame (`DisplayChanged`).
+    displays: HashMap<u32, eov_plugin_api::protocol::DisplayAdjustments>,
 }
 
 /// How long `FileOpened` may wait for a slide identity.
@@ -526,7 +528,22 @@ impl UiHost {
                     },
                 ))
             })
-            .collect();
+            .collect::<HashMap<u32, eov_plugin_api::protocol::DisplayAdjustments>>();
+        for (pane, display) in &displays {
+            let previous = tracker.displays.insert(*pane, display.clone());
+            if previous.is_some_and(|previous| previous != *display) {
+                events.push((
+                    EventTarget::All,
+                    HostEvent::DisplayChanged {
+                        pane: *pane,
+                        display: display.clone(),
+                    },
+                ));
+            }
+        }
+        tracker
+            .displays
+            .retain(|pane, _| displays.contains_key(pane));
         self.shared.publish(Published {
             snapshot,
             files,

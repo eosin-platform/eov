@@ -131,6 +131,8 @@ pub struct Layer {
     pub hidden_panes: BTreeSet<u32>,
     /// Objects the owner asked to draw highlighted (hover style).
     pub highlighted: BTreeSet<String>,
+    /// The only panes that show the layer (`None`: all).
+    pub only_panes: Option<BTreeSet<u32>>,
 }
 
 impl Layer {
@@ -148,6 +150,7 @@ impl Layer {
             max_image_extent: 0.0,
             hidden_panes: BTreeSet::new(),
             highlighted: BTreeSet::new(),
+            only_panes: None,
         };
         let style = layer.spec.style.clone();
         layer.note_style(&style);
@@ -162,7 +165,17 @@ impl Layer {
 
     /// Whether the layer is shown in the pane with stable id `pane`.
     pub fn visible_in(&self, pane: u32) -> bool {
-        self.spec.visible && !self.hidden_panes.contains(&pane)
+        self.spec.visible && self.shown_in(pane)
+    }
+
+    /// Whether the owner lets the pane with stable id `pane` show the layer
+    /// (its own visibility aside).
+    pub fn shown_in(&self, pane: u32) -> bool {
+        !self.hidden_panes.contains(&pane)
+            && self
+                .only_panes
+                .as_ref()
+                .is_none_or(|panes| panes.contains(&pane))
     }
 
     #[cfg(test)]
@@ -787,6 +800,19 @@ impl OverlayStore {
         })
     }
 
+    /// Shows the layer only in `panes` (`None`: in every pane).
+    pub fn set_panes(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        panes: Option<Vec<u32>>,
+    ) -> Result<(), String> {
+        self.with_layer(owner, layer_id, |layer, _| {
+            layer.only_panes = panes.map(|panes| panes.into_iter().collect());
+            Ok(())
+        })
+    }
+
     /// Shows or hides the layer in one pane.
     pub fn set_pane_visibility(
         &self,
@@ -1079,6 +1105,13 @@ mod tests {
             .set_pane_visibility(&plugin(), "marks", 7, true)
             .unwrap();
         assert_eq!(store.hit_test(in_pane(7), |_| true).len(), 1);
+        // An allow-list also covers panes opened later.
+        store.set_panes(&plugin(), "marks", Some(vec![8])).unwrap();
+        assert!(store.hit_test(in_pane(7), |_| true).is_empty());
+        assert!(store.hit_test(in_pane(9), |_| true).is_empty());
+        assert_eq!(store.hit_test(in_pane(8), |_| true).len(), 1);
+        store.set_panes(&plugin(), "marks", None).unwrap();
+        assert_eq!(store.hit_test(in_pane(9), |_| true).len(), 1);
     }
 
     #[test]

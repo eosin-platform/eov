@@ -1239,6 +1239,12 @@ pub enum HostEvent {
         id: String,
         reason: String,
     },
+    /// How a pane displays its slide changed (see
+    /// [`methods::VIEW_DISPLAY`]).
+    DisplayChanged {
+        pane: PaneId,
+        display: DisplayAdjustments,
+    },
     /// A slide's region of interest was drawn, changed or removed (`None`).
     RoiChanged {
         file_id: FileId,
@@ -1354,6 +1360,9 @@ pub mod methods {
     /// `PaneVisibilityArgs` → `null`. Shows or hides the layer in one pane
     /// (on top of the layer's own visibility).
     pub const LAYER_SET_PANE_VISIBILITY: &str = "layer.set_pane_visibility";
+    /// `PaneFilterArgs` → `null`. Shows the layer only in these panes
+    /// (`None`: in every pane), including panes opened later.
+    pub const LAYER_SET_PANES: &str = "layer.set_panes";
 
     /// `SurfaceSpec` → `SurfaceOpened`
     pub const SURFACE_OPEN: &str = "surface.open";
@@ -1449,6 +1458,7 @@ pub mod event_names {
     pub const CONTEXT_MENU_REQUESTED: &str = "context_menu_requested";
     pub const ROI_CHANGED: &str = "roi_changed";
     pub const HOTKEY_PRESSED: &str = "hotkey_pressed";
+    pub const DISPLAY_CHANGED: &str = "display_changed";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1517,6 +1527,15 @@ pub struct PaneVisibilityArgs {
     pub layer_id: String,
     pub pane: PaneId,
     pub visible: bool,
+}
+
+/// Arguments of [`methods::LAYER_SET_PANES`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PaneFilterArgs {
+    pub layer_id: String,
+    /// The only panes that show the layer; `None` shows it in every pane.
+    #[serde(default)]
+    pub panes: Option<Vec<PaneId>>,
 }
 
 /// How a pane displays its slide (the answer of [`methods::VIEW_DISPLAY`]).

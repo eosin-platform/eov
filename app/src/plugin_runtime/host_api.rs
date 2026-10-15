@@ -340,6 +340,15 @@ impl HostApi {
                 self.push(Command::OverlaysChanged);
                 null
             }
+            methods::LAYER_SET_PANES => {
+                let args: PaneFilterArgs = parse(args)?;
+                self.shared
+                    .overlays
+                    .set_panes(&self.owner, &args.layer_id, args.panes)
+                    .map_err(invalid)?;
+                self.push(Command::OverlaysChanged);
+                null
+            }
             methods::LAYER_SET_PANE_VISIBILITY => {
                 let args: PaneVisibilityArgs = parse(args)?;
                 self.shared

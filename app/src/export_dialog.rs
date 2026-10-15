@@ -111,7 +111,7 @@ fn capture(
         .unwrap_or_default()
         .into_iter()
         .filter(|layer| host_layers || layer.key.owner != Owner::Host)
-        .filter(|layer| pane_uid.is_none_or(|uid| !layer.hidden_panes.contains(&uid)))
+        .filter(|layer| pane_uid.is_none_or(|uid| layer.shown_in(uid)))
         .collect();
     Some(Capture {
         file_id,

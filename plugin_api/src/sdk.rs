@@ -910,6 +910,19 @@ impl Layer {
         )
     }
 
+    /// Shows the layer only in `panes` (`None`: in every pane). Unlike
+    /// [`set_visible_in_pane`](Self::set_visible_in_pane) this also covers
+    /// panes opened later; call it right after creating the layer.
+    pub fn set_panes(&self, panes: Option<Vec<PaneId>>) -> HostResult<()> {
+        self.host.command(
+            methods::LAYER_SET_PANES,
+            &PaneFilterArgs {
+                layer_id: self.layer_id.clone(),
+                panes,
+            },
+        )
+    }
+
     /// Shows or hides the layer in one pane only; the layer's own
     /// visibility still applies.
     pub fn set_visible_in_pane(&self, pane: PaneId, visible: bool) -> HostResult<()> {
