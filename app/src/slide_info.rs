@@ -35,6 +35,11 @@ thread_local! {
     static PANEL: RefCell<Panel> = RefCell::new(Panel::default());
 }
 
+/// The slide the panel shows (or showed last).
+pub(crate) fn shown_file_id() -> Option<i32> {
+    PANEL.with(|panel| panel.borrow().file_id)
+}
+
 /// Opens the panel for the slide behind tab `tab_id`.
 pub(crate) fn open_for_tab(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tab_id: i32) {
     let file_id = state.read().resolve_tab_file_id(tab_id);

@@ -181,6 +181,11 @@ fn number(value: f64) -> String {
     }
 }
 
+/// An objective power to two decimals (`20`, `2.5`, `9.88`).
+fn magnification(power: f64) -> String {
+    number((power * 100.0).round() / 100.0)
+}
+
 /// How the copy's full-resolution level was made from the slide.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum SourceSampling {
@@ -313,7 +318,7 @@ impl CopyMetadata {
             fields.push(("MPP", value));
         }
         if let Some(power) = self.objective_power {
-            fields.push(("Objective power", number(power)));
+            fields.push(("Objective power", magnification(power)));
         }
         if let Some(stain) = &self.stain {
             fields.push(("Stain", stain.clone()));
@@ -404,7 +409,7 @@ impl CopyMetadata {
                 let _ = write!(
                     xml,
                     "<Objective ID=\"Objective:0\" NominalMagnification=\"{}\"/>",
-                    number(power)
+                    magnification(power)
                 );
             }
             xml.push_str("</Instrument>");

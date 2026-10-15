@@ -38,6 +38,7 @@ mod quantify_panel;
 mod recent;
 mod render;
 mod render_pool;
+mod save_copy;
 mod session;
 mod shortcuts;
 mod slide_info;

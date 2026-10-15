@@ -2475,6 +2475,7 @@ pub fn setup_callbacks(
     }
 
     // -- Slide information panel --
+    crate::save_copy::register(ui, &state);
     {
         let state = Arc::clone(&state);
         let ui_weak = ui_weak.clone();

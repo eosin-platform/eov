@@ -199,6 +199,9 @@ pub struct ConvertOptions {
     /// Pixel size (µm per level-0 pixel, x and y) to use instead of the
     /// slide's, e.g. a manual calibration.
     pub mpp_override: Option<(f64, f64)>,
+    /// Threads that read and compress tiles; `None` uses the global rayon
+    /// pool (every core). A viewer leaves some cores to itself.
+    pub threads: Option<usize>,
 }
 
 impl Default for ConvertOptions {
@@ -215,6 +218,7 @@ impl Default for ConvertOptions {
             bigtiff: false,
             overwrite: false,
             mpp_override: None,
+            threads: None,
         }
     }
 }
@@ -540,8 +544,11 @@ fn canonical_target(path: &Path) -> PathBuf {
     }
 }
 
-/// Refuses outputs that cannot or must not be written.
-fn check_output(wsi: &WsiFile, output: &Path, overwrite: bool) -> Result<(), ConvertError> {
+/// Refuses outputs that cannot or must not be written: a folder, a missing
+/// folder, the slide itself (or one of its files), or an existing file
+/// without `overwrite`. [`convert_slide`] checks this too; call it to fail
+/// early.
+pub fn check_output(wsi: &WsiFile, output: &Path, overwrite: bool) -> Result<(), ConvertError> {
     if output.file_name().is_none() {
         return Err(invalid(format!("{} is not a file name", output.display())));
     }
@@ -651,7 +658,15 @@ pub fn convert_slide(
     control.set_total(plan.tiles + plan.associated_images.len() as u64);
 
     let partial = PartialFile::create(&partial_path(output))?;
-    let written = write_copy(&wsi, &plan, options, partial.file(), control)?;
+    let written = match options.threads {
+        Some(threads) => rayon::ThreadPoolBuilder::new()
+            .num_threads(threads.max(1))
+            .thread_name(|index| format!("eov-convert-{index}"))
+            .build()
+            .map_err(|err| ConvertError::Io(io::Error::other(err)))?
+            .install(|| write_copy(&wsi, &plan, options, partial.file(), control))?,
+        None => write_copy(&wsi, &plan, options, partial.file(), control)?,
+    };
     if control.is_cancelled() {
         return Err(ConvertError::Cancelled);
     }

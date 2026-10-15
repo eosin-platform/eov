@@ -42,6 +42,7 @@ import { WindowToolbar } from "window-toolbar.slint";
 import { NotificationsPopup, StatusBar } from "status-bar.slint";
 import { PluginsPanel } from "plugins-panel.slint";
 import { SlideInfoPanel } from "slide-info-panel.slint";
+import { SaveCopyDialog, SaveCopySettings } from "save-copy-dialog.slint";
 import { BookmarkDialog } from "bookmark-dialog.slint";
 import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
@@ -234,6 +235,14 @@ export component AppWindow inherits Window {
     callback slide-info-filter-edited(string);
     callback slide-info-copy-all();
     callback slide-info-copy-row(int);
+    callback slide-info-save-copy();
+
+    // Save a Copy of the Slide (AUDIT §14.3, §14.6)
+    in-out property <bool> save-copy-dialog-visible: false;
+    in-out property <SaveCopySettings> save-copy-settings;
+    callback save-copy-requested(/* tab id */ int);
+    callback save-copy-confirmed();
+    callback save-copy-settings-changed(SaveCopySettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
     in-out property <string> measure-mode-label: "Distance";
@@ -446,6 +455,10 @@ export component AppWindow inherits Window {
         height: 100%;
 
         key-pressed(e) => {
+            if e.text == Key.Escape && root.save-copy-dialog-visible {
+                root.save-copy-dialog-visible = false;
+                accept
+            }
             if e.text == Key.Escape && root.slide-info-visible {
                 root.slide-info-visible = false;
                 accept
@@ -499,6 +512,7 @@ export component AppWindow inherits Window {
             }
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
+                || root.save-copy-dialog-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
                 || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
                 || root.quantify-visible {
@@ -748,6 +762,14 @@ export component AppWindow inherits Window {
                                 label: "Slide Information",
                                 icon: "",
                                 shortcut: root.shortcut-labels.slide-info,
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "save-copy",
+                                label: "Save a Copy of the Slide…",
+                                icon: "",
+                                shortcut: "",
                                 enabled: true,
                                 separator-after: true
                             },
@@ -1143,6 +1165,8 @@ export component AppWindow inherits Window {
                     root.copy-path(root.context-menu-tab-id);
                 } else if id == "slide-info" {
                     root.slide-info-requested(root.context-menu-tab-id);
+                } else if id == "save-copy" {
+                    root.save-copy-requested(root.context-menu-tab-id);
                 } else if id == "split-right" {
                     root.split-right(root.drag-source-pane, root.context-menu-tab-id);
                 }
@@ -1762,6 +1786,23 @@ export component AppWindow inherits Window {
         }
         copy-row-requested(index) => {
             root.slide-info-copy-row(index);
+        }
+        save-copy-requested => {
+            root.slide-info-visible = false;
+            root.slide-info-save-copy();
+        }
+    }
+
+    if root.save-copy-dialog-visible: SaveCopyDialog {
+        settings <=> root.save-copy-settings;
+        save-requested => {
+            root.save-copy-confirmed();
+        }
+        cancel-requested => {
+            root.save-copy-dialog-visible = false;
+        }
+        settings-changed(s) => {
+            root.save-copy-settings-changed(s);
         }
     }
 
