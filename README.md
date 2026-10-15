@@ -544,7 +544,11 @@ Plugins that offer batch commands run without a window over many slides, for coh
 ```bash
 eov batch list                                         # the commands installed plugins offer
 eov batch run example_plugin:tissue-stats cases/ --out results/ --param max_pixels=2000000
+eov batch run eovae:analyze cases/ --out vae/          # per-tile anomaly scores, a heat map, a summary
+eov batch run cellaris:predict cases/ --out markers/ --param markers=all   # per-cell marker means
 ```
+
+The eovae and cellaris plugins document their commands' parameters and outputs in their own READMEs; eovae's `heatmap.png` (one pixel per tile, scale in its summary) opens in the viewer with **Show Heat Map…** (Downsample placement).
 
 Inputs are slide files or folders (searched recursively; the instances of a DICOM series are one slide). Each slide gets a folder of results under `--out`, and `results/batch.json` is the run's manifest, written as it goes: eov's version, the plugin's id, version, package SHA-256 and origin, the command and its parameters, and per slide its id, identity, status, outputs and the plugin's summary (for an analysis plugin: the model and its hash, the resolution read, the device). `--deidentify` names slides by opaque ids and leaves their paths and names out, and parameters that are paths (a model, a runtime) are recorded by their file name only; `--timeout` gives up on a slide after some seconds. The exit code is 1 if a slide failed. Runs are also recorded in the audit log. The plugin uses the host API it has in the window: what needs a window (tools, layers, panels) has no effect.
 
