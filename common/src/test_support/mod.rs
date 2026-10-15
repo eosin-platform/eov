@@ -2,8 +2,17 @@
 //!
 //! [`write_tiff`] produces small, uncompressed TIFF files that OpenSlide opens
 //! with its generic-tiff driver or, with an `Aperio` description, with its
-//! Aperio driver (which adds associated images). Tests use them instead of
-//! real slides so they run everywhere.
+//! Aperio driver (which adds associated images). [`write_ome_tiff`] writes
+//! OME-TIFF for eov's own reader: multichannel or RGB, pyramids, and every
+//! compression it decodes. Tests use them instead of real slides so they
+//! run everywhere.
+
+mod ome;
+
+pub use ome::{
+    OmeChannelSpec, OmeCompression, OmeExtraImage, OmePyramid, OmeSample, OmeTiffSpec,
+    ome_level0_pixel, write_ome_tiff,
+};
 
 use std::fs::File;
 use std::io::{BufWriter, Write};

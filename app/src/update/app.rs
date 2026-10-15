@@ -113,6 +113,21 @@ impl UpdateContext {
             relaunch: true,
         })
     }
+
+    /// The context of an update started from the window: the user agreed
+    /// in a dialog, so nothing is asked on a terminal.
+    pub fn for_window(plugin_dir: &Path) -> Result<Self> {
+        Ok(Self {
+            plugins: PluginContext::for_panel(plugin_dir)?,
+            distribution: distribution::distribution(),
+            updates_dir: crate::paths::updates_dir(),
+            installation: Installation::detect()?,
+            brew: Box::new(SystemRunner),
+            brew_env: BrewEnvironment::from_process(),
+            cargo_env: CargoEnvironment::from_process(),
+            relaunch: true,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +218,19 @@ impl Strategy {
             ),
             Self::NotManaged { reason } => format!("not managed by eov update: {reason}"),
             Self::DisabledByPolicy { reason } => format!("disabled: {reason}"),
+        }
+    }
+
+    /// The strategy's name in the audit log.
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::AppImage { .. } => "appimage",
+            Self::Flatpak { .. } => "flatpak",
+            Self::Cargo { .. } => "cargo",
+            Self::Homebrew { .. } => "homebrew",
+            Self::ReplaceTree { .. } => "replace-tree",
+            Self::NotManaged { .. } => "not-managed",
+            Self::DisabledByPolicy { .. } => "disabled-by-policy",
         }
     }
 
@@ -333,6 +361,95 @@ impl UpdatePlan {
     pub fn is_noop(&self) -> bool {
         !self.changes_app() && !self.changes_plugins()
     }
+
+    /// Executing the plan ends eov: the update helper replaces the
+    /// application after eov exits, then starts it again.
+    pub fn exits_for_helper(&self) -> bool {
+        self.changes_app()
+            && match self.strategy {
+                Strategy::ReplaceTree { .. } => true,
+                Strategy::Cargo { .. } => cfg!(windows),
+                _ => false,
+            }
+    }
+
+    /// The plan as the window shows it before asking (AUDIT §14.4).
+    pub fn summary(&self) -> PlanSummary {
+        let mut lines = vec![
+            format!(
+                "Installed: eov {} ({})",
+                self.current_version, self.distribution
+            ),
+            format!(
+                "Release: eov {} from {} (signature: {})",
+                self.target_version,
+                self.source,
+                self.signature.describe()
+            ),
+        ];
+        if self.changes_app() {
+            lines.push(format!("Method: {}", self.strategy.describe()));
+            if let Some(notes) = &self.release_notes {
+                lines.push(format!("Release notes: {notes}"));
+            }
+        }
+        if let Some(policy) = &self.policy {
+            lines.push(format!("Policy: {policy}"));
+        }
+        let changes: Vec<String> = self
+            .plugins
+            .iter()
+            .filter(|step| step.action.changes() || step.action == PluginAction::Error)
+            .map(|step| match (&step.target, step.action) {
+                (Some(target), action) if action.changes() => {
+                    format!("  {} {} \u{2192} {target}", step.name, step.current)
+                }
+                _ => format!(
+                    "  {} {}: {}",
+                    step.name,
+                    step.current,
+                    step.reason.as_deref().unwrap_or("cannot be updated")
+                ),
+            })
+            .collect();
+        if !changes.is_empty() {
+            lines.push("Plugins:".to_string());
+            lines.extend(changes);
+        }
+        lines.extend(self.notes.iter().map(|note| format!("Note: {note}")));
+        PlanSummary {
+            current: self.current_version.to_string(),
+            target: self.target_version.to_string(),
+            noop: self.is_noop(),
+            app_available: self.action == AppAction::Upgrade,
+            changes_app: self.changes_app(),
+            exits_for_helper: self.exits_for_helper(),
+            plugin_changes: self
+                .plugins
+                .iter()
+                .filter(|step| step.action.changes())
+                .count(),
+            text: lines.join("\n"),
+        }
+    }
+}
+
+/// What the window shows of an [`UpdatePlan`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanSummary {
+    pub current: String,
+    pub target: String,
+    /// Nothing would change.
+    pub noop: bool,
+    /// The release is newer than this eov (whether or not eov update can
+    /// install it here).
+    pub app_available: bool,
+    pub changes_app: bool,
+    /// eov exits so the update helper can finish.
+    pub exits_for_helper: bool,
+    pub plugin_changes: usize,
+    /// The plan, one fact per line.
+    pub text: String,
 }
 
 /// A plan together with the source it was resolved from.
@@ -1020,6 +1137,16 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
     if record.app.is_some() || !record.plugins.is_empty() {
         rollback::save(&ctx.updates_dir, &record)?;
     }
+    if outcome.app == "updated" {
+        crate::audit::record(
+            "eov_updated",
+            serde_json::json!({
+                "from": previous_version,
+                "to": outcome.installed_version,
+                "method": plan.strategy.kind(),
+            }),
+        );
+    }
     Ok(outcome)
 }
 
@@ -1638,6 +1765,15 @@ pub fn rollback(ctx: &mut UpdateContext, plan: RollbackPlan) -> Result<UpdateOut
         }
     }
     rollback::save(&ctx.updates_dir, &swapped)?;
+    crate::audit::record(
+        "eov_rolled_back",
+        serde_json::json!({
+            "from": record.current_version,
+            "to": record.previous_version,
+            "app": outcome.app == "updated",
+            "plugins": swapped.plugins.iter().map(|plugin| &plugin.id).collect::<Vec<_>>(),
+        }),
+    );
     Ok(outcome)
 }
 
@@ -2121,6 +2257,49 @@ mod tests {
             registry::load(&ctx.plugins.plugin_dir).unwrap().plugins["gamepad"].version,
             "1.0.5"
         );
+    }
+
+    #[test]
+    fn the_window_summarises_a_plan_before_asking() {
+        let temp = tempfile::tempdir().unwrap();
+        let transport = MockTransport::new();
+        let mut ctx = context(temp.path(), transport.clone(), Distribution::AppImage);
+        install_official_gamepad(&mut ctx, &transport, temp.path());
+        let image = temp.path().join("eov.AppImage");
+        fs::write(&image, b"old image").unwrap();
+        ctx.installation.appimage = Some(image);
+        serve_release(&transport, temp.path(), "1.0.1", b"new image");
+
+        let summary = plan(&mut ctx, &request()).unwrap().plan.summary();
+        assert!(!summary.noop && summary.changes_app && summary.app_available);
+        assert!(
+            !summary.exits_for_helper,
+            "an AppImage is replaced in place"
+        );
+        assert_eq!(
+            (summary.current.as_str(), summary.target.as_str()),
+            (HOST, "1.0.1")
+        );
+        assert_eq!(summary.plugin_changes, 1);
+        assert!(
+            summary.text.contains("Release: eov 1.0.1"),
+            "{}",
+            summary.text
+        );
+        assert!(summary.text.contains("Method: replace"), "{}", summary.text);
+        assert!(
+            summary.text.contains("1.0.1 \u{2192} 1.0.5"),
+            "the plugin step is listed: {}",
+            summary.text
+        );
+
+        // The release already installed: nothing to ask.
+        let temp = tempfile::tempdir().unwrap();
+        let transport = MockTransport::new();
+        serve_release(&transport, temp.path(), HOST, b"image");
+        let mut ctx = context(temp.path(), transport, Distribution::AppImage);
+        let summary = plan(&mut ctx, &request()).unwrap().plan.summary();
+        assert!(summary.noop && !summary.app_available);
     }
 
     #[test]

@@ -3,11 +3,14 @@
 
 mod audit;
 mod backend;
+mod batch;
 mod blitter;
 mod bookmarks;
 mod cache_budget;
 mod calibration_store;
 mod callbacks;
+mod channel_store;
+mod channels;
 mod cli;
 mod clipboard;
 mod color;
@@ -34,14 +37,17 @@ mod paths;
 mod plugin_runtime;
 mod plugins;
 mod probe;
+mod qc_cli;
 mod quantify_panel;
 mod recent;
 mod render;
 mod render_pool;
+mod save_copy;
 mod scripting;
 mod session;
 mod shortcuts;
 mod slide_info;
+mod slide_link;
 mod state;
 #[cfg(test)]
 mod test_support;
@@ -410,6 +416,8 @@ fn main() -> Result<()> {
 
     ui.run()?;
 
+    // Copies still being written are cancelled, so no partial file is left.
+    save_copy::shutdown();
     // A new eov may take over while this one finishes.
     drop(instance_server);
     info!("Application shutting down");

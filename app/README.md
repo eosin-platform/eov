@@ -5,7 +5,7 @@
 
 `eov` is a lightweight, cross-platform desktop viewer for pyramid-based whole-slide images (WSI). It is built with [Rust](https://www.rust-lang.org/) and [Slint](https://slint.dev/), and opens slides locally through [OpenSlide](https://openslide.org/).
 
-The application is designed for fast inspection without a server or cloud service. It provides smooth pan and zoom, tab and pane layouts, CPU and GPU rendering, image adjustments, stain normalization, color deconvolution, a minimap, a calibrated scale bar, region-of-interest and distance measurement tools, image export, and dataset patch extraction.
+The application is designed for fast inspection without a server or cloud service. It provides smooth pan and zoom, tab and pane layouts, CPU and GPU rendering, image adjustments, stain normalization, color deconvolution, a minimap, a calibrated scale bar, region-of-interest and distance measurement tools, image export, dataset patch extraction, and pyramidal TIFF / OME-TIFF copies of slides, optionally de-identified.
 
 This package installs the `eov` desktop application. It is not a library crate.
 
@@ -53,7 +53,7 @@ An argument that exists is taken as it is, commas included; one that does not bu
 
 `eov register-file-types` makes the file manager offer eov for slide files and use it for `eov://` links, for the current user: the registry on Windows, `~/.local/share` on Linux (for a `cargo install` or the AppImage). `eov unregister-file-types` undoes it. The macOS app and the Flatpak declare their file types themselves.
 
-The command-line interface also provides inspection and dataset utilities:
+The command-line interface also provides inspection, conversion and dataset utilities:
 
 ```text
 eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
@@ -63,6 +63,7 @@ eov config-path
 eov paths [--json]
 eov register-file-types|unregister-file-types [--dry-run]
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov convert <INPUT> <OUTPUT> [--region X,Y,W,H] [--level N | --mpp UM] [--compression jpeg|deflate] [--quality Q] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 eov update [--release <VERSION>] [--app-only] [--from <DIR>] [--rollback] [--dry-run] [--json] [--allow-network] [-y]
 eov plugin ls|list [--json] [--allow-network]
 eov plugin install|add <SOURCE> [--force] [--dry-run] [--json] [--allow-network] [-y]
@@ -76,6 +77,8 @@ eov plugin gc
 eov call <METHOD> [PARAMS] [--out <FILE>]
 eov script-endpoint [--json]
 ```
+
+`eov convert` (and **Save a Copy of the Slide…** in the tab menu) writes a tiled, pyramidal TIFF or OME-TIFF that eov, OpenSlide, QuPath and libvips read, with the slide's pixel size, objective power, stain and ICC profile. `--deidentify` leaves out the label, macro and thumbnail images and every property but the geometry, pixel size, objective power and stain; it does not remove text or marks inside the scanned image itself. See the [repository README](https://github.com/eosin-platform/eov#converting-and-de-identifying-slides) for details.
 
 Useful options include:
 

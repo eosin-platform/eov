@@ -1,8 +1,8 @@
 //! An append-only record of what eov ran with (AUDIT §14.6), for research
 //! reproducibility: each session's eov version and plugins (id, version,
 //! package SHA-256, origin, state), and every plugin install, update,
-//! removal, enabling or disabling and application update, from the window
-//! or the command line.
+//! removal, enabling or disabling and every application update or
+//! rollback, from the window or the command line.
 //!
 //! It is `<data>/audit.jsonl`: one JSON object per line with `time` (UTC,
 //! RFC 3339), `unix` (seconds) and `event`. It names no slide paths. When it

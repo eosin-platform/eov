@@ -24,6 +24,8 @@ path = "src/lib.rs"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # Streaming export encoders (PNG pHYs/text chunks; Deflate for TIFF strips)
 png = "0.18"
+# Decodes TIFF heat maps (and exported TIFFs in tests).
+tiff = "0.10"
 flate2 = "1"
 # Font rendering for overlays
 ab_glyph = "0.2"
@@ -46,6 +48,12 @@ csv = "1"
 sha2 = "0.10"
 # Platform directories (see `paths`)
 dirs = "6"
+# OME-TIFF reader (see `ome_tiff`): OME-XML, and the TIFF codecs eov
+# decodes itself (Deflate comes from `flate2` above).
+roxmltree = "0.21"
+weezl = "0.1"
+zune-jpeg = "0.5"
+zstd = { version = "0.13", default-features = false }
 
 [build-dependencies]
 pkg-config = "0.3"
@@ -55,8 +63,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
 # Validates the canonical WGSL shipped in `processing::wgsl`.
 naga = { version = "29", features = ["wgsl-in"] }
-# Decodes exported TIFFs in tests.
-tiff = "0.10"
 
 [features]
 default = []

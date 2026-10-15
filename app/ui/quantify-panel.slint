@@ -3,105 +3,7 @@
 
 import { Theme } from "theme.slint";
 import { ChoiceItem, ResultRow } from "types.slint";
-
-component Chip inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected;
-    callback clicked();
-
-    width: label.preferred-width + 18px;
-    height: 24px;
-    border-radius: 12px;
-    border-width: 1px;
-    border-color: root.selected ? Theme.accent : Theme.border;
-    background: root.selected ? Theme.accent : touch.has-hover ? Theme.surface-hover : transparent;
-
-    label := Text {
-        text: root.text;
-        color: root.selected ? white : Theme.text-primary;
-        font-size: 11px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-component NumberField inherits Rectangle {
-    in property <string> label;
-    in-out property <string> text;
-    callback edited(string);
-
-    width: 120px;
-    height: 44px;
-
-    VerticalLayout {
-        spacing: 3px;
-
-        Text {
-            text: root.label;
-            color: Theme.text-secondary;
-            font-size: 10px;
-        }
-
-        Rectangle {
-            height: 24px;
-            border-radius: 4px;
-            border-width: 1px;
-            border-color: input.has-focus ? Theme.accent : Theme.border;
-            background: #0a0c10;
-
-            input := TextInput {
-                x: 6px;
-                width: parent.width - 12px;
-                height: parent.height;
-                text <=> root.text;
-                color: Theme.text-primary;
-                font-size: 12px;
-                vertical-alignment: center;
-                single-line: true;
-                edited => {
-                    root.edited(self.text);
-                }
-            }
-        }
-    }
-}
-
-component Button inherits Rectangle {
-    in property <string> text;
-    in property <bool> primary: false;
-    in property <bool> enabled: true;
-    callback clicked();
-
-    min-width: label.preferred-width + 16px;
-    height: 28px;
-    border-radius: 4px;
-    background: !root.enabled ? Theme.surface
-        : root.primary ? (touch.has-hover ? #1177bb : Theme.accent)
-        : (touch.has-hover ? Theme.surface-hover : Theme.surface);
-    border-width: root.primary ? 0px : 1px;
-    border-color: Theme.border;
-
-    label := Text {
-        text: root.text;
-        color: !root.enabled ? Theme.text-secondary : root.primary ? white : Theme.text-primary;
-        font-size: 12px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    touch := TouchArea {
-        enabled: root.enabled;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
+import { Chip, NumberField, PanelButton } from "panel-controls.slint";
 
 export component QuantifyPanel inherits Rectangle {
     in property <string> title;
@@ -314,7 +216,7 @@ export component QuantifyPanel inherits Rectangle {
                     spacing: 8px;
                     alignment: end;
 
-                    Button {
+                    PanelButton {
                         text: "Copy Results";
                         enabled: root.results.length > 0;
                         clicked => {
@@ -322,7 +224,7 @@ export component QuantifyPanel inherits Rectangle {
                         }
                     }
 
-                    Button {
+                    PanelButton {
                         text: root.running ? "Measuring…" : "Quantify";
                         primary: true;
                         enabled: !root.running;

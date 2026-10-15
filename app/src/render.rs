@@ -925,6 +925,8 @@ pub(crate) fn update_and_render(
     let (completed_cpu_frame, cpu_jobs_pending, render_backend) = {
         let mut state = state.write();
         begin_color_frame(&mut state);
+        // Panes linked to the focused one follow it (Phase 3 #5).
+        crate::slide_link::sync_views(&mut state);
         let (completed_cpu_frame, cpu_jobs_pending) = apply_completed_cpu_renders(&mut state);
         let filtered_frame = apply_gpu_filter_results(&mut state);
         begin_cache_frame(ui, &state, tile_cache);

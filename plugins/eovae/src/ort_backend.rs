@@ -115,11 +115,130 @@ pub fn runtime_candidates(plugin_root: &Path, configured: Option<&Path>) -> Vec<
 #[derive(Clone, Debug)]
 struct Runtime {
     path: PathBuf,
+    /// "1.28.3", from the runtime's build information.
+    version: Option<String>,
+}
+
+/// The oldest ONNX Runtime eovae runs with (its minor version; 1.x).
+const MIN_RUNTIME_MINOR: u32 = 22;
+
+/// Where `ort` looks for `path`: a relative name next to the executable
+/// first, as `ort` does.
+fn resolve_like_ort(path: &Path) -> PathBuf {
+    match std::env::current_exe() {
+        Ok(exe) if path.is_relative() => exe
+            .parent()
+            .map(|dir| dir.join(path))
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| path.to_path_buf()),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// Opens a candidate without `ort` and checks that it is ONNX Runtime and
+/// new enough: the resolved path and its version. `ort` 2.0.0-rc.13 can
+/// load only once per process and keeps a failed load as if it had
+/// succeeded (with an empty library), so it is only ever given a library
+/// that passed this check.
+fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), String> {
+    let path = resolve_like_ort(path);
+    // SAFETY: opening a library runs its initialisers, as loading it would;
+    // `OrtGetApiBase` and `GetVersionString` are ONNX Runtime's stable C API,
+    // take no arguments, and the version string is static and copied before
+    // the handle is released.
+    let version = unsafe {
+        let library =
+            libloading::Library::new(&path).map_err(|e| format!("it could not be opened: {e}"))?;
+        let get_api_base: libloading::Symbol<
+            unsafe extern "system" fn() -> *const ort::sys::OrtApiBase,
+        > = library
+            .get(b"OrtGetApiBase")
+            .map_err(|_| "it is not ONNX Runtime (it has no OrtGetApiBase)".to_string())?;
+        let base = get_api_base();
+        if base.is_null() {
+            return Err("it is not ONNX Runtime (OrtGetApiBase returned nothing)".to_string());
+        }
+        let version = ((*base).GetVersionString)();
+        (!version.is_null()).then(|| {
+            std::ffi::CStr::from_ptr(version)
+                .to_string_lossy()
+                .into_owned()
+        })
+    };
+    if let Some(version) = &version
+        && runtime_too_old(version)
+    {
+        return Err(format!(
+            "it is ONNX Runtime {version}, older than 1.{MIN_RUNTIME_MINOR}"
+        ));
+    }
+    Ok((path, version))
+}
+
+fn runtime_too_old(version: &str) -> bool {
+    let mut parts = version.split('.').map(|part| part.parse::<u32>().ok());
+    match (parts.next().flatten(), parts.next().flatten()) {
+        (Some(1), Some(minor)) => minor < MIN_RUNTIME_MINOR,
+        (Some(0), _) => true,
+        _ => false,
+    }
+}
+
+/// The runtime's own version (`OrtGetApiBase()->GetVersionString()`), read
+/// from the library ort has just loaded from `path`.
+fn library_version(path: &Path) -> Option<String> {
+    // SAFETY: `path` names the ONNX Runtime library that is already loaded,
+    // so this opens the same library again; `OrtGetApiBase` and
+    // `GetVersionString` are its stable C API, and the version string is
+    // static and copied before the handle is released.
+    unsafe {
+        let library = libloading::Library::new(path).ok()?;
+        let get_api_base: libloading::Symbol<
+            unsafe extern "system" fn() -> *const ort::sys::OrtApiBase,
+        > = library.get(b"OrtGetApiBase").ok()?;
+        let base = get_api_base();
+        if base.is_null() {
+            return None;
+        }
+        let version = ((*base).GetVersionString)();
+        if version.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(version)
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+/// The version in ONNX Runtime's build information
+/// (`ORT Build Info: git-branch=rel-1.28.3, git-commit-id=…`): the release
+/// branch's number, or the branch and commit for other builds.
+fn version_of(build_info: &str) -> Option<String> {
+    let field = |name: &str| {
+        build_info
+            .split(',')
+            .filter_map(|part| part.split_once('='))
+            .find(|(key, _)| key.trim().ends_with(name))
+            .map(|(_, value)| value.trim().to_string())
+    };
+    let branch = field("git-branch")?;
+    match branch.strip_prefix("rel-") {
+        Some(version) => Some(version.to_string()),
+        None => Some(match field("git-commit-id") {
+            Some(commit) => format!("{branch} ({commit})"),
+            None => branch,
+        }),
+    }
 }
 
 pub struct OrtBackend {
     plugin_root: PathBuf,
     runtime: Mutex<Option<Runtime>>,
+    /// Why `ort` itself failed to load a checked library: it cannot try
+    /// again in this process.
+    spent: Mutex<Option<String>>,
     cuda_notes: Mutex<Option<Vec<String>>>,
 }
 
@@ -138,19 +257,52 @@ impl OrtBackend {
         if let Some(runtime) = slot.as_ref() {
             return Ok(runtime.clone());
         }
+        let mut spent = self.spent.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(reason) = spent.as_ref() {
+            return Err(reason.clone());
+        }
         let mut attempts = Vec::new();
         for candidate in runtime_candidates(&self.plugin_root, configured) {
-            let result = catch_unwind(AssertUnwindSafe(|| ort::init_from(&candidate)));
-            match result {
+            let (path, checked_version) =
+                match catch_unwind(AssertUnwindSafe(|| check_runtime(&candidate))) {
+                    Ok(Ok(checked)) => checked,
+                    Ok(Err(reason)) => {
+                        attempts.push(format!("{}: {reason}", candidate.display()));
+                        continue;
+                    }
+                    Err(payload) => {
+                        attempts.push(format!(
+                            "{}: opening it crashed ({})",
+                            candidate.display(),
+                            panic_text(payload.as_ref())
+                        ));
+                        continue;
+                    }
+                };
+            // The one try `ort` gets in this process.
+            let result = catch_unwind(AssertUnwindSafe(|| ort::init_from(&path)));
+            let failure = match result {
                 Ok(Ok(builder)) => {
                     builder.with_name("eovae").commit();
-                    let runtime = Runtime { path: candidate };
+                    let version = checked_version
+                        .or_else(|| library_version(&path))
+                        .or_else(|| catch_unwind(ort::info).ok().and_then(version_of));
+                    let runtime = Runtime {
+                        path: candidate,
+                        version,
+                    };
                     *slot = Some(runtime.clone());
                     return Ok(runtime);
                 }
-                Ok(Err(error)) => attempts.push(error.to_string()),
-                Err(payload) => attempts.push(panic_text(payload.as_ref())),
-            }
+                Ok(Err(error)) => error.to_string(),
+                Err(payload) => format!("loading it crashed ({})", panic_text(payload.as_ref())),
+            };
+            let reason = format!(
+                "ONNX Runtime at {} could not be loaded: {failure}. Restart eov to try again.",
+                path.display()
+            );
+            *spent = Some(reason.clone());
+            return Err(reason);
         }
         Err(format!(
             "ONNX Runtime (1.22 or newer) was not found. Install it, set {ORT_LIB_ENV} to the library, or choose it under Model → Runtime. Tried: {}",
@@ -376,6 +528,7 @@ impl Backend for OrtBackend {
         Self {
             plugin_root: plugin_root.to_path_buf(),
             runtime: Mutex::new(None),
+            spent: Mutex::new(None),
             cuda_notes: Mutex::new(None),
         }
     }
@@ -445,6 +598,14 @@ impl Backend for OrtBackend {
             Some(runtime) => format!("ONNX Runtime: {}", runtime.path.display()),
             None => "ONNX Runtime is loaded with the first model.".to_string(),
         }
+    }
+
+    fn runtime_version(&self) -> Option<String> {
+        self.runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .and_then(|runtime| runtime.version.clone())
     }
 }
 
@@ -608,6 +769,48 @@ fn collect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_information_names_the_version() {
+        assert_eq!(
+            version_of(
+                "ORT Build Info: git-branch=rel-1.19.0, git-commit-id=26250ae, build type=Release"
+            )
+            .as_deref(),
+            Some("1.19.0")
+        );
+        assert_eq!(
+            version_of(
+                "ORT Build Info: git-branch=HEAD, git-commit-id=0d68ff6, build type=Release"
+            )
+            .as_deref(),
+            Some("HEAD (0d68ff6)")
+        );
+        assert_eq!(version_of("something else"), None);
+        // A file that is not ONNX Runtime has no version.
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join(library_names()[0]);
+        std::fs::write(&fake, b"not a library").unwrap();
+        assert_eq!(library_version(&fake), None);
+    }
+
+    #[test]
+    fn runtimes_are_checked_before_ort_sees_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_library = dir.path().join("libonnxruntime.so");
+        std::fs::write(&not_a_library, b"not a library").unwrap();
+        let reason = check_runtime(&not_a_library).unwrap_err();
+        assert!(reason.contains("could not be opened"), "{reason}");
+        assert!(check_runtime(&dir.path().join("missing.so")).is_err());
+        assert!(runtime_too_old("1.21.1"));
+        assert!(!runtime_too_old("1.22.0"));
+        assert!(!runtime_too_old("1.28.3"));
+        assert!(
+            !runtime_too_old("2.0.0"),
+            "a later major version is not refused"
+        );
+        assert!(!runtime_too_old("HEAD"), "an unknown version is tried");
+    }
 
     #[test]
     fn candidates_prefer_explicit_paths_then_the_package_then_the_system() {

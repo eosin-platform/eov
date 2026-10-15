@@ -58,8 +58,14 @@ const IDENTITY_WAIT: Duration = Duration::from_secs(5);
 /// Reads plugin pixel requests on the plugin's thread. `WsiFile` clones
 /// share the slide's self-healing handle, so no host lock is involved and a
 /// bad region read by a plugin cannot poison the viewer (PLG-11, WSI-1).
-struct FileReader {
+pub(crate) struct FileReader {
     wsi: WsiFile,
+}
+
+impl FileReader {
+    pub(crate) fn new(wsi: WsiFile) -> Self {
+        Self { wsi }
+    }
 }
 
 impl SlideReader for FileReader {
@@ -126,11 +132,31 @@ pub(crate) fn finish_alpha(pixels: &mut [u8], background: u32) {
 }
 
 pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
-    let props = file.wsi.properties();
+    wsi_file_info(
+        FileId::from(file.id),
+        &file.path,
+        &file.filename,
+        &file.wsi,
+        calibration(file),
+        identity,
+    )
+}
+
+/// What plugins learn about a slide (also for `eov batch`, which has no
+/// [`OpenFile`]).
+pub(crate) fn wsi_file_info(
+    file_id: FileId,
+    path: &std::path::Path,
+    filename: &str,
+    wsi: &WsiFile,
+    calibration: Calibration,
+    identity: Option<&str>,
+) -> FileInfo {
+    let props = wsi.properties();
     FileInfo {
-        file_id: FileId::from(file.id),
-        path: file.path.to_string_lossy().into_owned(),
-        filename: file.filename.clone(),
+        file_id,
+        path: path.to_string_lossy().into_owned(),
+        filename: filename.to_string(),
         width: props.width,
         height: props.height,
         levels: props
@@ -143,8 +169,8 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
                 downsample: level.downsample,
             })
             .collect(),
-        mpp_x: calibration(file).mpp_x,
-        mpp_y: calibration(file).mpp_y,
+        mpp_x: calibration.mpp_x,
+        mpp_y: calibration.mpp_y,
         objective_power: props.objective_power,
         vendor: props.vendor.clone(),
         scan_date: props.scan_date.clone(),
@@ -155,14 +181,17 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
             height: b.height as f64,
         }),
         identity: identity.map(str::to_string),
-        associated_images: file
-            .wsi
+        associated_images: wsi
             .associated_images()
             .iter()
             .map(|image| image.name.clone())
             .collect(),
         has_icc_profile: props.icc_profile_size.is_some(),
         stain: props.stain.clone(),
+        channel_names: wsi
+            .channels()
+            .map(|set| set.channels.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
     }
 }
 
@@ -250,6 +279,9 @@ impl UiHost {
             .insert(file_id, identity.clone());
         if let Some(key) = &identity {
             self.restore_host_annotations(file_id, key);
+            if let Ok(id) = i32::try_from(file_id) {
+                self.restore_heatmap(id, key);
+            }
         }
         self.publish_now();
         self.announce_open(file_id);
@@ -386,6 +418,10 @@ impl UiHost {
             tracker.pending_open.retain(|pending| pending != id);
             self.shared.remove_reader(*id);
             self.store.remove_file(*id);
+            if let Ok(file_id) = i32::try_from(*id) {
+                self.heatmap_file_closed(file_id);
+                self.tissue_qc_file_closed(file_id);
+            }
             self.undo.borrow_mut().clear_file(*id);
             tracker.properties.remove(id);
             events.push((EventTarget::All, HostEvent::FileClosed { file_id: *id }));

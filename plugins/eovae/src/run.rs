@@ -25,8 +25,12 @@ pub struct RunSpec {
     pub contract: Contract,
     pub level: u32,
     pub downsample: f64,
-    /// µm per pixel of the analysed level, if calibrated (informative).
+    /// µm per pixel fed to the model, if calibrated (informative).
     pub level_mpp: Option<f64>,
+    /// Level-0 pixels per model pixel along x and y when tiles are
+    /// resampled to the model's µm/px (VAE-15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resampled: Option<[f64; 2]>,
     pub device: String,
     pub precision: String,
 }
@@ -53,6 +57,7 @@ impl RunSpec {
             level: grid.level,
             downsample: grid.downsample,
             level_mpp,
+            resampled: grid.resampled().then_some([grid.scale_x, grid.scale_y]),
             device: engine.device.key().to_string(),
             precision: engine.precision.clone(),
         }
@@ -60,7 +65,7 @@ impl RunSpec {
 
     /// The cache key: a hash of everything above except informative fields.
     pub fn key(&self) -> String {
-        let keyed = serde_json::json!({
+        let mut keyed = serde_json::json!({
             "plugin": self.plugin_version,
             "contract_version": self.contract_version,
             "model": self.model_sha256,
@@ -74,6 +79,11 @@ impl RunSpec {
             "device": self.device,
             "precision": self.precision,
         });
+        // Resampled tiles are other pixels (keys of tiles read as they are
+        // stay as they were).
+        if let Some([x, y]) = self.resampled {
+            keyed["resampled"] = serde_json::json!(format!("{x:.6},{y:.6}"));
+        }
         let digest = Sha256::digest(keyed.to_string().as_bytes());
         digest[..16].iter().map(|b| format!("{b:02x}")).collect()
     }
@@ -111,6 +121,7 @@ mod tests {
             level: grid.level,
             downsample: grid.downsample,
             level_mpp: Some(0.25),
+            resampled: None,
             device: Device::Cpu.key().into(),
             precision: "fp32".into(),
         }

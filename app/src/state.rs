@@ -545,6 +545,8 @@ pub struct AppState {
     pub series_content_revision: u64,
     /// Whether viewport navigation is mirrored across panes showing the same file.
     pub viewport_lock_enabled: bool,
+    /// Linked navigation across panes with different slides.
+    pub slide_link: crate::slide_link::SlideLink,
     /// Whether a new frame should be rendered as soon as possible
     pub needs_render: bool,
     /// Whether the render loop timer is currently running
@@ -586,6 +588,7 @@ impl AppState {
             series_revision: 0,
             series_content_revision: 0,
             viewport_lock_enabled: false,
+            slide_link: Default::default(),
             needs_render: true,
             render_loop_running: false,
             filter_chain: Arc::new(crate::plugin_runtime::filters::FilterChain::default()),

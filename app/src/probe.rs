@@ -1,10 +1,11 @@
 //! `eov probe`: everything eov knows about a slide, as text or JSON
 //! (SH-17): size, pyramid levels, pixel size, objective, stain, scanned
-//! bounds and regions, ICC profile, quickhash, associated images and every
-//! OpenSlide property.
+//! bounds and regions, ICC profile, quickhash, the slide identity eov keys
+//! per-slide data by, associated images, the channels of multichannel
+//! slides and every property.
 
 use anyhow::Result;
-use eov_common::{SlideBounds, WsiFile, format_optional_decimal};
+use eov_common::{SlideBounds, WsiFile, format_decimal, format_optional_decimal};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -25,6 +26,9 @@ struct Report {
     comment: Option<String>,
     /// `openslide.quickhash-1`.
     quickhash: Option<String>,
+    /// The key eov and its plugins store this slide's data under
+    /// (annotations, bookmarks, measurements, heat maps).
+    identity: Option<String>,
     /// The non-empty region (`openslide.bounds-*`).
     bounds: Option<Bounds>,
     /// Scanned regions (`openslide.region[i].*`).
@@ -36,7 +40,74 @@ struct Report {
     tile_size: u32,
     levels: Vec<Level>,
     associated_images: Vec<AssociatedImage>,
+    /// The channels of a multichannel slide (fluorescence, multiplex), as
+    /// eov composites them on open; `None` for colour slides.
+    channels: Option<Channels>,
     properties: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+struct Channels {
+    /// The stored sample type (`uint8`, `uint16`, `float32`, ...).
+    sample_type: String,
+    /// Bits actually used, when the file says (e.g. 12 of 16).
+    significant_bits: Option<u32>,
+    /// Focal planes and time points in the file; eov shows the first.
+    size_z: u64,
+    size_t: u64,
+    channels: Vec<Channel>,
+}
+
+#[derive(Debug, Serialize)]
+struct Channel {
+    index: usize,
+    name: String,
+    fluor: Option<String>,
+    emission_nm: Option<f64>,
+    excitation_nm: Option<f64>,
+    /// `#rrggbb`, the colour the channel is drawn in.
+    color: String,
+    visible: bool,
+    /// The display window: `min` is drawn black, `max` in full colour.
+    min: f64,
+    max: f64,
+    gamma: f64,
+    /// The smallest and largest values of a low-resolution level.
+    value_min: f64,
+    value_max: f64,
+}
+
+fn channels(wsi: &WsiFile) -> Option<Channels> {
+    let set = wsi.channels()?;
+    let display = wsi.channel_display()?;
+    Some(Channels {
+        sample_type: set.sample_type.name().to_string(),
+        significant_bits: set.significant_bits,
+        size_z: set.size_z,
+        size_t: set.size_t,
+        channels: set
+            .channels
+            .iter()
+            .zip(&display.channels)
+            .map(|(info, settings)| {
+                let [r, g, b] = settings.color;
+                Channel {
+                    index: info.index,
+                    name: info.name.clone(),
+                    fluor: info.fluor.clone(),
+                    emission_nm: info.emission_nm,
+                    excitation_nm: info.excitation_nm,
+                    color: format!("#{r:02x}{g:02x}{b:02x}"),
+                    visible: settings.visible,
+                    min: settings.min,
+                    max: settings.max,
+                    gamma: settings.gamma,
+                    value_min: info.stats.min,
+                    value_max: info.stats.max,
+                }
+            })
+            .collect(),
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +165,10 @@ fn report(wsi: &WsiFile) -> Report {
         stain: properties.stain.clone(),
         comment: properties.comment.clone(),
         quickhash: properties.quickhash1.clone(),
+        identity: wsi
+            .identity()
+            .ok()
+            .map(|identity| identity.key().to_string()),
         bounds: properties.bounds.as_ref().map(Bounds::from),
         regions: properties.regions.iter().map(Bounds::from).collect(),
         background_color: format!("#{r:02x}{g:02x}{b:02x}"),
@@ -122,6 +197,7 @@ fn report(wsi: &WsiFile) -> Report {
                 icc_profile_size: image.icc_profile_size,
             })
             .collect(),
+        channels: channels(wsi),
         properties: wsi.property_map().clone(),
     }
 }
@@ -174,6 +250,7 @@ fn print_plain(report: &Report) {
             .unwrap_or_else(|| "none".to_string())
     );
     println!("Quickhash: {}", or_unknown(report.quickhash.as_deref()));
+    println!("Identity: {}", or_unknown(report.identity.as_deref()));
     println!("Base tile size: {}", report.tile_size);
     println!();
     println!("Levels:");
@@ -193,6 +270,27 @@ fn print_plain(report: &Report) {
             tile(level.tile_height),
             level.preferred_tile_size
         );
+    }
+    if let Some(channels) = &report.channels {
+        println!();
+        println!(
+            "Channels: {} ({})",
+            channels.channels.len(),
+            channels.sample_type
+        );
+        for channel in &channels.channels {
+            println!(
+                "  C{}: {} colour {} window {}-{} values {}-{}{}",
+                channel.index,
+                channel.name,
+                channel.color,
+                format_decimal(channel.min),
+                format_decimal(channel.max),
+                format_decimal(channel.value_min),
+                format_decimal(channel.value_max),
+                if channel.visible { "" } else { " (hidden)" }
+            );
+        }
     }
     println!();
     println!("Associated images:");
@@ -255,6 +353,41 @@ mod tests {
             "{images:?}"
         );
         assert!(json["quickhash"].is_string());
+        assert!(
+            json["identity"]
+                .as_str()
+                .is_some_and(|key| key.starts_with("eov-slide-")),
+            "{}",
+            json["identity"]
+        );
         assert_eq!(json["background_color"], "#ffffff");
+        assert!(json["channels"].is_null());
+    }
+
+    #[test]
+    fn reports_list_the_channels_of_multichannel_slides() {
+        use eov_common::test_support::{OmeTiffSpec, write_ome_tiff};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.ome.tif");
+        let spec = OmeTiffSpec::channels(
+            64,
+            64,
+            32,
+            2,
+            &[("DAPI", [0, 0, 255]), ("CD3", [0, 255, 0])],
+        );
+        write_ome_tiff(&path, &spec, |c, x, _| f64::from(x) * (c + 1) as f64).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        let json = serde_json::to_value(report(&wsi)).unwrap();
+        let channels = &json["channels"];
+        assert_eq!(channels["sample_type"], "uint16");
+        assert_eq!(channels["size_z"], 1);
+        let list = channels["channels"].as_array().unwrap();
+        let names: Vec<&str> = list.iter().map(|c| c["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["DAPI", "CD3"]);
+        assert_eq!(list[0]["color"], "#0000ff");
+        assert_eq!(list[1]["visible"], true);
+        assert_eq!(list[1]["value_max"], 126.0);
+        assert!(list[1]["max"].as_f64().unwrap() > list[1]["min"].as_f64().unwrap());
     }
 }

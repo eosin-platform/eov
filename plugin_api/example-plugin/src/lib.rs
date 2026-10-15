@@ -6,7 +6,9 @@
 //! - a point tool whose markers live in an overlay layer and can be undone,
 //! - a context-menu item and a HUD button,
 //! - a CPU viewport filter,
-//! - persisted settings and a background job with progress.
+//! - persisted settings and a background job with progress,
+//! - a batch command for headless runs over many slides (`eov batch run
+//!   example_plugin:tissue-stats SLIDES --out DIR`).
 //!
 //! Build it with `cargo build --release -p eov-example-plugin` and package
 //! `plugin.toml`, `ui/` and the library into a tar archive named
@@ -22,6 +24,7 @@ const SIDEBAR_BUTTON: &str = "toggle_sidebar";
 const INVERT_BUTTON: &str = "toggle_invert";
 const POINT_TOOL: &str = "place_marker";
 const FILTER: &str = "invert";
+const BATCH_COMMAND: &str = "tissue-stats";
 /// Layer ids are unique per plugin across slides, hence one id per file.
 fn layer_id(file_id: FileId) -> String {
     format!("markers-{file_id}")
@@ -208,6 +211,69 @@ impl ExamplePlugin {
     }
 }
 
+/// Reads the finest level of `file` with at most `max_pixels` pixels and
+/// measures its tissue: pixels with some colour that are neither glass nor
+/// near-black.
+fn tissue_stats(
+    host: &Host,
+    run_id: &str,
+    file: &FileInfo,
+    max_pixels: u64,
+) -> Result<Value, String> {
+    let level = file
+        .levels
+        .iter()
+        .find(|level| level.width * level.height <= max_pixels)
+        .or(file.levels.last())
+        .ok_or("the slide has no levels")?;
+    let (width, height) = (level.width as u32, level.height as u32);
+    const CHUNK: u32 = 2048;
+    let chunks = width.div_ceil(CHUNK) * height.div_ceil(CHUNK);
+    let (mut tissue, mut total, mut sum) = (0u64, 0u64, [0u64; 3]);
+    let mut done = 0;
+    for y0 in (0..height).step_by(CHUNK as usize) {
+        for x0 in (0..width).step_by(CHUNK as usize) {
+            let image = host
+                .read_region(RegionRequest {
+                    file_id: file.file_id,
+                    level: level.level,
+                    x: (f64::from(x0) * level.downsample) as i64,
+                    y: (f64::from(y0) * level.downsample) as i64,
+                    width: CHUNK.min(width - x0),
+                    height: CHUNK.min(height - y0),
+                    background: 0xFFFF_FFFF,
+                })
+                .map_err(|error| error.to_string())?;
+            for px in image.data.as_chunks::<4>().0 {
+                total += 1;
+                let (max, min) = (px[0].max(px[1]).max(px[2]), px[0].min(px[1]).min(px[2]));
+                if max >= 40 && u32::from(max - min) * 255 >= 18 * u32::from(max) {
+                    tissue += 1;
+                    for c in 0..3 {
+                        sum[c] += u64::from(px[c]);
+                    }
+                }
+            }
+            done += 1;
+            let _ = host.batch_progress(run_id, Some(done as f32 / chunks as f32), None);
+        }
+    }
+    let mean = |c: usize| {
+        if tissue == 0 {
+            0.0
+        } else {
+            sum[c] as f64 / tissue as f64
+        }
+    };
+    Ok(json!({
+        "level": level.level,
+        "downsample": level.downsample,
+        "pixels": total,
+        "tissue_fraction": if total == 0 { 0.0 } else { tissue as f64 / total as f64 },
+        "mean_tissue_rgb": [mean(0), mean(1), mean(2)],
+    }))
+}
+
 impl Plugin for ExamplePlugin {
     fn create(host: Host, init: PluginInit) -> Result<Self, String> {
         host.add_toolbar_button(ToolbarButtonSpec {
@@ -239,6 +305,16 @@ impl Plugin for ExamplePlugin {
             name: "Invert".into(),
             priority: 0,
             enabled: invert,
+        })
+        .map_err(String::from)?;
+        host.register_batch_command(BatchCommandSpec {
+            command_id: BATCH_COMMAND.into(),
+            description: "Tissue fraction and mean tissue colour of each slide".into(),
+            params: vec![BatchParam {
+                name: "max_pixels".into(),
+                description: "Read the finest level with at most this many pixels".into(),
+                default: json!(4_000_000),
+            }],
         })
         .map_err(String::from)?;
         Ok(Self {
@@ -322,6 +398,50 @@ impl Plugin for ExamplePlugin {
                     state.sidebar = None;
                     let _ = self.host.set_toolbar_button_active(SIDEBAR_BUTTON, false);
                 }
+            }
+            HostEvent::BatchRun {
+                run_id,
+                command_id,
+                file,
+                output_dir,
+                params,
+            } if command_id == BATCH_COMMAND => {
+                // The analysis runs on a thread of its own; the host waits
+                // for `finish_batch`.
+                let host = self.host.clone();
+                std::thread::spawn(move || {
+                    let max_pixels = params
+                        .get("max_pixels")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(4_000_000);
+                    let result = match tissue_stats(&host, &run_id, &file, max_pixels) {
+                        Ok(stats) => {
+                            let path = std::path::Path::new(&output_dir).join("tissue.json");
+                            match std::fs::write(&path, stats.to_string()) {
+                                Ok(()) => BatchFinishArgs {
+                                    run_id,
+                                    ok: true,
+                                    outputs: vec!["tissue.json".into()],
+                                    summary: stats,
+                                    ..Default::default()
+                                },
+                                Err(error) => BatchFinishArgs {
+                                    run_id,
+                                    ok: false,
+                                    message: Some(format!("could not write tissue.json: {error}")),
+                                    ..Default::default()
+                                },
+                            }
+                        }
+                        Err(error) => BatchFinishArgs {
+                            run_id,
+                            ok: false,
+                            message: Some(error),
+                            ..Default::default()
+                        },
+                    };
+                    let _ = host.finish_batch(result);
+                });
             }
             _ => {}
         }

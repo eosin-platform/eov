@@ -9,6 +9,7 @@
 | **Toolchain used** | Rust 1.98.1 · OpenSlide 4.0.0 · Linux x86_64 |
 
 ## Contents
+0. [Status after the 1.0 improvement pass](#status-after-the-10-improvement-pass)
 1. [Summary](#1-summary)
 2. [Architectural assessment](#2-architectural-assessment) (cross-cutting, with a proposed plugin-API redesign)
 3. [Plugin API and host-side plugin runtime](#3-plugin-api-and-host-side-plugin-runtime) (`PLG-*`)
@@ -52,6 +53,322 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ---
 
+## Status after the 1.0 improvement pass
+
+*Updated 2026-10-15, at `eov` master @ `21b6894`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+
+The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
+
+| Area | Findings | Fixed | Partly fixed | In progress | Not fixed |
+|---|---|---|---|---|---|
+| Plugin API and host runtime | 19 | 19 | – | – | – |
+| Core WSI, tiles, cache | 15 | 15 | – | – | – |
+| Rendering | 10 | 9 | – | 1 | – |
+| Colour, export, dataset | 20 | 20 | – | – | – |
+| App state and interaction | 16 | 16 | – | – | – |
+| Shell, CLI, config, docs | 20 | 19 | 1 | – | – |
+| Install, update, packaging | 15 | 15 | – | – | – |
+| Annotations plugin | 18 | 15 | 3 | – | – |
+| eovae plugin | 17 | 16 | 1 | – | – |
+| Cellaris plugin | 11 | 10 | 1 | – | – |
+| Gamepad plugin | 8 | 8 | – | – | – |
+| **Total** | **169** | **162** | **6** | **1** | **0** |
+
+### What is still open
+
+- **RND-10** (in progress): All items but vsync and the residual `set_view` latency.
+- **SH-10** (partly fixed): The UI no longer freezes. Copying under Wayland in the Flatpak still needs arboard's `wayland-data-control` feature, whose crates were not available offline.
+- **ANN-8** (partly fixed): Slides are matched by eov identity, the legacy fingerprint and a fallback key, and orphans can be relinked. Copies of the same file still share annotations.
+- **ANN-12** (partly fixed): Incremental overlays and a bounded, filterable sidebar; the per-class tally is recomputed (prefiltered by bounding box), not cached.
+- **ANN-18** (partly fixed): All but persisting the collapsed state of layers.
+- **VAE-15** (partly fixed): All but resampling to the model's exact training µm/px: eovae uses the nearest pyramid level and warns about a mismatch.
+- **CEL-9** (partly fixed): A research-use badge, model card, colour-blind-safe palette and domain flags are in place; uncertainty is not calibrated unless the model carries a threshold, and display windows are not adjustable.
+- §14.1 **Rotation and flip** (partly): Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented.
+- §14.1 **Colour management (ICC)** (in progress)
+- §14.1 **HiDPI, trackpad pinch/pan, pixel-level view above 1:1** (partly): HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress.
+- §14.1 **Case and slide organisation** (partly): The series bar filters and sorts, and lists a DICOM series once; there is no grouping by case or accession.
+- §14.2 **Cell counting tool** (partly): Per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS); no CPS helper.
+- §14.2 **Interchange formats** (partly): GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported.
+- §14.2 **External analysis results as overlays** (partly): Detections import as GeoJSON annotations into the retained overlay store; aligned heat-map images cannot be loaded.
+- §14.3 **Multichannel fluorescence / OME-TIFF** (in progress)
+- §14.3 **Philips iSyntax** (not done): Needs a reader outside OpenSlide (e.g. libisyntax).
+- §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
+- §14.3 **Z-stacks / focal planes** (not done)
+- §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
+- §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
+- §14.4 **Accessibility** (in progress): Final sweep after the other changes land.
+- §14.4 **Localisation** (in progress): Final sweep after the other changes land.
+- §14.5 **Tissue detection and QC** (partly): Tissue masks drive fit-to-tissue, dataset filtering and stain fits; no blur, fold or pen-mark detection.
+- §14.5 **Stain normalisation as a workflow** (in progress)
+- §14.5 **Dataset extraction** (partly): Target MPP, tissue fraction, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG and JPEG only (no HDF5 or zarr).
+- §14.5 **Headless and batch mode** (in progress): `eov batch run` with run manifests; the eovae and cellaris commands are in progress.
+- §14.5 **Scripting** (in progress)
+- §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
+
+### Per-finding status
+
+| Id | Sev. | Finding | Status | Where | Notes |
+|---|---|---|---|---|---|
+| PLG-1 | Critical | The binary contract is never version- or layout-checked, and both vtables cross the bou… | Fixed | `4782359` `0c35191` | abi_stable prefix-type module with a layout check, ABI 1.0, vtables behind references; incompatible plugins are refused before any call. |
+| PLG-2 | Critical | Deterministic UI deadlock: filter-state sync calls into plugins while holding the `AppS… | Fixed | `a334f35` `383b52c` | Hot fix first; then no plugin is ever called with a host lock held. |
+| PLG-3 | High | Plugin callbacks generally run with host locks held, and the host API is blocking and n… | Fixed | `0c35191` `383b52c` | Events are queued and delivered with no host locks held; host calls are non-blocking JSON methods on published snapshots. |
+| PLG-4 | High | The newest plugin (cellaris) cannot load: `environment` became mandatory with no migrat… | Fixed | `383b52c` `19e8598` | Manifest 1.0 with a bounded `eov` requirement; cellaris and the README fixed. |
+| PLG-5 | High | The overlay API copies every object every frame and on every pointer move, under the wr… | Fixed | `29d9d53` `383b52c` | Retained host-owned overlay store with incremental upserts, an R-tree, culling and level of detail. |
+| PLG-6 | High | Plugin GPU viewport filters are not implemented; filters that declare GPU support get a… | Fixed | `e05defc` `7b55c1c` | The grayscale stand-in and the GPU filter interop are gone; filters run on worker threads off the UI thread. |
+| PLG-7 | Medium | A panic on either side of the boundary aborts the whole process | Fixed | `4782359` `0c35191` | Every FFI call is wrapped in `catch_unwind` on both sides; a panicking plugin is quarantined. |
+| PLG-8 | Medium | The host hard-codes behaviour for specific plugin ids and "magic" property names | Fixed | `0c35191` `383b52c` | No plugin ids or magic property names in the host. |
+| PLG-9 | Medium | Annotation-specific concepts are baked into the ABI and host state, and generic primiti… | Fixed | `383b52c` | Generic tools, shapes, layers and overlay primitives; annotation vocabulary moved to the plugin. |
+| PLG-10 | Medium | Shared UI slots (sidebar, modal, confirmation, undo/redo) have no ownership | Fixed | `0c35191` `383b52c` | Sidebar, modal, confirmation and undo entries have owners. |
+| PLG-11 | Medium | `read_region` holds the global lock during slide I/O, has no size cap, silently shifts… | Fixed | `0c35191` | `read_region` runs off the lock with a size cap, explicit coordinates and documented alpha. |
+| PLG-12 | Medium | Filter chain: global ids, random order, missed state changes, unchecked buffer contract | Fixed | `0c35191` | Filters are namespaced, ordered, revisioned and buffer-checked. |
+| PLG-13 | Medium | Plugin ids are not validated, yet they build native-library paths and are parsed as del… | Fixed | `0c35191` `383b52c` | Ids are validated before they build paths. |
+| PLG-14 | Medium | Anything in the plugin directory is loaded without consent or an integrity check | Fixed | `0c35191` `53fa2fc` | Packages need registry provenance and a verified hash; unknown libraries are not loaded. |
+| PLG-15 | Medium | The runtime Slint UI plumbing is fragile and polling-based | Fixed | `383b52c` | Surfaces are pushed by events, not polled. |
+| PLG-16 | Medium | Cross-plugin ordering is nondeterministic, and polygon hit-testing selects the bottom-m… | Fixed | `0c35191` `29d9d53` | Deterministic plugin order; hit-testing picks the top-most shape. |
+| PLG-17 | Medium | Tool ownership between host and plugins is unarbitrated and invisible to plugins | Fixed | `29d9d53` `383b52c` | The host arbitrates tools and sends `ToolActivated`/`ToolDeactivated`; custom tools claim only the keys they list (457f8d8). |
+| PLG-18 | Low | Smaller host-runtime defects | Fixed | `0c35191` `383b52c` |  |
+| PLG-19 | Low | Dead or misleading API surface and documentation | Fixed | `383b52c` `888197b` |  |
+| WSI-1 | High | OpenSlide errors are sticky: one bad tile silently disables a handle, with no detection… | Fixed | `e63268a` `f89b416` `3af61fd` `e3ffc91` | One shared, self-healing handle per slide; bad regions are confirmed by probing. |
+| WSI-2 | High | Transparent, premultiplied OpenSlide pixels are never composited onto a background | Fixed | `3124643` |  |
+| WSI-3 | High | Thumbnails decode the *entire* coarsest level, on the UI thread, while holding the `App… | Fixed | `f6d966c` `de3a598` | Bounded thumbnails on workers. |
+| WSI-4 | High | The tile cache is effectively FIFO, and the default budget is smaller than one frame's… | Fixed | `553d3eb` `ca8c70f` `de3a598` | Real LRU with frames and pins; the budget covers a frame. |
+| WSI-5 | Medium | The visible-tile range is clamped with the 256-px grid instead of the level's real tile… | Fixed | `a156d21` |  |
+| WSI-6 | Medium | The trilinear LOD bias is applied in level-index units, so 4× pyramids switch to a much… | Fixed | `acf8f36` |  |
+| WSI-7 | Medium | The CPU samplers use a top-left pixel convention, while the GPU and the overlays use pi… | Fixed | `0b4dd4c` |  |
+| WSI-8 | Medium | Lanczos-3, the export default, aliases when minifying, seams at tile borders, and is slow | Fixed | `0b4dd4c` | Separable, anti-aliased Lanczos. |
+| WSI-9 | Medium | Up to 18 OpenSlide handles per slide, each with a private ~32 MB cache, and the native… | Fixed | `f89b416` `a156d21` |  |
+| WSI-10 | Medium | `visible_tiles` keeps the first 4096 tiles in row-major order and logs a warning on eve… | Fixed | `a156d21` `9873544` | Synthetic low-resolution levels for flat and shallow slides. |
+| WSI-11 | Medium | Lock-order inversion between `stats` and `current_bytes` deadlocks the tile cache | Fixed | `553d3eb` |  |
+| WSI-12 | Medium | `blitter::reproject_frame` is a safe public function that does unchecked indexing witho… | Fixed | `0b4dd4c` |  |
+| WSI-13 | Medium | The slide fingerprint, used as the key for annotations and eovae results, is weak and o… | Fixed | `3b413ef` | Format-aware `SlideIdentity` covering every file of multi-file formats. |
+| WSI-14 | Medium | `openslide.bounds-*` and `openslide.region[i]` are ignored | Fixed | `064bec8` |  |
+| WSI-15 | Low | Other core defects | Fixed | `064bec8` `bc84fef` `811c588` |  |
+| RND-1 | High | The render loop never goes idle in the default Trilinear mode, or while an ROI exists | Fixed | `152370b` `ad6219b` |  |
+| RND-2 | High | GPU tile texture arrays hold fewer tiles than a single frame needs; the overflow is sil… | Fixed | `0e95988` |  |
+| RND-3 | High | Rendering ignores the HiDPI scale factor, so imagery is half-resolution on Retina and 2… | Fixed | `33c0775` |  |
+| RND-4 | High | eov cannot start without a GPU-backed Vulkan adapter (Windows/Linux) or Metal (macOS);… | Fixed | `20bff5f` | The software renderer draws the window when no GPU adapter is usable, and the user is told why. |
+| RND-5 | Medium | Stale tile requests are never cancelled, and request priority is lost | Fixed | `ad6219b` |  |
+| RND-6 | Medium | CPU-only plugin filters quietly move the GPU backend onto a slow single-threaded CPU path | Fixed | `3756cde` |  |
+| RND-7 | Medium | GPU memory grows without bound, and there is no wgpu error or device-lost handling | Fixed | `0e95988` |  |
+| RND-8 | Medium | Tile-loader threads poll, run per file, and are joined on the UI thread | Fixed | `de3a598` |  |
+| RND-9 | Medium | CPU render jobs are keyed by pane index, so inserting or removing a pane orphans them | Fixed | `3756cde` |  |
+| RND-10 | Low | Smaller rendering defects | **In progress** | `dff6415` `474f8e8` | All items but vsync and the residual `set_view` latency. |
+| CLR-1 | High | Stain normalisation is re-fitted from whatever is on screen, per pane, every time a til… | Fixed | `e5ab235` `140f8ed` `7b55c1c` | Stain vectors are fitted once per slide from stored levels. |
+| CLR-2 | High | The tissue mask lets glass background into the fit, so glass-dominated views get recolo… | Fixed | `e5ab235` |  |
+| CLR-3 | High | Deconvolution after normalisation applies the *source* inverse to pixels that are alrea… | Fixed | `e5ab235` `140f8ed` |  |
+| CLR-4 | High | Any non-default deconvolution slider recolours everything that is not pure H or E | Fixed | `e5ab235` |  |
+| CLR-5 | Medium | CPU and GPU output are not "matched" (contrary to README:115 and :171) | Fixed | `6bdd1cb` `140f8ed` | One canonical pipeline; the GPU shaders match it. |
+| CLR-6 | Medium | The fitted stain matrix is never sanity-checked | Fixed | `e5ab235` |  |
+| CLR-7 | Medium | Stain fitting and the per-pixel passes are expensive, single-threaded and on the UI thread | Fixed | `e5ab235` |  |
+| CLR-8 | Medium | The H&E model is applied to IHC slides, turning DAB brown into eosin pink | Fixed | `e5ab235` `bee393f` | IHC slides use an H-DAB model. |
+| CLR-9 | Medium | The "Adjustments" indicator ignores stain normalisation and deconvolution | Fixed | `c5a942a` |  |
+| EXP-1 | High | High-DPI exports silently drop full-resolution tiles beyond the first 4096 | Fixed | `38475b0` `bbe4d29` | Exports render in uncapped, cancellable bands. |
+| EXP-2 | Medium | Export (preview and final) runs synchronously on the UI thread, with unbounded memory | Fixed | `38475b0` `bbe4d29` |  |
+| EXP-3 | Medium | Export ignores the JPEG quality setting and writes no resolution metadata | Fixed | `38475b0` | JPEG quality honoured; DPI, µm/px and processing provenance written. |
+| EXP-4 | Medium | The export dialog's RGB fields show values ×255, and editing one corrupts the other cha… | Fixed | `bbe4d29` |  |
+| EXP-5 | Low | Other export defects | Fixed | `38475b0` `bbe4d29` |  |
+| DS-1 | Critical | In a multi-slide run, every slide after the first is read through the *first* slide's O… | Fixed | `81325f0` |  |
+| DS-2 | High | Slides with the same file stem overwrite each other's tiles | Fixed | `81325f0` |  |
+| DS-3 | Medium | A run is all-or-nothing, metadata is written only at the end, and exit codes are wrong | Fixed | `bb7fd46` `8c53025` | Isolated, resumable runs with correct exit codes. |
+| DS-4 | Medium | Parameters are unbounded: a tiny stride or a huge tile size aborts the process | Fixed | `bb7fd46` |  |
+| DS-5 | Medium | Empty "no data" regions are exported as black or transparent patches | Fixed | `3124643` `bb7fd46` |  |
+| DS-6 | Low | Smaller dataset defects | Fixed | `bb7fd46` |  |
+| UI-1 | High | Point/polygon clicks in an unfocused split pane are written to the *focused* pane's slide | Fixed | `811c588` |  |
+| UI-2 | High | Drag-to-split uses the source pane's index from before the new pane is inserted | Fixed | `06ae427` | Panes are tracked by stable ids. |
+| UI-3 | High | The minimap's drag-start/end callbacks never reach Rust, so the pane is stuck "dragging… | Fixed | `811c588` |  |
+| UI-4 | High | Error messages are never shown: `status-text` is set everywhere but rendered nowhere | Fixed | `383b52c` | A status bar with messages, toasts and jobs. |
+| UI-5 | High | Measurement values are wrong when MPP is missing, only partly present, or anisotropic | Fixed | `29d9d53` `383b52c` `95a0f76` | Per-axis calibration; manual calibration when MPP is missing. |
+| UI-6 | High | Scale-bar labels are rounded to the wrong value in mm mode and below 1 µm | Fixed | `81c927b` `0c0b3ab` |  |
+| UI-7 | Medium | Esc, Enter and Ctrl+W go to the viewport while host dialogs are open, and Esc deletes t… | Fixed | `383b52c` |  |
+| UI-8 | Medium | The window-level `f`/`m`/`+`/`-` shortcuts fire while the user is typing, and behind di… | Fixed | `383b52c` `e0d900e` |  |
+| UI-9 | Medium | On macOS, undo/redo is bound to Control instead of ⌘ | Fixed | `383b52c` `e0d900e` |  |
+| UI-10 | Medium | In-progress tool state survives tab, pane and file changes, so one gesture can mix coor… | Fixed | `383b52c` |  |
+| UI-11 | Medium | "Split Right" on a Home tab reuses the same tab id, so opening a file collapses the split | Fixed | `d427b4d` |  |
+| UI-12 | Medium | Dropping a file on a pane edge can leave an empty pane, and the split drop zones don't… | Fixed | `06ae427` `81ee8b7` | Drops on Wayland are documented (SH-9). |
+| UI-13 | Medium | ROI and Measure tools: no toggle-off (the repo's `TODO`), results discarded on Navigate… | Fixed | `383b52c` `88deac1` | Results are kept per slide and listed in the Measurements panel. |
+| UI-14 | Medium | The series bar does O(n²) `canonicalize` calls and synchronous folder scans on the UI t… | Fixed | `2cedb1b` `de3a598` `7849eee` |  |
+| UI-15 | Medium | Scroll handling: the step ignores the scroll delta, horizontal scroll zooms out, and th… | Fixed | `383b52c` |  |
+| UI-16 | Low | Smaller interaction defects | Fixed | `06ae427` `877fcf0` `0675525` |  |
+| SH-1 | Critical | Re-opening a file that is already open deadlocks the UI thread | Fixed | `306ff8e` |  |
+| SH-2 | High | On Windows, release builds discard all CLI output, prompts and startup errors | Fixed | `34ba416` `65669fd` | `eov.com` console launcher; fatal errors in a dialog. |
+| SH-3 | Medium | A malformed, hand-edited or newer `config.toml` stops the app from starting; saving dro… | Fixed | `2cedb1b` |  |
+| SH-4 | Medium | Unit tests write to the developer's real config, plugin config and cache, and did so du… | Fixed | `14120ca` |  |
+| SH-5 | Medium | OpenSlide linking relies on the linker's default search path, which fails with rust-lld… | Fixed | `37e7117` |  |
+| SH-6 | Medium | Workspace manifest problems: `exclude` is a no-op, cellaris can't be built in-tree, and… | Fixed | `383b52c` |  |
+| SH-7 | Medium | Launch arguments: one bad path aborts startup, commas split file names, and `file://` U… | Fixed | `3b5904d` |  |
+| SH-8 | Medium | No single-instance mode and no OS file associations | Fixed | `3b5904d` `6f0e048` | Single instance, `eov://` deep links and OS file associations. |
+| SH-9 | Medium | Drag-and-drop doesn't work on Wayland | Fixed | `81ee8b7` | winit does not deliver drops on Wayland; the limitation and the alternatives are documented. |
+| SH-10 | Medium | Copying an image to the clipboard freezes the UI for up to 2 s on Linux, and doesn't wo… | **Partly fixed** | `bbe4d29` | The UI no longer freezes. Copying under Wayland in the Flatpak still needs arboard's `wayland-data-control` feature, whose crates were not available offline. |
+| SH-11 | Medium | Opening slides and browsing folders block the UI thread | Fixed | `de3a598` `2cedb1b` |  |
+| SH-12 | Medium | Plugin packages are extracted synchronously before the window appears, and the extracti… | Fixed | `1b61d70` |  |
+| SH-13 | Medium | One misbehaving plugin takes down the host, and there is no safe mode | Fixed | `34ba416` `383b52c` | `--safe-mode`; a plugin that panics is quarantined. |
+| SH-14 | Medium | Recent-files persistence is lossy, racy and leaks identifiers, and is documented in the… | Fixed | `2cedb1b` |  |
+| SH-15 | Medium | Windows paths and "Open containing folder" are fragile | Fixed | `6412ab1` |  |
+| SH-16 | Low | Logs go to stdout; there is no log file and no panic hook | Fixed | `3620def` |  |
+| SH-17 | Low | CLI ergonomics and limits | Fixed | `3b5904d` |  |
+| SH-18 | Low | A dead, hidden `plugin-window` subcommand loads any directory's native library outside… | Fixed | `383b52c` | The `plugin-window` subcommand is gone. |
+| SH-19 | Low | Packaging metadata drift and licence-compliance gaps | Fixed | `65669fd` `fced9e0` `4b99761` `1917aae` |  |
+| SH-20 | Low | Documentation drift | Fixed | `888197b` `e6c0a8b` |  |
+| UPD-1 | Critical | Windows portable self-update replaces, then permanently deletes, the whole folder that… | Fixed | `6425170` `062bd7b` |  |
+| UPD-2 | High | On a Mac without `brew` on PATH, updating a manually installed app bundle aborts | Fixed | `062bd7b` |  |
+| UPD-3 | High | Homebrew ownership detection cannot recognise the official tap's cask | Fixed | `062bd7b` |  |
+| UPD-4 | High | The macOS `eov-update-helper` keeps an absolute CI path to libopenslide, and is run fro… | Fixed | `37e7117` `fced9e0` |  |
+| UPD-5 | High | The Flatpak sandbox breaks the updater, the gamepad plugin and folder-based workflows | Fixed | `1917aae` |  |
+| UPD-6 | High | Plugin compatibility metadata cannot prevent installing or loading ABI-incompatible plu… | Fixed | `53fa2fc` `4782359` |  |
+| UPD-7 | Medium | Windows-specific update failures | Fixed | `062bd7b` |  |
+| UPD-8 | Medium | Homebrew "latest" delegation is never verified, yet plugins are aligned to the target v… | Fixed | `062bd7b` `32001bd` |  |
+| UPD-9 | Medium | A third-party GitHub install can silently replace an unrelated installed plugin | Fixed | `53fa2fc` |  |
+| UPD-10 | Medium | One failing plugin aborts the whole `eov update`, including the app update | Fixed | `062bd7b` |  |
+| UPD-11 | Medium | Integrity relies only on hashes published in the same place as the artifacts; nothing i… | Fixed | `53fa2fc` `32001bd` | minisign verification and per-artifact hashes are in place. **Owner action:** create the release key and add it to `app/src/update/keys.rs`; Authenticode and notarization run once their certificates are configured as secrets. |
+| UPD-12 | Medium | Plugin-cache invalidation can break a running GUI, and the cache and staging files leak… | Fixed | `1b61d70` |  |
+| UPD-13 | Medium | Network and platform reach | Fixed | `d2218eb` | Proxies and the OS certificate store. |
+| UPD-14 | Medium | CI exercises none of the platform-specific updater code, and supply-chain hygiene is weak | Fixed | `32001bd` |  |
+| UPD-15 | Low | Smaller update and packaging defects | Fixed | `53fa2fc` `32001bd` |  |
+| ANN-1 | High | Every write is a separate fsync'd transaction on the UI thread: seconds-to-minutes free… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-2 | High | The density/area panel goes stale after a polygon is reshaped or moved, or a point is m… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-3 | High | Area and point counting use different rules for self-intersecting polygons, and nothing… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-4 | Medium | A crafted or corrupted import makes eov abort every time that slide is opened | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-5 | Medium | Import isn't atomic: "Replace" can lose the existing layer, and "Cancel" makes already-… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-6 | Medium | All slides share one undo/redo stack, which can undo edits on a closed slide with nothi… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-7 | Medium | The in-memory cache is keyed by path string and never invalidated, while the DB is keye… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-8 | Medium | Slide identity is a sampled byte hash with no recovery path | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | Slides are matched by eov identity, the legacy fingerprint and a fallback key, and orphans can be relinked. Copies of the same file still share annotations. |
+| ANN-9 | Medium | An import lands on whichever slide is active when the dialog is answered, not the slide… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-10 | Medium | Uncommitted metadata edits are lost, and global hotkeys can get stuck disabled | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-11 | Medium | The selection "pulse" thread forces about 8 full re-renders per second indefinitely, an… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-12 | Medium | Overlay and sidebar costs grow with the total number of annotations | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | Incremental overlays and a bounded, filterable sidebar; the per-class tally is recomputed (prefiltered by bounding box), not cached. |
+| ANN-13 | Medium | Failures are retried every frame, a read-only database is unusable, and the sidebar can… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-14 | Medium | The first import or export hashes the whole slide file on the UI thread, while holding… | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-15 | Medium | Errors are never shown to the user | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-16 | Medium | The schema has no version, no migrations and no indexes | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-17 | Medium | The export format has no version or image context, and leaks the absolute local path | Fixed | `b62fc71` `8660da0` `fec30cd` (annotations) |  |
+| ANN-18 | Low | Smaller annotations defects | **Partly fixed** | `b62fc71` `8660da0` `fec30cd` (annotations) | All but persisting the collapsed state of layers. |
+| VAE-1 | Critical | See PLG-2 | Fixed | `a334f35` `751a8a6` `3c47144` |  |
+| VAE-2 | High | Lock-order inversion between eovae's global mutex and the host's `AppState` lock | Fixed | `751a8a6` `3c47144` |  |
+| VAE-3 | High | The pyramid is assumed to halve at each level (downsample = 2^mip), which is wrong for… | Fixed | `751a8a6` `3c47144` |  |
+| VAE-4 | High | Pre- and post-processing don't match the model's contract | Fixed | `751a8a6` `3c47144` |  |
+| VAE-5 | High | Results are not keyed by slide, so overlays and statistics leak between slides and panes | Fixed | `751a8a6` `3c47144` |  |
+| VAE-6 | High | Memory grows without bound: about 448 KiB is kept forever for every analysed tile | Fixed | `751a8a6` `3c47144` |  |
+| VAE-7 | High | Every analysis error is reported as "Analysis cancelled" and never logged | Fixed | `751a8a6` `3c47144` |  |
+| VAE-8 | High | The inference device is tied to the viewer's render backend, and CUDA is strict by default | Fixed | `751a8a6` `3c47144` |  |
+| VAE-9 | High | The CPU path wastes 32× compute with the shipped static-batch model, and doesn't skip b… | Fixed | `751a8a6` `3c47144` |  |
+| VAE-10 | High | On the GPU path, skipped background tiles are never recorded, so they stay "pending" fo… | Fixed | `751a8a6` `3c47144` |  |
+| VAE-11 | Medium | Clicking Analyze builds a CUDA session synchronously on the UI thread, every time | Fixed | `751a8a6` `3c47144` |  |
+| VAE-12 | Medium | Persistence and caching correctness | Fixed | `751a8a6` `3c47144` |  |
+| VAE-13 | Medium | Performance: the UI thread is flooded and the per-frame filter cost is high | Fixed | `751a8a6` `3c47144` |  |
+| VAE-14 | Medium | Not portable, and provisioning is neither reproducible nor lean | Fixed | `751a8a6` `3c47144` |  |
+| VAE-15 | Medium | Model handling | **Partly fixed** | `751a8a6` `3c47144` | All but resampling to the model's exact training µm/px: eovae uses the nearest pyramid level and warns about a mismatch. |
+| VAE-16 | Medium | Host integration | Fixed | `751a8a6` `3c47144` |  |
+| VAE-17 | Low | Smaller eovae defects | Fixed | `751a8a6` `3c47144` |  |
+| CEL-1 | High | The current host rejects the plugin: `plugin.toml` has no `[environment]` (PLG-4) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-2 | High | Once loadable, toggling the overlay hangs eov whenever eovae is also installed (PLG-2) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) | No filter any more; the toggle is a toolbar event. |
+| CEL-3 | High | Inference ignores the slide's pixel size (MPP) | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-4 | High | ONNX Runtime loading only works as documented on Windows, and a failure panics the worker | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-5 | High | Region-readout statistics are computed on unblended 256-px windows | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-6 | Medium | Failures are silent and sticky | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-7 | Medium | Correctness of what is painted and measured | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-8 | Medium | The overlay's cost lands on the UI thread, and it forces CPU rendering everywhere | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-9 | Medium | Clinical-safety and labelling gaps | **Partly fixed** | `b62fc71` `eb15de3` `fbfa762` (cellaris) | A research-use badge, model card, colour-blind-safe palette and domain flags are in place; uncertainty is not calibrated unless the model carries a threshold, and display windows are not adjustable. |
+| CEL-10 | Medium | Build and release | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| CEL-11 | Low | Smaller cellaris defects | Fixed | `b62fc71` `eb15de3` `fbfa762` (cellaris) |  |
+| GPD-1 | High | The worker holds the plugin mutex while blocking on the UI thread, which deadlocks the… | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-2 | High | Input is not limited to when eov has focus, and the default mapping injects system-wide… | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-3 | High | In the Flatpak the plugin can't see any controllers | Fixed | `5f9d395` `4630ff3` (gamepad) `1917aae` |  |
+| GPD-4 | Medium | Input handling defects | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-5 | Medium | Constant 83 Hz polling and repeated disk I/O, some of it on the UI thread | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-6 | Medium | Leftovers from the out-of-process window design | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-7 | Medium | Host-side window handling | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+| GPD-8 | Low | Smaller gamepad defects | Fixed | `5f9d395` `4630ff3` (gamepad) |  |
+
+### Features from §14
+
+**§14.1 Viewing and navigation**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| Slide label and macro/overview image | Done | `877fcf0` | Slide Information panel; the label can be hidden. |
+| Rotation and flip | **Partly** | `19c217e` `a8c5dd1` `baa98a0` | Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented. |
+| Magnification presets | Done | `877fcf0` | 1–6 and 0 (actual pixels), from the objective power or calibrated MPP. |
+| Keyboard-driven navigation | Done | `e0d900e` | One remappable shortcut table (`[shortcuts]` in `config.toml`), listed with F1. |
+| Linked navigation across different slides | Done | `75dbe1c` `e6137c4` | Link panes (Ctrl+L), align by landmarks or by hand; alignments are kept per slide pair. |
+| Fit to tissue / scanned region | Done | `064bec8` `64ec600` | Views fit the scanned bounds; Shift+F fits the tissue. |
+| Measurement suite | Done | `29d9d53` `88deac1` + annotations | Per-axis calibrated lines kept per slide in a Measurements panel; area, perimeter, Feret and caliper in the annotations plugin. |
+| Manual calibration when MPP is missing | Done | `95a0f76` |  |
+| Session restore, bookmarks and navigation history | Done | `9a522fe` `6952d6c` `c2ea078` |  |
+| Full-screen / presentation mode | Done | `877fcf0` | F11. |
+| Status bar and error reporting | Done | `383b52c` |  |
+| Colour management (ICC) | **In progress** |  |  |
+| Indication that colours are altered | Done | `c5a942a` `bbe4d29` | HUD badge; burned into exports on request and recorded in their metadata. |
+| Full metadata/property browser | Done | `877fcf0` |  |
+| HiDPI, trackpad pinch/pan, pixel-level view above 1:1 | **Partly** | `33c0775` `383b52c` | HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress. |
+| Copy/snapshot with scale bar and overlays | Done | `bbe4d29` |  |
+| Case and slide organisation | **Partly** | `7849eee` | The series bar filters and sorts, and lists a DICOM series once; there is no grouping by case or accession. |
+| Runs without Vulkan/Metal | Done | `20bff5f` |  |
+| Open from the file manager, single instance, deep links | Done | `3b5904d` `6f0e048` |  |
+
+**§14.2 Annotation, counting and quantification**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| Shape tools | Done | annotations | Point, count, polygon, freehand, rectangle, ellipse, polyline, text, arrow, and a brush with eraser; holes. Multi-part regions are separate annotations (the API has no MultiPolygon). |
+| Classes / ontology | Done | annotations | Colours, hotkeys, visibility, opacity, counts. |
+| Cell counting tool | **Partly** | annotations | Per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS); no CPS helper. |
+| HPF / field-area reticle | Done | annotations | From field number and objective, or mm²; stamping. |
+| Measurements on annotations | Done | annotations | In µm space, with missing or anisotropic MPP stated; CSV export. |
+| Interchange formats | **Partly** | annotations | GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported. |
+| Review and provenance | Done | annotations | Author, timestamps, status, locking, comment threads, an audit table, blinded copies and a second-reader comparison. |
+| Annotation-driven dataset extraction | Done | `bb7fd46` | GeoJSON regions select and label patches; class masks are written. |
+| External analysis results as overlays | **Partly** | `29d9d53` + annotations | Detections import as GeoJSON annotations into the retained overlay store; aligned heat-map images cannot be loaded. |
+| Backup and portability | Done | annotations | Export all, backup, merge, relink, per-slide undo. |
+
+**§14.3 Formats and imaging modalities**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| Multichannel fluorescence / OME-TIFF | **In progress** |  |  |
+| Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
+| Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
+| DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
+| Z-stacks / focal planes | **Not done** |  |  |
+| Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
+| Writing slides; de-identified copies | Done | `e565a9e` `272d9f4` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or a region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles, the pixel size, objective, stain and ICC profile. De-identified copies have no label, macro or thumbnail and keep an allow-list of metadata. |
+
+**§14.4 Platform, plugins and administration**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| Plugins panel | Done | `7951b47` | Versions, origin, state, errors; enable, disable, update and remove. No per-plugin resource use. |
+| Safe mode | Done | `34ba416` `383b52c` |  |
+| Updates from the GUI, dry run, JSON, offline, rollback | Done | `062bd7b` `21b6894` |  |
+| Enterprise networks | Done | `d2218eb` | Proxies and the OS certificate store. |
+| Signed binaries and metadata | **Partly** | `53fa2fc` `32001bd` | Verification and signing steps exist; no release key or certificates are configured yet (owner action). |
+| Managed deployment | Done | `53fa2fc` | `policy.toml`, system plugin directories, `eov plugin lock` / `sync`. |
+| Single instance and multi-instance safety | Done | `3b5904d` `53fa2fc` `2cedb1b` |  |
+| Accessibility | **In progress** |  | Final sweep after the other changes land. |
+| Localisation | **In progress** |  | Final sweep after the other changes land. |
+| Diagnostics | Done | `3620def` | Session log, crash reports, Open Log Folder. |
+
+**§14.5 Analysis and research workflows**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| IHC quantification | Done | `bee393f` `3928774` | H-DAB and other presets, custom vectors, thresholds, positive fraction and H-score in a region. |
+| Tissue detection and QC | **Partly** | `bb7fd46` `64ec600` | Tissue masks drive fit-to-tissue, dataset filtering and stain fits; no blur, fold or pen-mark detection. |
+| Stain normalisation as a workflow | **In progress** |  |  |
+| Dataset extraction | **Partly** | `bb7fd46` `8c53025` `0359c50` | Target MPP, tissue fraction, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG and JPEG only (no HDF5 or zarr). |
+| Headless and batch mode | **In progress** | `fbf22f5` | `eov batch run` with run manifests; the eovae and cellaris commands are in progress. |
+| Scripting | **In progress** |  |  |
+| Model management | **Partly** | plugins | Model cards and metadata checks in cellaris and eovae; no download-and-verify of models. |
+
+**§14.6 Safety, privacy and intended use**
+
+| Feature | Status | Where | Notes |
+|---|---|---|---|
+| Intended use stated | Done | `3620def` + cellaris | README, the Home screen and the AI plugins' badges. |
+| Synthetic colour obvious; provenance in exports | Done | `c5a942a` `bbe4d29` |  |
+| De-identification | Done | `0359c50` `877fcf0` `e565a9e` | Hideable label, de-identified datasets and slide copies, no paths in logs at info level, annotation exports or the audit log. Burned-in text in the scanned image is not removed. |
+| Audit trail | Done | `0b9ce2b` `21b6894` + annotations | `audit.jsonl` (sessions, plugins, updates, rollbacks) and the annotations audit table. |
+
+---
 ## 1. Summary
 
 eov is a capable, fast core viewer. Its f64 viewport math, bordered tiles, GPU trilinear and Lanczos paths, hardened `.eop` extraction and an architecturally enforced network-consent gate show careful engineering, and clippy is clean.

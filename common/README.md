@@ -9,6 +9,16 @@ include the desktop application or its UI.
 
 - OpenSlide-backed access to WSI files through a small, safe in-house
   binding (no third-party binding crate; non-UTF-8 paths work on Unix).
+- A built-in OME-TIFF reader behind the same `WsiFile` API, for brightfield
+  RGB and for multichannel fluorescence and multiplexed immunofluorescence:
+  TIFF and BigTIFF, pyramids as SubIFDs or separate images, tiles or
+  strips, uncompressed, LZW, Deflate, PackBits, Zstandard and JPEG data,
+  8-, 16- and 32-bit integer and 32- and 64-bit float samples, and the OME
+  pixel size and objective. Multichannel reads are composited to RGB with a per-channel
+  colour, display window and gamma (`channels` module), with defaults from
+  the file and auto contrast. Pure Rust apart from the bundled Zstandard
+  library; unreadable files fail to open with an `Error::Unsupported` that
+  says why.
 - One shared, thread-safe OpenSlide handle per slide (`WsiFile` is cheap to
   clone), one process-wide OpenSlide tile cache, and automatic, rate-limited
   recovery from OpenSlide's sticky errors: a corrupt tile fails on its own
@@ -34,10 +44,23 @@ include the desktop application or its UI.
 - Stain normalization and color deconvolution primitives for histology images.
 - Deterministic fixed-grid dataset patch extraction with optional CSV or JSON
   metadata.
+- Writing slides (`convert`): pyramidal TIFF/BigTIFF (OpenSlide's generic
+  tiled TIFF) and OME-TIFF (SubIFD pyramid) copies of a slide or a region, at
+  full resolution, a stored level or a target pixel size, with JPEG or
+  lossless Deflate tiles, the pixel size, objective power, stain and ICC
+  profile, built in bounded memory and written atomically. Optional
+  de-identification drops the label, macro and thumbnail images and keeps an
+  allow-list of metadata only; it does not alter the image itself, so text
+  or marks inside the scanned area remain.
 
 The supported file formats are the formats available through
 [OpenSlide](https://openslide.org/), including common formats such as SVS,
-TIFF, NDPI, SCN, MRXS, BIF, CZI, and DICOM whole-slide images.
+TIFF, NDPI, SCN, MRXS, BIF, CZI, and DICOM whole-slide images, and
+OME-TIFF (`.ome.tif`, `.ome.tiff`, `.ome.btf`, or any TIFF whose first
+image description is OME-XML), which eov-common reads itself. The backend
+is chosen when a slide opens; other TIFFs go to OpenSlide. OME datasets
+spread over several files, and planes beyond the first focal plane and
+time point, are not read.
 
 ## Installation
 
@@ -117,6 +140,74 @@ fn load_first_tile(path: &str) -> eov_common::Result<()> {
 }
 ```
 
+### Multichannel slides
+
+A multichannel slide reads as an RGB composite of its visible channels.
+Change how the channels are drawn with `WsiFile::set_channel_display`; the
+change applies to every clone of the slide. Tiles read before it show the
+old display, so drop them from any cache:
+
+```rust,no_run
+use eov_common::channels::Palette;
+use eov_common::{TileCache, WsiFile};
+
+fn show_first_channel(
+    slide: &WsiFile,
+    cache: &TileCache,
+    file_id: i32,
+) -> eov_common::Result<()> {
+    let (Some(set), Some(mut display)) = (slide.channels(), slide.channel_display()) else {
+        return Ok(()); // a colour slide
+    };
+    for channel in &set.channels {
+        let (min, max) = (channel.stats.min, channel.stats.max);
+        println!("{}: {} (values {min}..{max})", channel.index, channel.name);
+    }
+    display.apply_palette(Palette::ColorBlindSafe);
+    for (index, settings) in display.channels.iter_mut().enumerate() {
+        settings.visible = index == 0;
+    }
+    slide.set_channel_display(display)?;
+    cache.remove_file(file_id);
+    let rgba = slide.read_region(0, 0, 0, 512, 512)?;
+    println!("{} bytes of the first channel alone", rgba.len());
+    Ok(())
+}
+```
+
+### Writing slides
+
+Copy a slide into a de-identified pyramidal TIFF that OpenSlide, QuPath and
+libvips read (run it on a worker thread; `JobControl` reports progress in
+tiles and cancels):
+
+```rust,no_run
+use eov_common::WsiFile;
+use eov_common::convert::{ConvertOptions, SlideCompression, convert_slide};
+use eov_common::job::JobControl;
+use std::path::Path;
+
+fn share(path: &str) -> Result<(), eov_common::convert::ConvertError> {
+    let slide = WsiFile::open(path)?;
+    let options = ConvertOptions {
+        deidentify: true,
+        compression: SlideCompression::Jpeg { quality: 90 },
+        ..ConvertOptions::default()
+    };
+    let report = convert_slide(&slide, Path::new("case-01.tif"), &options, &JobControl::new())?;
+    println!(
+        "{} levels, {} bytes{}",
+        report.plan.levels.len(),
+        report.bytes,
+        if report.bigtiff { ", BigTIFF" } else { "" }
+    );
+    Ok(())
+}
+```
+
+De-identification covers metadata and associated images, not burned-in text
+in the tissue image.
+
 ## Main API Areas
 
 - [`WsiFile`](https://docs.rs/eov-common/latest/eov_common/struct.WsiFile.html)
@@ -130,8 +221,14 @@ fn load_first_tile(path: &str) -> eov_common::Result<()> {
 - [`TileCache`](https://docs.rs/eov-common/latest/eov_common/struct.TileCache.html)
 	provides concurrent caching with tile-count and byte-size limits;
 	`CacheBudget::for_display` sizes it for a display.
+- The `channels` module describes the channels of multichannel slides
+	(`ChannelSet`) and how they are drawn (`ChannelDisplay`, `Palette`,
+	auto contrast).
 - The `dataset` module provides fixed-grid patch extraction and metadata types
 	for machine-learning workflows.
+- The `convert` module writes pyramidal TIFF and OME-TIFF copies of slides
+	(`convert_slide`, `plan_conversion`), optionally de-identified; the
+	`export` module renders views and regions to PNG, JPEG and TIFF figures.
 - The `imaging`, `postprocess`, `stain`, `overlay`, `render`, `blitter` and
 	`viewport` modules provide reusable image and viewing primitives.
 

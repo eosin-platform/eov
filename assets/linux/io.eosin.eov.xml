@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Whole-slide image formats eov opens through OpenSlide, for file managers
-  (installed as share/mime/packages/io.eosin.eov.xml). shared-mime-info
-  already knows TIFF (image/tiff) and DICOM (application/dicom); the
-  desktop entry lists those too. Generated from SLIDE_TYPES in
+  Whole-slide image formats eov opens (through OpenSlide or its own
+  OME-TIFF reader), for file managers (installed as
+  share/mime/packages/io.eosin.eov.xml). shared-mime-info already knows
+  TIFF (image/tiff) and DICOM (application/dicom); the desktop entry
+  lists those too. Generated from SLIDE_TYPES in
   app/src/file_types/mod.rs, whose tests check this file.
 -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
@@ -63,5 +64,12 @@
     <comment>Zeiss CZI whole-slide image</comment>
     <generic-icon name="image-x-generic"/>
     <glob pattern="*.czi"/>
+  </mime-type>
+  <mime-type type="image/x-bigtiff">
+    <comment>BigTIFF image</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.btf"/>
+    <glob pattern="*.tf2"/>
+    <glob pattern="*.tf8"/>
   </mime-type>
 </mime-info>

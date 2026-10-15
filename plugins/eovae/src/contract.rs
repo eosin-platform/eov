@@ -232,7 +232,8 @@ impl Contract {
         }
     }
 
-    fn background_rgb(&self) -> u8 {
+    /// The background as a grey level (white or black).
+    pub fn background_rgb(&self) -> u8 {
         if self.composite_on_white { 255 } else { 0 }
     }
 

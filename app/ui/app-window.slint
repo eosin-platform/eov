@@ -3,6 +3,7 @@
 import { Theme } from "theme.slint";
 import {
     BottomPanelKind,
+    ChannelRow,
     ContextMenuItem,
     DatasetExportSettings,
     ChoiceItem,
@@ -36,16 +37,21 @@ import {
 } from "dataset-export-dialog.slint";
 import { ExportDialog } from "export-dialog.slint";
 import { HomeScreen } from "home-screen.slint";
+export { AppInfo } from "home-screen.slint";
 import { BottomPanel } from "bottom-panel.slint";
 import { SplitPaneContainer } from "panes.slint";
 import { WindowToolbar } from "window-toolbar.slint";
 import { NotificationsPopup, StatusBar } from "status-bar.slint";
 import { PluginsPanel } from "plugins-panel.slint";
 import { SlideInfoPanel } from "slide-info-panel.slint";
+import { SaveCopyDialog, SaveCopySettings } from "save-copy-dialog.slint";
 import { BookmarkDialog } from "bookmark-dialog.slint";
 import { ShortcutsPanel } from "shortcuts-panel.slint";
 import { MeasurementsPanel } from "measurements-panel.slint";
+import { ChannelsPanel } from "channels-panel.slint";
 import { QuantifyPanel } from "quantify-panel.slint";
+import { HeatMapPanelView, HeatMapPanel } from "heatmap-panel.slint";
+export { HeatMapPanel } from "heatmap-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -234,6 +240,37 @@ export component AppWindow inherits Window {
     callback slide-info-filter-edited(string);
     callback slide-info-copy-all();
     callback slide-info-copy-row(int);
+    in-out property <string> slide-info-summary;
+    in-out property <bool> slide-info-multichannel: false;
+    callback slide-info-channels-requested();
+    callback slide-info-save-copy();
+
+    // Channels of a multichannel slide
+    in-out property <bool> channels-panel-visible: false;
+    in-out property <string> channels-title;
+    in-out property <string> channels-summary;
+    in-out property <[ChannelRow]> channel-rows: [];
+    in-out property <[color]> channel-chip-colors: [];
+    callback channels-closed();
+    callback channels-visibility-toggled(int, bool);
+    callback channels-solo-toggled(int);
+    callback channels-color-chosen(int, color);
+    callback channels-window-moved(int, bool, float);
+    callback channels-min-entered(int, string);
+    callback channels-max-entered(int, string);
+    callback channels-gamma-moved(int, float);
+    callback channels-gamma-entered(int, string);
+    callback channels-auto-contrast();
+    callback channels-reset();
+    callback channels-show-all();
+    callback channels-palette(string);
+
+    // Save a Copy of the Slide (AUDIT §14.3, §14.6)
+    in-out property <bool> save-copy-dialog-visible: false;
+    in-out property <SaveCopySettings> save-copy-settings;
+    callback save-copy-requested(/* tab id */ int);
+    callback save-copy-confirmed();
+    callback save-copy-settings-changed(SaveCopySettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
     in-out property <string> measure-mode-label: "Distance";
@@ -248,6 +285,8 @@ export component AppWindow inherits Window {
     in-out property <bool> show-metadata: false;
     in-out property <bool> show-scale-bar: true;
     in-out property <bool> viewport-lock-enabled: false;
+    in-out property <bool> slide-link-enabled: false;
+    in-out property <bool> alignment-adjust-enabled: false;
     in-out property <BottomPanelKind> bottom-panel-kind: BottomPanelKind.none;
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
@@ -280,6 +319,8 @@ export component AppWindow inherits Window {
     callback toggle-metadata-requested();
     callback toggle-scale-bar-requested();
     callback toggle-viewport-lock-requested();
+    callback toggle-slide-link-requested();
+    callback toggle-alignment-adjust-requested();
     callback tab-activated(int, int);
     callback tab-close-requested(int, int);
     callback close-other-tabs(int, int);
@@ -446,6 +487,10 @@ export component AppWindow inherits Window {
         height: 100%;
 
         key-pressed(e) => {
+            if e.text == Key.Escape && root.save-copy-dialog-visible {
+                root.save-copy-dialog-visible = false;
+                accept
+            }
             if e.text == Key.Escape && root.slide-info-visible {
                 root.slide-info-visible = false;
                 accept
@@ -477,6 +522,11 @@ export component AppWindow inherits Window {
                 root.measurements-panel-visible = false;
                 accept
             }
+            if e.text == Key.Escape && root.channels-panel-visible {
+                root.channels-panel-visible = false;
+                root.channels-closed();
+                accept
+            }
             if e.text == Key.Escape && root.quantify-visible {
                 root.quantify-close();
                 accept
@@ -499,9 +549,10 @@ export component AppWindow inherits Window {
             }
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
+                || root.save-copy-dialog-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
                 || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
-                || root.quantify-visible {
+                || root.quantify-visible || root.channels-panel-visible {
                 reject
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -529,6 +580,8 @@ export component AppWindow inherits Window {
             show-metadata: root.show-metadata;
             show-scale-bar: root.show-scale-bar;
             viewport-lock-enabled: root.viewport-lock-enabled;
+            slide-link-enabled: root.slide-link-enabled;
+            alignment-adjust-enabled: root.alignment-adjust-enabled;
             use-native-window-controls: root.use-native-window-controls;
             shortcuts: root.shortcut-labels;
             undo-enabled: root.undo-enabled;
@@ -559,6 +612,12 @@ export component AppWindow inherits Window {
             }
             toggle-viewport-lock-requested => {
                 root.toggle-viewport-lock-requested();
+            }
+            toggle-slide-link-requested => {
+                root.toggle-slide-link-requested();
+            }
+            toggle-alignment-adjust-requested => {
+                root.toggle-alignment-adjust-requested();
             }
             tool-selected(tool) => {
                 root.tool-selected(tool);
@@ -748,6 +807,14 @@ export component AppWindow inherits Window {
                                 label: "Slide Information",
                                 icon: "",
                                 shortcut: root.shortcut-labels.slide-info,
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "save-copy",
+                                label: "Save a Copy of the Slide…",
+                                icon: "",
+                                shortcut: "",
                                 enabled: true,
                                 separator-after: true
                             },
@@ -1143,6 +1210,8 @@ export component AppWindow inherits Window {
                     root.copy-path(root.context-menu-tab-id);
                 } else if id == "slide-info" {
                     root.slide-info-requested(root.context-menu-tab-id);
+                } else if id == "save-copy" {
+                    root.save-copy-requested(root.context-menu-tab-id);
                 } else if id == "split-right" {
                     root.split-right(root.drag-source-pane, root.context-menu-tab-id);
                 }
@@ -1586,6 +1655,12 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Floats over the slide without dimming it (AUDIT §14.2).
+    if HeatMapPanel.visible: HeatMapPanelView {
+        x: root.width - self.width - 16px;
+        y: root.toolbar-height + 44px;
+    }
+
     if root.measurements-panel-visible: MeasurementsPanel {
         x: 0px;
         y: 0px;
@@ -1742,6 +1817,11 @@ export component AppWindow inherits Window {
         pixel-size-text: root.slide-info-pixel-size;
         pixel-size-manual: root.slide-info-pixel-size-manual;
         pixel-size-input <=> root.slide-info-pixel-size-input;
+        summary: root.slide-info-summary;
+        multichannel: root.slide-info-multichannel;
+        channels-requested => {
+            root.slide-info-channels-requested();
+        }
         pixel-size-set(text) => {
             root.slide-info-pixel-size-set(text);
         }
@@ -1762,6 +1842,75 @@ export component AppWindow inherits Window {
         }
         copy-row-requested(index) => {
             root.slide-info-copy-row(index);
+        }
+        save-copy-requested => {
+            root.slide-info-visible = false;
+            root.slide-info-save-copy();
+        }
+    }
+
+    if root.save-copy-dialog-visible: SaveCopyDialog {
+        settings <=> root.save-copy-settings;
+        save-requested => {
+            root.save-copy-confirmed();
+        }
+        cancel-requested => {
+            root.save-copy-dialog-visible = false;
+        }
+        settings-changed(s) => {
+            root.save-copy-settings-changed(s);
+        }
+    }
+
+    if root.channels-panel-visible: ChannelsPanel {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        title: root.channels-title;
+        summary: root.channels-summary;
+        rows: root.channel-rows;
+        chip-colors: root.channel-chip-colors;
+        close-requested => {
+            root.channels-panel-visible = false;
+            root.channels-closed();
+            root.focus-keyboard();
+        }
+        visibility-toggled(index, visible) => {
+            root.channels-visibility-toggled(index, visible);
+        }
+        solo-toggled(index) => {
+            root.channels-solo-toggled(index);
+        }
+        color-chosen(index, color) => {
+            root.channels-color-chosen(index, color);
+        }
+        window-moved(index, high, position) => {
+            root.channels-window-moved(index, high, position);
+        }
+        min-entered(index, text) => {
+            root.channels-min-entered(index, text);
+        }
+        max-entered(index, text) => {
+            root.channels-max-entered(index, text);
+        }
+        gamma-moved(index, position) => {
+            root.channels-gamma-moved(index, position);
+        }
+        gamma-entered(index, text) => {
+            root.channels-gamma-entered(index, text);
+        }
+        auto-contrast-requested => {
+            root.channels-auto-contrast();
+        }
+        reset-requested => {
+            root.channels-reset();
+        }
+        show-all-requested => {
+            root.channels-show-all();
+        }
+        palette-requested(id) => {
+            root.channels-palette(id);
         }
     }
 

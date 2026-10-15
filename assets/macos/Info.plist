@@ -30,8 +30,8 @@
   <!--
     Slide files the Finder offers to open with eov, and eov:// links (SH-8).
     Keep in sync with app/src/file_types.rs, whose tests check this file.
-    eov is the default for the slide formats and an alternative for TIFF
-    and DICOM, which other apps own.
+    eov is the default for the slide formats and an alternative for TIFF,
+    BigTIFF and DICOM, which other apps open too.
   -->
   <key>CFBundleDocumentTypes</key>
   <array>
@@ -57,7 +57,7 @@
     </dict>
     <dict>
       <key>CFBundleTypeName</key>
-      <string>TIFF or DICOM image</string>
+      <string>TIFF, BigTIFF or DICOM image</string>
       <key>CFBundleTypeRole</key>
       <string>Viewer</string>
       <key>LSHandlerRank</key>
@@ -66,6 +66,7 @@
       <array>
         <string>public.tiff</string>
         <string>org.nema.dicom</string>
+        <string>io.eosin.eov.bigtiff</string>
       </array>
     </dict>
   </array>
@@ -288,6 +289,34 @@
         <key>public.mime-type</key>
         <array>
           <string>application/dicom</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+  <!-- BigTIFF has no system type; large OME-TIFFs use it (.ome.btf). -->
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.eosin.eov.bigtiff</string>
+      <key>UTTypeDescription</key>
+      <string>BigTIFF image</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.image</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>btf</string>
+          <string>tf2</string>
+          <string>tf8</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>image/x-bigtiff</string>
         </array>
       </dict>
     </dict>

@@ -115,7 +115,7 @@ Refer to the [data appropriation guide](./data-guide.md) for details on how to b
 
 ## Overview
 
-eov opens pyramid-based whole-slide image files through OpenSlide and presents them in a desktop viewer designed for fast inspection.
+eov opens pyramid-based whole-slide image files through OpenSlide, and OME-TIFF (brightfield, fluorescence and multiplexed immunofluorescence) through its own reader, and presents them in a desktop viewer designed for fast inspection.
 
 Current capabilities include:
 
@@ -123,6 +123,7 @@ Current capabilities include:
 - One eov window: opening more slides while eov runs adds them as tabs instead of starting another eov.
 - A tab- and pane-based layout
 - Duplicate tabs into additional panes for side-by-side comparison.
+- Link panes that show different slides (H&E next to IHC, serial sections): they pan, zoom and turn together, at equal µm per screen pixel when both slides record a pixel size. Align them by moving one pane alone (adjust mode, next to the link button) or from two landmarks placed on each slide (viewport menu); alignments are kept per slide pair.
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
 - Show a slide in the file manager: **Open Containing Folder** opens its folder with the slide selected.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
@@ -131,13 +132,22 @@ Current capabilities include:
 - Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
 - Color deconvolution: separate and visualize individual H&E stain channels with per-channel intensity control and channel isolation, on both CPU and GPU.
-- A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available.
+- Multichannel fluorescence and multiplex OME-TIFF: the channels are composited with a colour, display window and gamma each, set in the Channels panel and kept per slide (see [OME-TIFF, fluorescence and multiplex](#ome-tiff-fluorescence-and-multiplex)).
+- A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available, and a pixel size you can set for slides that lack one (Slide Information, kept per slide).
 - A minimap thumbnail with viewport navigation and a zoom slider.
-- Basic "Region of Interest" and "Measure Distance" tools.
-- Export Image: right-click the viewport to export the current view as PNG or JPEG with configurable DPI, filtering mode, stain normalization, color deconvolution, and optional measurement/ROI overlays.
-- Dataset patch extraction: extract fixed-grid image tiles from one or more slides via the CLI for ML / dataset workflows, with optional CSV or JSON metadata export.
+- Slide Information (I): the label and macro images (with a privacy toggle to hide the label), and every property, searchable and copyable.
+- Objective-equivalent magnification presets (1–6, 0 for 1:1), fit to the slide or to its tissue, rotation in quarter turns and mirroring, full screen, and a remappable keyboard shortcut table (F1 lists it).
+- Back and forward through the views of a pane (Alt+←/→), named bookmarks of views (Ctrl+B), and the open slides and views restored at the next start.
+- A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
+- Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
+- Heat maps from other tools over a slide (a model's probabilities, an attention map), from PNG, JPEG or TIFF, coloured, placed and kept per slide (see [Heat Maps](#heat-maps)).
+- A series bar for the slides of a folder (a case): filter, order by name, date or stain, one entry per DICOM series, and PageUp/PageDown to step through them.
+- Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
+- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata and optional de-identification (from the toolbar or the CLI).
+- Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
+- Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`).
 - Scripting: drive the running viewer and read slide regions from Python or the shell, over a local, authenticated endpoint (see [Scripting](#scripting)).
-- Various quality of life enhancements expected from modern software packages
+- An audit log of what eov ran with (`<data>/audit.jsonl`: versions and plugins, installs and updates), and a session log and crash reports in the log folder.
 
 ## Keyboard Shortcuts
 
@@ -155,6 +165,7 @@ installed plugins. On macOS, **Ctrl** below means **⌘**.
 | Arrows (Shift: further) | Pan |
 | 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
 | [, ], Shift+H | Rotate the view 90° left or right, mirror it |
+| Ctrl+L | Link the panes' slides, so they move together (different slides too) |
 | Alt+←, Alt+→ | Back and forward through the pane's views |
 | Ctrl+B, Ctrl+Shift+B | Bookmark the view, list the slide's bookmarks |
 | N, R, D | Navigate, region of interest and measure tools |
@@ -194,7 +205,7 @@ With the [annotations plugin](https://github.com/eosin-platform/eov-annotations-
 
 ## Texture Filtering
 
-eov provides three texture filtering modes, selectable from the viewport context menu:
+eov provides three texture filtering modes, selectable in the window toolbar (or `filtering_mode` in `config.toml`, `--filtering-mode` on the command line):
 
 | Mode | Description |
 |------|-------------|
@@ -240,9 +251,21 @@ When stain normalization is active, the deconvolution reuses the slide-specific 
 
 For brightfield IHC and special stains, **Quantify Stain in Region…** (right-click a slide with a region of interest) measures one stain in the region of interest: the share of tissue pixels positive for it, the weak (1+), moderate (2+) and strong (3+) shares, an H-score (0–300) and the mean concentration. It uses the same colour-deconvolution model as the view, with the H-DAB, H&E, H-E-DAB, H-AEC, H-PAS or Masson trichrome stain vectors (Ruifrok & Johnston), suggested from the slide's stain label; the thresholds are stain concentrations and can be changed. Glass and ink are left out, the region is read at the finest resolution that keeps it under 16 megapixels, and the results can be copied with the model and thresholds used. As everything in eov, this is for research and education, not diagnosis.
 
+## Heat Maps
+
+**Show Heat Map…** (right-click a slide) draws an image made by another tool over the slide, under the annotations: a model's per-patch probabilities, an attention or uncertainty map, a segmentation. PNG, JPEG and TIFF (8- and 16-bit, floating point; the first image of a TIFF) of up to 64 megapixels are read. A single-channel image, or a colour image whose pixels are all grey, holds values: 8-bit pixels become 0–1 by dividing by 255, 16-bit ones by 65 535, and floating-point ones are used as they are when they all lie in 0–1, or scaled from their minimum to their maximum otherwise. Values are drawn through Viridis, Inferno, Jet or grey; zero (and transparent or NaN pixels) is background and not drawn, and **Hide values below** leaves out low values too. Colour images keep their colours.
+
+The panel places the map over the whole slide (the default, for maps made at a fixed downsample of the slide), over its scanned region, from the top-left corner at a given downsample (level-0 pixels per map pixel), or at a given pixel size in µm. Opacity, smoothing and visibility change at once. What was shown is remembered per slide in `<data>/heatmaps.toml` and shown again when the slide opens; **Remove** forgets it. Heat maps appear in viewport copies and exported images.
+
+## Tissue QC
+
+**Check Tissue Quality** (right-click a brightfield slide) looks for pen marks, possible tissue folds and out-of-focus areas, cell by cell (128 µm cells, or 512 px without a pixel size), and colours the marked cells over the slide: blue for pen, orange for possible folds, yellow for possibly out of focus. It runs as a status-bar job and reports what share of the tissue each covers; **Copy Tissue QC Summary** copies that line and **Hide Tissue QC** removes the overlay. `eov qc` does the same for many slides from the command line, as text or JSON.
+
+How it decides: a low-resolution pass classifies each pixel as glass, tissue (by saturation, with Otsu's threshold) or ink (green, blue to cyan, or black, colours H&E and IHC stains do not produce; skipped for trichrome and other green or blue stains). A cell with at least 15 % ink is a pen mark. A tissue cell whose darkness (the optical density of its brightest channel, so bright red blood does not count) is at least 2.5 times the slide's median is a possible fold. A second pass reads the cells that are mostly tissue at about 2 µm/px and compares their fine detail (the variance of the Laplacian relative to the variance of the image) with the slide's median: below 35 % is possibly out of focus. Tissue without fine detail, such as fibrin, mucus or necrosis, can be marked as well. The thresholds are relative to each slide, and the marks are for review, not measurements.
+
 ## Supported Formats
 
-eov relies on [OpenSlide](https://openslide.org/) for slide access, so the formats it can open are the formats OpenSlide supports on the host system. The application explicitly offers these common extensions in the file picker:
+eov opens slides through [OpenSlide](https://openslide.org/), so it opens the formats OpenSlide supports on the host system, and it reads OME-TIFF itself (see below). The application explicitly offers these common extensions in the file picker:
 
 - `.svs`
 - `.tif`
@@ -256,8 +279,28 @@ eov relies on [OpenSlide](https://openslide.org/) for slide access, so the forma
 - `.svslide`
 - `.bif`
 - `.czi`
+- `.btf`, `.tf2`, `.tf8` (BigTIFF, as in `.ome.btf`)
 
 If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)).
+
+### OME-TIFF, fluorescence and multiplex
+
+OpenSlide reads brightfield RGB slides only, so eov has its own reader for OME-TIFF: files named `.ome.tif`, `.ome.tiff` or `.ome.btf`, and any TIFF or BigTIFF whose first image description is OME-XML. Other TIFFs still open through OpenSlide. The reader handles:
+
+- brightfield RGB, and multichannel fluorescence and multiplexed immunofluorescence (CyCIF, Orion and other OME-TIFF exports) with any number of channels of 8-, 16- or 32-bit integer or 32- or 64-bit float samples, one plane per channel or several channels in one plane;
+- TIFF and BigTIFF in either byte order, tiled or in strips, uncompressed or compressed with LZW, Deflate, PackBits, Zstandard or JPEG;
+- pyramids stored as SubIFDs (the current OME convention), as separate images of decreasing size, or as reduced-resolution images in the main chain;
+- the pixel size (`PhysicalSizeX`/`PhysicalSizeY`, in any length unit) and the objective's nominal magnification; label, macro and thumbnail images; the OME metadata, as `ome.*` properties in Slide Information.
+
+A file eov cannot read, for example one with another compression or with channels stored in other files of a multi-file OME dataset, is refused when it opens, with the reason. Z-stacks and time series show their first focal plane and time point.
+
+Multichannel slides are shown as a composite: each visible channel adds its colour, scaled by where its value lies in the channel's display window and by a gamma. A slide opens with the colours its file gives the channels (else colours from the channel names, DAPI and Hoechst in blue, and emission wavelengths), auto-contrast windows (the 0.1 and 99.9 percentiles of a low-resolution level) and its first six channels shown. **Channels…** (right-click the slide, or the button in Slide Information; the `channels` shortcut action has no key by default) opens the Channels panel:
+
+- show, hide or solo each channel and pick its colour, or colour all of them from a palette: Standard, Colour-blind safe or Okabe–Ito;
+- set a channel's window by dragging its ends over the channel's histogram or by typing values, and set its gamma;
+- Auto contrast, Show all, and Reset to the slide's defaults.
+
+The settings are kept per slide, keyed by its identity, and come back when it opens again. The view, the minimap, copies and exports, and plugins all see the composite; plugins also get the channel names. `eov probe` lists the channels with their colours and windows. Dataset extraction uses the display of a slide that is open in eov and the defaults for other slides; batch runs use the defaults.
 
 ## CLI
 
@@ -266,6 +309,7 @@ The application can be launched as a desktop viewer or used through a small CLI 
 ```text
 eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
 eov probe [--json] <FILE>
+eov qc [--json] [--no-sharpness] [--cell-um <UM>] <SLIDES>...
 eov recent list
 eov config-path
 eov paths [--json]
@@ -282,6 +326,7 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 eov call <METHOD> [PARAMS] [--out <FILE>]
 eov script-endpoint [--json]
 ```
@@ -300,6 +345,7 @@ eov --cpu slide.svs
 eov --gpu --filtering-mode lanczos slide.svs
 eov --log-level debug probe fixtures/C3L-00088-22.svs
 eov probe --json slide.svs > slide.json
+eov qc --json cohort/ > qc.json                   # pen marks, folds and blur per slide
 eov --config /tmp/config.toml config-path
 eov paths
 eov recent list
@@ -321,7 +367,7 @@ eov recent list
 - `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
 
-`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash and every OpenSlide property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)).
+`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash, the channels of multichannel slides and every property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)).
 
 ### Opening slides
 
@@ -352,13 +398,15 @@ The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost po
 | macOS | Automatic: the app declares the formats and the `eov` URL scheme in its `Info.plist`, and macOS registers them when it first sees the app (for example after moving it to Applications). |
 | Windows (portable zip) | Run `eov register-file-types` once. It writes only `HKEY_CURRENT_USER\Software\Classes`: an `eov.Slide` file type, an "Open with" entry for every slide extension, `Applications\eov.exe` and the `eov` URL protocol. eov becomes the default program only for the vendor formats (`.svs`, `.ndpi`, `.mrxs`, ...) that have none; TIFF and DICOM keep theirs. Run it again after moving the eov folder; `eov unregister-file-types` removes exactly these entries. |
 
-`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
+`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`) and for BigTIFF (`image/x-bigtiff`: `.btf`, `.tf2`, `.tf8`, for which eov is only offered, as for TIFF and DICOM); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
 
 On macOS, slides opened from the Finder or the Dock and `eov://` links arrive as Apple events rather than on the command line. winit 0.30, the windowing library under Slint, does not pass these on, so eov adds the `application:openURLs:` handler to winit's application delegate at startup (winit patches AppKit the same way) and opens what arrives like files handed over by a second eov. Two consequences: a slide double-clicked while eov is not running opens as a tab next to the restored last session, because macOS starts the app without arguments first; and if a future winit implements the handler itself, eov keeps winit's and logs a warning (files from the Finder would then be ignored until eov is updated).
 
 ### Application and plugin updates
 
-Updates are explicit CLI actions. eov does not check GitHub at startup, run background update checks, or collect telemetry.
+Updates are explicit actions: `eov update` on the command line, or **Check for Updates…** at the bottom of the Home screen. eov does not check GitHub at startup, run background update checks, or collect telemetry.
+
+**From the window.** Check for Updates asks before it contacts GitHub, then shows the same plan as `eov update` (the installed and available versions, the signature status, how this installation is updated, the release notes link and the plugin changes) and changes nothing until you choose Update. AppImage, Homebrew and Cargo updates are used from the next start; a Windows portable folder or a manually installed macOS bundle closes eov, lets the update helper replace the application and starts eov again with the session restored. Installations eov does not manage (a distribution package, a policy that turns self-update off) are told where the new release is. The administrator policy applies as on the command line.
 
 ```bash
 eov update                       # newest release, with the official plugins it pins
@@ -468,17 +516,73 @@ ds/
       <slide-stem>_x000000_y000000_s512.png
       <slide-stem>_x000512_y000000_s512.png
       ...
-  metadata.csv   # if --metadata csv
-  metadata.json  # if --metadata json
+  metadata.csv     # per patch (without --metadata, or --metadata csv)
+  metadata.jsonl   # per patch (without --metadata, or --metadata json)
+  slides.csv       # per slide
+  dataset.json     # parameters, inputs and totals of the run (also for resuming)
 ```
+
+With `--deidentify`, `<slide-stem>` is replaced by an opaque `slide-<id>`.
 
 Tile filenames encode the origin coordinates and tile size with zero-padded values for lexical sorting. Tiles from different slides are placed in separate subdirectories so filenames cannot collide.
 
 ### Metadata
 
-When `--metadata csv` or `--metadata json` is provided, a single metadata file is written at the dataset root. Each record includes the slide path, slide stem, tile path, X/Y origin, tile size, slide dimensions, pyramid level (always 0), and microns-per-pixel when available from slide properties. No metadata file is written unless `--metadata` is explicitly provided.
+Metadata is written as CSV and JSON unless `--metadata csv` or `--metadata json` picks one. Each patch record includes the slide id, path (not with `--deidentify`) and stem, the patch path, its origin and size in output and level-0 pixels, the pyramid level and downsample read, the output microns per pixel, tissue and white fractions, the annotation label and coverage and mask path when annotations are used, and the slide's vendor, MPP and content fingerprint. `eov dataset patches --help` lists every option (target resolution, tissue filter, annotations and masks, stain normalisation, per-slide caps and sampling, JPEG output, resuming and dry runs).
 
-This first version extracts fixed-grid patches only. Annotation-driven labeling is not yet supported.
+## Batch Runs
+
+Plugins that offer batch commands run without a window over many slides, for cohort analyses:
+
+```bash
+eov batch list                                         # the commands installed plugins offer
+eov batch run example_plugin:tissue-stats cases/ --out results/ --param max_pixels=2000000
+```
+
+Inputs are slide files or folders (searched recursively; the instances of a DICOM series are one slide). Each slide gets a folder of results under `--out`, and `results/batch.json` is the run's manifest, written as it goes: eov's version, the plugin's id, version, package SHA-256 and origin, the command and its parameters, and per slide its id, identity, status, outputs and the plugin's summary (for an analysis plugin: the model and its hash, the resolution read, the device). `--deidentify` names slides by opaque ids and leaves their paths and names out, and parameters that are paths (a model, a runtime) are recorded by their file name only; `--timeout` gives up on a slide after some seconds. The exit code is 1 if a slide failed. Runs are also recorded in the audit log. The plugin uses the host API it has in the window: what needs a window (tools, layers, panels) has no effect.
+
+## Converting and De-identifying Slides
+
+eov writes copies of slides as tiled, pyramidal TIFF or OME-TIFF files: to give a slide to someone whose software cannot read the scanner's format, to build teaching sets, or to keep just a region. A copy can be **de-identified** for sharing outside the institution.
+
+**In the viewer**, right-click a slide's tab (or click **Save a Copy…** in Slide Information) and choose **Save a Copy of the Slide…**. Pick the whole slide or the region of interest, TIFF or OME-TIFF, JPEG (quality 90 or 80) or lossless tiles, and whether to de-identify (on by default), then a file name. The copy is written in the background, with progress and Cancel in the status bar. A de-identified copy never suggests the slide's own file name, and a pixel size you set for the slide (Slide Information) is recorded in the copy.
+
+**From the command line**:
+
+```bash
+eov convert slide.ndpi slide.tif                          # whole slide, JPEG quality 90, 512-px tiles
+eov convert case.svs teaching/case-01.tif --deidentify    # for sharing: no label, macro or identifying metadata
+eov convert slide.mrxs roi.tif --region 20000,15000,8192,8192 --compression deflate
+eov convert slide.svs slide.ome.tif                       # OME-TIFF, chosen by the name
+eov convert slide.svs small.tif --mpp 1.0 --quality 80 --tile-size 256
+eov convert slide.svs level2.tif --level 2
+```
+
+- `--region X,Y,W,H` copies a rectangle in level-0 pixels (as `--goto` and the region tool use). Without it the copy covers the part of the slide that holds image data: the scanned bounds for formats that report them (MIRAX, some Hamamatsu, Leica and Philips slides), else the whole slide. Nothing outside the region is read, not even into the padding of edge tiles.
+- `--level N` copies a stored pyramid level at its own pixels; `--mpp M` copies at M µm per pixel: a level within 1 % of it is used as it is, otherwise the next finer level is resampled with Lanczos-3. Copies are never upsampled.
+- `--compression jpeg` (default) with `--quality Q` (1–100, default 90; chroma is subsampled below 90), or `--compression deflate` for lossless tiles, several times larger.
+- `--tile-size 256|512` (default 512), `--bigtiff` to write a BigTIFF even when the copy fits in 4 GiB, `--no-icc-profile` to leave the colour profile out, `--overwrite` to replace an existing file.
+- The command prints what it will write, shows progress on standard error, and exits with 0 when the copy was written, 1 when it failed (or tiles could not be read from the slide, which show its background colour), 2 for invalid arguments or an existing output, and 130 when cancelled with Ctrl-C. The copy is written to `<OUTPUT>.<pid>.eov-partial` next to the output and renamed when complete, so an error or Ctrl-C never leaves a half-written file, and an existing file is only replaced by a complete copy. eov refuses to write a copy over the slide it reads.
+
+**What is written.**
+
+- *TIFF* (`--format tiff`, the default): a tiled TIFF in which every pyramid level is its own image, full resolution first and the others marked reduced-resolution, halving down to a single tile. This is OpenSlide's "generic tiled TIFF", so the copy opens in eov, OpenSlide, QuPath, libvips and most WSI software. Files that could exceed 4 GiB are written as BigTIFF; smaller ones stay classic TIFF for older readers (the choice is made when the file is complete). Lossless copies stop their pyramid while every level is still at least one tile long, and use smaller tiles for small regions: OpenSlide 4.0 misreads non-JPEG levels smaller than a tile.
+- *OME-TIFF* (`--format ome-tiff`, or an output name ending in `.ome.tif`, `.ome.tiff` or `.ome.btf`): OME-XML in the first image and the reduced levels as SubIFDs, as QuPath, Bio-Formats and OMERO expect. eov reads these copies with its own OME-TIFF reader, pyramid, objective power and (for copies that are not de-identified) label and macro images included; tools that read slides through OpenSlide see only the full-resolution image of an OME-TIFF, so give them the TIFF.
+- JPEG tiles are baseline JPEG in the YCbCr colour space with shared tables, as libtiff writes them; lossless tiles are Deflate with the horizontal predictor. Lower levels are the 2×2 mean of the level above.
+- The pixel size goes into the TIFF resolution tags (pixels per centimetre), which OpenSlide reports as `openslide.mpp-x`/`-y`, so measurements and the scale bar work on the copy (eov's own pixel-size override included). The pixel size, objective power (scaled to the copy's resolution), stain and source format are also written as `key = value` lines in the description (`openslide.comment`) or the OME-XML. The slide's ICC colour profile is kept.
+- A multichannel (fluorescence) slide is copied as the 8-bit RGB composite eov shows, with the channel colours, windows and gamma set in the Channels panel, not as separate channels; the description says so.
+- A copy that is not de-identified also keeps the slide's label, macro and thumbnail images (as extra images in the file) and records its file name, the region copied and every vendor property.
+- Memory use does not grow with the slide: tiles are read and compressed in parallel batches and the pyramid is built while level 0 is read (roughly 0.3–1 GB at most, depending on the number of cores and the scanner format). A 500-megapixel Aperio slide copies in about 3 s and an 8.7-gigapixel Ventana BIF in about a minute on a 32-core workstation.
+
+**De-identification** (`--deidentify`, or **De-identify** in the dialog):
+
+- The copy has no associated images: no label, no macro and no thumbnail, any of which can show the label.
+- Its metadata is built from an allow-list, not by deleting known-bad fields: the image geometry, pixel size, objective power and stain, and, only with `--keep-scanner`, the scanner vendor and model. Dates, barcodes, accession and slide ids, file names and paths, user names, comments, device serial numbers and every other vendor property are left out. Kept free text (stain, scanner model) is dropped when it looks like it carries an identifier (long digit runs, dates, e-mail addresses).
+- The description states that it is a de-identified copy made by eov, with eov's version and the date the copy was made.
+- The slide's ICC colour profile is kept, because it describes the scanner's colours; its own name may mention the scanner model. Use `--no-icc-profile` to leave it out.
+- Choose the copy's file name yourself: slide file names often contain an accession number.
+
+> **De-identification covers metadata and associated images, not the image itself.** Text and marks inside the scanned tissue image — a label or barcode that lies inside the scanned area, handwriting or pen marks on the glass, annotations burned into the pixels by other software — are copied as they are. Look at the copy before sharing it, and use a region that leaves such areas out. eov's de-identification is a tool to help, not a certified de-identification process (for example under HIPAA or the GDPR); follow your institution's rules for sharing patient material.
 
 ## Scripting
 
@@ -645,21 +749,19 @@ eov call quantify '{"model": "h-dab", "stain": "DAB", "thresholds": [0.2, 0.6, 1
 
 ## Plugins
 
-eov has an experimental plugin system that lets external crates extend the viewer with toolbar buttons and standalone UI windows. Plugins are discovered at startup from a configurable directory and activated automatically when they match a registered plugin id.
+Plugins extend eov with tools, overlays, panels, filters and analyses. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
 
 ### Annotations Plugin
 
-The official companion [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds local point and polygon annotations, slide-scoped annotation layers, a docked sidebar, SQLite-backed persistence, and JSON export. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
+The official companion [annotations plugin](https://github.com/eosin-platform/eov-annotations-plugin) adds points, regions (polygon, freehand, brush, rectangle, ellipse), lines, arrows and text, reusable classes with hotkeys, cell counting with densities and indices, high-power fields, measurements in physical units, review status and comment threads, blinded copies for multi-reader studies, and import and export in GeoJSON (as QuPath writes it), ASAP and Aperio ImageScope XML, Hamamatsu NDPA (import) and CSV. Its releases are published as platform-specific `.eop` packages for Linux, macOS, and Windows.
 
 ### Gamepad Plugin
 
-The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles.
+The official companion [gamepad plugin](https://github.com/eosin-platform/eov-gamepad-plugin) adds controller-driven viewport navigation and workspace actions through a dedicated settings window with configurable mappings, sensitivity tuning, and saved controller profiles. It acts only while an eov window has focus, and moving the system pointer is opt-in.
 
 ### General Plugin Architecture
 
-Plugins are native Rust dynamic libraries loaded through `abi_stable`. They can contribute toolbar buttons, HUD actions, sidebars, viewport overlays, and viewport filters while interacting with the host through a stable vtable.
-
-Plugins can query a host snapshot containing app/session state, open-file metadata, and the active viewport; read slide regions by file id; ask for a file’s pyramid levels with their dimensions and downsample factors (which are not always powers of two); open a file in the viewer; move or fit the active viewport; frame an image-space rectangle; and send plugin-scoped log messages back to the host.
+A plugin is a `cdylib` implementing the SDK's `Plugin` trait, exported with `export_plugin!`. eov checks the library's API and ABI before any plugin code runs, then talks to it through JSON messages (pixels as binary buffers): it sends events (files opened, views changed, tool gestures, UI callbacks, …) on its UI thread with no locks held, and the plugin calls the host from any thread, without blocking it, to read slide regions and properties, draw retained overlay layers, register tools, hotkeys, toolbar and HUD buttons, open Slint panels, run viewport filters, push undo entries, keep settings and show progress. A panicking plugin is stopped and reported, not allowed to take eov down. See [plugin_api/README.md](plugin_api/README.md) for the API, the manifest, packaging and a mock host for tests.
 
 ### Plugin Directory
 
@@ -673,71 +775,25 @@ Each `.eop` package in that directory is treated as a plugin package: a tar arch
 
 The Plugins panel (the plugin button in the toolbar) does the same from the window. It lists each plugin with its version, origin and state, says why one failed or whether its package changed since it was installed, and lists packages eov cannot read. Plugins can be disabled, enabled and removed there. **Check for updates** asks before going online, then compares the installed plugins with the official catalog of this eov release; an update is installed after a confirmation and used from the next start.
 
-### Manifest Format
+### Manifest and Writing a Plugin
 
-Every plugin directory must contain a `plugin.toml` at its root:
+Each package has a `plugin.toml` at its root:
 
 ```toml
-[plugin]
-id = "example_plugin"
-name = "Example Plugin"
-version = "0.1.0"
-entry_ui = "ui/my_panel.slint"
-entry_component = "MyPanel"
+id = "hello"                        # ^[a-z0-9][a-z0-9_]{0,63}$
+name = "Hello"
+version = "1.0.0"
+api = ">=1.0, <2"                   # eov-plugin-api requirement
 
-[icon]
-svg = '<svg>...</svg>'
-# OR: file = "icons/my-icon.svg"
+[environment]
+version = ">=1.0.0, <2.0.0"         # eov versions the plugin supports
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | yes | Unique plugin identifier. Must match the id used during registration. |
-| `name` | yes | Human-readable display name. |
-| `version` | yes | SemVer version string. |
-| `entry_ui` | no | Relative path to a `.slint` file loaded at runtime via the Slint interpreter. |
-| `entry_component` | no | Name of the exported component inside the `.slint` file. |
-| `icon.svg` | no | Inline SVG string for the toolbar button icon. |
-| `icon.file` | no | Relative path to an SVG icon file. |
-
-Paths must be relative (no leading `/` or `..` traversal) and are resolved against the plugin directory root.
-
-### Writing a Plugin
-
-1. Create a Rust library crate that depends on `plugin_api`.
-2. Implement the `Plugin` trait:
-
-```rust
-use eov_plugin_api::{Plugin, HostContext, PluginError};
-use eov_plugin_api::manifest::PluginManifest;
-
-pub struct MyPlugin { manifest: PluginManifest }
-
-impl Plugin for MyPlugin {
-    fn manifest(&self) -> &PluginManifest { &self.manifest }
-
-    fn activate(&self, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
-        // Register toolbar buttons, initialize state
-        host.add_toolbar_button(ToolbarButtonRegistration { /* ... */ })?;
-        Ok(())
-    }
-
-    fn on_action(&self, action: &str, host: &mut dyn HostContext, plugin_root: &Path) -> Result<(), PluginError> {
-        // Respond to toolbar button clicks
-        if action == "open_panel" {
-            host.open_plugin_window(plugin_root, &self.manifest)?;
-        }
-        Ok(())
-    }
-}
-```
-
-3. Add a `plugin.toml` manifest and optionally a `.slint` UI file to the plugin directory.
-4. Register the plugin in the host app's `main.rs` (static registration in v1).
+The [plugin API README](plugin_api/README.md) has a complete minimal plugin, every manifest key, the package layout and the compatibility rules; `plugin_api/example-plugin/` is a complete plugin with a sidebar, a tool, overlays, a filter and settings, and it is eov's own end-to-end test.
 
 ### Example Plugin
 
-The in-tree plugins under `plugins/` demonstrate the supported native pattern. To try them:
+The in-tree plugins under `plugins/` are full examples. To try them:
 
 1. Build, package, and launch the native plugins with `./scripts/run-with-plugins.sh slide.svs`. It uses a separate development home (`target/dev-eov-home`, or `EOV_HOME`), so your installed plugins and settings are left alone; set `CUDA_HOME` to use a specific CUDA toolkit for eovae.
 2. Inspect the generated `.eop` packages in `target/dev-eov-home/plugins/` if you want to load them manually later
@@ -766,7 +822,10 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 
 - `measurements/`: the region of interest and the measurements (list them with Ctrl+Shift+M; `remember_measurements = false` in `config.toml` turns this off);
 - `bookmarks.toml`: named views (Ctrl+B);
-- `calibrations.toml`: pixel sizes set by hand in Slide Information.
+- `calibrations.toml`: pixel sizes set by hand in Slide Information;
+- `heatmaps.toml`: the heat map shown over a slide, its placement and colours (the image stays where it is);
+- `channels/`: how the channels of multichannel slides are shown (colours, windows, gamma, visibility);
+- `alignments.toml`: how two linked slides are aligned to each other (per slide pair).
 
 The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
 
@@ -787,16 +846,16 @@ bookmark-add = "Ctrl+D"
 
 ## Architecture
 
-This repository is a Cargo workspace with four crates:
+This repository is a Cargo workspace (`common`, `app`, `plugin_api` and `plugin_api/example-plugin`); the plugins under `plugins/` are separate Cargo projects built against the in-tree `plugin_api`, and `annotations`, `gamepad` and `cellaris` are git submodules (`git submodule update --init`):
 
-- `common`: WSI access, tile management, caching, viewport math, and benchmarks.
-- `app`: the desktop application built with Slint + CPU/GPU rendering paths.
-- `plugin_api`: shared trait definitions and manifest types for the native plugin system.
-- `plugins/*`: in-tree native plugins loaded through `abi_stable`.
+- `common` (`eov-common`): WSI access through OpenSlide and eov's OME-TIFF reader (with multichannel compositing), tile management and caching, viewport math, colour science (stain normalisation, deconvolution, quantification), image export and dataset extraction.
+- `app` (`eov`): the desktop application (Slint UI, CPU and GPU rendering, the plugin host) and the command line (updates, plugin management, datasets, probing).
+- `plugin_api` (`eov-plugin-api`): the plugin SDK, ABI, protocol, manifest and a mock host for tests.
+- `plugins/*`: the in-tree plugins.
 
 At a high level, the flow is:
 
-1. Open a slide through OpenSlide.
+1. Open a slide through OpenSlide, or eov's OME-TIFF reader.
 2. Read slide metadata and pyramid levels.
 3. Compute visible tiles for each active viewport.
 4. Load tiles in the background and cache them.
@@ -833,9 +892,10 @@ sudo apt-get install -y \
 
 ### How to Build
 
-Build the release binary from the workspace root:
+Build a development binary from the workspace root with a current stable Rust (install it with [rustup](https://rustup.rs): distribution packages of `cargo` are often too old for edition 2024):
 
 ```bash
+git submodule update --init   # the annotations, gamepad and cellaris plugins
 cargo build --bin eov
 ```
 
@@ -871,21 +931,24 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 ```text
 .
 ├── Cargo.toml            # Workspace definition
-├── app/                  # Desktop application crate
-│   ├── src/              # Application logic, rendering, callbacks, state
-│   │   └── plugins/      # Plugin manager, discovery, toolbar wiring
+├── app/                  # Desktop application and CLI (crate eov)
+│   ├── src/              # State, rendering, the plugin host (host_ui, plugin_runtime), CLI, updates
 │   └── ui/               # Slint UI components
-├── common/               # Shared WSI, tile, cache, and viewport code
+├── common/               # WSI, tiles, caching, viewport, colour, export, datasets (crate eov-common)
 │   ├── src/
 │   └── benches/          # Benchmarks for various core functions
-├── plugin_api/           # Shared plugin trait definitions and manifest types
-│   └── src/
+├── plugin_api/           # Plugin SDK, ABI, protocol and mock host (crate eov-plugin-api)
+│   └── example-plugin/   # A complete plugin, also eov's end-to-end test
 ├── clients/python/       # Scripting client (standard library only) and an example
-├── plugins/              # In-tree native plugins
-│   ├── annotations/
+├── plugins/              # In-tree plugins (separate Cargo projects)
+│   ├── annotations/      # submodule
+│   ├── cellaris/         # submodule
 │   ├── eovae/
-│   └── gamepad/
-└── fixtures/             # Sample data used for local testing/benchmarks
+│   └── gamepad/          # submodule
+├── assets/               # Icons, desktop and MIME files, macOS Info.plist
+├── packaging/            # AppImage, Flatpak, macOS, Windows and Homebrew packaging
+├── scripts/              # Release, packaging and development scripts
+└── fixtures/             # Sample slides for local tests and benchmarks (not in git)
 ```
 
 ## Status

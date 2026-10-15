@@ -107,6 +107,19 @@ impl Orientation {
         }
     }
 
+    /// This orientation followed by `next` (`next ∘ self`).
+    pub fn then(self, next: Self) -> Self {
+        let x = next.to_screen(self.to_screen(DVec2::new(1.0, 0.0)));
+        let y = next.to_screen(self.to_screen(DVec2::new(0.0, 1.0)));
+        Self::all()
+            .into_iter()
+            .find(|candidate| {
+                (candidate.to_screen(DVec2::new(1.0, 0.0)) - x).length() < 1e-9
+                    && (candidate.to_screen(DVec2::new(0.0, 1.0)) - y).length() < 1e-9
+            })
+            .unwrap_or(Self::IDENTITY)
+    }
+
     /// All eight orientations.
     pub fn all() -> [Self; 8] {
         let mut all = [Self::IDENTITY; 8];
@@ -1254,6 +1267,13 @@ mod tests {
         }
         assert_eq!(Orientation::IDENTITY.turned(4), Orientation::IDENTITY);
         assert_eq!(Orientation::IDENTITY.turned(1).degrees(), 90);
+        for a in Orientation::all() {
+            assert_eq!(a.then(a.inverse()), Orientation::IDENTITY);
+            for b in Orientation::all() {
+                let composed = a.then(b);
+                assert!(close(composed.to_screen(v), b.to_screen(a.to_screen(v))));
+            }
+        }
     }
 
     #[test]

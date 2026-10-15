@@ -14,4 +14,4 @@ StartupWMClass=io.eosin.eov
 Categories=Science;Graphics;Viewer;
 Keywords=whole-slide;wsi;pathology;microscopy;openslide;microbiology
 # The slide formats of io.eosin.eov.xml, TIFF and DICOM, and eov:// links.
-MimeType=image/x-aperio-svs;image/x-hamamatsu-ndpi;image/x-hamamatsu-vms;image/x-hamamatsu-vmu;image/x-leica-scn;image/x-mirax;image/x-sakura-svslide;image/x-ventana-bif;image/x-zeiss-czi;image/tiff;application/dicom;x-scheme-handler/eov;
+MimeType=image/x-aperio-svs;image/x-hamamatsu-ndpi;image/x-hamamatsu-vms;image/x-hamamatsu-vmu;image/x-leica-scn;image/x-mirax;image/x-sakura-svslide;image/x-ventana-bif;image/x-zeiss-czi;image/tiff;application/dicom;image/x-bigtiff;x-scheme-handler/eov;

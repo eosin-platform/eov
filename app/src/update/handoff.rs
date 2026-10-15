@@ -152,11 +152,19 @@ fn spawn_waiting_for_exit(mut command: Command) -> Result<()> {
     static WAIT_PIPE_WRITER: OnceLock<i32> = OnceLock::new();
 
     let mut fds = [0; 2];
+    // Close-on-exec from the start where the OS allows it: an update started
+    // from the window runs while other threads may start processes.
+    #[cfg(target_os = "linux")]
     // SAFETY: creating a pipe into a local array.
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+    let created = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } == 0;
+    #[cfg(not(target_os = "linux"))]
+    // SAFETY: creating a pipe into a local array.
+    let created = unsafe { libc::pipe(fds.as_mut_ptr()) } == 0;
+    if !created {
         return Err(std::io::Error::last_os_error()).context("could not create a pipe");
     }
     let [read, write] = fds;
+    #[cfg(not(target_os = "linux"))]
     for fd in fds {
         // SAFETY: setting a descriptor flag on descriptors we own.
         unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
