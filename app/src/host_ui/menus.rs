@@ -51,6 +51,15 @@ fn plugin_item(plugin_id: &str, menu_item: &MenuItem) -> ContextMenuItem {
     }
 }
 
+/// A primary-modifier shortcut as the platform writes it.
+fn shortcut(key: &str, shift: bool) -> String {
+    if cfg!(target_os = "macos") {
+        format!("{}⌘{key}", if shift { "⇧" } else { "" })
+    } else {
+        format!("Ctrl+{}{key}", if shift { "Shift+" } else { "" })
+    }
+}
+
 fn mark_last_separator(items: &mut [ContextMenuItem]) {
     if let Some(last) = items.last_mut() {
         last.separator_after = true;
@@ -87,6 +96,17 @@ impl UiHost {
             item("viewport-export-image", "Export Image…", "export"),
         ];
         mark_last_separator(&mut items);
+        if let Some(file_id) = file_id {
+            let mut add = item("host:bookmark-add", "Add Bookmark…", "");
+            add.shortcut = shortcut("B", false).into();
+            items.push(add);
+            if self.slide_has_bookmarks(file_id as i32) {
+                let mut list = item("host:bookmarks", "Bookmarks…", "");
+                list.shortcut = shortcut("B", true).into();
+                items.push(list);
+            }
+            mark_last_separator(&mut items);
+        }
 
         let host_hit = hits.iter().find(|key| key.layer.owner == Owner::Host);
         let mut host_items = Vec::new();
@@ -228,6 +248,9 @@ impl UiHost {
         let Some(host_command) = command.strip_prefix("host:") else {
             return false;
         };
+        if self.bookmark_command(host_command) {
+            return true;
+        }
         let file_id = self.menu.borrow().as_ref().and_then(|menu| menu.file_id);
         let Some(file_id) = file_id else {
             return true;

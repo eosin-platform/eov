@@ -1547,7 +1547,8 @@ impl AppState {
         self.sync_locked_viewports_for_active_file(false)
     }
 
-    fn active_viewport_pane(&self) -> PaneId {
+    /// The pane keyboard commands and the active viewport refer to.
+    pub fn active_viewport_pane(&self) -> PaneId {
         if self.split_enabled {
             self.focused_pane
         } else {

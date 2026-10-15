@@ -231,6 +231,20 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     ui.on_measure_mode_menu_requested(|x, y| {
         with_host(|host| host.open_measure_mode_menu(x, y));
     });
+    let ui_weak = ui.as_weak();
+    ui.on_bookmark_dialog_accepted(move |name| {
+        with_host(|host| host.finish_bookmark(&name));
+        if let Some(ui) = ui_weak.upgrade() {
+            ui.invoke_focus_keyboard();
+        }
+    });
+    let ui_weak = ui.as_weak();
+    ui.on_bookmark_dialog_cancelled(move || {
+        with_host(|host| host.cancel_bookmark());
+        if let Some(ui) = ui_weak.upgrade() {
+            ui.invoke_focus_keyboard();
+        }
+    });
     ui.on_plugin_confirm_accepted(|| {
         with_host(|host| host.answer_plugin_confirm(true));
     });

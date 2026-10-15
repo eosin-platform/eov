@@ -3,6 +3,7 @@
 
 mod backend;
 mod blitter;
+mod bookmarks;
 mod cache_budget;
 mod calibration_store;
 mod callbacks;

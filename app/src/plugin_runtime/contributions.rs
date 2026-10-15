@@ -13,10 +13,13 @@ use std::sync::Arc;
 
 /// Keys the host binds without modifiers (case-insensitive).
 pub const RESERVED_PLAIN_KEYS: &[&str] = &[
-    "f", "m", "n", "r", "d", "+", "=", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "f", "m", "n", "r", "d", "i", "+", "=", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "f11", "pageup", "pagedown",
 ];
 /// Keys the host binds with the primary modifier (Ctrl, or ⌘ on macOS).
-pub const RESERVED_PRIMARY_KEYS: &[&str] = &["w", "z", "y", "o", "c", "e", "s", "+", "=", "-", "0"];
+pub const RESERVED_PRIMARY_KEYS: &[&str] = &[
+    "w", "z", "y", "o", "c", "e", "s", "b", "tab", "+", "=", "-", "0",
+];
 
 /// Largest inline SVG accepted for an icon.
 const MAX_ICON_BYTES: usize = 64 * 1024;
@@ -67,7 +70,8 @@ fn hotkey_signature(hotkey: &Hotkey) -> (String, bool, bool, bool) {
 pub fn is_reserved(hotkey: &Hotkey) -> bool {
     let (key, primary, _shift, alt) = hotkey_signature(hotkey);
     if alt {
-        return false;
+        // Alt+←/→ step through the pane's navigation history.
+        return !primary && matches!(key.as_str(), "arrowleft" | "arrowright");
     }
     if primary {
         RESERVED_PRIMARY_KEYS.contains(&key.as_str())

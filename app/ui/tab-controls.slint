@@ -842,13 +842,16 @@ export component ContextMenu inherits Rectangle {
     in property <bool> is-visible: false;
     in property <length> menu-x: 0px;
     in property <length> menu-y: 0px;
+    /// Taller menus scroll.
+    in property <length> height-limit: 100000px;
     callback item-clicked(string);
     property <length> menu-width: 240px;
+    property <length> content-height: items.length * 28px;
 
     x: menu-x;
     y: menu-y;
     width: root.is-visible ? root.menu-width : 0px;
-    height: root.is-visible ? items.length * 28px : 0px;
+    height: root.is-visible ? min(root.content-height, root.height-limit) : 0px;
     background: Theme.context-menu-bg;
     border-radius: 4px;
     drop-shadow-blur: 8px;
@@ -868,75 +871,77 @@ export component ContextMenu inherits Rectangle {
         }
     }
 
-    VerticalLayout {
-        for item in items: Rectangle {
-            height: 28px;
-            background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
+    Flickable {
+        viewport-height: root.content-height;
 
-            if item.separator-after: Rectangle {
-                y: parent.height - 1px;
-                x: 8px;
-                width: parent.width - 16px;
-                height: 1px;
-                background: Theme.border;
-            }
+        VerticalLayout {
+            for item in items: Rectangle {
+                height: 28px;
+                background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
 
-            item-touch := TouchArea {
-                enabled: item.enabled;
-                clicked => {
-                    root.item-clicked(item.id);
+                if item.separator-after: Rectangle {
+                    y: parent.height - 1px;
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: 1px;
+                    background: Theme.border;
                 }
-            }
 
-            HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 8px;
+                item-touch := TouchArea {
+                    enabled: item.enabled;
+                    clicked => {
+                        root.item-clicked(item.id);
+                    }
+                }
 
-                Rectangle {
-                    width: 14px;
-                    height: parent.height;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
 
-                    if item.icon == "check": Text {
-                        y: (parent.height - self.height) / 2;
-                        text: "✓";
+                    Rectangle {
+                        width: 14px;
+                        height: parent.height;
+
+                        if item.icon == "check": Text {
+                            y: (parent.height - self.height) / 2;
+                            text: "✓";
+                            color: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                            font-size: 12px;
+                        }
+
+                        if item.icon != "" && item.icon != "check": Image {
+                            x: 0px;
+                            y: (parent.height - self.height) / 2;
+                            width: 14px;
+                            height: 14px;
+                            source: item.icon == "copy" ? @image-url("icons/copy.svg")
+                                : item.icon == "export" ? @image-url("icons/export.svg")
+                                : item.icon == "point" ? @image-url("icons/point.svg")
+                                : item.icon == "delete" ? @image-url("icons/delete.svg")
+                                : item.icon == "measure" ? @image-url("icons/measure.svg")
+                                : item.icon == "plugin" ? @image-url("icons/plugin.svg")
+                                : @image-url("icons/open-file.svg");
+                            image-fit: contain;
+                            colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                        }
+                    }
+
+                    Text {
+                        text: item.label;
                         color: item.enabled ? Theme.text-primary : Theme.text-secondary;
                         font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
                     }
 
-                    if item.icon != "" && item.icon != "check": Image {
-                        x: 0px;
-                        y: (parent.height - self.height) / 2;
-                        width: 14px;
-                        height: 14px;
-                        source: item.icon == "copy" ? @image-url("icons/copy.svg")
-                            : item.icon == "export" ? @image-url("icons/export.svg")
-                            : item.icon == "point" ? @image-url("icons/point.svg")
-                            : item.icon == "delete" ? @image-url("icons/delete.svg")
-                            : item.icon == "measure" ? @image-url("icons/measure.svg")
-                            : item.icon == "plugin" ? @image-url("icons/plugin.svg")
-                            : @image-url("icons/open-file.svg");
-                        image-fit: contain;
-                        colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                    Text {
+                        text: item.shortcut;
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
                     }
-                }
-
-                Text {
-                    text: item.label;
-                    color: item.enabled ? Theme.text-primary : Theme.text-secondary;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                }
-
-                Rectangle {
-                    horizontal-stretch: 1;
-                }
-
-                Text {
-                    text: item.shortcut;
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
                 }
             }
         }

@@ -165,6 +165,9 @@ impl UiHost {
             window_y: f64::from(window_y),
             modifiers,
         };
+        self.last_pointer.set(
+            (input.kind != PointerKind::Leave).then_some((window_x, window_y)),
+        );
         if input.kind == PointerKind::Down
             && let Some(ui) = self.ui()
         {
@@ -301,6 +304,15 @@ impl UiHost {
             }
             (true, "o") => {
                 ui.invoke_open_file_requested();
+                return true;
+            }
+            (true, "b") if shift => {
+                let (x, y) = self.keyboard_menu_position();
+                self.open_bookmark_menu(x, y, false);
+                return true;
+            }
+            (true, "b") => {
+                self.begin_bookmark();
                 return true;
             }
             (true, "Tab") => {

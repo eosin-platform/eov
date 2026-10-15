@@ -37,6 +37,7 @@ import { WindowToolbar } from "window-toolbar.slint";
 import { NotificationsPopup, StatusBar } from "status-bar.slint";
 import { PluginsPanel } from "plugins-panel.slint";
 import { SlideInfoPanel } from "slide-info-panel.slint";
+import { BookmarkDialog } from "bookmark-dialog.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -130,7 +131,12 @@ export component AppWindow inherits Window {
     in-out property <float> plugin-modal-height: 0;
     in-out property <component-factory> plugin-modal-factory;
     in-out property <bool> plugin-modal-captures-keyboard: true;
+    in-out property <bool> bookmark-dialog-visible: false;
+    in-out property <string> bookmark-dialog-name;
+    in-out property <string> bookmark-dialog-detail;
 
+    callback bookmark-dialog-accepted(string);
+    callback bookmark-dialog-cancelled();
     callback lanczos-confirm-accepted();
     callback lanczos-confirm-cancelled();
     callback lanczos-confirm-use-trilinear();
@@ -414,6 +420,10 @@ export component AppWindow inherits Window {
                 root.plugin-confirm-cancelled();
                 accept
             }
+            if e.text == Key.Escape && root.bookmark-dialog-visible {
+                root.bookmark-dialog-cancelled();
+                accept
+            }
             if e.text == Key.Escape && root.show-plugin-modal {
                 root.plugin-modal-dismiss-requested();
                 accept
@@ -432,7 +442,8 @@ export component AppWindow inherits Window {
             }
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
-                || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible {
+                || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
+                || root.bookmark-dialog-visible {
                 reject
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -1041,7 +1052,8 @@ export component AppWindow inherits Window {
         items: context-menu-items;
         is-visible: context-menu-visible;
         menu-x: max(0px, min(root.width - 244px, context-menu-x));
-        menu-y: max(0px, min(root.height - context-menu-items.length * 28px - 4px, context-menu-y));
+        height-limit: root.height - 8px;
+        menu-y: max(4px, min(root.height - min(context-menu-items.length * 28px, root.height - 8px) - 4px, context-menu-y));
 
         item-clicked(id) => {
             root.context-menu-visible = false;
@@ -1451,6 +1463,21 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+    if root.bookmark-dialog-visible: BookmarkDialog {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        name <=> root.bookmark-dialog-name;
+        detail: root.bookmark-dialog-detail;
+        accepted(name) => {
+            root.bookmark-dialog-accepted(name);
+        }
+        cancelled => {
+            root.bookmark-dialog-cancelled();
         }
     }
 

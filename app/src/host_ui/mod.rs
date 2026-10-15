@@ -18,6 +18,7 @@
 //!   snapshot), so plugin threads cannot block on the UI.
 
 mod annotations;
+mod bookmarks;
 mod callbacks;
 mod commands;
 mod input;
@@ -109,6 +110,13 @@ pub(crate) struct UiHost {
     host_job_cancels: RefCell<HashMap<String, Box<dyn Fn()>>>,
     /// Each pane's navigation history (Alt+←/→).
     pub(crate) history: RefCell<crate::history::History>,
+    /// The view the Add Bookmark dialog is naming.
+    pending_bookmark: RefCell<Option<bookmarks::PendingBookmark>>,
+    /// The bookmark menu last opened.
+    bookmark_menu: RefCell<Option<bookmarks::BookmarkMenu>>,
+    /// The pointer's last window position over a pane, for menus opened
+    /// from the keyboard.
+    last_pointer: Cell<Option<(f32, f32)>>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -173,6 +181,9 @@ pub(crate) fn init(
         restore_sidebar: crate::config::load_sidebar_plugin().ok().flatten(),
         host_job_cancels: RefCell::new(HashMap::new()),
         history: RefCell::new(crate::history::History::default()),
+        pending_bookmark: RefCell::new(None),
+        bookmark_menu: RefCell::new(None),
+        last_pointer: Cell::new(None),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();
