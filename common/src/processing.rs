@@ -183,73 +183,105 @@ impl ColorSettings {
         if let Some(warning) = stain_model_warning(stain_label, uses_he) {
             out.push(warning);
         }
+        out.extend(
+            self.plan(None)
+                .1
+                .not_applied
+                .into_iter()
+                .map(|item| format!("Not applied: {item}.")),
+        );
         out
     }
 
     /// Short label for an on-screen / burned-in badge, e.g.
     /// `"Colour-normalised (Macenko)"`; `None` when nothing is altered.
     pub fn badge(&self) -> Option<String> {
-        self.summary(None).badge()
+        self.plan(None).1.badge()
     }
 
-    fn summary(&self, estimate: Option<&StainEstimate>) -> ProcessingSummary {
-        let names: Vec<String> = match self.required_estimate() {
-            Some(_) => vec!["Hematoxylin".into(), "Eosin".into()],
-            None => self
-                .stain_model
-                .basis()
-                .names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        };
-        let mut summary = ProcessingSummary {
-            normalization: self.required_estimate().map(|m| m.label().to_string()),
-            normalization_pending: self.required_estimate().is_some() && estimate.is_none(),
-            normalization_fallback: estimate
-                .and_then(|e| e.fallback.as_ref().map(|f| f.describe())),
-            estimate: estimate.map(StainEstimate::summary),
-            stain_model: (self.alters_stain_colors() && self.required_estimate().is_none())
-                .then(|| self.stain_model.label()),
-            ..ProcessingSummary::default()
-        };
-        for (i, channel) in self.channels.iter().enumerate() {
-            let name = names
-                .get(i)
-                .cloned()
-                .unwrap_or_else(|| format!("stain {}", i + 1));
-            if !channel.visible {
-                summary.stain_adjustments.push(format!("{name} hidden"));
-            } else if (channel.intensity - 1.0).abs() > 0.001 {
-                summary
-                    .stain_adjustments
-                    .push(format!("{name} ×{:.2}", channel.intensity));
+    /// Resolves the stain stage these settings ask for and describes what
+    /// will actually be applied. Requests that cannot be honoured (a
+    /// normalisation target with another number of stains, isolating a stain
+    /// the model does not have, adjusting stains beyond the model) are left
+    /// out of the stage and listed in [`ProcessingSummary::not_applied`], so
+    /// the summary never claims processing the pixels did not get.
+    fn plan(
+        &self,
+        estimate: Option<&StainEstimate>,
+    ) -> (Option<StainTransformSpec>, ProcessingSummary) {
+        let mut summary = ProcessingSummary::default();
+        let required = self.required_estimate();
+        let mut spec = None;
+        match (required, estimate) {
+            (Some(method), None) => {
+                summary.normalization = Some(method.label().to_string());
+                summary.normalization_pending = true;
             }
+            (Some(method), Some(est)) => {
+                let target = self.target.clone().unwrap_or_default();
+                match StainTransformSpec::normalization(est, &target, &FitChecks::default()) {
+                    Ok(s) => {
+                        summary.normalization = Some(method.label().to_string());
+                        summary.normalization_fallback =
+                            est.fallback.as_ref().map(|f| f.describe());
+                        summary.estimate = Some(est.summary());
+                        spec = Some(s);
+                    }
+                    Err(e) => summary
+                        .not_applied
+                        .push(format!("{} stain normalisation ({e})", method.label())),
+                }
+            }
+            (None, _) => {}
         }
-        if let Some(index) = self.isolated {
-            summary.isolated = Some(
-                names
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| format!("stain {}", index + 1)),
-            );
+        if spec.is_none() && (self.isolated.is_some() || !self.channels_are_neutral()) {
+            // Deconvolution adjustments without normalisation. While an H&E
+            // normalisation is pending (or failed) they use the H&E preset.
+            let (basis, label) = if required.is_some() {
+                let preset = StainPreset::HematoxylinEosin;
+                (preset.basis(), preset.label().to_string())
+            } else {
+                (self.stain_model.basis(), self.stain_model.label())
+            };
+            let i0 = estimate.map(|e| e.i0).unwrap_or([255.0; 3]);
+            summary.stain_model = Some(label);
+            spec = Some(StainTransformSpec::deconvolution(basis).with_background(i0));
         }
-        let tone = &self.tone;
-        if (tone.gamma - 1.0).abs() > 0.001 {
-            summary.tone.push(format!("gamma {:.2}", tone.gamma));
-        }
-        if tone.brightness.abs() > 0.001 {
-            summary
-                .tone
-                .push(format!("brightness {:+.3}", tone.brightness));
-        }
-        if (tone.contrast - 1.0).abs() > 0.001 {
-            summary.tone.push(format!("contrast ×{:.2}", tone.contrast));
-        }
-        if self.sharpness > 0.001 {
-            summary.sharpness = Some(self.sharpness);
-        }
-        summary
+        let spec = spec.and_then(|spec| {
+            let names: Vec<String> = spec.source.names().iter().map(|s| s.to_string()).collect();
+            let isolated = match self.isolated {
+                Some(index) if index >= names.len() => {
+                    summary.not_applied.push(format!(
+                        "isolating stain {} (the stain model has {} stains)",
+                        index + 1,
+                        names.len()
+                    ));
+                    None
+                }
+                other => other,
+            };
+            if self
+                .channels
+                .iter()
+                .skip(names.len())
+                .any(|c| !c.is_neutral())
+            {
+                summary.not_applied.push(format!(
+                    "adjustments of stains beyond the {} of the stain model",
+                    names.len()
+                ));
+            }
+            let spec = spec.with_channels(&self.channels).with_isolated(isolated);
+            if spec.is_identity() {
+                // Only requests that cannot be applied were left.
+                summary.stain_model = None;
+                return None;
+            }
+            summary.describe_channels(&names, &spec.channels, spec.isolated);
+            Some(spec)
+        });
+        summary.describe_tone(self.tone, self.sharpness);
+        (spec, summary)
     }
 
     /// Resolves the settings into a ready-to-apply pipeline.
@@ -258,39 +290,23 @@ impl ColorSettings {
     /// pass `None` while it is still being computed (normalisation is then
     /// skipped and the summary reports it as pending). When an estimate is
     /// given its background `I₀` is also used for deconvolution-only
-    /// settings.
+    /// settings. Requests that cannot be applied are skipped and listed in
+    /// the summary's [`not_applied`](ProcessingSummary::not_applied).
     pub fn pipeline(&self, estimate: Option<&StainEstimate>) -> ProcessingPipeline {
-        let estimate_for_norm = self.required_estimate().and(estimate);
-        let spec = match estimate_for_norm {
-            Some(est) => {
-                let target = self.target.clone().unwrap_or_default();
-                StainTransformSpec::normalization(est, &target, &FitChecks::default())
-                    .ok()
-                    .map(|s| s.with_channels(&self.channels).with_isolated(self.isolated))
+        let (spec, mut summary) = self.plan(estimate);
+        let compiled = spec.as_ref().map(StainTransformSpec::compile);
+        let (stain, spec) = match compiled {
+            Some(Ok(transform)) => (transform, spec),
+            Some(Err(e)) => {
+                // `plan` validates everything `compile` checks; never claim
+                // a stage that is not applied all the same.
+                summary.clear_stain();
+                summary.not_applied.push(e.to_string());
+                (StainTransform::identity(), None)
             }
-            None if self.isolated.is_some() || !self.channels_are_neutral() => {
-                let basis = if self.required_estimate().is_some() {
-                    StainPreset::HematoxylinEosin.basis()
-                } else {
-                    self.stain_model.basis()
-                };
-                let i0 = estimate.map(|e| e.i0).unwrap_or([255.0; 3]);
-                Some(
-                    StainTransformSpec::deconvolution(basis)
-                        .with_background(i0)
-                        .with_channels(&self.channels)
-                        .with_isolated(self.isolated),
-                )
-            }
-            None => None,
+            None => (StainTransform::identity(), None),
         };
-        let summary = self.summary(estimate_for_norm);
-        let mut pipeline = ProcessingPipeline::new(spec.as_ref(), self.tone, self.sharpness)
-            .unwrap_or_else(|_| {
-                ProcessingPipeline::new(None, self.tone, self.sharpness).expect("no stain stage")
-            });
-        pipeline.summary = summary;
-        pipeline
+        ProcessingPipeline::from_parts(stain, spec, self.tone, self.sharpness, summary)
     }
 }
 
@@ -314,9 +330,75 @@ pub struct ProcessingSummary {
     /// e.g. `"gamma 1.20"`.
     pub tone: Vec<String>,
     pub sharpness: Option<f32>,
+    /// Requested processing that could not be applied, with the reason,
+    /// e.g. `"isolating stain 3 (the stain model has 2 stains)"`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_applied: Vec<String>,
 }
 
 impl ProcessingSummary {
+    /// Lists the per-stain adjustments and the isolated stain of an applied
+    /// stain stage whose stains are called `names`.
+    fn describe_channels(
+        &mut self,
+        names: &[String],
+        channels: &[StainChannel],
+        isolated: Option<usize>,
+    ) {
+        for (name, channel) in names.iter().zip(channels) {
+            if !channel.visible {
+                self.stain_adjustments.push(format!("{name} hidden"));
+            } else if (channel.intensity - 1.0).abs() > 0.001 {
+                self.stain_adjustments
+                    .push(format!("{name} ×{:.2}", channel.intensity));
+            }
+        }
+        self.isolated = isolated.and_then(|i| names.get(i).cloned());
+    }
+
+    fn describe_tone(&mut self, tone: ToneAdjustments, sharpness: f32) {
+        if (tone.gamma - 1.0).abs() > 0.001 {
+            self.tone.push(format!("gamma {:.2}", tone.gamma));
+        }
+        if tone.brightness.abs() > 0.001 {
+            self.tone
+                .push(format!("brightness {:+.3}", tone.brightness));
+        }
+        if (tone.contrast - 1.0).abs() > 0.001 {
+            self.tone.push(format!("contrast ×{:.2}", tone.contrast));
+        }
+        if sharpness > 0.001 {
+            self.sharpness = Some(sharpness);
+        }
+    }
+
+    /// Forgets the stain stage (it was not applied).
+    fn clear_stain(&mut self) {
+        self.normalization = None;
+        self.normalization_pending = false;
+        self.normalization_fallback = None;
+        self.estimate = None;
+        self.stain_model = None;
+        self.stain_adjustments.clear();
+        self.isolated = None;
+    }
+
+    /// Describes an explicitly built stain stage (see
+    /// [`ProcessingPipeline::new`]).
+    fn for_spec(spec: Option<&StainTransformSpec>) -> Self {
+        let mut summary = Self::default();
+        if let Some(spec) = spec.filter(|s| !s.is_identity()) {
+            let names: Vec<String> = spec.source.names().iter().map(|s| s.to_string()).collect();
+            if spec.normalization.is_some() {
+                summary.normalization = Some("custom".to_string());
+            } else {
+                summary.stain_model = Some(format!("custom ({})", names.join(", ")));
+            }
+            summary.describe_channels(&names, &spec.channels, spec.isolated);
+        }
+        summary
+    }
+
     /// Stain normalisation, deconvolution or isolation is active.
     pub fn alters_stain_colors(&self) -> bool {
         (self.normalization.is_some() && !self.normalization_pending)
@@ -359,13 +441,22 @@ impl ProcessingSummary {
         if self.sharpness.is_some() {
             parts.push("Sharpened".to_string());
         }
+        if !self.not_applied.is_empty() {
+            parts.push("Some adjustments not applied".to_string());
+        }
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
 
     /// Full provenance text for export metadata and burned-in captions.
     pub fn provenance(&self) -> String {
+        let not_applied = (!self.not_applied.is_empty())
+            .then(|| format!("Not applied: {}.", self.not_applied.join("; ")));
         if !self.is_modified() {
-            return "Colours as scanned (no processing).".to_string();
+            let scanned = "Colours as scanned (no processing).".to_string();
+            return match not_applied {
+                Some(line) => format!("{scanned} {line}"),
+                None => scanned,
+            };
         }
         let mut lines = Vec::new();
         if let Some(method) = &self.normalization {
@@ -406,6 +497,7 @@ impl ProcessingSummary {
                 "Sharpened (screen-space Laplacian, amount {amount:.2})."
             ));
         }
+        lines.extend(not_applied);
         lines.join(" ")
     }
 }
@@ -440,9 +532,10 @@ impl ProcessingPipeline {
         }
     }
 
-    /// Builds a pipeline from explicit stages. The summary only describes
-    /// tone and sharpening; prefer [`ColorSettings::pipeline`], which also
-    /// describes the stain stage.
+    /// Builds a pipeline from explicit stages. The summary describes the
+    /// stain stage only generically (a custom normalisation or stain model);
+    /// prefer [`ColorSettings::pipeline`], which names the method and the
+    /// stain model.
     pub fn new(
         stain: Option<&StainTransformSpec>,
         tone: ToneAdjustments,
@@ -452,20 +545,32 @@ impl ProcessingPipeline {
             Some(spec) => spec.compile()?,
             None => StainTransform::identity(),
         };
-        let summary = ColorSettings {
+        let mut summary = ProcessingSummary::for_spec(stain);
+        summary.describe_tone(tone, sharpness);
+        Ok(Self::from_parts(
+            transform,
+            stain.cloned(),
             tone,
             sharpness,
-            ..ColorSettings::default()
-        }
-        .summary(None);
-        Ok(Self {
-            stain: transform,
-            stain_spec: stain.cloned(),
+            summary,
+        ))
+    }
+
+    fn from_parts(
+        stain: StainTransform,
+        stain_spec: Option<StainTransformSpec>,
+        tone: ToneAdjustments,
+        sharpness: f32,
+        summary: ProcessingSummary,
+    ) -> Self {
+        Self {
+            stain,
+            stain_spec,
             tone,
             tone_lut: tone.lut(),
             sharpness: if sharpness > 0.001 { sharpness } else { 0.0 },
             summary,
-        })
+        }
     }
 
     pub fn is_identity(&self) -> bool {
@@ -1105,6 +1210,140 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("only supports H&E"))
         );
+        let invalid = ColorSettings {
+            isolated: Some(4),
+            ..ColorSettings::default()
+        };
+        assert_eq!(
+            invalid.warnings(None),
+            vec!["Not applied: isolating stain 5 (the stain model has 2 stains).".to_string()]
+        );
+    }
+
+    #[test]
+    fn summaries_only_describe_what_is_applied() {
+        // Isolating a stain the model does not have: the other adjustments
+        // still apply, and the isolation is reported as not applied.
+        let settings = ColorSettings {
+            stain_model: StainModel::Preset(StainPreset::HematoxylinDab),
+            channels: vec![StainChannel {
+                intensity: 1.5,
+                visible: true,
+            }],
+            isolated: Some(2),
+            ..ColorSettings::default()
+        };
+        let pipeline = settings.pipeline(None);
+        assert!(!pipeline.stain_transform().is_identity());
+        let summary = pipeline.summary();
+        assert_eq!(summary.isolated, None);
+        assert_eq!(summary.not_applied.len(), 1, "{summary:?}");
+        let badge = summary.badge().unwrap();
+        assert!(
+            badge.contains("Hematoxylin ×1.50")
+                && badge.contains("not applied")
+                && !badge.contains("Isolated"),
+            "{badge}"
+        );
+        assert!(
+            summary
+                .provenance()
+                .contains("Not applied: isolating stain 3 (the stain model has 2 stains)."),
+            "{}",
+            summary.provenance()
+        );
+
+        // Nothing valid left: no stain stage, and no claim of one.
+        let only_invalid = ColorSettings {
+            isolated: Some(5),
+            ..ColorSettings::default()
+        };
+        let pipeline = only_invalid.pipeline(Some(&estimate()));
+        assert!(pipeline.is_identity());
+        assert!(pipeline.summary().stain_model.is_none());
+        assert!(!pipeline.summary().alters_stain_colors());
+        assert!(
+            pipeline
+                .summary()
+                .provenance()
+                .starts_with("Colours as scanned (no processing). Not applied:")
+        );
+
+        // A normalisation target with another number of stains: the slide
+        // is not normalised and the summary says so, but the channel
+        // adjustments still apply (with the H&E preset).
+        let mut norm = ColorSettings::from_legacy(
+            crate::StainNormalization::Macenko,
+            1.3,
+            true,
+            1.0,
+            true,
+            0,
+            ToneAdjustments::default(),
+            0.0,
+        );
+        norm.target = Some(NormalizationTarget {
+            basis: StainPreset::HematoxylinEosinDab.basis(),
+            max_concentrations: vec![1.0; 3],
+        });
+        let pipeline = norm.pipeline(Some(&estimate()));
+        let summary = pipeline.summary();
+        assert_eq!(summary.normalization, None);
+        assert!(
+            summary.not_applied[0].starts_with("Macenko stain normalisation ("),
+            "{summary:?}"
+        );
+        let badge = summary.badge().unwrap();
+        assert!(
+            !badge.contains("Colour-normalised") && badge.contains("Hematoxylin ×1.30"),
+            "{badge}"
+        );
+        assert!(!pipeline.stain_transform().is_identity());
+        assert_eq!(
+            pipeline.stain_spec().unwrap().source,
+            StainPreset::HematoxylinEosin.basis()
+        );
+
+        // Adjusting a stain the model does not have changes nothing.
+        let extra = ColorSettings {
+            channels: vec![
+                StainChannel::default(),
+                StainChannel::default(),
+                StainChannel {
+                    intensity: 2.0,
+                    visible: true,
+                },
+            ],
+            ..ColorSettings::default()
+        };
+        let pipeline = extra.pipeline(None);
+        assert!(pipeline.is_identity());
+        assert!(pipeline.summary().stain_adjustments.is_empty());
+        assert_eq!(pipeline.summary().not_applied.len(), 1);
+    }
+
+    #[test]
+    fn explicit_pipelines_describe_their_stain_stage() {
+        let spec = StainTransformSpec::deconvolution(StainPreset::HematoxylinDab.basis())
+            .with_channels(&[
+                StainChannel::default(),
+                StainChannel {
+                    intensity: 0.0,
+                    visible: false,
+                },
+            ]);
+        let pipeline =
+            ProcessingPipeline::new(Some(&spec), ToneAdjustments::default(), 0.0).unwrap();
+        let summary = pipeline.summary();
+        assert_eq!(summary.stain_adjustments, vec!["DAB hidden".to_string()]);
+        assert!(
+            summary
+                .stain_model
+                .as_deref()
+                .unwrap()
+                .starts_with("custom (")
+        );
+        assert!(summary.alters_stain_colors());
     }
 
     #[test]
