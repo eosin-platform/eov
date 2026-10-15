@@ -366,6 +366,10 @@ export struct ExportSettings {
     brightness: float,
     contrast: float,
     stain-normalization: StainNormalization,
+    // Colour management: the slide's ICC profile converted to sRGB (offered
+    // for slides with a usable profile).
+    color-management: bool,
+    has-color-profile: bool,
     // Measurement overlay
     show-measurement: bool,
     has-measurement: bool,

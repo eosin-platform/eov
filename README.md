@@ -249,6 +249,12 @@ eov supports real-time H&E color deconvolution, which separates a histology imag
 
 When stain normalization is active, the deconvolution reuses the slide-specific stain matrix estimated by the normalization step, so channel separation reflects the actual stain vectors of the current slide. Otherwise the default Ruifrok & Johnston reference matrix is used. Both CPU and GPU backends are supported.
 
+## Colour Management
+
+Many scanners record an ICC colour profile with the slide (Aperio's "ScanScope v1", Roche's DP 200 profiles, …). eov converts such a slide's colours from its profile to sRGB, on both renderers, in the viewport, the minimap, copies and exports. The HUD shows **ICC** while a slide is colour-managed; click it (or **Show Colours as Scanned** in the viewport menu) to see the colours as scanned, and again to convert them. Slides without a profile have no indicator.
+
+The conversion is the last colour step before the background: stain normalisation, deconvolution, tone adjustments and plugin filters work on the slide's own colours, and so do region reads by plugins, stain quantification and dataset extraction. eov samples each profile's conversion into a 33×33×33 table that both renderers interpolate the same way (within 2 levels of the exact conversion on stained tissue). It assumes an sRGB display, and supports RGB profiles of the matrix/TRC and LUT kinds; other profiles are reported on the HUD and the slide is shown as scanned.
+
 ## Stain Quantification
 
 For brightfield IHC and special stains, **Quantify Stain in Region…** (right-click a slide with a region of interest) measures one stain in the region of interest: the share of tissue pixels positive for it, the weak (1+), moderate (2+) and strong (3+) shares, an H-score (0–300) and the mean concentration. It uses the same colour-deconvolution model as the view, with the H-DAB, H&E, H-E-DAB, H-AEC, H-PAS or Masson trichrome stain vectors (Ruifrok & Johnston), suggested from the slide's stain label; the thresholds are stain concentrations and can be changed. Glass and ink are left out, the region is read at the finest resolution that keeps it under 16 megapixels, and the results can be copied with the model and thresholds used. As everything in eov, this is for research and education, not diagnosis.

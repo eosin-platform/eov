@@ -27,6 +27,8 @@ pub struct TiffOptions {
     pub dpi: Option<f64>,
     pub description: Option<String>,
     pub software: Option<String>,
+    /// ICC profile (tag 34675).
+    pub icc_profile: Option<Vec<u8>>,
     pub rows_per_strip: u32,
     /// Force BigTIFF (otherwise chosen automatically).
     pub big: bool,
@@ -39,6 +41,7 @@ impl Default for TiffOptions {
             dpi: None,
             description: None,
             software: None,
+            icc_profile: None,
             rows_per_strip: 64,
             big: false,
         }
@@ -50,6 +53,7 @@ const LONG: u16 = 4;
 const RATIONAL: u16 = 5;
 const ASCII: u16 = 2;
 const LONG8: u16 = 16;
+const UNDEFINED: u16 = 7;
 
 /// Accented Latin letters and their unaccented ASCII letter.
 const LATIN: &[(&str, char)] = &[
@@ -306,6 +310,9 @@ impl<W: Write + Seek> TiffWriter<W> {
         }
         if self.options.compression == TiffCompression::Deflate {
             entries.push((317, SHORT, 1, u16s(&[2])));
+        }
+        if let Some(profile) = self.options.icc_profile.as_ref().filter(|p| !p.is_empty()) {
+            entries.push((34675, UNDEFINED, profile.len() as u64, profile.clone()));
         }
         entries.sort_by_key(|e| e.0);
 

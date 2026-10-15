@@ -103,6 +103,23 @@ pub struct ImageMetadata {
     /// Human-readable provenance (slide, region, processing).
     pub description: Option<String>,
     pub software: Option<String>,
+    /// The colour space of the pixels: the slide's own ICC profile, to
+    /// embed untouched (colours as scanned), or sRGB (colour-managed).
+    #[serde(skip)]
+    pub color_space: ColorSpace,
+}
+
+/// What exported pixels' colours mean.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum ColorSpace {
+    /// Unknown (no profile is written).
+    #[default]
+    Unspecified,
+    /// sRGB: PNGs get an sRGB chunk.
+    Srgb,
+    /// The slide's colour space, given by its ICC profile (embedded: PNG
+    /// iCCP, JPEG APP2, TIFF tag 34675).
+    Profile(std::sync::Arc<Vec<u8>>),
 }
 
 impl ImageMetadata {
@@ -121,6 +138,20 @@ impl ImageMetadata {
             um_per_px: request.output_pixel_size_um(mpp_x, mpp_y),
             description: provenance,
             software: Some(software_name()),
+            color_space: ColorSpace::Unspecified,
+        }
+    }
+
+    /// The same metadata with the pixels' colour space.
+    pub fn with_color_space(mut self, color_space: ColorSpace) -> Self {
+        self.color_space = color_space;
+        self
+    }
+
+    fn icc_profile(&self) -> Option<&[u8]> {
+        match &self.color_space {
+            ColorSpace::Profile(bytes) if !bytes.is_empty() => Some(bytes),
+            _ => None,
         }
     }
 
@@ -203,7 +234,7 @@ impl Drop for TrackedFile {
 enum Encoder {
     Png(Box<png::StreamWriter<'static, TrackedFile>>),
     Jpeg(Box<JpegWriter<BufWriter<File>>>),
-    Tiff(TiffWriter<BufWriter<File>>),
+    Tiff(Box<TiffWriter<BufWriter<File>>>),
 }
 
 /// Streams bands into a file of the given format.
@@ -261,7 +292,14 @@ impl BandSink for FileSink {
                     inner: Some(file),
                     error: self.png_error.clone(),
                 };
-                let mut encoder = png::Encoder::new(file, width, height);
+                let mut info = png::Info::with_size(width, height);
+                if let Some(profile) = self.metadata.icc_profile() {
+                    info.icc_profile = Some(std::borrow::Cow::Owned(profile.to_vec()));
+                }
+                let mut encoder = png::Encoder::with_info(file, info).map_err(encode_err)?;
+                if self.metadata.color_space == ColorSpace::Srgb {
+                    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+                }
                 encoder.set_color(png::ColorType::Rgb);
                 encoder.set_depth(png::BitDepth::Eight);
                 encoder.set_compression(png::Compression::Balanced);
@@ -312,6 +350,7 @@ impl BandSink for FileSink {
                         Some(s) => format!("{s}\n{text}"),
                         None => text.clone(),
                     }),
+                    icc_profile: self.metadata.icc_profile().map(<[u8]>::to_vec),
                 };
                 Encoder::Jpeg(Box::new(JpegWriter::new(file, width, height, &options)?))
             }
@@ -326,9 +365,10 @@ impl BandSink for FileSink {
                     dpi: self.metadata.dpi,
                     description: (!description.trim().is_empty()).then_some(description),
                     software: self.metadata.software.clone(),
+                    icc_profile: self.metadata.icc_profile().map(<[u8]>::to_vec),
                     ..TiffOptions::default()
                 };
-                Encoder::Tiff(TiffWriter::new(file, width, height, options)?)
+                Encoder::Tiff(Box::new(TiffWriter::new(file, width, height, options)?))
             }
         });
         Ok(())
@@ -442,8 +482,91 @@ mod tests {
             um_per_px: (Some(0.25), Some(0.25)),
             description: Some("Colours as scanned.".into()),
             software: Some(software_name()),
+            color_space: ColorSpace::Unspecified,
         };
         let text = meta.text();
         assert!(text.contains("Colours as scanned.") && text.contains("0.250000 × 0.250000 µm"));
+    }
+
+    /// Writes a 4×2 image in `format` with `color_space`; returns the file.
+    fn write_with(format: ExportFormat, color_space: ColorSpace) -> Vec<u8> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(format!("out.{}", format.extension()));
+        let metadata = ImageMetadata {
+            software: Some(software_name()),
+            ..ImageMetadata::default()
+        }
+        .with_color_space(color_space);
+        let mut sink = FileSink::new(&path, format, metadata);
+        sink.begin(4, 2).unwrap();
+        sink.write_rows(&[200u8, 100, 150, 255].repeat(8), 2)
+            .unwrap();
+        sink.finish().unwrap();
+        std::fs::read(&path).unwrap()
+    }
+
+    fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    /// Colours exported as scanned carry the slide's profile untouched;
+    /// converted ones are labelled sRGB (PNG) or carry no profile.
+    #[test]
+    fn exports_carry_their_colour_space() {
+        let profile: Vec<u8> = (0..200_000u32).map(|i| (i * 7 % 251) as u8).collect();
+        let embedded = ColorSpace::Profile(std::sync::Arc::new(profile.clone()));
+
+        // PNG: iCCP holds the (compressed) profile; the decoder gives it back.
+        let png = write_with(ExportFormat::Png, embedded.clone());
+        let reader = png::Decoder::new(std::io::Cursor::new(&png))
+            .read_info()
+            .unwrap();
+        assert_eq!(
+            reader.info().icc_profile.as_deref(),
+            Some(profile.as_slice())
+        );
+        assert!(find(&png, b"sRGB").is_none());
+        let srgb = write_with(ExportFormat::Png, ColorSpace::Srgb);
+        let reader = png::Decoder::new(std::io::Cursor::new(&srgb))
+            .read_info()
+            .unwrap();
+        assert!(reader.info().srgb.is_some());
+        assert!(reader.info().icc_profile.is_none());
+
+        // JPEG: APP2 ICC_PROFILE segments, in order, rejoin to the profile.
+        let jpeg = write_with(ExportFormat::Jpeg { quality: 90 }, embedded.clone());
+        let mut rejoined = Vec::new();
+        let mut at = 2;
+        while at + 4 <= jpeg.len() && jpeg[at] == 0xFF && jpeg[at + 1] != 0xDA {
+            let len = u16::from_be_bytes([jpeg[at + 2], jpeg[at + 3]]) as usize;
+            let body = &jpeg[at + 4..at + 2 + len];
+            if jpeg[at + 1] == 0xE2 && body.starts_with(b"ICC_PROFILE\0") {
+                assert_eq!(usize::from(body[13]), profile.len().div_ceil(65_519));
+                rejoined.extend_from_slice(&body[14..]);
+            }
+            at += 2 + len;
+        }
+        assert_eq!(rejoined, profile);
+        assert!(image::load_from_memory(&jpeg).is_ok(), "still a valid JPEG");
+        assert!(
+            find(
+                &write_with(ExportFormat::Jpeg { quality: 90 }, ColorSpace::Srgb),
+                b"ICC_PROFILE"
+            )
+            .is_none()
+        );
+
+        // TIFF: tag 34675.
+        let tiff = write_with(
+            ExportFormat::Tiff {
+                compression: super::super::TiffCompression::Deflate,
+            },
+            embedded,
+        );
+        let mut decoder = tiff::decoder::Decoder::new(std::io::Cursor::new(&tiff)).unwrap();
+        let tag = decoder
+            .get_tag_u8_vec(tiff::tags::Tag::Unknown(34675))
+            .unwrap();
+        assert_eq!(tag, profile);
     }
 }

@@ -13,6 +13,11 @@
 //! previews show the slide un-normalised while it runs, exports and copies
 //! wait for it on their thread, and a fit that failed is not tried again.
 //!
+//! A slide with a usable ICC profile is exported colour-managed (converted
+//! to sRGB, the file says so) like the viewer shows it, unless the dialog's
+//! "Convert to sRGB" is off: then its colours are exported as scanned and
+//! its profile is embedded in the file untouched.
+//!
 //! Overlays, bottom to top: overlay layers (the viewport's rasteriser) and
 //! their labels, then the host's ROI and measurements in the dialog's
 //! styles, the scale bar and the colour-processing note.
@@ -31,6 +36,8 @@ use crate::{
     ExportSettings as SlintExportSettings, IsolatedChannel as SlintIsolatedChannel,
     StainNormalization as SlintStainNormalization, StrokeStyle as SlintStrokeStyle,
 };
+use eov_common::color_management::DisplayTransform;
+use eov_common::export::ColorSpace;
 use eov_common::export::{
     BandSink, ExportError, ExportFormat, ExportReport, ExportRequest, ExportSource, FileSink,
     ImageMetadata, ImageSink, TiffCompression, render_export_bands,
@@ -100,6 +107,8 @@ struct Capture {
     /// The slide's stain fit for the settings' normalisation, as the viewer
     /// has it (see [`build_request`]).
     fit: Option<(StainFitMethod, SlideFit)>,
+    /// The slide's colour profile, converted when the settings say so.
+    color_profile: Option<Arc<DisplayTransform>>,
 }
 
 /// Captures the slide shown in `pane` for an export with `settings`. With
@@ -137,6 +146,10 @@ fn capture(
         .color_settings()
         .required_estimate()
         .map(|method| (method, crate::color::slide_fit(file_id, &file.wsi, method)));
+    let color_profile = match crate::color::slide_profile(file_id, &file.wsi) {
+        crate::color::SlideProfile::Ready(transform) => Some(transform),
+        _ => None,
+    };
     Some(Capture {
         file_id,
         wsi: file.wsi.clone(),
@@ -149,6 +162,33 @@ fn capture(
         unit: pane_state.hud.measurement_unit,
         layers,
         fit,
+        color_profile,
+    })
+}
+
+/// What the exported pixels' colours mean: sRGB when converted, the
+/// slide's profile (read here, embedded untouched) when not (worker
+/// thread).
+fn export_color_space(capture: &Capture, request: &ExportRequest) -> ColorSpace {
+    if request.processing.color_management().is_some() {
+        return ColorSpace::Srgb;
+    }
+    match capture.wsi.icc_profile() {
+        Ok(Some(profile)) => ColorSpace::Profile(Arc::new(profile)),
+        _ => ColorSpace::Unspecified,
+    }
+}
+
+/// What the export does with the slide's colour profile, if it has one.
+fn color_management_note(capture: &Capture, request: &ExportRequest) -> Option<String> {
+    let profile = capture.color_profile.as_ref()?;
+    Some(if request.processing.color_management().is_some() {
+        format!(
+            "Colour-managed: \"{}\" converted to sRGB",
+            profile.description()
+        )
+    } else {
+        "Colours as scanned; the slide's colour profile is embedded".to_string()
     })
 }
 
@@ -211,11 +251,21 @@ fn export_format(s: &SlintExportSettings) -> ExportFormat {
     }
 }
 
-/// Copies the pane's colour adjustments into `settings`.
+/// Copies the pane's colour adjustments, and the slide's colour
+/// management, into `settings`.
 fn apply_hud(settings: &mut SlintExportSettings, state: &AppState, pane: PaneId) {
-    let hud = state
+    let file = state
         .active_file_id_for_pane(pane)
-        .and_then(|id| state.get_file(id))
+        .and_then(|id| state.get_file(id));
+    let profile = file.is_some_and(|file| {
+        matches!(
+            crate::color::slide_profile(file.id, &file.wsi),
+            crate::color::SlideProfile::Ready(_)
+        )
+    });
+    settings.has_color_profile = profile;
+    settings.color_management = profile && file.is_some_and(|file| file.color_management);
+    let hud = file
         .and_then(|file| file.pane_state(pane))
         .map(|pane_state| pane_state.hud)
         .unwrap_or_default();
@@ -580,7 +630,13 @@ fn build_request(
     // Fractional DPI (screen scale factors) is kept exactly.
     let mut request = ExportRequest::new(capture.viewport.clone(), dpi);
     request.filtering = legacy.filtering_mode;
-    request.processing = color.pipeline(estimate.as_deref());
+    let managed = settings
+        .color_management
+        .then(|| capture.color_profile.clone())
+        .flatten();
+    request.processing = color
+        .pipeline(estimate.as_deref())
+        .with_color_management(managed);
     request.background = [
         legacy.background_rgba[0],
         legacy.background_rgba[1],
@@ -696,6 +752,9 @@ fn render_preview(
     request.scale *= factor;
     let mut prepared = prepare(capture, settings, &request, true);
     prepared.notes.extend(fit_note(capture));
+    prepared
+        .notes
+        .extend(color_management_note(capture, &request));
     let source = ExportSource {
         tile_manager: &manager,
         tile_cache: Some(&capture.tile_cache),
@@ -731,13 +790,18 @@ fn run_export(
         provenance.push_str(&note);
         provenance.push('.');
     }
+    let color_space = export_color_space(capture, &request);
+    if matches!(color_space, ColorSpace::Profile(_)) {
+        provenance.push_str(" The slide's colour profile is embedded.");
+    }
     let metadata = ImageMetadata::for_export(
         &request,
         dpi,
         capture.calibration.mpp_x,
         capture.calibration.mpp_y,
         Some(provenance),
-    );
+    )
+    .with_color_space(color_space);
     let source = ExportSource {
         tile_manager: &manager,
         tile_cache: Some(&capture.tile_cache),
@@ -1398,6 +1462,7 @@ mod tests {
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
             fit: None,
+            color_profile: None,
         };
         let settings = SlintExportSettings {
             dpi: 192,
@@ -1468,6 +1533,7 @@ mod tests {
                 StainFitMethod::Macenko,
                 SlideFit::Failed("no tissue to fit".into()),
             )),
+            color_profile: None,
         };
         let settings = SlintExportSettings {
             dpi: 96,
@@ -1487,6 +1553,80 @@ mod tests {
         captured.fit = Some((StainFitMethod::Macenko, SlideFit::Pending));
         let preview = build_request(&captured, &settings, 96.0, None);
         assert!(preview.processing.summary().normalization_pending);
+    }
+
+    /// A slide with a profile exports converted to sRGB (and says so), or,
+    /// with the conversion off, as scanned with its profile embedded.
+    #[test]
+    fn exports_are_colour_managed_or_carry_the_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let slide = dir.path().join("slide.svs");
+        let profile = eov_common::color_management::test_profiles::adobe_rgb();
+        let mut spec = eov_common::test_support::TiffSpec::aperio(128, 128, 64, 4);
+        spec.icc_profile = Some(profile.clone());
+        eov_common::test_support::write_tiff(&slide, &spec, |_, _| [60, 170, 90]).unwrap();
+        let transform = Arc::new(DisplayTransform::from_icc(&profile).unwrap());
+        let captured = Capture {
+            file_id: 1,
+            wsi: WsiFile::open(&slide).unwrap(),
+            file_name: "slide.svs".to_string(),
+            viewport: Viewport::new(64.0, 64.0, 128.0, 128.0),
+            tile_cache: Arc::new(TileCache::with_limits(16, 16 << 20)),
+            roi: None,
+            measurements: Vec::new(),
+            calibration: Calibration::new(None, None),
+            unit: MeasurementUnit::Um,
+            layers: Vec::new(),
+            fit: None,
+            color_profile: Some(Arc::clone(&transform)),
+        };
+        let mut settings = SlintExportSettings {
+            dpi: 96,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            has_color_profile: true,
+            color_management: true,
+            format: SlintExportFormat::Png,
+            ..Default::default()
+        };
+        let export = |settings: &SlintExportSettings, name: &str| {
+            let path = dir.path().join(name);
+            run_export(
+                &captured,
+                settings,
+                &path,
+                ExportFormat::Png,
+                &JobControl::new(),
+            )
+            .unwrap();
+            let bytes = std::fs::read(&path).unwrap();
+            let pixel = image::load_from_memory(&bytes)
+                .unwrap()
+                .to_rgb8()
+                .get_pixel(32, 32)
+                .0;
+            (bytes, pixel)
+        };
+        let has = |bytes: &[u8], chunk: &[u8]| bytes.windows(4).any(|w| w == chunk);
+
+        let (managed, pixel) = export(&settings, "managed.png");
+        assert_eq!(pixel, transform.apply_pixel([60, 170, 90]));
+        assert!(has(&managed, b"sRGB") && !has(&managed, b"iCCP"));
+        let request = build_request(&captured, &settings, 96.0, None);
+        assert!(
+            color_management_note(&captured, &request)
+                .unwrap()
+                .contains("sRGB")
+        );
+
+        settings.color_management = false;
+        let (as_scanned, pixel) = export(&settings, "scanned.png");
+        assert_eq!(pixel, [60, 170, 90]);
+        assert!(has(&as_scanned, b"iCCP") && !has(&as_scanned, b"sRGB"));
     }
 
     /// A turned view exports as shown: slide, plugin layers and the ROI
@@ -1544,6 +1684,7 @@ mod tests {
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
             fit: None,
+            color_profile: None,
         };
         let settings = SlintExportSettings {
             dpi: 192,

@@ -31,7 +31,9 @@ mod jpeg;
 mod render;
 pub(crate) mod tiff;
 
-pub use encode::{ExportFormat, FileSink, ImageMetadata, export_to_file, software_name};
+pub use encode::{
+    ColorSpace, ExportFormat, FileSink, ImageMetadata, export_to_file, software_name,
+};
 pub use jpeg::{JpegOptions, JpegTileEncoder, JpegWriter, Subsampling};
 pub use render::{
     BandSink, ExportError, ExportReport, ExportRequest, ExportSource, ImageSink, MAX_EXPORT_SIDE,
