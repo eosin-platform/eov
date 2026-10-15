@@ -327,6 +327,9 @@ mod gpu_filters {
         filtering: bool,
         /// The pane's frame changed while busy: read it back again after.
         dirty: bool,
+        /// The frame shown is older than the pane's: the next render reads
+        /// it back again, even if nothing changes until then.
+        stale: bool,
         /// Newest generation shown; older results are dropped.
         shown: u64,
     }
@@ -453,7 +456,7 @@ mod gpu_filters {
                 // Readbacks the renderer dropped (a reset) never arrive.
                 for pane in panes.panes.values_mut() {
                     if pane.awaiting_readback.take().is_some() {
-                        pane.dirty = true;
+                        pane.stale = true;
                         lost = true;
                     }
                 }
@@ -474,7 +477,10 @@ mod gpu_filters {
                     continue;
                 };
                 pane.filtering = false;
-                again |= std::mem::take(&mut pane.dirty);
+                if std::mem::take(&mut pane.dirty) {
+                    pane.stale = true;
+                    again = true;
+                }
                 if frame.tag.generation > pane.shown {
                     pane.shown = frame.tag.generation;
                     ready.retain(|older| older.tag.pane_uid != frame.tag.pane_uid);
@@ -513,6 +519,19 @@ mod gpu_filters {
             shown = true;
         }
         (shown, again)
+    }
+
+    /// Whether the pane's filtered frame is out of date (its frame changed
+    /// while it was busy, or its readback was lost): it must be read back
+    /// again. Clears the flag.
+    pub(super) fn take_stale(pane_uid: u32) -> bool {
+        PANES.with(|panes| {
+            panes
+                .borrow_mut()
+                .panes
+                .get_mut(&pane_uid)
+                .is_some_and(|pane| std::mem::take(&mut pane.stale))
+        })
     }
 
     /// Whether any pane is waiting for a readback or a filter job.
@@ -2223,7 +2242,8 @@ fn render_pane_gpu(
                     cached_cpu_frame_matches(frame, file.id, vp, render_width, render_height)
                 })
         });
-        (frame_changed || filters_changed || !current)
+        let stale = gpu_filters::take_stale(pane_uid);
+        (frame_changed || filters_changed || !current || stale)
             .then(|| gpu_filters::request(pane_uid, file.id, vp, scale, &finish))
             .flatten()
     } else {
@@ -2911,10 +2931,14 @@ mod tests {
         assert_eq!(frames[0].display.as_bytes(), &expected[..]);
         assert_eq!(frames[0].unfiltered, pixels);
         assert!(again, "pane 5 changed while its frame was filtered");
+        // Its next render reads it back again, though nothing changed.
+        assert!(gpu_filters::take_stale(5));
+        assert!(!gpu_filters::take_stale(5), "once");
 
         // The renderer lost pane 6's readback: the pane renders again.
         assert!(gpu_filters::dispatch(Vec::new(), false, &chain));
         assert!(!gpu_filters::busy());
+        assert!(gpu_filters::take_stale(6));
         assert!(gpu_filters::request(6, 1, &viewport, 1.0, &finish).is_some());
     }
 }
