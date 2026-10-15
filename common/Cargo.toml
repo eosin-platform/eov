@@ -10,6 +10,7 @@ repository = "https://github.com/eosin-platform/eov"
 homepage = "https://eov.sh"
 readme = "README.md"
 publish = true
+build = "build.rs"
 
 [lib]
 name = "eov_common"
@@ -44,6 +45,9 @@ csv = "1"
 sha2 = "0.10"
 # Platform directories (see `paths`)
 dirs = "6"
+
+[build-dependencies]
+pkg-config = "0.3"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

@@ -5,9 +5,7 @@ fn main() {
 
     slint_build::compile("ui/app-window.slint").expect("Slint build failed");
 
-    if let Ok(dir) = std::env::var("OPENSLIDE_LIB_DIR") {
-        println!("cargo:rustc-link-search=native={dir}");
-    }
-
-    println!("cargo:rustc-link-lib=dylib=openslide");
+    // OpenSlide is linked through eov-common (see common/build.rs); linking it
+    // here would also attach it to eov-update-helper, which must stay
+    // self-contained so it can run from a temporary directory.
 }

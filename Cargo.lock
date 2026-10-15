@@ -1767,6 +1767,7 @@ dependencies = [
  "lru",
  "openslide-rs",
  "parking_lot",
+ "pkg-config",
  "rayon",
  "serde",
  "serde_json",
