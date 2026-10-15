@@ -109,6 +109,8 @@ struct Capture {
     fit: Option<(StainFitMethod, SlideFit)>,
     /// The slide's colour profile, converted when the settings say so.
     color_profile: Option<Arc<DisplayTransform>>,
+    /// The viewer's pixel view: exports above 1:1 show pixels as squares.
+    pixel_view: bool,
 }
 
 /// Captures the slide shown in `pane` for an export with `settings`. With
@@ -163,6 +165,7 @@ fn capture(
         layers,
         fit,
         color_profile,
+        pixel_view: state.pixel_view,
     })
 }
 
@@ -630,6 +633,7 @@ fn build_request(
     // Fractional DPI (screen scale factors) is kept exactly.
     let mut request = ExportRequest::new(capture.viewport.clone(), dpi);
     request.filtering = legacy.filtering_mode;
+    request.pixel_view = capture.pixel_view;
     let managed = settings
         .color_management
         .then(|| capture.color_profile.clone())
@@ -1463,6 +1467,7 @@ mod tests {
             layers: store.file_layers(1).layers,
             fit: None,
             color_profile: None,
+            pixel_view: false,
         };
         let settings = SlintExportSettings {
             dpi: 192,
@@ -1534,6 +1539,7 @@ mod tests {
                 SlideFit::Failed("no tissue to fit".into()),
             )),
             color_profile: None,
+            pixel_view: false,
         };
         let settings = SlintExportSettings {
             dpi: 96,
@@ -1579,6 +1585,7 @@ mod tests {
             layers: Vec::new(),
             fit: None,
             color_profile: Some(Arc::clone(&transform)),
+            pixel_view: false,
         };
         let mut settings = SlintExportSettings {
             dpi: 96,
@@ -1685,6 +1692,7 @@ mod tests {
             layers: store.file_layers(1).layers,
             fit: None,
             color_profile: None,
+            pixel_view: false,
         };
         let settings = SlintExportSettings {
             dpi: 192,

@@ -460,6 +460,34 @@ pub(crate) fn reset_linked_alignment(ui: &AppWindow, state: &Arc<RwLock<AppState
     ui.set_status_text("The panes are aligned as they are now".into());
 }
 
+/// Turns the pixel view on or off: above 100%, panes show the slide's
+/// pixels as squares instead of smoothing them. Remembered in config.toml.
+/// For key bindings; returns whether it is on now.
+pub(crate) fn toggle_pixel_view(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -> bool {
+    let on = {
+        let mut state = state.write();
+        state.pixel_view = !state.pixel_view;
+        for file in &mut state.open_files {
+            file.invalidate_render_state();
+        }
+        state.request_render();
+        state.pixel_view
+    };
+    if let Err(error) = config::save_pixel_view(on) {
+        tracing::warn!("Could not remember the pixel view: {error}");
+    }
+    ui.set_pixel_view(on);
+    ui.set_status_text(
+        if on {
+            "Above 100%, the slide's pixels show as squares"
+        } else {
+            "Above 100%, the slide is smoothed"
+        }
+        .into(),
+    );
+    on
+}
+
 /// Turns the colour management (ICC profile → sRGB) of `pane`'s slide on or
 /// off. Returns whether it is on now; `None` (and a status message) when
 /// the slide has no profile eov can use.
@@ -963,6 +991,19 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+
+        ui.on_pixel_view_toggled({
+            let state_handle = Arc::clone(&state_handle);
+            let tile_cache = Arc::clone(&tile_cache);
+            let render_timer = Rc::clone(&render_timer);
+            let ui_weak = ui_weak.clone();
+            move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    toggle_pixel_view(&ui, &state_handle);
+                    request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+                }
+            }
+        });
 
         ui.on_toggle_slide_link_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {

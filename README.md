@@ -217,6 +217,8 @@ eov provides three texture filtering modes, selectable in the window toolbar (or
 
 Both CPU and GPU backends support all three modes. On the GPU path, trilinear blending is performed by sampling fine and coarse mip textures and mixing in the fragment shader. Lanczos resampling is implemented as a separable kernel evaluated per-pixel in a dedicated shader.
 
+**Show Pixels Above 100%** (in the same menu, `show_pixels` in `config.toml`) draws the slide's pixels as sharp squares wherever a pane magnifies it beyond its full resolution (more than one screen pixel per slide pixel), instead of smoothing them; below that the filtering mode applies. Both renderers sample the same pixels, and exports that magnify a view do the same while the setting is on.
+
 ## Image Adjustments
 
 Real-time image adjustment controls are available in the HUD settings panel:

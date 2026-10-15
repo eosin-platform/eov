@@ -372,3 +372,59 @@ fn legacy_render_export_uses_one_slide_level_fit() {
     let original = he_tissue_pixel(512, 384, w, h, [238, 236, 240]);
     assert_ne!(pick(&a, &tissue_view), original);
 }
+
+/// The pixel view: an export above 1:1 shows the slide's pixels as
+/// squares; at or below 1:1 the filtering applies as usual.
+#[test]
+fn pixel_view_exports_show_pixels_above_full_resolution() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("checker.tif");
+    crate::test_support::write_tiled_tiff(&path, 64, 64, 64, |x, y| {
+        if (x + y) % 2 == 0 {
+            [250, 250, 250]
+        } else {
+            [10, 10, 10]
+        }
+    })
+    .unwrap();
+    let wsi = crate::WsiFile::open(&path).unwrap();
+    let manager = crate::TileManager::new(wsi, 1);
+    let source = ExportSource {
+        tile_manager: &manager,
+        tile_cache: None,
+    };
+    let render = |downsample: f64, pixel_view: bool| {
+        let mut request = ExportRequest::region(8.0, 8.0, 16.0, 16.0, downsample, (64.0, 64.0));
+        request.filtering = crate::FilteringMode::Bilinear;
+        request.pixel_view = pixel_view;
+        render_export_image(&source, &request, &crate::job::JobControl::new())
+            .unwrap()
+            .0
+    };
+    // 4× magnified: every output pixel is a slide pixel, in 4 × 4 squares.
+    let squares = render(0.25, true);
+    assert_eq!((squares.width, squares.height), (64, 64));
+    for y in 0..64usize {
+        for x in 0..64usize {
+            let v = squares.pixels[(y * 64 + x) * 4];
+            let expected = if ((x / 4) + (y / 4)) % 2 == 0 {
+                250
+            } else {
+                10
+            };
+            assert_eq!(v, expected, "at {x},{y}");
+        }
+    }
+    // Without the pixel view the same export blends neighbouring pixels.
+    let smooth = render(0.25, false);
+    assert!(
+        smooth
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[0] > 20 && p[0] < 240)
+    );
+    // At 1:1 the pixel view changes nothing.
+    assert_eq!(render(1.0, true).pixels, render(1.0, false).pixels);
+}

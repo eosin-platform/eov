@@ -255,6 +255,7 @@ fn main() -> Result<()> {
 
     let mut initial_state = AppState::new();
     initial_state.viewport_lock_enabled = launch_options.viewport_lock_enabled;
+    initial_state.pixel_view = config::load_pixel_view();
     let state = Arc::new(RwLock::new(initial_state));
     let tile_cache = Arc::new(TileCache::with_budget(cache_budget::init(
         launch_options.cache_size_bytes,

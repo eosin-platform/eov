@@ -765,9 +765,10 @@ fn ui_isolated_channel(ic: crate::state::IsolatedChannel) -> SlintIsolatedChanne
     }
 }
 
-/// Update the filtering mode UI state
+/// Update the filtering mode UI state (and the pixel view next to it)
 pub fn update_filtering_mode(ui: &crate::AppWindow, state: &AppState) {
     ui.set_filtering_mode(ui_filtering_mode(state.filtering_mode));
+    ui.set_pixel_view(state.pixel_view);
 }
 
 #[cfg(test)]

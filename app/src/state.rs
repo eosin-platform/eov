@@ -533,6 +533,9 @@ pub struct AppState {
     pub gpu_backend_available: bool,
     /// The selected texture filtering mode
     pub filtering_mode: FilteringMode,
+    /// Show the slide's pixels as squares (nearest neighbour) where a pane
+    /// magnifies it beyond full resolution (`show_pixels` in config.toml).
+    pub pixel_view: bool,
     /// Whether the minimap/zoom controls are shown in viewports
     pub show_minimap: bool,
     /// Whether the metadata HUD is shown in viewports
@@ -586,6 +589,7 @@ impl AppState {
             render_backend: RenderBackend::Cpu,
             gpu_backend_available: false,
             filtering_mode: FilteringMode::default(),
+            pixel_view: false,
             show_minimap: true,
             show_metadata: false,
             show_scale_bar: true,

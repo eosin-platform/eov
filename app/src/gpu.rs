@@ -224,6 +224,9 @@ pub(crate) struct QueuedFrame {
     /// read back for plugin filters: they stay transparent outside the
     /// slide, and the filter job finishes them after the filters.
     pub(crate) composite: bool,
+    /// Sample the tiles nearest-neighbour (the pixel view above 1:1),
+    /// whatever the draws' filtering.
+    pub(crate) nearest: bool,
     /// Read the frame back for the CPU filter chain (RND-6); see
     /// [`GpuRenderer::poll_readbacks`].
     pub(crate) readback: Option<ReadbackTag>,
@@ -297,6 +300,7 @@ impl QueuedFrame {
         }
         self.sharpness.to_bits().hash(&mut hasher);
         self.composite.hash(&mut hasher);
+        self.nearest.hash(&mut hasher);
         self.icc.as_ref().map(|icc| icc.id()).hash(&mut hasher);
         self.draws.len().hash(&mut hasher);
         for draw in &self.draws {
@@ -541,6 +545,7 @@ struct TilePage {
     /// Pre-built bind groups — one per sampler variant.
     bilinear_bind_group: wgpu::BindGroup,
     trilinear_bind_group: wgpu::BindGroup,
+    nearest_bind_group: wgpu::BindGroup,
 }
 
 impl TilePage {
@@ -595,6 +600,7 @@ impl TilePage {
         };
         let bilinear_bind_group = bind_group(&runtime.bilinear_sampler);
         let trilinear_bind_group = bind_group(&runtime.sampler);
+        let nearest_bind_group = bind_group(&runtime.nearest_sampler);
         Some(Self {
             texture,
             array_view,
@@ -602,6 +608,7 @@ impl TilePage {
             slots: LayerSlots::new(layers, frame),
             bilinear_bind_group,
             trilinear_bind_group,
+            nearest_bind_group,
         })
     }
 
@@ -906,6 +913,8 @@ struct GpuRuntime {
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     bilinear_sampler: wgpu::Sampler,
+    /// The pixel view: the texel holding the sample point.
+    nearest_sampler: wgpu::Sampler,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     /// `EovColorParams` (`GpuColorUniform`, 144 bytes).
@@ -1021,6 +1030,20 @@ impl GpuRuntime {
             2,
             &[[0.0, 0.0, 0.0, 1.0]; 8],
         );
+
+        // Nearest sampler: the texel holding the sample point, as the CPU's
+        // `blit_tile_nearest` picks it.
+        let nearest_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("viewport-tile-nearest-sampler"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            anisotropy_clamp: 1,
+            ..Default::default()
+        });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("viewport-tile-pipeline-layout"),
@@ -1189,6 +1212,7 @@ impl GpuRuntime {
             bind_group_layout,
             sampler,
             bilinear_sampler,
+            nearest_sampler,
             vertex_buffer,
             vertex_capacity: 6,
             color_buffer,
@@ -1902,7 +1926,8 @@ impl GpuRenderer {
             .first()
             .map(|d| d.filtering_mode)
             .unwrap_or(FilteringMode::Bilinear);
-        let use_lanczos = matches!(filtering_mode, FilteringMode::Lanczos3);
+        // The pixel view samples the fine tiles as they are (no Lanczos).
+        let use_lanczos = !frame.nearest && matches!(filtering_mode, FilteringMode::Lanczos3);
         let is_bilinear = filtering_mode == FilteringMode::Bilinear;
 
         let mut encoder = runtime
@@ -1939,7 +1964,9 @@ impl GpuRenderer {
 
             for ((layer_size, index), range) in &draw_ranges {
                 if let Some(page) = tiles.page(*layer_size, *index) {
-                    let bg = if is_bilinear {
+                    let bg = if frame.nearest {
+                        &page.nearest_bind_group
+                    } else if is_bilinear {
                         &page.bilinear_bind_group
                     } else {
                         &page.trilinear_bind_group
@@ -2171,6 +2198,7 @@ mod tests {
             icc: None,
             sharpness,
             composite: true,
+            nearest: false,
             readback: None,
         }
     }
@@ -2308,6 +2336,7 @@ mod tests {
                 icc: pipeline.color_management().cloned(),
                 sharpness: pipeline.sharpness(),
                 composite: true,
+                nearest: false,
                 readback: None,
             },
         );
@@ -2363,6 +2392,7 @@ mod tests {
                     icc: None,
                     sharpness: 0.0,
                     composite: true,
+                    nearest: false,
                     readback: None,
                 },
             );
@@ -2486,6 +2516,85 @@ mod tests {
         }
     }
 
+    /// The pixel view on the GPU (nearest sampler) picks the same texels as
+    /// the CPU's `blit_tile_nearest`.
+    #[test]
+    fn nearest_gpu_frames_match_the_cpu_blitter() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the pixel view comparison");
+            return;
+        };
+        let (tile, _) = tile();
+        // A scale whose pixel centres never fall on a texel edge.
+        let scale = 2.37_f32;
+        let side = (TILE as f32 * scale).ceil() as u32;
+        let slot = SurfaceSlot(0);
+        renderer.ensure_surface(slot, side, side).unwrap();
+        renderer.pending_frames.insert(
+            slot.index(),
+            QueuedFrame {
+                width: side,
+                height: side,
+                orientation: Orientation::IDENTITY,
+                draws: vec![TileDraw {
+                    tile: Arc::clone(&tile),
+                    coarse_tile: None,
+                    screen_x: 0.0,
+                    screen_y: 0.0,
+                    screen_w: TILE as f32 * scale,
+                    screen_h: TILE as f32 * scale,
+                    coarse_uv_min: [0.0, 0.0],
+                    coarse_uv_max: [1.0, 1.0],
+                    mip_blend: 0.0,
+                    filtering_mode: FilteringMode::Trilinear,
+                }],
+                color: ProcessingPipeline::identity().gpu_uniform(),
+                icc: None,
+                sharpness: 0.0,
+                composite: true,
+                nearest: true,
+                readback: None,
+            },
+        );
+        renderer.flush_pending_frames();
+        let (_, _, gpu) = renderer.read_surface_rgba(slot).unwrap();
+
+        let mut cpu = vec![0u8; (side * side * 4) as usize];
+        let extent = f64::from(TILE as f32 * scale);
+        eov_common::blitter::blit_tile_nearest(
+            &mut cpu,
+            side,
+            side,
+            eov_common::blitter::TileSrc {
+                data: &tile.data,
+                width: tile.width,
+                height: tile.height,
+                border: tile.border,
+            },
+            eov_common::blitter::BlitRect {
+                x: 0,
+                y: 0,
+                width: extent.ceil() as i32,
+                height: extent.ceil() as i32,
+                exact_x: 0.0,
+                exact_y: 0.0,
+                exact_width: extent,
+                exact_height: extent,
+            },
+        );
+        let inside = (extent.floor() as usize).min(side as usize);
+        let mut differing = 0;
+        for y in 0..inside {
+            for x in 0..inside {
+                let i = (y * side as usize + x) * 4;
+                if gpu[i..i + 3] != cpu[i..i + 3] {
+                    differing += 1;
+                }
+            }
+        }
+        assert_eq!(differing, 0, "{differing} pixels sample another texel");
+    }
+
     fn tagged_frame(width: u32, generation: u64) -> QueuedFrame {
         let (tile, _) = tile();
         QueuedFrame {
@@ -2508,6 +2617,7 @@ mod tests {
             icc: None,
             sharpness: 0.0,
             composite: false,
+            nearest: false,
             readback: Some(ReadbackTag {
                 pane_uid: 7,
                 file_id: 1,
@@ -2637,6 +2747,7 @@ mod tests {
                 icc: None,
                 sharpness: 0.0,
                 composite: true,
+                nearest: false,
                 readback: None,
             },
         );

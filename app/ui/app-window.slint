@@ -137,6 +137,9 @@ export component AppWindow inherits Window {
     in-out property <bool> plugin-problems: false;
 
     in-out property <bool> filter-popup-visible: false;
+    // Above 100%, the slide's pixels show as squares.
+    in-out property <bool> pixel-view: false;
+    callback pixel-view-toggled();
     in-out property <bool> lanczos-confirm-visible: false;
     in-out property <bool> lanczos-confirm-from-backend-switch: false;
     in-out property <bool> plugin-confirm-visible: false;
@@ -1278,7 +1281,7 @@ export component AppWindow inherits Window {
         x: toolbar.filter-combo-abs-x;
         y: toolbar.filter-combo-abs-y;
         width: toolbar.filter-combo-width + 74px;
-        height: 3 * 26px + 4px;
+        height: 4 * 26px + 9px;
         background: Theme.context-menu-bg;
         border-radius: 4px;
         border-width: 1px;
@@ -1349,6 +1352,36 @@ export component AppWindow inherits Window {
                     padding-left: 8px;
                     Text {
                         text: root.filtering-mode == FilteringMode.lanczos3 ? "✓ Lanczos-3 (High Quality)" : "   Lanczos-3 (High Quality)";
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            // Above 1:1 the slide's pixels show as squares, whatever the
+            // filtering.
+            Rectangle {
+                height: 26px;
+                background: pixel-view-touch.has-hover ? Theme.context-menu-hover : transparent;
+                border-radius: 2px;
+
+                pixel-view-touch := TouchArea {
+                    clicked => {
+                        root.filter-popup-visible = false;
+                        root.pixel-view-toggled();
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: root.pixel-view ? "✓ Show Pixels Above 100%" : "   Show Pixels Above 100%";
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;

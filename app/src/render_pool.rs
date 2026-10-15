@@ -104,6 +104,9 @@ impl FrameFilters {
 
 #[derive(Clone)]
 pub enum CpuBlitKind {
+    /// The pixel view above 1:1: every screen pixel the slide pixel under
+    /// its centre.
+    Nearest,
     Bilinear,
     Lanczos3,
     Trilinear {
@@ -432,6 +435,7 @@ fn draw_command_into_chunk(
         border: command.tile.border,
     };
     match &command.kind {
+        CpuBlitKind::Nearest => blitter::blit_tile_nearest(chunk, width, chunk_height, tile, rect),
         CpuBlitKind::Bilinear => blitter::blit_tile(chunk, width, chunk_height, tile, rect),
         CpuBlitKind::Lanczos3 => {
             blitter::blit_tile_lanczos3(chunk, width, chunk_height, tile, rect)

@@ -7,7 +7,8 @@ use slint::{Rgba8Pixel, SharedPixelBuffer};
 
 // Re-export all public blitting primitives from common.
 pub use eov_common::blitter::{
-    BlitRect, CoarseSrc, TileSrc, blit_tile, blit_tile_lanczos3, blit_tile_trilinear,
+    BlitRect, CoarseSrc, TileSrc, blit_tile, blit_tile_lanczos3, blit_tile_nearest,
+    blit_tile_trilinear,
 };
 
 /// Create a SharedPixelBuffer from raw RGBA data

@@ -62,6 +62,8 @@ struct RenderPaneRequest<'a> {
     target_height: f64,
     force_render: bool,
     filtering_mode: FilteringMode,
+    /// `AppState::pixel_view`.
+    pixel_view: bool,
     filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
     /// Stable id of the pane (what plugins and render jobs know it by).
     pane_uid: u32,
@@ -126,8 +128,17 @@ struct CpuPaneSnapshot {
     /// The pane's colour processing, resolved when the snapshot was taken.
     color: crate::color::PaneColor,
     filtering_mode: FilteringMode,
+    /// `AppState::pixel_view`.
+    pixel_view: bool,
     filter_revision: u64,
     last_render_filter_revision: u64,
+}
+
+/// Whether a frame of `viewport` (physical pixels) samples the slide's
+/// pixels as squares: the pixel view, where the frame magnifies the slide
+/// beyond full resolution.
+fn pixel_view_applies(pixel_view: bool, viewport: &Viewport) -> bool {
+    pixel_view && viewport.zoom > 1.0 + 1e-9
 }
 
 struct CpuFrameSnapshot {
@@ -994,6 +1005,7 @@ pub(crate) fn update_and_render(
 
     let mut state = state.write();
     let filtering_mode = state.filtering_mode;
+    let pixel_view = state.pixel_view;
     let pane_count = state.panes.len();
     let active_file_ids: Vec<Option<i32>> = state
         .panes
@@ -1134,6 +1146,7 @@ pub(crate) fn update_and_render(
                 target_height: content_height,
                 force_render,
                 filtering_mode,
+                pixel_view,
                 filter_chain: &filter_chain,
                 pane_uid,
                 filter_revision,
@@ -1332,6 +1345,7 @@ fn collect_cpu_frame_snapshot(
         });
 
         let filtering_mode = state.filtering_mode;
+        let pixel_view = state.pixel_view;
         let Some(file) = state.open_files.iter_mut().find(|file| file.id == file_id) else {
             panes.push(None);
             continue;
@@ -1488,6 +1502,7 @@ fn collect_cpu_frame_snapshot(
             needs_settled_cpu_render,
             color,
             filtering_mode,
+            pixel_view,
             filter_revision,
         }));
     }
@@ -1886,7 +1901,7 @@ fn render_cpu_pane_from_snapshot(
         level,
         coverage.as_ref(),
     );
-    let fine_commands = fine_blits(
+    let mut fine_commands = fine_blits(
         &snapshot.tile_manager,
         &aligned,
         &level_info,
@@ -1895,6 +1910,12 @@ fn render_cpu_pane_from_snapshot(
         effective_trilinear,
         is_adaptive_lanczos && effective_lanczos_weight >= 1.0,
     );
+    let mut fallback_commands = fallback_commands;
+    if pixel_view_applies(snapshot.pixel_view, vp) {
+        for command in fallback_commands.iter_mut().chain(fine_commands.iter_mut()) {
+            command.kind = CpuBlitKind::Nearest;
+        }
+    }
 
     let preview_image = if is_moving {
         render_cached_preview(RenderCachedPreview {
@@ -2106,6 +2127,7 @@ fn render_pane_gpu(
         target_height,
         force_render,
         filtering_mode,
+        pixel_view,
         filter_chain,
         pane_uid,
         filter_revision,
@@ -2267,6 +2289,7 @@ fn render_pane_gpu(
                 icc: color.pipeline.color_management().cloned(),
                 sharpness: color.pipeline.sharpness(),
                 composite: !filtered,
+                nearest: pixel_view_applies(pixel_view, vp),
                 readback,
             },
         )
@@ -2884,6 +2907,21 @@ mod tests {
             assert!(state.read().needs_render, "the frame is drawn later");
             ui.window().set_minimized(false);
         });
+    }
+
+    /// The pixel view applies only where a frame magnifies the slide
+    /// beyond full resolution (physical pixels).
+    #[test]
+    fn pixel_view_starts_above_full_resolution() {
+        let mut viewport = Viewport::new(100.0, 100.0, 1000.0, 1000.0);
+        for (zoom, applies) in [(0.5, false), (1.0, false), (1.25, true), (8.0, true)] {
+            viewport.zoom = zoom;
+            assert_eq!(pixel_view_applies(true, &viewport), applies, "zoom {zoom}");
+            assert!(!pixel_view_applies(false, &viewport));
+        }
+        // The physical viewport counts: 1.0 logical at scale 2 is 2:1.
+        viewport.zoom = 1.0;
+        assert!(pixel_view_applies(true, &physical_viewport(&viewport, 2.0)));
     }
 
     fn receive_filtered() -> (Vec<gpu_filters::FilteredFrame>, bool) {
