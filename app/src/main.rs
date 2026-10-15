@@ -15,6 +15,7 @@ mod distribution;
 mod export_dialog;
 mod file_ops;
 mod gpu;
+mod history;
 mod host_ui;
 mod interaction;
 mod logging;

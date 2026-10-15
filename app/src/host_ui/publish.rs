@@ -395,6 +395,17 @@ impl UiHost {
                 if !track.reported {
                     if now.duration_since(track.changed_at) >= VIEW_SETTLE {
                         track.reported = true;
+                        self.history.borrow_mut().settled(
+                            uid,
+                            crate::history::Visit {
+                                file_id: view.file_id as i32,
+                                center_x: view.center_x,
+                                center_y: view.center_y,
+                                zoom: view.zoom,
+                                width: view.width,
+                                height: view.height,
+                            },
+                        );
                         events.push((EventTarget::All, HostEvent::ViewChanged { view }));
                     } else {
                         unsettled = true;
@@ -412,6 +423,7 @@ impl UiHost {
         }
         let live: Vec<u32> = panes.iter().map(|p| p.pane).collect();
         tracker.views.retain(|uid, _| live.contains(uid));
+        self.history.borrow_mut().retain_panes(&live);
 
         // A gesture in progress must never continue on another slide or pane
         // layout (UI-10).

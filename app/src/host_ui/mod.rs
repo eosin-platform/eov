@@ -98,6 +98,8 @@ pub(crate) struct UiHost {
     restore_sidebar: Option<String>,
     /// Cancel handlers of host jobs (exports, dataset runs), by job id.
     host_job_cancels: RefCell<HashMap<String, Box<dyn Fn()>>>,
+    /// Each pane's navigation history (Alt+←/→).
+    pub(crate) history: RefCell<crate::history::History>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -161,6 +163,7 @@ pub(crate) fn init(
         safe_mode: options.safe_mode,
         restore_sidebar: crate::config::load_sidebar_plugin().ok().flatten(),
         host_job_cancels: RefCell::new(HashMap::new()),
+        history: RefCell::new(crate::history::History::default()),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();

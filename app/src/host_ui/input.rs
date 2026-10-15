@@ -263,6 +263,20 @@ impl UiHost {
         };
         let primary = modifiers.primary;
         let shift = modifiers.shift;
+        // Back and forward through the pane's visited fields (AUDIT §14.1).
+        if modifiers.alt && !primary {
+            match name.as_str() {
+                "ArrowLeft" => {
+                    self.history_step(true);
+                    return true;
+                }
+                "ArrowRight" => {
+                    self.history_step(false);
+                    return true;
+                }
+                _ => {}
+            }
+        }
         match (primary, name.as_str()) {
             (true, "z") if shift => {
                 self.redo();
@@ -450,6 +464,72 @@ impl UiHost {
             }
             None => !primary && !modifiers.alt && self.magnification_key(&name),
         }
+    }
+
+    /// Goes back (or forward) in the focused pane's navigation history,
+    /// showing the slide of that view again if another one is shown now.
+    fn history_step(&self, back: bool) {
+        let (pane, uid) = {
+            let state = self.state.read();
+            let pane = if state.split_enabled {
+                state.focused_pane
+            } else {
+                crate::state::PaneId::PRIMARY
+            };
+            (pane, state.pane_uid(pane))
+        };
+        let Some(uid) = uid else {
+            return;
+        };
+        let visit = {
+            let state = self.state.read();
+            let is_open = |file_id| state.get_file(file_id).is_some();
+            let mut history = self.history.borrow_mut();
+            if back {
+                history.back(uid, is_open)
+            } else {
+                history.forward(uid, is_open)
+            }
+        };
+        let Some(visit) = visit else {
+            self.status(if back {
+                "No earlier view in this pane"
+            } else {
+                "No later view in this pane"
+            });
+            return;
+        };
+        {
+            let mut state = self.state.write();
+            if state.active_file_id_for_pane(pane) != Some(visit.file_id) {
+                let in_pane = state
+                    .tabs_for_pane(pane)
+                    .iter()
+                    .copied()
+                    .find(|tab| state.resolve_tab_file_id(*tab) == visit.file_id);
+                match in_pane {
+                    Some(tab) => state.activate_tab_in_pane(pane, tab),
+                    None => {
+                        let elsewhere = (0..state.panes.len())
+                            .flat_map(|index| {
+                                state.tabs_for_pane(crate::state::PaneId(index)).to_vec()
+                            })
+                            .find(|tab| state.resolve_tab_file_id(*tab) == visit.file_id);
+                        if let Some(tab) = elsewhere {
+                            let copy = state.duplicate_tab_to_pane(tab, pane);
+                            state.activate_tab_in_pane(pane, copy);
+                        }
+                    }
+                }
+            }
+            if let Some(viewport) = state.active_viewport_mut() {
+                viewport.smooth_set_center_zoom(visit.center_x, visit.center_y, visit.zoom);
+            }
+            state.mirror_locked_viewports_from_active();
+            state.request_render();
+        }
+        self.refresh_tabs();
+        self.request_render();
     }
 
     /// Digit keys zoom to objective-equivalent magnifications (1.25×, 2.5×,
