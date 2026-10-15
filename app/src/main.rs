@@ -26,6 +26,7 @@ mod plugins;
 mod recent;
 mod render;
 mod render_pool;
+mod session;
 mod slide_info;
 mod state;
 #[cfg(test)]
@@ -262,13 +263,17 @@ fn main() -> Result<()> {
     }
 
     if launch_options.panes_to_open.is_empty() {
-        {
-            let mut state = state.write();
-            state.create_home_tab();
+        // Reopen the last session's slides where they were (AUDIT §14.1);
+        // the Home tab otherwise.
+        if !session::restore(&ui, &state, &tile_cache, &render_timer) {
+            {
+                let mut state = state.write();
+                state.create_home_tab();
+            }
+            let state = state.read();
+            update_tabs(&ui, &state);
+            info!("Initialized home tab state");
         }
-        let state = state.read();
-        update_tabs(&ui, &state);
-        info!("Initialized home tab state");
     } else {
         prepare_launch_panes(&ui, &state, launch_options.panes_to_open.len());
         info!("Prepared launch panes from CLI input");
@@ -326,14 +331,28 @@ fn main() -> Result<()> {
 
     info!("Entering Slint UI event loop");
 
+    // Save the session now and then, so a crash loses little.
+    let session_timer = Timer::default();
+    {
+        let state = Arc::clone(&state);
+        session_timer.start(TimerMode::Repeated, Duration::from_secs(60), move || {
+            session::save(&state.read());
+        });
+    }
+
     ui.run()?;
 
     info!("Application shutting down");
+    session::save(&state.read());
     host.shutdown();
     Ok(())
 }
 
-fn prepare_launch_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>, pane_count: usize) {
+pub(crate) fn prepare_launch_panes(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    pane_count: usize,
+) {
     if pane_count <= 1 {
         return;
     }

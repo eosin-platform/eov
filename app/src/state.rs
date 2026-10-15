@@ -698,6 +698,11 @@ impl AppState {
             .map(|id| self.resolve_tab_file_id(id))
     }
 
+    /// The view a tab had when another tab of its pane was selected.
+    pub fn saved_tab_view(&self, tab_id: i32) -> Option<&FilePaneState> {
+        self.tab_instance_states.get(&tab_id)
+    }
+
     pub fn tabs_for_pane(&self, pane: PaneId) -> &[i32] {
         self.tab_ids_for_pane(pane)
     }

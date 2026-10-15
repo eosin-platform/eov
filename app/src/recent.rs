@@ -82,7 +82,7 @@ impl Entry {
 }
 
 #[cfg(unix)]
-fn encode_os(path: &Path) -> String {
+pub(crate) fn encode_os(path: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     path.as_os_str()
         .as_bytes()
@@ -92,7 +92,7 @@ fn encode_os(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-fn decode_os(hex: &str) -> Option<PathBuf> {
+pub(crate) fn decode_os(hex: &str) -> Option<PathBuf> {
     use std::os::unix::ffi::OsStringExt;
     let bytes = (0..hex.len())
         .step_by(2)
@@ -102,7 +102,7 @@ fn decode_os(hex: &str) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn encode_os(path: &Path) -> String {
+pub(crate) fn encode_os(path: &Path) -> String {
     use std::os::windows::ffi::OsStrExt;
     path.as_os_str()
         .encode_wide()
@@ -111,7 +111,7 @@ fn encode_os(path: &Path) -> String {
 }
 
 #[cfg(windows)]
-fn decode_os(hex: &str) -> Option<PathBuf> {
+pub(crate) fn decode_os(hex: &str) -> Option<PathBuf> {
     use std::os::windows::ffi::OsStringExt;
     let units = (0..hex.len())
         .step_by(4)

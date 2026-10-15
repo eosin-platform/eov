@@ -260,6 +260,18 @@ pub fn save_hide_slide_label(hidden: bool) -> Result<()> {
     save(|document| document["hide_slide_label"] = value(hidden))
 }
 
+/// Whether the last session is reopened on a start without files
+/// (`restore_session`, on by default).
+pub fn load_restore_session() -> bool {
+    with_document(|_, document| {
+        document
+            .get("restore_session")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true)
+    })
+    .unwrap_or(true)
+}
+
 pub fn load_scroll_pans() -> Result<bool> {
     with_document(|_, document| {
         document

@@ -604,6 +604,17 @@ thread_local! {
     /// Opens in flight, by request (UI thread only).
     static PENDING_OPENS: RefCell<HashMap<u64, PendingOpen>> = RefCell::new(HashMap::new());
     static NEXT_OPEN_ID: Cell<u64> = const { Cell::new(1) };
+    /// Views to show when these slides (canonical paths) open, e.g. from
+    /// a restored session.
+    static INITIAL_VIEWS: RefCell<HashMap<PathBuf, crate::session::SavedView>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Opens `path` at `view` instead of fitting it to the pane, the next time
+/// it is opened.
+pub(crate) fn set_initial_view(path: &Path, view: crate::session::SavedView) {
+    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, view));
 }
 
 fn display_name(path: &Path) -> String {
@@ -769,13 +780,19 @@ fn install_slide(
 
     let props = wsi.properties();
     // Fit and pan limits follow the scanned area of sparse slides.
-    let viewport = ViewportState::with_content_bounds(
+    let mut viewport = ViewportState::with_content_bounds(
         viewport_width,
         viewport_height,
         props.width as f64,
         props.height as f64,
         Some(props.content_bounds()),
     );
+    if let Some(view) = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&path))
+        && view.zoom.is_finite()
+        && view.zoom > 0.0
+    {
+        viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
+    }
 
     // Rendering uses a view with synthetic coarse levels for slides whose
     // pyramid is too shallow to draw at fit zoom; it shares the OpenSlide
