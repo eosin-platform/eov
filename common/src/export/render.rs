@@ -594,6 +594,36 @@ fn render_rows(
     }
 }
 
+/// Budget for one band's pixels.
+const BAND_BUFFER_BYTES: usize = 48 << 20;
+/// Budget for the decoded tiles one band needs.
+const BAND_TILE_BYTES: f64 = 192.0 * 1024.0 * 1024.0;
+
+/// Band height that keeps both the band buffer and the tiles it touches
+/// within budget, whatever the zoom: memory stays bounded for any output
+/// size.
+fn auto_band_rows(manager: &TileManager, plan: &Plan, width: u32) -> u32 {
+    let by_buffer = (BAND_BUFFER_BYTES / (width as usize * 4).max(1)).clamp(8, 512) as f64;
+    let ts = manager.tile_size_for_level(plan.level) as f64;
+    let span = ts * plan.downsample; // level-0 pixels per tile row
+    let across = ((plan.bounds.right - plan.bounds.left) / span)
+        .ceil()
+        .max(1.0)
+        + 1.0;
+    // A fine tile row, plus the coarse partner level when blending.
+    let mut row_bytes = across * (ts + 2.0) * (ts + 2.0) * 4.0;
+    if plan.trilinear.is_some() {
+        row_bytes *= 1.25;
+    }
+    let tile_rows = (BAND_TILE_BYTES / row_bytes).floor().max(1.0);
+    // Output rows covered by `tile_rows` tile rows (one extra row of tiles
+    // straddles every band edge).
+    let by_tiles = ((tile_rows - 1.0).max(1.0) * span * plan.zoom)
+        .floor()
+        .max(8.0);
+    by_buffer.min(by_tiles) as u32
+}
+
 /// Renders the export band by band into `sink`.
 pub fn render_export_bands(
     source: &ExportSource,
@@ -631,7 +661,7 @@ pub fn render_export_bands(
     };
     let band_rows = request
         .band_rows
-        .unwrap_or_else(|| ((48 << 20) / (width as usize * 4).max(1)).clamp(8, 512) as u32)
+        .unwrap_or_else(|| auto_band_rows(manager, &plan, width))
         .max(1);
     let sharpen = request.processing.sharpness();
     let halo = u32::from(sharpen > 0.0);

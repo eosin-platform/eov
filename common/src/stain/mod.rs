@@ -53,6 +53,7 @@ mod estimate;
 mod legacy;
 mod linalg;
 pub mod od;
+mod quantify;
 mod slide;
 pub mod transform;
 
@@ -71,6 +72,7 @@ pub use legacy::{
     compute_cpu_stain_params, normalize_buffer,
 };
 pub use od::{BackgroundEstimate, BackgroundOptions, OdLut};
+pub use quantify::{IntensityThresholds, StainQuantification, quantify_stain};
 pub use slide::{
     Level0Rect, StainCacheKey, StainEstimateCache, estimate_region_stain, estimate_slide_stain,
     file_identity, global_stain_cache,
