@@ -19,24 +19,24 @@ pub(crate) struct Bookmark {
     pub center_y: f64,
     /// Screen pixels per level-0 pixel.
     pub zoom: f64,
-    /// Clockwise view rotation in degrees (a multiple of 90); absent in
-    /// bookmarks made before views could turn.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: u32,
+    /// Clockwise view rotation in degrees, any angle (whole ones are
+    /// written as integers); absent in bookmarks made before views could
+    /// turn.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::rotation::is_upright",
+        serialize_with = "crate::rotation::serialize_degrees"
+    )]
+    pub rotation: f64,
     /// Mirrored left to right (after the rotation).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flipped: bool,
 }
 
-fn is_zero(value: &u32) -> bool {
-    *value == 0
-}
-
 impl Bookmark {
     /// How the bookmarked view is turned.
     pub fn orientation(&self) -> eov_common::viewport::Orientation {
-        eov_common::viewport::Orientation::from_degrees(f64::from(self.rotation), self.flipped)
-            .unwrap_or_default()
+        crate::rotation::saved_orientation(self.rotation, self.flipped)
     }
 }
 
@@ -148,7 +148,7 @@ mod tests {
             center_x: 10.0,
             center_y: 20.0,
             zoom: 0.5,
-            rotation: 0,
+            rotation: 0.0,
             flipped: false,
         }
     }
@@ -191,7 +191,7 @@ mod orientation_tests {
             eov_common::viewport::Orientation::IDENTITY
         );
         let turned = Bookmark {
-            rotation: 270,
+            rotation: 270.0,
             flipped: true,
             ..bookmark.clone()
         };
@@ -204,5 +204,46 @@ mod orientation_tests {
         );
         // An upright bookmark is written as before.
         assert!(!toml::to_string(bookmark).unwrap().contains("rotation"));
+        // Whole angles are written as integers, as they were before.
+        assert!(text.contains("rotation = 270\n"), "{text}");
+    }
+
+    /// A bookmark at a free angle reads back at exactly that angle, through
+    /// the file.
+    #[test]
+    fn bookmarks_at_free_angles_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks.toml");
+        let orientation = eov_common::viewport::Orientation::from_degrees(37.25, true).unwrap();
+        let bookmark = Bookmark {
+            name: "Tilted".into(),
+            center_x: 1234.5,
+            center_y: 678.25,
+            zoom: 0.125,
+            rotation: orientation.degrees(),
+            flipped: orientation.flipped(),
+        };
+        add_in(&path, "slide", "a.svs", bookmark.clone()).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("rotation = 37.25"), "{text}");
+        let back = list_in(&path, "slide").remove(0);
+        assert_eq!(back, bookmark);
+        assert_eq!(back.orientation(), orientation);
+        // Angles with every decimal a view keeps survive too.
+        let fine = eov_common::viewport::Orientation::from_degrees(123.456789, false).unwrap();
+        let text = toml::to_string(&Bookmark {
+            rotation: fine.degrees(),
+            flipped: false,
+            ..bookmark.clone()
+        })
+        .unwrap();
+        let back: Bookmark = toml::from_str(&text).unwrap();
+        assert_eq!(back.orientation(), fine);
+        // A damaged angle opens the bookmark upright instead of failing.
+        let damaged: Bookmark = toml::from_str(
+            "name = \"x\"\ncenter_x = 1.0\ncenter_y = 2.0\nzoom = 0.5\nrotation = nan\n",
+        )
+        .unwrap();
+        assert!(damaged.orientation().is_identity());
     }
 }

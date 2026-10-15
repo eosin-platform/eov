@@ -45,18 +45,30 @@ pub const INERTIA_MIN_DISPLACEMENT: f64 = 5.0;
 /// Pan margin ratio (can pan past edges by this percentage)
 pub const PAN_MARGIN_RATIO: f64 = 0.5;
 
-/// How a view turns the slide: clockwise quarter turns, then an optional
-/// mirror across the screen's vertical axis. Level-0 coordinates are the
-/// same whatever the orientation; only their mapping to the screen changes.
+/// Millionths of a degree in a full turn: angles are kept to a millionth of
+/// a degree, so quarter turns are exact and angles read back as written.
+const FULL_TURN: u32 = 360_000_000;
+/// Millionths of a degree in a quarter turn.
+const QUARTER_TURN: u32 = 90_000_000;
+
+/// How a view turns the slide: a clockwise rotation by any angle, then an
+/// optional mirror across the screen's vertical axis. Level-0 coordinates
+/// are the same whatever the orientation; only their mapping to the screen
+/// changes.
+///
+/// The angle is kept to a millionth of a degree, in `0..360`. Quarter turns
+/// are exact: their mappings are permutations, and renderers turn frames
+/// of them without resampling ([`is_quarter_turn`](Self::is_quarter_turn)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Orientation {
-    quarter_turns: u8,
+    /// Clockwise rotation in millionths of a degree, `0..FULL_TURN`.
+    micro_degrees: u32,
     flipped: bool,
 }
 
 impl Orientation {
     pub const IDENTITY: Self = Self {
-        quarter_turns: 0,
+        micro_degrees: 0,
         flipped: false,
     };
 
@@ -64,29 +76,36 @@ impl Orientation {
     /// if `flipped`.
     pub fn new(quarter_turns: i32, flipped: bool) -> Self {
         Self {
-            quarter_turns: quarter_turns.rem_euclid(4) as u8,
+            micro_degrees: quarter_turns.rem_euclid(4) as u32 * QUARTER_TURN,
             flipped,
         }
     }
 
-    /// From a clockwise angle in degrees, which must be a multiple of 90.
+    /// From a clockwise angle in degrees: any finite angle (kept to a
+    /// millionth of a degree), `None` otherwise.
     pub fn from_degrees(degrees: f64, flipped: bool) -> Option<Self> {
-        if !degrees.is_finite() {
-            return None;
-        }
-        let turns = degrees / 90.0;
-        let rounded = turns.round();
-        ((turns - rounded).abs() < 1e-6)
-            .then(|| Self::new((rounded.rem_euclid(4.0)) as i32, flipped))
+        degrees.is_finite().then(|| Self {
+            micro_degrees: micro_degrees_of(degrees),
+            flipped,
+        })
     }
 
-    pub fn quarter_turns(self) -> u8 {
-        self.quarter_turns
+    /// Whole quarter turns, when the rotation is one.
+    pub fn quarter_turns(self) -> Option<u8> {
+        (self.micro_degrees % QUARTER_TURN == 0)
+            .then_some((self.micro_degrees / QUARTER_TURN) as u8)
     }
 
-    /// The clockwise rotation (applied before the mirror), in degrees.
-    pub fn degrees(self) -> u32 {
-        u32::from(self.quarter_turns) * 90
+    /// Whether the rotation is a whole number of quarter turns: the image's
+    /// axes stay along the screen's.
+    pub fn is_quarter_turn(self) -> bool {
+        self.quarter_turns().is_some()
+    }
+
+    /// The clockwise rotation (applied before the mirror), in degrees,
+    /// `0..360`.
+    pub fn degrees(self) -> f64 {
+        f64::from(self.micro_degrees) / 1e6
     }
 
     pub fn flipped(self) -> bool {
@@ -97,30 +116,48 @@ impl Orientation {
         self == Self::IDENTITY
     }
 
+    /// The same mirror, upright: what "reset rotation" shows.
+    pub fn upright(self) -> Self {
+        Self {
+            micro_degrees: 0,
+            ..self
+        }
+    }
+
+    /// The same mirror with the rotation set to `degrees` (`None` when it
+    /// is not finite).
+    pub fn with_degrees(self, degrees: f64) -> Option<Self> {
+        Self::from_degrees(degrees, self.flipped)
+    }
+
     /// The orientation that turns this one back.
     pub fn inverse(self) -> Self {
         if self.flipped {
             // A mirrored turn is its own inverse.
             self
         } else {
-            Self::new(-i32::from(self.quarter_turns), false)
+            Self {
+                micro_degrees: (FULL_TURN - self.micro_degrees) % FULL_TURN,
+                flipped: false,
+            }
         }
     }
 
     /// This orientation followed by `next` (`next ∘ self`).
     pub fn then(self, next: Self) -> Self {
-        let x = next.to_screen(self.to_screen(DVec2::new(1.0, 0.0)));
-        let y = next.to_screen(self.to_screen(DVec2::new(0.0, 1.0)));
-        Self::all()
-            .into_iter()
-            .find(|candidate| {
-                (candidate.to_screen(DVec2::new(1.0, 0.0)) - x).length() < 1e-9
-                    && (candidate.to_screen(DVec2::new(0.0, 1.0)) - y).length() < 1e-9
-            })
-            .unwrap_or(Self::IDENTITY)
+        // Mirror_b·R(b)·Mirror_a·R(a): past a mirror, R(b)·M = M·R(−b).
+        let micro_degrees = if self.flipped {
+            (self.micro_degrees + FULL_TURN - next.micro_degrees) % FULL_TURN
+        } else {
+            (self.micro_degrees + next.micro_degrees) % FULL_TURN
+        };
+        Self {
+            micro_degrees,
+            flipped: self.flipped != next.flipped,
+        }
     }
 
-    /// All eight orientations.
+    /// The eight quarter-turn orientations.
     pub fn all() -> [Self; 8] {
         let mut all = [Self::IDENTITY; 8];
         for (i, orientation) in all.iter_mut().enumerate() {
@@ -129,20 +166,34 @@ impl Orientation {
         all
     }
 
-    /// Whether the image's x axis is vertical on screen.
+    /// The quarter turn nearest to this orientation (with its mirror); the
+    /// orientation itself for quarter turns. The minimap shows the slide
+    /// turned by it.
+    pub fn quarter_part(self) -> Self {
+        let quarter_turns = (self.micro_degrees + QUARTER_TURN / 2) / QUARTER_TURN;
+        Self::new(quarter_turns as i32, self.flipped)
+    }
+
+    /// Whether the image's x axis is vertical on screen (odd quarter turns;
+    /// for other angles, of the nearest quarter turn).
     pub fn swaps_axes(self) -> bool {
-        self.quarter_turns % 2 == 1
+        (self.quarter_part().micro_degrees / QUARTER_TURN) % 2 == 1
     }
 
     /// This orientation turned a further `quarter_turns` clockwise as seen
     /// on screen (a mirror reverses the sense of the stored rotation).
     pub fn turned(self, quarter_turns: i32) -> Self {
-        let delta = if self.flipped {
-            -quarter_turns
-        } else {
-            quarter_turns
-        };
-        Self::new(i32::from(self.quarter_turns) + delta, self.flipped)
+        self.then(Self::new(quarter_turns, false))
+    }
+
+    /// This orientation turned a further `degrees` clockwise as seen on
+    /// screen (counterclockwise when negative; a mirror reverses the sense
+    /// of the stored rotation); unchanged when `degrees` is not finite.
+    pub fn rotated(self, degrees: f64) -> Self {
+        match Self::from_degrees(degrees, false) {
+            Some(turn) => self.then(turn),
+            None => self,
+        }
     }
 
     /// This orientation mirrored left to right as seen on screen.
@@ -153,13 +204,28 @@ impl Orientation {
         }
     }
 
+    /// `(sin, cos)` of the rotation, exact for quarter turns.
+    fn sin_cos(self) -> (f64, f64) {
+        match self.quarter_turns() {
+            Some(0) => (0.0, 1.0),
+            Some(1) => (1.0, 0.0),
+            Some(2) => (0.0, -1.0),
+            Some(3) => (-1.0, 0.0),
+            _ => self.degrees().to_radians().sin_cos(),
+        }
+    }
+
     /// An image-space direction as it points on screen (y down).
     pub fn to_screen(self, v: DVec2) -> DVec2 {
-        let turned = match self.quarter_turns {
-            0 => v,
-            1 => DVec2::new(-v.y, v.x),
-            2 => -v,
-            _ => DVec2::new(v.y, -v.x),
+        let turned = match self.quarter_turns() {
+            Some(0) => v,
+            Some(1) => DVec2::new(-v.y, v.x),
+            Some(2) => -v,
+            Some(3) => DVec2::new(v.y, -v.x),
+            _ => {
+                let (sin, cos) = self.sin_cos();
+                DVec2::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
+            }
         };
         if self.flipped {
             DVec2::new(-turned.x, turned.y)
@@ -176,11 +242,16 @@ impl Orientation {
         } else {
             v
         };
-        match self.quarter_turns {
-            0 => unmirrored,
-            1 => DVec2::new(unmirrored.y, -unmirrored.x),
-            2 => -unmirrored,
-            _ => DVec2::new(-unmirrored.y, unmirrored.x),
+        match self.quarter_turns() {
+            Some(0) => unmirrored,
+            Some(1) => DVec2::new(unmirrored.y, -unmirrored.x),
+            Some(2) => -unmirrored,
+            Some(3) => DVec2::new(-unmirrored.y, unmirrored.x),
+            _ => {
+                let (sin, cos) = self.sin_cos();
+                let (x, y) = (unmirrored.x, unmirrored.y);
+                DVec2::new(x * cos + y * sin, y * cos - x * sin)
+            }
         }
     }
 
@@ -196,29 +267,51 @@ impl Orientation {
         (p.x, p.y)
     }
 
+    /// The axis-aligned extent of a `width × height` rectangle turned by
+    /// this orientation (or back: the same): the on-screen bounding box of
+    /// an image-space extent, and the image-space bounding box of an
+    /// on-screen size. Width and height swap for odd quarter turns.
+    pub fn turned_extent(self, width: f64, height: f64) -> (f64, f64) {
+        match self.quarter_turns() {
+            Some(turns) if turns % 2 == 1 => (height, width),
+            Some(_) => (width, height),
+            None => {
+                let (sin, cos) = self.sin_cos();
+                let (sin, cos) = (sin.abs(), cos.abs());
+                (width * cos + height * sin, width * sin + height * cos)
+            }
+        }
+    }
+
     /// `(a, b)` swapped when the axes are: the on-screen size of an
     /// image-space `a × b` extent, and the image-space extent of an
-    /// on-screen `a × b` size.
+    /// on-screen `a × b` size. Exact for quarter turns; other angles swap
+    /// as their nearest quarter turn does (see
+    /// [`turned_extent`](Self::turned_extent) for their extents).
     pub fn swap<T>(self, a: T, b: T) -> (T, T) {
         if self.swaps_axes() { (b, a) } else { (a, b) }
     }
 
     /// Normalised coordinates (`0..=1` per axis) of an image region as they
-    /// fall on the same region shown in this orientation (the minimap).
+    /// fall on the same region shown turned by [`quarter_part`]
+    /// (the minimap).
+    ///
+    /// [`quarter_part`]: Self::quarter_part
     pub fn to_screen_normalized(self, u: f64, v: f64) -> (f64, f64) {
-        let p = self.to_screen(DVec2::new(u - 0.5, v - 0.5));
+        let p = self.quarter_part().to_screen(DVec2::new(u - 0.5, v - 0.5));
         (p.x + 0.5, p.y + 0.5)
     }
 
     /// The inverse of [`to_screen_normalized`](Self::to_screen_normalized).
     pub fn to_image_normalized(self, u: f64, v: f64) -> (f64, f64) {
-        let p = self.to_image(DVec2::new(u - 0.5, v - 0.5));
+        let p = self.quarter_part().to_image(DVec2::new(u - 0.5, v - 0.5));
         (p.x + 0.5, p.y + 0.5)
     }
 
     /// The pixel of a frame drawn axis-aligned with the image
     /// (`aligned_width × aligned_height`) that shows as pixel `(x, y)` of
-    /// the frame turned to this orientation.
+    /// the frame turned to this orientation. For quarter turns (others map
+    /// as their nearest quarter turn).
     pub fn aligned_pixel(
         self,
         aligned_width: u32,
@@ -226,17 +319,19 @@ impl Orientation {
         x: i64,
         y: i64,
     ) -> (i64, i64) {
+        let quarter = self.quarter_part();
         let (w, h) = (i64::from(aligned_width), i64::from(aligned_height));
-        let (sw, sh) = self.swap(w, h);
+        let (sw, sh) = quarter.swap(w, h);
         // Doubled coordinates of the pixel centre, relative to the frame
         // centre: integers, so the mapping is exact.
-        let d = self.to_image(DVec2::new((2 * x + 1 - sw) as f64, (2 * y + 1 - sh) as f64));
+        let d = quarter.to_image(DVec2::new((2 * x + 1 - sw) as f64, (2 * y + 1 - sh) as f64));
         ((d.x as i64 + w - 1) / 2, (d.y as i64 + h - 1) / 2)
     }
 
     /// The rectangle of the aligned frame (`aligned_width ×
     /// aligned_height`) that shows as the rectangle `x, y, width, height` of
-    /// the turned frame, as `(x, y, width, height)`.
+    /// the turned frame, as `(x, y, width, height)`. For quarter turns
+    /// (others map as their nearest quarter turn).
     pub fn aligned_rect(
         self,
         aligned_width: u32,
@@ -264,6 +359,13 @@ impl Orientation {
             ((ay - by).abs() + 1) as u32,
         )
     }
+}
+
+/// A finite angle in degrees as millionths of a degree, `0..FULL_TURN`.
+fn micro_degrees_of(degrees: f64) -> u32 {
+    // Reduced first (exactly), so that huge angles cannot overflow.
+    let micro = (degrees.rem_euclid(360.0) * 1e6).round();
+    (micro as i64).rem_euclid(i64::from(FULL_TURN)) as u32
 }
 
 /// Viewport representing the visible area of a WSI
@@ -301,11 +403,13 @@ impl Viewport {
         viewport
     }
 
-    /// The same view drawn axis-aligned with the image: what renderers
-    /// composite before turning the frame to `orientation` (width and height
-    /// swapped for odd quarter turns).
+    /// The same view drawn axis-aligned with the image: the layout renderers
+    /// place tiles in (relative to [`bounds`](Self::bounds)) before turning
+    /// them to `orientation`. Its size is the bounding box of the turned
+    /// view (width and height swapped for odd quarter turns; larger, and
+    /// fractional, for other angles).
     pub fn aligned(&self) -> Viewport {
-        let (width, height) = self.orientation.swap(self.width, self.height);
+        let (width, height) = self.orientation.turned_extent(self.width, self.height);
         Viewport {
             width,
             height,
@@ -317,7 +421,7 @@ impl Viewport {
     /// Get the visible bounds in level 0 coordinates (the bounding box of
     /// the visible area, whatever the orientation)
     pub fn bounds(&self) -> ViewportBounds {
-        let (width, height) = self.orientation.swap(self.width, self.height);
+        let (width, height) = self.orientation.turned_extent(self.width, self.height);
         let half_width = (width / self.zoom) / 2.0;
         let half_height = (height / self.zoom) / 2.0;
 
@@ -329,9 +433,23 @@ impl Viewport {
         }
     }
 
+    /// The level-0 corners of the visible area: the pane's top-left,
+    /// top-right, bottom-right and bottom-left corners (a turned rectangle;
+    /// [`bounds`](Self::bounds) is its bounding box).
+    pub fn visible_corners(&self) -> [DVec2; 4] {
+        [
+            self.screen_to_image(0.0, 0.0),
+            self.screen_to_image(self.width, 0.0),
+            self.screen_to_image(self.width, self.height),
+            self.screen_to_image(0.0, self.height),
+        ]
+    }
+
     /// Fit the entire image in the viewport
     pub fn fit_to_view(&mut self) {
-        let (width, height) = self.orientation.swap(self.image_width, self.image_height);
+        let (width, height) = self
+            .orientation
+            .turned_extent(self.image_width, self.image_height);
         let zoom_x = self.width / width;
         let zoom_y = self.height / height;
         self.zoom = zoom_x.min(zoom_y).clamp(MIN_ZOOM, MAX_ZOOM);
@@ -339,15 +457,29 @@ impl Viewport {
     }
 
     /// The zoom at which a `width` x `height` level-0 rectangle fits the
-    /// viewport (turned as the view is).
+    /// viewport (turned as the view is: its turned bounding box fits).
     pub fn fit_zoom_for(&self, width: f64, height: f64) -> f64 {
         if width <= 0.0 || height <= 0.0 {
             return self.zoom;
         }
-        let (width, height) = self.orientation.swap(width, height);
+        let (width, height) = self.orientation.turned_extent(width, height);
         (self.width / width)
             .min(self.height / height)
             .clamp(MIN_ZOOM, MAX_ZOOM)
+    }
+
+    /// The level-0 displacement of one screen pixel along the screen's x
+    /// axis (`1 / zoom` long, pointing where the turn puts it).
+    pub fn screen_x_in_image(&self) -> DVec2 {
+        self.orientation.to_image(DVec2::new(1.0, 0.0)) / self.zoom
+    }
+
+    /// Micrometres per screen pixel along the screen's x axis, from the
+    /// slide's pixel size per image axis (the length a horizontal scale bar
+    /// measures, whatever the turn).
+    pub fn screen_x_um_per_px(&self, mpp_x: f64, mpp_y: f64) -> f64 {
+        let step = self.screen_x_in_image();
+        (step.x * mpp_x).hypot(step.y * mpp_y)
     }
 
     /// Centre and fit a level-0 rectangle (e.g. the slide's
@@ -481,12 +613,32 @@ impl Viewport {
 
     /// The visible part of `region`, normalised to `region` (for a minimap
     /// that shows the slide's content bounds rather than the whole canvas),
-    /// as it falls on `region` turned like the view (the minimap shows the
-    /// slide turned).
+    /// as it falls on `region` turned like the minimap (by the view's
+    /// [nearest quarter turn](Orientation::quarter_part)). For other angles
+    /// it is the bounding box of [`minimap_outline_within`](Self::minimap_outline_within).
     pub fn minimap_rect_within(&self, region: &SlideBounds) -> MinimapRect {
         let (rw, rh) = (region.width as f64, region.height as f64);
         if rw <= 0.0 || rh <= 0.0 {
             return MinimapRect::default();
+        }
+        if !self.orientation.is_quarter_turn() {
+            let outline = self.minimap_outline_within(region);
+            let Some(first) = outline.first() else {
+                return MinimapRect::default();
+            };
+            let (mut x0, mut y0, mut x1, mut y1) = (first[0], first[1], first[0], first[1]);
+            for p in &outline {
+                x0 = x0.min(p[0]);
+                y0 = y0.min(p[1]);
+                x1 = x1.max(p[0]);
+                y1 = y1.max(p[1]);
+            }
+            return MinimapRect {
+                x: x0 as f32,
+                y: y0 as f32,
+                width: (x1 - x0) as f32,
+                height: (y1 - y0) as f32,
+            };
         }
         let bounds = self.bounds();
         let axis = |lo: f64, hi: f64, origin: f64, size: f64| -> (f64, f64) {
@@ -506,6 +658,68 @@ impl Viewport {
             height: (ay - by).abs() as f32,
         }
     }
+
+    /// The outline of the visible area on a minimap of `region`: the
+    /// pane's corners normalised to `region`, turned like the minimap (by
+    /// the view's [nearest quarter turn](Orientation::quarter_part), so the
+    /// rest of the turn tilts the outline), and clipped to the minimap. A
+    /// turned rectangle, or a polygon of up to eight points where it
+    /// crosses the edges; empty when nothing of `region` is visible.
+    pub fn minimap_outline_within(&self, region: &SlideBounds) -> Vec<[f64; 2]> {
+        let (rw, rh) = (region.width as f64, region.height as f64);
+        if rw <= 0.0 || rh <= 0.0 {
+            return Vec::new();
+        }
+        let corners = self.visible_corners().map(|p| {
+            let (u, v) = self
+                .orientation
+                .to_screen_normalized((p.x - region.x as f64) / rw, (p.y - region.y as f64) / rh);
+            [u, v]
+        });
+        clip_to_unit_square(&corners)
+    }
+}
+
+/// `polygon` (convex) clipped to `0..=1` on both axes (Sutherland–Hodgman).
+fn clip_to_unit_square(polygon: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut points = polygon.to_vec();
+    // Each edge of the square: the axis, its value, and which side is kept.
+    for (axis, edge, keep_below) in [
+        (0, 0.0, false),
+        (0, 1.0, true),
+        (1, 0.0, false),
+        (1, 1.0, true),
+    ] {
+        let inside = |p: &[f64; 2]| {
+            if keep_below {
+                p[axis] <= edge
+            } else {
+                p[axis] >= edge
+            }
+        };
+        let mut clipped = Vec::with_capacity(points.len() + 2);
+        for (i, current) in points.iter().enumerate() {
+            let previous = &points[(i + points.len() - 1) % points.len()];
+            let (now_in, before_in) = (inside(current), inside(previous));
+            if now_in != before_in {
+                let t = (edge - previous[axis]) / (current[axis] - previous[axis]);
+                let mut crossing = [
+                    previous[0] + (current[0] - previous[0]) * t,
+                    previous[1] + (current[1] - previous[1]) * t,
+                ];
+                crossing[axis] = edge;
+                clipped.push(crossing);
+            }
+            if now_in {
+                clipped.push(*current);
+            }
+        }
+        points = clipped;
+        if points.is_empty() {
+            break;
+        }
+    }
+    points
 }
 
 /// Visible area bounds in image coordinates
@@ -673,6 +887,19 @@ impl ViewportState {
             Some(bounds) => self.viewport.minimap_rect_within(bounds),
             None => self.viewport.minimap_rect(),
         }
+    }
+
+    /// [`Viewport::minimap_outline_within`] the content bounds when set,
+    /// else the canvas.
+    pub fn minimap_outline(&self) -> Vec<[f64; 2]> {
+        let canvas = SlideBounds {
+            x: 0,
+            y: 0,
+            width: self.viewport.image_width.max(0.0) as u64,
+            height: self.viewport.image_height.max(0.0) as u64,
+        };
+        self.viewport
+            .minimap_outline_within(self.content_bounds.as_ref().unwrap_or(&canvas))
     }
 
     fn clamp_to_content(&mut self) {
@@ -1247,7 +1474,107 @@ mod tests {
             Orientation::from_degrees(450.0, true),
             Some(Orientation::new(1, true))
         );
-        assert_eq!(Orientation::from_degrees(45.0, false), None);
+        assert_eq!(Orientation::from_degrees(f64::NAN, false), None);
+        assert_eq!(Orientation::from_degrees(f64::INFINITY, false), None);
+    }
+
+    /// Any angle: kept to a millionth of a degree, read back as written,
+    /// with quarter turns exact.
+    #[test]
+    fn angles_are_kept_exactly_and_quarter_turns_stay_exact() {
+        let turned = |degrees: f64| Orientation::from_degrees(degrees, false).unwrap();
+        assert_eq!(turned(37.5).degrees(), 37.5);
+        assert_eq!(turned(-5.0).degrees(), 355.0);
+        assert_eq!(turned(720.25).degrees(), 0.25);
+        assert_eq!(turned(12.345678).degrees(), 12.345678);
+        assert_eq!(turned(359.9999999).degrees(), 0.0, "rounds to a full turn");
+        assert_eq!(turned(1e300).degrees(), turned(1e300).degrees());
+        assert!(turned(1e300).degrees() < 360.0);
+        // Steps add up to an exact quarter turn.
+        let mut stepped = Orientation::IDENTITY;
+        for _ in 0..18 {
+            stepped = stepped.rotated(5.0);
+        }
+        assert_eq!(stepped, Orientation::new(1, false));
+        assert!(stepped.is_quarter_turn());
+        assert_eq!(
+            stepped.to_screen(DVec2::new(1.0, 0.0)),
+            DVec2::new(0.0, 1.0)
+        );
+        assert_eq!(turned(30.0).quarter_turns(), None);
+        assert_eq!(turned(270.0).quarter_turns(), Some(3));
+        // The nearest quarter turn (the minimap's).
+        assert_eq!(turned(30.0).quarter_part(), Orientation::IDENTITY);
+        assert_eq!(turned(50.0).quarter_part(), Orientation::new(1, false));
+        assert_eq!(turned(316.0).quarter_part(), Orientation::IDENTITY);
+        assert_eq!(
+            Orientation::from_degrees(100.0, true)
+                .unwrap()
+                .quarter_part(),
+            Orientation::new(1, true)
+        );
+        // Resetting the rotation keeps the mirror.
+        let mirrored = Orientation::from_degrees(30.0, true).unwrap();
+        assert_eq!(mirrored.upright(), Orientation::new(0, true));
+        assert_eq!(mirrored.with_degrees(75.0).unwrap().degrees(), 75.0);
+        assert!(mirrored.with_degrees(75.0).unwrap().flipped());
+    }
+
+    /// Mapping, composing and inverting at angles other than quarter turns.
+    #[test]
+    fn free_angles_map_compose_and_invert() {
+        let angles = [0.0, 5.0, 30.0, 45.0, 90.0, 123.456, 200.0, 315.0, 359.5];
+        let clockwise = |degrees: f64, p: DVec2| {
+            let (sin, cos) = degrees.to_radians().sin_cos();
+            DVec2::new(p.x * cos - p.y * sin, p.x * sin + p.y * cos)
+        };
+        let v = DVec2::new(3.0, -7.0);
+        for &a in &angles {
+            for flipped in [false, true] {
+                let o = Orientation::from_degrees(a, flipped).unwrap();
+                let expected = clockwise(a, v);
+                let expected = if flipped {
+                    DVec2::new(-expected.x, expected.y)
+                } else {
+                    expected
+                };
+                assert!((o.to_screen(v) - expected).length() < 1e-9, "{a} {flipped}");
+                assert!((o.to_image(o.to_screen(v)) - v).length() < 1e-9);
+                assert!((o.inverse().to_screen(o.to_screen(v)) - v).length() < 1e-9);
+                assert!(o.then(o.inverse()).is_identity());
+                // Turning on screen, as the keys do.
+                let screen = o.to_screen(v);
+                assert!((o.rotated(17.0).to_screen(v) - clockwise(17.0, screen)).length() < 1e-9);
+                for &b in &angles {
+                    for flip_b in [false, true] {
+                        let p = Orientation::from_degrees(b, flip_b).unwrap();
+                        let composed = o.then(p);
+                        assert!(
+                            (composed.to_screen(v) - p.to_screen(o.to_screen(v))).length() < 1e-9,
+                            "{a} {flipped} then {b} {flip_b}"
+                        );
+                    }
+                }
+                // The turned extent bounds the turned rectangle.
+                let (w, h) = o.turned_extent(40.0, 10.0);
+                for corner in [
+                    DVec2::new(20.0, 5.0),
+                    DVec2::new(-20.0, 5.0),
+                    DVec2::new(20.0, -5.0),
+                ] {
+                    let p = o.to_screen(corner);
+                    assert!(p.x.abs() <= w / 2.0 + 1e-9 && p.y.abs() <= h / 2.0 + 1e-9);
+                }
+            }
+        }
+        let (w, h) = Orientation::from_degrees(45.0, false)
+            .unwrap()
+            .turned_extent(100.0, 100.0);
+        assert!((w - 100.0 * 2f64.sqrt()).abs() < 1e-9 && (h - w).abs() < 1e-9);
+        assert_eq!(
+            Orientation::new(1, false).turned_extent(3.0, 2.0),
+            (2.0, 3.0)
+        );
     }
 
     #[test]
@@ -1266,7 +1593,7 @@ mod tests {
             ));
         }
         assert_eq!(Orientation::IDENTITY.turned(4), Orientation::IDENTITY);
-        assert_eq!(Orientation::IDENTITY.turned(1).degrees(), 90);
+        assert_eq!(Orientation::IDENTITY.turned(1).degrees(), 90.0);
         for a in Orientation::all() {
             assert_eq!(a.then(a.inverse()), Orientation::IDENTITY);
             for b in Orientation::all() {
@@ -1276,12 +1603,23 @@ mod tests {
         }
     }
 
+    /// The quarter turns and some free angles, mirrored or not.
+    fn test_orientations() -> Vec<Orientation> {
+        let mut all = Orientation::all().to_vec();
+        for degrees in [5.0, 30.0, 45.0, 137.25, 300.0] {
+            for flipped in [false, true] {
+                all.push(Orientation::from_degrees(degrees, flipped).unwrap());
+            }
+        }
+        all
+    }
+
     #[test]
     fn turned_views_map_screen_and_image_consistently() {
         let mut viewport = Viewport::new(800.0, 600.0, 10_000.0, 8_000.0);
         viewport.zoom = 0.5;
         viewport.center = DVec2::new(4000.0, 3000.0);
-        for orientation in Orientation::all() {
+        for orientation in test_orientations() {
             viewport.orientation = orientation;
             let p = viewport.screen_to_image(123.0, 456.0);
             assert!(close(
@@ -1356,6 +1694,103 @@ mod tests {
         state.set_orientation(Orientation::new(2, true));
         assert_eq!(state.viewport.zoom, 1.5);
         assert!(close(state.viewport.center, DVec2::new(300.0, 200.0)));
+        // Any angle turns about the pane centre: the point there stays.
+        let pane_centre = state.viewport.screen_to_image(400.0, 200.0);
+        state.set_orientation(Orientation::from_degrees(33.0, true).unwrap());
+        assert!(close(
+            state.viewport.screen_to_image(400.0, 200.0),
+            pane_centre
+        ));
+        assert_eq!(state.viewport.zoom, 1.5);
+    }
+
+    /// The bounding box of a view at a free angle holds the turned pane
+    /// exactly (every side touched by a corner); a fitted slide's corners
+    /// all lie in the pane.
+    #[test]
+    fn free_angle_bounds_and_fits_hold_the_turned_rectangles() {
+        let mut viewport = Viewport::new(800.0, 400.0, 2000.0, 1000.0);
+        for degrees in [10.0, 30.0, 45.0, 100.0, 222.0] {
+            viewport.orientation = Orientation::from_degrees(degrees, false).unwrap();
+            viewport.zoom = 0.7;
+            viewport.center = DVec2::new(900.0, 400.0);
+            let bounds = viewport.bounds();
+            let corners = viewport.visible_corners();
+            let touches = |value: f64, pick: fn(&DVec2) -> f64| {
+                corners.iter().any(|c| (pick(c) - value).abs() < 1e-6)
+            };
+            assert!(touches(bounds.left, |c| c.x) && touches(bounds.right, |c| c.x));
+            assert!(touches(bounds.top, |c| c.y) && touches(bounds.bottom, |c| c.y));
+            viewport.fit_to_view();
+            let mut on_edge = false;
+            for (x, y) in [(0.0, 0.0), (2000.0, 0.0), (2000.0, 1000.0), (0.0, 1000.0)] {
+                let p = viewport.image_to_screen(x, y);
+                assert!(p.x >= -1e-6 && p.x <= 800.0 + 1e-6, "{degrees}: {p:?}");
+                assert!(p.y >= -1e-6 && p.y <= 400.0 + 1e-6, "{degrees}: {p:?}");
+                on_edge |= p.x.abs() < 1e-6
+                    || (p.x - 800.0).abs() < 1e-6
+                    || p.y.abs() < 1e-6
+                    || (p.y - 400.0).abs() < 1e-6;
+            }
+            assert!(on_edge, "{degrees}: fitted, not just inside");
+        }
+        // A horizontal scale bar measures along the turned x axis.
+        viewport.orientation = Orientation::from_degrees(90.0, false).unwrap();
+        viewport.zoom = 2.0;
+        assert!((viewport.screen_x_um_per_px(0.25, 0.5) - 0.25).abs() < 1e-12);
+        viewport.orientation = Orientation::from_degrees(60.0, false).unwrap();
+        let expected = (0.5f64 * 0.25 * 0.5).hypot(3f64.sqrt() / 2.0 * 0.5 * 0.5);
+        assert!((viewport.screen_x_um_per_px(0.25, 0.5) - expected).abs() < 1e-12);
+    }
+
+    /// At a free angle the minimap keeps the nearest quarter turn and the
+    /// outline of the view is the pane's turned rectangle, clipped.
+    #[test]
+    fn minimap_outlines_tilt_with_the_rest_of_the_turn() {
+        let mut viewport = Viewport::new(400.0, 200.0, 4000.0, 2000.0);
+        viewport.zoom = 0.25;
+        viewport.center = DVec2::new(2000.0, 1000.0);
+        viewport.orientation = Orientation::from_degrees(30.0, false).unwrap();
+        let outline = viewport.minimap_outline_within(&SlideBounds::full(4000, 2000));
+        assert_eq!(outline.len(), 4, "the view is inside the slide");
+        // Each corner is the pane's corner normalised to the (upright)
+        // thumbnail.
+        for (p, corner) in outline.iter().zip(viewport.visible_corners()) {
+            assert!((p[0] - corner.x / 4000.0).abs() < 1e-9);
+            assert!((p[1] - corner.y / 2000.0).abs() < 1e-9);
+        }
+        // The sides are tilted 30° (the y axis points down).
+        let (dx, dy) = (outline[1][0] - outline[0][0], outline[1][1] - outline[0][1]);
+        let angle = (dy * 2000.0).atan2(dx * 4000.0).to_degrees();
+        assert!((angle + 30.0).abs() < 1e-9, "{angle}");
+        let rect = viewport.minimap_rect();
+        let xs = outline.iter().map(|p| p[0]);
+        assert!((f64::from(rect.x) - xs.fold(f64::INFINITY, f64::min)).abs() < 1e-6);
+        // Over the edge, the outline is clipped to the thumbnail.
+        viewport.center = DVec2::new(100.0, 100.0);
+        let clipped = viewport.minimap_outline_within(&SlideBounds::full(4000, 2000));
+        assert!(clipped.len() >= 3);
+        assert!(
+            clipped
+                .iter()
+                .all(|p| (0.0..=1.0).contains(&p[0]) && (0.0..=1.0).contains(&p[1]))
+        );
+        viewport.center = DVec2::new(-9000.0, 100.0);
+        assert!(
+            viewport
+                .minimap_outline_within(&SlideBounds::full(4000, 2000))
+                .is_empty()
+        );
+        assert_eq!(viewport.minimap_rect().width, 0.0);
+        // Past 45° the thumbnail turns a quarter and the outline tilts back.
+        viewport.center = DVec2::new(2000.0, 1000.0);
+        viewport.orientation = Orientation::from_degrees(80.0, false).unwrap();
+        let outline = viewport.minimap_outline_within(&SlideBounds::full(4000, 2000));
+        let quarter = Orientation::new(1, false);
+        for (p, corner) in outline.iter().zip(viewport.visible_corners()) {
+            let (u, v) = quarter.to_screen_normalized(corner.x / 4000.0, corner.y / 2000.0);
+            assert!((p[0] - u).abs() < 1e-9 && (p[1] - v).abs() < 1e-9);
+        }
     }
 
     #[test]

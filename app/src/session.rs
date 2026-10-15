@@ -40,18 +40,19 @@ struct TabSession {
     center_x: f64,
     center_y: f64,
     zoom: f64,
-    /// Clockwise view rotation in degrees (a multiple of 90).
-    #[serde(default, skip_serializing_if = "is_zero")]
-    rotation: u32,
+    /// Clockwise view rotation in degrees, any angle (whole ones are
+    /// written as integers).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::rotation::is_upright",
+        serialize_with = "crate::rotation::serialize_degrees"
+    )]
+    rotation: f64,
     /// Mirrored left to right (after the rotation).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     flipped: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     active: bool,
-}
-
-fn is_zero(value: &u32) -> bool {
-    *value == 0
 }
 
 impl TabSession {
@@ -182,11 +183,7 @@ pub(crate) fn restore(
                     center_x: tab.center_x,
                     center_y: tab.center_y,
                     zoom: tab.zoom,
-                    orientation: eov_common::viewport::Orientation::from_degrees(
-                        f64::from(tab.rotation),
-                        tab.flipped,
-                    )
-                    .unwrap_or_default(),
+                    orientation: crate::rotation::saved_orientation(tab.rotation, tab.flipped),
                 },
             );
             let placement = crate::file_ops::Placement {
@@ -228,7 +225,7 @@ mod tests {
                         center_x: 100.0,
                         center_y: 200.0,
                         zoom: 0.25,
-                        rotation: 90,
+                        rotation: 90.0,
                         flipped: true,
                         active: true,
                     }],
@@ -240,7 +237,7 @@ mod tests {
                         center_x: 1.0,
                         center_y: 2.0,
                         zoom: 1.0,
-                        rotation: 0,
+                        rotation: 33.125,
                         flipped: false,
                         active: false,
                     }],
@@ -248,8 +245,17 @@ mod tests {
             ],
         };
         write(&path, &session).unwrap();
+        // Quarter turns as before views could turn freely; other angles as
+        // decimals, read back exactly.
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("rotation = 90\n"), "{text}");
+        assert!(text.contains("rotation = 33.125\n"), "{text}");
         let read_back = read(&path).unwrap();
         assert_eq!(read_back, session);
+        let tab = &read_back.panes[1].tabs[0];
+        let orientation = crate::rotation::saved_orientation(tab.rotation, tab.flipped);
+        assert_eq!(orientation.degrees(), 33.125);
+        assert!(!orientation.is_quarter_turn());
         assert_eq!(
             read_back.panes[1].tabs[0].path(),
             Some(PathBuf::from("/slides/b.svs"))

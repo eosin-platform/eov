@@ -42,6 +42,7 @@ mod quantify_panel;
 mod recent;
 mod render;
 mod render_pool;
+mod rotation;
 mod save_copy;
 mod scripting;
 mod series_case;

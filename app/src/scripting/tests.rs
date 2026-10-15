@@ -539,8 +539,17 @@ fn wire_session(fx: &Fixtures) {
     let got = eov.ok("view.get", json!({"pane": fx.pane}));
     assert_eq!(got["center_x"], view["center_x"]);
     assert_eq!(got["zoom"], view["zoom"]);
+    // Any angle, read back exactly; the mirror and centre stay.
+    let tilted = eov.ok("view.set", json!({"pane": fx.pane, "rotation": 37.25}));
+    assert_eq!(tilted["rotation_deg"], json!(37.25));
+    assert_eq!(tilted["center_x"], view["center_x"]);
+    let tilted = eov.ok("view.set", json!({"pane": fx.pane, "rotation": -30}));
+    assert_eq!(tilted["rotation_deg"], json!(330.0));
+    let got = eov.ok("view.get", json!({"pane": fx.pane}));
+    assert_eq!(got["rotation_deg"], json!(330.0));
+    eov.ok("view.set", json!({"pane": fx.pane, "rotation": 0}));
     assert_eq!(
-        eov.error("view.set", json!({"rotation": 45})),
+        eov.error("view.set", json!({"rotation": "north"})),
         "invalid_params"
     );
     assert_eq!(eov.error("view.set", json!({})), "invalid_params");

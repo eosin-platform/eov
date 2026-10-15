@@ -219,7 +219,7 @@ pub(crate) fn view_info(state: &AppState, pane: PaneId, scale_factor: f64) -> Op
         width: viewport.width,
         height: viewport.height,
         scale_factor,
-        rotation_deg: f64::from(viewport.orientation.degrees()),
+        rotation_deg: viewport.orientation.degrees(),
         flipped: viewport.orientation.flipped(),
         visible: Rect {
             x: bounds.left,
@@ -688,7 +688,7 @@ mod tests {
                 zoom: viewport.zoom,
                 width: viewport.width,
                 height: viewport.height,
-                rotation_deg: f64::from(orientation.degrees()),
+                rotation_deg: orientation.degrees(),
                 flipped: orientation.flipped(),
                 ..Default::default()
             };

@@ -199,17 +199,18 @@ pub(super) fn view_request(
     Ok(ViewRequest { center, zoom })
 }
 
-/// The orientation `rotation` (degrees clockwise, a multiple of 90) and
-/// `flipped` ask for, keeping what they leave out from `current`.
+/// The orientation `rotation` (degrees clockwise, any angle, kept to a
+/// millionth of a degree) and `flipped` ask for, keeping what they leave
+/// out from `current`.
 pub(super) fn orientation(
     rotation: Option<f64>,
     flipped: Option<bool>,
     current: eov_common::viewport::Orientation,
 ) -> Result<eov_common::viewport::Orientation, RpcError> {
-    let degrees = rotation.unwrap_or(f64::from(current.degrees()));
+    let degrees = rotation.unwrap_or(current.degrees());
     let flipped = flipped.unwrap_or(current.flipped());
     eov_common::viewport::Orientation::from_degrees(degrees, flipped)
-        .ok_or_else(|| RpcError::invalid(format!("{degrees}° is not a multiple of 90°")))
+        .ok_or_else(|| RpcError::invalid(format!("{degrees} is not an angle")))
 }
 
 /// The open slide `slide` (a `file_id` of `slides`), or the one the focused
@@ -372,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn orientations_are_quarter_turns() {
+    fn orientations_take_any_angle() {
         use eov_common::viewport::Orientation;
         let current = Orientation::new(1, false);
         assert_eq!(orientation(None, None, current).unwrap(), current);
@@ -384,7 +385,13 @@ mod tests {
             orientation(None, Some(true), current).unwrap(),
             Orientation::new(1, true)
         );
-        assert!(orientation(Some(45.0), None, current).is_err());
+        let tilted = orientation(Some(-12.5), None, current).unwrap();
+        assert_eq!((tilted.degrees(), tilted.flipped()), (347.5, false));
+        // The angle stays when only the mirror changes.
+        let mirrored = orientation(None, Some(true), tilted).unwrap();
+        assert_eq!((mirrored.degrees(), mirrored.flipped()), (347.5, true));
+        assert!(orientation(Some(f64::NAN), None, current).is_err());
+        assert!(orientation(Some(f64::INFINITY), None, current).is_err());
     }
 
     #[test]

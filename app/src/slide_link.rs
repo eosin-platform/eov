@@ -105,7 +105,7 @@ impl Alignment {
     /// This alignment after the first slide's points are turned by `first`
     /// (`M · first`): the alignment once a view turns alone.
     fn after(&self, first: Orientation) -> Self {
-        let phi = f64::from(first.degrees());
+        let phi = first.degrees();
         let (rotation_deg, mirrored) = if first.flipped() {
             // R(θ)·Mirror = Mirror·R(−θ)
             (phi - self.rotation_deg, !self.mirrored)
@@ -132,7 +132,7 @@ impl Alignment {
         let turn = a.orientation.then(b.orientation.inverse());
         let mut alignment = Self {
             scale,
-            rotation_deg: f64::from(turn.degrees()),
+            rotation_deg: turn.degrees(),
             mirrored: turn.flipped(),
             offset_x: 0.0,
             offset_y: 0.0,
