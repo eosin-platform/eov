@@ -37,20 +37,22 @@ jobs:
   release-appimage:
     name: Build AppImage (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+
+    # Built in an EL8 container (glibc 2.28), so the AppImage runs on every
+    # distribution with glibc 2.28 or newer (RHEL/Rocky/Alma 8+, Debian 10+,
+    # Ubuntu 18.10+); the build fails if anything needs a newer glibc. The
+    # image is pinned by digest (multi-arch index).
+    container:
+      image: almalinux:8@sha256:8b469a3a78515e8a18ea8fc727e6a3679e1d0c5ba6f58d5b30be3d0d9b86cffe
 
     # ---------------------------------------------------------------
     # Architecture matrix
     #
-    # Each entry maps a target architecture to:
-    #   runner           – GitHub-hosted runner label
-    #   rust_target      – Rust target triple (for cargo / rustup)
-    #   appimage_arch    – arch slug used in linuxdeploy & appimagetool
-    #                      download URLs and the ARCH env var expected
-    #                      by appimagetool
-    #
-    # To add a new architecture, append another include entry.
-    # Native runners are used because AppImage dependency bundling
-    # (ldd, linuxdeploy) must resolve host-arch shared libraries.
+    #   runner           – GitHub-hosted runner label (native, because
+    #                      dependency bundling resolves host-arch libraries)
+    #   rust_target      – Rust target triple
+    #   artifact_arch    – arch slug in the artifact name
     # ---------------------------------------------------------------
     strategy:
       fail-fast: false
@@ -59,68 +61,42 @@ jobs:
           - arch: x86_64
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
-            appimage_arch: x86_64
             artifact_arch: x86_64
 
           # NOTE: Requires GitHub Actions ARM runner access.
-          # If unavailable, remove this entry and build arm64 AppImages
-          # on a self-hosted ARM64 runner or via QEMU (significantly slower).
           - arch: aarch64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
-            appimage_arch: aarch64
             artifact_arch: arm64
 
     steps:
+      # actions/checkout needs git for submodules; the rest of the build
+      # dependencies come from the checked-out script.
+      - name: Install git
+        shell: bash
+        run: dnf -y install git-core
+
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_sha }}
           submodules: recursive
+          persist-credentials: false
 
-      - name: Install system dependencies
+      - name: Install build dependencies
         shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cargo \
-            curl \
-            file \
-            git \
-            libcairo2-dev \
-            libvulkan-dev \
-            libfontconfig-dev \
-            libgdk-pixbuf-2.0-dev \
-            libglib2.0-dev \
-            libjpeg-turbo8-dev \
-            libopenjp2-7-dev \
-            libpng-dev \
-            libsqlite3-dev \
-            libtiff-dev \
-            libudev-dev \
-            libxml2-dev \
-            meson \
-            ninja-build \
-            protobuf-compiler \
-            libwayland-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            pkg-config \
-            squashfs-tools \
-            zlib1g-dev \
-            zsync
+        run: packaging/appimage/install-build-deps-el8.sh
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust build outputs
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: ${{ matrix.arch }}
+          key: el8-${{ matrix.arch }}
 
       - name: Derive release metadata
         id: meta
@@ -135,75 +111,50 @@ jobs:
             exit 1
           }
 
-          # Architecture comes from the matrix, not uname.
-          arch="${{ matrix.arch }}"
-          artifact_arch="${{ matrix.artifact_arch }}"
-          artifact_name="eov-${tag}-linux-${artifact_arch}.AppImage"
-          checksum_name="${artifact_name}.sha256"
-
+          artifact_name="eov-${tag}-linux-${{ matrix.artifact_arch }}.AppImage"
           {
-            echo "tag=$tag"
-            echo "version=$version"
-            echo "arch=$arch"
             echo "artifact_name=$artifact_name"
-            echo "checksum_name=$checksum_name"
+            echo "checksum_name=${artifact_name}.sha256"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download AppImage tooling
+      - name: Download pinned AppImage tooling
         shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.local/bin"
-
-          # Architecture-specific AppImage tooling downloads.
-          curl -fsSL -o "$HOME/.local/bin/linuxdeploy" \
-            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage"
-          curl -fsSL -o "$HOME/.local/bin/appimagetool" \
-            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage"
-
-          chmod +x "$HOME/.local/bin/linuxdeploy" "$HOME/.local/bin/appimagetool"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          tool_env="$(packaging/appimage/fetch-tools.sh "$RUNNER_TEMP/appimage-tools")"
+          printf '%s\n' "$tool_env" >> "$GITHUB_ENV"
 
       - name: Build AppImage
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          # Passed through to build.sh and appimagetool to select the
-          # correct architecture for the output AppImage.
-          ARCH: ${{ matrix.arch }}
         shell: bash
+        env:
+          # appimagetool is itself an AppImage; containers have no FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          APPIMAGE_MAX_GLIBC: '2.28'
+          APPIMAGE_REQUIRE_LICENSES: '1'
+          ARCH: ${{ matrix.arch }}
+          OUTPUT_PATH: ${{ github.workspace }}/dist/${{ steps.meta.outputs.artifact_name }}
         run: |
           set -euo pipefail
           ./packaging/appimage/build.sh
 
-      - name: Rename artifact and generate checksum
-        id: bundle
+      - name: Generate checksum
         shell: bash
+        env:
+          ARTIFACT: ${{ steps.meta.outputs.artifact_name }}
+          CHECKSUM: ${{ steps.meta.outputs.checksum_name }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-
-          artifacts=(dist/*.AppImage)
-          if [[ "${#artifacts[@]}" -ne 1 ]]; then
-            echo "Expected exactly one AppImage artifact in dist/, found ${#artifacts[@]}" >&2
-            ls -la dist >&2 || true
-            exit 1
-          fi
-
-          artifact_path="dist/${{ steps.meta.outputs.artifact_name }}"
-          mv "${artifacts[0]}" "$artifact_path"
           cd dist
-          sha256sum ${{ steps.meta.outputs.artifact_name }} > "${{ steps.meta.outputs.checksum_name }}"
-          cd ..
-
-          {
-            echo "artifact_path=$artifact_path"
-            echo "checksum_path=dist/${{ steps.meta.outputs.checksum_name }}"
-          } >> "$GITHUB_OUTPUT"
+          sha256sum "$ARTIFACT" > "$CHECKSUM"
+          cat "$CHECKSUM"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.meta.outputs.artifact_name }}
           path: |
-            ${{ steps.bundle.outputs.artifact_path }}
-            ${{ steps.bundle.outputs.checksum_path }}
+            dist/${{ steps.meta.outputs.artifact_name }}
+            dist/${{ steps.meta.outputs.checksum_name }}
+          if-no-files-found: error
