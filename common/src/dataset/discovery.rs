@@ -2,9 +2,11 @@
 //!
 //! * DICOM instances in one directory that belong to the same series
 //!   (Series Instance UID) form **one** slide.
-//! * During directory scans, TIFFs that cannot be brightfield slides —
-//!   single-channel images (masks, label maps) or untiled images — are
-//!   skipped and reported. Files given explicitly are always used.
+//! * During directory scans, TIFFs that cannot be slides — single-channel
+//!   images (masks, label maps) or untiled images — are skipped and
+//!   reported. OME-TIFFs are never skipped: their channels are
+//!   single-sample planes by design. Files given explicitly are always
+//!   used.
 //! * Directory symlink loops are detected; hidden entries are ignored.
 //! * Multi-file formats (MIRAX, VMS/VMU, DICOM) list all their member files
 //!   so the dataset hash covers the image data, not just the index file.
@@ -16,10 +18,13 @@ use std::path::{Path, PathBuf};
 
 use tracing::debug;
 
-/// File extensions that EOV can open as whole-slide images (via OpenSlide).
-/// Keep in sync with the file-picker filter in the app.
+/// File extensions that EOV can open as whole-slide images (via OpenSlide,
+/// or eov's OME-TIFF reader for `.ome.tif`, `.ome.tiff` and the BigTIFF
+/// `.btf`, `.tf2`, `.tf8`). Keep in sync with the file-picker filter in the
+/// app.
 pub const SUPPORTED_SLIDE_EXTENSIONS: &[&str] = &[
     "svs", "tif", "tiff", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "svslide", "bif", "czi",
+    "btf", "tf2", "tf8",
 ];
 
 /// Maximum directory depth searched.
@@ -322,10 +327,13 @@ pub fn dicom_series_uid(path: &Path) -> Option<String> {
         .then_some(uid)
 }
 
-/// Why a TIFF found by a directory scan is not a brightfield slide, if it
-/// clearly is not: one sample per pixel (masks, label images) or no tiles
-/// (OpenSlide's TIFF drivers need tiled images).
+/// Why a TIFF found by a directory scan is not a slide, if it clearly is
+/// not: one sample per pixel (masks, label images) or no tiles (OpenSlide's
+/// TIFF drivers need tiled images). OME-TIFFs are slides either way.
 pub fn non_slide_tiff_reason(path: &Path) -> Option<String> {
+    if crate::ome_tiff::is_ome_tiff(path) {
+        return None;
+    }
     let mut buf = Vec::with_capacity(1 << 16);
     File::open(path)
         .ok()?
@@ -543,6 +551,30 @@ mod tests {
         assert_eq!(d.skipped.len(), 1);
         // Explicitly named files are trusted.
         assert_eq!(discover_slides(&[mask]).slides.len(), 1);
+    }
+
+    #[test]
+    fn multichannel_ome_tiffs_are_slides() {
+        use crate::test_support::{OmeTiffSpec, write_ome_tiff};
+        let dir = tempfile::tempdir().unwrap();
+        let spec = OmeTiffSpec::channels(64, 64, 32, 1, &[("a", [255, 0, 0]), ("b", [0, 255, 0])]);
+        // One sample per pixel, and named .tif: still a slide.
+        let path = dir.path().join("multiplex.tif");
+        write_ome_tiff(&path, &spec, |c, x, _| f64::from(x) * (c + 1) as f64).unwrap();
+        let big = dir.path().join("bigtiff.ome.btf");
+        write_ome_tiff(
+            &big,
+            &OmeTiffSpec {
+                big_tiff: true,
+                ..spec
+            },
+            |_, _, _| 1.0,
+        )
+        .unwrap();
+        assert!(non_slide_tiff_reason(&path).is_none());
+        let d = discover_slides(&[dir.path().to_path_buf()]);
+        assert_eq!(d.slides.len(), 2, "{d:?}");
+        assert!(d.skipped.is_empty());
     }
 
     #[test]

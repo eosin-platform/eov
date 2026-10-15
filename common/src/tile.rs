@@ -8,7 +8,7 @@ use crate::wsi::{EXACT_SYNTHESIS_BUDGET, WsiLevel, pixels};
 use crate::{Error, Result, WsiFile};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use tracing::{debug, trace, warn};
@@ -394,6 +394,8 @@ pub struct TileManager {
     /// Base pixels a synthetic tile may read directly before it is built
     /// from finer cached tiles instead.
     synthesis_budget: u64,
+    /// Set by [`retire`](Self::retire): loads no longer fill the cache.
+    retired: AtomicBool,
 }
 
 impl TileManager {
@@ -409,7 +411,23 @@ impl TileManager {
             cache: None,
             in_flight: Mutex::new(HashMap::new()),
             synthesis_budget: EXACT_SYNTHESIS_BUDGET,
+            retired: AtomicBool::new(false),
         }
+    }
+
+    /// Stops this manager from adding tiles to its cache, for good: loads
+    /// still return tiles, but nothing they produce is cached any more,
+    /// not even by loads already running. Use it when the file's pixels
+    /// changed (a multichannel display) and a new manager with a new file
+    /// id takes over; then drop this manager's tiles
+    /// ([`TileCache::remove_file`]).
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether [`retire`](Self::retire) was called.
+    pub fn is_retired(&self) -> bool {
+        self.retired.load(Ordering::SeqCst)
     }
 
     /// Base-level pixels a synthetic tile may decode directly (default
@@ -481,8 +499,15 @@ impl TileManager {
                 match self.load_tile_sync(coord) {
                     Ok(tile) => {
                         let tile = Arc::new(tile);
-                        if let Some(cache) = &self.cache {
+                        if let Some(cache) = &self.cache
+                            && !self.is_retired()
+                        {
                             cache.insert_arc(Arc::clone(&tile));
+                            // Retired meanwhile: whoever retired us may have
+                            // cleared the file's tiles before this insert.
+                            if self.is_retired() {
+                                cache.remove_if_same(&tile);
+                            }
                         }
                         Ok(tile)
                     }
@@ -1059,6 +1084,25 @@ mod tests {
             manager.load_tile_cached(TileCoord::new(3, 0, 999, 0, 256)),
             Err(Error::InvalidCoordinates { .. })
         ));
+    }
+
+    #[test]
+    fn retired_managers_load_but_cache_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pyramid.tiff");
+        write_tiff(&path, &TiffSpec::pyramid(512, 512, 64, 2), gradient).unwrap();
+        let cache = Arc::new(TileCache::new());
+        let manager =
+            TileManager::new(WsiFile::open(&path).unwrap(), 5).with_tile_cache(Arc::clone(&cache));
+        let first = TileCoord::new(5, 0, 0, 0, 256);
+        manager.load_tile_cached(first).unwrap();
+        assert!(cache.contains(&first));
+        assert!(!manager.is_retired());
+        manager.retire();
+        let second = TileCoord::new(5, 0, 1, 0, 256);
+        assert!(manager.load_tile_cached(second).is_ok());
+        assert!(!cache.contains(&second));
+        assert_eq!(cache.remove_file(5), 1);
     }
 
     #[test]
