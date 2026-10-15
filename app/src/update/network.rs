@@ -66,7 +66,8 @@ impl NetworkPermission {
         match Self::acquire(allow_network, context, interaction, policy)? {
             Some(permission) => Ok(permission),
             None if !interaction.interactive() => anyhow::bail!(
-                "{context}\nNetwork access needs consent, but no terminal is attached. Re-run with --allow-network."
+                "{context}\nNetwork access needs consent, but no terminal is attached. Re-run with --allow-network.{}",
+                super::prompt::windows_hint()
             ),
             None => anyhow::bail!(
                 "Network access declined; the requested operation cannot continue without release metadata."

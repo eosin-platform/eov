@@ -73,8 +73,7 @@ pub fn prepare(helper: &Path) -> Result<PreparedHelper> {
         .current_dir(dir.path())
         .stdin(Stdio::null());
     hide_console(&mut command);
-    let output = command
-        .output()
+    let output = run_retrying_busy(&mut command)
         .with_context(|| format!("the update helper cannot run from {}", dir.path().display()))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     if !output.status.success() || !stdout.starts_with("eov-update-helper") {
@@ -90,6 +89,21 @@ pub fn prepare(helper: &Path) -> Result<PreparedHelper> {
         dir: dir.keep(),
         executable,
     })
+}
+
+/// Runs `command`, retrying briefly when the freshly copied executable is
+/// still open in a process another thread is forking (`ETXTBSY`).
+fn run_retrying_busy(command: &mut Command) -> std::io::Result<std::process::Output> {
+    let mut attempts = 0;
+    loop {
+        match command.output() {
+            Err(error) if cfg!(unix) && error.raw_os_error() == Some(26) && attempts < 20 => {
+                attempts += 1;
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            result => return result,
+        }
+    }
 }
 
 /// Writes `transaction` next to the prepared helper and starts it. The

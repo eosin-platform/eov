@@ -458,6 +458,11 @@ struct Cli {
 
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     viewport_lock: bool,
+
+    /// Start without loading any plugins, for example after a plugin made
+    /// eov crash at startup (also enabled by EOV_SAFE_MODE=1).
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    safe_mode: bool,
 }
 
 enum CommandAction {
@@ -487,6 +492,10 @@ pub(crate) struct LaunchOptions {
     pub(crate) config_path: Option<PathBuf>,
     pub(crate) window_geometry: WindowGeometry,
     pub(crate) plugin_dir: PathBuf,
+    /// `--safe-mode` / `EOV_SAFE_MODE=1`: the GUI must not discover, extract
+    /// or load any plugin (and should say so in the window).
+    #[allow(dead_code)] // honoured by main() once the plugin host checks it
+    pub(crate) safe_mode: bool,
     command: CommandAction,
 }
 
@@ -607,8 +616,14 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
             y: cli.window_y,
         },
         plugin_dir,
+        safe_mode: cli.safe_mode || safe_mode_from_env(),
         command,
     })
+}
+
+/// Whether `EOV_SAFE_MODE` asks for safe mode (any value but empty or `0`).
+fn safe_mode_from_env() -> bool {
+    std::env::var_os("EOV_SAFE_MODE").is_some_and(|value| !value.is_empty() && value != "0")
 }
 
 pub(crate) fn init_tracing(log_level: Option<CliLogLevel>) {

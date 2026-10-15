@@ -55,6 +55,15 @@ impl Prompter for TerminalPrompter {
     }
 }
 
+/// On Windows, prompts need the `eov.com` console launcher.
+pub fn windows_hint() -> &'static str {
+    if crate::win_console::prompts_supported() {
+        ""
+    } else {
+        "\n(On Windows, run `eov` rather than `eov.exe` from a terminal: the eov.com launcher lets eov ask questions.)"
+    }
+}
+
 /// Interprets a typed answer.
 pub fn parse_answer(line: &str, default: Answer) -> Answer {
     let answer = line.trim();
@@ -100,7 +109,8 @@ impl Interaction {
         }
         if !self.prompter.interactive() {
             bail!(
-                "{message}\n\nConfirmation is required, but no terminal is attached.\nRe-run with -y/--yes to proceed without a prompt."
+                "{message}\n\nConfirmation is required, but no terminal is attached.\nRe-run with -y/--yes to proceed without a prompt.{}",
+                windows_hint()
             );
         }
         match self

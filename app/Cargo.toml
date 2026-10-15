@@ -20,6 +20,13 @@ path = "src/main.rs"
 name = "eov-update-helper"
 path = "src/update_helper.rs"
 
+# The Windows console launcher, shipped as `eov.com` next to `eov.exe` in the
+# portable release (see src/win_console_launcher.rs).
+[[bin]]
+name = "eov-console"
+path = "src/win_console_launcher.rs"
+required-features = ["windows-console-launcher"]
+
 [dependencies]
 # Common crate
 eov-common = { path = "../common", version = "1.0.0" }
@@ -140,6 +147,8 @@ windows-sys = { version = "0.48", features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -162,3 +171,5 @@ distribution-appimage = []
 distribution-flatpak = []
 distribution-macos-bundle = []
 distribution-windows-portable = []
+# Builds the `eov-console` launcher binary (Windows release packaging).
+windows-console-launcher = []
