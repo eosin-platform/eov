@@ -36,6 +36,7 @@ mod flatpak;
 mod handoff;
 mod homebrew;
 pub mod keys;
+mod macos;
 pub mod manifest;
 pub mod network;
 pub mod platform;

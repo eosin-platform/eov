@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Entitlements for Developer ID (hardened runtime) builds; ad-hoc builds
+     are signed without them. See packaging/macos/build.sh. -->
+<plist version="1.0">
+<dict>
+  <!-- eov loads plugin libraries (.eop packages) that are not signed with
+       eov's Team ID; library validation would refuse them. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

@@ -1097,6 +1097,13 @@ fn hand_over(
             if ctx.distribution == Distribution::WindowsPortable {
                 verify_portable_folder_is_owned(&tree, &staged_tree)?;
             }
+            if ctx.distribution == Distribution::MacosBundle {
+                super::macos::ensure_runnable(
+                    &staged_tree,
+                    &plan.target_version.to_string(),
+                    super::macos::current_version().as_deref(),
+                )?;
+            }
             let suffix = if ctx.distribution == Distribution::MacosBundle {
                 ".app"
             } else {
