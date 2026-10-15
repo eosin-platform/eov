@@ -68,6 +68,11 @@ pub struct PluginInit {
     /// migrating data a plugin stored there. Read it; don't write it.
     #[serde(default)]
     pub legacy_config_dir: Option<String>,
+    /// The plugin runs without a window, for `eov batch` (see
+    /// [`methods::BATCH_REGISTER`]): toolbar buttons, tools, layers and
+    /// surfaces are accepted but not shown, so skip expensive UI set-up.
+    #[serde(default)]
+    pub headless: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -1337,6 +1342,22 @@ pub enum HostEvent {
         #[serde(default)]
         roi: Option<Rect>,
     },
+    /// A headless batch run (`eov batch run`, see
+    /// [`methods::BATCH_REGISTER`]) asks for `file` to be analysed with
+    /// `command_id`, writing results under `output_dir`. Slides come one at
+    /// a time; work may continue on the plugin's own threads, and the run
+    /// waits until [`methods::BATCH_FINISH`] names `run_id`.
+    BatchRun {
+        run_id: String,
+        command_id: String,
+        file: FileInfo,
+        /// An existing, writable folder for this slide's results.
+        output_dir: String,
+        /// `--param name=value` values (JSON when they parse, else
+        /// strings), over the command's defaults.
+        #[serde(default)]
+        params: Map<String, Value>,
+    },
     /// Sent by newer hosts for events this plugin version does not know.
     #[serde(other)]
     Unknown,
@@ -1483,6 +1504,16 @@ pub mod methods {
     /// so overlays derived from slide pixels can match it.
     pub const VIEW_DISPLAY: &str = "view.display";
 
+    /// `BatchCommandSpec` → `null`: offers a command for headless batch
+    /// runs over many slides (`eov batch run <plugin>:<command> SLIDES`).
+    /// Register it in `create`; slides then arrive as
+    /// [`HostEvent::BatchRun`](super::HostEvent::BatchRun).
+    pub const BATCH_REGISTER: &str = "batch.register";
+    /// `BatchProgressArgs` → `null`: how far a batch run's slide is.
+    pub const BATCH_PROGRESS: &str = "batch.progress";
+    /// `BatchFinishArgs` → `null`: a batch run's slide is done.
+    pub const BATCH_FINISH: &str = "batch.finish";
+
     /// `OffsetArgs` → `null`
     pub const APP_CYCLE_PANE: &str = "app.cycle_pane";
     /// `OffsetArgs` → `null`
@@ -1586,6 +1617,58 @@ pub struct OpenFileArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdArgs {
     pub id: String,
+}
+
+/// A command a plugin offers for headless batch runs (see
+/// [`methods::BATCH_REGISTER`]).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchCommandSpec {
+    /// `^[a-z0-9][a-z0-9_-]{0,63}$`
+    pub command_id: String,
+    /// One line, for `eov batch list`.
+    pub description: String,
+    /// The parameters it takes, for `--param name=value`.
+    #[serde(default)]
+    pub params: Vec<BatchParam>,
+}
+
+/// A parameter of a [`BatchCommandSpec`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchParam {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Used when the run does not set it (`null`: no default).
+    #[serde(default)]
+    pub default: Value,
+}
+
+/// Arguments of [`methods::BATCH_PROGRESS`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchProgressArgs {
+    pub run_id: String,
+    /// 0–1, when known.
+    #[serde(default)]
+    pub fraction: Option<f32>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// Arguments of [`methods::BATCH_FINISH`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BatchFinishArgs {
+    pub run_id: String,
+    /// `false` when the slide could not be analysed (`message` says why).
+    pub ok: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+    /// The files written, relative to the slide's `output_dir`.
+    #[serde(default)]
+    pub outputs: Vec<String>,
+    /// Results and provenance for the run manifest: counts, scores, the
+    /// model and its hash, the level or resolution read, the device…
+    #[serde(default)]
+    pub summary: Value,
 }
 
 /// Arguments of [`methods::BADGE_SET`].

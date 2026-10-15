@@ -632,6 +632,46 @@ enum CliCommand {
         #[command(subcommand)]
         command: DatasetCommand,
     },
+    /// Run plugin analyses over many slides without a window.
+    Batch {
+        #[command(subcommand)]
+        command: BatchCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum BatchCommand {
+    /// List the batch commands installed plugins offer.
+    List {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run a plugin's batch command on slides, writing its results and a
+    /// manifest of the run (batch.json) to --out.
+    Run(BatchRunArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct BatchRunArgs {
+    /// <plugin>:<command>, as `eov batch list` shows it.
+    target: String,
+    /// Slide files or folders (searched recursively).
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    /// The folder for the results (one subfolder per slide) and batch.json.
+    #[arg(long)]
+    out: PathBuf,
+    /// A parameter of the command as name=value (JSON values are parsed:
+    /// numbers, booleans, lists); repeat for more.
+    #[arg(long = "param", value_name = "NAME=VALUE")]
+    params: Vec<String>,
+    /// Give up on a slide after this many seconds.
+    #[arg(long, value_name = "SECONDS")]
+    timeout: Option<u64>,
+    /// Name slides by opaque ids and write no slide paths or file names.
+    #[arg(long)]
+    deidentify: bool,
 }
 
 const AFTER_HELP: &str = "\
@@ -811,6 +851,8 @@ enum CommandAction {
     Paths { json: bool },
     FileTypes { register: bool, dry_run: bool },
     DatasetPatches(Box<DatasetJob>),
+    BatchList { json: bool },
+    BatchRun(Box<crate::batch::RunOptions>),
 }
 
 pub(crate) struct LaunchOptions {
@@ -955,6 +997,19 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
                 CommandAction::DatasetPatches(Box::new(args.into_job()))
             }
         },
+        Some(CliCommand::Batch { command }) => match command {
+            BatchCommand::List { json } => CommandAction::BatchList { json },
+            BatchCommand::Run(args) => {
+                CommandAction::BatchRun(Box::new(crate::batch::RunOptions {
+                    target: args.target,
+                    inputs: args.inputs,
+                    out: args.out,
+                    params: args.params,
+                    timeout: args.timeout.map(std::time::Duration::from_secs),
+                    deidentify: args.deidentify,
+                }))
+            }
+        },
         None => CommandAction::LaunchUi,
     };
 
@@ -1097,6 +1152,16 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
         }
         CommandAction::DatasetPatches(job) => {
             run_dataset_patches_cli(job)?;
+            Ok(true)
+        }
+        CommandAction::BatchList { json } => {
+            crate::batch::list(&launch_options.plugin_dir, *json)?;
+            Ok(true)
+        }
+        CommandAction::BatchRun(options) => {
+            if !crate::batch::run(&launch_options.plugin_dir, options)? {
+                std::process::exit(1);
+            }
             Ok(true)
         }
     }

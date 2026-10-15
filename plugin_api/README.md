@@ -103,6 +103,7 @@ The `Host` methods, grouped (see the API docs for every type):
 | Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
 | Filters | `register_filter`, `set_filter_enabled` (CPU RGBA filters run in the render path) |
 | Settings | `setting`, `set_setting`, `remove_setting` (persisted per plugin) |
+| Batch runs | `register_batch_command` (offered by `eov batch run <plugin>:<command> SLIDES --out DIR`; each slide arrives as `HostEvent::BatchRun` with its output folder and parameters), `batch_progress`, `finish_batch` (status, the files written and a summary for the run manifest); `PluginInit.headless` says when there is no window |
 
 Surfaces are `.slint` files compiled by eov's own Slint (see `[ui] slint` in
 the manifest); the exported component does not need to inherit `Window`.

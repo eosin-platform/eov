@@ -3,6 +3,7 @@
 
 mod audit;
 mod backend;
+mod batch;
 mod blitter;
 mod bookmarks;
 mod cache_budget;

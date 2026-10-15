@@ -486,6 +486,17 @@ Tile filenames encode the origin coordinates and tile size with zero-padded valu
 
 Metadata is written as CSV and JSON unless `--metadata csv` or `--metadata json` picks one. Each patch record includes the slide id, path (not with `--deidentify`) and stem, the patch path, its origin and size in output and level-0 pixels, the pyramid level and downsample read, the output microns per pixel, tissue and white fractions, the annotation label and coverage and mask path when annotations are used, and the slide's vendor, MPP and content fingerprint. `eov dataset patches --help` lists every option (target resolution, tissue filter, annotations and masks, stain normalisation, per-slide caps and sampling, JPEG output, resuming and dry runs).
 
+## Batch Runs
+
+Plugins that offer batch commands run without a window over many slides, for cohort analyses:
+
+```bash
+eov batch list                                         # the commands installed plugins offer
+eov batch run example_plugin:tissue-stats cases/ --out results/ --param max_pixels=2000000
+```
+
+Inputs are slide files or folders (searched recursively; the instances of a DICOM series are one slide). Each slide gets a folder of results under `--out`, and `results/batch.json` is the run's manifest, written as it goes: eov's version, the plugin's id, version, package SHA-256 and origin, the command and its parameters, and per slide its id, identity, status, outputs and the plugin's summary (for an analysis plugin: the model and its hash, the resolution read, the device). `--deidentify` names slides by opaque ids and leaves their paths and names out; `--timeout` gives up on a slide after some seconds. The exit code is 1 if a slide failed. Runs are also recorded in the audit log. The plugin uses the host API it has in the window: what needs a window (tools, layers, panels) has no effect.
+
 ## Plugins
 
 Plugins extend eov with tools, overlays, panels, filters and analyses. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).

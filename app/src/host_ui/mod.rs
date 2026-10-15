@@ -29,7 +29,7 @@ mod menus;
 mod notices;
 mod overlays;
 mod panel;
-mod publish;
+pub(crate) mod publish;
 mod surfaces;
 
 use crate::AppWindow;
