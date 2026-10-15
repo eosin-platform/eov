@@ -107,10 +107,6 @@ impl FetchError {
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound { .. })
     }
-
-    pub fn is_network(&self) -> bool {
-        matches!(self, Self::Network { .. })
-    }
 }
 
 impl fmt::Display for FetchError {
@@ -142,14 +138,6 @@ impl fmt::Display for FetchError {
 }
 
 impl std::error::Error for FetchError {}
-
-/// A verified download in a temporary file next to its final location.
-/// Dropping it deletes the file, so failed updates never leave it behind.
-pub struct VerifiedDownload {
-    pub file: tempfile::NamedTempFile,
-    pub sha256: String,
-    pub bytes: u64,
-}
 
 /// A synchronous HTTPS client. Every request requires a [`NetworkPermission`].
 #[derive(Clone)]
@@ -205,14 +193,15 @@ impl ReleaseClient {
     }
 
     /// Streams `url` into a temporary file in `directory`, verifying its
-    /// SHA-256 against `expected_sha256` before returning it.
+    /// SHA-256 against `expected_sha256` before returning it. Dropping the
+    /// returned file deletes it, so failed updates never leave it behind.
     pub fn download_verified(
         &self,
         _permission: &NetworkPermission,
         url: &str,
         expected_sha256: &str,
         directory: &Path,
-    ) -> Result<VerifiedDownload, FetchError> {
+    ) -> Result<tempfile::NamedTempFile, FetchError> {
         let (final_url, response) = self.open(url, "application/octet-stream")?;
         let limit = MAX_ARTIFACT_BYTES;
         if response.content_length.is_some_and(|length| length > limit) {
@@ -231,7 +220,7 @@ impl ReleaseClient {
             .suffix(".part")
             .tempfile_in(directory)
             .map_err(local)?;
-        let (sha256, bytes) =
+        let sha256 =
             copy_hashed(response.body, file.as_file_mut(), limit).map_err(|error| match error {
                 CopyError::TooLarge => FetchError::TooLarge {
                     url: final_url.to_string(),
@@ -254,11 +243,7 @@ impl ReleaseClient {
                 actual: sha256,
             });
         }
-        Ok(VerifiedDownload {
-            file,
-            sha256,
-            bytes,
-        })
+        Ok(file)
     }
 
     fn get_limited(&self, url: &str, accept: &str, limit: u64) -> Result<Vec<u8>, FetchError> {
@@ -358,7 +343,7 @@ fn copy_hashed(
     mut reader: Box<dyn Read + Send>,
     writer: &mut std::fs::File,
     limit: u64,
-) -> Result<(String, u64), CopyError> {
+) -> Result<String, CopyError> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 1 << 20];
     let mut total = 0_u64;
@@ -378,7 +363,7 @@ fn copy_hashed(
             .write_all(&buffer[..read])
             .map_err(|error| CopyError::Write(error.to_string()))?;
     }
-    Ok((format!("{:x}", hasher.finalize()), total))
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Only HTTPS requests to GitHub release hosts are allowed.
@@ -511,7 +496,7 @@ mod tests {
         let error = client
             .get_text(&permission, "https://github.com/down")
             .unwrap_err();
-        assert!(error.is_network());
+        assert!(matches!(error, FetchError::Network { .. }));
         assert!(error.to_string().contains("HTTPS_PROXY"));
     }
 
@@ -554,8 +539,7 @@ mod tests {
                 temp.path(),
             )
             .unwrap();
-        assert_eq!(download.bytes, 7);
-        assert_eq!(std::fs::read(download.file.path()).unwrap(), b"payload");
+        assert_eq!(std::fs::read(download.path()).unwrap(), b"payload");
         drop(download);
 
         let error = client

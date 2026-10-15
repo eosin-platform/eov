@@ -759,7 +759,6 @@ pub fn stage_package(
             let permission = permission.context("network permission is required to download")?;
             ctx.client
                 .download_verified(permission, url, sha256, &ctx.plugin_dir)?
-                .file
                 .into_temp_path()
         }
         PackageFetch::LocalFile { path, sha256 } => copy_verified(path, sha256, &ctx.plugin_dir)?,

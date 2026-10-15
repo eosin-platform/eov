@@ -295,19 +295,49 @@ pub(crate) enum PluginCommand {
     },
 }
 
+/// Options of `eov update`.
+#[derive(Clone, Debug, clap::Args)]
+pub(crate) struct UpdateArgs {
+    /// Install exactly this release (allows downgrades), e.g. 1.0.1.
+    #[arg(long, value_name = "VERSION")]
+    release: Option<String>,
+    /// Update eov only, not its plugins.
+    #[arg(long)]
+    app_only: bool,
+    /// Skip the confirmation prompt (network access still needs
+    /// --allow-network or interactive consent).
+    #[arg(short = 'y', long)]
+    yes: bool,
+    /// Allow GitHub requests without asking.
+    #[arg(long)]
+    allow_network: bool,
+    /// Update from an offline bundle (a directory with release.toml and the
+    /// release artifacts) instead of GitHub.
+    #[arg(long, value_name = "DIR_OR_FILE", conflicts_with = "allow_network")]
+    from: Option<PathBuf>,
+    /// Trust an offline bundle whose release.toml is not signed with a
+    /// trusted eov release key.
+    #[arg(long, requires = "from")]
+    allow_unsigned: bool,
+    /// Restore the installation (and plugins) that the last update replaced.
+    #[arg(long, conflicts_with_all = ["release", "from", "app_only"])]
+    rollback: bool,
+    /// Show the plan without changing anything.
+    #[arg(long)]
+    dry_run: bool,
+    /// Print machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+    /// Do not start eov again after a helper-based update.
+    #[arg(long)]
+    no_relaunch: bool,
+}
+
 #[derive(Debug, Subcommand)]
 enum CliCommand {
+    /// Update eov and its plugins (or roll back the last update).
     #[command(alias = "upgrade")]
-    Update {
-        #[arg(long)]
-        release: Option<String>,
-        #[arg(long)]
-        app_only: bool,
-        #[arg(short = 'y', long)]
-        yes: bool,
-        #[arg(long)]
-        allow_network: bool,
-    },
+    Update(UpdateArgs),
     /// Install, update, remove, enable, disable and inspect plugins.
     Plugin {
         #[command(subcommand)]
@@ -432,7 +462,7 @@ struct Cli {
 
 enum CommandAction {
     LaunchUi,
-    ApplicationUpdate(update::ApplicationUpdateOptions),
+    ApplicationUpdate(UpdateArgs),
     Plugin(PluginCommand),
     Probe(PathBuf),
     RecentList,
@@ -518,17 +548,7 @@ pub(crate) fn parse_launch_options() -> Result<LaunchOptions> {
         .collect::<Result<Vec<_>>>()?;
 
     let command = match cli.command {
-        Some(CliCommand::Update {
-            release,
-            app_only,
-            yes,
-            allow_network,
-        }) => CommandAction::ApplicationUpdate(update::ApplicationUpdateOptions {
-            release,
-            app_only,
-            yes,
-            allow_network,
-        }),
+        Some(CliCommand::Update(args)) => CommandAction::ApplicationUpdate(args),
         Some(CliCommand::Plugin { command }) => CommandAction::Plugin(command),
         Some(CliCommand::Probe { file }) => {
             validate_input_file(&file)?;
@@ -635,8 +655,8 @@ pub(crate) fn apply_config_override(config_path: Option<&PathBuf>) -> Result<()>
 pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bool> {
     match &launch_options.command {
         CommandAction::LaunchUi => Ok(false),
-        CommandAction::ApplicationUpdate(options) => {
-            update::application_update(&launch_options.plugin_dir, options.clone())?;
+        CommandAction::ApplicationUpdate(args) => {
+            run_update_command(&launch_options.plugin_dir, args)?;
             Ok(true)
         }
         CommandAction::Plugin(command) => {
@@ -664,6 +684,33 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
     }
+}
+
+/// Runs `eov update`. With `--json`, failures are reported as a JSON object
+/// on standard output as well.
+fn run_update_command(plugin_dir: &Path, args: &UpdateArgs) -> Result<()> {
+    let options = update::UpdateOptions {
+        request: update::UpdateRequest {
+            release: args.release.clone(),
+            app_only: args.app_only,
+            from: args.from.clone(),
+            allow_unsigned: args.allow_unsigned,
+            allow_network: args.allow_network,
+        },
+        yes: args.yes,
+        dry_run: args.dry_run,
+        json: args.json,
+        rollback: args.rollback,
+        relaunch: !args.no_relaunch,
+    };
+    let result = update::run_update_cli(plugin_dir, &options);
+    if args.json
+        && let Err(error) = &result
+    {
+        println!("{}", serde_json::json!({ "error": format!("{error:#}") }));
+    }
+    // A helper-based update continues after this process exits.
+    result.map(|_| ())
 }
 
 /// Runs an `eov plugin` subcommand. With `--json`, failures are reported as
