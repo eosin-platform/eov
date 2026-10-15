@@ -400,12 +400,24 @@ mod tests {
     use crate::overlay::OverlayStore;
     use eov_plugin_api::prelude::*;
     use settings::SettingsStore;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
 
-    static SHUTDOWNS: AtomicUsize = AtomicUsize::new(0);
+    /// Shutdown calls per plugin id (tests run in parallel).
+    static SHUTDOWNS: Mutex<Option<HashMap<String, usize>>> = Mutex::new(None);
+
+    fn shutdowns(id: &str) -> usize {
+        SHUTDOWNS
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|m| m.get(id).copied())
+            .unwrap_or(0)
+    }
 
     struct Echo {
         host: Host,
+        id: String,
     }
 
     impl Plugin for Echo {
@@ -413,7 +425,10 @@ mod tests {
             if init.plugin_id == "broken" {
                 return Err("cannot start".into());
             }
-            Ok(Self { host })
+            Ok(Self {
+                host,
+                id: init.plugin_id,
+            })
         }
 
         fn on_event(&self, event: HostEvent) -> Result<(), String> {
@@ -441,7 +456,12 @@ mod tests {
         }
 
         fn shutdown(&self) {
-            SHUTDOWNS.fetch_add(1, Ordering::SeqCst);
+            *SHUTDOWNS
+                .lock()
+                .unwrap()
+                .get_or_insert_with(HashMap::new)
+                .entry(self.id.clone())
+                .or_default() += 1;
         }
     }
 
@@ -492,10 +512,10 @@ mod tests {
     #[test]
     fn requests_return_replies_and_panics_quarantine() {
         let (dir, mut rt) = runtime();
-        start(&mut rt, dir.path(), "echo").unwrap();
+        start(&mut rt, dir.path(), "echo_q").unwrap();
         let reply = rt
             .request(
-                "echo",
+                "echo_q",
                 &HostEvent::ContextMenuRequested(MenuContext {
                     pane: 1,
                     view: ViewInfo::default(),
@@ -511,19 +531,19 @@ mod tests {
 
         let error = rt
             .request(
-                "echo",
+                "echo_q",
                 &HostEvent::ToolbarButtonClicked {
                     button_id: "fail".into(),
                 },
             )
             .unwrap_err();
         assert_eq!(error.kind(), FfiErrorKind::Failed);
-        assert!(rt.is_active("echo"));
+        assert!(rt.is_active("echo_q"));
 
-        let before = SHUTDOWNS.load(Ordering::SeqCst);
+        let before = shutdowns("echo_q");
         let error = rt
             .request(
-                "echo",
+                "echo_q",
                 &HostEvent::ToolbarButtonClicked {
                     button_id: "panic".into(),
                 },
@@ -531,14 +551,14 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.kind(), FfiErrorKind::Panicked);
         assert!(matches!(
-            rt.slot("echo").unwrap().status,
+            rt.slot("echo_q").unwrap().status,
             PluginStatus::Quarantined(_)
         ));
-        assert_eq!(SHUTDOWNS.load(Ordering::SeqCst), before + 1);
+        assert_eq!(shutdowns("echo_q"), before + 1);
         // Quarantined plugins receive nothing more.
         assert!(
             rt.request(
-                "echo",
+                "echo_q",
                 &HostEvent::Ready {
                     restore_sidebar: false
                 }

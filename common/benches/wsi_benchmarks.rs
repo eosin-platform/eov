@@ -1,8 +1,12 @@
 //! Benchmarks for WSI file operations
 //!
-//! Run with: cargo bench -p common
+//! Run with: cargo bench -p eov-common
+//!
+//! Slide benchmarks need the (git-ignored) `fixtures/` directory and are
+//! skipped without it; blitter, cache and viewport benchmarks always run.
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use eov_common::blitter::{self, BlitRect, CoarseSrc, TileSrc};
 use eov_common::{TileCache, TileCoord, TileManager, Viewport, WsiFile};
 use std::path::PathBuf;
 
@@ -24,17 +28,18 @@ fn get_tif_fixture() -> PathBuf {
 fn bench_open_file(c: &mut Criterion) {
     let mut group = c.benchmark_group("file_open");
 
+    // `WsiFile::open` reuses open slides, so measure exclusive opens.
     let svs_path = get_svs_fixture();
     if svs_path.exists() {
         group.bench_function("svs_322mb", |b| {
-            b.iter(|| WsiFile::open(black_box(&svs_path)).unwrap())
+            b.iter(|| WsiFile::open_exclusive(black_box(&svs_path)).unwrap())
         });
     }
 
     let tif_path = get_tif_fixture();
     if tif_path.exists() {
         group.bench_function("tif_1.8gb", |b| {
-            b.iter(|| WsiFile::open(black_box(&tif_path)).unwrap())
+            b.iter(|| WsiFile::open_exclusive(black_box(&tif_path)).unwrap())
         });
     }
 
@@ -50,10 +55,8 @@ fn bench_read_tiles(c: &mut Criterion) {
     }
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
-    let manager = TileManager::new(
-        WsiFile::open(&svs_path).expect("Failed to open second SVS handle"),
-        0,
-    );
+    // Clones share the handle; that is how workers should use a slide.
+    let manager = TileManager::new(wsi.clone(), 0);
 
     let mut group = c.benchmark_group("tile_read");
     group.throughput(Throughput::Elements(1));
@@ -118,10 +121,8 @@ fn bench_batch_tiles(c: &mut Criterion) {
     }
 
     let wsi = WsiFile::open(&svs_path).expect("Failed to open SVS file");
-    let manager = TileManager::new(
-        WsiFile::open(&svs_path).expect("Failed to open second SVS handle"),
-        0,
-    );
+    // Clones share the handle; that is how workers should use a slide.
+    let manager = TileManager::new(wsi.clone(), 0);
 
     let mut group = c.benchmark_group("batch_tiles");
 
@@ -256,12 +257,101 @@ fn bench_visible_tiles(c: &mut Criterion) {
     group.finish();
 }
 
+fn synthetic_tile(size: u32, border: u32) -> Vec<u8> {
+    let data = size + 2 * border;
+    (0..data * data)
+        .flat_map(|i| {
+            let v = (i * 7 % 251) as u8;
+            [v, v / 2, 255 - v, 255]
+        })
+        .collect()
+}
+
+/// Benchmark the CPU blitters on a 256-px tile (no fixtures needed).
+fn bench_blitters(c: &mut Criterion) {
+    let mut group = c.benchmark_group("blit_256");
+    let tile = synthetic_tile(256, 3);
+    let coarse = synthetic_tile(256, 1);
+    let mut dest = vec![0u8; 1024 * 1024 * 4];
+    for (name, scale) in [("magnify_2.5x", 2.5f64), ("minify_0.6x", 0.6)] {
+        let size = 256.0 * scale;
+        let rect = BlitRect {
+            x: 3,
+            y: 3,
+            width: size.floor() as i32,
+            height: size.floor() as i32,
+            exact_x: 3.25,
+            exact_y: 3.25,
+            exact_width: size,
+            exact_height: size,
+        };
+        let src = || TileSrc {
+            data: &tile,
+            width: 256,
+            height: 256,
+            border: 3,
+        };
+        group.bench_function(BenchmarkId::new("bilinear", name), |b| {
+            b.iter(|| blitter::blit_tile(&mut dest, 1024, 1024, src(), black_box(rect)))
+        });
+        group.bench_function(BenchmarkId::new("trilinear", name), |b| {
+            let coarse_src = CoarseSrc {
+                data: &coarse,
+                width: 256,
+                height: 256,
+                border: 1,
+                uv_min: [0.25, 0.25],
+                uv_max: [0.5, 0.5],
+                blend: 0.4,
+            };
+            b.iter(|| {
+                blitter::blit_tile_trilinear(
+                    &mut dest,
+                    1024,
+                    1024,
+                    src(),
+                    &coarse_src,
+                    black_box(rect),
+                )
+            })
+        });
+        group.bench_function(BenchmarkId::new("lanczos3", name), |b| {
+            b.iter(|| blitter::blit_tile_lanczos3(&mut dest, 1024, 1024, src(), black_box(rect)))
+        });
+    }
+    group.finish();
+}
+
+/// Benchmark render-loop cache lookups, which now mark tiles as used.
+fn bench_cache_touch(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cache_touch");
+    let cache = TileCache::new();
+    let coords: Vec<TileCoord> = (0..500u64)
+        .map(|i| TileCoord::new(0, 0, i % 25, i / 25, 256))
+        .collect();
+    for coord in &coords {
+        cache.insert(eov_common::TileData::placeholder(*coord, 64));
+    }
+    group.throughput(Throughput::Elements(coords.len() as u64));
+    group.bench_function("peek_500_per_frame", |b| {
+        b.iter(|| {
+            cache.begin_frame();
+            for coord in &coords {
+                black_box(cache.peek(coord));
+            }
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_open_file,
     bench_read_tiles,
     bench_batch_tiles,
     bench_cache,
+    bench_cache_touch,
+    bench_blitters,
     bench_viewport,
     bench_visible_tiles,
 );

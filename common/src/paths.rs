@@ -194,7 +194,12 @@ mod tests {
             plugin_cache_dir("example"),
             legacy_config_dir().unwrap(),
         ] {
-            assert!(path.starts_with(&root), "{} escapes {}", path.display(), root.display());
+            assert!(
+                path.starts_with(&root),
+                "{} escapes {}",
+                path.display(),
+                root.display()
+            );
         }
     }
 
@@ -203,6 +208,9 @@ mod tests {
         let home = user_home();
         assert_eq!(expand_tilde(Path::new("~")), home);
         assert_eq!(expand_tilde(Path::new("~/a/b")), home.join("a/b"));
-        assert_eq!(expand_tilde(Path::new("/abs/~/x")), PathBuf::from("/abs/~/x"));
+        assert_eq!(
+            expand_tilde(Path::new("/abs/~/x")),
+            PathBuf::from("/abs/~/x")
+        );
     }
 }

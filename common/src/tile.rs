@@ -3,8 +3,46 @@
 //! This module handles tile coordinates, tile requests, and tile data management
 //! for efficient rendering of whole slide images.
 
+use crate::cache::TileCache;
+use crate::wsi::{EXACT_SYNTHESIS_BUDGET, WsiLevel, pixels};
 use crate::{Error, Result, WsiFile};
-use tracing::trace;
+use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::Instant;
+use tracing::{debug, trace, warn};
+
+/// Outcome of a deduplicated load, shared with concurrent requesters:
+/// the tile, or the error message and whether it is transient.
+type LoadSlot = Arc<OnceLock<std::result::Result<Arc<TileData>, (String, bool)>>>;
+
+/// Most tiles [`TileManager::visible_tiles_with_margin`] returns for one
+/// level. Larger visible sets keep the tiles nearest the view centre.
+pub const MAX_VISIBLE_TILES: usize = 4096;
+
+/// Border (in pixels of the tile's level) that tiles carry by default. One
+/// pixel is enough for seamless bilinear and trilinear sampling.
+pub const DEFAULT_TILE_BORDER: u32 = 1;
+
+/// Border needed for seamless Lanczos-3 magnification (three taps on each
+/// side of the sample).
+pub const LANCZOS_TILE_BORDER: u32 = 3;
+
+/// Largest border [`TileManager`] accepts.
+pub const MAX_TILE_BORDER: u32 = 64;
+
+/// Largest level (in pixels) [`TileManager::pin_fallback_levels`] pins: a
+/// 2048 x 2048 level is 16 MiB of RGBA.
+pub const PINNED_LEVEL_MAX_PIXELS: u64 = 2048 * 2048;
+
+/// Minimum spacing of "too many visible tiles" warnings.
+const CAP_WARN_INTERVAL_MS: u64 = 10_000;
+
+fn millis_since_start() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 
 /// Describes the expanded read region and how much valid border was available.
 struct ReadRegion<'a> {
@@ -215,6 +253,127 @@ pub struct TileRequest {
     pub priority: TilePriority,
 }
 
+/// A rectangle of tile indices `[x_start, x_end) x [y_start, y_end)` of one
+/// level, clamped to that level's real tile grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TileRange {
+    pub level: u32,
+    pub tile_size: u32,
+    pub x_start: u64,
+    pub x_end: u64,
+    pub y_start: u64,
+    pub y_end: u64,
+}
+
+impl TileRange {
+    /// Number of tiles in the range.
+    pub fn len(&self) -> u64 {
+        (self.x_end - self.x_start).saturating_mul(self.y_end - self.y_start)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The tiles in row-major order.
+    pub fn coords(&self, file_id: i32) -> impl Iterator<Item = TileCoord> + '_ {
+        (self.y_start..self.y_end).flat_map(move |y| {
+            (self.x_start..self.x_end)
+                .map(move |x| TileCoord::new(file_id, self.level, x, y, self.tile_size))
+        })
+    }
+}
+
+/// The tiles of `level` that intersect the level-0 rectangle
+/// `left, top, right, bottom`, grown by `margin_tiles` on each side and
+/// clamped to the level's grid **for `tile_size`** (the grid of the size
+/// the tiles are actually addressed with).
+pub fn tile_range_for(
+    level: &WsiLevel,
+    tile_size: u32,
+    bounds: [f64; 4],
+    margin_tiles: i32,
+) -> TileRange {
+    let [left, top, right, bottom] = bounds;
+    let tile_size = tile_size.max(1);
+    let ts = f64::from(tile_size);
+    let tiles_x = level.tiles_x(tile_size);
+    let tiles_y = level.tiles_y(tile_size);
+    let margin = i64::from(margin_tiles.max(0));
+    let ds = level.downsample;
+    // Float-to-int `as` saturates (NaN becomes 0), so degenerate bounds
+    // produce an empty or clamped range rather than garbage.
+    let start = |v: f64, n: u64| ((v / ds / ts).floor() as i64 - margin).clamp(0, n as i64) as u64;
+    let end = |v: f64, n: u64| {
+        ((v / ds / ts).ceil() as i64)
+            .saturating_add(margin)
+            .clamp(0, n as i64) as u64
+    };
+    let x_start = start(left, tiles_x);
+    let y_start = start(top, tiles_y);
+    TileRange {
+        level: level.level,
+        tile_size,
+        x_start,
+        x_end: end(right, tiles_x).max(x_start),
+        y_start,
+        y_end: end(bottom, tiles_y).max(y_start),
+    }
+}
+
+/// The tiles of `range`, nearest to the level-0 point `center` first, at
+/// most `cap` of them. When the range is larger than `cap`, a window of
+/// about `cap` tiles centred on `center` is chosen first, so the result is
+/// a central patch — not the top rows of the range.
+pub fn select_centered(
+    range: &TileRange,
+    file_id: i32,
+    downsample: f64,
+    center: (f64, f64),
+    cap: usize,
+) -> Vec<TileCoord> {
+    if range.is_empty() || cap == 0 {
+        return Vec::new();
+    }
+    let ts = f64::from(range.tile_size) * downsample;
+    // Centre in fractional tile units.
+    let cx = center.0 / ts;
+    let cy = center.1 / ts;
+
+    let mut window = *range;
+    let total = range.len();
+    if total > cap as u64 {
+        let width = range.x_end - range.x_start;
+        let height = range.y_end - range.y_start;
+        let scale = (cap as f64 / total as f64).sqrt();
+        let w = ((width as f64 * scale).floor() as u64).clamp(1, width);
+        let h = (cap as u64 / w).clamp(1, height);
+        let place = |center: f64, len: u64, lo: u64, hi: u64| -> u64 {
+            let start = (center - len as f64 / 2.0).round().max(lo as f64) as u64;
+            start.min(hi - len)
+        };
+        window.x_start = place(cx, w, range.x_start, range.x_end);
+        window.x_end = window.x_start + w;
+        window.y_start = place(cy, h, range.y_start, range.y_end);
+        window.y_end = window.y_start + h;
+    }
+
+    let mut tiles: Vec<TileCoord> = window.coords(file_id).collect();
+    let distance = |tile: &TileCoord| {
+        let dx = tile.x as f64 + 0.5 - cx;
+        let dy = tile.y as f64 + 0.5 - cy;
+        dx * dx + dy * dy
+    };
+    tiles.sort_by(|a, b| {
+        distance(a)
+            .total_cmp(&distance(b))
+            .then(a.y.cmp(&b.y))
+            .then(a.x.cmp(&b.x))
+    });
+    tiles.truncate(cap);
+    tiles
+}
+
 /// Tile manager handles tile loading and coordination
 pub struct TileManager {
     /// WSI file reference
@@ -223,6 +382,18 @@ pub struct TileManager {
     file_id: i32,
     /// Tile size
     tile_size: u32,
+    /// Border loaded around every tile
+    border: u32,
+    /// Last time the visible-tile cap warning was logged (ms since start).
+    last_cap_warning_ms: AtomicU64,
+    /// Cache used by [`load_tile_cached`](Self::load_tile_cached) and to
+    /// build synthetic tiles from finer cached tiles.
+    cache: Option<Arc<TileCache>>,
+    /// Loads in progress, so concurrent requests for one tile share a load.
+    in_flight: Mutex<HashMap<TileCoord, LoadSlot>>,
+    /// Base pixels a synthetic tile may read directly before it is built
+    /// from finer cached tiles instead.
+    synthesis_budget: u64,
 }
 
 impl TileManager {
@@ -233,7 +404,128 @@ impl TileManager {
             wsi,
             file_id,
             tile_size,
+            border: DEFAULT_TILE_BORDER,
+            last_cap_warning_ms: AtomicU64::new(u64::MAX),
+            cache: None,
+            in_flight: Mutex::new(HashMap::new()),
+            synthesis_budget: EXACT_SYNTHESIS_BUDGET,
         }
+    }
+
+    /// Base-level pixels a synthetic tile may decode directly (default
+    /// [`EXACT_SYNTHESIS_BUDGET`]). Above it, a manager with a tile cache
+    /// builds the tile from finer cached tiles.
+    pub fn with_synthesis_budget(mut self, base_pixels: u64) -> Self {
+        self.synthesis_budget = base_pixels;
+        self
+    }
+
+    /// Attaches the tile cache that [`load_tile_cached`](Self::load_tile_cached)
+    /// fills. With a cache, tiles of synthetic levels (see
+    /// [`WsiFile::with_synthetic_levels`]) are built exactly from cached
+    /// tiles of the next finer level, loading those as needed, instead of
+    /// being approximated when a direct read would be too expensive.
+    pub fn with_tile_cache(mut self, cache: Arc<TileCache>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
+    /// The attached tile cache, if any.
+    pub fn tile_cache(&self) -> Option<&Arc<TileCache>> {
+        self.cache.as_ref()
+    }
+
+    /// The levels of at most `max_pixels` pixels, coarsest first: the
+    /// fallback levels drawn under every frame while finer tiles load.
+    pub fn fallback_levels(&self, max_pixels: u64) -> Vec<u32> {
+        self.wsi
+            .properties()
+            .levels
+            .iter()
+            .rev()
+            .filter(|level| level.width.saturating_mul(level.height) <= max_pixels)
+            .map(|level| level.level)
+            .collect()
+    }
+
+    /// Pins the fallback levels (each at most [`PINNED_LEVEL_MAX_PIXELS`])
+    /// of this file in the attached cache, so they are never evicted, and
+    /// returns them. Call [`TileCache::remove_file`] when the file closes;
+    /// it also drops the pins.
+    pub fn pin_fallback_levels(&self) -> Vec<u32> {
+        let levels = self.fallback_levels(PINNED_LEVEL_MAX_PIXELS);
+        if let Some(cache) = &self.cache {
+            cache.set_pinned_levels(self.file_id, &levels);
+        }
+        levels
+    }
+
+    /// Returns a tile from the attached cache, or loads it, inserts it and
+    /// returns it. Concurrent calls for the same tile share one load.
+    /// Without an attached cache this is [`load_tile_sync`](Self::load_tile_sync).
+    pub fn load_tile_cached(&self, coord: TileCoord) -> Result<Arc<TileData>> {
+        if let Some(cache) = &self.cache
+            && let Some(tile) = cache.peek(&coord)
+        {
+            return Ok(tile);
+        }
+        let slot = Arc::clone(self.in_flight.lock().entry(coord).or_default());
+        let mut own_error = None;
+        let result = slot
+            .get_or_init(|| {
+                if let Some(cache) = &self.cache
+                    && let Some(tile) = cache.peek(&coord)
+                {
+                    return Ok(tile);
+                }
+                match self.load_tile_sync(coord) {
+                    Ok(tile) => {
+                        let tile = Arc::new(tile);
+                        if let Some(cache) = &self.cache {
+                            cache.insert_arc(Arc::clone(&tile));
+                        }
+                        Ok(tile)
+                    }
+                    Err(err) => {
+                        let shared = (err.to_string(), err.is_transient());
+                        own_error = Some(err);
+                        Err(shared)
+                    }
+                }
+            })
+            .clone();
+        {
+            let mut in_flight = self.in_flight.lock();
+            if in_flight
+                .get(&coord)
+                .is_some_and(|current| Arc::ptr_eq(current, &slot))
+            {
+                in_flight.remove(&coord);
+            }
+        }
+        result.map_err(|(message, transient)| {
+            own_error.unwrap_or(if transient {
+                Error::HandlePoisoned(message)
+            } else {
+                Error::OpenSlide(message)
+            })
+        })
+    }
+
+    /// Sets the border loaded around every tile (default
+    /// [`DEFAULT_TILE_BORDER`]; use [`LANCZOS_TILE_BORDER`] or more for
+    /// seamless Lanczos). Clamped to [`MAX_TILE_BORDER`].
+    ///
+    /// Tiles of different borders share cache keys, so use one border per
+    /// cache, or clear the file's tiles when changing it.
+    pub fn with_border(mut self, border: u32) -> Self {
+        self.border = border.min(MAX_TILE_BORDER);
+        self
+    }
+
+    /// The border loaded around every tile.
+    pub fn border(&self) -> u32 {
+        self.border
     }
 
     /// Get the file identifier
@@ -255,17 +547,41 @@ impl TileManager {
         &self.wsi
     }
 
-    /// Load a tile synchronously with a 1-pixel overlap border for seamless
-    /// bilinear/Lanczos filtering at tile boundaries.
+    /// Load a tile synchronously with the manager's border (1 px by default)
+    /// for seamless bilinear/trilinear filtering at tile boundaries.
+    ///
+    /// Pixels are opaque RGBA (see [`WsiFile::read_region`]).
     pub fn load_tile_sync(&self, coord: TileCoord) -> Result<TileData> {
-        let level_info = self
-            .wsi
-            .level(coord.level)
-            .ok_or(Error::InvalidLevel(coord.level, self.wsi.level_count() - 1))?;
+        self.load_tile_with_border(coord, self.border)
+    }
+
+    /// Load a tile with an explicit border (clamped to
+    /// [`MAX_TILE_BORDER`]). Where the image ends, the border repeats the
+    /// edge pixels.
+    pub fn load_tile_with_border(&self, coord: TileCoord, border: u32) -> Result<TileData> {
+        let border = border.min(MAX_TILE_BORDER);
+        let level_info = self.wsi.level(coord.level).ok_or(Error::InvalidLevel(
+            coord.level,
+            self.wsi.level_count().saturating_sub(1),
+        ))?;
+        if coord.tile_size == 0 {
+            return Err(Error::InvalidArgument("tile size 0".to_string()));
+        }
 
         // Inner tile bounds in level coordinates
-        let tile_start_x = coord.x * coord.tile_size as u64;
-        let tile_start_y = coord.y * coord.tile_size as u64;
+        let invalid = || Error::InvalidCoordinates {
+            x: coord.x.min(i64::MAX as u64) as i64,
+            y: coord.y.min(i64::MAX as u64) as i64,
+            level: coord.level,
+        };
+        let tile_start_x = coord
+            .x
+            .checked_mul(coord.tile_size as u64)
+            .ok_or_else(invalid)?;
+        let tile_start_y = coord
+            .y
+            .checked_mul(coord.tile_size as u64)
+            .ok_or_else(invalid)?;
 
         let inner_w =
             (level_info.width.saturating_sub(tile_start_x)).min(coord.tile_size as u64) as u32;
@@ -273,11 +589,7 @@ impl TileManager {
             (level_info.height.saturating_sub(tile_start_y)).min(coord.tile_size as u64) as u32;
 
         if inner_w == 0 || inner_h == 0 {
-            return Err(Error::InvalidCoordinates {
-                x: coord.x as i64,
-                y: coord.y as i64,
-                level: coord.level,
-            });
+            return Err(invalid());
         }
 
         trace!(
@@ -285,20 +597,18 @@ impl TileManager {
             coord, inner_w, inner_h
         );
 
-        const BORDER: u32 = 1;
-
         // Compute how many border pixels are available on each side
         // (clamped to image bounds at this level).
-        let avail_left = tile_start_x.min(BORDER as u64) as u32;
-        let avail_top = tile_start_y.min(BORDER as u64) as u32;
+        let avail_left = tile_start_x.min(border as u64) as u32;
+        let avail_top = tile_start_y.min(border as u64) as u32;
         let avail_right = (level_info
             .width
             .saturating_sub(tile_start_x + inner_w as u64))
-        .min(BORDER as u64) as u32;
+        .min(border as u64) as u32;
         let avail_bottom = (level_info
             .height
             .saturating_sub(tile_start_y + inner_h as u64))
-        .min(BORDER as u64) as u32;
+        .min(border as u64) as u32;
 
         // Expanded read region
         let read_x = tile_start_x - avail_left as u64;
@@ -306,13 +616,18 @@ impl TileManager {
         let read_w = avail_left + inner_w + avail_right;
         let read_h = avail_top + inner_h + avail_bottom;
 
-        // Convert to level-0 coordinates for read_region
-        let read_x0 = (read_x as f64 * level_info.downsample) as i64;
-        let read_y0 = (read_y as f64 * level_info.downsample) as i64;
-
-        let read_data = self
-            .wsi
-            .read_region(read_x0, read_y0, coord.level, read_w, read_h)?;
+        let read_data = match &self.cache {
+            Some(cache) if level_info.synthetic && coord.level > 0 => {
+                self.synthesize_from_finer(cache, coord.level, (read_x, read_y, read_w, read_h))?
+            }
+            _ => {
+                // Convert to level-0 coordinates for read_region
+                let read_x0 = (read_x as f64 * level_info.downsample) as i64;
+                let read_y0 = (read_y as f64 * level_info.downsample) as i64;
+                self.wsi
+                    .read_region(read_x0, read_y0, coord.level, read_w, read_h)?
+            }
+        };
 
         // Build the uniformly-bordered output buffer.
         let data = create_bordered_tile(
@@ -325,10 +640,115 @@ impl TileManager {
             },
             inner_w,
             inner_h,
-            BORDER,
+            border,
         );
 
-        Ok(TileData::new(coord, data, inner_w, inner_h, BORDER))
+        Ok(TileData::new(coord, data, inner_w, inner_h, border))
+    }
+
+    /// Pixels of synthetic `level` in the level rectangle `rect`, averaged
+    /// from the next finer level: from its cached tiles when all are
+    /// present, else by a direct read when that is affordable, else from
+    /// that level's tiles loaded through the cache.
+    fn synthesize_from_finer(
+        &self,
+        cache: &TileCache,
+        level: u32,
+        (x, y, w, h): (u64, u64, u32, u32),
+    ) -> Result<Vec<u8>> {
+        let info = self.wsi.level(level).ok_or(Error::InvalidLevel(level, 0))?;
+        let finer = self
+            .wsi
+            .level(level - 1)
+            .ok_or(Error::InvalidLevel(level - 1, 0))?;
+        let ratio = (info.downsample / finer.downsample).round().max(1.0) as u64;
+        let tile_size = u64::from(self.tile_size_for_level(level - 1));
+        // The rectangle in finer-level pixels, and the finer tiles covering
+        // its part inside that level.
+        let (fx, fy) = (x * ratio, y * ratio);
+        let (fw, fh) = (u64::from(w) * ratio, u64::from(h) * ratio);
+        let (clip_w, clip_h) = (
+            (fx + fw).min(finer.width).saturating_sub(fx),
+            (fy + fh).min(finer.height).saturating_sub(fy),
+        );
+        let children: Vec<TileCoord> = if clip_w == 0 || clip_h == 0 {
+            Vec::new()
+        } else {
+            let (tx0, ty0) = (fx / tile_size, fy / tile_size);
+            let (tx1, ty1) = (
+                (fx + clip_w).div_ceil(tile_size),
+                (fy + clip_h).div_ceil(tile_size),
+            );
+            (ty0..ty1)
+                .flat_map(|ty| {
+                    (tx0..tx1).map(move |tx| {
+                        TileCoord::new(self.file_id, level - 1, tx, ty, tile_size as u32)
+                    })
+                })
+                .collect()
+        };
+
+        let all_cached = children.iter().all(|child| cache.contains(child));
+        if !all_cached
+            && self
+                .wsi
+                .synthesis_cost(level, w, h)
+                .is_some_and(|cost| cost <= self.synthesis_budget)
+        {
+            let x0 = (x as f64 * info.downsample) as i64;
+            let y0 = (y as f64 * info.downsample) as i64;
+            return self.wsi.read_region(x0, y0, level, w, h);
+        }
+
+        // Assemble the finer-level rectangle; pixels past the level's edge
+        // are background, as in a direct read.
+        let [r, g, b] = self.wsi.properties().background_color;
+        let (fw, fh) = (fw as usize, fh as usize);
+        let mut finer_px = vec![0u8; fw * fh * 4];
+        crate::blitter::fast_fill_rgba(&mut finer_px, r, g, b, 255);
+        for child in children {
+            let tile = self.load_tile_cached(child)?;
+            let data_w = tile.data_width() as usize;
+            let border = tile.border as usize;
+            let left = child.x * tile_size;
+            let top = child.y * tile_size;
+            let x_from = left.max(fx);
+            let x_to = (left + u64::from(tile.width)).min(fx + fw as u64);
+            let y_from = top.max(fy);
+            let y_to = (top + u64::from(tile.height)).min(fy + fh as u64);
+            if x_from >= x_to || y_from >= y_to {
+                continue;
+            }
+            let len = (x_to - x_from) as usize * 4;
+            for row in y_from..y_to {
+                let src =
+                    ((row - top) as usize + border) * data_w + (x_from - left) as usize + border;
+                let dst = (row - fy) as usize * fw + (x_from - fx) as usize;
+                finer_px[dst * 4..dst * 4 + len]
+                    .copy_from_slice(&tile.data[src * 4..src * 4 + len]);
+            }
+        }
+        Ok(pixels::downsample_blocks(&finer_px, fw, fh, ratio as usize))
+    }
+
+    /// The range of tiles of `level` covering a level-0 rectangle, clamped
+    /// to the level's grid for [`tile_size_for_level`](Self::tile_size_for_level).
+    pub fn tile_range(
+        &self,
+        level: u32,
+        bounds_left: f64,
+        bounds_top: f64,
+        bounds_right: f64,
+        bounds_bottom: f64,
+        margin_tiles: i32,
+    ) -> Option<TileRange> {
+        let level_info = self.wsi.level(level)?;
+        Some(tile_range_for(
+            level_info,
+            self.tile_size_for_level(level),
+            [bounds_left, bounds_top, bounds_right, bounds_bottom],
+            margin_tiles,
+        ))
     }
 
     /// Calculate visible tiles for a given viewport
@@ -354,6 +774,13 @@ impl TileManager {
         )
     }
 
+    /// The tiles of `level` covering the level-0 rectangle (plus
+    /// `margin_tiles` on each side), **nearest to its centre first**.
+    ///
+    /// At most [`MAX_VISIBLE_TILES`] are returned; larger sets (e.g. a
+    /// single-level slide viewed at fit zoom) keep a central patch. Use
+    /// [`visible_tiles_uncapped`](Self::visible_tiles_uncapped) for
+    /// exhaustive enumeration (export).
     pub fn visible_tiles_with_margin(
         &self,
         level: u32,
@@ -363,147 +790,107 @@ impl TileManager {
         bounds_bottom: f64,
         margin_tiles: i32,
     ) -> Vec<TileCoord> {
-        let level_info = match self.wsi.level(level) {
-            Some(info) => info,
-            None => return Vec::new(),
+        let Some(level_info) = self.wsi.level(level) else {
+            return Vec::new();
         };
-
-        let tile_size = self.tile_size_for_level(level) as f64;
-
-        // Convert bounds from level 0 to current level coordinates
-        let level_left = bounds_left / level_info.downsample;
-        let level_top = bounds_top / level_info.downsample;
-        let level_right = bounds_right / level_info.downsample;
-        let level_bottom = bounds_bottom / level_info.downsample;
-
-        // Calculate tile range (with 1 tile margin for smooth scrolling)
-        let margin_tiles = margin_tiles.max(0) as i64;
-        let start_tile_x = ((level_left / tile_size).floor() as i64 - margin_tiles).max(0) as u64;
-        let start_tile_y = ((level_top / tile_size).floor() as i64 - margin_tiles).max(0) as u64;
-        let end_tile_x = ((level_right / tile_size).ceil() as u64 + margin_tiles as u64)
-            .min(level_info.tiles_x(self.tile_size));
-        let end_tile_y = ((level_bottom / tile_size).ceil() as u64 + margin_tiles as u64)
-            .min(level_info.tiles_y(self.tile_size));
-
-        // Adaptive cap: allow larger visible sets on larger windows / zoomed-out views.
-        let tile_count =
-            (end_tile_x.saturating_sub(start_tile_x)) * (end_tile_y.saturating_sub(start_tile_y));
-        let max_tiles = tile_count.min(4096) as usize;
-        if tile_count > 4096 {
-            tracing::warn!(
-                "visible_tiles would return {} tiles (capped), level={}, bounds=({:.0},{:.0})-({:.0},{:.0})",
-                tile_count,
-                level,
-                bounds_left,
-                bounds_top,
-                bounds_right,
-                bounds_bottom
-            );
+        let range = tile_range_for(
+            level_info,
+            self.tile_size_for_level(level),
+            [bounds_left, bounds_top, bounds_right, bounds_bottom],
+            margin_tiles,
+        );
+        let total = range.len();
+        if total > MAX_VISIBLE_TILES as u64 {
+            self.warn_cap(total, level);
         }
-
-        let mut tiles = Vec::with_capacity(max_tiles);
-
-        for y in start_tile_y..end_tile_y {
-            for x in start_tile_x..end_tile_x {
-                tiles.push(TileCoord::new(self.file_id, level, x, y, tile_size as u32));
-                if tiles.len() >= max_tiles {
-                    return tiles;
-                }
-            }
-        }
-
-        tiles
+        select_centered(
+            &range,
+            self.file_id,
+            level_info.downsample,
+            (
+                (bounds_left + bounds_right) / 2.0,
+                (bounds_top + bounds_bottom) / 2.0,
+            ),
+            MAX_VISIBLE_TILES,
+        )
     }
 
-    /// Calculate tiles to prefetch (adjacent zoom levels)
-    ///
-    /// Level numbering: 0 = highest resolution (most tiles), higher levels = lower resolution
-    pub fn prefetch_tiles(&self, current_tiles: &[TileCoord], level: u32) -> Vec<TileCoord> {
-        let mut prefetch = Vec::new();
-        let level_count = self.wsi.level_count();
+    /// Every tile of `level` covering the rectangle, in row-major order and
+    /// without a cap. Intended for export and batch processing, which must
+    /// not silently drop tiles; check [`tile_range`](Self::tile_range)'s
+    /// `len()` first to bound the work.
+    pub fn visible_tiles_uncapped(
+        &self,
+        level: u32,
+        bounds_left: f64,
+        bounds_top: f64,
+        bounds_right: f64,
+        bounds_bottom: f64,
+        margin_tiles: i32,
+    ) -> Vec<TileCoord> {
+        self.tile_range(
+            level,
+            bounds_left,
+            bounds_top,
+            bounds_right,
+            bounds_bottom,
+            margin_tiles,
+        )
+        .map(|range| range.coords(self.file_id).collect())
+        .unwrap_or_default()
+    }
 
-        // Prefetch from the next LOWER resolution level (level + 1) as fallback
-        // Each tile at current level maps to one parent tile at level + 1
-        if level + 1 < level_count {
-            for tile in current_tiles {
-                let Some(level_info) = self.wsi.level(tile.level) else {
-                    continue;
-                };
-                let parent_tile_size = self.tile_size_for_level(level + 1);
-                let Some(parent_level_info) = self.wsi.level(level + 1) else {
-                    continue;
-                };
-                let image_x = tile.x as f64 * tile.tile_size as f64 * level_info.downsample;
-                let image_y = tile.y as f64 * tile.tile_size as f64 * level_info.downsample;
-                let parent_span = parent_tile_size as f64 * parent_level_info.downsample;
-                let parent_x = (image_x / parent_span).floor() as u64;
-                let parent_y = (image_y / parent_span).floor() as u64;
-                let coord = TileCoord::new(
-                    self.file_id,
-                    level + 1,
-                    parent_x,
-                    parent_y,
-                    parent_tile_size,
-                );
-                if !prefetch.contains(&coord) {
-                    prefetch.push(coord);
-                }
-            }
+    fn warn_cap(&self, total: u64, level: u32) {
+        let now = millis_since_start();
+        let last = self.last_cap_warning_ms.load(Ordering::Relaxed);
+        let due = last == u64::MAX || now.saturating_sub(last) >= CAP_WARN_INTERVAL_MS;
+        if due
+            && self
+                .last_cap_warning_ms
+                .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        {
+            warn!(
+                "{total} tiles of level {level} are visible; keeping the {MAX_VISIBLE_TILES} \
+                 nearest the view centre (the slide has no coarse enough level; render through \
+                 WsiFile::with_synthetic_levels)"
+            );
+        } else {
+            debug!("visible tiles capped: {total} at level {level}");
         }
-
-        // Prefetch from the next HIGHER resolution level (level - 1) for when user zooms in
-        // Each tile at current level corresponds to 4 child tiles at level - 1
-        if level > 0 {
-            for tile in current_tiles {
-                let Some(level_info) = self.wsi.level(tile.level) else {
-                    continue;
-                };
-                let child_level = level - 1;
-                let child_tile_size = self.tile_size_for_level(child_level);
-                let Some(child_level_info) = self.wsi.level(child_level) else {
-                    continue;
-                };
-                let image_left = tile.x as f64 * tile.tile_size as f64 * level_info.downsample;
-                let image_top = tile.y as f64 * tile.tile_size as f64 * level_info.downsample;
-                let image_right = image_left + tile.tile_size as f64 * level_info.downsample;
-                let image_bottom = image_top + tile.tile_size as f64 * level_info.downsample;
-                let child_span = child_tile_size as f64 * child_level_info.downsample;
-                let start_x = (image_left / child_span).floor().max(0.0) as u64;
-                let start_y = (image_top / child_span).floor().max(0.0) as u64;
-                let end_x = (image_right / child_span).ceil().max(0.0) as u64;
-                let end_y = (image_bottom / child_span).ceil().max(0.0) as u64;
-
-                for child_y in start_y..end_y {
-                    for child_x in start_x..end_x {
-                        let coord = TileCoord::new(
-                            self.file_id,
-                            child_level,
-                            child_x,
-                            child_y,
-                            child_tile_size,
-                        );
-                        if !prefetch.contains(&coord) {
-                            prefetch.push(coord);
-                        }
-                    }
-                }
-            }
-        }
-
-        prefetch
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::test_support::{TiffSpec, write_tiff};
+    use std::path::Path;
 
-    fn get_test_file() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("fixtures/C3L-00088-22.svs")
+    fn gradient(x: u32, y: u32) -> [u8; 3] {
+        [
+            (x % 256) as u8,
+            (y % 256) as u8,
+            ((x / 2 + y / 3) % 256) as u8,
+        ]
+    }
+
+    fn pyramid(dir: &Path) -> TileManager {
+        let path = dir.join("pyramid.tiff");
+        write_tiff(&path, &TiffSpec::pyramid(600, 400, 64, 3), gradient).unwrap();
+        TileManager::new(WsiFile::open(&path).unwrap(), 7)
+    }
+
+    fn fake_level(width: u64, height: u64, downsample: f64) -> WsiLevel {
+        WsiLevel {
+            level: 2,
+            width,
+            height,
+            downsample,
+            tile_width: None,
+            tile_height: None,
+            synthetic: false,
+        }
     }
 
     #[test]
@@ -527,39 +914,197 @@ mod tests {
     }
 
     #[test]
-    fn test_load_tile_sync() {
-        let path = get_test_file();
-        if !path.exists() {
-            return;
-        }
+    fn loads_bordered_tiles_with_neighbour_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = pyramid(dir.path());
+        let coord = TileCoord::new(7, 0, 1, 1, 256);
+        let tile = manager.load_tile_sync(coord).unwrap();
+        assert_eq!((tile.width, tile.height, tile.border), (256, 144, 1));
+        assert_eq!(tile.data.len(), (258 * 146 * 4) as usize);
+        // Data pixel (0, 0) is level pixel (255, 255): the neighbour's.
+        let [r, g, b] = gradient(255, 255);
+        assert_eq!(&tile.data[..4], [r, g, b, 255]);
 
-        let wsi = WsiFile::open(&path).expect("Failed to open WSI file");
-        let manager = TileManager::new(wsi, 0);
+        // Wider borders, replicated at the image edge.
+        let tile = manager
+            .load_tile_with_border(TileCoord::new(7, 0, 0, 0, 256), 3)
+            .unwrap();
+        assert_eq!(tile.border, 3);
+        let stride = (256 + 6) * 4;
+        let [r, g, b] = gradient(0, 0);
+        assert_eq!(
+            &tile.data[..4],
+            [r, g, b, 255],
+            "top-left corner is replicated"
+        );
+        let [r, g, b] = gradient(256, 0);
+        let right_border = 3 * stride + (3 + 256) * 4;
+        assert_eq!(&tile.data[right_border..right_border + 4], [r, g, b, 255]);
 
-        let coord = TileCoord::new(0, 0, 0, 0, 256);
-        let tile = manager.load_tile_sync(coord).expect("Failed to load tile");
-
-        assert!(tile.width > 0);
-        assert!(tile.height > 0);
-        assert!(!tile.data.is_empty());
+        assert!(matches!(
+            manager.load_tile_sync(TileCoord::new(7, 0, 9, 0, 256)),
+            Err(Error::InvalidCoordinates { .. })
+        ));
+        assert_eq!(manager.with_border(500).border(), MAX_TILE_BORDER);
     }
 
     #[test]
-    fn test_visible_tiles_calculation() {
-        let path = get_test_file();
-        if !path.exists() {
-            return;
+    fn ranges_are_clamped_with_the_level_tile_size() {
+        // The audit's case: a coarse level addressed with 1024-px tiles was
+        // clamped with the 256-px grid, producing non-existent tiles.
+        let level = fake_level(2240, 2260, 16.0);
+        let whole = [0.0, 0.0, 2240.0 * 16.0, 2260.0 * 16.0];
+        let range = tile_range_for(&level, 1024, whole, 1);
+        assert_eq!((range.x_end, range.y_end), (3, 3));
+        assert_eq!(range.len(), 9);
+        let range_256 = tile_range_for(&level, 256, whole, 1);
+        assert_eq!((range_256.x_end, range_256.y_end), (9, 9));
+        // Past the right/bottom edge nothing is invented.
+        let beyond = tile_range_for(&level, 1024, [30_000.0, 30_000.0, 90_000.0, 90_000.0], 1);
+        assert!(beyond.coords(0).all(|c| c.x < 3 && c.y < 3));
+        // Degenerate bounds give an empty range instead of panicking.
+        let nan = tile_range_for(&level, 1024, [f64::NAN; 4], 0);
+        assert!(nan.is_empty());
+        assert!(!tile_range_for(&level, 0, whole, 0).is_empty());
+    }
+
+    #[test]
+    fn large_visible_sets_keep_the_centre_not_the_top_rows() {
+        // A 100k x 100k single-level slide at fit zoom: 152,881 candidates.
+        let level = fake_level(100_000, 100_000, 1.0);
+        let range = tile_range_for(&level, 256, [0.0, 0.0, 100_000.0, 100_000.0], 1);
+        assert_eq!(range.len(), 391 * 391);
+        let tiles = select_centered(&range, 0, 1.0, (50_000.0, 50_000.0), MAX_VISIBLE_TILES);
+        assert_eq!(tiles.len(), MAX_VISIBLE_TILES);
+        assert_eq!((tiles[0].x, tiles[0].y), (195, 195));
+        let (min_y, max_y) = tiles
+            .iter()
+            .fold((u64::MAX, 0), |(lo, hi), t| (lo.min(t.y), hi.max(t.y)));
+        assert!(
+            min_y > 150 && max_y < 240,
+            "rows {min_y}..={max_y} are not central"
+        );
+
+        // Small sets are complete and centre-first.
+        let small = tile_range_for(&level, 256, [0.0, 0.0, 1000.0, 1000.0], 0);
+        let tiles = select_centered(&small, 0, 1.0, (500.0, 500.0), MAX_VISIBLE_TILES);
+        assert_eq!(tiles.len(), 16);
+        assert!([(1, 1), (1, 2), (2, 1), (2, 2)].contains(&(tiles[0].x, tiles[0].y)));
+        let last = tiles.last().unwrap();
+        assert!([(0, 0), (0, 3), (3, 0), (3, 3)].contains(&(last.x, last.y)));
+    }
+
+    #[test]
+    fn cached_loads_are_shared_and_synthetic_tiles_use_finer_tiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("flat.tiff");
+        // 8200 x 64, one level: synthetic levels at 4x (2050) and 16x (513).
+        write_tiff(&path, &TiffSpec::single(8200, 64, 64), |x, y| {
+            [(x / 64 % 256) as u8, (y * 4 % 256) as u8, 7]
+        })
+        .unwrap();
+        let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
+        assert_eq!(wsi.level_count(), 3);
+        let cache = Arc::new(TileCache::new());
+        // A zero budget forces building every synthetic tile from the next
+        // finer level's tiles.
+        let manager = TileManager::new(wsi.clone(), 3)
+            .with_tile_cache(Arc::clone(&cache))
+            .with_synthesis_budget(0);
+        assert!(manager.tile_cache().is_some());
+
+        let coord = TileCoord::new(3, 2, 0, 0, manager.tile_size_for_level(2));
+        let tile = manager.load_tile_cached(coord).unwrap();
+        assert!(cache.contains(&coord));
+        assert!(
+            cache.contains(&TileCoord::new(3, 1, 0, 0, 256)),
+            "children cached"
+        );
+        assert!(
+            cache.contains(&TileCoord::new(3, 0, 0, 0, 256)),
+            "grandchildren cached"
+        );
+        // Matches the direct (exact) synthesis up to per-stage rounding.
+        let direct = TileManager::new(wsi, 3).load_tile_sync(coord).unwrap();
+        assert_eq!((tile.width, tile.height), (direct.width, direct.height));
+        assert!(
+            tile.data
+                .iter()
+                .zip(&direct.data)
+                .all(|(a, b)| a.abs_diff(*b) <= 1)
+        );
+        // Second request: served from the cache.
+        assert!(Arc::ptr_eq(
+            &tile,
+            &manager.load_tile_cached(coord).unwrap()
+        ));
+
+        // Concurrent requests share one load.
+        let manager = Arc::new(manager);
+        let coord = TileCoord::new(3, 0, 5, 0, 256);
+        let tiles: Vec<_> = std::thread::scope(|scope| {
+            (0..4)
+                .map(|_| {
+                    let manager = Arc::clone(&manager);
+                    scope.spawn(move || manager.load_tile_cached(coord).unwrap())
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        assert!(tiles.windows(2).all(|pair| Arc::ptr_eq(&pair[0], &pair[1])));
+        assert!(manager.in_flight.lock().is_empty());
+        assert!(matches!(
+            manager.load_tile_cached(TileCoord::new(3, 0, 999, 0, 256)),
+            Err(Error::InvalidCoordinates { .. })
+        ));
+    }
+
+    #[test]
+    fn fallback_levels_are_pinned_in_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pyramid.tiff");
+        write_tiff(&path, &TiffSpec::pyramid(4096, 2048, 64, 3), gradient).unwrap();
+        let cache = Arc::new(TileCache::with_limits(1_000_000, 300 * 300 * 4));
+        let manager =
+            TileManager::new(WsiFile::open(&path).unwrap(), 4).with_tile_cache(Arc::clone(&cache));
+        // 4096x2048 (8 Mpx) is too big; 2048x1024 and 1024x512 qualify.
+        assert_eq!(manager.fallback_levels(PINNED_LEVEL_MAX_PIXELS), [2, 1]);
+        assert_eq!(manager.pin_fallback_levels(), [2, 1]);
+        let coarse = TileCoord::new(4, 2, 0, 0, manager.tile_size_for_level(2));
+        manager.load_tile_cached(coarse).unwrap();
+        // Fill the (tiny) cache with level-0 tiles: the pinned tile stays.
+        for x in 0..8 {
+            manager
+                .load_tile_cached(TileCoord::new(4, 0, x, 0, 256))
+                .unwrap();
         }
+        assert!(cache.contains(&coarse));
+        assert!(cache.remove_file(4) > 0);
+        assert!(!cache.contains(&coarse));
+    }
 
-        let wsi = WsiFile::open(&path).expect("Failed to open WSI file");
-        let manager = TileManager::new(wsi, 0);
+    #[test]
+    fn visible_tiles_are_valid_and_centre_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = pyramid(dir.path());
+        let tiles = manager.visible_tiles(0, 0.0, 0.0, 600.0, 400.0);
+        // 600x400 with 256-px tiles: a 3x2 grid, all of it.
+        assert_eq!(tiles.len(), 6);
+        assert!(tiles.iter().all(|t| manager.load_tile_sync(*t).is_ok()));
+        assert_eq!((tiles[0].x, tiles[0].y), (1, 0));
 
-        // Get tiles visible in a 1024x768 viewport at level 0, origin
-        let tiles = manager.visible_tiles(0, 0.0, 0.0, 1024.0, 768.0);
-
-        assert!(!tiles.is_empty());
-        // At zoom 1.0 and viewport 1024x768 with 256 size tiles,
-        // we should have roughly 4x3 + margin tiles
-        assert!(tiles.len() >= 12);
+        let uncapped = manager.visible_tiles_uncapped(0, 0.0, 0.0, 600.0, 400.0, 1);
+        assert_eq!(uncapped.len(), 6);
+        assert_eq!((uncapped[0].x, uncapped[0].y), (0, 0), "row-major");
+        assert_eq!(
+            manager
+                .tile_range(0, 0.0, 0.0, 600.0, 400.0, 0)
+                .unwrap()
+                .len(),
+            6
+        );
+        assert!(manager.visible_tiles(9, 0.0, 0.0, 1.0, 1.0).is_empty());
     }
 }

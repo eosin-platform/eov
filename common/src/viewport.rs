@@ -3,6 +3,7 @@
 //! Handles viewport state, transformations, pan/zoom calculations,
 //! and smooth animations for navigation.
 
+use crate::wsi::SlideBounds;
 use glam::DVec2;
 use std::time::{Duration, Instant};
 use tracing::trace;
@@ -97,6 +98,53 @@ impl Viewport {
         self.center = DVec2::new(self.image_width / 2.0, self.image_height / 2.0);
     }
 
+    /// The zoom at which a `width` x `height` level-0 rectangle fits the
+    /// viewport.
+    pub fn fit_zoom_for(&self, width: f64, height: f64) -> f64 {
+        if width <= 0.0 || height <= 0.0 {
+            return self.zoom;
+        }
+        (self.width / width)
+            .min(self.height / height)
+            .clamp(MIN_ZOOM, MAX_ZOOM)
+    }
+
+    /// Centre and fit a level-0 rectangle (e.g. the slide's
+    /// [content bounds](crate::WsiProperties::content_bounds)).
+    pub fn fit_to_rect(&mut self, x: f64, y: f64, width: f64, height: f64) {
+        if width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        self.zoom = self.fit_zoom_for(width, height);
+        self.center = DVec2::new(x + width / 2.0, y + height / 2.0);
+    }
+
+    /// [`fit_to_rect`](Self::fit_to_rect) for [`SlideBounds`].
+    pub fn fit_to_bounds(&mut self, bounds: &SlideBounds) {
+        self.fit_to_rect(
+            bounds.x as f64,
+            bounds.y as f64,
+            bounds.width as f64,
+            bounds.height as f64,
+        );
+    }
+
+    /// Keeps the centre within `region` plus `margin_ratio` of its size on
+    /// every side (the image-wide equivalent uses [`PAN_MARGIN_RATIO`]).
+    pub fn clamp_center_to(&mut self, region: &SlideBounds, margin_ratio: f64) {
+        let margin_x = region.width as f64 * margin_ratio;
+        let margin_y = region.height as f64 * margin_ratio;
+        let (left, top) = (region.x as f64, region.y as f64);
+        self.center.x = self
+            .center
+            .x
+            .clamp(left - margin_x, left + region.width as f64 + margin_x);
+        self.center.y = self
+            .center
+            .y
+            .clamp(top - margin_y, top + region.height as f64 + margin_y);
+    }
+
     /// Convert screen coordinates to image coordinates
     pub fn screen_to_image(&self, screen_x: f64, screen_y: f64) -> DVec2 {
         let offset_x = (screen_x - self.width / 2.0) / self.zoom;
@@ -177,13 +225,38 @@ impl Viewport {
     }
 
     /// Calculate the minimap rectangle (0-1 normalized coordinates)
+    ///
+    /// The visible area is intersected with the image first, so the
+    /// rectangle stays inside the minimap when the view crosses an edge.
     pub fn minimap_rect(&self) -> MinimapRect {
+        self.minimap_rect_within(&SlideBounds {
+            x: 0,
+            y: 0,
+            width: self.image_width.max(0.0) as u64,
+            height: self.image_height.max(0.0) as u64,
+        })
+    }
+
+    /// The visible part of `region`, normalised to `region` (for a minimap
+    /// that shows the slide's content bounds rather than the whole canvas).
+    pub fn minimap_rect_within(&self, region: &SlideBounds) -> MinimapRect {
+        let (rw, rh) = (region.width as f64, region.height as f64);
+        if rw <= 0.0 || rh <= 0.0 {
+            return MinimapRect::default();
+        }
         let bounds = self.bounds();
+        let axis = |lo: f64, hi: f64, origin: f64, size: f64| -> (f32, f32) {
+            let start = ((lo - origin) / size).clamp(0.0, 1.0);
+            let end = ((hi - origin) / size).clamp(0.0, 1.0);
+            (start as f32, (end - start).max(0.0) as f32)
+        };
+        let (x, width) = axis(bounds.left, bounds.right, region.x as f64, rw);
+        let (y, height) = axis(bounds.top, bounds.bottom, region.y as f64, rh);
         MinimapRect {
-            x: (bounds.left / self.image_width).clamp(0.0, 1.0) as f32,
-            y: (bounds.top / self.image_height).clamp(0.0, 1.0) as f32,
-            width: ((bounds.right - bounds.left) / self.image_width).clamp(0.0, 1.0) as f32,
-            height: ((bounds.bottom - bounds.top) / self.image_height).clamp(0.0, 1.0) as f32,
+            x,
+            y,
+            width,
+            height,
         }
     }
 }
@@ -272,6 +345,10 @@ pub struct ViewportState {
 
     /// Last update time for physics
     last_update: Instant,
+
+    /// Area with image data; when set, fitting and pan limits use it
+    /// instead of the full canvas.
+    content_bounds: Option<SlideBounds>,
 }
 
 impl ViewportState {
@@ -302,6 +379,71 @@ impl ViewportState {
             navigation_target_zoom: initial_zoom,
             navigation_start_time: None,
             last_update: Instant::now(),
+            content_bounds: None,
+        }
+    }
+
+    /// A viewport state that fits and pans within `content_bounds` (see
+    /// [`set_content_bounds`](Self::set_content_bounds)).
+    pub fn with_content_bounds(
+        width: f64,
+        height: f64,
+        image_width: f64,
+        image_height: f64,
+        content_bounds: Option<SlideBounds>,
+    ) -> Self {
+        let mut state = Self::new(width, height, image_width, image_height);
+        state.set_content_bounds(content_bounds);
+        state.fit_to_view();
+        state
+    }
+
+    /// Restricts fitting and panning to the slide's content bounds
+    /// ([`WsiProperties::content_bounds`](crate::WsiProperties::content_bounds)),
+    /// so MIRAX-style slides whose tissue is a small island in a large
+    /// canvas open framed on the tissue. `None` restores the full canvas.
+    /// Bounds equal to the whole canvas are treated as `None`.
+    pub fn set_content_bounds(&mut self, bounds: Option<SlideBounds>) {
+        let full = SlideBounds {
+            x: 0,
+            y: 0,
+            width: self.viewport.image_width.max(0.0) as u64,
+            height: self.viewport.image_height.max(0.0) as u64,
+        };
+        self.content_bounds = bounds.filter(|b| !b.is_empty() && *b != full);
+        self.clamp_to_content();
+    }
+
+    /// The content bounds set with [`set_content_bounds`](Self::set_content_bounds).
+    pub fn content_bounds(&self) -> Option<SlideBounds> {
+        self.content_bounds
+    }
+
+    /// The minimap rectangle relative to the content bounds when set
+    /// (pair it with a thumbnail of the same region), else to the canvas.
+    pub fn minimap_rect(&self) -> MinimapRect {
+        match &self.content_bounds {
+            Some(bounds) => self.viewport.minimap_rect_within(bounds),
+            None => self.viewport.minimap_rect(),
+        }
+    }
+
+    fn clamp_to_content(&mut self) {
+        if let Some(bounds) = self.content_bounds {
+            self.viewport.clamp_center_to(&bounds, PAN_MARGIN_RATIO);
+        }
+    }
+
+    /// The rectangle fitting targets: the content bounds or the canvas.
+    fn fit_target(&self) -> (f64, f64, f64, f64) {
+        match &self.content_bounds {
+            Some(b) => (b.x as f64, b.y as f64, b.width as f64, b.height as f64),
+            None => (
+                0.0,
+                0.0,
+                self.viewport.image_width,
+                self.viewport.image_height,
+            ),
         }
     }
 
@@ -343,6 +485,7 @@ impl ViewportState {
 
         // Pan viewport
         self.viewport.pan(delta.x, delta.y);
+        self.clamp_to_content();
 
         // Keep zoom anchor in sync so the chase doesn't snap back
         if self.zoom_chasing || self.zoom_start_time.is_some() {
@@ -419,6 +562,7 @@ impl ViewportState {
         }
         self.viewport.center = DVec2::new(center_x, center_y);
         self.viewport.clamp_position();
+        self.clamp_to_content();
         self.last_update = Instant::now();
     }
 
@@ -571,6 +715,7 @@ impl ViewportState {
             }
         }
 
+        self.clamp_to_content();
         self.last_update = now;
         is_animating
     }
@@ -599,6 +744,7 @@ impl ViewportState {
         self.viewport.zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         self.viewport.center = DVec2::new(center_x, center_y);
         self.viewport.clamp_position();
+        self.clamp_to_content();
         self.target_zoom = self.viewport.zoom;
     }
 
@@ -679,22 +825,22 @@ impl ViewportState {
         self.is_dragging = false;
     }
 
-    /// Fit entire image in view (immediate, no animation)
+    /// Fit the entire image (or the content bounds, when set) in view
+    /// (immediate, no animation)
     pub fn fit_to_view(&mut self) {
         self.stop();
-        self.viewport.fit_to_view();
+        let (x, y, w, h) = self.fit_target();
+        self.viewport.fit_to_rect(x, y, w, h);
         self.target_zoom = self.viewport.zoom;
+        self.navigation_target_zoom = self.viewport.zoom;
+        self.navigation_target_center = self.viewport.center;
     }
 
-    /// Smoothly frame the entire image in view.
+    /// Smoothly frame the entire image (or the content bounds, when set).
     pub fn smooth_fit_to_view(&mut self) {
-        let zoom_x = self.viewport.width / self.viewport.image_width;
-        let zoom_y = self.viewport.height / self.viewport.image_height;
-        let target_zoom = zoom_x.min(zoom_y).clamp(MIN_ZOOM, MAX_ZOOM);
-        let target_center = DVec2::new(
-            self.viewport.image_width / 2.0,
-            self.viewport.image_height / 2.0,
-        );
+        let (x, y, w, h) = self.fit_target();
+        let target_zoom = self.viewport.fit_zoom_for(w, h);
+        let target_center = DVec2::new(x + w / 2.0, y + h / 2.0);
         self.animate_to(target_center, target_zoom);
     }
 
@@ -770,6 +916,7 @@ impl ViewportState {
     /// Set viewport size
     pub fn set_size(&mut self, width: f64, height: f64) {
         self.viewport.set_size(width, height);
+        self.clamp_to_content();
     }
 
     /// Convert screen coordinates to image coordinates
@@ -937,6 +1084,63 @@ mod tests {
 }
 
 #[cfg(test)]
+mod bounds_tests {
+    use super::*;
+
+    #[test]
+    fn minimap_rect_is_clipped_to_the_image() {
+        let mut viewport = Viewport::new(500.0, 500.0, 1000.0, 1000.0);
+        viewport.zoom = 1.0;
+        // Visible: x -200..300, y 800..1300.
+        viewport.center = DVec2::new(50.0, 1050.0);
+        let rect = viewport.minimap_rect();
+        assert_eq!((rect.x, rect.width), (0.0, 0.3));
+        assert!((rect.y - 0.8).abs() < 1e-6 && (rect.height - 0.2).abs() < 1e-6);
+        // Entirely outside: an empty rectangle at the edge.
+        viewport.center = DVec2::new(-5000.0, 500.0);
+        assert_eq!(viewport.minimap_rect().width, 0.0);
+    }
+
+    #[test]
+    fn fits_and_clamps_to_content_bounds() {
+        let island = SlideBounds {
+            x: 60_000,
+            y: 20_000,
+            width: 10_000,
+            height: 5_000,
+        };
+        let mut viewport = Viewport::new(1000.0, 500.0, 100_000.0, 80_000.0);
+        viewport.fit_to_bounds(&island);
+        assert_eq!(viewport.center, DVec2::new(65_000.0, 22_500.0));
+        assert!((viewport.zoom - 0.1).abs() < 1e-12);
+        let minimap = viewport.minimap_rect_within(&island);
+        assert!(minimap.x.abs() < 1e-6 && (minimap.width - 1.0).abs() < 1e-6);
+
+        let mut state =
+            ViewportState::with_content_bounds(1000.0, 500.0, 100_000.0, 80_000.0, Some(island));
+        assert_eq!(state.viewport.center, DVec2::new(65_000.0, 22_500.0));
+        assert_eq!(state.content_bounds(), Some(island));
+        // Panning far away stops half a bounds-size outside the island.
+        state.start_drag(500.0, 250.0);
+        state.drag_to(500.0 + 1e7, 250.0 + 1e7);
+        state.end_drag();
+        assert_eq!(state.viewport.center, DVec2::new(55_000.0, 17_500.0));
+        // Refit, smoothly.
+        state.smooth_fit_to_view();
+        while state.update() {}
+        assert!((state.viewport.center - DVec2::new(65_000.0, 22_500.0)).length() < 1e-6);
+        let rect = state.minimap_rect();
+        assert!(rect.width > 0.99 && rect.x < 0.01);
+
+        // Bounds covering the canvas are ignored.
+        state.set_content_bounds(Some(SlideBounds::full(100_000, 80_000)));
+        assert_eq!(state.content_bounds(), None);
+        state.fit_to_view();
+        assert_eq!(state.viewport.center, DVec2::new(50_000.0, 40_000.0));
+    }
+}
+
+#[cfg(test)]
 mod external_drag_tests {
     use super::*;
 
@@ -945,11 +1149,17 @@ mod external_drag_tests {
         let mut state = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
         state.start_external_drag();
         state.zoom_at(1.5, 400.0, 300.0);
-        assert!(state.update() || state.is_moving(), "zoom must animate after a dangling drag");
+        assert!(
+            state.update() || state.is_moving(),
+            "zoom must animate after a dangling drag"
+        );
 
         let mut panning = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
         panning.start_drag(10.0, 10.0);
         panning.zoom_at(1.5, 400.0, 300.0);
-        assert!(!panning.update(), "a mouse pan keeps priority over the zoom chase");
+        assert!(
+            !panning.update(),
+            "a mouse pan keeps priority over the zoom chase"
+        );
     }
 }

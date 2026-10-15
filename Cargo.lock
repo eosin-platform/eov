@@ -250,7 +250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0348a1c054491f4bfe6ab86a7b6ab1e44e45d899005de92f58b3df180b36ddaf"
 dependencies = [
  "clipboard-win",
- "image 0.25.8",
+ "image",
  "log",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -1610,7 +1610,7 @@ dependencies = [
  "eov-plugin-api",
  "i-slint-backend-testing",
  "i-slint-compiler",
- "image 0.25.8",
+ "image",
  "indicatif",
  "libc",
  "natord",
@@ -1656,9 +1656,7 @@ dependencies = [
  "dashmap",
  "dirs",
  "glam",
- "image 0.25.8",
- "lru",
- "openslide-rs",
+ "image",
  "parking_lot",
  "pkg-config",
  "rayon",
@@ -1667,7 +1665,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.20",
- "tokio",
  "tracing",
 ]
 
@@ -2402,8 +2399,6 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
- "allocator-api2",
- "equivalent",
  "foldhash 0.2.0",
 ]
 
@@ -2608,7 +2603,7 @@ dependencies = [
  "derive_more",
  "i-slint-common",
  "icu_normalizer",
- "image 0.25.8",
+ "image",
  "itertools 0.14.0",
  "linked_hash_set",
  "lyon_extra",
@@ -2646,7 +2641,7 @@ dependencies = [
  "i-slint-common",
  "i-slint-core-macros",
  "icu_normalizer",
- "image 0.25.8",
+ "image",
  "lyon_algorithms",
  "lyon_extra",
  "lyon_geom",
@@ -2992,24 +2987,6 @@ dependencies = [
 
 [[package]]
 name = "image"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
-dependencies = [
- "bytemuck",
- "byteorder",
- "color_quant",
- "exr",
- "gif 0.13.3",
- "jpeg-decoder",
- "num-traits",
- "png 0.17.16",
- "qoi",
- "tiff 0.9.1",
-]
-
-[[package]]
-name = "image"
 version = "0.25.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "529feb3e6769d234375c4cf1ee2ce713682b8e76538cb13f9fc23e1400a591e7"
@@ -3027,7 +3004,7 @@ dependencies = [
  "ravif",
  "rayon",
  "rgb",
- "tiff 0.10.3",
+ "tiff",
  "zune-core 0.4.12",
  "zune-jpeg 0.4.21",
 ]
@@ -3274,15 +3251,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jpeg-decoder"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
-dependencies = [
- "rayon",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3481,15 +3449,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fae87c125b03c1d2c0150c90365d7d6bcc53fb73a9acaef207d2d065860f062"
 dependencies = [
  "imgref",
-]
-
-[[package]]
-name = "lru"
-version = "0.18.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff9840bcc50b71349309900da0ce7279aa336ae71d73250b07998932c7d97c25"
-dependencies = [
- "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -4324,19 +4283,6 @@ dependencies = [
  "is-wsl",
  "libc",
  "pathdiff",
-]
-
-[[package]]
-name = "openslide-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "300085add3138e3ad3f67ca26872229b433b2a36ff945d3f172952083ed3c24e"
-dependencies = [
- "image 0.24.9",
- "lazy_static",
- "libc",
- "regex",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -6004,17 +5950,6 @@ dependencies = [
 
 [[package]]
 name = "tiff"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba1310fcea54c6a9a4fd1aad794ecc02c31682f6bfbecdf460bf19533eed1e3e"
-dependencies = [
- "flate2",
- "jpeg-decoder",
- "weezl",
-]
-
-[[package]]
-name = "tiff"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af9605de7fee8d9551863fd692cce7637f548dbd9db9180fcc07ccc6d26c336f"
@@ -6146,27 +6081,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "tokio"
-version = "1.51.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd1c4c0fc4a7ab90fc15ef6daaa3ec3b893f004f915f2392557ed23237820cd"
-dependencies = [
- "pin-project-lite",
- "tokio-macros",
-]
-
-[[package]]
-name = "tokio-macros"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
 
 [[package]]
 name = "toml"
