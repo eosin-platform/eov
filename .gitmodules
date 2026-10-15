@@ -13,3 +13,6 @@
 [submodule "packaging/homebrew-eov"]
 	path = packaging/homebrew-eov
 	url = https://github.com/eosin-platform/homebrew-eov.git
+[submodule "plugins/cellaris"]
+	path = plugins/cellaris
+	url = https://github.com/eosin-platform/eov-cellaris-plugin.git
