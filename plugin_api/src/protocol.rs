@@ -494,8 +494,38 @@ fn default_true() -> bool {
     true
 }
 
+/// The name of a key as [`Hotkey::key`] and [`ToolSpec::keys`] write it,
+/// from the raw text of [`HostEvent::Key`]: a character in lower case
+/// (`"a"`, `"+"`) or a named key (`"Escape"`, `"Enter"`, `"Tab"`,
+/// `"Backspace"`, `"Delete"`, `"Space"`, `"ArrowLeft"`, `"F2"`, `"Home"`,
+/// `"PageUp"`, …).
+pub fn key_name(text: &str) -> String {
+    let mut chars = text.chars();
+    let (Some(c), None) = (chars.next(), chars.next()) else {
+        return text.to_lowercase();
+    };
+    match c {
+        '\u{8}' => "Backspace".into(),
+        '\t' => "Tab".into(),
+        '\n' | '\r' => "Enter".into(),
+        '\u{1b}' => "Escape".into(),
+        '\u{7f}' => "Delete".into(),
+        ' ' => "Space".into(),
+        '\u{F700}' => "ArrowUp".into(),
+        '\u{F701}' => "ArrowDown".into(),
+        '\u{F702}' => "ArrowLeft".into(),
+        '\u{F703}' => "ArrowRight".into(),
+        '\u{F704}'..='\u{F71B}' => format!("F{}", c as u32 - 0xF704 + 1),
+        '\u{F729}' => "Home".into(),
+        '\u{F72B}' => "End".into(),
+        '\u{F72C}' => "PageUp".into(),
+        '\u{F72D}' => "PageDown".into(),
+        c => c.to_lowercase().collect(),
+    }
+}
+
 /// A hotkey binding. `key` is a single character (case-insensitive) or a
-/// named key such as `"F2"`, `"Delete"`, `"Escape"`.
+/// named key such as `"F2"`, `"Delete"`, `"Escape"` (see [`key_name`]).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Hotkey {
     pub key: String,
@@ -894,6 +924,13 @@ pub struct ToolSpec {
     pub freehand_tolerance_px: f32,
     #[serde(default)]
     pub order: i32,
+    /// For a `Custom` tool: the keys it handles, by [`key_name`]
+    /// (case-insensitive). Other keys keep working as they do without the
+    /// tool (eov's shortcuts, other tools' keys, plugin hotkeys; Escape
+    /// leaves the tool). Unset: the tool gets every key but Tab and
+    /// Ctrl/⌘ shortcuts.
+    #[serde(default)]
+    pub keys: Option<Vec<String>>,
 }
 
 fn default_freehand_tolerance() -> f32 {
@@ -918,6 +955,7 @@ impl ToolSpec {
             preview_style: None,
             freehand_tolerance_px: default_freehand_tolerance(),
             order: 0,
+            keys: None,
         }
     }
 
@@ -1132,7 +1170,8 @@ pub enum HostEvent {
         file_id: FileId,
         event: PointerEvent,
     },
-    /// Key input for an active `Custom` tool, or a plugin hotkey.
+    /// Key input for an active `Custom` tool, or a plugin hotkey. `key` is
+    /// the raw key text; [`key_name`] names it.
     Key {
         #[serde(default)]
         tool_id: Option<String>,

@@ -56,31 +56,7 @@ pub(crate) fn modifiers_from_slint(shift: bool, control: bool, alt: bool, meta: 
     }
 }
 
-/// A stable name for a key, as plugin hotkeys spell it.
-pub(crate) fn key_name(text: &str) -> String {
-    let mut chars = text.chars();
-    let (Some(c), None) = (chars.next(), chars.next()) else {
-        return text.to_lowercase();
-    };
-    match c {
-        '\u{8}' => "Backspace".into(),
-        '\t' => "Tab".into(),
-        '\n' | '\r' => "Enter".into(),
-        '\u{1b}' => "Escape".into(),
-        '\u{7f}' => "Delete".into(),
-        ' ' => "Space".into(),
-        '\u{F700}' => "ArrowUp".into(),
-        '\u{F701}' => "ArrowDown".into(),
-        '\u{F702}' => "ArrowLeft".into(),
-        '\u{F703}' => "ArrowRight".into(),
-        '\u{F704}'..='\u{F71B}' => format!("F{}", c as u32 - 0xF704 + 1),
-        '\u{F729}' => "Home".into(),
-        '\u{F72B}' => "End".into(),
-        '\u{F72C}' => "PageUp".into(),
-        '\u{F72D}' => "PageDown".into(),
-        c => c.to_lowercase().collect(),
-    }
-}
+pub(crate) use eov_plugin_api::protocol::key_name;
 
 fn cursor_of(cursor: Cursor) -> PaneCursor {
     match cursor {

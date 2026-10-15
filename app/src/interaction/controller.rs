@@ -1961,7 +1961,13 @@ impl Controller {
     /// was consumed.
     pub fn key(&mut self, view: Option<&PaneView>, input: &KeyInput) -> (Vec<Effect>, bool) {
         let mut effects = Vec::new();
-        if self.tool.is_custom() {
+        let tool_takes_key = self.tool.plugin_tool().is_some_and(|(_, spec)| {
+            spec.keys.as_ref().is_none_or(|keys| {
+                let name = eov_plugin_api::protocol::key_name(&input.text);
+                keys.iter().any(|key| key.eq_ignore_ascii_case(&name))
+            })
+        });
+        if self.tool.is_custom() && tool_takes_key {
             if let Some((plugin_id, spec)) = self.tool.plugin_tool() {
                 effects.push(Effect::Plugin {
                     plugin_id: Arc::clone(plugin_id),
@@ -2512,6 +2518,39 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, HostEvent::ToolDeactivated { .. }))
         );
+    }
+
+    #[test]
+    fn custom_tools_get_only_the_keys_they_claim() {
+        let store = Arc::new(OverlayStore::new());
+        let mut c = Controller::new(Arc::clone(&store));
+        let mut tool = plugin_tool(ToolKind::Custom);
+        if let ToolChoice::Plugin { spec, .. } = &mut tool {
+            spec.keys = Some(vec!["A".into(), "ArrowLeft".into()]);
+        }
+        c.set_tool(tool);
+        let v = view();
+        let key = |text: &str| KeyInput {
+            text: text.into(),
+            modifiers: Modifiers::default(),
+            pressed: true,
+            repeat: false,
+        };
+        for claimed in ["a", "\u{F702}"] {
+            let (effects, consumed) = c.key(Some(&v), &key(claimed));
+            assert!(consumed);
+            assert!(matches!(
+                plugin_events(&effects).first(),
+                Some(HostEvent::Key { .. })
+            ));
+        }
+        // Unclaimed keys reach eov's shortcuts, and Escape leaves the tool.
+        let (effects, consumed) = c.key(Some(&v), &key("f"));
+        assert!(!consumed);
+        assert!(plugin_events(&effects).is_empty());
+        let (_, consumed) = c.key(Some(&v), &key(keys::ESCAPE));
+        assert!(consumed);
+        assert_eq!(c.tool(), &ToolChoice::Navigate);
     }
 
     #[test]
