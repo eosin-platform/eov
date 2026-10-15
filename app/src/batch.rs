@@ -357,6 +357,34 @@ struct Manifest {
     slides: Vec<SlideResult>,
 }
 
+/// The parameters as `batch.json` records them. In de-identified runs,
+/// values that look like local paths (a model, a runtime) keep only their
+/// file name: folders often carry user, project or patient names.
+fn recorded_params(params: &Map<String, Value>, deidentify: bool) -> Map<String, Value> {
+    if !deidentify {
+        return params.clone();
+    }
+    params
+        .iter()
+        .map(|(name, value)| {
+            let value = match value {
+                Value::String(text)
+                    if text.contains('/') || text.contains('\\') || text.starts_with('~') =>
+                {
+                    let name = text
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or("(a path)");
+                    Value::String(name.to_string())
+                }
+                other => other.clone(),
+            };
+            (name.clone(), value)
+        })
+        .collect()
+}
+
 /// An error message without the slide's path or names, for de-identified
 /// runs: they are replaced by the slide's id.
 fn scrub(message: String, path: &Path, key: &str) -> String {
@@ -446,7 +474,7 @@ fn run_started(
             "origin": origin,
         }),
         command: command_id.to_string(),
-        params: params.clone(),
+        params: recorded_params(&params, options.deidentify),
         deidentified: options.deidentify,
         started_unix: unix_now(),
         finished_unix: None,
@@ -777,5 +805,28 @@ mod tests {
         assert_eq!(params["level"], serde_json::json!(3));
         assert!(resolve_params(&spec, &["colour=red".into()]).is_err());
         assert!(resolve_params(&spec, &["level".into()]).is_err());
+    }
+
+    #[test]
+    fn deidentified_manifests_keep_only_the_file_names_of_paths() {
+        let params: Map<String, Value> = serde_json::from_value(serde_json::json!({
+            "model": "/home/alice/study-17/models/markers.onnx",
+            "runtime": "C:\\Users\\Bob\\ort\\onnxruntime.dll",
+            "cache": "~/scratch/",
+            "region": "0,0,512,512",
+            "level": 2,
+        }))
+        .unwrap();
+        let recorded = recorded_params(&params, true);
+        assert_eq!(recorded["model"], "markers.onnx");
+        assert_eq!(recorded["runtime"], "onnxruntime.dll");
+        assert_eq!(recorded["cache"], "(a path)");
+        assert_eq!(recorded["region"], "0,0,512,512");
+        assert_eq!(recorded["level"], 2);
+        assert_eq!(
+            recorded_params(&params, false),
+            params,
+            "kept as given otherwise"
+        );
     }
 }
