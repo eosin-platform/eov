@@ -25,9 +25,18 @@ pub(crate) fn parse_mpp(map: &PropertyMap, key: &str) -> Option<f64> {
 }
 
 /// Objective power as a float, so 1.25×, 2.5× and 6.3× objectives survive.
+/// eov's own TIFF copies record it in their description, which OpenSlide's
+/// generic TIFF driver does not read.
 pub(crate) fn parse_objective_power(map: &PropertyMap) -> Option<f64> {
     map.get("openslide.objective-power")
         .and_then(|value| parse_positive(value, MAX_PLAUSIBLE_OBJECTIVE))
+        .or_else(|| {
+            map.get("tiff.ImageDescription")
+                .and_then(|description| {
+                    crate::convert::objective_power_from_description(description)
+                })
+                .filter(|power| *power <= MAX_PLAUSIBLE_OBJECTIVE)
+        })
 }
 
 pub(crate) fn clean_metadata_value(value: &str) -> Option<String> {
@@ -276,6 +285,17 @@ mod tests {
                 "{bad}"
             );
         }
+        // An eov copy read through the generic TIFF driver.
+        let copy = "Slide copy made by eov 1.0.0 on 2026-10-15\nObjective power = 20\nSource properties:\nObjective power = 40";
+        assert_eq!(
+            parse_objective_power(&map(&[("tiff.ImageDescription", copy)])),
+            Some(20.0)
+        );
+        assert_eq!(
+            parse_objective_power(&map(&[("tiff.ImageDescription", "Objective power = 20")])),
+            None,
+            "only descriptions eov wrote"
+        );
     }
 
     #[test]
