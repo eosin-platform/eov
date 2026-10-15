@@ -276,7 +276,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0348a1c054491f4bfe6ab86a7b6ab1e44e45d899005de92f58b3df180b36ddaf"
 dependencies = [
  "clipboard-win",
- "image 0.25.8",
+ "image",
  "log",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -1719,7 +1719,7 @@ dependencies = [
  "eov-plugin-api",
  "eovae",
  "i-slint-backend-testing",
- "image 0.25.8",
+ "image",
  "indicatif",
  "libc",
  "natord",
@@ -1763,9 +1763,8 @@ dependencies = [
  "dashmap",
  "dirs",
  "glam 0.30.10",
- "image 0.25.8",
+ "image",
  "lru",
- "openslide-rs",
  "parking_lot",
  "pkg-config",
  "rayon",
@@ -2805,7 +2804,7 @@ dependencies = [
  "derive_more",
  "i-slint-common",
  "icu_normalizer",
- "image 0.25.8",
+ "image",
  "itertools 0.14.0",
  "linked_hash_set",
  "lyon_extra",
@@ -2843,7 +2842,7 @@ dependencies = [
  "i-slint-common",
  "i-slint-core-macros",
  "icu_normalizer",
- "image 0.25.8",
+ "image",
  "lyon_algorithms",
  "lyon_extra",
  "lyon_geom",
@@ -3189,24 +3188,6 @@ dependencies = [
 
 [[package]]
 name = "image"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
-dependencies = [
- "bytemuck",
- "byteorder",
- "color_quant",
- "exr",
- "gif 0.13.3",
- "jpeg-decoder",
- "num-traits",
- "png 0.17.16",
- "qoi",
- "tiff 0.9.1",
-]
-
-[[package]]
-name = "image"
 version = "0.25.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "529feb3e6769d234375c4cf1ee2ce713682b8e76538cb13f9fc23e1400a591e7"
@@ -3219,12 +3200,12 @@ dependencies = [
  "image-webp",
  "moxcms",
  "num-traits",
- "png 0.18.1",
+ "png",
  "qoi",
  "ravif",
  "rayon",
  "rgb",
- "tiff 0.10.3",
+ "tiff",
  "zune-core 0.4.12",
  "zune-jpeg 0.4.21",
 ]
@@ -3488,15 +3469,6 @@ checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
-]
-
-[[package]]
-name = "jpeg-decoder"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
-dependencies = [
- "rayon",
 ]
 
 [[package]]
@@ -3919,7 +3891,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "once_cell",
- "png 0.18.1",
+ "png",
  "thiserror 2.0.20",
  "windows-sys 0.61.2",
 ]
@@ -4659,19 +4631,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "openslide-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "300085add3138e3ad3f67ca26872229b433b2a36ff945d3f172952083ed3c24e"
-dependencies = [
- "image 0.24.9",
- "lazy_static",
- "libc",
- "regex",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4928,19 +4887,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
-]
-
-[[package]]
-name = "png"
-version = "0.17.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526"
-dependencies = [
- "bitflags 1.3.2",
- "crc32fast",
- "fdeflate",
- "flate2",
- "miniz_oxide 0.8.9",
 ]
 
 [[package]]
@@ -6524,17 +6470,6 @@ dependencies = [
 
 [[package]]
 name = "tiff"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba1310fcea54c6a9a4fd1aad794ecc02c31682f6bfbecdf460bf19533eed1e3e"
-dependencies = [
- "flate2",
- "jpeg-decoder",
- "weezl",
-]
-
-[[package]]
-name = "tiff"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af9605de7fee8d9551863fd692cce7637f548dbd9db9180fcc07ccc6d26c336f"
@@ -6591,7 +6526,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "log",
- "png 0.18.1",
+ "png",
  "tiny-skia-path 0.12.0",
 ]
 

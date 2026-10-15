@@ -1,13 +1,21 @@
-//! Locates the OpenSlide shared library for every crate that links eov-common.
+//! Links the OpenSlide shared library for every crate that depends on
+//! eov-common.
 //!
-//! Resolution order:
-//! 1. `OPENSLIDE_LIB_DIR`: an explicit directory containing libopenslide.
+//! eov-common carries its own minimal OpenSlide binding (`src/openslide.rs`),
+//! so this script both locates the library and tells rustc to link it
+//! (`cargo:rustc-link-lib=dylib=openslide`). **OpenSlide 4.0 or newer is
+//! required.**
+//!
+//! Resolution order for the library directory:
+//! 1. `OPENSLIDE_LIB_DIR`: an explicit directory containing libopenslide
+//!    (on Windows, the directory holding the `openslide.lib` import library).
 //! 2. `pkg-config openslide`: the normal case, including source-built
 //!    OpenSlide 4 installs under `/usr/local` that the default linker search
 //!    path (notably rust-lld's) does not cover.
+//! 3. The linker's default search path.
 //!
-//! Link search paths emitted here propagate to the final link of every
-//! binary and cdylib that depends on eov-common.
+//! Link directives emitted here propagate to the final link of every binary
+//! and cdylib that depends on eov-common.
 
 use std::path::Path;
 
@@ -15,6 +23,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=OPENSLIDE_LIB_DIR");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR");
+    println!("cargo:rustc-link-lib=dylib=openslide");
 
     if let Some(dir) = std::env::var_os("OPENSLIDE_LIB_DIR") {
         println!(
