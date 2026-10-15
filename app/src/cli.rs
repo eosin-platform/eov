@@ -169,6 +169,16 @@ EXIT STATUS:\n  \
   2    invalid arguments, no slides found, or an incompatible output directory\n  \
   130  cancelled with Ctrl-C (metadata so far is kept; re-run to resume)")]
     Patches(Box<DatasetPatchesArgs>),
+    /// Pack a dataset's patches into one zarr store.
+    ///
+    /// Writes <DIR>/patches.zarr (zarr v2, zstd chunks): images (N, H, W, 3)
+    /// uint8, masks (N, H, W) when the dataset has them, coords (N, 2)
+    /// level-0 x and y, slide (N,) and label (N,) indices, and attributes
+    /// listing the slides and classes. Readable with zarr-python.
+    Pack {
+        /// A folder written by `eov dataset patches`.
+        dir: PathBuf,
+    },
 }
 
 #[derive(Debug, clap::Args)]
@@ -1111,6 +1121,7 @@ enum CommandAction {
     Paths { json: bool },
     FileTypes { register: bool, dry_run: bool },
     DatasetPatches(Box<DatasetJob>),
+    DatasetPack(PathBuf),
     Convert(Box<ConvertArgs>),
     BatchList { json: bool },
     BatchRun(Box<crate::batch::RunOptions>),
@@ -1273,6 +1284,7 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
             DatasetCommand::Patches(args) => {
                 CommandAction::DatasetPatches(Box::new(args.into_job()))
             }
+            DatasetCommand::Pack { dir } => CommandAction::DatasetPack(dir),
         },
         Some(CliCommand::Convert(args)) => CommandAction::Convert(args),
         Some(CliCommand::Batch { command }) => match command {
@@ -1431,6 +1443,30 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
         }
         CommandAction::DatasetPatches(job) => {
             run_dataset_patches_cli(job)?;
+            Ok(true)
+        }
+        CommandAction::DatasetPack(dir) => {
+            let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let cancel = std::sync::Arc::clone(&cancel);
+                let _ = ctrlc::set_handler(move || {
+                    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                });
+            }
+            match dataset::pack_zarr(dir, &cancel)? {
+                Some(report) => println!(
+                    "Packed {} patch(es) of {} px from {} slide(s){} into {}",
+                    report.patches,
+                    report.tile_size,
+                    report.slides,
+                    if report.with_masks { " with masks" } else { "" },
+                    report.store.display()
+                ),
+                None => {
+                    eprintln!("Cancelled; nothing was changed.");
+                    std::process::exit(130);
+                }
+            }
             Ok(true)
         }
         CommandAction::Convert(args) => {

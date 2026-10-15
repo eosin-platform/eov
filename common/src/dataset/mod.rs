@@ -19,6 +19,7 @@
 //!   slides.csv | slides.jsonl                                   one record per slide
 //!   dataset.json                                                parameters, status, totals
 //!   classes.json                                                mask class indices (optional)
+//!   patches.zarr/                                               after `eov dataset pack` ([`pack_zarr`])
 //! ```
 
 mod annotations;
@@ -29,6 +30,7 @@ mod hashing;
 mod manifest;
 mod metadata;
 mod output;
+mod pack;
 mod pipeline;
 mod resample;
 mod sampling;
@@ -50,6 +52,7 @@ pub use hashing::slide_sha256;
 pub use manifest::{DatasetManifest, ExtractionParameters, RunStatus, RunTotals};
 pub use metadata::{SlideRecord, SlideStatus, TileRecord};
 pub use output::{deidentified_key, unique_slide_keys_for};
+pub use pack::{PackReport, ZARR_STORE, pack_zarr};
 pub use pipeline::{
     DatasetControl, DatasetError, DatasetPatchesProgress, DatasetPatchesReport, DatasetPhase,
     DatasetPlan, PlannedSlide, SlideGeometry, SlideReport, SlideSkipReason, plan_dataset,

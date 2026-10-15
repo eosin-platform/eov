@@ -483,7 +483,7 @@ eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--meta
 
 `--deidentify` (or **De-identify** in the dialog) names slides by opaque ids derived from their content (`slide-3f2a…`, the same for a slide in every run and at every site) in folders, file names and metadata, and writes no slide paths, file names, input paths or annotation file names, for datasets shared outside the institution. Patches never include the slide label or macro image.
 
-`--exclude-qc pen,folds,blur` (or `all`; **Leave out pen marks, folds and blurred areas** in the dialog) runs [tissue QC](#tissue-qc) on each slide first and leaves out the patches that overlap a marked cell; they are counted in the slide's `skipped_tissue` and, separately, in `dataset.json` (`tiles_skipped_qc`).
+`--exclude-qc pen,folds,blur` (or `all`; **Leave out pen marks, folds and blurred areas** in the dialog) runs [tissue QC](#tissue-qc) on each slide first and leaves out the patches that overlap a marked cell; they are counted in the slide's `skipped_tissue` and, separately, in `dataset.json` (`tiles_skipped_qc`). With `--max-tiles-per-slide`, such positions (like those outside the tissue mask or the annotations) are dropped before sampling and not counted.
 
 The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
 
@@ -519,11 +519,14 @@ ds/
   metadata.jsonl   # per patch (without --metadata, or --metadata json)
   slides.csv       # per slide
   dataset.json     # parameters, inputs and totals of the run (also for resuming)
+  patches.zarr/    # after `eov dataset pack ds/` (see below)
 ```
 
 With `--deidentify`, `<slide-stem>` is replaced by an opaque `slide-<id>`.
 
 Tile filenames encode the origin coordinates and tile size with zero-padded values for lexical sorting. Tiles from different slides are placed in separate subdirectories so filenames cannot collide.
+
+`eov dataset pack ds/` packs a finished dataset into `ds/patches.zarr`, a zarr v2 store (zstd chunks, consolidated metadata) for training code that reads arrays: `images` (N, H, W, 3) uint8 with one chunk per patch, `masks` (N, H, W) when the dataset has them, `coords` (N, 2) level-0 x and y, `slide` (N,) and `label` (N,) indices, and attributes listing the slides (id, pixel size, level and downsample read) and the classes. Patches keep the order of `metadata.jsonl`; packing again replaces the store. (HDF5 is not written.)
 
 ### Metadata
 
