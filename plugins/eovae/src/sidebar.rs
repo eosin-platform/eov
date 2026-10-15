@@ -1,1124 +1,1152 @@
-use crate::analysis::{start_viewport_analysis, start_whole_slide_analysis};
-use crate::model::{GpuAnalysisPreflight, LoadedModel, gpu_analysis_preflight, load_model};
-use crate::state::{
-    AnalysisPhase, VisualizationMode, cancel_running_job, clamp_analysis_threads,
-    clamp_gpu_batch_size, clear_cache_for_namespace, host_api, load_persisted_config, log_message,
-    max_analysis_threads, plugin_state, refresh_sidebar_if_available, request_render_if_available,
-    save_persisted_config_field, save_persisted_model_path,
-};
-use abi_stable::std_types::{ROption, RString, RVec};
-use eov_plugin_api::ffi::{ConfirmationDialogRequestFFI, HostLogLevelFFI, UiPropertyFFI};
-use serde_json::json;
-use std::path::Path;
-use std::thread;
-use std::time::{Duration, Instant};
+//! The sidebar surface: the properties the presenter pushes and the
+//! callbacks the UI sends.
+//!
+//! Callbacks run on the UI thread; they change state, mark the presenter
+//! dirty and start threads, never anything slow (no file writes on
+//! keystrokes, VAE-17). Fields that can reject input return the value the
+//! UI should show.
 
-const TOOLBAR_BUTTON_ID: &str = "toggle_eovae";
+use crate::config::max_threads;
+use crate::contract::{Scaling, ValueRange};
+use crate::engine::{Backend, DevicePreference};
+use crate::plugin::{Core, JobKind, JobRequest, ModelState, lock, run_context};
+use crate::presenter::{Memo, PULSE};
+use crate::render::Mode;
+use crate::stats::{decimals_for, format_error};
+use crate::tiling::{Resolution, TileCoord, choose_level};
+use eov_plugin_api::prelude::*;
+use std::sync::Arc;
+use std::time::Instant;
 
-fn plugin_trace(message: impl AsRef<str>) {
-    if std::env::var_os("EOV_PLUGIN_TRACE").is_some() {
-        eprintln!("[eovae/sidebar] {}", message.as_ref());
+/// Note shown under the overlay selector (VAE-17): the host draws overlays
+/// on top of the adjusted slide.
+const ADJUSTMENT_NOTE: &str = "Overlays show the model's pixels without the viewer's display adjustments (gamma, contrast, stain normalisation); reset them before comparing Original and Reconstruction.";
+
+const SCALING_OPTIONS: [&str; 4] = ["[-1, 1]", "[0, 1]", "[0, 255]", "ImageNet mean/std"];
+
+fn scaling_index(scaling: &Scaling) -> i32 {
+    match scaling {
+        Scaling::Range {
+            range: ValueRange::MinusOneOne,
+        } => 0,
+        Scaling::Range {
+            range: ValueRange::ZeroOne,
+        } => 1,
+        Scaling::Range {
+            range: ValueRange::Zero255,
+        } => 2,
+        Scaling::MeanStd { .. } => 3,
     }
 }
 
-use chrono::{DateTime, Local};
-
-fn analysis_namespace(base_namespace: &str, mip_level: u32) -> String {
-    format!("{base_namespace}|mip{mip_level}")
-}
-
-fn format_analysis_started(started_at: std::time::SystemTime) -> String {
-    let started_at: DateTime<Local> = started_at.into();
-    started_at.format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
-fn format_elapsed(duration: Duration) -> String {
-    let mut seconds = duration.as_secs();
-    let days = seconds / 86_400;
-    seconds %= 86_400;
-    let hours = seconds / 3_600;
-    seconds %= 3_600;
-    let minutes = seconds / 60;
-    let secs = seconds % 60;
-    let mut parts = Vec::new();
-    if days > 0 {
-        parts.push(format!("{days}d"));
-    }
-    if hours > 0 {
-        parts.push(format!("{hours}h"));
-    }
-    if minutes > 0 {
-        parts.push(format!("{minutes}m"));
-    }
-    if secs > 0 || parts.is_empty() {
-        parts.push(format!("{secs}s"));
-    }
-    parts.join(" ")
-}
-
-fn current_render_backend_is_gpu() -> bool {
-    host_api()
-        .map(|host| (host.get_snapshot)(host.context))
-        .map(|snapshot| snapshot.render_backend.to_ascii_lowercase() == "gpu")
-        .unwrap_or(false)
-}
-
-fn persist_sidebar_preferences() {
-    let state = plugin_state().lock().unwrap();
-    if let Err(error) = save_persisted_config_field(|config| {
-        config.model_section_expanded = state.model_section_expanded;
-        config.analysis_section_expanded = state.analysis_section_expanded;
-        config.results_section_expanded = state.results_section_expanded;
-        config.analysis_threads = Some(state.config.analysis_threads);
-        config.gpu_batch_size = Some(state.config.gpu_batch_size);
-    }) {
-        log_message(HostLogLevelFFI::Error, error);
+fn scaling_at(index: i64) -> Option<Scaling> {
+    match index {
+        0 => Some(Scaling::range(ValueRange::MinusOneOne)),
+        1 => Some(Scaling::range(ValueRange::ZeroOne)),
+        2 => Some(Scaling::range(ValueRange::Zero255)),
+        3 => Some(Scaling::IMAGENET),
+        _ => None,
     }
 }
 
-pub fn get_sidebar_properties() -> RVec<UiPropertyFFI> {
-    let state = plugin_state().lock().unwrap();
-    let now = Instant::now();
-    let summary = state.model.as_ref().map(|model| &model.summary);
-    let model_summary = if state.model_path.is_empty() {
-        String::new()
+fn mib(bytes: u64) -> String {
+    let mb = bytes as f64 / (1024.0 * 1024.0);
+    if mb >= 1024.0 {
+        format!("{:.1} GB", mb / 1024.0)
     } else {
-        Path::new(&state.model_path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| state.model_path.clone())
-    };
-    let input_rows = summary
-        .map(|summary| {
-            summary
-                .inputs
-                .iter()
-                .map(|tensor| {
-                    json!({
-                        "name": tensor.name,
-                        "dtype": tensor.dtype,
-                        "shape": tensor.shape_label(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let output_rows = summary
-        .map(|summary| {
-            summary
-                .outputs
-                .iter()
-                .map(|tensor| {
-                    json!({
-                        "name": tensor.name,
-                        "dtype": tensor.dtype,
-                        "shape": tensor.shape_label(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let input_options = summary
-        .map(|summary| {
-            summary
-                .inputs
-                .iter()
-                .map(|tensor| tensor.name.clone())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let output_options = summary
-        .map(|summary| {
-            summary
-                .outputs
-                .iter()
-                .map(|tensor| tensor.name.clone())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let selected_input_name = summary
-        .and_then(|summary| {
-            summary
-                .inputs
-                .get(summary.selected_input)
-                .map(|tensor| tensor.name.clone())
-        })
-        .unwrap_or_default();
-    let selected_output_name = summary
-        .and_then(|summary| {
-            summary
-                .outputs
-                .get(summary.selected_output)
-                .map(|tensor| tensor.name.clone())
-        })
-        .unwrap_or_default();
-    let hot_regions = state
-        .sidebar_regions
-        .iter()
-        .map(|region| json!({ "id": region.id, "label": region.label, "score": region.score }))
-        .collect::<Vec<_>>();
-    let histogram_bins = state
-        .error_histogram
-        .iter()
-        .map(|bin| {
-            json!({
-                "label": bin.label,
-                "count": bin.count as i32,
-                "normalized": bin.normalized,
-            })
-        })
-        .collect::<Vec<_>>();
-    let histogram_max = state
-        .error_histogram
-        .iter()
-        .map(|bin| bin.count)
-        .max()
-        .unwrap_or(0) as i32;
-    let stats_summary = if state.error_stats.count == 0 {
-        "No analysis yet.".to_string()
-    } else {
-        format!(
-            "{} tiles analyzed. mean {:.4}, median {:.4}, p95 {:.4}, max {:.4}",
-            state.error_stats.count,
-            state.error_stats.mean,
-            state.error_stats.median,
-            state.error_stats.p95,
-            state.error_stats.max,
-        )
-    };
-    let analysis_elapsed = match state.analysis_phase {
-        AnalysisPhase::Running => state
-            .analysis_started_at
-            .map(|started_at| now.saturating_duration_since(started_at)),
-        AnalysisPhase::Completed | AnalysisPhase::Error | AnalysisPhase::Cancelled => {
-            state.analysis_elapsed
-        }
-        AnalysisPhase::Idle => None,
-    };
-    let analysis_started_text = state
-        .analysis_started_wallclock
-        .map(format_analysis_started)
-        .unwrap_or_default();
-    let analysis_elapsed_text = analysis_elapsed.map(format_elapsed).unwrap_or_default();
-    let analysis_summary_text = match state.analysis_phase {
-        AnalysisPhase::Running => state.job_status.clone(),
-        AnalysisPhase::Completed => {
-            if analysis_elapsed_text.is_empty() {
-                "Completed".to_string()
-            } else {
-                format!("Completed in {}", analysis_elapsed_text)
-            }
-        }
-        AnalysisPhase::Error => state
-            .analysis_error_message
-            .clone()
-            .filter(|message| !message.is_empty())
-            .unwrap_or_else(|| state.job_status.clone()),
-        AnalysisPhase::Cancelled => {
-            if analysis_elapsed_text.is_empty() {
-                "Analysis cancelled".to_string()
-            } else {
-                format!("Cancelled after {}", analysis_elapsed_text)
-            }
-        }
-        AnalysisPhase::Idle => String::new(),
-    };
-    let analysis_completed = state.analysis_phase == AnalysisPhase::Completed;
-    let analysis_summary_is_error = state.analysis_phase == AnalysisPhase::Error;
-    let analysis_show_leading_status = state.analysis_phase != AnalysisPhase::Idle;
-    let analysis_indicator_value = if analysis_completed {
-        1.0
-    } else {
-        state.progress_value.clamp(0.0, 1.0)
-    };
-
-    let properties = vec![
-        property("model-path", json!(state.model_path)),
-        property("model-summary", json!(model_summary)),
-        property("model-status", json!(state.model_status)),
-        property("model-loaded", json!(state.model.is_some())),
-        property("input-rows", json!(input_rows)),
-        property("output-rows", json!(output_rows)),
-        property("input-options", json!(input_options)),
-        property("output-options", json!(output_options)),
-        property("selected-input-name", json!(selected_input_name)),
-        property("selected-output-name", json!(selected_output_name)),
-        property(
-            "selected-input-index",
-            json!(
-                summary
-                    .map(|summary| summary.selected_input as i32)
-                    .unwrap_or(0)
-            ),
-        ),
-        property(
-            "selected-output-index",
-            json!(
-                summary
-                    .map(|summary| summary.selected_output as i32)
-                    .unwrap_or(0)
-            ),
-        ),
-        property(
-            "selected-mode-index",
-            json!(state.visualization_mode.to_index()),
-        ),
-        property("mip-options", json!(["1x", "2x", "4x", "8x"])),
-        property("selected-mip-index", json!(state.config.mip_level as i32)),
-        property("job-status", json!(state.job_status)),
-        property("progress-value", json!(state.progress_value)),
-        property("job-running", json!(state.job.is_some())),
-        property(
-            "model-section-expanded",
-            json!(state.model_section_expanded),
-        ),
-        property(
-            "analysis-section-expanded",
-            json!(state.analysis_section_expanded),
-        ),
-        property(
-            "results-section-expanded",
-            json!(state.results_section_expanded),
-        ),
-        property("analysis-elapsed-text", json!(analysis_elapsed_text)),
-        property("analysis-started-text", json!(analysis_started_text)),
-        property("analysis-summary-text", json!(analysis_summary_text)),
-        property(
-            "analysis-summary-is-error",
-            json!(analysis_summary_is_error),
-        ),
-        property(
-            "analysis-show-leading-status",
-            json!(analysis_show_leading_status),
-        ),
-        property("analysis-indicator-value", json!(analysis_indicator_value)),
-        property("analysis-completed", json!(analysis_completed)),
-        property(
-            "analysis-threads",
-            json!(state.config.analysis_threads.to_string()),
-        ),
-        property(
-            "analysis-batch-size",
-            json!(state.config.gpu_batch_size.to_string()),
-        ),
-        property("max-analysis-threads", json!(max_analysis_threads() as i32)),
-        property("gpu-backend-active", json!(current_render_backend_is_gpu())),
-        property("stats-summary", json!(stats_summary)),
-        property("error-histogram", json!(histogram_bins)),
-        property("error-histogram-max", json!(histogram_max)),
-        property("hot-regions", json!(hot_regions)),
-    ];
-    RVec::from(properties)
-}
-
-pub fn on_sidebar_callback(callback_name: &str, args_json: &str) {
-    let (refresh_sidebar, request_render) = match callback_name {
-        "load-model" => {
-            load_model_from_dialog();
-            (true, true)
-        }
-        "clear-model" => {
-            clear_model();
-            (true, true)
-        }
-        "analyze-viewport" => {
-            analyze_viewport();
-            (false, false)
-        }
-        "analyze-slide" => {
-            analyze_whole_slide();
-            (false, false)
-        }
-        "cancel-job" => (cancel_running_job(), false),
-        "jump-to-region" => {
-            jump_to_region(args_json);
-            (false, false)
-        }
-        "hover-region" => {
-            let changed = update_hovered_region(args_json);
-            (false, changed)
-        }
-        "mode-changed" => (false, update_mode(args_json)),
-        "mip-changed" => {
-            let changed = update_mip_level(args_json);
-            (changed, changed)
-        }
-        "model-section-expanded-changed" => {
-            (update_section_expanded(args_json, Section::Model), false)
-        }
-        "analysis-section-expanded-changed" => {
-            (update_section_expanded(args_json, Section::Analysis), false)
-        }
-        "results-section-expanded-changed" => {
-            (update_section_expanded(args_json, Section::Results), false)
-        }
-        "analysis-threads-changed" => (update_analysis_threads(args_json), false),
-        "analysis-batch-size-changed" => (update_analysis_batch_size(args_json), false),
-        "input-changed" => {
-            let changed = update_selected_tensor(args_json, true);
-            (changed, changed)
-        }
-        "output-changed" => {
-            let changed = update_selected_tensor(args_json, false);
-            (changed, changed)
-        }
-        _ => (false, false),
-    };
-    if refresh_sidebar {
-        refresh_sidebar_if_available();
-    }
-    if request_render {
-        request_render_if_available();
+        format!("{mb:.0} MB")
     }
 }
 
-pub fn initialize_from_config() {
-    let persisted_config = match load_persisted_config() {
-        Ok(config) => config,
-        Err(error) => {
-            log_message(HostLogLevelFFI::Error, error);
-            return;
+fn thousands(value: f64) -> String {
+    let digits = format!("{:.0}", value.max(0.0));
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
         }
-    };
-
-    {
-        let mut state = plugin_state().lock().unwrap();
-        state.model_section_expanded = persisted_config.model_section_expanded;
-        state.analysis_section_expanded = persisted_config.analysis_section_expanded;
-        state.results_section_expanded = persisted_config.results_section_expanded;
-        state.config.analysis_threads = clamp_analysis_threads(
-            persisted_config
-                .analysis_threads
-                .unwrap_or(state.config.analysis_threads),
-        );
-        state.config.gpu_batch_size = clamp_gpu_batch_size(
-            persisted_config
-                .gpu_batch_size
-                .unwrap_or(state.config.gpu_batch_size),
-        );
+        out.push(c);
     }
-
-    let Some(saved_path) = persisted_config
-        .default_model_path
-        .filter(|path| !path.is_empty())
-    else {
-        return;
-    };
-
-    let should_start = {
-        let state = plugin_state().lock().unwrap();
-        state.model.is_none() && !state.model_load_in_progress && state.model_path.is_empty()
-    };
-    if should_start {
-        start_model_load(saved_path, false);
-    }
+    out
 }
 
-fn load_model_from_dialog() {
-    let Some(host) = host_api() else {
-        log_message(HostLogLevelFFI::Error, "host API is not available");
-        return;
+/// Every sidebar property.
+pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<String, Value> {
+    let mut p = Map::new();
+    let mut set = |name: &str, value: Value| {
+        p.insert(name.to_string(), value);
     };
+    let state = lock(&core.state);
+    let config = state.config.clone();
 
-    plugin_trace("load_model dialog worker spawn");
-    thread::spawn(move || {
-        plugin_trace("load_model dialog worker opening dialog");
-        let path = match (host.open_file_dialog)(
-            host.context,
-            RString::from("ONNX"),
-            RString::from("onnx"),
-        )
-        .into_result()
-        {
-            Ok(path) if !path.is_empty() => path.to_string(),
-            Ok(_) => {
-                plugin_trace("load_model dialog canceled");
-                return;
-            }
-            Err(error) => {
-                log_message(HostLogLevelFFI::Error, error.to_string());
-                plugin_trace(format!("load_model dialog error err={}", error));
-                return;
-            }
-        };
+    // Sections.
+    set("model-expanded", json!(config.sections.model));
+    set("analysis-expanded", json!(config.sections.analysis));
+    set("results-expanded", json!(config.sections.results));
+    set("cache-expanded", json!(config.sections.cache));
 
-        start_model_load(path, true);
+    // Model.
+    let model = state.model_info().cloned();
+    let (model_state, model_name, model_message) = match &state.model {
+        ModelState::None => (0, String::new(), "No model loaded.".to_string()),
+        ModelState::Loading { path } => (
+            1,
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            "Reading and hashing the model…".to_string(),
+        ),
+        ModelState::Ready { info } => (2, info.file_name.clone(), String::new()),
+        ModelState::Failed { path, error } => (
+            3,
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            error.clone(),
+        ),
+    };
+    set("model-state", json!(model_state));
+    set("model-name", json!(model_name));
+    let request = state.engine_request();
+    let engine_info = request.as_ref().and_then(|request| {
+        state
+            .engine
+            .info
+            .as_ref()
+            .filter(|(sig, _)| *sig == crate::plugin::results_signature(request))
+            .map(|(_, info)| info.clone())
     });
-}
-
-fn start_model_load(path: String, persist_on_success: bool) {
-    let (load_generation, use_gpu) = {
-        let mut state = plugin_state().lock().unwrap();
-        state.model_load_generation = state.model_load_generation.wrapping_add(1);
-        state.model_load_in_progress = true;
-        state.model = None;
-        state.model_path = path.clone();
-        state.model_status = "Loading ONNX model...".to_string();
-        state.job_status = "Idle".to_string();
-        state.analysis_phase = AnalysisPhase::Idle;
-        state.analysis_started_at = None;
-        state.analysis_started_wallclock = None;
-        state.analysis_elapsed = None;
-        state.analysis_error_message = None;
-        state.cache_namespace.clear();
-        state.cache.clear();
-        state.hot_regions.clear();
-        state.sidebar_regions.clear();
-        state.error_stats = crate::stats::ErrorStats::default();
-        state.progress_value = 0.0;
-        (state.model_load_generation, current_render_backend_is_gpu())
-    };
-    refresh_sidebar_if_available();
-    request_render_if_available();
-
-    plugin_trace(format!(
-        "load_model spawn path={} generation={} backend_snapshot_gpu={}",
-        path, load_generation, use_gpu
-    ));
-    thread::spawn(move || {
-        let result = load_model(&path, use_gpu);
-        plugin_trace(format!(
-            "load_model finished path={} generation={} success={}",
-            path,
-            load_generation,
-            result.is_ok()
-        ));
-        finish_model_load(load_generation, path, result, persist_on_success);
+    let engine_error = request.as_ref().and_then(|request| {
+        state
+            .engine
+            .error
+            .as_ref()
+            .filter(|(sig, _)| *sig == request.signature())
+            .map(|(_, e)| e.clone())
     });
-}
-
-fn finish_model_load(
-    load_generation: u64,
-    path: String,
-    result: Result<LoadedModel, String>,
-    persist_on_success: bool,
-) {
-    let mut log_error = None;
-    let mut model_to_persist = None;
-
-    {
-        let mut state = plugin_state().lock().unwrap();
-        if state.model_load_generation != load_generation {
-            plugin_trace(format!(
-                "load_model stale result ignored path={} generation={} current_generation={}",
-                path, load_generation, state.model_load_generation
-            ));
-            return;
-        }
-
-        state.model_load_in_progress = false;
-        state.job_status = "Idle".to_string();
-        state.analysis_phase = AnalysisPhase::Idle;
-        state.analysis_started_at = None;
-        state.analysis_started_wallclock = None;
-        state.analysis_elapsed = None;
-        state.analysis_error_message = None;
-
-        match result {
-            Ok(model) => {
-                let namespace =
-                    analysis_namespace(&model.summary.identity(), state.config.mip_level);
-                model_to_persist = persist_on_success.then(|| model.summary.path.clone());
-                state.model_path = model.summary.path.clone();
-                state.model_status = if model.summary.warnings.is_empty() {
+    let message = match (&state.engine.building, &engine_error) {
+        (Some(building), _) if model_state == 2 => building.clone(),
+        (_, Some(error)) if model_state == 2 => error.clone(),
+        _ => model_message,
+    };
+    set("model-message", json!(message));
+    set(
+        "model-message-error",
+        json!(
+            model_state == 3
+                || (model_state == 2 && engine_error.is_some() && state.engine.building.is_none())
+        ),
+    );
+    set(
+        "engine-label",
+        json!(
+            engine_info
+                .as_ref()
+                .map(|i| i.label.clone())
+                .unwrap_or_default()
+        ),
+    );
+    set(
+        "engine-note",
+        json!(
+            engine_info
+                .as_ref()
+                .and_then(|i| i.fallback.clone())
+                .map(|f| format!("CUDA unavailable: {f}"))
+                .unwrap_or_default()
+        ),
+    );
+    set("runtime-label", json!(core.backend.runtime_label()));
+    match &model {
+        Some(info) => {
+            let mut detail = vec![
+                format!("{} px", info.tile_size),
+                info.layout.label().to_string(),
+            ];
+            detail.push(match info.fixed_batch {
+                Some(batch) => format!("batch {batch}"),
+                None => "dynamic batch".to_string(),
+            });
+            if let Some(mpp) = info.contract.mpp {
+                detail.push(format!("{mpp:.3} µm/px"));
+            }
+            detail.push(format!("{} MB", (info.bytes as f64 / 1e6).round()));
+            set(
+                "model-detail",
+                json!(match info.card {
+                    Some(card) => format!("{card} · {}", detail.join(" · ")),
+                    None => detail.join(" · "),
+                }),
+            );
+            set(
+                "input-text",
+                json!(format!(
+                    "{} · {} · {}",
+                    info.input.name,
+                    info.input_elem.label(),
+                    info.input.shape_label()
+                )),
+            );
+            let output = config.output_for(info);
+            set(
+                "output-options",
+                json!(
+                    info.outputs
+                        .iter()
+                        .map(|o| o.name.clone())
+                        .collect::<Vec<_>>()
+                ),
+            );
+            set(
+                "output-index",
+                json!(
+                    info.outputs
+                        .iter()
+                        .position(|o| o.name == output)
+                        .unwrap_or(0) as i32
+                ),
+            );
+            set(
+                "latent-text",
+                json!(
+                    info.latent
+                        .as_ref()
+                        .map(|l| format!(
+                            "Embeddings from '{}' ({} values) are stored with results.",
+                            l.name, l.dim
+                        ))
+                        .unwrap_or_default()
+                ),
+            );
+            set("warnings", json!(info.warnings));
+            let contract = config.contract_for(info);
+            let overridden = config
+                .overrides
+                .get(&info.sha256)
+                .is_some_and(|o| !o.is_empty());
+            set(
+                "contract-source",
+                json!(if overridden {
                     format!(
-                        "Loaded {} inputs / {} outputs. Layout {}. Tile {}.",
-                        model.summary.inputs.len(),
-                        model.summary.outputs.len(),
-                        model.summary.layout,
-                        model.summary.tile_size,
+                        "Changed by you (model declares: {})",
+                        info.contract_source.label()
                     )
                 } else {
-                    model.summary.warnings.join(" ")
-                };
-                state.model = Some(model);
-                state.cache_namespace = namespace;
-                state.cache.clear();
-                state.hot_regions.clear();
-                state.sidebar_regions.clear();
-                state.error_stats = crate::stats::ErrorStats::default();
-                state.progress_value = 0.0;
-            }
-            Err(error) => {
-                state.model = None;
-                state.model_path = path.clone();
-                state.model_status = error.clone();
-                state.cache_namespace.clear();
-                state.cache.clear();
-                state.hot_regions.clear();
-                state.sidebar_regions.clear();
-                state.error_stats = crate::stats::ErrorStats::default();
-                state.progress_value = 0.0;
-                log_error = Some(error);
-            }
+                    format!("From {}", info.contract_source.label())
+                }),
+            );
+            set("input-scaling-index", json!(scaling_index(&contract.input)));
+            set(
+                "output-scaling-index",
+                json!(scaling_index(&contract.output)),
+            );
+            set("composite-white", json!(contract.composite_on_white));
+            set("black-to-white", json!(contract.black_to_white_below > 0));
+            set("contract-overridden", json!(overridden));
+            set("contract-summary", json!(contract.summary()));
         }
-    }
-
-    if let Some(error) = log_error {
-        log_message(HostLogLevelFFI::Error, error);
-    }
-    if let Some(model_path) = model_to_persist
-        && let Err(error) = save_persisted_model_path(Some(&model_path))
-    {
-        log_message(HostLogLevelFFI::Error, error);
-    }
-    refresh_sidebar_if_available();
-    request_render_if_available();
-}
-
-fn clear_model() {
-    let mut state = plugin_state().lock().unwrap();
-    state.model_load_generation = state.model_load_generation.wrapping_add(1);
-    state.model_load_in_progress = false;
-    state.model = None;
-    state.model_path.clear();
-    state.model_status = "No ONNX model loaded.".to_string();
-    state.job_status = "Idle".to_string();
-    state.analysis_phase = AnalysisPhase::Idle;
-    state.analysis_started_at = None;
-    state.analysis_started_wallclock = None;
-    state.analysis_elapsed = None;
-    state.analysis_error_message = None;
-    state.cache_namespace.clear();
-    state.cache.clear();
-    state.sidebar_regions.clear();
-    state.hot_regions.clear();
-    state.hovered_region_id = None;
-    state.pulsing_region_id = None;
-    state.pulsing_region_started_at = None;
-    state.pane_auto_viewport_request_keys.clear();
-    if let Err(error) = save_persisted_model_path(None) {
-        log_message(HostLogLevelFFI::Error, error);
-    }
-}
-
-fn analyze_viewport() {
-    let host = match host_api() {
-        Some(host) => host,
-        None => return,
-    };
-    let snapshot = (host.get_snapshot)(host.context);
-    let viewport = match snapshot.active_viewport.into_option() {
-        Some(viewport) => viewport,
         None => {
-            log_message(HostLogLevelFFI::Error, "no active viewport is available");
-            return;
-        }
-    };
-    let (model, namespace, mip_level) = {
-        let state = plugin_state().lock().unwrap();
-        let model = state.model.clone();
-        let namespace = model
-            .as_ref()
-            .map(|model| analysis_namespace(&model.summary.identity(), state.config.mip_level))
-            .unwrap_or_default();
-        (model, namespace, state.config.mip_level)
-    };
-    if let Some(model) = model {
-        if !preflight_gpu_analysis_or_show_error(&model) {
-            return;
-        }
-        start_viewport_analysis(model, viewport, namespace, mip_level);
-    }
-}
-
-fn analyze_whole_slide() {
-    let host = match host_api() {
-        Some(host) => host,
-        None => return,
-    };
-    let snapshot = (host.get_snapshot)(host.context);
-    let active_file = match snapshot.active_file.into_option() {
-        Some(file) => file,
-        None => {
-            log_message(HostLogLevelFFI::Error, "no active slide is open");
-            return;
-        }
-    };
-    let (model, namespace, mip_level) = {
-        let state = plugin_state().lock().unwrap();
-        let model = state.model.clone();
-        let namespace = model
-            .as_ref()
-            .map(|model| analysis_namespace(&model.summary.identity(), state.config.mip_level))
-            .unwrap_or_default();
-        (model, namespace, state.config.mip_level)
-    };
-    if let Some(model) = model {
-        if !preflight_gpu_analysis_or_show_error(&model) {
-            return;
-        }
-        start_whole_slide_analysis(
-            model,
-            active_file.file_id,
-            active_file.path.to_string(),
-            active_file.width,
-            active_file.height,
-            namespace,
-            mip_level,
-        );
-    }
-}
-
-fn preflight_gpu_analysis_or_show_error(model: &LoadedModel) -> bool {
-    match gpu_analysis_preflight(model) {
-        Ok(GpuAnalysisPreflight::Ready) => true,
-        Ok(GpuAnalysisPreflight::Warn(message)) => {
-            log_message(HostLogLevelFFI::Error, &message);
-            if let Err(error) = show_gpu_analysis_warning_dialog(&message) {
-                log_message(HostLogLevelFFI::Error, error);
-            }
-            true
-        }
-        Ok(GpuAnalysisPreflight::Block(message)) => {
-            log_message(HostLogLevelFFI::Error, &message);
-            if let Err(error) = show_gpu_analysis_unavailable_dialog(&message) {
-                log_message(HostLogLevelFFI::Error, error);
-            }
-            false
-        }
-        Err(error) => {
-            log_message(HostLogLevelFFI::Error, &error);
-            if let Err(dialog_error) = show_gpu_analysis_unavailable_dialog(&error) {
-                log_message(HostLogLevelFFI::Error, dialog_error);
-            }
-            false
+            set("model-detail", json!(""));
+            set("input-text", json!(""));
+            set("output-options", json!(Vec::<String>::new()));
+            set("output-index", json!(0));
+            set("latent-text", json!(""));
+            set("warnings", json!(Vec::<String>::new()));
+            set("contract-source", json!(""));
+            set("input-scaling-index", json!(0));
+            set("output-scaling-index", json!(0));
+            set("composite-white", json!(true));
+            set("black-to-white", json!(true));
+            set("contract-overridden", json!(false));
+            set("contract-summary", json!(""));
         }
     }
-}
+    set("scaling-options", json!(SCALING_OPTIONS));
 
-fn show_gpu_analysis_warning_dialog(message: &str) -> Result<(), String> {
-    let Some(host) = host_api() else {
-        return Err("host API is not available".to_string());
-    };
-    (host.show_confirmation_dialog)(
-        host.context,
-        ConfirmationDialogRequestFFI {
-            title: "GPU Analysis Warning".into(),
-            message: message.into(),
-            confirm_label: "Continue".into(),
-            cancel_label: "Dismiss".into(),
-            confirm_callback: ROption::RNone,
-            confirm_args_json: ROption::RNone,
-            cancel_callback: ROption::RNone,
-            cancel_args_json: ROption::RNone,
-        },
-    )
-    .into_result()
-    .map_err(|error| format!("failed to show GPU analysis warning dialog: {error}"))
-}
-
-fn show_gpu_analysis_unavailable_dialog(message: &str) -> Result<(), String> {
-    let Some(host) = host_api() else {
-        return Err("host API is not available".to_string());
-    };
-    (host.show_confirmation_dialog)(
-        host.context,
-        ConfirmationDialogRequestFFI {
-            title: "GPU Analysis Unavailable".into(),
-            message: message.into(),
-            confirm_label: "OK".into(),
-            cancel_label: "Dismiss".into(),
-            confirm_callback: ROption::RNone,
-            confirm_args_json: ROption::RNone,
-            cancel_callback: ROption::RNone,
-            cancel_args_json: ROption::RNone,
-        },
-    )
-    .into_result()
-    .map_err(|error| format!("failed to show GPU analysis error dialog: {error}"))
-}
-
-fn update_mode(args_json: &str) -> bool {
-    let value = serde_json::from_str::<String>(args_json).unwrap_or_default();
-    let index = match value.as_str() {
-        "Reconstruction" => 1,
-        "Error Map" => 2,
-        "Difference" => 3,
-        _ => 0,
-    };
-    let mut state = plugin_state().lock().unwrap();
-    let new_mode = VisualizationMode::from_index(index);
-    if state.visualization_mode == new_mode {
-        return false;
-    }
-    state.visualization_mode = new_mode;
-    if new_mode == VisualizationMode::Original {
-        state.pane_auto_viewport_request_keys.clear();
-    }
-    crate::state::set_hud_toolbar_button_active_if_available(
-        "visualization_mode",
-        new_mode != VisualizationMode::Original
-            || state
-                .pane_visualization_modes
-                .values()
-                .any(|mode| *mode != VisualizationMode::Original),
+    // Analysis settings.
+    set(
+        "device-options",
+        json!(
+            DevicePreference::ALL
+                .iter()
+                .map(|d| d.label())
+                .collect::<Vec<_>>()
+        ),
     );
-    true
-}
-
-fn update_mip_level(args_json: &str) -> bool {
-    let value = parse_callback_arg::<String>(args_json).unwrap_or_default();
-    let mip_level = match value.as_str() {
-        "2x" => 1,
-        "4x" => 2,
-        "8x" => 3,
-        _ => 0,
-    };
-    let namespace = {
-        let mut state = plugin_state().lock().unwrap();
-        if state.config.mip_level == mip_level {
-            return false;
-        }
-        state.config.mip_level = mip_level;
-        let Some(model) = state.model.as_ref() else {
-            state.cache_namespace.clear();
-            state.cache.clear();
-            state.hot_regions.clear();
-            state.sidebar_regions.clear();
-            state.error_stats = crate::stats::ErrorStats::default();
-            state.progress_value = 0.0;
-            return true;
-        };
-        analysis_namespace(&model.summary.identity(), mip_level)
-    };
-    clear_cache_for_namespace(namespace);
-    true
-}
-
-#[derive(Clone, Copy)]
-enum Section {
-    Model,
-    Analysis,
-    Results,
-}
-
-fn parse_callback_arg<T>(args_json: &str) -> Option<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    serde_json::from_str::<T>(args_json).ok().or_else(|| {
-        serde_json::from_str::<Vec<T>>(args_json)
-            .ok()
-            .and_then(|mut values| {
-                if values.len() == 1 {
-                    values.pop()
-                } else {
-                    None
-                }
-            })
-    })
-}
-
-fn update_section_expanded(args_json: &str, section: Section) -> bool {
-    let expanded = parse_callback_arg::<bool>(args_json).unwrap_or(true);
-    let mut state = plugin_state().lock().unwrap();
-    let target = match section {
-        Section::Model => &mut state.model_section_expanded,
-        Section::Analysis => &mut state.analysis_section_expanded,
-        Section::Results => &mut state.results_section_expanded,
-    };
-    if *target == expanded {
-        return false;
-    }
-    *target = expanded;
-    drop(state);
-    persist_sidebar_preferences();
-    true
-}
-
-fn update_analysis_threads(args_json: &str) -> bool {
-    let value = parse_callback_arg::<String>(args_json)
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(1);
-    let analysis_threads = clamp_analysis_threads(value);
-    let mut state = plugin_state().lock().unwrap();
-    if state.config.analysis_threads == analysis_threads {
-        return false;
-    }
-    state.config.analysis_threads = analysis_threads;
-    drop(state);
-    persist_sidebar_preferences();
-    true
-}
-
-fn update_analysis_batch_size(args_json: &str) -> bool {
-    let value = parse_callback_arg::<String>(args_json)
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(64);
-    let gpu_batch_size = clamp_gpu_batch_size(value);
-    let mut state = plugin_state().lock().unwrap();
-    if state.config.gpu_batch_size == gpu_batch_size {
-        return false;
-    }
-    state.config.gpu_batch_size = gpu_batch_size;
-    drop(state);
-    persist_sidebar_preferences();
-    true
-}
-
-fn update_selected_tensor(args_json: &str, is_input: bool) -> bool {
-    let value = parse_callback_arg::<String>(args_json).unwrap_or_default();
-    let mut state = plugin_state().lock().unwrap();
-    let Some(model) = state.model.as_mut() else {
-        return false;
-    };
-    let changed = if is_input {
-        model
-            .summary
-            .inputs
-            .iter()
-            .position(|tensor| tensor.name == value)
-            .is_some_and(|index| {
-                if model.summary.selected_input == index {
-                    false
-                } else {
-                    model.summary.selected_input = index;
-                    true
-                }
-            })
-    } else {
-        model
-            .summary
-            .outputs
-            .iter()
-            .position(|tensor| tensor.name == value)
-            .is_some_and(|index| {
-                if model.summary.selected_output == index {
-                    false
-                } else {
-                    model.summary.selected_output = index;
-                    true
-                }
-            })
-    };
-    if !changed {
-        return false;
-    }
-    let namespace = analysis_namespace(&model.summary.identity(), state.config.mip_level);
-    drop(state);
-    clear_cache_for_namespace(namespace);
-    true
-}
-
-fn jump_to_region(args_json: &str) {
-    let region_id = serde_json::from_str::<String>(args_json)
-        .ok()
-        .or_else(|| {
-            serde_json::from_str::<Vec<String>>(args_json)
-                .ok()
-                .and_then(|args| args.into_iter().next())
-        })
-        .unwrap_or_default();
-    let parts = region_id.split(':').collect::<Vec<_>>();
-    if parts.len() != 4 {
-        return;
-    }
-    let parsed = (
-        parts[0].parse::<f64>(),
-        parts[1].parse::<f64>(),
-        parts[2].parse::<f64>(),
-        parts[3].parse::<f64>(),
+    set(
+        "device-index",
+        json!(
+            DevicePreference::ALL
+                .iter()
+                .position(|d| *d == config.device)
+                .unwrap_or(0) as i32
+        ),
     );
-    let (Ok(x), Ok(y), Ok(width), Ok(height)) = parsed else {
-        return;
-    };
-    {
-        let mut state = plugin_state().lock().unwrap();
-        state.pulsing_region_id = Some(region_id.clone());
-        state.pulsing_region_started_at = Some(Instant::now());
-    }
-    start_region_pulse_render_loop();
-    request_render_if_available();
-    if let Some(host) = host_api() {
-        let center_x = x + width * 0.5;
-        let center_y = y + height * 0.5;
-        let _ = (host.set_active_viewport)(host.context, center_x, center_y, 1.0);
-    }
-}
+    set(
+        "threads-text",
+        json!(if config.threads == 0 {
+            "auto".to_string()
+        } else {
+            config.threads.to_string()
+        }),
+    );
+    set(
+        "threads-hint",
+        json!(format!("1–{}, or auto", max_threads())),
+    );
+    let fixed_batch = model.as_ref().and_then(|m| m.fixed_batch);
+    set(
+        "batch-text",
+        json!(fixed_batch.unwrap_or(config.batch_size).to_string()),
+    );
+    set("batch-fixed", json!(fixed_batch.is_some()));
+    set("tf32", json!(config.tf32));
+    set("skip-background", json!(config.skip_background));
+    set("auto-analyze", json!(config.auto_analyze));
 
-fn update_hovered_region(args_json: &str) -> bool {
-    let region_id = serde_json::from_str::<String>(args_json)
-        .ok()
-        .or_else(|| {
-            serde_json::from_str::<Vec<String>>(args_json)
-                .ok()
-                .and_then(|args| args.into_iter().next())
-        })
-        .unwrap_or_default();
-    let new_value = (!region_id.is_empty()).then_some(region_id);
-    let mut state = plugin_state().lock().unwrap();
-    if state.hovered_region_id == new_value {
-        return false;
-    }
-    state.hovered_region_id = new_value;
-    true
-}
-
-fn start_region_pulse_render_loop() {
-    thread::spawn(|| {
-        for _ in 0..12 {
-            thread::sleep(Duration::from_millis(110));
-            let still_active = {
-                let mut state = plugin_state().lock().unwrap();
-                let Some(started_at) = state.pulsing_region_started_at else {
-                    return;
-                };
-                if started_at.elapsed() >= Duration::from_millis(1300) {
-                    state.pulsing_region_id = None;
-                    state.pulsing_region_started_at = None;
-                    false
-                } else {
-                    true
+    // The active slide.
+    let active = state
+        .active_file
+        .and_then(|id| state.files.get(&id).map(|f| (id, f)));
+    let model_mpp = model.as_ref().and_then(|m| config.contract_for(m).mpp);
+    let (resolution_options, resolution_index, resolution_note, resolution_warning) = match active {
+        Some((_, file)) => {
+            let mut options = Vec::new();
+            let auto_choice = choose_level(&file.geometry, Resolution::Auto, model_mpp);
+            options.push(match (auto_choice, model_mpp) {
+                (Some(choice), Some(mpp)) => format!(
+                    "Auto: match model {mpp:.2} µm/px → level {}",
+                    choice.level.index
+                ),
+                _ => "Auto (level 0)".to_string(),
+            });
+            for level in &file.geometry.levels {
+                let mpp = file
+                    .geometry
+                    .level_mpp(level)
+                    .map(|m| format!(" · {m:.2} µm/px"))
+                    .unwrap_or_default();
+                options.push(format!(
+                    "Level {} · {}×{mpp}",
+                    level.index,
+                    if (level.downsample - level.downsample.round()).abs() < 0.01 {
+                        format!("{:.0}", level.downsample)
+                    } else {
+                        format!("{:.3}", level.downsample)
+                    }
+                ));
+            }
+            let choice = choose_level(&file.geometry, config.resolution, model_mpp);
+            let index = match (config.resolution, choice) {
+                (Resolution::Auto, _) => 0,
+                (_, Some(choice)) => {
+                    1 + file
+                        .geometry
+                        .levels
+                        .iter()
+                        .position(|l| l.index == choice.level.index)
+                        .unwrap_or(0)
                 }
+                _ => 0,
             };
-            request_render_if_available();
-            if !still_active {
-                return;
+            let (note, warning) = match choice {
+                Some(choice) if choice.mismatched() => (
+                    format!(
+                        "Level {} is {:.2} µm/px but the model was trained at {:.2} µm/px; errors will be inflated.",
+                        choice.level.index,
+                        choice.mpp.unwrap_or_default(),
+                        model_mpp.unwrap_or_default()
+                    ),
+                    true,
+                ),
+                Some(choice) => (
+                    match (choice.mpp, model_mpp) {
+                        (Some(level), Some(trained)) => format!(
+                            "Level {} at {level:.2} µm/px (model {trained:.2} µm/px).",
+                            choice.level.index
+                        ),
+                        (Some(level), None) => {
+                            format!("Level {} at {level:.2} µm/px.", choice.level.index)
+                        }
+                        _ => format!(
+                            "Level {} (the slide is not calibrated).",
+                            choice.level.index
+                        ),
+                    },
+                    false,
+                ),
+                None => (String::new(), false),
+            };
+            (options, index, note, warning)
+        }
+        None => (
+            vec!["Auto".to_string()],
+            0,
+            "Open a slide.".to_string(),
+            false,
+        ),
+    };
+    set("resolution-options", json!(resolution_options));
+    set("resolution-index", json!(resolution_index as i32));
+    set("resolution-note", json!(resolution_note));
+    set("resolution-warning", json!(resolution_warning));
+
+    // Job.
+    let ctx = active.and_then(|(id, _)| run_context(&state, id).ok());
+    let can_analyze = active.is_some() && model_state == 2 && engine_error.is_none();
+    set("can-analyze", json!(can_analyze));
+    match &state.job {
+        Some(job) => {
+            set("job-running", json!(true));
+            set(
+                "job-title",
+                json!(match job.request.kind {
+                    JobKind::WholeSlide => "Whole slide",
+                    JobKind::Viewport => "Viewport",
+                    JobKind::Roi => "Region of interest",
+                    JobKind::Auto => "Visible tiles",
+                }),
+            );
+            let progress = job.progress;
+            set(
+                "job-status",
+                json!(if progress.total > 0 {
+                    format!(
+                        "{} of {} tiles · {} background · {} unreadable",
+                        progress.done,
+                        progress.total,
+                        progress.counts.background,
+                        progress.counts.failed
+                    )
+                } else {
+                    job.phase.clone()
+                }),
+            );
+            set("job-progress", json!(progress.fraction() as f64));
+            let mut detail = vec![job.phase.clone()];
+            let eta = crate::plugin::format_eta(&progress);
+            if !eta.is_empty() {
+                detail.push(eta);
+            }
+            set("job-detail", json!(detail.join(" · ")));
+        }
+        None => {
+            set("job-running", json!(false));
+            set("job-title", json!(""));
+            set("job-status", json!(""));
+            set("job-progress", json!(0.0));
+            set("job-detail", json!(""));
+        }
+    }
+    set(
+        "last-result",
+        json!(
+            state
+                .last_job
+                .as_ref()
+                .map(|s| s.text.clone())
+                .unwrap_or_default()
+        ),
+    );
+    set(
+        "last-result-error",
+        json!(state.last_job.as_ref().is_some_and(|s| s.error)),
+    );
+    set(
+        "auto-hint",
+        json!(state.auto_hint.clone().unwrap_or_default()),
+    );
+
+    // Results of the active slide.
+    let (slide_name, mode) = active
+        .map(|(_, f)| (f.info.filename.clone(), f.mode))
+        .unwrap_or_default();
+    set("slide-name", json!(slide_name));
+    set(
+        "view-options",
+        json!(Mode::ALL.iter().map(|m| m.label()).collect::<Vec<_>>()),
+    );
+    set("view-index", json!(mode.index() as i32));
+    set("adjustment-note", json!(ADJUSTMENT_NOTE));
+    let keep_pixels = config.keep_pixels;
+    let memory_limit = config.memory_limit_bytes();
+    let has_active = active.is_some();
+    let active_id = active.map(|(id, _)| id);
+    drop(state);
+    let has_roi = active_id
+        .and_then(|id| core.host.roi(id).ok().flatten())
+        .is_some();
+    set("has-roi", json!(has_roi));
+
+    let stats = ctx.as_ref().and_then(|ctx| {
+        core.ensure_loaded(ctx);
+        memo.stats(core, &ctx.key)
+    });
+    match (&ctx, &stats) {
+        (Some(ctx), Some(stats)) if stats.counts.total() > 0 => {
+            let total = ctx.grid.tile_count().max(1);
+            set(
+                "coverage-text",
+                json!(format!(
+                    "{} tissue tiles scored, {} background, {} unreadable — {:.1} % of the {} tiles at level {}.",
+                    stats.counts.analysed,
+                    stats.counts.background,
+                    stats.counts.failed,
+                    stats.counts.total() as f64 * 100.0 / total as f64,
+                    total,
+                    ctx.grid.level
+                )),
+            );
+            match &stats.summary {
+                Some(summary) => {
+                    let decimals =
+                        decimals_for((summary.p95 - summary.p05).max(summary.max / 100.0) / 10.0);
+                    let f = |v: f64| format_error(v, decimals);
+                    set(
+                        "stats-text",
+                        json!(format!(
+                            "Tile MAE: mean {} · median {} · p95 {} · max {}",
+                            f(summary.mean),
+                            f(summary.median),
+                            f(summary.p95),
+                            f(summary.max)
+                        )),
+                    );
+                    let peak = stats.bins.iter().map(|b| b.count).max().unwrap_or(0).max(1);
+                    let bin_decimals = stats
+                        .bins
+                        .first()
+                        .map(|b| decimals_for(b.hi - b.lo))
+                        .unwrap_or(4);
+                    set(
+                        "histogram",
+                        json!(stats
+                            .bins
+                            .iter()
+                            .map(|b| json!({
+                                "label": format!("{}–{}: {}", format_error(b.lo, bin_decimals), format_error(b.hi, bin_decimals), b.count),
+                                "count": b.count as i32,
+                                "normalized": b.count as f64 / peak as f64,
+                            }))
+                            .collect::<Vec<_>>()),
+                    );
+                    set("histogram-peak", json!(peak as i32));
+                    set(
+                        "histogram-lo",
+                        json!(
+                            stats
+                                .bins
+                                .first()
+                                .map(|b| format_error(b.lo, bin_decimals))
+                                .unwrap_or_default()
+                        ),
+                    );
+                    set(
+                        "histogram-hi",
+                        json!(
+                            stats
+                                .bins
+                                .last()
+                                .map(|b| format_error(b.hi, bin_decimals))
+                                .unwrap_or_default()
+                        ),
+                    );
+                    set(
+                        "hot-regions",
+                        json!(stats
+                            .top
+                            .iter()
+                            .map(|(mae, coord)| {
+                                let rect = ctx.grid.valid_footprint(*coord);
+                                let max = lock(&core.results)
+                                    .run(&ctx.key)
+                                    .and_then(|run| run.state(*coord))
+                                    .and_then(|s| match s {
+                                        crate::results::TileState::Analysed { max, .. } => Some(max),
+                                        _ => None,
+                                    })
+                                    .unwrap_or_default();
+                                json!({
+                                    "id": coord.id(),
+                                    "label": format!(
+                                        "x {} · y {} · {} px",
+                                        thousands(rect.x),
+                                        thousands(rect.y),
+                                        thousands(ctx.grid.step0())
+                                    ),
+                                    "score": format!("MAE {} · max {}", format_error(f64::from(*mae), decimals.max(4)), format_error(f64::from(max), 3)),
+                                })
+                            })
+                            .collect::<Vec<_>>()),
+                    );
+                    let (legend_visible, title, lo, hi) = match mode {
+                        Mode::ErrorMap => {
+                            let (lo, hi) = stats.heat_range();
+                            (
+                                true,
+                                "Tile MAE (p05–p95)",
+                                f(f64::from(lo)),
+                                f(f64::from(hi)),
+                            )
+                        }
+                        Mode::Difference => (
+                            true,
+                            "Pixel error",
+                            "0".to_string(),
+                            format_error(f64::from(stats.pixel_range()), 3),
+                        ),
+                        _ => (false, "", String::new(), String::new()),
+                    };
+                    set("legend-visible", json!(legend_visible));
+                    set("legend-title", json!(title));
+                    set("legend-lo", json!(lo));
+                    set("legend-hi", json!(hi));
+                }
+                None => clear_stats(&mut set),
+            }
+            set("can-export", json!(true));
+        }
+        _ => {
+            set(
+                "coverage-text",
+                json!(match &ctx {
+                    Some(_) =>
+                        "Nothing analysed on this slide with these settings yet.".to_string(),
+                    None if !has_active => "Open a slide.".to_string(),
+                    None => {
+                        let state = lock(&core.state);
+                        state
+                            .active_file
+                            .map(|id| {
+                                run_context(&state, id)
+                                    .err()
+                                    .map(|r| r.message())
+                                    .unwrap_or_default()
+                            })
+                            .unwrap_or_default()
+                    }
+                }),
+            );
+            clear_stats(&mut set);
+            set("can-export", json!(false));
+        }
+    }
+
+    // Cache.
+    let cache = core.cache.status();
+    set(
+        "cache-text",
+        json!(if cache.enabled {
+            format!(
+                "{} of {} on disk · {} runs",
+                mib(cache.bytes),
+                mib(cache.budget),
+                cache.runs
+            )
+        } else {
+            "Disk cache disabled".to_string()
+        }),
+    );
+    set("cache-error", json!(cache.error.unwrap_or_default()));
+    set("cache-enabled", json!(cache.enabled));
+    set(
+        "memory-text",
+        json!(format!(
+            "Tile pixels in memory: {} of {}",
+            mib(lock(&core.results).payload_bytes() as u64),
+            mib(memory_limit as u64)
+        )),
+    );
+    set("keep-pixels", json!(keep_pixels));
+    p
+}
+
+fn clear_stats(set: &mut impl FnMut(&str, Value)) {
+    set("stats-text", json!(""));
+    set("histogram", json!(Vec::<Value>::new()));
+    set("histogram-peak", json!(0));
+    set("histogram-lo", json!(""));
+    set("histogram-hi", json!(""));
+    set("hot-regions", json!(Vec::<Value>::new()));
+    set("legend-visible", json!(false));
+    set("legend-title", json!(""));
+    set("legend-lo", json!(""));
+    set("legend-hi", json!(""));
+}
+
+/// Everything in the settings that changes analysis results.
+fn result_config<B: Backend>(
+    core: &Arc<Core<B>>,
+) -> (
+    Option<String>,
+    Option<crate::contract::Contract>,
+    Resolution,
+) {
+    let state = lock(&core.state);
+    (
+        state
+            .engine_request()
+            .map(|request| crate::plugin::results_signature(&request)),
+        state.model_info().map(|m| state.config.contract_for(m)),
+        state.config.resolution,
+    )
+}
+
+fn arg_int(args: &[Value]) -> Option<i64> {
+    args.first().and_then(Value::as_i64)
+}
+
+fn arg_bool(args: &[Value]) -> Option<bool> {
+    args.first().and_then(Value::as_bool)
+}
+
+fn arg_str(args: &[Value]) -> Option<&str> {
+    args.first().and_then(Value::as_str)
+}
+
+/// Handles a sidebar callback.
+pub fn callback<B: Backend>(
+    core: &Arc<Core<B>>,
+    name: &str,
+    args: &[Value],
+) -> Result<Value, String> {
+    let before = result_config(core);
+    let mut reply = Value::Null;
+    let mut rebuild_engine = false;
+    let mut refresh_overlays = false;
+    match name {
+        "load-model" => {
+            let id = core
+                .host
+                .open_file_dialog(FileDialogArgs {
+                    title: Some("Open an ONNX model".into()),
+                    filters: vec![FileFilter {
+                        name: "ONNX models".into(),
+                        extensions: vec!["onnx".into()],
+                    }],
+                    ..Default::default()
+                })
+                .map_err(String::from)?;
+            lock(&core.state).model_dialog = Some(id);
+        }
+        "choose-runtime" => {
+            // Versioned Linux names (libonnxruntime.so.1.28.3) defeat an
+            // extension filter, so Linux lists every file.
+            let filters = if cfg!(target_os = "windows") {
+                vec![FileFilter {
+                    name: "ONNX Runtime".into(),
+                    extensions: vec!["dll".into()],
+                }]
+            } else if cfg!(target_os = "macos") {
+                vec![FileFilter {
+                    name: "ONNX Runtime".into(),
+                    extensions: vec!["dylib".into()],
+                }]
+            } else {
+                Vec::new()
+            };
+            let id = core
+                .host
+                .open_file_dialog(FileDialogArgs {
+                    title: Some("Choose the ONNX Runtime library".into()),
+                    filters,
+                    ..Default::default()
+                })
+                .map_err(String::from)?;
+            lock(&core.state).runtime_dialog = Some(id);
+        }
+        "clear-model" => core.clear_model(),
+        "output-selected" => {
+            let mut state = lock(&core.state);
+            if let (Some(index), Some(model)) = (arg_int(args), state.model_info().cloned())
+                && let Some(output) = model.outputs.get(index.max(0) as usize)
+            {
+                state
+                    .config
+                    .outputs
+                    .insert(model.sha256.clone(), output.name.clone());
+                state.touch_config();
+                rebuild_engine = true;
+            }
+            reply = json!(
+                state
+                    .model_info()
+                    .map(|m| {
+                        let output = state.config.output_for(m);
+                        m.outputs.iter().position(|o| o.name == output).unwrap_or(0) as i32
+                    })
+                    .unwrap_or(0)
+            );
+        }
+        "input-scaling-selected" | "output-scaling-selected" => {
+            let input = name == "input-scaling-selected";
+            let mut state = lock(&core.state);
+            if let (Some(scaling), Some(model)) = (
+                arg_int(args).and_then(scaling_at),
+                state.model_info().cloned(),
+            ) {
+                let entry = state
+                    .config
+                    .overrides
+                    .entry(model.sha256.clone())
+                    .or_default();
+                let declared = if input {
+                    &model.contract.input
+                } else {
+                    &model.contract.output
+                };
+                let value = (scaling != *declared).then_some(scaling);
+                if input {
+                    entry.input = value;
+                } else {
+                    entry.output = value;
+                }
+                state.touch_config();
+                refresh_overlays = true;
+            }
+            reply = json!(
+                state
+                    .model_info()
+                    .map(|m| {
+                        let contract = state.config.contract_for(m);
+                        scaling_index(if input {
+                            &contract.input
+                        } else {
+                            &contract.output
+                        })
+                    })
+                    .unwrap_or(0)
+            );
+        }
+        "composite-white-toggled" | "black-to-white-toggled" => {
+            let mut state = lock(&core.state);
+            if let (Some(on), Some(model)) = (arg_bool(args), state.model_info().cloned()) {
+                let entry = state
+                    .config
+                    .overrides
+                    .entry(model.sha256.clone())
+                    .or_default();
+                if name == "composite-white-toggled" {
+                    entry.composite_on_white =
+                        (on != model.contract.composite_on_white).then_some(on);
+                } else {
+                    let declared = model.contract.black_to_white_below;
+                    let value = if on { declared.max(4) } else { 0 };
+                    entry.black_to_white_below = (value != declared).then_some(value);
+                }
+                state.touch_config();
+                refresh_overlays = true;
             }
         }
-        let mut state = plugin_state().lock().unwrap();
-        state.pulsing_region_id = None;
-        state.pulsing_region_started_at = None;
-        drop(state);
-        request_render_if_available();
-    });
-}
-
-pub fn show_sidebar() {
-    let Some(host) = host_api() else {
-        return;
-    };
-    let _ = (host.show_sidebar)(
-        host.context,
-        RString::from(TOOLBAR_BUTTON_ID),
-        340,
-        RString::from("ui/eovae-sidebar.slint"),
-        RString::from("EovaeSidebar"),
-    );
-}
-
-fn property(name: &str, value: serde_json::Value) -> UiPropertyFFI {
-    UiPropertyFFI {
-        name: name.into(),
-        json_value: value.to_string().into(),
+        "reset-preprocessing" => {
+            let mut state = lock(&core.state);
+            if let Some(model) = state.model_info().cloned() {
+                state.config.overrides.remove(&model.sha256);
+                state.touch_config();
+                refresh_overlays = true;
+            }
+        }
+        "device-selected" => {
+            let mut state = lock(&core.state);
+            if let Some(device) =
+                arg_int(args).and_then(|i| DevicePreference::ALL.get(i.max(0) as usize).copied())
+                && device != state.config.device
+            {
+                state.config.device = device;
+                state.touch_config();
+                rebuild_engine = true;
+            }
+            reply = json!(
+                DevicePreference::ALL
+                    .iter()
+                    .position(|d| *d == state.config.device)
+                    .unwrap_or(0) as i32
+            );
+        }
+        "resolution-selected" => {
+            let mut state = lock(&core.state);
+            let index = arg_int(args).unwrap_or(0);
+            let levels = state
+                .active_file
+                .and_then(|id| state.files.get(&id))
+                .map(|f| f.geometry.levels.clone())
+                .unwrap_or_default();
+            let resolution = match index {
+                0 => Some(Resolution::Auto),
+                i => levels
+                    .get((i - 1).max(0) as usize)
+                    .map(|level| Resolution::Downsample {
+                        value: level.downsample,
+                    }),
+            };
+            if let Some(resolution) = resolution
+                && resolution != state.config.resolution
+            {
+                state.config.resolution = resolution;
+                state.touch_config();
+                refresh_overlays = true;
+            }
+            reply = json!(index);
+        }
+        "threads-committed" => {
+            let mut state = lock(&core.state);
+            let threads = crate::config::Config::parse_threads(
+                arg_str(args).unwrap_or(""),
+                state.config.threads,
+            );
+            if threads != state.config.threads {
+                state.config.threads = threads;
+                state.touch_config();
+                rebuild_engine = true;
+            }
+            reply = json!(if state.config.threads == 0 {
+                "auto".to_string()
+            } else {
+                state.config.threads.to_string()
+            });
+        }
+        "batch-committed" => {
+            let mut state = lock(&core.state);
+            let batch = crate::config::Config::parse_batch(
+                arg_str(args).unwrap_or(""),
+                state.config.batch_size,
+            );
+            if batch != state.config.batch_size {
+                state.config.batch_size = batch;
+                state.touch_config();
+            }
+            let fixed = state.model_info().and_then(|m| m.fixed_batch);
+            reply = json!(fixed.unwrap_or(state.config.batch_size).to_string());
+        }
+        "tf32-toggled" => {
+            let mut state = lock(&core.state);
+            if let Some(on) = arg_bool(args)
+                && on != state.config.tf32
+            {
+                state.config.tf32 = on;
+                state.touch_config();
+                rebuild_engine = true;
+            }
+        }
+        "skip-background-toggled" => {
+            let mut state = lock(&core.state);
+            if let Some(on) = arg_bool(args) {
+                state.config.skip_background = on;
+                state.touch_config();
+            }
+        }
+        "auto-analyze-toggled" => {
+            let mut state = lock(&core.state);
+            if let Some(on) = arg_bool(args) {
+                state.config.auto_analyze = on;
+                state.touch_config();
+                if !on
+                    && let Some(job) = state
+                        .job
+                        .as_ref()
+                        .filter(|j| j.request.kind == JobKind::Auto)
+                {
+                    job.control.cancel();
+                }
+            }
+        }
+        "keep-pixels-toggled" => {
+            let mut state = lock(&core.state);
+            if let Some(on) = arg_bool(args) {
+                state.config.keep_pixels = on;
+                state.touch_config();
+            }
+        }
+        "analyze-viewport" | "analyze-slide" | "analyze-roi" => {
+            let (file_id, pane, view) = {
+                let state = lock(&core.state);
+                let pane = state.focused_pane;
+                let view = pane.and_then(|p| state.panes.get(&p)).and_then(|p| p.view);
+                (state.active_file, pane, view)
+            };
+            let Some(file_id) = file_id else {
+                return Err("Open a slide first.".to_string());
+            };
+            core.start_job(JobRequest {
+                kind: match name {
+                    "analyze-slide" => JobKind::WholeSlide,
+                    "analyze-roi" => JobKind::Roi,
+                    _ => JobKind::Viewport,
+                },
+                file_id,
+                pane,
+                view,
+            });
+        }
+        "cancel-job" => core.cancel_job(),
+        "view-selected" => {
+            let file_id = lock(&core.state).active_file;
+            if let (Some(file_id), Some(mode)) = (
+                file_id,
+                arg_int(args).and_then(|i| Mode::ALL.get(i.max(0) as usize).copied()),
+            ) {
+                core.set_mode(file_id, mode, None)?;
+            }
+            let state = lock(&core.state);
+            reply = json!(
+                state
+                    .active_file
+                    .and_then(|id| state.files.get(&id))
+                    .map(|f| f.mode.index() as i32)
+                    .unwrap_or(0)
+            );
+        }
+        "jump-to-region" => {
+            let Some(coord) = arg_str(args).and_then(TileCoord::parse_id) else {
+                return Ok(Value::Null);
+            };
+            let target = {
+                let mut state = lock(&core.state);
+                let file_id = state.active_file;
+                let rect = file_id
+                    .and_then(|id| run_context(&state, id).ok())
+                    .map(|ctx| ctx.grid.valid_footprint(coord));
+                if let (Some(file_id), Some(_)) = (file_id, rect) {
+                    state.pulse = Some((file_id, coord, Instant::now()));
+                }
+                rect.map(|rect| (state.focused_pane, rect, file_id))
+            };
+            if let Some((pane, rect, Some(file_id))) = target {
+                // Frame the region (with context around it).
+                let padded = Rect {
+                    x: rect.x - rect.width,
+                    y: rect.y - rect.height,
+                    width: rect.width * 3.0,
+                    height: rect.height * 3.0,
+                };
+                core.host.frame(pane, padded).map_err(String::from)?;
+                core.dirty.mark(|d| {
+                    d.overlays.insert(file_id);
+                });
+                let _ = PULSE;
+            }
+        }
+        "hover-region" => {
+            let coord = arg_str(args).and_then(TileCoord::parse_id);
+            let mut state = lock(&core.state);
+            let file_id = state.active_file;
+            let hover = file_id.zip(coord);
+            if state.hover != hover {
+                state.hover = hover;
+                drop(state);
+                if let Some(file_id) = file_id {
+                    core.dirty.mark(|d| {
+                        d.overlays.insert(file_id);
+                    });
+                }
+            }
+        }
+        "export-csv" => {
+            let file = {
+                let state = lock(&core.state);
+                state
+                    .active_file
+                    .and_then(|id| state.files.get(&id).map(|f| (id, f.info.filename.clone())))
+            };
+            if let Some((file_id, filename)) = file {
+                let stem = std::path::Path::new(&filename)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "slide".to_string());
+                let id = core
+                    .host
+                    .save_file_dialog(FileDialogArgs {
+                        title: Some("Export tile scores".into()),
+                        filters: vec![FileFilter {
+                            name: "CSV".into(),
+                            extensions: vec!["csv".into()],
+                        }],
+                        default_name: Some(format!("{stem}-eovae.csv")),
+                        ..Default::default()
+                    })
+                    .map_err(String::from)?;
+                lock(&core.state).export_dialog = Some((id, file_id));
+            }
+        }
+        "clear-cache" => {
+            let status = core.cache.status();
+            let id = core
+                .host
+                .confirm(ConfirmArgs {
+                    title: "Clear the VAE result cache?".into(),
+                    message: format!(
+                        "This deletes {} of stored results for every slide. Results are recomputed when needed.",
+                        mib(status.bytes)
+                    ),
+                    confirm_label: "Clear".into(),
+                    cancel_label: "Cancel".into(),
+                    destructive: true,
+                })
+                .map_err(String::from)?;
+            lock(&core.state).clear_confirm = Some(id);
+        }
+        "section-toggled" => {
+            let section = args.first().and_then(Value::as_str).unwrap_or("");
+            let expanded = args.get(1).and_then(Value::as_bool).unwrap_or(true);
+            let mut state = lock(&core.state);
+            let sections = &mut state.config.sections;
+            match section {
+                "model" => sections.model = expanded,
+                "analysis" => sections.analysis = expanded,
+                "results" => sections.results = expanded,
+                "cache" => sections.cache = expanded,
+                _ => {}
+            }
+            state.touch_config();
+        }
+        _ => {}
     }
+    // A change that alters results ends the running job: its tiles would
+    // belong to the old configuration (VAE-12).
+    if result_config(core) != before {
+        let state = lock(&core.state);
+        if let Some(job) = &state.job {
+            job.control.cancel();
+        }
+    }
+    if rebuild_engine {
+        let has_model = lock(&core.state).model_info().is_some();
+        if has_model {
+            core.prebuild_engine();
+        }
+    }
+    if refresh_overlays || rebuild_engine {
+        core.dirty.mark(|d| {
+            d.all_overlays = true;
+            d.hud = true;
+        });
+    }
+    core.dirty.mark(|d| d.sidebar = true);
+    Ok(reply)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use crate::contract::ContractOverride;
 
-    fn sidebar_test_guard() -> MutexGuard<'static, ()> {
-        static SIDEBAR_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-        SIDEBAR_TEST_MUTEX
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap()
-    }
-
-    fn reset_sidebar_test_state() {
-        let mut state = plugin_state().lock().unwrap();
-        *state = crate::state::PluginState::default();
+    #[test]
+    fn scaling_choices_round_trip() {
+        for index in 0..4 {
+            assert_eq!(scaling_index(&scaling_at(index).unwrap()), index as i32);
+        }
+        assert!(scaling_at(9).is_none());
     }
 
     #[test]
-    fn ignores_noop_mode_change() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(!update_mode("\"Original\""));
+    fn numbers_are_readable() {
+        assert_eq!(thousands(1234567.4), "1,234,567");
+        assert_eq!(thousands(12.0), "12");
+        assert_eq!(mib(3 * 1024 * 1024 * 1024), "3.0 GB");
     }
 
     #[test]
-    fn ignores_noop_mip_change() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(!update_mip_level("\"1x\""));
-    }
-
-    #[test]
-    fn jump_to_region_accepts_single_string_array_payload() {
-        let parsed = serde_json::from_str::<Vec<String>>("[\"10:20:30:40\"]")
-            .ok()
-            .and_then(|args| args.into_iter().next())
-            .unwrap();
-        assert_eq!(parsed, "10:20:30:40");
-    }
-
-    #[test]
-    fn hover_region_accepts_single_string_array_payload() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(update_hovered_region("[\"10:20:30:40\"]"));
-        assert_eq!(
-            plugin_state().lock().unwrap().hovered_region_id.as_deref(),
-            Some("10:20:30:40")
-        );
-    }
-
-    #[test]
-    fn ignores_noop_tensor_selection_during_initialization() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(!update_selected_tensor("\"input\"", true));
-        assert!(!update_selected_tensor("\"reconstruction\"", false));
-    }
-
-    #[test]
-    fn ignores_noop_section_toggle() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(!update_section_expanded("true", Section::Model));
-    }
-
-    #[test]
-    fn section_toggle_accepts_single_bool_array_payload() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(update_section_expanded("[false]", Section::Model));
-        assert!(!plugin_state().lock().unwrap().model_section_expanded);
-    }
-
-    #[test]
-    fn analysis_threads_accepts_single_string_array_payload() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(update_analysis_threads("[\"2\"]"));
-        assert_eq!(
-            plugin_state().lock().unwrap().config.analysis_threads,
-            clamp_analysis_threads(2)
-        );
-    }
-
-    #[test]
-    fn analysis_batch_size_accepts_single_string_array_payload() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        assert!(update_analysis_batch_size("[\"65\"]"));
-        assert_eq!(plugin_state().lock().unwrap().config.gpu_batch_size, 65);
-    }
-
-    #[test]
-    fn clamps_analysis_threads_to_max() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        plugin_state().lock().unwrap().config.analysis_threads = 1;
-        let _ = update_analysis_threads("\"9999\"");
-        assert_eq!(
-            plugin_state().lock().unwrap().config.analysis_threads,
-            max_analysis_threads()
-        );
-    }
-
-    #[test]
-    fn clamps_analysis_batch_size() {
-        let _guard = sidebar_test_guard();
-        reset_sidebar_test_state();
-        plugin_state().lock().unwrap().config.gpu_batch_size = 64;
-        let _ = update_analysis_batch_size("\"99999\"");
-        assert_eq!(plugin_state().lock().unwrap().config.gpu_batch_size, 1024);
+    fn unchanged_overrides_stay_empty() {
+        assert!(ContractOverride::default().is_empty());
     }
 }

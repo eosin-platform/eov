@@ -1,0 +1,16 @@
+[package]
+name = "eovae-check-ui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0 OR GPL-3.0"
+description = "Compiles eovae's .slint sidebar with the Slint version eov uses and checks the plugin's properties against it"
+
+# A developer tool, not part of the plugin build (see scripts/check_ui.sh).
+[workspace]
+
+[dependencies]
+# Keep in step with eov's slint-interpreter (app/Cargo.toml).
+slint-interpreter = { version = "=1.17.1", default-features = false, features = ["compat-1-2", "std", "internal", "internal-json"] }
+i-slint-compiler = { version = "=1.17.1", default-features = false }
+serde_json = "1"
