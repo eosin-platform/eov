@@ -106,10 +106,12 @@ fn capture(
     }
     let file = state.get_file(file_id)?;
     let pane_state = file.pane_state(pane)?;
+    let pane_uid = state.pane_uid(pane);
     let layers = with_host(|host| host.store.file_layers(i64::from(file_id)).layers)
         .unwrap_or_default()
         .into_iter()
         .filter(|layer| host_layers || layer.key.owner != Owner::Host)
+        .filter(|layer| pane_uid.is_none_or(|uid| !layer.hidden_panes.contains(&uid)))
         .collect();
     Some(Capture {
         file_id,

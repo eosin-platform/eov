@@ -266,7 +266,11 @@ impl UiHost {
             calibration,
             unit,
         };
-        let layers = self.store.file_layers(file_id);
+        let mut layers = self.store.file_layers(file_id);
+        // Layers their owner hid in this pane.
+        layers
+            .layers
+            .retain(|layer| !layer.hidden_panes.contains(&uid));
         let (hovered, overrides, transients) = match self.controller.try_borrow() {
             Ok(controller) => controller.scene_extras(&pane_view),
             Err(_) => Default::default(),

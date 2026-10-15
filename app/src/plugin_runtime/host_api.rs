@@ -14,7 +14,7 @@ use abi_stable::{
 };
 use eov_plugin_api::abi::{
     FfiError, FfiErrorKind, FfiResult, HostBox, HostFfi, HostFfi_TO, MAX_RASTER_PIXELS,
-    MAX_REGION_PIXELS, Pixels, RasterUpload, RegionRequest,
+    MAX_REGION_PIXELS, Pixels, RasterPatch, RasterUpload, RegionRequest,
 };
 use eov_plugin_api::protocol::{methods, *};
 use serde::de::DeserializeOwned;
@@ -291,6 +291,24 @@ impl HostApi {
                 self.push(Command::OverlaysChanged);
                 null
             }
+            methods::LAYER_SET_MIN_ZOOM => {
+                let args: MinZoomArgs = parse(args)?;
+                self.shared
+                    .overlays
+                    .set_min_zoom(&self.owner, &args.layer_id, args.min_zoom)
+                    .map_err(invalid)?;
+                self.push(Command::OverlaysChanged);
+                null
+            }
+            methods::LAYER_SET_PANE_VISIBILITY => {
+                let args: PaneVisibilityArgs = parse(args)?;
+                self.shared
+                    .overlays
+                    .set_pane_visibility(&self.owner, &args.layer_id, args.pane, args.visible)
+                    .map_err(invalid)?;
+                self.push(Command::OverlaysChanged);
+                null
+            }
             methods::LAYER_CLEAR => {
                 let args: IdArgs = parse(args)?;
                 self.shared
@@ -403,6 +421,15 @@ impl HostApi {
                 }
                 self.push(Command::View(ViewCommand::Zoom(args)));
                 null
+            }
+            methods::VIEW_DISPLAY => {
+                let args: PaneArgs = parse(args)?;
+                let published = self.shared.published();
+                let pane = args.pane.or(published.snapshot.focused_pane);
+                let display = pane
+                    .and_then(|pane| published.displays.get(&pane).cloned())
+                    .unwrap_or_default();
+                to_value(&display)?
             }
             methods::VIEW_FIT => {
                 let args: PaneArgs = parse(args)?;
@@ -730,6 +757,32 @@ impl HostFfi for HostApi {
         guarded(&self.ctx, || {
             self.check_access()?;
             self.put_raster_inner(raster)
+        })
+    }
+
+    fn patch_raster(&self, patch: RasterPatch) -> FfiResult<()> {
+        guarded(&self.ctx, || {
+            self.check_access()?;
+            if !patch.pixels.is_well_formed() {
+                return Err(invalid("patch size does not match its data"));
+            }
+            let mut data = patch.pixels.data.into_vec();
+            premultiply(&mut data);
+            self.shared
+                .overlays
+                .patch_raster(
+                    &self.owner,
+                    patch.layer_id.as_str(),
+                    patch.object_id.as_str(),
+                    patch.x,
+                    patch.y,
+                    patch.pixels.width,
+                    patch.pixels.height,
+                    &data,
+                )
+                .map_err(invalid)?;
+            self.push(Command::OverlaysChanged);
+            Ok(())
         })
     }
 }

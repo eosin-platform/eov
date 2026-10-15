@@ -38,7 +38,8 @@
 
 use crate::abi::{
     self, FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostBox, PluginBox,
-    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterUpload, RegionRequest,
+    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterPatch, RasterUpload,
+    RegionRequest,
 };
 use crate::protocol::{methods, *};
 use abi_stable::{
@@ -583,6 +584,12 @@ impl Host {
         self.command(methods::VIEW_FIT, &PaneArgs { pane })
     }
 
+    /// How a pane displays its slide (tone adjustments, normalisation), so
+    /// overlays made from slide pixels can match it.
+    pub fn display_adjustments(&self, pane: Option<PaneId>) -> HostResult<DisplayAdjustments> {
+        self.call(methods::VIEW_DISPLAY, &PaneArgs { pane })
+    }
+
     /// Frames a level-0 rectangle in a pane.
     pub fn frame(&self, pane: Option<PaneId>, rect: Rect) -> HostResult<()> {
         self.command(
@@ -843,6 +850,51 @@ impl Layer {
             pixels: image.into_pixels(),
             smooth,
         }))
+    }
+
+    /// Overwrites part of a raster object put with [`put_raster`](Self::put_raster);
+    /// `(x, y)` is the patch's top-left pixel in the raster. On
+    /// hosts without patching this fails with `Unsupported`: upload the
+    /// whole raster instead.
+    pub fn patch_raster(
+        &self,
+        object_id: impl Into<String>,
+        x: u32,
+        y: u32,
+        image: Image,
+    ) -> HostResult<()> {
+        from_ffi(self.host.ffi.patch_raster(RasterPatch {
+            layer_id: RString::from(self.layer_id.as_str()),
+            object_id: RString::from(object_id.into()),
+            x,
+            y,
+            pixels: image.into_pixels(),
+        }))
+    }
+
+    /// Hides the layer below `min_zoom` screen pixels per level-0 pixel
+    /// (`None`: every zoom) without recreating it.
+    pub fn set_min_zoom(&self, min_zoom: Option<f64>) -> HostResult<()> {
+        self.host.command(
+            methods::LAYER_SET_MIN_ZOOM,
+            &MinZoomArgs {
+                layer_id: self.layer_id.clone(),
+                min_zoom,
+            },
+        )
+    }
+
+    /// Shows or hides the layer in one pane only; the layer's own
+    /// visibility still applies.
+    pub fn set_visible_in_pane(&self, pane: PaneId, visible: bool) -> HostResult<()> {
+        self.host.command(
+            methods::LAYER_SET_PANE_VISIBILITY,
+            &PaneVisibilityArgs {
+                layer_id: self.layer_id.clone(),
+                pane,
+                visible,
+            },
+        )
     }
 
     /// Deletes the layer and its objects.

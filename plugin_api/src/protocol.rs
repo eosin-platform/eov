@@ -1204,6 +1204,12 @@ pub enum HostEvent {
         filter_id: String,
         enabled: bool,
     },
+    /// A slide's region of interest was drawn, changed or removed (`None`).
+    RoiChanged {
+        file_id: FileId,
+        #[serde(default)]
+        roi: Option<Rect>,
+    },
     /// Sent by newer hosts for events this plugin version does not know.
     #[serde(other)]
     Unknown,
@@ -1296,6 +1302,11 @@ pub mod methods {
     pub const LAYER_REMOVE_OBJECTS: &str = "layer.remove_objects";
     /// `IdArgs { id: layer_id }` → `null`. Removes every object.
     pub const LAYER_CLEAR: &str = "layer.clear";
+    /// `MinZoomArgs` → `null`. Hides the layer below a zoom level.
+    pub const LAYER_SET_MIN_ZOOM: &str = "layer.set_min_zoom";
+    /// `PaneVisibilityArgs` → `null`. Shows or hides the layer in one pane
+    /// (on top of the layer's own visibility).
+    pub const LAYER_SET_PANE_VISIBILITY: &str = "layer.set_pane_visibility";
 
     /// `SurfaceSpec` → `SurfaceOpened`
     pub const SURFACE_OPEN: &str = "surface.open";
@@ -1323,6 +1334,9 @@ pub mod methods {
     pub const VIEW_FIT: &str = "view.fit";
     /// `ViewFrameArgs` → `null`
     pub const VIEW_FRAME: &str = "view.frame";
+    /// `PaneArgs` → `DisplayAdjustments`: how the pane renders the slide,
+    /// so overlays derived from slide pixels can match it.
+    pub const VIEW_DISPLAY: &str = "view.display";
 
     /// `OffsetArgs` → `null`
     pub const APP_CYCLE_PANE: &str = "app.cycle_pane";
@@ -1386,6 +1400,7 @@ pub mod event_names {
     pub const OBJECT_HOVERED: &str = "object_hovered";
     pub const EMPTY_AREA_CLICKED: &str = "empty_area_clicked";
     pub const CONTEXT_MENU_REQUESTED: &str = "context_menu_requested";
+    pub const ROI_CHANGED: &str = "roi_changed";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1424,6 +1439,59 @@ pub struct OpenFileArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdArgs {
     pub id: String,
+}
+
+/// Arguments of [`methods::LAYER_SET_MIN_ZOOM`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MinZoomArgs {
+    pub layer_id: String,
+    /// Screen pixels per level-0 pixel below which the layer is not drawn;
+    /// `None` draws it at every zoom.
+    #[serde(default)]
+    pub min_zoom: Option<f64>,
+}
+
+/// Arguments of [`methods::LAYER_SET_PANE_VISIBILITY`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PaneVisibilityArgs {
+    pub layer_id: String,
+    pub pane: PaneId,
+    pub visible: bool,
+}
+
+/// How a pane displays its slide (the answer of [`methods::VIEW_DISPLAY`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisplayAdjustments {
+    /// 1.0 is unchanged.
+    pub gamma: f32,
+    /// Added to every channel (0.0 is unchanged; −1…1).
+    pub brightness: f32,
+    /// 1.0 is unchanged.
+    pub contrast: f32,
+    /// Sharpening amount (0.0 is off).
+    pub sharpness: f32,
+    /// Stain normalisation method (`"macenko"`, `"vahadane"`), if any.
+    #[serde(default)]
+    pub stain_normalization: Option<String>,
+    /// Whether any colour processing is applied.
+    pub modified: bool,
+    /// What the viewer shows as its colour badge (empty when unmodified).
+    #[serde(default)]
+    pub badge: String,
+}
+
+impl Default for DisplayAdjustments {
+    fn default() -> Self {
+        Self {
+            gamma: 1.0,
+            brightness: 0.0,
+            contrast: 1.0,
+            sharpness: 0.0,
+            stain_normalization: None,
+            modified: false,
+            badge: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

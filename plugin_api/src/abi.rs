@@ -172,6 +172,20 @@ pub struct RasterUpload {
     pub smooth: bool,
 }
 
+/// New pixels for part of an existing raster object (see
+/// [`HostFfi::patch_raster`]); offsets are in the raster's own pixels.
+#[repr(C)]
+#[derive(StableAbi, Debug, Clone, PartialEq)]
+pub struct RasterPatch {
+    pub layer_id: RString,
+    pub object_id: RString,
+    /// Top-left pixel of the patch within the raster.
+    pub x: u32,
+    pub y: u32,
+    /// Straight-alpha RGBA8; must fit inside the raster.
+    pub pixels: Pixels,
+}
+
 /// The pane a filter is being applied for.
 #[repr(C)]
 #[derive(StableAbi, Debug, Clone, Copy, PartialEq, Default)]
@@ -261,6 +275,18 @@ pub trait HostFfi: Send + Sync {
     /// Adds or replaces a raster overlay object.
     #[sabi(last_prefix_field)]
     fn put_raster(&self, raster: RasterUpload) -> FfiResult<()>;
+
+    /// Overwrites part of an existing raster object, so plugins that fill a
+    /// heat map incrementally need not re-upload all of it.
+    /// Hosts without it answer [`FfiErrorKind::Unsupported`]; fall back to
+    /// [`put_raster`](Self::put_raster).
+    fn patch_raster(&self, patch: RasterPatch) -> FfiResult<()> {
+        let _ = patch;
+        RResult::RErr(FfiError::new(
+            FfiErrorKind::Unsupported,
+            "this host cannot patch rasters",
+        ))
+    }
 }
 
 /// An owned host API handle.

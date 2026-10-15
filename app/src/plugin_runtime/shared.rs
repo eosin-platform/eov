@@ -11,10 +11,10 @@ use crate::overlay::OverlayStore;
 use arc_swap::ArcSwap;
 use eov_plugin_api::abi::RegionRequest;
 use eov_plugin_api::protocol::{
-    ConfirmArgs, FileDialogArgs, FileId, FileInfo, HostSnapshot, JobFinishArgs, JobStartArgs,
-    JobUpdateArgs, MeasurementInfo, NotifyArgs, PaneId, PropertyMap, Rect, SeriesAction,
-    SurfaceSpec, UndoClearArgs, UndoPushArgs, ViewFrameArgs, ViewPanArgs, ViewSetArgs,
-    ViewZoomArgs,
+    ConfirmArgs, DisplayAdjustments, FileDialogArgs, FileId, FileInfo, HostSnapshot, JobFinishArgs,
+    JobStartArgs, JobUpdateArgs, MeasurementInfo, NotifyArgs, PaneId, PropertyMap, Rect,
+    SeriesAction, SurfaceSpec, UndoClearArgs, UndoPushArgs, ViewFrameArgs, ViewPanArgs,
+    ViewSetArgs, ViewZoomArgs,
 };
 use parking_lot::{Mutex, RwLock};
 use serde_json::{Map, Value};
@@ -46,6 +46,8 @@ pub struct PublishedFile {
 pub struct Published {
     pub snapshot: HostSnapshot,
     pub files: HashMap<FileId, PublishedFile>,
+    /// How each pane (stable id) displays its slide.
+    pub displays: HashMap<PaneId, DisplayAdjustments>,
 }
 
 /// A plugin's identity and revocable access.

@@ -127,6 +127,8 @@ pub struct Layer {
     max_screen_extent: f64,
     /// Largest image-space size (µm/level-0 units), already in level-0 px.
     max_image_extent: f64,
+    /// Panes (stable ids) the owner hid this layer in.
+    pub hidden_panes: BTreeSet<u32>,
 }
 
 impl Layer {
@@ -142,6 +144,7 @@ impl Layer {
             selection: BTreeSet::new(),
             max_screen_extent: 0.0,
             max_image_extent: 0.0,
+            hidden_panes: BTreeSet::new(),
         };
         let style = layer.spec.style.clone();
         layer.note_style(&style);
@@ -152,6 +155,11 @@ impl Layer {
             layer.note_style(&style);
         }
         layer
+    }
+
+    /// Whether the layer is shown in the pane with stable id `pane`.
+    pub fn visible_in(&self, pane: u32) -> bool {
+        self.spec.visible && !self.hidden_panes.contains(&pane)
     }
 
     #[cfg(test)]
@@ -454,6 +462,8 @@ pub struct Hit {
 #[derive(Clone, Copy, Debug)]
 pub struct PickParams {
     pub file_id: FileId,
+    /// The pane picked in (stable id): layers hidden there are skipped.
+    pub pane: Option<u32>,
     pub point: Point,
     /// Logical screen pixels per level-0 pixel.
     pub zoom: f64,
@@ -744,6 +754,77 @@ impl OverlayStore {
         })
     }
 
+    /// Hides the layer below `min_zoom`.
+    pub fn set_min_zoom(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        min_zoom: Option<f64>,
+    ) -> Result<(), String> {
+        if min_zoom.is_some_and(|zoom| !(zoom.is_finite() && zoom > 0.0)) {
+            return Err("min_zoom must be a positive number".to_string());
+        }
+        self.with_layer(owner, layer_id, |layer, _| {
+            layer.spec.min_zoom = min_zoom;
+            Ok(())
+        })
+    }
+
+    /// Shows or hides the layer in one pane.
+    pub fn set_pane_visibility(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        pane: u32,
+        visible: bool,
+    ) -> Result<(), String> {
+        self.with_layer(owner, layer_id, |layer, _| {
+            if visible {
+                layer.hidden_panes.remove(&pane);
+            } else {
+                layer.hidden_panes.insert(pane);
+            }
+            Ok(())
+        })
+    }
+
+    /// Overwrites a `width` x `height` block of a raster's premultiplied
+    /// pixels at `(x, y)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn patch_raster(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        object_id: &str,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        premultiplied: &[u8],
+    ) -> Result<(), String> {
+        self.with_layer(owner, layer_id, |layer, _| {
+            let raster = layer
+                .rasters
+                .get_mut(object_id)
+                .ok_or_else(|| format!("unknown raster '{object_id}'"))?;
+            let fits = u64::from(x) + u64::from(width) <= u64::from(raster.width)
+                && u64::from(y) + u64::from(height) <= u64::from(raster.height);
+            if !fits || premultiplied.len() != width as usize * height as usize * 4 {
+                return Err("the patch must fit inside the raster".to_string());
+            }
+            let raster = Arc::make_mut(raster);
+            let pixels = Arc::make_mut(&mut raster.premultiplied);
+            let stride = raster.width as usize * 4;
+            let row_bytes = width as usize * 4;
+            for row in 0..height as usize {
+                let dst = (y as usize + row) * stride + x as usize * 4;
+                pixels[dst..dst + row_bytes]
+                    .copy_from_slice(&premultiplied[row * row_bytes..(row + 1) * row_bytes]);
+            }
+            Ok(())
+        })
+    }
+
     /// Removes every layer shown on `file_id` (the file was closed).
     pub fn remove_file(&self, file_id: FileId) {
         let mut inner = self.inner.write();
@@ -813,6 +894,7 @@ impl OverlayStore {
         let mut hits = Vec::new();
         for layer in &file_layers.layers {
             if !layer.spec.visible
+                || params.pane.is_some_and(|pane| !layer.visible_in(pane))
                 || layer.spec.min_zoom.is_some_and(|min| zoom < min)
                 || !filter(layer)
             {
@@ -983,12 +1065,103 @@ mod tests {
 
     fn pick(file_id: FileId, x: f64, y: f64) -> PickParams {
         PickParams {
+            pane: None,
             file_id,
             point: [x, y],
             zoom: 1.0,
             mpp: None,
             tolerance_px: 4.0,
         }
+    }
+
+    #[test]
+    fn layers_can_be_hidden_in_one_pane() {
+        let store = OverlayStore::new();
+        store
+            .create_layer(plugin(), LayerSpec::new("marks", 1))
+            .unwrap();
+        store
+            .upsert(&plugin(), "marks", vec![square("a", 0.0, 0.0, 10.0)], false)
+            .unwrap();
+        let in_pane = |pane| PickParams {
+            pane: Some(pane),
+            ..pick(1, 5.0, 5.0)
+        };
+        assert_eq!(store.hit_test(in_pane(7), |_| true).len(), 1);
+        store
+            .set_pane_visibility(&plugin(), "marks", 7, false)
+            .unwrap();
+        assert!(store.hit_test(in_pane(7), |_| true).is_empty());
+        assert_eq!(store.hit_test(in_pane(8), |_| true).len(), 1);
+        let layer = store.layer(&plugin(), "marks").unwrap();
+        assert!(!layer.visible_in(7) && layer.visible_in(8));
+        store
+            .set_pane_visibility(&plugin(), "marks", 7, true)
+            .unwrap();
+        assert_eq!(store.hit_test(in_pane(7), |_| true).len(), 1);
+    }
+
+    #[test]
+    fn min_zoom_can_change_without_recreating_the_layer() {
+        let store = OverlayStore::new();
+        store
+            .create_layer(plugin(), LayerSpec::new("grid", 1))
+            .unwrap();
+        store.set_min_zoom(&plugin(), "grid", Some(0.5)).unwrap();
+        assert_eq!(
+            store.layer(&plugin(), "grid").unwrap().spec.min_zoom,
+            Some(0.5)
+        );
+        assert!(store.set_min_zoom(&plugin(), "grid", Some(-1.0)).is_err());
+        store.set_min_zoom(&plugin(), "grid", None).unwrap();
+        assert_eq!(store.layer(&plugin(), "grid").unwrap().spec.min_zoom, None);
+    }
+
+    #[test]
+    fn rasters_can_be_patched_in_place() {
+        let store = OverlayStore::new();
+        store
+            .create_layer(plugin(), LayerSpec::new("heat", 1))
+            .unwrap();
+        store
+            .put_raster(
+                &plugin(),
+                "heat",
+                StoredRaster {
+                    object_id: "map".into(),
+                    rect: Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 100.0,
+                        height: 100.0,
+                    },
+                    width: 4,
+                    height: 4,
+                    premultiplied: Arc::new(vec![0; 4 * 4 * 4]),
+                    smooth: false,
+                    seq: 0,
+                },
+            )
+            .unwrap();
+        let patch = [255u8; 2 * 2 * 4];
+        store
+            .patch_raster(&plugin(), "heat", "map", 1, 1, 2, 2, &patch)
+            .unwrap();
+        let layer = store.layer(&plugin(), "heat").unwrap();
+        let raster = layer.rasters().next().unwrap();
+        let px = |x: usize, y: usize| raster.premultiplied[(y * 4 + x) * 4];
+        assert_eq!((px(0, 0), px(1, 1), px(2, 2), px(3, 3)), (0, 255, 255, 0));
+        // Patches must fit.
+        assert!(
+            store
+                .patch_raster(&plugin(), "heat", "map", 3, 3, 2, 2, &patch)
+                .is_err()
+        );
+        assert!(
+            store
+                .patch_raster(&plugin(), "heat", "nope", 0, 0, 2, 2, &patch)
+                .is_err()
+        );
     }
 
     #[test]

@@ -41,7 +41,7 @@
 
 use crate::abi::{
     FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostFfi, HostFfi_TO, Pixels,
-    PluginBox, RasterUpload, RegionRequest,
+    PluginBox, RasterPatch, RasterUpload, RegionRequest,
 };
 use crate::protocol::{methods, *};
 use crate::sdk::{Image, Plugin, create_plugin};
@@ -70,6 +70,8 @@ pub struct MockLayer {
     pub objects: BTreeMap<String, OverlayObject>,
     pub rasters: BTreeMap<String, RasterUpload>,
     pub selection: Vec<String>,
+    /// Panes the plugin hid the layer in (`layer.set_pane_visibility`).
+    pub hidden_panes: std::collections::BTreeSet<PaneId>,
 }
 
 /// A surface as the mock host stores it.
@@ -102,6 +104,8 @@ pub struct MockState {
     pub clipboard: Option<String>,
     pub roi: BTreeMap<FileId, Rect>,
     pub measurements: Vec<MeasurementInfo>,
+    /// What `view.display` answers.
+    pub display: DisplayAdjustments,
     pub posted: Vec<String>,
     /// Serves `read_region`; without one a mid-grey opaque image is returned.
     pub region_reader: Option<Box<RegionReader>>,
@@ -301,6 +305,7 @@ impl MockHost {
                         objects: BTreeMap::new(),
                         rasters: BTreeMap::new(),
                         selection: Vec::new(),
+                        hidden_panes: Default::default(),
                     },
                 );
                 null
@@ -330,6 +335,22 @@ impl MockHost {
                 state.layers.remove(&args.id);
                 null
             }
+            methods::LAYER_SET_MIN_ZOOM => {
+                let args: MinZoomArgs = parse(args)?;
+                layer_mut(&mut state, &args.layer_id)?.spec.min_zoom = args.min_zoom;
+                null
+            }
+            methods::LAYER_SET_PANE_VISIBILITY => {
+                let args: PaneVisibilityArgs = parse(args)?;
+                let layer = layer_mut(&mut state, &args.layer_id)?;
+                if args.visible {
+                    layer.hidden_panes.remove(&args.pane);
+                } else {
+                    layer.hidden_panes.insert(args.pane);
+                }
+                null
+            }
+            methods::VIEW_DISPLAY => json!(state.display),
             methods::LAYER_SELECT => {
                 let args: SelectArgs = parse(args)?;
                 layer_mut(&mut state, &args.layer_id)?.selection = args.object_ids;
@@ -591,6 +612,36 @@ impl HostFfi for MockHost {
             Err(e) => RErr(e),
         }
     }
+
+    fn patch_raster(&self, patch: RasterPatch) -> FfiResult<()> {
+        let mut state = self.state();
+        if state.unsupported.iter().any(|m| m == "raster.patch") {
+            return RErr(FfiError::new(FfiErrorKind::Unsupported, "raster.patch"));
+        }
+        let invalid = |message: &str| RErr(FfiError::new(FfiErrorKind::InvalidArguments, message));
+        if !patch.pixels.is_well_formed() {
+            return invalid("patch size does not match its data");
+        }
+        let layer = match layer_mut(&mut state, patch.layer_id.as_str()) {
+            Ok(layer) => layer,
+            Err(e) => return RErr(e),
+        };
+        let Some(raster) = layer.rasters.get_mut(patch.object_id.as_str()) else {
+            return invalid("unknown raster");
+        };
+        let (pw, ph) = (patch.pixels.width as usize, patch.pixels.height as usize);
+        let (rw, rh) = (raster.pixels.width as usize, raster.pixels.height as usize);
+        let (x, y) = (patch.x as usize, patch.y as usize);
+        if x + pw > rw || y + ph > rh {
+            return invalid("the patch must fit inside the raster");
+        }
+        for row in 0..ph {
+            let dst = ((y + row) * rw + x) * 4;
+            raster.pixels.data[dst..dst + pw * 4]
+                .copy_from_slice(&patch.pixels.data[row * pw * 4..(row + 1) * pw * 4]);
+        }
+        ROk(())
+    }
 }
 
 /// Default init for tests: unique, writable temporary directories.
@@ -793,6 +844,45 @@ mod tests {
             zoom: 1.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn layers_take_min_zoom_pane_visibility_and_raster_patches() {
+        use crate::sdk::{Host, Image};
+        let mock = MockHost::new();
+        let host = Host::from_ffi(mock.to_ffi());
+        host.create_layer(LayerSpec::new("heat", 1)).unwrap();
+        let layer = host.layer("heat");
+        layer.set_min_zoom(Some(0.25)).unwrap();
+        layer.set_visible_in_pane(3, false).unwrap();
+        let rect = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let blank = Image {
+            width: 2,
+            height: 2,
+            data: vec![0; 16],
+        };
+        layer.put_raster("map", rect, blank, false).unwrap();
+        let red = Image {
+            width: 1,
+            height: 1,
+            data: vec![255, 0, 0, 255],
+        };
+        layer.patch_raster("map", 1, 1, red.clone()).unwrap();
+        assert!(layer.patch_raster("map", 2, 2, red).is_err());
+        let state = mock.state();
+        let mock_layer = &state.layers["heat"];
+        assert_eq!(mock_layer.spec.min_zoom, Some(0.25));
+        assert!(mock_layer.hidden_panes.contains(&3));
+        let pixels = &mock_layer.rasters["map"].pixels.data;
+        assert_eq!(&pixels[12..16], [255, 0, 0, 255]);
+        assert_eq!(&pixels[0..4], [0, 0, 0, 0]);
+        drop(state);
+        assert_eq!(host.display_adjustments(None).unwrap().gamma, 1.0);
     }
 
     #[test]

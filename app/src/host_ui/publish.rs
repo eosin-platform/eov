@@ -46,6 +46,8 @@ pub(super) struct Tracker {
     identities: HashMap<FileId, Option<String>>,
     /// Opened files whose `FileOpened` waits for their identity.
     pending_open: Vec<FileId>,
+    /// Each file's region of interest at the last frame (`RoiChanged`).
+    rois: HashMap<FileId, Option<Rect>>,
 }
 
 /// How long `FileOpened` may wait for a slide identity.
@@ -286,6 +288,16 @@ impl UiHost {
                 .clone();
             let identity = tracker.identities.get(&id).cloned().flatten();
             let info = file_info(file, identity.as_deref());
+            match tracker.rois.insert(id, file.roi) {
+                Some(previous) if previous != file.roi => events.push((
+                    EventTarget::All,
+                    HostEvent::RoiChanged {
+                        file_id: id,
+                        roi: file.roi,
+                    },
+                )),
+                _ => {}
+            }
             files.insert(
                 id,
                 PublishedFile {
@@ -346,6 +358,7 @@ impl UiHost {
         }
         for id in &closed {
             tracker.identities.remove(id);
+            tracker.rois.remove(id);
             tracker.pending_open.retain(|pending| pending != id);
             self.shared.remove_reader(*id);
             self.store.remove_file(*id);
@@ -476,7 +489,37 @@ impl UiHost {
             },
             active_tool,
         };
-        self.shared.publish(Published { snapshot, files });
+        // How each pane shows its slide, for `view.display`.
+        let displays = (0..state.panes.len())
+            .filter_map(|index| {
+                let pane = PaneId(index);
+                let uid = state.pane_uid(pane)?;
+                let file = state.get_file(state.active_file_id_for_pane(pane)?)?;
+                let hud = &file.pane_state(pane)?.hud;
+                let color = crate::color::hud_color_info(file, pane);
+                Some((
+                    uid,
+                    eov_plugin_api::protocol::DisplayAdjustments {
+                        gamma: hud.gamma,
+                        brightness: hud.brightness,
+                        contrast: hud.contrast,
+                        sharpness: hud.sharpness,
+                        stain_normalization: match hud.stain_normalization {
+                            eov_common::StainNormalization::None => None,
+                            eov_common::StainNormalization::Macenko => Some("macenko".into()),
+                            eov_common::StainNormalization::Vahadane => Some("vahadane".into()),
+                        },
+                        modified: color.modified,
+                        badge: color.badge,
+                    },
+                ))
+            })
+            .collect();
+        self.shared.publish(Published {
+            snapshot,
+            files,
+            displays,
+        });
 
         let arm_timer = unsettled && !tracker.settle_timer_armed;
         if arm_timer {

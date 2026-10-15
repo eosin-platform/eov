@@ -550,6 +550,7 @@ impl Controller {
 
     fn pick_params(&self, view: &PaneView, file_id: FileId, point: Point) -> PickParams {
         PickParams {
+            pane: Some(view.uid),
             file_id,
             point,
             zoom: view.zoom(),

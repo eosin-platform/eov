@@ -34,11 +34,23 @@ if [ -d "$CUDA_HOME/lib64" ]; then
 else
     echo "No CUDA toolkit at $CUDA_HOME (set CUDA_HOME); eovae falls back to the CPU."
 fi
-#export EOVAE_ORT_OPT_LEVEL=disable
-export EOVAE_DIAG_ALLOW_CPU_FALLBACK=1
-export EOVAE_ORT_PROFILE=1
-export EOVAE_DEBUG_TIMING=1
-export EOV_PLUGIN_TRACE=1
+
+# Each plugin is its own Cargo workspace with its own target directory
+# (unless CARGO_TARGET_DIR puts everything in one place).
+plugin_target_dir() {
+    local manifest="$1"
+    cargo metadata --format-version 1 --no-deps --manifest-path "$manifest" \
+        | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+}
+
+library_name() {
+    local crate_name="$1"
+    case "$(uname -s)" in
+        Darwin) echo "lib${crate_name}.dylib" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "${crate_name}.dll" ;;
+        *) echo "lib${crate_name}.so" ;;
+    esac
+}
 
 package_plugin() {
     local plugin_src="$1"
@@ -53,11 +65,12 @@ package_plugin() {
     fi
 
     crate_name="$(grep '^name\s*=' "$plugin_src/Cargo.toml" | head -1 | sed 's/^name\s*=\s*"\(.*\)"/\1/')"
-    lib_name="lib${crate_name}.so"
-    if [ -f "$TARGET_DIR/debug/$lib_name" ]; then
-        cp "$TARGET_DIR/debug/$lib_name" "$staging_dir/"
+    lib_name="$(library_name "${crate_name//-/_}")"
+    lib_dir="$(plugin_target_dir "$plugin_src/Cargo.toml")/debug"
+    if [ -f "$lib_dir/$lib_name" ]; then
+        cp "$lib_dir/$lib_name" "$staging_dir/"
     else
-        echo "  WARNING: $lib_name not found in $TARGET_DIR/debug/, skipping library copy."
+        echo "  WARNING: $lib_name not found in $lib_dir, skipping library copy."
     fi
 
     mkdir -p "$DEST_DIR"
@@ -68,7 +81,8 @@ package_plugin() {
 package_eovae() {
     local plugin_src="$1"
     local package_path="$2"
-    local lib_path="$TARGET_DIR/debug/libeovae.so"
+    local lib_path
+    lib_path="$(plugin_target_dir "$plugin_src/Cargo.toml")/debug/$(library_name eovae)"
 
     if [ ! -f "$lib_path" ]; then
         echo "  ERROR: $lib_path not found. Build the eovae plugin first."
@@ -76,10 +90,15 @@ package_eovae() {
     fi
 
     mkdir -p "$DEST_DIR"
+    # ONNX Runtime: EOVAE_ORT_DIR (a folder of its libraries) when set,
+    # otherwise none is bundled and eovae looks for one at run time.
+    local ort_args=(--no-ort)
+    if [ -n "${EOVAE_ORT_DIR:-}" ]; then
+        ort_args=(--ort-dir "$EOVAE_ORT_DIR")
+    fi
     python3 "$plugin_src/scripts/package_eop.py" \
-        --plugin-root "$plugin_src" \
         --library "$lib_path" \
-        --native-lib-dir "$TARGET_DIR/debug" \
+        "${ort_args[@]}" \
         --output "$package_path"
 }
 

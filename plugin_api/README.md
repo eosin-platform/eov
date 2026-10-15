@@ -4,155 +4,187 @@
 [![Documentation](https://docs.rs/eov-plugin-api/badge.svg)](https://docs.rs/eov-plugin-api)
 [![License](https://img.shields.io/crates/l/eov-plugin-api.svg)](https://github.com/eosin-platform/eov#license)
 
-Shared API and ABI definitions for native plugins for [eov](https://eov.sh), a
-cross-platform whole-slide image viewer.
+The API for native plugins of [eov](https://eov.sh), a cross-platform
+whole-slide image viewer: a safe Rust SDK, the small layout-checked ABI it
+runs on, the JSON protocol between plugin and host, the `plugin.toml`
+manifest, and a mock host for unit tests.
 
-This crate is intended for plugin authors and host integrations. It does not
-load or package plugin binaries itself. The eov application discovers plugin
-packages, validates their manifests, loads their native libraries, and passes
-host callbacks through the contracts defined here.
+## Overview
 
-## Add the dependency
+A plugin is a native library (`cdylib`) that implements the
+[`Plugin`](https://docs.rs/eov-plugin-api/latest/eov_plugin_api/sdk/trait.Plugin.html)
+trait and exports it with `export_plugin!`. eov loads it from a `.eop`
+package, checks that it was built for a compatible API and ABI before any
+plugin code runs, and then talks to it through two objects:
 
-Keep the crate version aligned with the eov host version that will load the
-plugin:
+- the plugin's object, which receives events (files opened, views changed,
+  toolbar clicks, tool gestures, UI callbacks, …) on eov's UI thread with no
+  host locks held, and runs viewport filters on render worker threads;
+- the [`Host`](https://docs.rs/eov-plugin-api/latest/eov_plugin_api/sdk/struct.Host.html)
+  handle, which the plugin may call **from any thread**: queries are answered
+  from a published snapshot and changes are queued, so a plugin can never
+  block or deadlock eov.
+
+Control messages are JSON ([`protocol`](https://docs.rs/eov-plugin-api/latest/eov_plugin_api/protocol/));
+pixels (region reads, rasters, filter frames) cross the boundary as binary
+buffers. Every call into a plugin runs inside `catch_unwind`: a panicking
+plugin is stopped and reported instead of taking eov down.
+
+## A minimal plugin
 
 ```toml
-[dependencies]
-eov-plugin-api = "1.0"
-abi_stable = "0.11"
-```
+# Cargo.toml
+[package]
+name = "hello"
+version = "1.0.0"
+edition = "2024"
 
-Native plugins should build both a dynamic library for eov and an `rlib` when
-they also contain Rust tests or reusable internal code:
-
-```toml
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+eov-plugin-api = "1.0"
 ```
 
-## What this crate provides
+```rust
+use eov_plugin_api::prelude::*;
 
-- `eov_plugin_api::ffi` contains the `abi_stable` types used across the native
-	plugin boundary, including `PluginVTable`, `HostApiVTable`, toolbar and HUD
-	registrations, host snapshots, viewport overlays, and filter callbacks.
-- `PluginManifest` and `IconDescriptor` describe and validate `plugin.toml`.
-- `Plugin`, `HostContext`, and the related registration types provide a Rust
-	plugin abstraction for in-process integrations.
-- `ViewportFilter` supports CPU RGBA8 post-processing and GPU filter
-	integrations. The FFI module exposes the corresponding ABI-safe types.
-- `PluginError` and `PluginResult` provide errors shared by the Rust-level API.
+struct Hello {
+    host: Host,
+}
 
-The dynamic-library path uses `eov_plugin_api::ffi`. The Rust-level traits and
-the FFI types are related APIs, but they are not interchangeable at the ABI
-boundary: exported callbacks must use the `abi_stable` types from `ffi`.
+impl Plugin for Hello {
+    fn create(host: Host, _init: PluginInit) -> Result<Self, String> {
+        host.add_toolbar_button(ToolbarButtonSpec {
+            button_id: "hello".into(),
+            tooltip: "Say hello".into(),
+            icon_svg: "<svg xmlns='http://www.w3.org/2000/svg'/>".into(),
+            ..Default::default()
+        })
+        .map_err(|e| e.to_string())?;
+        Ok(Self { host })
+    }
+
+    fn on_event(&self, event: HostEvent) -> Result<(), String> {
+        match event {
+            HostEvent::ToolbarButtonClicked { .. } => {
+                self.host.notify(NotifyLevel::Info, "Hello from a plugin");
+            }
+            HostEvent::FileOpened { file } => {
+                self.host.info(format!("{} opened", file.filename));
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+eov_plugin_api::export_plugin!(Hello);
+```
+
+`plugin_api/example-plugin/` in the eov repository is a complete plugin: a
+sidebar written in Slint, a point tool whose markers live in an overlay
+layer and can be undone, a context-menu item, a HUD button, a CPU filter,
+persisted settings and a background job. It is also used as the host's
+end-to-end test.
+
+## What the host offers
+
+The `Host` methods, grouped (see the API docs for every type):
+
+| Area | Methods |
+|---|---|
+| Feedback | `log`/`info`/`warn`/`error`, `notify`, `notify_error`, `set_status`, `start_job` (status-bar progress with cancel) |
+| State | `snapshot` (panes, views, files, focus), `file_info`, `file_properties`, `roi`, `measurements`, `subscribe` (limit the events you receive) |
+| Pixels | `read_region` (any level, straight or premultiplied alpha, through a plugin-private handle), `read_associated_image` (label, macro, thumbnail) |
+| Overlays | `create_layer` → `Layer`: `upsert`, `remove_objects`, `clear`, `select`, `put_raster`, `patch_raster`, `set_visible`, `set_visible_in_pane`, `set_min_zoom`, `update` |
+| UI | `add_toolbar_button`, `add_hud_button`, `register_tool` (host-drawn shapes, point placement, momentary hotkeys), `open_surface` (sidebars, modals and windows from `.slint` files with properties and callbacks), `confirm`, `open_file_dialog`, `save_file_dialog`, `copy_text` |
+| Navigation | `set_view`, `pan`, `zoom`, `fit`, `frame`, `display_adjustments`, `cycle_pane`, `cycle_tab`, `series`, `open_file`, `request_render` |
+| Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
+| Filters | `register_filter`, `set_filter_enabled` (CPU RGBA filters run in the render path) |
+| Settings | `setting`, `set_setting`, `remove_setting` (persisted per plugin) |
+
+Coordinates are level-0 pixels of the slide (x right, y down). Layer ids are
+unique per plugin across all open slides, so include the file id when a
+slide gets its own layer (`format!("cells-{file_id}")`). Panes are named by
+stable ids that survive reordering.
 
 ## Plugin manifest
 
-Each plugin package contains a `plugin.toml` at its root. The fields below are
-the fields understood by `PluginManifest`:
+Each package has a `plugin.toml` at its root:
 
 ```toml
-id = "example_plugin"
-name = "Example Plugin"
-version = "0.1.0"
-description = "Optional plugin description"
-repository = "https://github.com/example/example-plugin"
-entry_ui = "ui/example-panel.slint"
-entry_component = "ExamplePanel"
+id = "hello"                        # ^[a-z0-9][a-z0-9_]{0,63}$
+name = "Hello"
+version = "1.0.0"
+description = "Shown in the Plugins panel"
+repository = "https://github.com/example/hello"
+api = ">=1.0, <2"                   # eov-plugin-api requirement
 
 [environment]
-version = ">=0.4.1"
+version = ">=1.0.0, <2.0.0"         # eov versions the plugin supports
 
-[icon]
+[icon]                              # optional; or kind = "file" with path = "…"
 kind = "svg"
-data = "<svg viewBox=\"0 0 24 24\">...</svg>"
+data = "<svg xmlns='http://www.w3.org/2000/svg'/>"
 
-[[toolbar_buttons]]
-button_id = "open_panel"
-tooltip = "Open example panel"
-action_id = "open_panel"
+[ui]                                # optional, for plugins with .slint files
+slint = ">=1.17"
 ```
 
-`entry_ui` and `entry_component` are optional for plugins without a Slint
-window. Icon files can be used instead of inline SVG data:
+Requirements without an upper bound are treated as `<next major>` so that a
+plugin is never loaded into an eov it was not built for. Unknown keys are
+ignored, so manifests written for newer hosts still load. Paths are relative
+to the plugin root; absolute paths and `..` are rejected.
 
-```toml
-[icon]
-kind = "file"
-path = "icons/example.svg"
+## Packages
+
+A `.eop` package is a tar archive (optionally zstd-compressed) holding
+`plugin.toml`, the library named after the id (`lib<id>.so`,
+`lib<id>.dylib` or `<id>.dll`), and any `.slint` files and assets:
+
+```text
+hello.eop
+├── plugin.toml
+├── libhello.so
+└── ui/
+    └── sidebar.slint
 ```
 
-UI and icon paths are relative to the plugin root. Absolute paths and `..`
-path traversal are rejected by manifest validation. A manifest can be parsed
-from a string or file and its referenced files can then be checked:
+Install it with `eov plugin install ./hello.eop`, or copy it into
+`~/.eov/plugins/` (or the directory given with `--plugin-dir`). eov extracts
+packages into a content-addressed cache and refuses archives with absolute
+paths, `..`, links or special files.
 
-```rust
-use eov_plugin_api::PluginManifest;
-use std::path::Path;
+## Compatibility
 
-fn load_manifest(plugin_root: &Path) -> eov_plugin_api::PluginResult<PluginManifest> {
-		let manifest = PluginManifest::from_file(&plugin_root.join("plugin.toml"))?;
-		manifest.validate_files(plugin_root)?;
-		Ok(manifest)
-}
-```
+- **API:** plugins built against any `1.x` release load into any eov that
+  speaks plugin API 1. Newer methods called on an older host fail with
+  `FfiErrorKind::Unsupported`, which the SDK reports as a `HostError` you
+  can match on; events a plugin does not know arrive as
+  `HostEvent::Unknown` and are ignored.
+- **ABI:** the root module, the plugin object and the host object are
+  `abi_stable` prefix types, so their layouts are checked when the library
+  is loaded and methods can be appended in minor releases.
+- A different major version, or a library that is not an eov plugin, is
+  refused with a message in the Plugins panel; it never runs.
 
-## Native plugin entry point
+## Testing plugins
 
-Native plugins are loaded through `abi_stable`. A plugin dynamic library
-exports the following symbol and returns a fully populated `PluginVTable`:
+`eov_plugin_api::testing` has a `MockHost` that records every call and keeps
+layers, surfaces, settings and undo entries in memory, and a `TestHarness`
+that creates your plugin against it and sends it events:
 
 ```rust,ignore
-use eov_plugin_api::ffi::PluginVTable;
+use eov_plugin_api::testing::TestHarness;
 
-#[unsafe(no_mangle)]
-pub extern "C" fn eov_get_plugin_vtable() -> PluginVTable {
-		make_plugin_vtable()
-}
+let harness = TestHarness::<Hello>::new().unwrap();
+harness.send(HostEvent::ToolbarButtonClicked { button_id: "hello".into() }).unwrap();
+assert_eq!(harness.state().notifications.len(), 1);
 ```
 
-The vtable covers plugin initialization, toolbar and HUD actions, callbacks
-from plugin UI, viewport context-menu actions, viewport overlays, annotation
-events, undo/redo, and CPU/GPU viewport filters. `HostApiVTable` is supplied by
-the host and lets a plugin query application state, read slide regions, open
-files, move the active viewport, request rendering, update controls, and write
-host log messages.
-
-For example, a toolbar callback uses ABI-safe strings and vectors:
-
-```rust
-use abi_stable::std_types::{ROption, RVec};
-use eov_plugin_api::ffi::ToolbarButtonFFI;
-
-fn toolbar_buttons() -> RVec<ToolbarButtonFFI> {
-		RVec::from(vec![ToolbarButtonFFI {
-				button_id: "open_panel".into(),
-				tooltip: "Open example panel".into(),
-				icon_svg: "<svg viewBox=\"0 0 24 24\">...</svg>".into(),
-				action_id: "open_panel".into(),
-				tool_mode: ROption::RNone,
-				hotkey: ROption::RNone,
-		}])
-}
-```
-
-Do not pass ordinary Rust `String`, `Vec`, or other Rust-owned values across
-the exported ABI. Use the stable types in `eov_plugin_api::ffi` and
-`abi_stable::std_types` instead.
-
-## Runtime and packaging
-
-The eov host normally discovers `.eop` plugin packages in `~/.eov/plugins/`.
-Use `--plugin-dir` to select another directory. A package contains the
-manifest, the platform-specific plugin library, and any UI or icon files it
-references. Packaging and installation are host-level concerns; see eov's
-[plugin documentation](https://github.com/eosin-platform/eov#plugins) for the
-current package layout and loading workflow.
-
-The plugin system is experimental. Build a plugin against the same
-`eov-plugin-api` release used by the target eov host, and treat changes to the
-vtable or manifest contract as release compatibility changes.
+`test_init()` gives each plugin instance its own temporary data and cache
+directories, so tests never touch a real eov installation.
 
 ## Related projects
 
