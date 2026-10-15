@@ -717,7 +717,8 @@ mod tests {
                 }
             "#;
             let result = spin_on(
-                slint_interpreter::Compiler::default().build_from_source(source.into(), "panel.slint".into()),
+                slint_interpreter::Compiler::default()
+                    .build_from_source(source.into(), "panel.slint".into()),
             );
             let definition = result.component("Panel").expect("compiles");
             let instance = definition.create().unwrap();
@@ -725,13 +726,17 @@ mod tests {
             let data = Rc::new(RefCell::new(SurfaceData::new("s", &plugin, &definition)));
             SurfaceData::attach(&data, &instance, &definition);
             let set = |json: Json| {
-                let Json::Object(map) = json else { unreachable!() };
+                let Json::Object(map) = json else {
+                    unreachable!()
+                };
                 data.borrow_mut().apply(&map)
             };
             assert!(set(serde_json::json!({"name": "Original", "rows": ["a", "b"]})).is_empty());
             // The user types into the field (a two-way binding writes the
             // property), then the plugin resets it.
-            instance.set_property("name", Value::String("Edited".into())).unwrap();
+            instance
+                .set_property("name", Value::String("Edited".into()))
+                .unwrap();
             assert!(set(serde_json::json!({"name": "Original"})).is_empty());
             assert_eq!(
                 instance.get_property("name").unwrap(),

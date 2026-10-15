@@ -141,9 +141,8 @@ impl UiHost {
             window_y: f64::from(window_y),
             modifiers,
         };
-        self.last_pointer.set(
-            (input.kind != PointerKind::Leave).then_some((window_x, window_y)),
-        );
+        self.last_pointer
+            .set((input.kind != PointerKind::Leave).then_some((window_x, window_y)));
         if input.kind == PointerKind::Down
             && let Some(ui) = self.ui()
         {

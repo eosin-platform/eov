@@ -89,7 +89,9 @@ fn add_in(path: &Path, key: &str, file_name: &str, bookmark: Bookmark) -> Result
         slide.name = file_name.to_string();
     }
     if slide.bookmark.len() >= MAX_PER_SLIDE {
-        return Err(format!("a slide can have at most {MAX_PER_SLIDE} bookmarks"));
+        return Err(format!(
+            "a slide can have at most {MAX_PER_SLIDE} bookmarks"
+        ));
     }
     let name = bookmark.name.clone();
     slide.bookmark.push(bookmark);
@@ -137,7 +139,10 @@ mod tests {
         add_in(&path, "slide-a", "a.svs", bookmark("Tumour edge")).unwrap();
         add_in(&path, "slide-a", "a.svs", bookmark("Margin")).unwrap();
         add_in(&path, "slide-b", "b.svs", bookmark("Mitosis")).unwrap();
-        let names: Vec<_> = list_in(&path, "slide-a").into_iter().map(|b| b.name).collect();
+        let names: Vec<_> = list_in(&path, "slide-a")
+            .into_iter()
+            .map(|b| b.name)
+            .collect();
         assert_eq!(names, ["Tumour edge", "Margin"]);
         remove_in(&path, "slide-a", 0).unwrap();
         assert_eq!(list_in(&path, "slide-a")[0].name, "Margin");

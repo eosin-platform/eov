@@ -94,7 +94,12 @@ impl UiHost {
         pending.key = match key {
             Ok(key) => key,
             Err(error) => {
-                self.notify(NotifyLevel::Warning, "Cannot add a bookmark", Some(&error), None);
+                self.notify(
+                    NotifyLevel::Warning,
+                    "Cannot add a bookmark",
+                    Some(&error),
+                    None,
+                );
                 return;
             }
         };
@@ -152,12 +157,15 @@ impl UiHost {
             },
         );
         match added {
-            Ok(name) => {
-                self.status(&format!("Bookmarked “{name}” (Ctrl+Shift+B lists bookmarks)"))
-            }
-            Err(error) => {
-                self.notify(NotifyLevel::Warning, "Cannot add a bookmark", Some(&error), None)
-            }
+            Ok(name) => self.status(&format!(
+                "Bookmarked “{name}” (Ctrl+Shift+B lists bookmarks)"
+            )),
+            Err(error) => self.notify(
+                NotifyLevel::Warning,
+                "Cannot add a bookmark",
+                Some(&error),
+                None,
+            ),
         }
     }
 
@@ -333,7 +341,11 @@ impl UiHost {
                 return;
             }
             if let Some(viewport) = state.active_viewport_mut() {
-                viewport.smooth_set_center_zoom(bookmark.center_x, bookmark.center_y, bookmark.zoom);
+                viewport.smooth_set_center_zoom(
+                    bookmark.center_x,
+                    bookmark.center_y,
+                    bookmark.zoom,
+                );
             }
             state.mirror_locked_viewports_from_active();
             state.request_render();
