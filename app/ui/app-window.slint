@@ -251,6 +251,10 @@ export component AppWindow inherits Window {
     in-out property <BottomPanelKind> bottom-panel-kind: BottomPanelKind.none;
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
+    in-out property <string> series-filter;
+    in-out property <string> series-sort-label: "A–Z";
+    callback series-filter-edited(string);
+    callback series-sort-cycled();
     in-out property <string> series-selected-path: "";
     in-out property <bool> series-can-go-back: false;
     in-out property <bool> series-can-go-forward: false;
@@ -944,6 +948,14 @@ export component AppWindow inherits Window {
                 series-can-go-back: root.series-can-go-back;
                 series-can-go-forward: root.series-can-go-forward;
                 series-can-go-up: root.series-can-go-up;
+                series-filter <=> root.series-filter;
+                series-sort-label: root.series-sort-label;
+                series-filter-edited(text) => {
+                    root.series-filter-edited(text);
+                }
+                series-sort-cycled => {
+                    root.series-sort-cycled();
+                }
                 status-left: root.bottom-panel-status-left;
                 status-right: root.bottom-panel-status-right;
                 open-folder-requested => {

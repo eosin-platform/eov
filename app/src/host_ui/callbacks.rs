@@ -266,6 +266,20 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
             crate::quantify_panel::close(&ui);
         }
     });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_series_filter_edited(move |text| {
+        state.write().set_series_filter(&text);
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::update_tabs(&ui, &state.read());
+        }
+    });
+    let (ui_weak, state) = (ui.as_weak(), Arc::clone(&host.state));
+    ui.on_series_sort_cycled(move || {
+        state.write().cycle_series_sort();
+        if let Some(ui) = ui_weak.upgrade() {
+            crate::update_tabs(&ui, &state.read());
+        }
+    });
     ui.on_measurement_go(|id| {
         with_host(|host| host.measurement_go(&id));
     });

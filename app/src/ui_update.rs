@@ -56,14 +56,15 @@ fn series_index_label(index: usize) -> String {
 fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel<SeriesItemData>> {
     let model = series_items_model();
 
+    let entries = series.visible_entries();
     let mut row_count = model.row_count();
-    while row_count > series.entries.len() {
+    while row_count > entries.len() {
         row_count -= 1;
         model.remove(row_count);
     }
 
     let mut file_index = 0usize;
-    for (index, entry) in series.entries.iter().enumerate() {
+    for (index, entry) in entries.into_iter().enumerate() {
         let entry_path = SharedString::from(entry.path.display().to_string());
         let existing = model.row_data(index);
         let thumbnail = existing
@@ -528,10 +529,17 @@ pub fn update_tabs(
         ui.set_bottom_panel_status_left(SharedString::from(
             series.current_path.display().to_string(),
         ));
-        ui.set_bottom_panel_status_right(SharedString::from(format!(
-            "{} items",
-            series.entries.len()
-        )));
+        let shown = series.visible_entries().len();
+        ui.set_bottom_panel_status_right(SharedString::from(if shown == series.entries.len() {
+            format!("{shown} items")
+        } else {
+            format!("{shown} of {} items", series.entries.len())
+        }));
+        ui.set_series_sort_label(series.sort.label().into());
+        // Cleared when another folder opens.
+        if ui.get_series_filter() != series.filter.as_str() {
+            ui.set_series_filter(series.filter.clone().into());
+        }
     } else {
         let model = series_items_model();
         if model.row_count() > 0 {

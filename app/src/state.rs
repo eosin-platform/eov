@@ -143,6 +143,8 @@ pub struct SeriesEntry {
     pub path: PathBuf,
     pub filename: String,
     pub is_directory: bool,
+    /// When the file was last changed, for the Newest order.
+    pub modified: Option<std::time::SystemTime>,
     pub metadata_tooltip: String,
     pub objective_label: Option<String>,
     pub stain_label: Option<String>,
@@ -162,12 +164,93 @@ pub enum SeriesNavigationMode {
 #[derive(Debug, Clone, Default)]
 pub struct OpenedSeries {
     pub current_path: PathBuf,
+    /// In [`SeriesSort`] order.
     pub entries: Vec<SeriesEntry>,
     pub back_history: Vec<PathBuf>,
     pub forward_history: Vec<PathBuf>,
     /// Thumbnails of `entries` were requested (they load while the series
     /// bar is visible).
     pub thumbnails_requested: bool,
+    /// Only entries whose name, stain or objective contains this
+    /// (case-insensitively) are shown and stepped through.
+    pub filter: String,
+    pub sort: SeriesSort,
+}
+
+/// The order of a series (folders always come first).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SeriesSort {
+    /// By name, with numbers in numeric order ("S2" before "S10").
+    #[default]
+    Name,
+    /// The most recently changed first.
+    Newest,
+    /// By stain label, then name.
+    Stain,
+}
+
+impl SeriesSort {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Name => Self::Newest,
+            Self::Newest => Self::Stain,
+            Self::Stain => Self::Name,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Name => "A–Z",
+            Self::Newest => "Newest",
+            Self::Stain => "Stain",
+        }
+    }
+}
+
+impl OpenedSeries {
+    /// Puts `entries` in the chosen order.
+    pub fn apply_sort(&mut self) {
+        let sort = self.sort;
+        self.entries.sort_by(|a, b| {
+            b.is_directory
+                .cmp(&a.is_directory)
+                .then_with(|| match sort {
+                    SeriesSort::Name => natord::compare_ignore_case(&a.filename, &b.filename),
+                    SeriesSort::Newest => b
+                        .modified
+                        .cmp(&a.modified)
+                        .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename)),
+                    SeriesSort::Stain => {
+                        let stain = |e: &SeriesEntry| e.stain_label.clone().unwrap_or_default();
+                        // Unlabelled slides last.
+                        (stain(a).is_empty(), stain(a).to_lowercase())
+                            .cmp(&(stain(b).is_empty(), stain(b).to_lowercase()))
+                            .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename))
+                    }
+                })
+        });
+    }
+
+    /// The entries the series bar shows: those matching the filter.
+    pub fn visible_entries(&self) -> Vec<&SeriesEntry> {
+        let filter = self.filter.trim().to_lowercase();
+        if filter.is_empty() {
+            return self.entries.iter().collect();
+        }
+        self.entries
+            .iter()
+            .filter(|entry| {
+                [
+                    Some(entry.filename.as_str()),
+                    entry.stain_label.as_deref(),
+                    entry.objective_label.as_deref(),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|text| text.to_lowercase().contains(&filter))
+            })
+            .collect()
+    }
 }
 
 fn normalize_recent_path(path: &Path) -> PathBuf {
@@ -1335,7 +1418,9 @@ impl AppState {
             self.series_selected_path = None;
             return None;
         };
-        if series.entries.is_empty() {
+        // Next and previous follow what the series bar shows.
+        let entries = series.visible_entries();
+        if entries.is_empty() {
             self.series_selected_path = None;
             return None;
         }
@@ -1352,23 +1437,21 @@ impl AppState {
         let current_index = selected_path
             .as_ref()
             .and_then(|selected| {
-                series
-                    .entries
+                entries
                     .iter()
                     .position(|entry| normalize_series_entry_path(&entry.path) == *selected)
             })
             .or_else(|| {
                 active_file_path.as_ref().and_then(|active| {
-                    series
-                        .entries
+                    entries
                         .iter()
                         .position(|entry| normalize_series_entry_path(&entry.path) == *active)
                 })
             })
             .unwrap_or(0) as i32;
 
-        let next_index = (current_index + offset).rem_euclid(series.entries.len() as i32) as usize;
-        let next_path = series.entries[next_index].path.clone();
+        let next_index = (current_index + offset).rem_euclid(entries.len() as i32) as usize;
+        let next_path = entries[next_index].path.clone();
         self.series_selected_path = Some(next_path.clone());
         self.needs_render = true;
         Some(next_path)
@@ -1460,18 +1543,22 @@ impl AppState {
                         }
                     }
                 }
+                if series.current_path != folder_path {
+                    series.filter.clear();
+                }
                 series.current_path = folder_path;
                 series.entries = entries;
+                series.apply_sort();
                 series.thumbnails_requested = false;
             }
             None => {
-                self.opened_series = Some(OpenedSeries {
+                let mut series = OpenedSeries {
                     current_path: folder_path,
                     entries,
-                    back_history: Vec::new(),
-                    forward_history: Vec::new(),
-                    thumbnails_requested: false,
-                });
+                    ..OpenedSeries::default()
+                };
+                series.apply_sort();
+                self.opened_series = Some(series);
             }
         }
 
@@ -1507,6 +1594,9 @@ impl AppState {
         entry.stain_label = stain_label;
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
+        if series.sort == SeriesSort::Stain {
+            series.apply_sort();
+        }
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
@@ -1531,11 +1621,33 @@ impl AppState {
         }
 
         series.entries = entries;
+        series.apply_sort();
         series.thumbnails_requested = false;
         self.reconcile_series_selection();
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
+    }
+
+    /// Shows only the series entries matching `filter`.
+    pub fn set_series_filter(&mut self, filter: &str) {
+        if let Some(series) = self.opened_series.as_mut()
+            && series.filter != filter
+        {
+            series.filter = filter.to_string();
+            self.series_content_revision = self.series_content_revision.wrapping_add(1);
+            self.needs_render = true;
+        }
+    }
+
+    /// Switches the series to the next order; returns it.
+    pub fn cycle_series_sort(&mut self) -> Option<SeriesSort> {
+        let series = self.opened_series.as_mut()?;
+        series.sort = series.sort.next();
+        series.apply_sort();
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
+        self.needs_render = true;
+        Some(series.sort)
     }
 
     pub fn toggle_viewport_lock(&mut self) {
@@ -1811,6 +1923,69 @@ mod tests {
         state.home_tabs.push(5);
         state.close_home_tab(1);
         assert_eq!(layout(&state), vec![vec![5], vec![copy]]);
+    }
+
+    fn entry(name: &str, stain: Option<&str>, age_s: u64, dir: bool) -> super::SeriesEntry {
+        super::SeriesEntry {
+            path: std::path::PathBuf::from(format!("/series/{name}")),
+            filename: name.to_string(),
+            is_directory: dir,
+            modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1000 - age_s)),
+            stain_label: stain.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn series_are_ordered_and_filtered() {
+        use super::{OpenedSeries, SeriesSort};
+        let mut series = OpenedSeries {
+            entries: vec![
+                entry("S10.svs", Some("Ki-67"), 5, false),
+                entry("S2.svs", Some("H&E"), 1, false),
+                entry("S1.svs", None, 9, false),
+                entry("old", None, 0, true),
+            ],
+            ..OpenedSeries::default()
+        };
+        let names = |series: &OpenedSeries| -> Vec<String> {
+            series
+                .visible_entries()
+                .iter()
+                .map(|e| e.filename.clone())
+                .collect()
+        };
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S1.svs", "S2.svs", "S10.svs"]);
+        series.sort = SeriesSort::Newest;
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S2.svs", "S10.svs", "S1.svs"]);
+        series.sort = SeriesSort::Stain;
+        series.apply_sort();
+        assert_eq!(names(&series), ["old", "S2.svs", "S10.svs", "S1.svs"]);
+        series.filter = "ki-6".into();
+        assert_eq!(names(&series), ["S10.svs"]);
+        series.filter = "s1".into();
+        assert_eq!(names(&series), ["S10.svs", "S1.svs"]);
+    }
+
+    #[test]
+    fn next_and_previous_slide_follow_the_filter() {
+        let mut state = state_with(&[&[1]]);
+        let mut series = super::OpenedSeries {
+            entries: vec![
+                entry("a.svs", Some("H&E"), 0, false),
+                entry("b.svs", Some("Ki-67"), 0, false),
+                entry("c.svs", Some("H&E"), 0, false),
+            ],
+            ..super::OpenedSeries::default()
+        };
+        series.filter = "h&e".into();
+        state.opened_series = Some(series);
+        let next = state.cycle_series_selection(1).unwrap();
+        assert!(next.ends_with("c.svs"), "{next:?}");
+        let next = state.cycle_series_selection(1).unwrap();
+        assert!(next.ends_with("a.svs"), "{next:?}");
     }
 
     #[test]

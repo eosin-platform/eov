@@ -12,7 +12,6 @@ use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loo
 use eov_common::{
     ThumbnailOptions, ThumbnailRegion, TileCache, TileManager, ViewportState, WsiFile,
 };
-use natord::compare_ignore_case;
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -53,37 +52,63 @@ pub fn is_supported_wsi_path(path: &Path) -> bool {
 }
 
 fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
-    let mut entries = fs::read_dir(folder_path)
+    let mut paths: Vec<PathBuf> = fs::read_dir(folder_path)
         .ok()
         .into_iter()
         .flat_map(|read_dir| read_dir.filter_map(Result::ok))
         .map(|entry| entry.path())
         .filter(|path| path.is_dir() || (path.is_file() && is_supported_wsi_path(path)))
-        .map(|path| {
-            let normalized_path = fs::canonicalize(&path).unwrap_or(path.clone());
-            let filename = normalized_path
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| normalized_path.display().to_string());
-            let is_directory = normalized_path.is_dir();
-            SeriesEntry {
-                path: normalized_path,
-                filename,
-                is_directory,
-                metadata_tooltip: if is_directory {
-                    format!("{}\nFolder", display_name(&path))
-                } else {
-                    "Loading metadata…".to_string()
-                },
-                objective_label: None,
-                stain_label: None,
-                thumbnail: None,
-                thumbnail_loading: !is_directory,
+        .map(|path| fs::canonicalize(&path).unwrap_or(path))
+        .collect();
+    paths.sort();
+    // The instances of one DICOM series are one slide, which OpenSlide
+    // opens from any of them: list the series once, by its first file.
+    let mut series_index: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut instances: Vec<usize> = Vec::new();
+    let mut entries: Vec<SeriesEntry> = Vec::new();
+    for path in paths {
+        let is_directory = path.is_dir();
+        let is_dicom = !is_directory
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"));
+        if is_dicom
+            && let Some(uid) = eov_common::dataset::dicom_series_uid_within(&path, 256 * 1024)
+        {
+            if let Some(&index) = series_index.get(&uid) {
+                instances[index] += 1;
+                continue;
             }
-        })
-        .collect::<Vec<_>>();
-
-    entries.sort_by(|left, right| compare_ignore_case(&left.filename, &right.filename));
+            series_index.insert(uid, entries.len());
+        }
+        let filename = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string());
+        let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+        instances.push(1);
+        entries.push(SeriesEntry {
+            metadata_tooltip: if is_directory {
+                format!("{}\nFolder", display_name(&path))
+            } else {
+                "Loading metadata…".to_string()
+            },
+            path,
+            filename,
+            is_directory,
+            modified,
+            objective_label: None,
+            stain_label: None,
+            thumbnail: None,
+            thumbnail_loading: !is_directory,
+        });
+    }
+    for (entry, count) in entries.iter_mut().zip(instances) {
+        if count > 1 {
+            entry.filename = format!("{} (DICOM series, {count} files)", entry.filename);
+        }
+    }
     entries
 }
 
@@ -854,4 +879,41 @@ fn install_slide(
         state_guard.close_home_tab(home_tab_id);
     }
     level_count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_dicom(path: &Path, uid: &str) {
+        let mut bytes = vec![0u8; 128];
+        bytes.extend_from_slice(b"DICM");
+        let mut value = uid.as_bytes().to_vec();
+        if value.len() % 2 == 1 {
+            value.push(0);
+        }
+        bytes.extend_from_slice(&[0x20, 0x00, 0x0E, 0x00, b'U', b'I']);
+        bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(&value);
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn dicom_instances_of_one_series_are_listed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, uid) in [("b.dcm", "1.2.3"), ("a.dcm", "1.2.3"), ("c.dcm", "1.2.44")] {
+            write_dicom(&dir.path().join(name), uid);
+        }
+        fs::write(dir.path().join("slide10.svs"), b"").unwrap();
+        fs::write(dir.path().join("slide2.svs"), b"").unwrap();
+        let entries = enumerate_series_entries(dir.path());
+        let names: Vec<&str> = entries.iter().map(|e| e.filename.as_str()).collect();
+        assert_eq!(names.len(), 4, "{names:?}");
+        assert!(
+            names.contains(&"a.dcm (DICOM series, 2 files)"),
+            "{names:?}"
+        );
+        assert!(names.contains(&"c.dcm"), "{names:?}");
+        assert!(entries.iter().all(|e| e.modified.is_some()));
+    }
 }

@@ -42,7 +42,8 @@ pub use config::{
 };
 pub use discovery::{
     Discovery, SUPPORTED_SLIDE_EXTENSIONS, SkippedInput, SlideInput, dicom_series_uid,
-    discover_slides, expand_inputs, is_supported_slide_extension, non_slide_tiff_reason,
+    dicom_series_uid_within, discover_slides, expand_inputs, is_supported_slide_extension,
+    non_slide_tiff_reason,
 };
 pub use grid::{PatchCoord, PatchGrid, generate_patch_coords};
 pub use hashing::slide_sha256;
