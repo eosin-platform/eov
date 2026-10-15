@@ -76,6 +76,9 @@ pub struct RunTotals {
     pub tiles_skipped_white: u64,
     pub tiles_skipped_tissue: u64,
     pub tiles_skipped_annotation: u64,
+    /// Over tissue-QC marks (also counted in `tiles_skipped_tissue`).
+    #[serde(default)]
+    pub tiles_skipped_qc: u64,
     pub tiles_failed: u64,
 }
 

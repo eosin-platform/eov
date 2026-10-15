@@ -207,6 +207,36 @@ pub struct DatasetPatchesOptions {
     /// datasets shared outside the institution. Labels and macro images are
     /// never part of a dataset.
     pub deidentify: bool,
+    /// Leave out patches over cells that tissue QC marks
+    /// ([`crate::qc`]): pen marks, possible folds, possibly out of focus.
+    pub qc_exclusion: Option<QcExclusion>,
+}
+
+/// Which tissue-QC marks keep patches out of a dataset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QcExclusion {
+    pub pen: bool,
+    pub folds: bool,
+    pub blur: bool,
+}
+
+impl QcExclusion {
+    /// The [`crate::qc`] mark bits to leave out.
+    pub fn marks(&self) -> u8 {
+        (if self.pen { crate::qc::PEN } else { 0 })
+            | (if self.folds { crate::qc::FOLD } else { 0 })
+            | (if self.blur { crate::qc::BLUR } else { 0 })
+    }
+
+    /// Everything QC marks.
+    pub fn all() -> Self {
+        Self {
+            pen: true,
+            folds: true,
+            blur: true,
+        }
+    }
 }
 
 impl Default for DatasetPatchesOptions {
@@ -224,6 +254,7 @@ impl Default for DatasetPatchesOptions {
             max_candidates_per_slide: 10_000_000,
             dry_run: false,
             deidentify: false,
+            qc_exclusion: None,
         }
     }
 }

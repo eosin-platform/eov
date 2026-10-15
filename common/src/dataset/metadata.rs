@@ -120,6 +120,7 @@ pub struct SlideRecord {
     pub written: u64,
     pub existing: u64,
     pub skipped_white: u64,
+    /// Too little tissue, or over a tissue-QC mark the run excludes.
     pub skipped_tissue: u64,
     pub skipped_annotation: u64,
     pub failed: u64,

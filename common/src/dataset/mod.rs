@@ -37,8 +37,8 @@ pub use annotations::{AnnotationError, AnnotationPolygon, AnnotationSet, Coverag
 pub use config::{
     AnnotationOptions, AnnotationSource, DatasetConfigError, DatasetPatchesConfig,
     DatasetPatchesOptions, ExistingOutput, MaskOutput, MetadataFormat, PatchImageFormat,
-    PatchNormalization, STRIDE_RANGE, THREADS_RANGE, TILE_SIZE_RANGE, TargetResolution,
-    TissueFilter,
+    PatchNormalization, QcExclusion, STRIDE_RANGE, THREADS_RANGE, TILE_SIZE_RANGE,
+    TargetResolution, TissueFilter,
 };
 pub use discovery::{
     Discovery, SUPPORTED_SLIDE_EXTENSIONS, SkippedInput, SlideInput, dicom_series_uid,

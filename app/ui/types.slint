@@ -427,6 +427,8 @@ export struct DatasetExportSettings {
     white-threshold: float,
     // Keep only patches that are mostly tissue (Otsu mask).
     tissue-only: bool,
+    // Leave out patches over pen marks, folds and blur (tissue QC).
+    exclude-qc: bool,
     // Name slides by opaque ids; write no paths or file names.
     deidentify: bool,
     // Why the run cannot start, shown in the dialog.

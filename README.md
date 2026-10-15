@@ -483,6 +483,8 @@ eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--meta
 
 `--deidentify` (or **De-identify** in the dialog) names slides by opaque ids derived from their content (`slide-3f2a…`, the same for a slide in every run and at every site) in folders, file names and metadata, and writes no slide paths, file names, input paths or annotation file names, for datasets shared outside the institution. Patches never include the slide label or macro image.
 
+`--exclude-qc pen,folds,blur` (or `all`; **Leave out pen marks, folds and blurred areas** in the dialog) runs [tissue QC](#tissue-qc) on each slide first and leaves out the patches that overlap a marked cell; they are counted in the slide's `skipped_tissue` and, separately, in `dataset.json` (`tiles_skipped_qc`).
+
 The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
 
 ### Examples
@@ -525,7 +527,7 @@ Tile filenames encode the origin coordinates and tile size with zero-padded valu
 
 ### Metadata
 
-Metadata is written as CSV and JSON unless `--metadata csv` or `--metadata json` picks one. Each patch record includes the slide id, path (not with `--deidentify`) and stem, the patch path, its origin and size in output and level-0 pixels, the pyramid level and downsample read, the output microns per pixel, tissue and white fractions, the annotation label and coverage and mask path when annotations are used, and the slide's vendor, MPP and content fingerprint. `eov dataset patches --help` lists every option (target resolution, tissue filter, annotations and masks, stain normalisation, per-slide caps and sampling, JPEG output, resuming and dry runs).
+Metadata is written as CSV and JSON unless `--metadata csv` or `--metadata json` picks one. Each patch record includes the slide id, path (not with `--deidentify`) and stem, the patch path, its origin and size in output and level-0 pixels, the pyramid level and downsample read, the output microns per pixel, tissue and white fractions, the annotation label and coverage and mask path when annotations are used, and the slide's vendor, MPP and content fingerprint. `eov dataset patches --help` lists every option (target resolution, tissue filter, tissue QC exclusion, annotations and masks, stain normalisation, per-slide caps and sampling, JPEG output, resuming and dry runs).
 
 ## Batch Runs
 
