@@ -155,7 +155,11 @@ def main(argv: list[str] | None = None) -> int:
                 generated_versions.append(version)
             except ReleaseError as error:
                 if "historical cask differs" in str(error):
-                    raise
+                    # Historical casks are immutable: one written by an older
+                    # template stays as it is.
+                    skipped.append(f"{version}: existing cask kept unchanged")
+                    generated_versions.append(version)
+                    continue
                 skipped.append(f"{version}: {error}")
 
         if not generated_versions:
