@@ -249,6 +249,7 @@ export enum ExportFilteringMode {
 export enum ExportFormat {
     jpeg,
     png,
+    tiff,
 }
 
 export enum StrokeStyle {
@@ -304,6 +305,9 @@ export struct ExportSettings {
     deconv-eosin-intensity: float,
     deconv-eosin-visible: bool,
     deconv-isolated-channel: IsolatedChannel,
+    // Figure
+    show-scale-bar: bool,
+    show-processing-note: bool,
     // Format
     format: ExportFormat,
     jpeg-quality: int,
@@ -316,6 +320,11 @@ export struct ExportPreviewInfo {
     height-px: int,
     viewport-width: float,
     viewport-height: float,
+    // What the export will contain that the user should know (colour
+    // processing, missing calibration); empty when nothing to say.
+    note: string,
+    // A preview is being rendered.
+    rendering: bool,
 }
 
 export struct DatasetExportSettings {
@@ -324,14 +333,10 @@ export struct DatasetExportSettings {
     tile-size: int,
     stride: int,
     threads: int,
+    // 0 disables the white filter.
     white-threshold: float,
-}
-
-export struct DatasetExportProgress {
-    current-slide: int,
-    total-slides: int,
-    tiles-exported: int,
-    total-tiles-expected: int,
-    elapsed-secs: float,
-    estimated-remaining-secs: float,
+    // Keep only patches that are mostly tissue (Otsu mask).
+    tissue-only: bool,
+    // Why the run cannot start, shown in the dialog.
+    error: string,
 }

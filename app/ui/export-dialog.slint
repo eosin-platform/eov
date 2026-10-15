@@ -627,7 +627,7 @@ component ColorField inherits Rectangle {
                         rgb-r-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            text: Math.round(root.current-color.red * 255);
+                            text: root.current-color.red;
                             color: #e0e0e0;
                             font-size: 9px;
                             horizontal-alignment: center;
@@ -635,7 +635,7 @@ component ColorField inherits Rectangle {
                             input-type: number;
 
                             accepted => {
-                                root.current-color = Colors.rgb(max(0, min(255, Math.round(self.text.to-float()))), root.current-color.green * 255, root.current-color.blue * 255);
+                                root.current-color = Colors.rgb(max(0, min(255, Math.round(self.text.to-float()))), root.current-color.green, root.current-color.blue);
                                 root.color-changed(root.current-color);
                                 root.request-preview();
                             }
@@ -660,7 +660,7 @@ component ColorField inherits Rectangle {
                         rgb-g-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            text: Math.round(root.current-color.green * 255);
+                            text: root.current-color.green;
                             color: #e0e0e0;
                             font-size: 9px;
                             horizontal-alignment: center;
@@ -668,7 +668,7 @@ component ColorField inherits Rectangle {
                             input-type: number;
 
                             accepted => {
-                                root.current-color = Colors.rgb(root.current-color.red * 255, max(0, min(255, Math.round(self.text.to-float()))), root.current-color.blue * 255);
+                                root.current-color = Colors.rgb(root.current-color.red, max(0, min(255, Math.round(self.text.to-float()))), root.current-color.blue);
                                 root.color-changed(root.current-color);
                                 root.request-preview();
                             }
@@ -693,7 +693,7 @@ component ColorField inherits Rectangle {
                         rgb-b-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            text: Math.round(root.current-color.blue * 255);
+                            text: root.current-color.blue;
                             color: #e0e0e0;
                             font-size: 9px;
                             horizontal-alignment: center;
@@ -701,7 +701,7 @@ component ColorField inherits Rectangle {
                             input-type: number;
 
                             accepted => {
-                                root.current-color = Colors.rgb(root.current-color.red * 255, root.current-color.green * 255, max(0, min(255, Math.round(self.text.to-float()))));
+                                root.current-color = Colors.rgb(root.current-color.red, root.current-color.green, max(0, min(255, Math.round(self.text.to-float()))));
                                 root.color-changed(root.current-color);
                                 root.request-preview();
                             }
@@ -918,7 +918,11 @@ export component ExportDialog inherits Rectangle {
     // Reactive export dimensions (update instantly when DPI changes).
     property <int> export-width: Math.max(1, Math.round(root.preview-info.viewport-width * root.settings.dpi / 96));
     property <int> export-height: Math.max(1, Math.round(root.preview-info.viewport-height * root.settings.dpi / 96));
-    property <float> bytes-per-pixel: root.settings.format == ExportFormat.png ? 4.0 : (0.3 + root.settings.jpeg-quality / 100.0 * 2.5);
+    // Rough compressed sizes: PNG and Deflate TIFF of tissue typically
+    // land at about half of raw RGB(A).
+    property <float> bytes-per-pixel: root.settings.format == ExportFormat.png ? 2.0
+        : root.settings.format == ExportFormat.tiff ? 1.8
+        : (0.3 + root.settings.jpeg-quality / 100.0 * 2.5);
     property <float> estimated-mb: root.export-width * root.export-height * root.bytes-per-pixel / 1048576.0;
 
     // Emit settings-changed after any modification
@@ -974,7 +978,7 @@ export component ExportDialog inherits Rectangle {
             // Preview section (fixed, non-scrollable)
             // ---------------------------------------------------------------
             Rectangle {
-                height: 240px;
+                height: root.preview-info.note != "" ? 256px : 240px;
                 background: #141414;
                 border-top-left-radius: 10px;
                 border-top-right-radius: 10px;
@@ -1034,6 +1038,20 @@ export component ExportDialog inherits Rectangle {
                             color: #8ea0b2;
                             font-size: 10px;
                         }
+
+                        if root.preview-info.rendering: Text {
+                            text: "Rendering preview…";
+                            color: #8ea0b2;
+                            font-size: 10px;
+                        }
+                    }
+
+                    if root.preview-info.note != "": Text {
+                        text: root.preview-info.note;
+                        color: #e0c080;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
                     }
                 }
             }
@@ -1688,6 +1706,32 @@ export component ExportDialog inherits Rectangle {
 
                         SectionDivider { }
 
+                        // ------- Figure -------
+                    SectionHeader {
+                            text: "Figure";
+                            icon-source: @image-url("icons/measure.svg");
+                        }
+
+                        ToggleSwitch {
+                            label: "Scale Bar";
+                            checked: root.settings.show-scale-bar;
+                            toggled(v) => {
+                                root.settings.show-scale-bar = v;
+                                root.notify-settings();
+                            }
+                        }
+
+                        ToggleSwitch {
+                            label: "Colour Processing Note";
+                            checked: root.settings.show-processing-note;
+                            toggled(v) => {
+                                root.settings.show-processing-note = v;
+                                root.notify-settings();
+                            }
+                        }
+
+                        SectionDivider { }
+
                         // ------- Format -------
                     SectionHeader {
                             text: "Format";
@@ -1714,6 +1758,16 @@ export component ExportDialog inherits Rectangle {
                                 active: root.settings.format == ExportFormat.png;
                                 clicked => {
                                     root.settings.format = ExportFormat.png;
+                                    root.notify-settings();
+                                }
+                            }
+
+                            SegmentButton {
+                                horizontal-stretch: 1;
+                                text: "TIFF (Lossless)";
+                                active: root.settings.format == ExportFormat.tiff;
+                                clicked => {
+                                    root.settings.format = ExportFormat.tiff;
                                     root.notify-settings();
                                 }
                             }

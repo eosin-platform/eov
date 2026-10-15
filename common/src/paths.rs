@@ -76,6 +76,15 @@ pub fn home_dir() -> PathBuf {
     env_path("EOV_HOME").unwrap_or_else(|| user_home().join(".eov"))
 }
 
+/// The user's documents folder (the default place for exports and
+/// datasets).
+pub fn documents_dir() -> PathBuf {
+    if let Some(root) = ROOT_OVERRIDE.get() {
+        return root.join("documents");
+    }
+    dirs::document_dir().unwrap_or_else(user_home)
+}
+
 /// The main configuration file (`$EOV_CONFIG`, else `<home>/config.toml`).
 pub fn config_file() -> PathBuf {
     env_path("EOV_CONFIG").unwrap_or_else(|| home_dir().join("config.toml"))

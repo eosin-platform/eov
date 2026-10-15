@@ -188,6 +188,9 @@ pub fn estimate_slide_stain(
     method: StainFitMethod,
     options: &StainEstimateOptions,
 ) -> crate::Result<StainEstimate> {
+    // Synthetic levels are approximations (possibly sparse samples); fit
+    // on stored pixels only.
+    let wsi = &wsi.without_synthetic_levels();
     let props = wsi.properties();
     if wsi.level_count() == 0 || props.width == 0 || props.height == 0 {
         return Err(crate::Error::InvalidFormat(
@@ -225,6 +228,7 @@ pub fn estimate_region_stain(
     method: StainFitMethod,
     options: &StainEstimateOptions,
 ) -> crate::Result<StainEstimate> {
+    let wsi = &wsi.without_synthetic_levels();
     let props = wsi.properties();
     let Some(rect) = region.clamp_to(props.width, props.height) else {
         return Err(crate::Error::InvalidCoordinates {

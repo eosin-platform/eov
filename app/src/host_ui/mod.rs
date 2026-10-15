@@ -45,7 +45,7 @@ use eov_plugin_api::protocol::{HostEvent, NotifyLevel};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, Timer};
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -98,7 +98,12 @@ pub(crate) struct UiHost {
     safe_mode: bool,
     /// Plugin whose sidebar was open at the last exit.
     restore_sidebar: Option<String>,
+    /// Cancel handlers of host jobs (exports, dataset runs), by job id.
+    host_job_cancels: RefCell<HashMap<String, Box<dyn Fn()>>>,
 }
+
+/// Owner recorded for host jobs in the status bar; no plugin id is empty.
+pub(crate) const HOST_JOB_OWNER: &str = "";
 
 /// Creates the UI host, starts every plugin and wires the Slint callbacks.
 pub(crate) fn init(
@@ -157,6 +162,7 @@ pub(crate) fn init(
         plugin_dir: options.plugin_dir.clone(),
         safe_mode: options.safe_mode,
         restore_sidebar: crate::config::load_sidebar_plugin().ok().flatten(),
+        host_job_cancels: RefCell::new(HashMap::new()),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();
@@ -515,6 +521,67 @@ impl UiHost {
             }
             self.notices.borrow().apply(&ui);
         }
+    }
+
+    /// Starts a host background job (export, dataset run) in the status
+    /// bar. `cancel` runs on the UI thread when the user cancels it.
+    pub(crate) fn start_host_job(&self, title: &str, cancel: Option<Box<dyn Fn()>>) -> String {
+        let job_id = self.shared.fresh_id("eov-job");
+        let owner: Arc<str> = Arc::from(HOST_JOB_OWNER);
+        self.notices.borrow_mut().start_job(
+            &owner,
+            job_id.clone(),
+            eov_plugin_api::protocol::JobStartArgs {
+                title: title.to_string(),
+                cancellable: cancel.is_some(),
+            },
+        );
+        if let Some(cancel) = cancel {
+            self.host_job_cancels
+                .borrow_mut()
+                .insert(job_id.clone(), cancel);
+        }
+        self.refresh_notices();
+        job_id
+    }
+
+    pub(crate) fn update_host_job(
+        &self,
+        job_id: &str,
+        fraction: Option<f32>,
+        message: Option<String>,
+    ) {
+        self.notices.borrow_mut().update_job(
+            HOST_JOB_OWNER,
+            eov_plugin_api::protocol::JobUpdateArgs {
+                job_id: job_id.to_string(),
+                fraction: fraction.map(|f| f.clamp(0.0, 1.0)),
+                message,
+            },
+        );
+        self.refresh_notices();
+    }
+
+    pub(crate) fn finish_host_job(&self, job_id: &str) {
+        self.host_job_cancels.borrow_mut().remove(job_id);
+        self.notices.borrow_mut().finish_job(
+            HOST_JOB_OWNER,
+            &eov_plugin_api::protocol::JobFinishArgs {
+                job_id: job_id.to_string(),
+                error: None,
+            },
+        );
+        self.refresh_notices();
+    }
+
+    /// Runs a host job's cancel handler; `false` if it is not a host job.
+    pub(crate) fn cancel_host_job(&self, job_id: &str) -> bool {
+        let cancels = self.host_job_cancels.borrow();
+        let Some(cancel) = cancels.get(job_id) else {
+            return false;
+        };
+        cancel();
+        true
     }
 
     pub(crate) fn refresh_notices(&self) {

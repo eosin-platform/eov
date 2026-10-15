@@ -259,6 +259,9 @@ pub(super) fn install(ui: &AppWindow, _host: &Rc<UiHost>) {
     });
     ui.on_job_cancel_requested(|job_id| {
         with_host(|host| {
+            if host.cancel_host_job(&job_id) {
+                return;
+            }
             let owner = host.notices.borrow().job_owner(&job_id);
             if let Some(owner) = owner {
                 host.post(

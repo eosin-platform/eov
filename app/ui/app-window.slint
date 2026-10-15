@@ -4,7 +4,6 @@ import { Theme } from "theme.slint";
 import {
     BottomPanelKind,
     ContextMenuItem,
-    DatasetExportProgress,
     DatasetExportSettings,
     ExportPreviewInfo,
     ExportSettings,
@@ -28,7 +27,6 @@ import {
 import { ContextMenu } from "tab-controls.slint";
 import {
     DatasetExportDialog,
-    DatasetExportProgressDialog,
 } from "dataset-export-dialog.slint";
 import { ExportDialog } from "export-dialog.slint";
 import { HomeScreen } from "home-screen.slint";
@@ -150,15 +148,12 @@ export component AppWindow inherits Window {
     // Dataset export dialog
     in-out property <bool> dataset-export-dialog-visible: false;
     in-out property <DatasetExportSettings> dataset-export-settings;
-    in-out property <bool> dataset-export-progress-visible: false;
-    in-out property <DatasetExportProgress> dataset-export-progress;
     callback dataset-export-requested();
     callback dataset-export-open-dialog();
     callback dataset-export-cancel-requested();
     callback dataset-export-add-input();
     callback dataset-export-remove-input(int);
     callback dataset-export-change-output-dir();
-    callback dataset-export-cancel-progress();
     callback dataset-export-settings-changed(DatasetExportSettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
@@ -370,10 +365,6 @@ export component AppWindow inherits Window {
         height: 100%;
 
         key-pressed(e) => {
-            if e.text == Key.Escape && root.dataset-export-progress-visible {
-                root.dataset-export-cancel-progress();
-                accept
-            }
             if e.text == Key.Escape && root.dataset-export-dialog-visible {
                 root.dataset-export-dialog-visible = false;
                 root.dataset-export-cancel-requested();
@@ -406,7 +397,7 @@ export component AppWindow inherits Window {
                 accept
             }
             // Modal surfaces own the keyboard (UI-7).
-            if root.export-dialog-visible || root.dataset-export-dialog-visible || root.dataset-export-progress-visible
+            if root.export-dialog-visible || root.dataset-export-dialog-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible {
                 reject
             }
@@ -1470,14 +1461,6 @@ export component AppWindow inherits Window {
         }
         settings-changed(s) => {
             root.dataset-export-settings-changed(s);
-        }
-    }
-
-    // Dataset export progress dialog
-    if root.dataset-export-progress-visible: DatasetExportProgressDialog {
-        progress: root.dataset-export-progress;
-        cancel-requested => {
-            root.dataset-export-cancel-progress();
         }
     }
 

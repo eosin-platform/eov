@@ -1,26 +1,21 @@
 use crate::config;
 use crate::host_ui::with_host;
-use crate::state::{self, AppState, HudSettings, IsolatedChannel, PaneId};
+use crate::state::{self, AppState, HudSettings, PaneId};
 use crate::ui_update::build_recent_folder_menu_items;
 use crate::zoom_display::parse_zoom_input;
 use crate::{
-    AppWindow, DatasetExportProgress, DatasetExportSettings,
-    ExportFilteringMode as SlintExportFilteringMode, ExportFormat as SlintExportFormat,
-    ExportPreviewInfo as SlintExportPreviewInfo, ExportSettings as SlintExportSettings,
-    FilteringMode as SlintFilteringMode, IsolatedChannel as SlintIsolatedChannel,
-    MeasurementUnit as SlintMeasurementUnit, RenderMode,
-    StainNormalization as SlintStainNormalization, build_recent_menu_items,
-    capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
-    crop_image_to_viewport_bounds, insert_pane_ui_state, open_file_with_mode, pane_from_index,
-    refresh_tab_ui, request_render_loop, slider_value_to_zoom, update_filtering_mode,
-    update_recent_files, update_render_backend, update_tabs,
+    AppWindow, FilteringMode as SlintFilteringMode, MeasurementUnit as SlintMeasurementUnit,
+    RenderMode, StainNormalization as SlintStainNormalization, build_recent_menu_items,
+    insert_pane_ui_state, open_file_with_mode, pane_from_index, refresh_tab_ui,
+    request_render_loop, slider_value_to_zoom, update_filtering_mode, update_recent_files,
+    update_render_backend, update_tabs,
 };
 use eov_common::viewport::ZOOM_FACTOR;
 use eov_common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
 use parking_lot::RwLock;
 use rfd::FileDialog;
-use slint::{ComponentHandle, Model, SharedString, Timer, VecModel};
-use std::cell::{Cell, RefCell};
+use slint::{ComponentHandle, SharedString, Timer, VecModel};
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -272,21 +267,6 @@ pub(crate) fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     let center_y = viewport.viewport.height / 2.0;
     viewport.zoom_at_discrete(factor, center_x, center_y);
     true
-}
-
-fn show_toast(ui: &AppWindow, toast_timer: &Rc<Timer>, message: &str) {
-    ui.set_toast_text(SharedString::from(message));
-    ui.set_toast_visible(true);
-    let ui_weak = ui.as_weak();
-    toast_timer.start(
-        slint::TimerMode::SingleShot,
-        Duration::from_millis(2200),
-        move || {
-            if let Some(ui) = ui_weak.upgrade() {
-                ui.set_toast_visible(false);
-            }
-        },
-    );
 }
 
 pub(crate) fn toggle_minimap_visibility(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
@@ -562,429 +542,6 @@ pub(crate) fn open_folder_as_series(
     }
 }
 
-/// Convert Slint export settings to common crate's `ExportSettings`.
-fn slint_to_export_settings(s: &SlintExportSettings) -> eov_common::ExportSettings {
-    let filtering_mode = match s.filtering_mode {
-        SlintExportFilteringMode::Bilinear => FilteringMode::Bilinear,
-        SlintExportFilteringMode::Trilinear => FilteringMode::Trilinear,
-        SlintExportFilteringMode::Lanczos => FilteringMode::Lanczos3,
-    };
-    let stain_normalization = match s.stain_normalization {
-        SlintStainNormalization::None => StainNormalization::None,
-        SlintStainNormalization::Macenko => StainNormalization::Macenko,
-        SlintStainNormalization::Vahadane => StainNormalization::Vahadane,
-    };
-    let deconv_isolated = match s.deconv_isolated_channel {
-        SlintIsolatedChannel::Hematoxylin => 1,
-        SlintIsolatedChannel::Eosin => 2,
-        _ => 0,
-    };
-    eov_common::ExportSettings {
-        dpi: s.dpi.max(1) as u32,
-        filtering_mode,
-        stain_normalization,
-        sharpness: s.sharpness,
-        gamma: s.gamma,
-        brightness: s.brightness,
-        contrast: s.contrast,
-        background_rgba: [255, 255, 255, 255],
-        deconv_h_intensity: s.deconv_hematoxylin_intensity,
-        deconv_h_visible: s.deconv_hematoxylin_visible,
-        deconv_e_intensity: s.deconv_eosin_intensity,
-        deconv_e_visible: s.deconv_eosin_visible,
-        deconv_isolated_channel: deconv_isolated,
-    }
-}
-
-fn slint_color_to_overlay(
-    color: slint::Color,
-    opacity_pct: f32,
-) -> eov_common::overlay::OverlayColor {
-    let a = (color.alpha() as f32 * opacity_pct / 100.0)
-        .round()
-        .clamp(0.0, 255.0) as u8;
-    eov_common::overlay::OverlayColor::new(color.red(), color.green(), color.blue(), a)
-}
-
-fn slint_stroke_to_overlay(
-    style: crate::StrokeStyle,
-    dash_length: f32,
-    dash_gap: f32,
-    dot_spacing: f32,
-) -> eov_common::overlay::StrokeStyle {
-    match style {
-        crate::StrokeStyle::Solid => eov_common::overlay::StrokeStyle::Solid,
-        crate::StrokeStyle::Dashed => eov_common::overlay::StrokeStyle::Dashed {
-            length: dash_length,
-            gap: dash_gap,
-        },
-        crate::StrokeStyle::Dotted => eov_common::overlay::StrokeStyle::Dotted {
-            spacing: dot_spacing,
-        },
-    }
-}
-
-fn slint_cap_to_overlay(cap: crate::CapStyle) -> eov_common::overlay::CapStyle {
-    match cap {
-        crate::CapStyle::Round => eov_common::overlay::CapStyle::Round,
-        crate::CapStyle::Square => eov_common::overlay::CapStyle::Square,
-        crate::CapStyle::Flat => eov_common::overlay::CapStyle::Flat,
-    }
-}
-
-/// Draw measurement overlays on an export image buffer.
-fn draw_measurement_overlays(
-    image_data: &mut eov_common::RgbaImageData,
-    file: &state::OpenFile,
-    pane: PaneId,
-    export_vp: &eov_common::Viewport,
-    settings: &SlintExportSettings,
-    dpi_scale: f32,
-    font: Option<&eov_common::overlay::FontArc>,
-) {
-    if !settings.show_measurement || !settings.has_measurement {
-        return;
-    }
-    let color = slint_color_to_overlay(settings.measurement_color, settings.measurement_opacity);
-    let stroke = slint_stroke_to_overlay(
-        settings.measurement_stroke_style,
-        settings.measurement_dash_length * dpi_scale,
-        settings.measurement_dash_gap * dpi_scale,
-        settings.measurement_dot_spacing * dpi_scale,
-    );
-    let cap = slint_cap_to_overlay(settings.measurement_cap_style);
-    let thickness = settings.measurement_thickness * dpi_scale;
-    let w = image_data.width as u32;
-    let h = image_data.height as u32;
-    let font_size_px = settings.measurement_font_size * dpi_scale;
-
-    let _ = pane;
-    let calibration = crate::host_ui::calibration(file);
-    for m in &file.measurements {
-        let (points, closed) = crate::overlay::geometry::outline(&m.shape);
-        let mut screen: Vec<(f32, f32)> = points
-            .iter()
-            .map(|p| {
-                let s = export_vp.image_to_screen(p[0], p[1]);
-                (s.x as f32, s.y as f32)
-            })
-            .collect();
-        if closed && let Some(first) = screen.first().copied() {
-            screen.push(first);
-        }
-        for segment in screen.windows(2) {
-            eov_common::overlay::draw_line(
-                &mut image_data.pixels,
-                w,
-                h,
-                segment[0].0,
-                segment[0].1,
-                segment[1].0,
-                segment[1].1,
-                color,
-                thickness,
-                stroke,
-                cap,
-            );
-        }
-
-        // Endpoint circles of open measurements (white border + fill).
-        if !closed {
-            let endpoint_r = (thickness + 1.0) * 0.5 + 1.0 * dpi_scale;
-            let white = eov_common::overlay::OverlayColor::new(255, 255, 255, color.a);
-            for p in [screen.first(), screen.last()].into_iter().flatten() {
-                eov_common::overlay::draw_filled_circle(
-                    &mut image_data.pixels,
-                    w,
-                    h,
-                    p.0,
-                    p.1,
-                    endpoint_r + 1.5 * dpi_scale,
-                    white,
-                );
-                eov_common::overlay::draw_filled_circle(
-                    &mut image_data.pixels,
-                    w,
-                    h,
-                    p.0,
-                    p.1,
-                    endpoint_r,
-                    color,
-                );
-            }
-        }
-
-        // Value label, placed like on screen.
-        if let Some(font) = font {
-            let value = crate::interaction::measure::measure(m.mode, &m.shape, &calibration);
-            let label =
-                crate::interaction::measure::label(m.mode, &value, eov_common::MeasurementUnit::Um);
-            let (anchor, _) = crate::overlay::labels::label_anchor(&m.shape);
-            let anchor = export_vp.image_to_screen(anchor[0], anchor[1]);
-            eov_common::overlay::draw_measurement_label(
-                &mut image_data.pixels,
-                w,
-                h,
-                anchor.x as f32,
-                anchor.y as f32,
-                &label,
-                font,
-                font_size_px,
-                dpi_scale,
-            );
-        }
-    }
-}
-
-/// Draw ROI overlays on an export image buffer.
-fn draw_roi_overlays(
-    image_data: &mut eov_common::RgbaImageData,
-    file: &state::OpenFile,
-    export_vp: &eov_common::Viewport,
-    settings: &SlintExportSettings,
-    dpi_scale: f32,
-) {
-    let Some(roi) = &file.roi else { return };
-    let w = image_data.width as u32;
-    let h = image_data.height as u32;
-    let tl = export_vp.image_to_screen(roi.x, roi.y);
-    let br = export_vp.image_to_screen(roi.x + roi.width, roi.y + roi.height);
-    let rx = tl.x as f32;
-    let ry = tl.y as f32;
-    let rw = (br.x - tl.x) as f32;
-    let rh = (br.y - tl.y) as f32;
-
-    // Outside overlay (drawn first, beneath the outline)
-    if settings.roi_outside_overlay {
-        let outside_color =
-            slint_color_to_overlay(settings.roi_outside_color, settings.roi_outside_opacity);
-        eov_common::overlay::fill_outside_rect(
-            &mut image_data.pixels,
-            w,
-            h,
-            rx,
-            ry,
-            rw,
-            rh,
-            outside_color,
-        );
-    }
-
-    // ROI outline
-    if settings.show_roi_outline && settings.has_roi {
-        let color = slint_color_to_overlay(settings.roi_color, settings.roi_opacity);
-        let stroke = slint_stroke_to_overlay(
-            settings.roi_stroke_style,
-            settings.roi_dash_length * dpi_scale,
-            settings.roi_dash_gap * dpi_scale,
-            settings.roi_dot_spacing * dpi_scale,
-        );
-        let cap = slint_cap_to_overlay(settings.roi_cap_style);
-        let thickness = settings.roi_thickness * dpi_scale;
-        eov_common::overlay::draw_rect_outline(
-            &mut image_data.pixels,
-            w,
-            h,
-            rx,
-            ry,
-            rw,
-            rh,
-            color,
-            thickness,
-            stroke,
-            cap,
-        );
-    }
-}
-
-/// Render an export preview/final image using the common crate's export renderer.
-///
-/// If `override_dpi` is `Some(dpi)`, renders at that DPI instead of the
-/// settings' DPI.  Used for preview (always 96 DPI) vs. final export.
-fn render_export_image(
-    state: &AppState,
-    tile_cache: &Arc<TileCache>,
-    pane: PaneId,
-    slint_settings: &SlintExportSettings,
-    override_dpi: Option<u32>,
-    overlay_font: Option<&eov_common::overlay::FontArc>,
-) -> Option<eov_common::RgbaImageData> {
-    let file_id = state.active_file_id_for_pane(pane)?;
-    let file = state.get_file(file_id)?;
-    let pane_state = file.pane_state(pane)?;
-    let viewport = &pane_state.viewport.viewport;
-    let mut settings = slint_to_export_settings(slint_settings);
-    let render_dpi = override_dpi.unwrap_or(settings.dpi);
-    settings.dpi = render_dpi;
-    let mut img =
-        eov_common::export::render_export(&file.tile_manager, tile_cache, viewport, &settings)?;
-
-    // Draw overlays
-    let export_vp = eov_common::export::export_viewport(viewport, render_dpi);
-    let dpi_scale = render_dpi as f32 / 96.0;
-    draw_measurement_overlays(
-        &mut img,
-        file,
-        pane,
-        &export_vp,
-        slint_settings,
-        dpi_scale,
-        overlay_font,
-    );
-    draw_roi_overlays(&mut img, file, &export_vp, slint_settings, dpi_scale);
-    Some(img)
-}
-
-/// Build default export settings based on the current viewport state.
-fn build_default_export_settings(state: &AppState, pane: PaneId) -> SlintExportSettings {
-    let file_id = state.active_file_id_for_pane(pane);
-    let hud = file_id
-        .and_then(|id| state.get_file(id))
-        .and_then(|f| f.pane_state(pane))
-        .map(|ps| &ps.hud)
-        .cloned()
-        .unwrap_or_default();
-
-    let has_measurement = file_id
-        .and_then(|id| state.get_file(id))
-        .is_some_and(|f| !f.measurements.is_empty());
-
-    let has_roi = file_id
-        .and_then(|id| state.get_file(id))
-        .is_some_and(|f| f.roi.is_some());
-
-    let stain_norm = match hud.stain_normalization {
-        StainNormalization::None => SlintStainNormalization::None,
-        StainNormalization::Macenko => SlintStainNormalization::Macenko,
-        StainNormalization::Vahadane => SlintStainNormalization::Vahadane,
-    };
-
-    let deconv_isolated = match hud.deconv_isolated_channel {
-        IsolatedChannel::Hematoxylin => SlintIsolatedChannel::Hematoxylin,
-        IsolatedChannel::Eosin => SlintIsolatedChannel::Eosin,
-        IsolatedChannel::None => SlintIsolatedChannel::None,
-    };
-
-    SlintExportSettings {
-        dpi: 150,
-        filtering_mode: SlintExportFilteringMode::Trilinear,
-        sharpness: hud.sharpness,
-        gamma: hud.gamma,
-        brightness: hud.brightness,
-        contrast: hud.contrast,
-        stain_normalization: stain_norm,
-        deconv_hematoxylin_intensity: hud.deconv_hematoxylin_intensity,
-        deconv_hematoxylin_visible: hud.deconv_hematoxylin_visible,
-        deconv_eosin_intensity: hud.deconv_eosin_intensity,
-        deconv_eosin_visible: hud.deconv_eosin_visible,
-        deconv_isolated_channel: deconv_isolated,
-        show_measurement: has_measurement,
-        has_measurement,
-        measurement_color: slint::Color::from_argb_u8(255, 46, 204, 113),
-        measurement_opacity: 100.0,
-        measurement_thickness: 2.0,
-        measurement_stroke_style: crate::StrokeStyle::Solid,
-        measurement_cap_style: crate::CapStyle::Round,
-        measurement_dash_length: 8.0,
-        measurement_dash_gap: 4.0,
-        measurement_dot_spacing: 4.0,
-        measurement_font_size: 12.0,
-        show_roi_outline: has_roi,
-        has_roi,
-        roi_color: slint::Color::from_argb_u8(255, 241, 196, 15),
-        roi_opacity: 100.0,
-        roi_thickness: 2.0,
-        roi_stroke_style: crate::StrokeStyle::Solid,
-        roi_cap_style: crate::CapStyle::Round,
-        roi_dash_length: 8.0,
-        roi_dash_gap: 4.0,
-        roi_dot_spacing: 4.0,
-        roi_outside_overlay: false,
-        roi_outside_color: slint::Color::from_argb_u8(255, 0, 0, 0),
-        roi_outside_opacity: 50.0,
-        format: SlintExportFormat::Png,
-        jpeg_quality: 85,
-    }
-}
-
-/// Open the export dialog, populating it with defaults derived from the current viewport.
-/// If `cached` has a value, reuse those settings (except has_measurement/has_roi which
-/// are derived from the current file state).
-fn open_export_dialog(
-    ui: &AppWindow,
-    state: &Arc<RwLock<AppState>>,
-    tile_cache: &Arc<TileCache>,
-    pane: PaneId,
-    cached: &Rc<RefCell<Option<SlintExportSettings>>>,
-    overlay_font: Option<&eov_common::overlay::FontArc>,
-) {
-    let settings = {
-        let state = state.read();
-        let mut s = cached
-            .borrow()
-            .clone()
-            .unwrap_or_else(|| build_default_export_settings(&state, pane));
-
-        // Always refresh has_measurement / has_roi from current file state
-        let file_id = state.active_file_id_for_pane(pane);
-        s.has_measurement = file_id
-            .and_then(|id| state.get_file(id))
-            .is_some_and(|f| !f.measurements.is_empty());
-        s.has_roi = file_id
-            .and_then(|id| state.get_file(id))
-            .is_some_and(|f| f.roi.is_some());
-        // Disable overlay toggles if the feature no longer exists
-        if !s.has_measurement {
-            s.show_measurement = false;
-        }
-        if !s.has_roi {
-            s.show_roi_outline = false;
-            s.roi_outside_overlay = false;
-        }
-        s
-    };
-    ui.set_export_settings(settings.clone());
-
-    // Render preview at 96 DPI (thumbnail-sized, independent of settings DPI)
-    let (preview_image, vp_width, vp_height) = {
-        let state = state.read();
-        let (vp_w, vp_h) = state
-            .active_file_id_for_pane(pane)
-            .and_then(|id| state.get_file(id))
-            .and_then(|f| f.pane_state(pane))
-            .map(|ps| (ps.viewport.viewport.width, ps.viewport.viewport.height))
-            .unwrap_or((0.0, 0.0));
-
-        let img = render_export_image(&state, tile_cache, pane, &settings, Some(96), overlay_font);
-        let slint_img = img
-            .and_then(|img| {
-                let w = img.width as u32;
-                let h = img.height as u32;
-                crate::blitter::create_image_buffer(&img.pixels, w, h).map(slint::Image::from_rgba8)
-            })
-            .or_else(|| {
-                capture_pane_clipboard_image(pane).and_then(|d| {
-                    crate::blitter::create_image_buffer(&d.pixels, d.width as u32, d.height as u32)
-                        .map(slint::Image::from_rgba8)
-                })
-            })
-            .unwrap_or_default();
-
-        (slint_img, vp_w, vp_h)
-    };
-
-    let preview_info = SlintExportPreviewInfo {
-        preview_image,
-        estimated_size_mb: 0.0, // computed reactively in Slint
-        width_px: 0,            // computed reactively in Slint
-        height_px: 0,           // computed reactively in Slint
-        viewport_width: vp_width as f32,
-        viewport_height: vp_height as f32,
-    };
-    ui.set_export_preview_info(preview_info);
-    ui.set_export_dialog_visible(true);
-}
-
 fn apply_filtering_mode(
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
@@ -1015,12 +572,6 @@ pub fn setup_callbacks(
     render_timer: Rc<Timer>,
 ) {
     let ui_weak = ui.as_weak();
-    let clipboard = Rc::new(RefCell::new(None));
-    let toast_timer = Rc::new(Timer::default());
-    let cached_export_settings: Rc<RefCell<Option<SlintExportSettings>>> =
-        Rc::new(RefCell::new(None));
-    let overlay_font: Option<eov_common::overlay::FontArc> =
-        eov_common::overlay::load_system_font();
 
     {
         let state = Arc::clone(&state);
@@ -1207,10 +758,6 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
-        let clipboard = Rc::clone(&clipboard);
-        let toast_timer = Rc::clone(&toast_timer);
-        let cached_export = Rc::clone(&cached_export_settings);
-        let overlay_font_clone = overlay_font.clone();
 
         ui.on_context_menu_command(move |id| {
             let Some(ui) = ui_weak.upgrade() else {
@@ -1256,42 +803,10 @@ pub fn setup_callbacks(
 
             match command.as_str() {
                 "viewport-copy-image" => {
-                    if let Some(image) = capture_pane_clipboard_image(pane) {
-                        let viewport = {
-                            let state = state_handle.read();
-                            state
-                                .active_file_id_for_pane(pane)
-                                .and_then(|file_id| state.get_file(file_id))
-                                .and_then(|file| file.pane_state(pane))
-                                .map(|pane_state| pane_state.viewport.viewport.clone())
-                        };
-                        let image = if let Some(viewport) = viewport {
-                            crop_image_to_viewport_bounds(image, &viewport)
-                        } else {
-                            image
-                        };
-                        if copy_image_to_clipboard(&clipboard, image) {
-                            show_toast(&ui, &toast_timer, "Viewport image copied to clipboard.");
-                        } else {
-                            ui.set_status_text(SharedString::from(
-                                "Failed to copy viewport image to clipboard",
-                            ));
-                        }
-                    } else {
-                        ui.set_status_text(SharedString::from(
-                            "Viewport image is not available yet",
-                        ));
-                    }
+                    crate::export_dialog::copy_view(&ui, &state_handle, &tile_cache, pane);
                 }
                 "viewport-export-image" => {
-                    open_export_dialog(
-                        &ui,
-                        &state_handle,
-                        &tile_cache,
-                        pane,
-                        &cached_export,
-                        overlay_font_clone.as_ref(),
-                    );
+                    crate::export_dialog::open(&ui, &state_handle, &tile_cache, pane);
                 }
                 "close" => {
                     {
@@ -1369,7 +884,7 @@ pub fn setup_callbacks(
                 "copy-path" => {
                     let state = state_handle.read();
                     if let Some(file) = state.get_file(tab_id) {
-                        copy_text_to_clipboard(&clipboard, file.path.display().to_string());
+                        crate::clipboard::copy_text(file.path.display().to_string());
                     }
                 }
                 "split-right" => {
@@ -1853,12 +1368,11 @@ pub fn setup_callbacks(
 
     {
         let state = Arc::clone(&state);
-        let clipboard = Rc::clone(&clipboard);
 
         ui.on_copy_path(move |id| {
             let state = state.read();
             if let Some(file) = state.get_file(id) {
-                copy_text_to_clipboard(&clipboard, file.path.display().to_string());
+                crate::clipboard::copy_text(file.path.display().to_string());
             }
         });
     }
@@ -2237,13 +1751,9 @@ pub fn setup_callbacks(
         });
     }
 
-    {
-        let clipboard = Rc::clone(&clipboard);
-
-        ui.on_series_item_copy_path(move |path_str| {
-            copy_text_to_clipboard(&clipboard, path_str.to_string());
-        });
-    }
+    ui.on_series_item_copy_path(move |path_str| {
+        crate::clipboard::copy_text(path_str.to_string());
+    });
 
     {
         let state_handle = Arc::clone(&state);
@@ -2752,177 +2262,46 @@ pub fn setup_callbacks(
     }
 
     // -- Export dialog callbacks --
-    let export_debounce_timer = Rc::new(Timer::default());
-    {
-        let ui_weak = ui_weak.clone();
-        let debounce_timer = Rc::clone(&export_debounce_timer);
-        let cached = Rc::clone(&cached_export_settings);
-
-        ui.on_export_dialog_settings_changed(move |settings| {
-            // Persist to cache for reuse across dialog opens
-            *cached.borrow_mut() = Some(settings);
-            let ui_weak = ui_weak.clone();
-            debounce_timer.start(
-                slint::TimerMode::SingleShot,
-                Duration::from_millis(300),
-                move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.invoke_export_dialog_request_preview();
-                    }
-                },
-            );
-        });
-    }
+    ui.on_export_dialog_settings_changed(crate::export_dialog::settings_changed);
 
     {
-        let state_handle = Arc::clone(&state);
-        let tile_cache_clone = Arc::clone(&tile_cache);
+        let state = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
         let ui_weak = ui_weak.clone();
-        let overlay_font_preview = overlay_font.clone();
-
         ui.on_export_dialog_request_preview(move || {
             if let Some(ui) = ui_weak.upgrade() {
-                let settings = ui.get_export_settings();
-                let state = state_handle.read();
-                let pane = state.focused_pane;
-
-                // Render at 96 DPI for preview (thumbnail-sized)
-                let preview_image = if let Some(img) = render_export_image(
-                    &state,
-                    &tile_cache_clone,
-                    pane,
-                    &settings,
-                    Some(96),
-                    overlay_font_preview.as_ref(),
-                ) {
-                    let w = img.width as u32;
-                    let h = img.height as u32;
-                    crate::blitter::create_image_buffer(&img.pixels, w, h)
-                        .map(slint::Image::from_rgba8)
-                        .unwrap_or_default()
-                } else {
-                    ui.get_export_preview_info().preview_image
-                };
-
-                let mut info = ui.get_export_preview_info();
-                info.preview_image = preview_image;
-                ui.set_export_preview_info(info);
+                crate::export_dialog::request_preview(&ui, &state, &tile_cache);
             }
         });
     }
 
     {
-        let state_handle = Arc::clone(&state);
-        let tile_cache_clone = Arc::clone(&tile_cache);
+        let state = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
         let ui_weak = ui_weak.clone();
-        let toast_timer = Rc::clone(&toast_timer);
-        let overlay_font_export = overlay_font.clone();
-
         ui.on_export_dialog_export_requested(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let settings = ui.get_export_settings();
-            let extension = if settings.format == SlintExportFormat::Png {
-                "png"
-            } else {
-                "jpg"
-            };
-            let filter_name = if settings.format == SlintExportFormat::Png {
-                "PNG Image"
-            } else {
-                "JPEG Image"
-            };
-
-            let dialog = FileDialog::new()
-                .add_filter(filter_name, &[extension])
-                .set_file_name(format!("export.{extension}"));
-
-            if let Some(path) = dialog.save_file() {
-                let state = state_handle.read();
-                let pane = state.focused_pane;
-
-                let image_data = render_export_image(
-                    &state,
-                    &tile_cache_clone,
-                    pane,
-                    &settings,
-                    None,
-                    overlay_font_export.as_ref(),
-                );
-                drop(state);
-
-                let Some(image_data) = image_data else {
-                    ui.set_status_text(SharedString::from("No viewport image available to export"));
-                    return;
-                };
-
-                let width = image_data.width as u32;
-                let height = image_data.height as u32;
-
-                let result = if settings.format == SlintExportFormat::Png {
-                    image::save_buffer(
-                        &path,
-                        &image_data.pixels,
-                        width,
-                        height,
-                        image::ExtendedColorType::Rgba8,
-                    )
-                } else {
-                    // Convert RGBA to RGB for JPEG
-                    let rgb: Vec<u8> = image_data
-                        .pixels
-                        .as_chunks::<4>()
-                        .0
-                        .iter()
-                        .flat_map(|px| [px[0], px[1], px[2]])
-                        .collect();
-                    image::save_buffer(&path, &rgb, width, height, image::ExtendedColorType::Rgb8)
-                };
-
-                match result {
-                    Ok(()) => {
-                        ui.set_export_dialog_visible(false);
-                        show_toast(
-                            &ui,
-                            &toast_timer,
-                            &format!("Image exported to {}", path.display()),
-                        );
-                    }
-                    Err(e) => {
-                        error!("Failed to export image: {e}");
-                        ui.set_status_text(SharedString::from(format!("Export failed: {e}")));
-                    }
-                }
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::export_dialog::export(&ui, &state, &tile_cache);
             }
         });
     }
 
     {
         let ui_weak = ui_weak.clone();
-        let cached = Rc::clone(&cached_export_settings);
-
         ui.on_export_dialog_cancel_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
-                // Save current settings for reuse
-                *cached.borrow_mut() = Some(ui.get_export_settings());
-                ui.set_export_dialog_visible(false);
+                crate::export_dialog::close(&ui);
             }
         });
     }
 
     {
-        let state_handle = Arc::clone(&state);
+        let state = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
         let ui_weak = ui_weak.clone();
-        let cached = Rc::clone(&cached_export_settings);
-
         ui.on_export_dialog_reset_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
-                let state = state_handle.read();
-                let pane = state.focused_pane;
-                let settings = build_default_export_settings(&state, pane);
-                *cached.borrow_mut() = None; // clear cache on reset
-                ui.set_export_settings(settings);
+                crate::export_dialog::reset(&ui, &state, &tile_cache);
             }
         });
     }
@@ -2960,313 +2339,65 @@ pub fn setup_callbacks(
     }
 
     // -- Dataset export dialog callbacks --
-    let dataset_cancel_flag: Rc<RefCell<Option<Arc<std::sync::atomic::AtomicBool>>>> =
-        Rc::new(RefCell::new(None));
     {
-        let state_handle = Arc::clone(&state);
+        let state = Arc::clone(&state);
         let ui_weak = ui_weak.clone();
-
         ui.on_dataset_export_open_dialog(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let state = state_handle.read();
-            let inputs: Vec<slint::SharedString> = state
-                .open_files
-                .iter()
-                .map(|f| slint::SharedString::from(f.path.to_string_lossy().as_ref()))
-                .collect();
-            let threads = std::thread::available_parallelism()
-                .map(|n| n.get() as i32)
-                .unwrap_or(4);
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let default_output = format!("{home}/Documents/EOV/Export");
-            let settings = DatasetExportSettings {
-                inputs: slint::ModelRc::from(Rc::new(slint::VecModel::from(inputs))),
-                output_dir: SharedString::from(default_output),
-                tile_size: 512,
-                stride: 512,
-                threads,
-                white_threshold: 0.8,
-            };
-            ui.set_dataset_export_settings(settings);
-            ui.set_dataset_export_dialog_visible(true);
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::dataset_dialog::open(&ui, &state);
+            }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-
         ui.on_dataset_export_add_input(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let dialog = rfd::FileDialog::new()
-                .add_filter(
-                    "WSI Files",
-                    &[
-                        "svs", "tif", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "tiff",
-                        "svslide", "bif", "czi",
-                    ],
-                )
-                .add_filter("All Files", &["*"]);
-
-            if let Some(paths) = dialog.pick_files() {
-                let mut settings = ui.get_dataset_export_settings();
-                let model = settings
-                    .inputs
-                    .as_any()
-                    .downcast_ref::<slint::VecModel<SharedString>>()
-                    .map(|m| {
-                        let mut v: Vec<SharedString> =
-                            (0..m.row_count()).map(|i| m.row_data(i).unwrap()).collect();
-                        for p in &paths {
-                            v.push(SharedString::from(p.to_string_lossy().as_ref()));
-                        }
-                        v
-                    })
-                    .unwrap_or_else(|| {
-                        paths
-                            .iter()
-                            .map(|p| SharedString::from(p.to_string_lossy().as_ref()))
-                            .collect()
-                    });
-                settings.inputs = slint::ModelRc::from(Rc::new(slint::VecModel::from(model)));
-                ui.set_dataset_export_settings(settings);
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::dataset_dialog::add_inputs(&ui);
             }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-
-        ui.on_dataset_export_remove_input(move |idx| {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let mut settings = ui.get_dataset_export_settings();
-            if let Some(m) = settings
-                .inputs
-                .as_any()
-                .downcast_ref::<slint::VecModel<SharedString>>()
-            {
-                let mut v: Vec<SharedString> =
-                    (0..m.row_count()).map(|i| m.row_data(i).unwrap()).collect();
-                if (idx as usize) < v.len() {
-                    v.remove(idx as usize);
-                }
-                settings.inputs = slint::ModelRc::from(Rc::new(slint::VecModel::from(v)));
-                ui.set_dataset_export_settings(settings);
+        ui.on_dataset_export_remove_input(move |index| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::dataset_dialog::remove_input(&ui, index);
             }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-
         ui.on_dataset_export_change_output_dir(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let dialog = rfd::FileDialog::new();
-            if let Some(dir) = dialog.pick_folder() {
-                let mut settings = ui.get_dataset_export_settings();
-                settings.output_dir = SharedString::from(dir.to_string_lossy().as_ref());
-                ui.set_dataset_export_settings(settings);
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::dataset_dialog::choose_output_dir(&ui);
             }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-
         ui.on_dataset_export_cancel_requested(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_dataset_export_dialog_visible(false);
             }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-
-        ui.on_dataset_export_settings_changed(move |_settings| {
-            // Settings are stored in the UI model; nothing extra needed here.
-            let _ = ui_weak.upgrade();
+        ui.on_dataset_export_settings_changed(move |mut settings| {
+            // Edits clear a previous validation error.
+            if !settings.error.is_empty()
+                && let Some(ui) = ui_weak.upgrade()
+            {
+                settings.error = SharedString::new();
+                ui.set_dataset_export_settings(settings);
+            }
         });
     }
-
     {
         let ui_weak = ui_weak.clone();
-        let toast_timer = Rc::clone(&toast_timer);
-        let cancel_flag = Rc::clone(&dataset_cancel_flag);
-
         ui.on_dataset_export_requested(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let settings = ui.get_dataset_export_settings();
-
-            // Collect inputs
-            let inputs: Vec<PathBuf> = {
-                let model = &settings.inputs;
-                (0..model.row_count())
-                    .filter_map(|i| model.row_data(i))
-                    .map(|s| PathBuf::from(s.as_str()))
-                    .collect()
-            };
-
-            if inputs.is_empty() {
-                ui.set_status_text(SharedString::from("No input files specified"));
-                return;
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::dataset_dialog::start(&ui);
             }
-
-            let config = eov_common::dataset::DatasetPatchesConfig {
-                inputs,
-                output_dir: PathBuf::from(settings.output_dir.as_str()),
-                tile_size: settings.tile_size.max(1) as u32,
-                stride: settings.stride.max(1) as u32,
-                metadata_format: None,
-                threads: settings.threads.max(1) as usize,
-                white_threshold: if settings.white_threshold > 0.0 {
-                    Some(settings.white_threshold)
-                } else {
-                    None
-                },
-            };
-
-            // Hide config dialog, show progress
-            ui.set_dataset_export_dialog_visible(false);
-            ui.set_dataset_export_progress(DatasetExportProgress {
-                current_slide: 0,
-                total_slides: 0,
-                tiles_exported: 0,
-                total_tiles_expected: 0,
-                elapsed_secs: 0.0,
-                estimated_remaining_secs: -1.0,
-            });
-            ui.set_dataset_export_progress_visible(true);
-
-            // Set up cancel flag
-            let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            *cancel_flag.borrow_mut() = Some(Arc::clone(&cancel));
-
-            // Shared atomic counters for progress
-            let progress_tiles = Arc::new(std::sync::atomic::AtomicU64::new(0));
-            let progress_current_slide = Arc::new(std::sync::atomic::AtomicU64::new(0));
-            let progress_total_slides = Arc::new(std::sync::atomic::AtomicU64::new(0));
-            let progress_total_tiles_expected = Arc::new(std::sync::atomic::AtomicU64::new(0));
-            let start_time = std::time::Instant::now();
-
-            // Spawn the pipeline on a background thread
-            let pt = Arc::clone(&progress_tiles);
-            let pcs = Arc::clone(&progress_current_slide);
-            let pts = Arc::clone(&progress_total_slides);
-            let ptte = Arc::clone(&progress_total_tiles_expected);
-            let cancel_bg = Arc::clone(&cancel);
-
-            let (result_tx, result_rx) = std::sync::mpsc::channel::<
-                Result<eov_common::dataset::DatasetPatchesReport, String>,
-            >();
-
-            std::thread::Builder::new()
-                .name("dataset-export".into())
-                .spawn(move || {
-                    let result = eov_common::dataset::run_dataset_patches_with_progress(
-                        &config, &cancel_bg, &pt, &pcs, &pts, &ptte,
-                    );
-                    let _ = result_tx.send(result.map_err(|e| e.to_string()));
-                })
-                .expect("failed to spawn dataset-export thread");
-
-            // Poll progress using a timer
-            let ui_weak_poll = ui_weak.clone();
-            let toast_timer_poll = Rc::clone(&toast_timer);
-            let poll_timer = Rc::new(Timer::default());
-            let poll_timer_clone = Rc::clone(&poll_timer);
-
-            poll_timer.start(
-                slint::TimerMode::Repeated,
-                Duration::from_millis(200),
-                move || {
-                    let Some(ui) = ui_weak_poll.upgrade() else {
-                        poll_timer_clone.stop();
-                        return;
-                    };
-
-                    let tiles = progress_tiles.load(std::sync::atomic::Ordering::Relaxed);
-                    let cur_slide =
-                        progress_current_slide.load(std::sync::atomic::Ordering::Relaxed);
-                    let tot_slides =
-                        progress_total_slides.load(std::sync::atomic::Ordering::Relaxed);
-                    let tot_tiles =
-                        progress_total_tiles_expected.load(std::sync::atomic::Ordering::Relaxed);
-                    let elapsed = start_time.elapsed();
-
-                    let eta = if tiles > 0 && tot_tiles > tiles {
-                        let rate = tiles as f64 / elapsed.as_secs_f64();
-                        let remaining = (tot_tiles - tiles) as f64 / rate;
-                        remaining as f32
-                    } else if tiles > 0 && tot_tiles == tiles {
-                        0.0
-                    } else {
-                        -1.0
-                    };
-
-                    ui.set_dataset_export_progress(DatasetExportProgress {
-                        current_slide: cur_slide as i32,
-                        total_slides: tot_slides as i32,
-                        tiles_exported: tiles as i32,
-                        total_tiles_expected: tot_tiles as i32,
-                        elapsed_secs: elapsed.as_secs_f32(),
-                        estimated_remaining_secs: eta,
-                    });
-
-                    // Check if the background thread finished
-                    if let Ok(result) = result_rx.try_recv() {
-                        poll_timer_clone.stop();
-                        ui.set_dataset_export_progress_visible(false);
-                        match result {
-                            Ok(report) => {
-                                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                                    show_toast(&ui, &toast_timer_poll, "Dataset export cancelled.");
-                                } else {
-                                    let mut msg = format!(
-                                        "Dataset export complete: {} tiles from {} slide(s).",
-                                        report.total_tiles, report.processed_slides
-                                    );
-                                    if report.total_tiles_skipped_white > 0 {
-                                        msg.push_str(&format!(
-                                            " {} tile(s) skipped (white).",
-                                            report.total_tiles_skipped_white
-                                        ));
-                                    }
-                                    show_toast(&ui, &toast_timer_poll, &msg);
-                                }
-                            }
-                            Err(e) => {
-                                error!("Dataset export failed: {e}");
-                                ui.set_status_text(SharedString::from(format!(
-                                    "Dataset export failed: {e}"
-                                )));
-                            }
-                        }
-                    }
-                },
-            );
-        });
-    }
-
-    {
-        let ui_weak = ui_weak.clone();
-        let cancel_flag = Rc::clone(&dataset_cancel_flag);
-
-        ui.on_dataset_export_cancel_progress(move || {
-            if let Some(flag) = cancel_flag.borrow().as_ref() {
-                flag.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
-            // The poll timer will detect completion and hide the dialog.
-            let _ = ui_weak.upgrade();
         });
     }
 

@@ -8,7 +8,9 @@ mod callbacks;
 mod cli;
 mod clipboard;
 mod config;
+mod dataset_dialog;
 mod distribution;
+mod export_dialog;
 mod file_ops;
 mod gpu;
 mod gpu_interop;
@@ -47,10 +49,6 @@ use tracing::info;
 
 use backend::select_backend;
 use cli::{apply_config_override, init_tracing, maybe_run_cli_command, parse_launch_options};
-pub(crate) use clipboard::{
-    capture_pane_clipboard_image, copy_image_to_clipboard, copy_text_to_clipboard,
-    crop_image_to_viewport_bounds,
-};
 pub(crate) use pane_ui::{
     PaneRenderCacheEntry, PaneUiModels, clear_cached_pane, insert_pane_ui_state, pane_from_index,
     set_cached_pane_content, set_cached_pane_cpu_result, set_cached_pane_minimap,
