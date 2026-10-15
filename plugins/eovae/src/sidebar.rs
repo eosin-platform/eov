@@ -370,8 +370,12 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             let mut options = Vec::new();
             let auto_choice = choose_level(&file.geometry, Resolution::Auto, model_mpp);
             options.push(match (auto_choice, model_mpp) {
+                (Some(choice), Some(mpp)) if choice.resample.is_some() => format!(
+                    "Auto: the model's {mpp:.3} µm/px, resampled from level {}",
+                    choice.level.index
+                ),
                 (Some(choice), Some(mpp)) => format!(
-                    "Auto: match model {mpp:.2} µm/px → level {}",
+                    "Auto: the model's {mpp:.3} µm/px = level {}",
                     choice.level.index
                 ),
                 _ => "Auto (level 0)".to_string(),
@@ -405,7 +409,16 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 }
                 _ => 0,
             };
+            let level_mpp = choice.and_then(|c| c.level_mpp(&file.geometry));
             let (note, warning) = match choice {
+                Some(choice) if choice.mismatched() && choice.resample.is_some() => (
+                    format!(
+                        "The slide's finest level is {:.3} µm/px, coarser than the model's {:.3} µm/px: tiles are interpolated and errors will be inflated.",
+                        level_mpp.unwrap_or_default(),
+                        model_mpp.unwrap_or_default()
+                    ),
+                    true,
+                ),
                 Some(choice) if choice.mismatched() => (
                     format!(
                         "Level {} is {:.2} µm/px but the model was trained at {:.2} µm/px; errors will be inflated.",
@@ -414,6 +427,15 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                         model_mpp.unwrap_or_default()
                     ),
                     true,
+                ),
+                Some(choice) if choice.resample.is_some() => (
+                    format!(
+                        "Tiles are read from level {} ({:.3} µm/px) and resampled to the model's {:.3} µm/px.",
+                        choice.level.index,
+                        level_mpp.unwrap_or_default(),
+                        model_mpp.unwrap_or_default()
+                    ),
+                    false,
                 ),
                 Some(choice) => (
                     match (choice.mpp, model_mpp) {
@@ -632,13 +654,18 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                                         _ => None,
                                     })
                                     .unwrap_or_default();
+                                let (step_x, step_y) = (ctx.grid.step_x(), ctx.grid.step_y());
+                                let size = if (step_x - step_y).abs() < 0.5 {
+                                    format!("{} px", thousands(step_x))
+                                } else {
+                                    format!("{}×{} px", thousands(step_x), thousands(step_y))
+                                };
                                 json!({
                                     "id": coord.id(),
                                     "label": format!(
-                                        "x {} · y {} · {} px",
+                                        "x {} · y {} · {size}",
                                         thousands(rect.x),
                                         thousands(rect.y),
-                                        thousands(ctx.grid.step0())
                                     ),
                                     "score": format!("MAE {} · max {}", format_error(f64::from(*mae), decimals.max(4)), format_error(f64::from(max), 3)),
                                 })

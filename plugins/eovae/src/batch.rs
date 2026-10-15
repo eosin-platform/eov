@@ -98,7 +98,7 @@ pub fn command_spec(config: &Config) -> BatchCommandSpec {
             param("tf32", "allow TF32 on CUDA (faster, slightly different results)", json!(config.tf32)),
             param(
                 "resolution",
-                "auto (the level closest to the model's µm/px) or a downsample, e.g. 4",
+                "auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that level's own pixels)",
                 resolution_value(config.resolution),
             ),
             param("skip_background", "skip glass tiles", json!(config.skip_background)),
@@ -519,15 +519,15 @@ fn write_file(
 fn write_csv(
     out: &mut dyn Write,
     grid: &TileGrid,
-    mpp: Option<f64>,
+    mpp: Option<(f64, f64)>,
     tiles: &[(TileCoord, TileState)],
 ) -> std::io::Result<()> {
     writeln!(
         out,
         "col,row,x,y,width,height,width_um,height_um,level,state,background,mae,max_error"
     )?;
-    let um = |px: f64| {
-        mpp.map(|mpp| format!("{:.2}", px * mpp))
+    let um = |px: f64, axis: fn((f64, f64)) -> f64| {
+        mpp.map(|mpp| format!("{:.2}", px * axis(mpp)))
             .unwrap_or_default()
     };
     for (coord, state) in tiles {
@@ -548,8 +548,8 @@ fn write_csv(
             rect.y,
             rect.width,
             rect.height,
-            um(rect.width),
-            um(rect.height),
+            um(rect.width, |(x, _)| x),
+            um(rect.height, |(_, y)| y),
             grid.level
         )?;
     }
@@ -610,7 +610,7 @@ fn analyze_slide<B: Backend>(
     let contract = config.contract_for(model);
     let choice = choose_level(&geometry, config.resolution, contract.mpp)
         .ok_or("the slide reports no pyramid levels")?;
-    let grid = TileGrid::new(&geometry, &choice.level, model.tile_size);
+    let grid = TileGrid::for_choice(&geometry, &choice, model.tile_size);
     let output = config.output_for(model);
     let spec = RunSpec::new(model, &output, &contract, &grid, choice.mpp, &info);
     let run_key = spec.key();
@@ -700,16 +700,23 @@ fn analyze_slide<B: Backend>(
     let range = settings
         .heat_range
         .unwrap_or_else(|| auto_range(summary_stats.as_ref()));
-    let mpp = geometry.mpp;
-    let step0 = grid.step0();
+    let mpp_xy = geometry.mpp_xy;
+    let (step_x, step_y) = (grid.step_x(), grid.step_y());
 
     let mut warnings = model.warnings.clone();
+    let level_mpp = choice.level_mpp(&geometry);
     if choice.mismatched()
-        && let (Some(level_mpp), Some(model_mpp)) = (choice.mpp, contract.mpp)
+        && let (Some(level_mpp), Some(model_mpp)) = (level_mpp, contract.mpp)
     {
-        warnings.push(format!(
-            "The slide was analysed at {level_mpp:.3} µm/px but the model was trained at {model_mpp:.3} µm/px: errors are inflated by the difference."
-        ));
+        warnings.push(if choice.resample.is_some() {
+            format!(
+                "The slide's finest level is {level_mpp:.3} µm/px, coarser than the model's {model_mpp:.3} µm/px: tiles were interpolated and errors are inflated."
+            )
+        } else {
+            format!(
+                "The slide was analysed at {level_mpp:.3} µm/px but the model was trained at {model_mpp:.3} µm/px: errors are inflated by the difference."
+            )
+        });
     }
     if contract.mpp.is_some() && choice.mpp.is_none() {
         warnings.push(format!(
@@ -772,9 +779,12 @@ fn analyze_slide<B: Backend>(
             "requested": resolution_value(config.resolution),
             "level": grid.level,
             "downsample": grid.downsample,
+            "level_mpp": level_mpp,
             "mpp": choice.mpp,
-            "slide_mpp": mpp,
+            "slide_mpp": mpp_xy.map(|(x, y)| [x, y]),
             "model_mpp": contract.mpp,
+            "resampled": grid.resampled(),
+            "level0_px_per_model_px": [grid.scale_x, grid.scale_y],
             "ratio_to_model": choice.mismatch,
             "mismatched": choice.mismatched(),
         },
@@ -799,16 +809,16 @@ fn analyze_slide<B: Backend>(
             "from_cache": from_cache,
             "skip_background": config.skip_background,
             "tile_px": grid.tile,
-            "tile_level0_px": step0,
-            "tile_um": mpp.map(|mpp| step0 * mpp),
+            "tile_level0_px": [step_x, step_y],
+            "tile_um": mpp_xy.map(|(x, y)| [step_x * x, step_y * y]),
         },
         "scores": scores,
         "heatmap": {
             "file": HEATMAP_PNG,
             "width": grid.cols,
             "height": grid.rows,
-            "level0_px_per_pixel": step0,
-            "um_per_pixel": mpp.map(|mpp| step0 * mpp),
+            "level0_px_per_pixel": [step_x, step_y],
+            "um_per_pixel": mpp_xy.map(|(x, y)| [step_x * x, step_y * y]),
             "range": [range.0, range.1],
             "range_from": if settings.heat_range.is_some() { "heat_range parameter" } else { "p05-p95 of this slide" },
             "colors": "viridis from range[0] to range[1]; red: unreadable; transparent: glass or not analysed",
@@ -822,14 +832,14 @@ fn analyze_slide<B: Backend>(
     let mut outputs = Vec::new();
     let mut errors = Vec::new();
     if !tiles.is_empty() {
-        match write_file(dir, TILES_CSV, |out| write_csv(out, &grid, mpp, &tiles)) {
+        match write_file(dir, TILES_CSV, |out| write_csv(out, &grid, mpp_xy, &tiles)) {
             Ok(()) => outputs.push(TILES_CSV.to_string()),
             Err(error) => errors.push(error),
         }
         let image = render::tile_map(&grid, &tiles, range.0 as f32, range.1 as f32);
         let text = [
             ("Software", format!("eovae {}", env!("CARGO_PKG_VERSION"))),
-            ("eovae:level0_px_per_pixel", format!("{step0}")),
+            ("eovae:level0_px_per_pixel", format!("{step_x},{step_y}")),
             ("eovae:mae_range", format!("{},{}", range.0, range.1)),
             ("eovae:level", grid.level.to_string()),
         ];

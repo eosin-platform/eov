@@ -28,9 +28,10 @@ Open the sidebar with the VAE toolbar button.
    it with its external weights and prepares the inference engine in the
    background; the sidebar shows the device it runs on.
 2. **Analysis** sets the **device** (Auto, CPU or CUDA; independent of how eov
-   renders), the **resolution** (Auto matches the model's training µm/px when
-   both are known; otherwise pick one of the slide's real pyramid levels) and
-   threads/batch size. **Viewport**, **ROI** (the tiles under the slide's
+   renders), the **resolution** (Auto gives the model tiles at exactly its
+   training µm/px when the slide and the model both declare one, see below;
+   otherwise pick one of the slide's real pyramid levels) and threads/batch
+   size. **Viewport**, **ROI** (the tiles under the slide's
    region of interest, while it has one) and **Whole slide** start a job;
    progress and Cancel are also in eov's job list.
 3. Choose an overlay in a pane's HUD menu (or under **Results**, for the
@@ -99,8 +100,23 @@ Example sidecar:
 
 The HistoVAE reference model (`HistoVAE/pretrained/HistoVae_reconstruct.onnx`
 with its `.onnx.data` weights) is recognised and declares 0.227 µm/px
-(CAMELYON17 level 0). On a 0.49 µm/px slide the sidebar warns that errors are
-inflated by the resolution mismatch.
+(CAMELYON17 level 0).
+
+### Resolution
+
+With **Auto**, every tile covers `tile size × model µm/px` per axis, the
+same physical extent on every slide (a 256-pixel HistoVAE tile is 58.1 µm
+wide). eovae reads it from the coarsest pyramid level that is still at least
+as fine as the model's pixels on both axes and resamples it to the model's
+pixel size: an exact area (box) filter when shrinking, per axis, so
+non-square slide pixels are handled. A level within 0.5 % of the model's
+pixel size is read as it is. A slide whose finest level is coarser than the
+model's pixels is interpolated (bilinear) from level 0; when it is more than
+10 % coarser, the sidebar and batch summaries warn that errors are inflated
+(a 0.49 µm/px slide under HistoVAE, for example). An explicit level reads
+that level's own pixels and warns when it is more than 25 % off. Slides
+without a µm/px calibration are read at level 0. Resampled results are
+cached under their own run key.
 
 ## Results and storage
 
@@ -156,8 +172,10 @@ writes into `DIR/<slide>/`:
   the score distribution (count, mean, std, min, p05, p25, median, p75,
   p95, max); the model's file, SHA-256 over the model and its external
   weights, model card, input, output, layout, tile size and training µm/px;
-  the preprocessing (its source and the full contract); the level,
-  downsample and µm/px used and the ratio to the model's; the device asked
+  the preprocessing (its source and the full contract); the level read,
+  its downsample and µm/px, the µm/px fed to the model, whether tiles were
+  resampled (and the level-0 pixels per model pixel along x and y) and the
+  ratio to the model's; the device asked
   for and used, its precision and any CPU fallback, the batch size and
   threads; the ONNX Runtime and plugin versions; the run key; warnings. The
   same summary goes into eov's `DIR/batch.json`, with eov's version, the
@@ -174,7 +192,7 @@ and a parameter overrides one for the run only (nothing is saved):
 | `device` | `auto` (CUDA, else the CPU), `cpu`, `cuda` |
 | `batch_size`, `threads` | numbers (`threads=0`: every core) |
 | `tf32`, `skip_background` | `true`, `false` |
-| `resolution` | `auto` (the level closest to the model's µm/px) or a downsample, e.g. `4` |
+| `resolution` | `auto` (the model's µm/px, resampled, as above) or a downsample, e.g. `4` (that level's own pixels) |
 | `heat_range` | `auto` (p05–p95 of each slide) or `lo,hi` (the same colour scale for every slide) |
 | `cache` | `off` (default: every tile is computed, nothing stored), `store` (results are also kept for eov's viewer), `reuse` (tiles stored before for the same run, as keyed above, are taken from the cache) |
 
@@ -277,4 +295,5 @@ with `--zstd`.
 `src/pipeline.rs` (one job), `src/engine.rs` and `src/ort_backend.rs`
 (inference), `src/tiling.rs`, `src/contract.rs`, `src/model.rs`,
 `src/onnx_scan.rs`, `src/run.rs`, `src/slide.rs`, `src/results.rs`,
-`src/db.rs`, `src/render.rs`, `src/png.rs`, `src/stats.rs`.
+`src/db.rs`, `src/render.rs`, `src/resample.rs`, `src/png.rs`,
+`src/stats.rs`.

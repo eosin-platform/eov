@@ -120,8 +120,9 @@ pub struct HeatLayout {
     /// Size in heat-map pixels.
     pub width: u32,
     pub height: u32,
-    /// Level-0 pixels per heat-map pixel.
-    pub pixel0: f64,
+    /// Level-0 pixels per heat-map pixel along x and y.
+    pub pixel0_x: f64,
+    pub pixel0_y: f64,
 }
 
 /// The error map of a run: each tile spans `p×p` pixels (`p` = 1–8, chosen
@@ -164,7 +165,8 @@ impl HeatMap {
         let height = grid.rows.div_ceil(group) * per_tile;
         let mut data = vec![0u8; width as usize * height as usize * 4];
         let span = (hi - lo).max(1e-9);
-        let pixel0 = grid.step0() * f64::from(group) / f64::from(per_tile);
+        let pixel0_x = grid.step_x() * f64::from(group) / f64::from(per_tile);
+        let pixel0_y = grid.step_y() * f64::from(group) / f64::from(per_tile);
         for (coord, state) in tiles {
             let color = match state {
                 TileState::Analysed { mae, .. } => colormap((mae - lo) / span),
@@ -175,12 +177,12 @@ impl HeatMap {
             let gy = coord.row / group;
             for sy in 0..per_tile {
                 let py = gy * per_tile + sy;
-                if f64::from(py) * pixel0 >= grid.height0 as f64 {
+                if f64::from(py) * pixel0_y >= grid.height0 as f64 {
                     break;
                 }
                 for sx in 0..per_tile {
                     let px = gx * per_tile + sx;
-                    if f64::from(px) * pixel0 >= grid.width0 as f64 {
+                    if f64::from(px) * pixel0_x >= grid.width0 as f64 {
                         break;
                     }
                     let i = (py as usize * width as usize + px as usize) * 4;
@@ -195,7 +197,8 @@ impl HeatMap {
             layout: HeatLayout {
                 width,
                 height,
-                pixel0,
+                pixel0_x,
+                pixel0_y,
             },
             data,
         }
@@ -225,7 +228,8 @@ impl HeatMap {
         let HeatLayout {
             width,
             height,
-            pixel0,
+            pixel0_x,
+            pixel0_y,
         } = self.layout;
         let mut chunks = Vec::new();
         for row in 0..height.div_ceil(size) {
@@ -260,10 +264,10 @@ impl HeatMap {
                     col,
                     row,
                     rect: Rect {
-                        x: f64::from(x0) * pixel0,
-                        y: f64::from(y0) * pixel0,
-                        width: f64::from(w) * pixel0,
-                        height: f64::from(h) * pixel0,
+                        x: f64::from(x0) * pixel0_x,
+                        y: f64::from(y0) * pixel0_y,
+                        width: f64::from(w) * pixel0_x,
+                        height: f64::from(h) * pixel0_y,
                     },
                     content,
                 });
@@ -403,7 +407,7 @@ pub struct MosaicFrame {
 
 impl MosaicFrame {
     /// The view plus a margin, at screen resolution, never finer than the
-    /// analysed level and never larger than [`MAX_MOSAIC_PIXELS`].
+    /// model's pixels and never larger than [`MAX_MOSAIC_PIXELS`].
     pub fn for_view(view: &ViewInfo, grid: &TileGrid) -> Option<Self> {
         let margin_x = view.visible.width * 0.15;
         let margin_y = view.visible.height * 0.15;
@@ -415,7 +419,7 @@ impl MosaicFrame {
             return None;
         }
         let screen = view.zoom * view.scale_factor.max(1.0);
-        let mut scale = screen.min(1.0 / grid.downsample);
+        let mut scale = screen.min(1.0 / grid.scale_x.min(grid.scale_y));
         let pixels = (x1 - x0) * (y1 - y0) * scale * scale;
         if pixels > MAX_MOSAIC_PIXELS {
             scale *= (MAX_MOSAIC_PIXELS / pixels).sqrt();
@@ -481,15 +485,18 @@ pub fn mosaic(
     let mut sharpen = display
         .filter(|d| d.sharpens() && frame.at_screen_resolution())
         .map(|d| (d.sharpness, vec![false; width * height]));
-    let step = grid.step0();
+    let (step_x, step_y) = (grid.step_x(), grid.step_y());
     let k = frame.scale;
-    // Source (level) pixels per mosaic pixel.
-    let ratio = 1.0 / (k * grid.downsample);
-    let samples = if ratio <= 1.5 {
-        1
-    } else {
-        (ratio.ceil() as usize).min(4)
+    // Model pixels per mosaic pixel, per axis.
+    let samples = |scale: f64| {
+        let ratio = 1.0 / (k * scale);
+        if ratio <= 1.5 {
+            1
+        } else {
+            (ratio.ceil() as usize).min(4)
+        }
     };
+    let (samples_x, samples_y) = (samples(grid.scale_x), samples(grid.scale_y));
     for tile in tiles {
         let footprint = grid.valid_footprint(tile.coord);
         let dx0 = ((footprint.x - frame.rect.x) * k).round().max(0.0) as usize;
@@ -505,8 +512,8 @@ pub fn mosaic(
         if dx1 <= dx0 || dy1 <= dy0 {
             continue;
         }
-        let tile_x0 = f64::from(tile.coord.col) * step;
-        let tile_y0 = f64::from(tile.coord.row) * step;
+        let tile_x0 = f64::from(tile.coord.col) * step_x;
+        let tile_y0 = f64::from(tile.coord.row) * step_y;
         match (&tile.state, &tile.payload) {
             (Some(TileState::Background), _) => {}
             (Some(TileState::Failed), _) => {
@@ -520,22 +527,24 @@ pub fn mosaic(
             (Some(TileState::Analysed { .. }), Some(payload)) => {
                 let max_x = payload.valid_w.max(1) - 1;
                 let max_y = payload.valid_h.max(1) - 1;
-                let to_source = |d: usize, offset: f64, origin: f64, tile_origin: f64| {
-                    let level0 = origin + (d as f64 + offset) / k;
-                    (level0 - tile_origin) / grid.downsample
-                };
+                // Mosaic pixel → model pixel of the tile.
+                let to_source =
+                    |d: usize, offset: f64, origin: f64, tile_origin: f64, scale: f64| {
+                        let level0 = origin + (d as f64 + offset) / k;
+                        (level0 - tile_origin) / scale
+                    };
                 for dy in dy0..dy1 {
                     for dx in dx0..dx1 {
                         let mut acc = [0u32; 4];
-                        for sy in 0..samples {
-                            let oy = (sy as f64 + 0.5) / samples as f64;
-                            let v = to_source(dy, oy, frame.rect.y, tile_y0)
+                        for sy in 0..samples_y {
+                            let oy = (sy as f64 + 0.5) / samples_y as f64;
+                            let v = to_source(dy, oy, frame.rect.y, tile_y0, grid.scale_y)
                                 .floor()
                                 .clamp(0.0, f64::from(max_y))
                                 as u32;
-                            for sx in 0..samples {
-                                let ox = (sx as f64 + 0.5) / samples as f64;
-                                let u = to_source(dx, ox, frame.rect.x, tile_x0)
+                            for sx in 0..samples_x {
+                                let ox = (sx as f64 + 0.5) / samples_x as f64;
+                                let u = to_source(dx, ox, frame.rect.x, tile_x0, grid.scale_x)
                                     .floor()
                                     .clamp(0.0, f64::from(max_x))
                                     as u32;
@@ -559,7 +568,7 @@ pub fn mosaic(
                                 }
                             }
                         }
-                        let n = (samples * samples) as u32;
+                        let n = (samples_x * samples_y) as u32;
                         let i = (dy * width + dx) * 4;
                         match tone {
                             Some(tone) => {
@@ -656,7 +665,8 @@ mod tests {
         let layout = heat.layout();
         let per_tile = layout.width / grid.cols;
         assert!(per_tile >= 1);
-        assert_eq!(layout.pixel0, 16.0 / f64::from(per_tile));
+        assert_eq!(layout.pixel0_x, 16.0 / f64::from(per_tile));
+        assert_eq!(layout.pixel0_y, layout.pixel0_x);
         assert_eq!(heat.pixel(0, 0).unwrap(), colormap(0.0));
         assert_eq!(
             heat.pixel(per_tile, 0).unwrap()[3],
@@ -699,7 +709,7 @@ mod tests {
         // Chunks tile the map: no gaps or overlaps, partial at the edges.
         let covered: u64 = chunks
             .iter()
-            .map(|c| (c.rect.width / layout.pixel0 * c.rect.height / layout.pixel0) as u64)
+            .map(|c| (c.rect.width / layout.pixel0_x * c.rect.height / layout.pixel0_y) as u64)
             .sum();
         assert_eq!(covered, u64::from(layout.width) * u64::from(layout.height));
         for chunk in &chunks {

@@ -378,7 +378,7 @@ pub fn run_context(state: &State, file_id: FileId) -> Result<RunContext, NoRun> 
     let contract = state.config.contract_for(&model);
     let choice = choose_level(&file.geometry, state.config.resolution, contract.mpp)
         .ok_or(NoRun::NoLevels)?;
-    let grid = TileGrid::new(&file.geometry, &choice.level, model.tile_size);
+    let grid = TileGrid::for_choice(&file.geometry, &choice, model.tile_size);
     let output = state.config.output_for(&model);
     let spec = RunSpec::new(&model, &output, &contract, &grid, choice.mpp, info);
     let key = ResultKey::new(&identity.key, &spec.key());
@@ -1767,7 +1767,14 @@ impl<B: Backend> Core<B> {
                 "width": ctx.grid.width0,
                 "height": ctx.grid.height0,
             },
-            "grid": {"tile": ctx.grid.tile, "cols": ctx.grid.cols, "rows": ctx.grid.rows, "level": ctx.grid.level, "downsample": ctx.grid.downsample},
+            "grid": {
+                "tile": ctx.grid.tile,
+                "cols": ctx.grid.cols,
+                "rows": ctx.grid.rows,
+                "level": ctx.grid.level,
+                "downsample": ctx.grid.downsample,
+                "level0_px_per_model_px": [ctx.grid.scale_x, ctx.grid.scale_y],
+            },
             "coordinates": "level-0 pixels of the slide",
             "mae": "mean absolute error over in-slide pixels and RGB channels, 0-1",
         });

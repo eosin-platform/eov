@@ -1,7 +1,8 @@
 //! Running one analysis job: read tiles, skip background, batch, infer,
 //! score and deliver.
 //!
-//! - Reader threads fetch regions in parallel; inference runs on the job
+//! - Reader threads fetch regions in parallel (resampled to the model's
+//!   pixel size when the grid asks for it, VAE-15); inference runs on the job
 //!   thread in batches. Models with a fixed batch get full batches, padded
 //!   only at the end of the job; dynamic models get batches of the configured
 //!   size (VAE-9).
@@ -18,6 +19,7 @@ use crate::contract::{
     Contract, Layout, PreparedTile, is_background, prepare, score_output, write_input,
 };
 use crate::engine::{EngineError, InferenceEngine};
+use crate::resample::resample;
 use crate::results::{Counts, Need, TilePayload, TileState};
 use crate::tiling::{TileCoord, TileGrid};
 use eov_plugin_api::abi::RegionRequest;
@@ -240,17 +242,26 @@ pub fn run_job(
                 let Some(&(coord, need)) = spec.tiles.get(index) else {
                     return;
                 };
-                let (x, y) = spec.grid.origin0(coord);
+                let plan = spec.grid.read_plan(coord);
                 let request = RegionRequest {
                     file_id: spec.file_id,
                     level: spec.grid.level,
-                    x,
-                    y,
-                    width: tile,
-                    height: tile,
+                    x: plan.x,
+                    y: plan.y,
+                    width: plan.width,
+                    height: plan.height,
                     background: spec.contract.background_rgba(),
                 };
-                let item = match source.read(&request) {
+                // Resampled grids bring the region to the model's pixels.
+                let read = source.read(&request).and_then(|rgba| {
+                    if spec.grid.resampled() {
+                        let grey = spec.contract.background_rgb();
+                        resample(&rgba, &plan, tile, [grey; 3])
+                    } else {
+                        Ok(rgba)
+                    }
+                });
+                let item = match read {
                     Ok(rgba) => {
                         match prepare(&rgba, tile, spec.grid.valid_size(coord), &spec.contract) {
                             Some(prepared) => {

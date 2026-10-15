@@ -13,8 +13,8 @@
 //!   `ort_backend` its ONNX Runtime implementation (feature `onnx`).
 //! - [`batch`] is the headless `analyze` command (`eov batch run`).
 //! - [`tiling`], [`contract`], [`model`], [`onnx_scan`], [`run`], [`slide`],
-//!   [`results`], [`db`], [`render`], [`png`] and [`stats`] are
-//!   host-independent.
+//!   [`results`], [`db`], [`render`], [`resample`], [`png`] and [`stats`]
+//!   are host-independent.
 
 pub mod batch;
 pub mod config;
@@ -30,6 +30,7 @@ pub mod plugin;
 pub mod png;
 pub mod presenter;
 pub mod render;
+pub mod resample;
 pub mod results;
 pub mod run;
 pub mod sidebar;
