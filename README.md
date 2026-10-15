@@ -115,7 +115,7 @@ Current capabilities include:
 - Duplicate tabs into additional panes for side-by-side comparison.
 - Drag tabs between panes, reorder tabs, and create splits by dropping onto pane edges.
 - Pan and zoom smoothly with on-demand tile loading and cached rendering.
-- Toggle between CPU and GPU rendering (Vulkan).
+- Toggle between CPU and GPU rendering (Vulkan, DirectX 12 or Metal). Without a usable GPU (virtual desktops, remote sessions, VMs) eov draws its window with a software renderer and slides on the CPU, and says why; `EOV_RENDERER=software` forces this.
 - Adaptive [Lanczos](https://en.wikipedia.org/wiki/Lanczos_resampling) (high quality), [Trilinear](https://en.wikipedia.org/wiki/Trilinear_filtering) (industry standard, performant), and [Bilinear](https://en.wikipedia.org/wiki/Bilinear_interpolation) (fast) texture filtering.
 - Real-time image adjustments: sharpness (unsharp mask), gamma, brightness, and contrast sliders applied via convolution + per-channel LUT (CPU) or per-pixel shader (GPU).
 - Stain normalization: Macenko (SVD/PCA angular-percentile) and Vahadane (sparse non-negative dictionary learning) methods, both running on CPU and GPU backends with matched output.
