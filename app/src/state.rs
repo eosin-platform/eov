@@ -544,7 +544,7 @@ impl AppState {
         }
     }
 
-    fn resolve_tab_file_id(&self, id: i32) -> i32 {
+    pub fn resolve_tab_file_id(&self, id: i32) -> i32 {
         self.tab_aliases.get(&id).copied().unwrap_or(id)
     }
 
@@ -1213,7 +1213,8 @@ impl AppState {
                 }
             }
 
-            self.tab_aliases.retain(|_, file_id| *file_id != id);
+            // Resolve the duplicate tabs' saved views before their aliases
+            // go, or they could never be matched to this file again.
             let tab_instance_ids_to_remove: Vec<i32> = self
                 .tab_instance_states
                 .keys()
@@ -1223,6 +1224,7 @@ impl AppState {
             for tab_id in tab_instance_ids_to_remove {
                 self.tab_instance_states.remove(&tab_id);
             }
+            self.tab_aliases.retain(|_, file_id| *file_id != id);
 
             self.collapse_empty_panes();
 

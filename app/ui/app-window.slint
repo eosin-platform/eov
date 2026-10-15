@@ -5,6 +5,7 @@ import {
     BottomPanelKind,
     ContextMenuItem,
     DatasetExportSettings,
+    PropertyRow,
     ExportPreviewInfo,
     ExportSettings,
     FilteringMode,
@@ -35,6 +36,7 @@ import { SplitPaneContainer } from "panes.slint";
 import { WindowToolbar } from "window-toolbar.slint";
 import { NotificationsPopup, StatusBar } from "status-bar.slint";
 import { PluginsPanel } from "plugins-panel.slint";
+import { SlideInfoPanel } from "slide-info-panel.slint";
 
 export component AppWindow inherits Window {
     title: "eov";
@@ -156,6 +158,25 @@ export component AppWindow inherits Window {
     callback dataset-export-change-output-dir();
     callback dataset-export-settings-changed(DatasetExportSettings);
 
+    // Slide information (label, macro, properties)
+    in-out property <bool> slide-info-visible: false;
+    in-out property <string> slide-info-title;
+    in-out property <image> slide-info-label;
+    in-out property <bool> slide-info-has-label: false;
+    in-out property <image> slide-info-macro;
+    in-out property <bool> slide-info-has-macro: false;
+    in-out property <image> slide-info-overview;
+    in-out property <bool> slide-info-has-overview: false;
+    in-out property <bool> slide-info-hide-label: false;
+    in-out property <[PropertyRow]> slide-info-rows: [];
+    in-out property <int> slide-info-total-rows: 0;
+    in-out property <string> slide-info-filter;
+    callback slide-info-requested(/* tab id */ int);
+    callback slide-info-hide-label-toggled(bool);
+    callback slide-info-filter-edited(string);
+    callback slide-info-copy-all();
+    callback slide-info-copy-row(int);
+
     in-out property <ToolType> current-tool: ToolType.navigate;
     in-out property <string> measure-mode-label: "Distance";
 
@@ -201,6 +222,7 @@ export component AppWindow inherits Window {
     callback close-other-tabs(int, int);
     callback close-tabs-to-right(int, int);
     callback close-all-tabs();
+    callback close-pane-tabs(int);
     callback open-containing-folder(int);
     callback copy-path(int);
     callback split-right(int, int);
@@ -366,6 +388,10 @@ export component AppWindow inherits Window {
         height: 100%;
 
         key-pressed(e) => {
+            if e.text == Key.Escape && root.slide-info-visible {
+                root.slide-info-visible = false;
+                accept
+            }
             if e.text == Key.Escape && root.dataset-export-dialog-visible {
                 root.dataset-export-dialog-visible = false;
                 root.dataset-export-cancel-requested();
@@ -398,7 +424,7 @@ export component AppWindow inherits Window {
                 accept
             }
             // Modal surfaces own the keyboard (UI-7).
-            if root.export-dialog-visible || root.dataset-export-dialog-visible
+            if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible {
                 reject
             }
@@ -617,6 +643,14 @@ export component AppWindow inherits Window {
                                 label: "Copy Path",
                                 icon: "",
                                 shortcut: "",
+                                enabled: true,
+                                separator-after: false
+                            },
+                            {
+                                id: "slide-info",
+                                label: "Slide Information",
+                                icon: "",
+                                shortcut: "I",
                                 enabled: true,
                                 separator-after: true
                             },
@@ -996,11 +1030,14 @@ export component AppWindow inherits Window {
                 } else if id == "close-right" {
                     root.close-tabs-to-right(root.drag-source-pane, root.context-menu-tab-id);
                 } else if id == "close-all" {
-                    root.close-all-tabs();
+                    // The tab menu's Close All means this pane's tabs.
+                    root.close-pane-tabs(root.drag-source-pane);
                 } else if id == "open-folder" {
                     root.open-containing-folder(root.context-menu-tab-id);
                 } else if id == "copy-path" {
                     root.copy-path(root.context-menu-tab-id);
+                } else if id == "slide-info" {
+                    root.slide-info-requested(root.context-menu-tab-id);
                 } else if id == "split-right" {
                     root.split-right(root.drag-source-pane, root.context-menu-tab-id);
                 }
@@ -1465,6 +1502,35 @@ export component AppWindow inherits Window {
         }
         settings-changed(s) => {
             root.dataset-export-settings-changed(s);
+        }
+    }
+
+    if root.slide-info-visible: SlideInfoPanel {
+        title: root.slide-info-title;
+        label-image: root.slide-info-label;
+        has-label: root.slide-info-has-label;
+        macro-image: root.slide-info-macro;
+        has-macro: root.slide-info-has-macro;
+        overview-image: root.slide-info-overview;
+        has-overview: root.slide-info-has-overview;
+        hide-label: root.slide-info-hide-label;
+        rows: root.slide-info-rows;
+        total-rows: root.slide-info-total-rows;
+        filter <=> root.slide-info-filter;
+        close-requested => {
+            root.slide-info-visible = false;
+        }
+        hide-label-toggled(hidden) => {
+            root.slide-info-hide-label-toggled(hidden);
+        }
+        filter-edited(text) => {
+            root.slide-info-filter-edited(text);
+        }
+        copy-all-requested => {
+            root.slide-info-copy-all();
+        }
+        copy-row-requested(index) => {
+            root.slide-info-copy-row(index);
         }
     }
 

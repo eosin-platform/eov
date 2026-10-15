@@ -266,6 +266,54 @@ pub(crate) fn frame_active_viewport(state: &mut AppState) -> bool {
     true
 }
 
+/// The objective-equivalent magnification of a slide's full resolution:
+/// the scanner's objective power, or about 10 µm ÷ MPP when only the pixel
+/// size is known (0.25 µm/px ≈ 40×).
+pub(crate) fn native_magnification(props: &eov_common::WsiProperties) -> Option<f64> {
+    props
+        .objective_power
+        .filter(|power| power.is_finite() && *power > 0.0)
+        .or_else(|| {
+            let mpp = match (props.mpp_x, props.mpp_y) {
+                (Some(x), Some(y)) => (x + y) / 2.0,
+                (Some(v), None) | (None, Some(v)) => v,
+                (None, None) => return None,
+            };
+            (mpp.is_finite() && mpp > 0.0).then(|| 10.0 / mpp)
+        })
+}
+
+/// Zooms the focused pane to an objective-equivalent `magnification`
+/// (`None` = one screen pixel per slide pixel). `Err` when the slide's
+/// magnification is unknown.
+pub(crate) fn magnify_active_viewport(
+    state: &mut AppState,
+    magnification: Option<f64>,
+) -> Result<bool, String> {
+    let pane = if state.split_enabled {
+        state.focused_pane
+    } else {
+        PaneId::PRIMARY
+    };
+    let native = state
+        .active_file_id_for_pane(pane)
+        .and_then(|file_id| state.get_file(file_id))
+        .map(|file| native_magnification(file.wsi.properties()));
+    let zoom = match (magnification, native) {
+        (_, None) => return Ok(false),
+        (None, _) => 1.0,
+        (Some(target), Some(Some(native))) => target / native,
+        (Some(_), Some(None)) => {
+            return Err("This slide records neither its objective nor its pixel size".into());
+        }
+    };
+    let Some(viewport) = state.active_viewport_mut() else {
+        return Ok(false);
+    };
+    viewport.zoom_to(zoom);
+    Ok(true)
+}
+
 pub(crate) fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
         return false;
@@ -1373,6 +1421,39 @@ pub fn setup_callbacks(
     }
 
     {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_close_pane_tabs(move |pane| {
+            if let Some(ui) = ui_weak.upgrade() {
+                {
+                    let mut state = state_handle.write();
+                    let pane_id = pane_from_index(pane);
+                    // The pane goes away with its last tab; track it by id.
+                    if let Some(uid) = state.pane_uid(pane_id) {
+                        let ids: Vec<i32> = state.tabs_for_pane(pane_id).to_vec();
+                        for id in ids {
+                            let Some(pane) = state.pane_by_uid(uid) else {
+                                break;
+                            };
+                            state.set_focused_pane(pane);
+                            state.close_tab_in_pane(pane, id);
+                        }
+                    }
+                }
+                let state = state_handle.read();
+                refresh_tab_ui(&ui, &state);
+                ui.invoke_focus_keyboard();
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    {
         let state = Arc::clone(&state);
 
         ui.on_open_containing_folder(move |id| {
@@ -2102,7 +2183,7 @@ pub fn setup_callbacks(
                 let objective_power = state
                     .active_file_id_for_pane(state.focused_pane)
                     .and_then(|file_id| state.get_file(file_id))
-                    .map(|file| file.wsi.properties().objective_power)
+                    .map(|file| native_magnification(file.wsi.properties()))
                     .unwrap_or(None);
                 let requested_zoom = parse_zoom_input(value.as_str(), objective_power);
                 if let Some(viewport) = state.active_viewport_mut()
@@ -2377,6 +2458,42 @@ pub fn setup_callbacks(
             if let Some(ui) = ui_weak.upgrade() {
                 let _ = ui.hide();
                 let _ = slint::quit_event_loop();
+            }
+        });
+    }
+
+    // -- Slide information panel --
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_requested(move |tab_id| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::open_for_tab(&ui, &state, tab_id);
+            }
+        });
+    }
+    {
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_hide_label_toggled(move |hidden| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::set_hide_label(&ui, hidden);
+            }
+        });
+    }
+    {
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_filter_edited(move |filter| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::filter_edited(&ui, &filter);
+            }
+        });
+    }
+    ui.on_slide_info_copy_all(crate::slide_info::copy_all);
+    {
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_copy_row(move |index| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::copy_row(&ui, index);
             }
         });
     }

@@ -348,6 +348,16 @@ impl UiHost {
                     });
                     true
                 }
+                "i" => {
+                    let pane = self.state.read().focused_pane;
+                    crate::slide_info::open_for_pane(&ui, &self.state, pane);
+                    true
+                }
+                "F11" => {
+                    let window = ui.window();
+                    window.set_fullscreen(!window.is_fullscreen());
+                    true
+                }
                 "PageDown" => {
                     crate::callbacks::cycle_series(
                         &ui,
@@ -424,8 +434,37 @@ impl UiHost {
                 );
                 true
             }
-            None => false,
+            None => !primary && !modifiers.alt && self.magnification_key(&name),
         }
+    }
+
+    /// Digit keys zoom to objective-equivalent magnifications (1.25×, 2.5×,
+    /// 5×, 10×, 20×, 40×; 0 = 1:1) unless a plugin claims them.
+    fn magnification_key(&self, name: &str) -> bool {
+        let magnification = match name {
+            "1" => Some(1.25),
+            "2" => Some(2.5),
+            "3" => Some(5.0),
+            "4" => Some(10.0),
+            "5" => Some(20.0),
+            "6" => Some(40.0),
+            "0" => None,
+            _ => return false,
+        };
+        let result = {
+            let mut state = self.state.write();
+            let result = crate::callbacks::magnify_active_viewport(&mut state, magnification);
+            if matches!(result, Ok(true)) {
+                state.mirror_locked_viewports_from_active();
+                state.request_render();
+            }
+            result
+        };
+        match result {
+            Ok(_) => self.request_render(),
+            Err(message) => self.status(&message),
+        }
+        true
     }
 
     /// Restores the previous tool after a held tool hotkey is released.

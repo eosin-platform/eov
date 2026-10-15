@@ -244,6 +244,22 @@ pub fn load_remember_recent_files() -> bool {
     .unwrap_or(true)
 }
 
+/// Whether slide labels (and macro photos, which show them) are hidden in
+/// the Slide Information panel (`hide_slide_label`).
+pub fn load_hide_slide_label() -> bool {
+    with_document(|_, document| {
+        document
+            .get("hide_slide_label")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(false)
+    })
+    .unwrap_or(false)
+}
+
+pub fn save_hide_slide_label(hidden: bool) -> Result<()> {
+    save(|document| document["hide_slide_label"] = value(hidden))
+}
+
 pub fn load_scroll_pans() -> Result<bool> {
     with_document(|_, document| {
         document

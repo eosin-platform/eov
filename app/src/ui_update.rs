@@ -324,7 +324,10 @@ pub fn update_tabs(
             if let Some(file_id) = state.active_file_id_for_pane(pane)
                 && let Some(file) = state.get_file(file_id)
             {
-                zoom_display = zoom_display_info(1.0, file.wsi.properties().objective_power);
+                zoom_display = zoom_display_info(
+                    1.0,
+                    crate::callbacks::native_magnification(file.wsi.properties()),
+                );
             }
 
             if let Some(file_id) = state.active_file_id_for_pane(pane)
@@ -357,7 +360,10 @@ pub fn update_tabs(
                     height: rect.height,
                 };
                 zoom_slider_position = zoom_to_slider_value(vp.zoom);
-                zoom_display = zoom_display_info(vp.zoom, file.wsi.properties().objective_power);
+                zoom_display = zoom_display_info(
+                    vp.zoom,
+                    crate::callbacks::native_magnification(file.wsi.properties()),
+                );
             }
 
             let metadata_items = build_metadata_items(state, pane, &viewport_info);

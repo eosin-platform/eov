@@ -25,6 +25,7 @@ mod plugins;
 mod recent;
 mod render;
 mod render_pool;
+mod slide_info;
 mod state;
 #[cfg(test)]
 mod test_support;
