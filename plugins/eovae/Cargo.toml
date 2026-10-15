@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2024"
 rust-version = "1.88"
 publish = false
-license = "MIT OR Apache-2.0 OR GPL-3.0"
+license = "MIT OR Apache-2.0 OR GPL-3.0-only"
 description = "Variational-autoencoder reconstruction-error analysis for eov (ONNX models)"
 repository = "https://github.com/eosin-platform/eov"
 

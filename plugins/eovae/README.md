@@ -169,17 +169,20 @@ python3 plugins/eovae/scripts/package_eop.py \
     --output dist/eovae-linux-x64.eop --fetch-ort
 ```
 
-An `.eop` is a plain tar of `plugin.toml`, the library, `ui/` and an
-optional `onnxruntime/` folder. `--fetch-ort` downloads the pinned ONNX
-Runtime 1.28.3 for `--platform` (`linux-x64`, `linux-aarch64`, `osx-arm64`,
-`win-x64`, `win-arm64`; default: this machine) and `--ort-flavor` (`cpu`,
-`cuda12`, `cuda13`) and verifies its SHA-256; `--ort-archive` uses an archive
-you downloaded, `--ort-dir` (or `EOVAE_ORT_DIR`) a folder of libraries, and
-`--no-ort` bundles none. Only the files the runtime needs are staged, under
+An `.eop` is a tar of `plugin.toml`, the library, `ui/` and an optional
+`onnxruntime/` folder; `--zstd` compresses it (eov 1.0 reads plain and
+zstd-compressed packages; the script uses Python 3.14's zstd module, the
+`zstandard` module or the `zstd` command). `--fetch-ort` downloads the
+pinned ONNX Runtime 1.28.3 for `--platform` (`linux-x64`, `linux-aarch64`,
+`osx-arm64`, `win-x64`, `win-arm64`; default: this machine) and
+`--ort-flavor` (`cpu`, `cuda12`, `cuda13`) and verifies its SHA-256;
+`--ort-archive` uses an archive you downloaded, `--ort-dir` (or
+`EOVAE_ORT_DIR`) a folder of libraries, and `--no-ort` bundles none. Only the files the runtime needs are staged, under
 their SONAME (no symlinks or duplicates), with its LICENSE and
 ThirdPartyNotices; CUDA and cuDNN are never included. Archives are
-reproducible (`SOURCE_DATE_EPOCH`, default 0). A Linux CPU package is about
-30 MB.
+reproducible (`SOURCE_DATE_EPOCH`, default 0; compressed ones for a given
+zstd implementation). A Linux CPU package is about 30 MB, or about 9 MB
+with `--zstd`.
 
 ## Module map
 

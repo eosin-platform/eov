@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Package eovae as an eov plugin package (.eop).
 
-An .eop is a plain tar archive (eov does not read compressed packages yet):
+An .eop is a tar archive, plain or compressed with zstd (``--zstd``); eov
+1.0 reads both and detects the compression from the content:
 
     plugin.toml
     libeovae.so | libeovae.dylib | eovae.dll
@@ -30,7 +31,8 @@ system when CUDA is selected. The runtime's LICENSE and ThirdPartyNotices
 are included.
 
 The archive is reproducible: sorted entries, fixed timestamps
-(``SOURCE_DATE_EPOCH``, default 0) and no owner names.
+(``SOURCE_DATE_EPOCH``, default 0) and no owner names (with ``--zstd``, for
+a given zstd implementation and level).
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ import pathlib
 import platform
 import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -176,6 +179,15 @@ def runtime_files(lib_dir: pathlib.Path, target: str, flavour: str) -> dict[str,
     return files
 
 
+def has_runtime(folder: pathlib.Path) -> bool:
+    """Whether ``folder`` (or its ``lib/``) holds an ONNX Runtime library."""
+    pattern = re.compile(r"(lib)?onnxruntime(\.so(\.\d+)*|(\.\d+)*\.dylib|\.dll)")
+    for candidate in (folder, folder / "lib"):
+        if candidate.is_dir() and any(pattern.fullmatch(p.name) for p in candidate.iterdir()):
+            return True
+    return False
+
+
 def notices(root: pathlib.Path) -> dict[str, pathlib.Path]:
     found = {}
     for name in ("LICENSE", "ThirdPartyNotices.txt"):
@@ -235,6 +247,33 @@ def add_file(archive: tarfile.TarFile, name: str, source: pathlib.Path, mtime: i
     archive.addfile(info, io.BytesIO(data))
 
 
+def zstd_compress(source: pathlib.Path, target: pathlib.Path, level: int) -> str:
+    """Compresses ``source`` into ``target`` as one zstd frame; returns the
+    implementation used."""
+    try:
+        from compression import zstd  # Python 3.14+
+
+        target.write_bytes(zstd.compress(source.read_bytes(), level=level))
+        return "Python compression.zstd"
+    except ImportError:
+        pass
+    try:
+        import zstandard
+
+        target.write_bytes(zstandard.ZstdCompressor(level=level).compress(source.read_bytes()))
+        return f"zstandard {zstandard.__version__}"
+    except ImportError:
+        pass
+    tool = shutil.which("zstd")
+    if tool is None:
+        raise SystemExit("--zstd needs Python 3.14+, the zstandard module or the zstd command")
+    subprocess.run(
+        [tool, "-q", "-f", "-T1", "--no-progress", f"-{level}", "-o", str(target), str(source)],
+        check=True,
+    )
+    return "zstd command"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--library", required=True, type=pathlib.Path, help="the built plugin library")
@@ -247,14 +286,26 @@ def main() -> int:
     parser.add_argument("--ort-flavor", default="cpu", choices=["cpu", "cuda12", "cuda13"], help="runtime build (GPU flavours add the CUDA provider)")
     parser.add_argument("--ort-archive", type=pathlib.Path, default=os.environ.get("EOVAE_ORT_ARCHIVE"), help="use this downloaded release archive (still verified)")
     parser.add_argument("--cache-dir", type=pathlib.Path, default=pathlib.Path(tempfile.gettempdir()) / "eovae-packaging", help="where downloads are kept")
-    # Accepted for older callers (scripts/run-with-plugins.sh).
+    parser.add_argument("--zstd", action="store_true", help="compress the package with zstd (eov 1.0 reads plain and zstd packages)")
+    parser.add_argument("--zstd-level", type=int, default=19, choices=range(1, 20), metavar="1-19", help="zstd level for --zstd (default 19)")
+    # Accepted for older callers (scripts/run-with-plugins.sh). The old
+    # build.rs copied ONNX Runtime next to the library; a folder without one
+    # now packages no runtime instead of failing.
     parser.add_argument("--plugin-root", type=pathlib.Path, help=argparse.SUPPRESS)
     parser.add_argument("--native-lib-dir", type=pathlib.Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.plugin_root and args.plugin_root.resolve() != PLUGIN_ROOT:
         raise SystemExit(f"--plugin-root must be {PLUGIN_ROOT}")
-    if args.native_lib_dir and not (args.fetch_ort or args.no_ort or args.ort_archive):
-        args.ort_dir = args.native_lib_dir
+    if args.native_lib_dir and not (args.fetch_ort or args.no_ort or args.ort_archive or args.ort_dir):
+        if has_runtime(args.native_lib_dir):
+            args.ort_dir = args.native_lib_dir
+        else:
+            print(
+                f"note: no ONNX Runtime in {args.native_lib_dir}; packaging none "
+                "(eovae will use EOVAE_ORT_LIB or the system's)",
+                file=sys.stderr,
+            )
+            args.no_ort = True
 
     target = args.platform or host_platform()
     plugin = plugin_id()
@@ -297,12 +348,21 @@ def main() -> int:
             for name in sorted(entries):
                 add_file(out, name, entries[name], mtime)
                 sizes.append((name, entries[name].stat().st_size))
+        compressor = None
+        if args.zstd:
+            compressed = args.output.with_suffix(args.output.suffix + ".zst.part")
+            compressor = zstd_compress(partial, compressed, args.zstd_level)
+            partial.unlink()
+            partial = compressed
         partial.replace(args.output)
 
     for name, size in sizes:
         print(f"{size:>12,}  {name}")
     total = sum(size for _, size in sizes)
-    print(f"{total:>12,}  total -> {args.output} (sha256 {sha256(args.output)})")
+    print(f"{total:>12,}  total")
+    packed = args.output.stat().st_size
+    how = f"zstd -{args.zstd_level} ({compressor})" if compressor else "tar"
+    print(f"{packed:>12,}  {how} -> {args.output} (sha256 {sha256(args.output)})")
     return 0
 
 
