@@ -194,6 +194,10 @@ export struct HudSettings {
     modified: bool,
     color-badge: string,
     color-warning: string,
+    // On-screen scale bar (UI-6): length in logical pixels (0 = none) and
+    // its exact label.
+    scale-bar-width: float,
+    scale-bar-label: string,
 }
 
 export struct PaneViewData {

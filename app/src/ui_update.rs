@@ -371,7 +371,23 @@ pub fn update_tabs(
                 let mpp_y = props.mpp_y.unwrap_or(0.0) as f32;
                 let color = crate::color::hud_color_info(file, pane);
                 file.pane_state(pane)
-                    .map(|ps| ui_hud_settings(&ps.hud, mpp_x, mpp_y, &color))
+                    .map(|ps| {
+                        let mut hud = ui_hud_settings(&ps.hud, mpp_x, mpp_y, &color);
+                        // A horizontal bar measures with the horizontal pixel
+                        // size (UI-6).
+                        let spacing = crate::host_ui::calibration(file).spacing();
+                        if let Some((um_x, _, _)) = spacing
+                            && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
+                                um_x / ps.viewport.viewport.zoom.max(1e-12),
+                                SCALE_BAR_MAX_PX,
+                                ps.hud.measurement_unit,
+                            )
+                        {
+                            hud.scale_bar_width = width as f32;
+                            hud.scale_bar_label = SharedString::from(label);
+                        }
+                        hud
+                    })
                     .unwrap_or_default()
             } else {
                 SlintHudSettings::default()
@@ -705,8 +721,13 @@ fn ui_hud_settings(
         modified: color.modified,
         color_badge: SharedString::from(color.badge.as_str()),
         color_warning: SharedString::from(color.warnings.join("\n")),
+        scale_bar_width: 0.0,
+        scale_bar_label: SharedString::new(),
     }
 }
+
+/// Longest on-screen scale bar, in logical pixels.
+const SCALE_BAR_MAX_PX: f64 = 140.0;
 
 fn ui_isolated_channel(ic: crate::state::IsolatedChannel) -> SlintIsolatedChannel {
     match ic {

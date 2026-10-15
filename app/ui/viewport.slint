@@ -394,10 +394,8 @@ export component Viewport inherits Rectangle {
     if root.show-scale-bar: ScaleBar {
         x: 16px;
         y: parent.height - self.height - 16px;
-        zoom: root.viewport-info.zoom;
-        mpp-x: root.hud.mpp-x;
-        mpp-y: root.hud.mpp-y;
-        unit: root.hud.measurement-unit;
+        bar-width-px: root.hud.scale-bar-width;
+        label-text: root.hud.scale-bar-label;
     }
 
     focus-scope := FocusScope {
