@@ -187,6 +187,12 @@ Backspace and Tab keep their meaning in the viewport and dialogs.
 Plugins cannot bind a key eov uses. Changes apply when eov starts, and
 entries eov cannot use are reported in the Messages popup.
 
+A dialog or panel takes the keyboard while it is open: Escape cancels it
+(and closes a menu or pop-up), Enter does its main action (Export, Save…,
+Confirm, Quantify; a plugin's question only when the answer destroys
+nothing) unless a text field takes the Enter, and Tab moves through its
+fields. Every control has a name and role for screen readers.
+
 ## Screenshots
 
 <p align="center">
