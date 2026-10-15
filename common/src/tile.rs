@@ -588,11 +588,9 @@ impl TileManager {
         let read_h = avail_top + inner_h + avail_bottom;
 
         let read_data = match &self.cache {
-            Some(cache) if level_info.synthetic && coord.level > 0 => self.synthesize_from_finer(
-                cache,
-                coord.level,
-                (read_x, read_y, read_w, read_h),
-            )?,
+            Some(cache) if level_info.synthetic && coord.level > 0 => {
+                self.synthesize_from_finer(cache, coord.level, (read_x, read_y, read_w, read_h))?
+            }
             _ => {
                 // Convert to level-0 coordinates for read_region
                 let read_x0 = (read_x as f64 * level_info.downsample) as i64;
@@ -648,7 +646,10 @@ impl TileManager {
             Vec::new()
         } else {
             let (tx0, ty0) = (fx / tile_size, fy / tile_size);
-            let (tx1, ty1) = ((fx + clip_w).div_ceil(tile_size), (fy + clip_h).div_ceil(tile_size));
+            let (tx1, ty1) = (
+                (fx + clip_w).div_ceil(tile_size),
+                (fy + clip_h).div_ceil(tile_size),
+            );
             (ty0..ty1)
                 .flat_map(|ty| {
                     (tx0..tx1).map(move |tx| {
@@ -691,9 +692,11 @@ impl TileManager {
             }
             let len = (x_to - x_from) as usize * 4;
             for row in y_from..y_to {
-                let src = ((row - top) as usize + border) * data_w + (x_from - left) as usize + border;
+                let src =
+                    ((row - top) as usize + border) * data_w + (x_from - left) as usize + border;
                 let dst = (row - fy) as usize * fw + (x_from - fx) as usize;
-                finer_px[dst * 4..dst * 4 + len].copy_from_slice(&tile.data[src * 4..src * 4 + len]);
+                finer_px[dst * 4..dst * 4 + len]
+                    .copy_from_slice(&tile.data[src * 4..src * 4 + len]);
             }
         }
         Ok(pixels::downsample_blocks(&finer_px, fw, fh, ratio as usize))
@@ -836,7 +839,11 @@ mod tests {
     use std::path::Path;
 
     fn gradient(x: u32, y: u32) -> [u8; 3] {
-        [(x % 256) as u8, (y % 256) as u8, ((x / 2 + y / 3) % 256) as u8]
+        [
+            (x % 256) as u8,
+            (y % 256) as u8,
+            ((x / 2 + y / 3) % 256) as u8,
+        ]
     }
 
     fn pyramid(dir: &Path) -> TileManager {
@@ -896,7 +903,11 @@ mod tests {
         assert_eq!(tile.border, 3);
         let stride = (256 + 6) * 4;
         let [r, g, b] = gradient(0, 0);
-        assert_eq!(&tile.data[..4], [r, g, b, 255], "top-left corner is replicated");
+        assert_eq!(
+            &tile.data[..4],
+            [r, g, b, 255],
+            "top-left corner is replicated"
+        );
         let [r, g, b] = gradient(256, 0);
         let right_border = 3 * stride + (3 + 256) * 4;
         assert_eq!(&tile.data[right_border..right_border + 4], [r, g, b, 255]);
@@ -940,7 +951,10 @@ mod tests {
         let (min_y, max_y) = tiles
             .iter()
             .fold((u64::MAX, 0), |(lo, hi), t| (lo.min(t.y), hi.max(t.y)));
-        assert!(min_y > 150 && max_y < 240, "rows {min_y}..={max_y} are not central");
+        assert!(
+            min_y > 150 && max_y < 240,
+            "rows {min_y}..={max_y} are not central"
+        );
 
         // Small sets are complete and centre-first.
         let small = tile_range_for(&level, 256, [0.0, 0.0, 1000.0, 1000.0], 0);
@@ -973,8 +987,14 @@ mod tests {
         let coord = TileCoord::new(3, 2, 0, 0, manager.tile_size_for_level(2));
         let tile = manager.load_tile_cached(coord).unwrap();
         assert!(cache.contains(&coord));
-        assert!(cache.contains(&TileCoord::new(3, 1, 0, 0, 256)), "children cached");
-        assert!(cache.contains(&TileCoord::new(3, 0, 0, 0, 256)), "grandchildren cached");
+        assert!(
+            cache.contains(&TileCoord::new(3, 1, 0, 0, 256)),
+            "children cached"
+        );
+        assert!(
+            cache.contains(&TileCoord::new(3, 0, 0, 0, 256)),
+            "grandchildren cached"
+        );
         // Matches the direct (exact) synthesis up to per-stage rounding.
         let direct = TileManager::new(wsi, 3).load_tile_sync(coord).unwrap();
         assert_eq!((tile.width, tile.height), (direct.width, direct.height));
@@ -985,7 +1005,10 @@ mod tests {
                 .all(|(a, b)| a.abs_diff(*b) <= 1)
         );
         // Second request: served from the cache.
-        assert!(Arc::ptr_eq(&tile, &manager.load_tile_cached(coord).unwrap()));
+        assert!(Arc::ptr_eq(
+            &tile,
+            &manager.load_tile_cached(coord).unwrap()
+        ));
 
         // Concurrent requests share one load.
         let manager = Arc::new(manager);
@@ -1023,7 +1046,10 @@ mod tests {
         assert_eq!(uncapped.len(), 6);
         assert_eq!((uncapped[0].x, uncapped[0].y), (0, 0), "row-major");
         assert_eq!(
-            manager.tile_range(0, 0.0, 0.0, 600.0, 400.0, 0).unwrap().len(),
+            manager
+                .tile_range(0, 0.0, 0.0, 600.0, 400.0, 0)
+                .unwrap()
+                .len(),
             6
         );
         assert!(manager.visible_tiles(9, 0.0, 0.0, 1.0, 1.0).is_empty());

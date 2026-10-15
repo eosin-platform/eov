@@ -89,8 +89,7 @@ mod ffi {
             osr: *mut openslide_t,
             name: *const c_char,
         ) -> *const c_char;
-        pub fn openslide_get_associated_image_names(osr: *mut openslide_t)
-        -> *const *const c_char;
+        pub fn openslide_get_associated_image_names(osr: *mut openslide_t) -> *const *const c_char;
         pub fn openslide_get_associated_image_dimensions(
             osr: *mut openslide_t,
             name: *const c_char,
@@ -154,7 +153,11 @@ unsafe fn copy_c_str(ptr: *const c_char) -> Option<String> {
         None
     } else {
         // SAFETY: guaranteed by the caller.
-        Some(unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned())
+        Some(
+            unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 }
 
@@ -431,7 +434,12 @@ impl OpenSlide {
     pub fn property(&self, name: &str) -> Option<String> {
         let c_name = to_c_name(name).ok()?;
         // SAFETY: valid handle and C string; the value is owned by the handle.
-        unsafe { copy_c_str(ffi::openslide_get_property_value(self.ptr(), c_name.as_ptr())) }
+        unsafe {
+            copy_c_str(ffi::openslide_get_property_value(
+                self.ptr(),
+                c_name.as_ptr(),
+            ))
+        }
     }
 
     /// Every property as an ordered map.
@@ -654,7 +662,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(detect_vendor(&path).unwrap().as_deref(), Some("generic-tiff"));
+        assert_eq!(
+            detect_vendor(&path).unwrap().as_deref(),
+            Some("generic-tiff")
+        );
         let slide = OpenSlide::open(&path).unwrap();
         assert_eq!(slide.level_count().unwrap(), 2);
         assert_eq!(slide.level_dimensions(0).unwrap(), (96, 64));
@@ -671,8 +682,14 @@ mod tests {
         );
 
         let props = slide.properties().unwrap();
-        assert_eq!(props.get("openslide.vendor").map(String::as_str), Some("generic-tiff"));
-        assert_eq!(slide.property("openslide.level[0].tile-width").as_deref(), Some("32"));
+        assert_eq!(
+            props.get("openslide.vendor").map(String::as_str),
+            Some("generic-tiff")
+        );
+        assert_eq!(
+            slide.property("openslide.level[0].tile-width").as_deref(),
+            Some("32")
+        );
         assert_eq!(slide.property("no.such.property"), None);
 
         assert_eq!(
@@ -695,7 +712,10 @@ mod tests {
         write_tiff(&path, &TiffSpec::aperio(128, 96, 32, 4), gradient).unwrap();
 
         let slide = OpenSlide::open(&path).unwrap();
-        assert_eq!(slide.property("openslide.vendor").as_deref(), Some("aperio"));
+        assert_eq!(
+            slide.property("openslide.vendor").as_deref(),
+            Some("aperio")
+        );
         let mut names = slide.associated_image_names().unwrap();
         names.sort();
         assert_eq!(names, ["label", "macro", "thumbnail"]);
@@ -714,7 +734,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notes.txt");
         std::fs::write(&path, b"hello").unwrap();
-        assert!(matches!(OpenSlide::open(&path), Err(Error::UnsupportedFormat(_))));
+        assert!(matches!(
+            OpenSlide::open(&path),
+            Err(Error::UnsupportedFormat(_))
+        ));
         assert_eq!(detect_vendor(&path).unwrap(), None);
     }
 
@@ -750,7 +773,9 @@ mod tests {
         slide.read_region_argb(&mut good, 0, 0, 0, 32, 32).unwrap();
 
         let mut bad = vec![0u32; 32 * 32];
-        let err = slide.read_region_argb(&mut bad, 32, 32, 0, 32, 32).unwrap_err();
+        let err = slide
+            .read_region_argb(&mut bad, 32, 32, 0, 32, 32)
+            .unwrap_err();
         assert!(matches!(err, Error::HandlePoisoned(_)), "{err:?}");
         assert!(slide.is_poisoned());
 

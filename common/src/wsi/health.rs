@@ -78,9 +78,9 @@ impl BadKey {
                 height,
                 message,
             },
-            BadKey::AssociatedImage(name) => {
-                Error::OpenSlide(format!("associated image {name:?} is unreadable: {message}"))
-            }
+            BadKey::AssociatedImage(name) => Error::OpenSlide(format!(
+                "associated image {name:?} is unreadable: {message}"
+            )),
             BadKey::IccProfile(name) => Error::OpenSlide(format!(
                 "ICC profile{} is unreadable: {message}",
                 name.map(|n| format!(" of {n:?}")).unwrap_or_default()
@@ -152,7 +152,9 @@ impl RecoveryState {
         {
             return Err(retry_at - now);
         }
-        let elapsed = now.saturating_duration_since(self.refilled_at).as_secs_f64();
+        let elapsed = now
+            .saturating_duration_since(self.refilled_at)
+            .as_secs_f64();
         self.tokens = (self.tokens + elapsed * REOPEN_RATE_PER_SEC).min(REOPEN_BURST);
         self.refilled_at = now;
         if self.tokens >= 1.0 {

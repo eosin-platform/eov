@@ -208,14 +208,21 @@ mod tests {
     #[test]
     fn transparent_pixels_become_background_when_composited() {
         let bg = [255, 255, 255];
-        assert_eq!(convert_pixel(0, AlphaMode::Composited, bg), [255, 255, 255, 255]);
+        assert_eq!(
+            convert_pixel(0, AlphaMode::Composited, bg),
+            [255, 255, 255, 255]
+        );
         assert_eq!(
             convert_pixel(0, AlphaMode::Composited, [10, 20, 30]),
             [10, 20, 30, 255]
         );
         // Opaque pixels are untouched in every mode.
         let opaque = argb(255, 12, 34, 56);
-        for mode in [AlphaMode::Composited, AlphaMode::Straight, AlphaMode::Premultiplied] {
+        for mode in [
+            AlphaMode::Composited,
+            AlphaMode::Straight,
+            AlphaMode::Premultiplied,
+        ] {
             assert_eq!(convert_pixel(opaque, mode, bg), [12, 34, 56, 255]);
         }
     }
@@ -230,7 +237,10 @@ mod tests {
             [252, 252, 252, 255]
         );
         // Over black the premultiplied value is the answer.
-        assert_eq!(convert_pixel(edge, AlphaMode::Composited, [0, 0, 0]), [55, 55, 55, 255]);
+        assert_eq!(
+            convert_pixel(edge, AlphaMode::Composited, [0, 0, 0]),
+            [55, 55, 55, 255]
+        );
         // Straight: 55 * 255 / 58 = 241.8 -> 242.
         assert_eq!(
             convert_pixel(edge, AlphaMode::Straight, [255, 255, 255]),
@@ -240,15 +250,19 @@ mod tests {
             convert_pixel(edge, AlphaMode::Premultiplied, [255, 255, 255]),
             [55, 55, 55, 58]
         );
-        assert_eq!(convert_pixel(0, AlphaMode::Straight, [255; 3]), [0, 0, 0, 0]);
+        assert_eq!(
+            convert_pixel(0, AlphaMode::Straight, [255; 3]),
+            [0, 0, 0, 0]
+        );
     }
 
     #[test]
     fn composite_matches_exact_rounding_for_every_alpha() {
         for a in 0..=255u32 {
             for c in [0, a / 3, a] {
-                let expected =
-                    (c as f64 + (255 - a) as f64 * 200.0 / 255.0).round().min(255.0) as u8;
+                let expected = (c as f64 + (255 - a) as f64 * 200.0 / 255.0)
+                    .round()
+                    .min(255.0) as u8;
                 let [r, ..] = convert_pixel(argb(a, c, 0, 0), AlphaMode::Composited, [200, 0, 0]);
                 assert!(
                     (i32::from(r) - i32::from(expected)).abs() <= 1,
@@ -273,12 +287,25 @@ mod tests {
     #[test]
     fn area_resize_averages_and_preserves_flat_colours() {
         // 4x1 -> 2x1 averages pairs.
-        let src = [0, 0, 0, 255, 100, 100, 100, 255, 200, 0, 0, 255, 0, 0, 200, 255];
-        assert_eq!(resize_area(&src, 4, 1, 2, 1), [50, 50, 50, 255, 100, 0, 100, 255]);
+        let src = [
+            0, 0, 0, 255, 100, 100, 100, 255, 200, 0, 0, 255, 0, 0, 200, 255,
+        ];
+        assert_eq!(
+            resize_area(&src, 4, 1, 2, 1),
+            [50, 50, 50, 255, 100, 0, 100, 255]
+        );
         // Non-integer ratios keep a flat image flat.
-        let flat: Vec<u8> = std::iter::repeat_n([7u8, 77, 177, 255], 7 * 5).flatten().collect();
+        let flat: Vec<u8> = std::iter::repeat_n([7u8, 77, 177, 255], 7 * 5)
+            .flatten()
+            .collect();
         let small = resize_area(&flat, 7, 5, 3, 2);
-        assert!(small.as_chunks::<4>().0.iter().all(|p| *p == [7, 77, 177, 255]));
+        assert!(
+            small
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [7, 77, 177, 255])
+        );
     }
 
     #[test]

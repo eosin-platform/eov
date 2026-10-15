@@ -499,7 +499,14 @@ impl TileCache {
                 let last_used = entry.last_used.load(Ordering::Relaxed);
                 let class = u8::from(!policy.hidden_files.contains(&coord.file_id));
                 let protected = frame_start != NO_FRAME && last_used >= frame_start;
-                candidates.push((class, last_used, coord, entry.id, entry.size_bytes, protected));
+                candidates.push((
+                    class,
+                    last_used,
+                    coord,
+                    entry.id,
+                    entry.size_bytes,
+                    protected,
+                ));
             }
         }
         candidates.sort_unstable_by_key(|&(class, last_used, ..)| (class, last_used));
@@ -648,8 +655,14 @@ mod tests {
             assert!(cache.peek(&coord(0, 0, 0)).is_some());
         }
         cache.insert(tile(0, 0, 3));
-        assert!(cache.contains(&coord(0, 0, 0)), "recently used tile was evicted");
-        assert!(!cache.contains(&coord(0, 0, 1)), "least recently used tile kept");
+        assert!(
+            cache.contains(&coord(0, 0, 0)),
+            "recently used tile was evicted"
+        );
+        assert!(
+            !cache.contains(&coord(0, 0, 1)),
+            "least recently used tile kept"
+        );
 
         // peek_untracked does not count as a use.
         let cache = TileCache::with_limits(3, usize::MAX);
@@ -667,7 +680,10 @@ mod tests {
         for x in 0..4 {
             cache.insert(tile(0, 0, x));
         }
-        assert_eq!(cache.touch_all(&[coord(0, 0, 0), coord(0, 0, 1), coord(0, 0, 9)]), 2);
+        assert_eq!(
+            cache.touch_all(&[coord(0, 0, 0), coord(0, 0, 1), coord(0, 0, 9)]),
+            2
+        );
         assert!(!cache.touch(&coord(0, 0, 9)));
         cache.insert(tile(0, 0, 4));
         assert!(cache.contains(&coord(0, 0, 0)));
@@ -692,7 +708,10 @@ mod tests {
         cache.insert(tile(0, 0, 6));
         assert!(cache.current_bytes() <= 4 * TILE_BYTES);
         for x in 4..7 {
-            assert!(cache.contains(&coord(0, 0, x)), "tile {x} of this frame evicted");
+            assert!(
+                cache.contains(&coord(0, 0, x)),
+                "tile {x} of this frame evicted"
+            );
         }
 
         // Beyond twice the budget even this frame's tiles go.

@@ -395,12 +395,17 @@ mod tests {
     fn identity_is_stable_name_independent_and_content_sensitive() {
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.tiff");
-        write_tiff(&a, &TiffSpec::pyramid(256, 192, 64, 2), |x, y| [x as u8, y as u8, 1]).unwrap();
+        write_tiff(&a, &TiffSpec::pyramid(256, 192, 64, 2), |x, y| {
+            [x as u8, y as u8, 1]
+        })
+        .unwrap();
         let copy = dir.path().join("renamed copy.tiff");
         std::fs::copy(&a, &copy).unwrap();
         let other = dir.path().join("other.tiff");
-        write_tiff(&other, &TiffSpec::pyramid(256, 192, 64, 2), |x, y| [x as u8, y as u8, 2])
-            .unwrap();
+        write_tiff(&other, &TiffSpec::pyramid(256, 192, 64, 2), |x, y| {
+            [x as u8, y as u8, 2]
+        })
+        .unwrap();
 
         let id_a = SlideIdentity::compute(&WsiFile::open(&a).unwrap()).unwrap();
         let id_again = WsiFile::open(&a).unwrap().identity().unwrap();
@@ -410,7 +415,11 @@ mod tests {
         assert!(id_a.key().starts_with("eov-slide-1:"));
         assert_eq!(id_a.key(), id_again.key());
         assert_eq!(id_a.key(), id_copy.key(), "renaming keeps the identity");
-        assert_ne!(id_a.key(), id_other.key(), "different pixels, different identity");
+        assert_ne!(
+            id_a.key(),
+            id_other.key(),
+            "different pixels, different identity"
+        );
         assert!(id_a.quickhash1.is_some());
         assert_eq!((id_a.width, id_a.height, id_a.level_count), (256, 192, 2));
         assert_eq!(id_a.members.len(), 1);
@@ -456,11 +465,19 @@ mod tests {
         let members = slide_member_files(&vms, Some("hamamatsu")).unwrap();
         assert_eq!(
             members,
-            [vms.clone(), dir.path().join("scan_0.jpg"), dir.path().join("scan.map")]
+            [
+                vms.clone(),
+                dir.path().join("scan_0.jpg"),
+                dir.path().join("scan.map")
+            ]
         );
 
         // DICOM identity comes from the series, not from the opened file.
-        assert!(slide_member_files(&dir.path().join("x.dcm"), Some("dicom")).unwrap().is_empty());
+        assert!(
+            slide_member_files(&dir.path().join("x.dcm"), Some("dicom"))
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(
             slide_member_files(&dir.path().join("x.svs"), Some("aperio")).unwrap(),
             [dir.path().join("x.svs")]

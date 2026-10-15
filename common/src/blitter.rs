@@ -80,7 +80,10 @@ impl AxisMapping {
         if self.exact_size > 0.0 {
             (self.exact_origin, self.exact_size)
         } else {
-            (f64::from(self.dest_origin), f64::from(self.scaled_size.max(1)))
+            (
+                f64::from(self.dest_origin),
+                f64::from(self.scaled_size.max(1)),
+            )
         }
     }
 
@@ -199,8 +202,12 @@ fn clip(rect: &BlitRect, dest_width: u32, dest_height: u32) -> Option<(u32, u32,
     let start_y = i64::from(rect.y).max(0);
     let end_x = right.min(i64::from(dest_width));
     let end_y = bottom.min(i64::from(dest_height));
-    (start_x < end_x && start_y < end_y)
-        .then_some((start_x as u32, start_y as u32, end_x as u32, end_y as u32))
+    (start_x < end_x && start_y < end_y).then_some((
+        start_x as u32,
+        start_y as u32,
+        end_x as u32,
+        end_y as u32,
+    ))
 }
 
 /// Whether the tile maps 1:1 onto whole destination pixels, so it can be
@@ -391,7 +398,11 @@ const LANCZOS_A: f64 = 3.0;
 /// widened by `scale` when minifying (`scale > 1`), so it reaches
 /// `ceil(3 * max(1, scale))` pixels beyond the sample.
 pub fn lanczos_border_for_scale(scale: f64) -> u32 {
-    let scale = if scale.is_finite() { scale.max(1.0) } else { 1.0 };
+    let scale = if scale.is_finite() {
+        scale.max(1.0)
+    } else {
+        1.0
+    };
     (LANCZOS_A * scale).ceil() as u32 + 1
 }
 
@@ -410,7 +421,11 @@ impl LanczosAxis {
     fn new(axis: AxisMapping, src_range: f64, border: u32, max_index: u32) -> Self {
         let scale = axis.scale(src_range);
         // Widen the kernel when minifying so it low-pass filters.
-        let stretch = if scale.is_finite() { scale.max(1.0) } else { 1.0 };
+        let stretch = if scale.is_finite() {
+            scale.max(1.0)
+        } else {
+            1.0
+        };
         let support = LANCZOS_A * stretch;
         let count = (axis.end - axis.start) as usize;
         let mut first = Vec::with_capacity(count);
@@ -453,7 +468,10 @@ impl LanczosAxis {
 
     #[inline(always)]
     fn taps(&self, i: usize) -> (u32, &[f32]) {
-        (self.first[i], &self.weights[self.offsets[i]..self.offsets[i + 1]])
+        (
+            self.first[i],
+            &self.weights[self.offsets[i]..self.offsets[i + 1]],
+        )
     }
 }
 
@@ -570,7 +588,11 @@ pub fn blit_tile_lanczos3(
 /// Both buffers must be the same size (width * height * 4 bytes). `blend`
 /// is clamped to `0..=1` (NaN counts as 0).
 pub fn blend_buffers(dest: &mut [u8], coarse: &[u8], blend: f64) {
-    let blend = if blend.is_nan() { 0.0 } else { blend.clamp(0.0, 1.0) };
+    let blend = if blend.is_nan() {
+        0.0
+    } else {
+        blend.clamp(0.0, 1.0)
+    };
     let b = (blend * 256.0).round() as u32;
     let inv_b = 256 - b;
     for (d, c) in dest
@@ -604,8 +626,7 @@ pub fn blit_tile_trilinear(
     let Some((start_x, start_y, end_x, end_y)) = clip(&rect, dest_width, dest_height) else {
         return;
     };
-    if !tile_data_fits(fine_src, fine_w, fine_h, fine_border)
-        || !dest_fits(dest, dest_width, end_y)
+    if !tile_data_fits(fine_src, fine_w, fine_h, fine_border) || !dest_fits(dest, dest_width, end_y)
     {
         return;
     }
@@ -743,8 +764,8 @@ pub fn blit_tile_trilinear(
                         + cs10[c] as u32 * cw10
                         + cs01[c] as u32 * cw01
                         + cs11[c] as u32 * cw11;
-                    d[c] = ((fine_val * inv_blend_i + coarse_val * blend_i + (1 << 23)) >> 24)
-                        as u8;
+                    d[c] =
+                        ((fine_val * inv_blend_i + coarse_val * blend_i + (1 << 23)) >> 24) as u8;
                 }
             }
         }
@@ -1038,9 +1059,21 @@ mod tests {
                 border: 1,
             }
         }
-        blit_tile(&mut expected, 24, 1, src(&whole, 8), rect(0.0, 0.0, 24.0, 1.0));
+        blit_tile(
+            &mut expected,
+            24,
+            1,
+            src(&whole, 8),
+            rect(0.0, 0.0, 24.0, 1.0),
+        );
         blit_tile(&mut split, 24, 1, src(&left, 4), rect(0.0, 0.0, 12.0, 1.0));
-        blit_tile(&mut split, 24, 1, src(&right, 4), rect(12.0, 0.0, 12.0, 1.0));
+        blit_tile(
+            &mut split,
+            24,
+            1,
+            src(&right, 4),
+            rect(12.0, 0.0, 12.0, 1.0),
+        );
         assert_eq!(row_greys(&split, 24, 0), row_greys(&expected, 24, 0));
     }
 
@@ -1109,7 +1142,12 @@ mod tests {
             rect(0.0, 0.0, 4.0, 4.0),
         );
         // (100 + 201) / 2 = 150.5 -> 151 with rounding (truncation gave 150).
-        assert!(dest.as_chunks::<4>().0.iter().all(|p| p[0] == 151 && p[3] == 255));
+        assert!(
+            dest.as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p[0] == 151 && p[3] == 255)
+        );
     }
 
     #[test]
@@ -1284,7 +1322,9 @@ mod tests {
             Err(BlitError::InvalidZoom)
         );
         // The legacy entry point is a no-op on bad input.
-        reproject_frame(&mut dest, 4, 1, &src, 400, 1, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, [0; 4]);
+        reproject_frame(
+            &mut dest, 4, 1, &src, 400, 1, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, [0; 4],
+        );
         assert!(dest.iter().all(|&b| b == 7));
     }
 

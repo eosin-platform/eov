@@ -248,7 +248,8 @@ impl WsiFile {
         for j in 0..sh {
             for i in 0..sw {
                 // Centre of the sample's footprint, in level-0 coordinates.
-                let x = region.x as f64 + (f64::from(i) + 0.5) * region.width as f64 / f64::from(sw);
+                let x =
+                    region.x as f64 + (f64::from(i) + 0.5) * region.width as f64 / f64::from(sw);
                 let y =
                     region.y as f64 + (f64::from(j) + 0.5) * region.height as f64 / f64::from(sh);
                 let px = self
@@ -299,7 +300,10 @@ mod tests {
 
         // The associated thumbnail is 32x24 and has the slide's aspect.
         let thumb = wsi.thumbnail_with(&ThumbnailOptions::new(16)).unwrap();
-        assert_eq!(thumb.source, ThumbnailSource::AssociatedImage("thumbnail".into()));
+        assert_eq!(
+            thumb.source,
+            ThumbnailSource::AssociatedImage("thumbnail".into())
+        );
         assert_eq!((thumb.image.width, thumb.image.height), (16, 12));
         assert_eq!(&thumb.image.pixels[..4], [200, 180, 210, 255]);
 
@@ -311,7 +315,10 @@ mod tests {
 
         let mut options = ThumbnailOptions::new(16);
         options.use_associated = false;
-        assert_eq!(wsi.thumbnail_with(&options).unwrap().source, ThumbnailSource::Level(1));
+        assert_eq!(
+            wsi.thumbnail_with(&options).unwrap().source,
+            ThumbnailSource::Level(1)
+        );
     }
 
     #[test]
@@ -357,7 +364,10 @@ mod tests {
         for name in ["C3L-00088-22.svs", "OS-2.bif"] {
             let wsi = WsiFile::open(fixtures.join(name)).unwrap();
             let thumb = wsi.thumbnail_with(&ThumbnailOptions::new(150)).unwrap();
-            assert_eq!(thumb.source, ThumbnailSource::AssociatedImage("thumbnail".into()));
+            assert_eq!(
+                thumb.source,
+                ThumbnailSource::AssociatedImage("thumbnail".into())
+            );
             assert_eq!(thumb.image.width.max(thumb.image.height), 150, "{name}");
         }
     }

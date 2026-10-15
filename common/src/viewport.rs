@@ -1116,13 +1116,8 @@ mod bounds_tests {
         let minimap = viewport.minimap_rect_within(&island);
         assert!(minimap.x.abs() < 1e-6 && (minimap.width - 1.0).abs() < 1e-6);
 
-        let mut state = ViewportState::with_content_bounds(
-            1000.0,
-            500.0,
-            100_000.0,
-            80_000.0,
-            Some(island),
-        );
+        let mut state =
+            ViewportState::with_content_bounds(1000.0, 500.0, 100_000.0, 80_000.0, Some(island));
         assert_eq!(state.viewport.center, DVec2::new(65_000.0, 22_500.0));
         assert_eq!(state.content_bounds(), Some(island));
         // Panning far away stops half a bounds-size outside the island.
@@ -1154,11 +1149,17 @@ mod external_drag_tests {
         let mut state = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
         state.start_external_drag();
         state.zoom_at(1.5, 400.0, 300.0);
-        assert!(state.update() || state.is_moving(), "zoom must animate after a dangling drag");
+        assert!(
+            state.update() || state.is_moving(),
+            "zoom must animate after a dangling drag"
+        );
 
         let mut panning = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
         panning.start_drag(10.0, 10.0);
         panning.zoom_at(1.5, 400.0, 300.0);
-        assert!(!panning.update(), "a mouse pan keeps priority over the zoom chase");
+        assert!(
+            !panning.update(),
+            "a mouse pan keeps priority over the zoom chase"
+        );
     }
 }

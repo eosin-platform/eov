@@ -296,7 +296,11 @@ mod tests {
         let t = trilinear_levels(&levels, 2.5, &TrilinearOptions::default());
         assert_eq!((t.level_fine, t.level_coarse), (0, 1));
         // Exactly at a level: single level.
-        let t = trilinear_levels(&levels, 16.004 * 2f64.powf(0.25), &TrilinearOptions::default());
+        let t = trilinear_levels(
+            &levels,
+            16.004 * 2f64.powf(0.25),
+            &TrilinearOptions::default(),
+        );
         assert_eq!((t.level_fine, t.level_coarse), (2, 2));
         // Beyond either end.
         let t = trilinear_levels(&levels, 0.25, &TrilinearOptions::default());

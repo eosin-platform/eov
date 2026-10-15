@@ -83,10 +83,7 @@ impl WsiFile {
     pub fn synthesis_cost(&self, level: u32, width: u32, height: u32) -> Option<u64> {
         let info = self.level(level).filter(|info| info.synthetic)?;
         let factor = (info.downsample / self.base_level().downsample).round() as u64;
-        Some(
-            (u64::from(width) * factor)
-                .saturating_mul(u64::from(height) * factor),
-        )
+        Some((u64::from(width) * factor).saturating_mul(u64::from(height) * factor))
     }
 
     /// Reads a region of a synthetic level; see the module documentation.
@@ -104,18 +101,41 @@ impl WsiFile {
         let info = self
             .level(level)
             .filter(|info| info.synthetic)
-            .ok_or(Error::InvalidLevel(level, self.level_count().saturating_sub(1)))?;
+            .ok_or(Error::InvalidLevel(
+                level,
+                self.level_count().saturating_sub(1),
+            ))?;
         let base = self.base_level();
         let factor = (info.downsample / base.downsample).round().max(1.0) as u64;
         // Origin in base-level pixels.
         let bx = (x as f64 / base.downsample).round() as i64;
         let by = (y as f64 / base.downsample).round() as i64;
         let background = self.shared.properties.background_color;
-        let cost = self.synthesis_cost(level, width, height).unwrap_or(u64::MAX);
+        let cost = self
+            .synthesis_cost(level, width, height)
+            .unwrap_or(u64::MAX);
         if cost <= EXACT_SYNTHESIS_BUDGET {
-            self.synthesize_exact(base.level, (bx, by), factor, width, height, mode, out, background)
+            self.synthesize_exact(
+                base.level,
+                (bx, by),
+                factor,
+                width,
+                height,
+                mode,
+                out,
+                background,
+            )
         } else {
-            self.synthesize_sparse(base.level, (bx, by), factor, width, height, mode, out, background)
+            self.synthesize_sparse(
+                base.level,
+                (bx, by),
+                factor,
+                width,
+                height,
+                mode,
+                out,
+                background,
+            )
         }
     }
 
@@ -135,13 +155,12 @@ impl WsiFile {
         let f = factor as usize;
         let row_pixels = u64::from(width) * factor * factor;
         let rows_per_band = (BAND_PIXELS / row_pixels.max(1)).clamp(1, u64::from(height)) as u32;
-        let band_w = u32::try_from(u64::from(width) * factor).map_err(|_| {
-            Error::RegionTooLarge {
+        let band_w =
+            u32::try_from(u64::from(width) * factor).map_err(|_| Error::RegionTooLarge {
                 width: u64::from(width) * factor,
                 height: u64::from(height) * factor,
                 max_pixels: EXACT_SYNTHESIS_BUDGET,
-            }
-        })?;
+            })?;
         let area = (factor * factor) as u32;
         let mut sums = vec![0u32; w * 4];
         let mut row0 = 0u32;
@@ -169,7 +188,12 @@ impl WsiFile {
                     }
                 }
                 let out_row = &mut out[(row0 as usize + r) * w * 4..][..w * 4];
-                for (px, sum) in out_row.as_chunks_mut::<4>().0.iter_mut().zip(sums.as_chunks::<4>().0) {
+                for (px, sum) in out_row
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(sums.as_chunks::<4>().0)
+                {
                     let avg = sum.map(|s| (s + area / 2) / area);
                     *px = pixels::convert_pixel(to_argb(avg), mode, background);
                 }
@@ -261,10 +285,7 @@ mod tests {
         let levels = [level(100_000, 80_000, 1.0)];
         let synthetic = synthetic_levels(&levels);
         let sizes: Vec<_> = synthetic.iter().map(|l| (l.width, l.downsample)).collect();
-        assert_eq!(
-            sizes,
-            [(25_000, 4.0), (6_250, 16.0), (1_563, 64.0)]
-        );
+        assert_eq!(sizes, [(25_000, 4.0), (6_250, 16.0), (1_563, 64.0)]);
         assert!(synthetic.iter().all(|l| l.synthetic));
         assert_eq!(synthetic[0].level, 1);
         // Two real levels: synthetic ones continue from the coarser one.
@@ -284,7 +305,11 @@ mod tests {
         // 4096 x 64: alternating 2-px columns of 0 and 200, so every 4x4
         // block averages to 100.
         write_tiff(&path, &TiffSpec::single(4096, 64, 64), |x, _| {
-            if (x / 2) % 2 == 0 { [0, 0, 0] } else { [200, 100, 50] }
+            if (x / 2) % 2 == 0 {
+                [0, 0, 0]
+            } else {
+                [200, 100, 50]
+            }
         })
         .unwrap();
         let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
@@ -293,12 +318,21 @@ mod tests {
         assert_eq!(wsi.level_count(), 2);
         let level = wsi.level(1).unwrap();
         assert!(level.synthetic);
-        assert_eq!((level.width, level.height, level.downsample), (1024, 16, 4.0));
+        assert_eq!(
+            (level.width, level.height, level.downsample),
+            (1024, 16, 4.0)
+        );
         assert_eq!(wsi.synthesis_cost(1, 10, 10), Some(1600));
         assert_eq!(wsi.synthesis_cost(0, 10, 10), None);
 
         let pixels = wsi.read_region(0, 0, 1, 1024, 16).unwrap();
-        assert!(pixels.as_chunks::<4>().0.iter().all(|p| *p == [100, 50, 25, 255]));
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [100, 50, 25, 255])
+        );
         // Areas past the slide edge are transparent at the base, so edge
         // blocks blend with the background (white).
         let edge = wsi.read_region(4096 - 8, 0, 1, 4, 1).unwrap();
@@ -320,8 +354,17 @@ mod tests {
         .unwrap();
         let wsi = WsiFile::open(&path).unwrap().with_synthetic_levels();
         let mut out = vec![0u8; 1024 * 16 * 4];
-        wsi.synthesize_sparse(0, (0, 0), 4, 1024, 16, AlphaMode::Composited, &mut out, [255; 3])
-            .unwrap();
+        wsi.synthesize_sparse(
+            0,
+            (0, 0),
+            4,
+            1024,
+            16,
+            AlphaMode::Composited,
+            &mut out,
+            [255; 3],
+        )
+        .unwrap();
         assert_eq!(&out[..4], [255, 0, 0, 255]);
         assert_eq!(&out[out.len() - 4..], [0, 0, 255, 255]);
     }

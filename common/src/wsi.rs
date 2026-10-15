@@ -49,15 +49,15 @@ use tracing::{debug, info};
 
 pub use health::{HealthState, SlideHealth};
 pub use pixels::AlphaMode;
+pub use registry::{
+    DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
+    set_openslide_cache_capacity,
+};
 pub use synthetic::{
     EXACT_SYNTHESIS_BUDGET, SPARSE_SYNTHESIS_SAMPLES, SYNTHETIC_LEVEL_MAX_SIZE,
     SYNTHETIC_LEVEL_RATIO,
 };
 pub use thumbnail::{Thumbnail, ThumbnailOptions, ThumbnailRegion, ThumbnailSource};
-pub use registry::{
-    DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
-    set_openslide_cache_capacity,
-};
 
 #[cfg(test)]
 pub(crate) use metadata::{extract_stain_from_text, parse_stain_value_from_token};
@@ -267,7 +267,11 @@ impl WsiProperties {
 
 /// Rounds `target` to the nearest positive multiple of a square native tile
 /// size (64..=1024 px); other grids leave `target` unchanged.
-pub fn aligned_tile_size(target: u32, native_width: Option<u32>, native_height: Option<u32>) -> u32 {
+pub fn aligned_tile_size(
+    target: u32,
+    native_width: Option<u32>,
+    native_height: Option<u32>,
+) -> u32 {
     match (native_width, native_height) {
         (Some(w), Some(h)) if w == h && (64..=COARSE_TILE_SIZE).contains(&w) => {
             let multiple = (f64::from(target) / f64::from(w)).round().max(1.0) as u32;
@@ -375,7 +379,10 @@ fn read_associated_images(
         .collect()
 }
 
-fn read_metadata(path: &Path, slide: &OpenSlide) -> Result<(WsiProperties, BTreeMap<String, String>)> {
+fn read_metadata(
+    path: &Path,
+    slide: &OpenSlide,
+) -> Result<(WsiProperties, BTreeMap<String, String>)> {
     let property_map = slide.properties()?;
     let level_count = slide.level_count()?;
     if level_count == 0 {
@@ -667,7 +674,12 @@ impl WsiFile {
                 slide.read_associated_image_argb(name, MAX_ASSOCIATED_IMAGE_PIXELS)
             })?;
         let mut out = pixels::try_alloc(argb.len() * 4)?;
-        pixels::argb_to_rgba(&argb, &mut out, mode, self.shared.properties.background_color);
+        pixels::argb_to_rgba(
+            &argb,
+            &mut out,
+            mode,
+            self.shared.properties.background_color,
+        );
         Ok(RgbaImageData {
             width: width as usize,
             height: height as usize,
@@ -951,7 +963,11 @@ mod tests {
     use crate::test_support::{TiffLevel, TiffSpec, write_tiff};
 
     fn gradient(x: u32, y: u32) -> [u8; 3] {
-        [(x % 251) as u8, (y % 241) as u8, ((x * 7 + y * 3) % 256) as u8]
+        [
+            (x % 251) as u8,
+            (y % 241) as u8,
+            ((x * 7 + y * 3) % 256) as u8,
+        ]
     }
 
     fn pyramid_file(dir: &Path) -> PathBuf {
@@ -1046,7 +1062,20 @@ mod tests {
         let path = pyramid_file(dir.path());
         let wsi = WsiFile::open(&path).unwrap();
         let raw = OpenSlide::open(&path).unwrap();
-        for ds in [0.1, 0.5, 1.0, 1.5, 1.999, 2.0, 2.5, 3.99, 4.0, 4.1, 100.0, f64::INFINITY] {
+        for ds in [
+            0.1,
+            0.5,
+            1.0,
+            1.5,
+            1.999,
+            2.0,
+            2.5,
+            3.99,
+            4.0,
+            4.1,
+            100.0,
+            f64::INFINITY,
+        ] {
             assert_eq!(
                 wsi.best_level_for_downsample(ds),
                 raw.best_level_for_downsample(ds).unwrap(),
@@ -1103,7 +1132,10 @@ mod tests {
         ));
         let text = dir.path().join("notes.txt");
         std::fs::write(&text, "not a slide").unwrap();
-        assert!(matches!(WsiFile::open(&text), Err(Error::UnsupportedFormat(_))));
+        assert!(matches!(
+            WsiFile::open(&text),
+            Err(Error::UnsupportedFormat(_))
+        ));
     }
 
     /// A 128x128 two-level pyramid whose level-0 tile (1, 1) is unreadable.
@@ -1127,7 +1159,18 @@ mod tests {
         let good = wsi.read_region(0, 0, 0, 32, 32).unwrap();
 
         let err = wsi.read_region(32, 32, 0, 32, 32).unwrap_err();
-        assert!(matches!(err, Error::CorruptRegion { level: 0, x: 32, y: 32, .. }), "{err:?}");
+        assert!(
+            matches!(
+                err,
+                Error::CorruptRegion {
+                    level: 0,
+                    x: 32,
+                    y: 32,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
         assert!(!err.is_transient());
 
         // The shared handle was replaced: good tiles read again, correctly.
@@ -1168,7 +1211,11 @@ mod tests {
         {
             let slot = a.shared.handle.current();
             let mut buf = vec![0u32; 32 * 32];
-            assert!(slot.slide.read_region_argb(&mut buf, 32, 32, 0, 32, 32).is_err());
+            assert!(
+                slot.slide
+                    .read_region_argb(&mut buf, 32, 32, 0, 32, 32)
+                    .is_err()
+            );
             assert!(slot.slide.is_poisoned());
         }
         assert_eq!(b.health().state, HealthState::Recovering);
@@ -1261,7 +1308,10 @@ mod tests {
         assert_eq!(wsi.read_region(0, 0, 0, 128, 128).unwrap(), before);
         set_openslide_cache_capacity(capacity).unwrap();
         assert_eq!(recommended_openslide_cache_bytes(0), 32 * 1024 * 1024);
-        assert_eq!(recommended_openslide_cache_bytes(1 << 30), 128 * 1024 * 1024);
+        assert_eq!(
+            recommended_openslide_cache_bytes(1 << 30),
+            128 * 1024 * 1024
+        );
     }
 
     #[test]
@@ -1278,7 +1328,12 @@ mod tests {
 
         // A tile the scanner never wrote: transparent in OpenSlide.
         let gap = wsi.read_region(32, 0, 0, 32, 32).unwrap();
-        assert!(gap.as_chunks::<4>().0.iter().all(|p| *p == [255, 255, 255, 255]));
+        assert!(
+            gap.as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [255, 255, 255, 255])
+        );
         let raw = wsi
             .read_region_with(32, 0, 0, 32, 32, AlphaMode::Straight)
             .unwrap();
@@ -1327,7 +1382,12 @@ mod tests {
         let wsi = WsiFile::open(&path).unwrap();
         assert_eq!(wsi.properties().regions.len(), 2);
         let gap = wsi.read_region(15_000, 10_000, 0, 8, 8).unwrap();
-        assert!(gap.as_chunks::<4>().0.iter().all(|p| *p == [255, 255, 255, 255]));
+        assert!(
+            gap.as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [255, 255, 255, 255])
+        );
     }
 
     #[test]
@@ -1339,7 +1399,11 @@ mod tests {
         write_tiff(&path, &spec, gradient).unwrap();
         let wsi = WsiFile::open(&path).unwrap();
 
-        let names: Vec<_> = wsi.associated_images().iter().map(|i| i.name.as_str()).collect();
+        let names: Vec<_> = wsi
+            .associated_images()
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect();
         assert_eq!(names, ["label", "macro", "thumbnail"]);
         let label = wsi.associated_image("label").unwrap();
         assert_eq!((label.width, label.height), (24, 16));
@@ -1347,7 +1411,14 @@ mod tests {
 
         let image = wsi.read_associated_image("label").unwrap();
         assert_eq!((image.width, image.height), (24, 16));
-        assert!(image.pixels.as_chunks::<4>().0.iter().all(|p| *p == [10, 20, 30, 255]));
+        assert!(
+            image
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [10, 20, 30, 255])
+        );
         assert!(matches!(
             wsi.read_associated_image("barcode"),
             Err(Error::AssociatedImageNotFound(_))

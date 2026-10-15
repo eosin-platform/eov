@@ -113,7 +113,10 @@ fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
 
 fn parse_rect(map: &PropertyMap, prefix: &str, sep: &str) -> Option<SlideBounds> {
     let int = |name: &str| -> Option<i64> {
-        map.get(&format!("{prefix}{sep}{name}"))?.trim().parse().ok()
+        map.get(&format!("{prefix}{sep}{name}"))?
+            .trim()
+            .parse()
+            .ok()
     };
     let x = int("x")?;
     let y = int("y")?;
@@ -197,7 +200,9 @@ pub(crate) fn parse_stain_value_from_token(token: &str) -> Option<String> {
         "haematoxylin & eosin",
     ];
     const HE_TOKENS: [&str; 4] = ["h&e", "h & e", "h+e", "he stain"];
-    if HE_PHRASES.iter().any(|phrase| contains_word(&lower, phrase))
+    if HE_PHRASES
+        .iter()
+        .any(|phrase| contains_word(&lower, phrase))
         || HE_TOKENS.iter().any(|token| contains_word(&lower, token))
     {
         return Some("H&E".to_string());
@@ -281,8 +286,14 @@ mod tests {
         ]);
         assert_eq!(parse_mpp(&m, "openslide.mpp-x"), Some(0.4942));
         assert_eq!(parse_mpp(&m, "openslide.mpp-y"), None);
-        assert_eq!(parse_mpp(&map(&[("openslide.mpp-x", "nan")]), "openslide.mpp-x"), None);
-        assert_eq!(parse_mpp(&map(&[("openslide.mpp-x", "0")]), "openslide.mpp-x"), None);
+        assert_eq!(
+            parse_mpp(&map(&[("openslide.mpp-x", "nan")]), "openslide.mpp-x"),
+            None
+        );
+        assert_eq!(
+            parse_mpp(&map(&[("openslide.mpp-x", "0")]), "openslide.mpp-x"),
+            None
+        );
     }
 
     #[test]
@@ -292,18 +303,33 @@ mod tests {
                 &[("aperio.Date", "08/11/16"), ("aperio.Time", "10:18:38")],
                 "08/11/16 10:18:38",
             ),
-            (&[("tiff.DateTime", "2012-10-29 21:12:59")], "2012-10-29 21:12:59"),
             (
-                &[("mirax.GENERAL.SLIDE_CREATIONDATETIME", "17/06/2014 13:02:04")],
+                &[("tiff.DateTime", "2012-10-29 21:12:59")],
+                "2012-10-29 21:12:59",
+            ),
+            (
+                &[(
+                    "mirax.GENERAL.SLIDE_CREATIONDATETIME",
+                    "17/06/2014 13:02:04",
+                )],
                 "17/06/2014 13:02:04",
             ),
             (
-                &[("philips.DICOM_ACQUISITION_DATETIME", "20160118142425.000000")],
+                &[(
+                    "philips.DICOM_ACQUISITION_DATETIME",
+                    "20160118142425.000000",
+                )],
                 "20160118142425.000000",
             ),
-            (&[("leica.creation-date", "2010-09-24T12:43:41")], "2010-09-24T12:43:41"),
             (
-                &[("dicom.ContentDate", "20230101"), ("dicom.ContentTime", "101500")],
+                &[("leica.creation-date", "2010-09-24T12:43:41")],
+                "2010-09-24T12:43:41",
+            ),
+            (
+                &[
+                    ("dicom.ContentDate", "20230101"),
+                    ("dicom.ContentTime", "101500"),
+                ],
                 "20230101 101500",
             ),
             (&[("sakura.Date", "2013-11-12")], "2013-11-12"),
@@ -372,13 +398,19 @@ mod tests {
 
     #[test]
     fn stain_detection_respects_word_boundaries() {
-        assert_eq!(extract_stain_from_text("Case 12 | H&E | archived").as_deref(), Some("H&E"));
+        assert_eq!(
+            extract_stain_from_text("Case 12 | H&E | archived").as_deref(),
+            Some("H&E")
+        );
         assert_eq!(
             extract_stain_from_text("hematoxylin and eosin section").as_deref(),
             Some("H&E")
         );
         assert_eq!(extract_stain_from_text("H&E").as_deref(), Some("H&E"));
-        assert_eq!(extract_stain_from_text("block A1 (h & e)").as_deref(), Some("H&E"));
+        assert_eq!(
+            extract_stain_from_text("block A1 (h & e)").as_deref(),
+            Some("H&E")
+        );
         assert_eq!(extract_stain_from_text("Smith&Evans 2019"), None);
         assert_eq!(extract_stain_from_text("PATH&ENDO_case12"), None);
         assert_eq!(extract_stain_from_text("Thursday"), None);
@@ -388,7 +420,10 @@ mod tests {
             parse_stain_value_from_token("Stain = Masson trichrome").as_deref(),
             Some("Masson trichrome")
         );
-        assert_eq!(parse_stain_value_from_token("stain_name: PAS").as_deref(), Some("PAS"));
+        assert_eq!(
+            parse_stain_value_from_token("stain_name: PAS").as_deref(),
+            Some("PAS")
+        );
     }
 
     #[test]

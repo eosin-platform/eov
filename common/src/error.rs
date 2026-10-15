@@ -40,9 +40,7 @@ pub enum Error {
     /// slide data itself is damaged there. The region is remembered and
     /// further reads of it fail fast with this error for a while; draw a
     /// placeholder instead of retrying.
-    #[error(
-        "Slide data is unreadable at level {level}, x={x}, y={y}, {width}x{height}: {message}"
-    )]
+    #[error("Slide data is unreadable at level {level}, x={x}, y={y}, {width}x{height}: {message}")]
     CorruptRegion {
         level: u32,
         x: i64,

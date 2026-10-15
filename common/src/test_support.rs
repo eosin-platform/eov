@@ -27,7 +27,10 @@ impl TiffLevel {
     /// tiles whose byte size is not a multiple of 1 KiB when the file is not
     /// memory-mapped (as OpenSlide opens it).
     pub fn new(width: u32, height: u32, tile: u32) -> Self {
-        assert!(tile.is_multiple_of(32), "test TIFF tile sizes must be multiples of 32");
+        assert!(
+            tile.is_multiple_of(32),
+            "test TIFF tile sizes must be multiples of 32"
+        );
         Self {
             width,
             height,
@@ -358,9 +361,7 @@ pub(crate) fn write_tiff(
     }
     // Chain the directories.
     for i in 0..dir_offsets.len().saturating_sub(1) {
-        let next_field = (dir_offsets[i] - tail_start) as usize
-            + 2
-            + plans[i].tags.len() * 12;
+        let next_field = (dir_offsets[i] - tail_start) as usize + 2 + plans[i].tags.len() * 12;
         tail[next_field..next_field + 4].copy_from_slice(&dir_offsets[i + 1].to_le_bytes());
     }
     // Point broken tiles past the end of the file.

@@ -305,7 +305,14 @@ fn bench_blitters(c: &mut Criterion) {
                 blend: 0.4,
             };
             b.iter(|| {
-                blitter::blit_tile_trilinear(&mut dest, 1024, 1024, src(), &coarse_src, black_box(rect))
+                blitter::blit_tile_trilinear(
+                    &mut dest,
+                    1024,
+                    1024,
+                    src(),
+                    &coarse_src,
+                    black_box(rect),
+                )
             })
         });
         group.bench_function(BenchmarkId::new("lanczos3", name), |b| {
