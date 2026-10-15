@@ -17,10 +17,17 @@ installed to `/app/share/doc/eov` and `/app/share/licenses/io.eosin.eov`.
 | `--device=input` | Game controllers for the gamepad plugin. Needs Flatpak 1.15.6 or newer; older versions ignore it (see below). |
 | `--filesystem=home` | Slides and folder series in your home directory. |
 | `--filesystem=/media:ro`, `/run/media:ro`, `/mnt:ro` | Slides on removable and network drives, read-only. |
+| `--talk-name=org.freedesktop.FileManager1` | "Open Containing Folder" asks the file manager to show the slide selected. |
 
 The file chooser portal hands eov single files only, so formats with sidecar
 data (MIRAX `.mrxs` and its directory) and folder series need the directory
 itself to be visible inside the sandbox.
+
+Flatpak exports the desktop entry and the MIME package of the slide formats
+(`/app/share/mime/packages/io.eosin.eov.xml`), so file managers offer eov for
+slides and `eov://` links open in it. Every launch of the Flatpak finds the
+running eov in `$XDG_RUNTIME_DIR/app/io.eosin.eov`, the part of the runtime
+folder its instances share, and hands its files to it.
 
 ### Slides in other locations
 
