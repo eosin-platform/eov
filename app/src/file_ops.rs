@@ -673,8 +673,15 @@ pub fn open_file(
         "Opening {}…",
         display_name(&normalized_path)
     )));
-    // Shows the loading indicator in the pane the slide opens in.
-    crate::update_tabs(ui, &state.read());
+    // Shows the loading indicator in the pane the slide opens in (with the
+    // caller's pane models: `crate::update_tabs` would borrow them again).
+    update_tabs(
+        ui,
+        &state.read(),
+        pane_render_cache,
+        pane_ui_models,
+        pane_view_model,
+    );
 
     // Opening can take seconds (network shares, MRXS, DICOM): do it, and
     // the thumbnail, on a worker and install the result on the UI thread
@@ -1115,5 +1122,25 @@ mod tests {
         );
         assert!(names.contains(&"c.dcm"), "{names:?}");
         assert!(entries.iter().all(|e| e.modified.is_some()));
+    }
+
+    /// Opening a slide shows it loading in its pane without borrowing the
+    /// pane models a second time (`open_file` runs inside them).
+    #[test]
+    fn opening_a_slide_shows_it_loading() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("a.tif");
+            eov_common::test_support::write_tiled_tiff(&path, 512, 512, 256, |_, _| {
+                [200, 200, 200]
+            })
+            .unwrap();
+            let ui = crate::AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(8, 8 << 20));
+            let render_timer = Rc::new(Timer::default());
+            crate::open_file(&ui, &state, &tile_cache, &render_timer, path);
+            assert!(ui.get_is_loading());
+        });
     }
 }
