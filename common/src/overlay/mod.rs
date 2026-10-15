@@ -22,7 +22,9 @@ pub use items::{Corner, OverlayItem, measurement_items};
 #[allow(deprecated)]
 pub use measure::format_measurement_label;
 pub use measure::{Calibration, Length, format_length, format_physical_length, measure_segment};
-pub use scale_bar::{ScaleBarLayout, ScaleBarStyle, layout_scale_bar, nice_scale_length_um};
+pub use scale_bar::{
+    ScaleBarLayout, ScaleBarStyle, layout_scale_bar, nice_scale_length_um, scale_bar_for_view,
+};
 
 use serde::{Deserialize, Serialize};
 

@@ -157,6 +157,32 @@ pub fn layout_scale_bar(
     })
 }
 
+/// A scale bar for an on-screen view: the nicest length (1, 2 or 5 × 10ⁿ in
+/// the unit shown) that fits in `max_px` pixels of `um_per_px` µm each, as
+/// `(length in pixels, label)`. In µm mode, lengths of a millimetre or
+/// more are shown in mm. `None` when uncalibrated.
+pub fn scale_bar_for_view(
+    um_per_px: f64,
+    max_px: f64,
+    unit: MeasurementUnit,
+) -> Option<(f64, String)> {
+    if !(um_per_px.is_finite() && um_per_px > 0.0 && max_px > 0.0) {
+        return None;
+    }
+    let max_um = max_px * um_per_px;
+    let unit = match unit {
+        MeasurementUnit::Um if max_um >= 1000.0 => MeasurementUnit::Mm,
+        unit => unit,
+    };
+    let length_um = nice_scale_length_um(max_um, unit)?;
+    let label = format!(
+        "{} {}",
+        format_significant(length_um / unit_um(unit), 3, true),
+        unit_symbol(unit)
+    );
+    Some((length_um / um_per_px, label))
+}
+
 /// Draws a laid-out scale bar.
 pub(crate) fn draw_scale_bar(
     canvas: &mut Canvas,
@@ -183,6 +209,25 @@ pub(crate) fn draw_scale_bar(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn view_scale_bars_label_exact_values() {
+        // 0.25 µm/px at native 40x, up to 110 px: 25 µm (not "0.03 mm").
+        let (px, label) = scale_bar_for_view(0.25, 110.0, MeasurementUnit::Mm).unwrap();
+        assert_eq!(label, "0.02 mm");
+        assert!((px - 80.0).abs() < 1e-9);
+        let (_, label) = scale_bar_for_view(0.25, 110.0, MeasurementUnit::Um).unwrap();
+        assert_eq!(label, "20 µm");
+        // Sub-micrometre bars keep their digits.
+        let (_, label) = scale_bar_for_view(0.01, 110.0, MeasurementUnit::Um).unwrap();
+        assert_eq!(label, "1 µm");
+        let (_, label) = scale_bar_for_view(0.004, 110.0, MeasurementUnit::Um).unwrap();
+        assert_eq!(label, "0.2 µm");
+        // Long bars switch to mm in µm mode.
+        let (_, label) = scale_bar_for_view(20.0, 110.0, MeasurementUnit::Um).unwrap();
+        assert_eq!(label, "2 mm");
+        assert_eq!(scale_bar_for_view(0.0, 110.0, MeasurementUnit::Um), None);
+    }
     use crate::overlay::embedded_font;
 
     #[test]
