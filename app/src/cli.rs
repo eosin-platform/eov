@@ -597,6 +597,27 @@ enum CliCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Check slides for pen marks, possible tissue folds and out-of-focus
+    /// areas.
+    ///
+    /// Prints the share of each slide's tissue that is marked. Inputs are
+    /// slides or folders (searched recursively). Brightfield slides only;
+    /// the thresholds are relative to each slide, and the flags are for
+    /// review, not measurements.
+    Qc {
+        /// Slides or folders.
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+        /// Skip the (slower) out-of-focus check.
+        #[arg(long)]
+        no_sharpness: bool,
+        /// Cell edge in micrometres.
+        #[arg(long, default_value_t = 128.0)]
+        cell_um: f64,
+    },
     /// Recently opened slides and folders.
     Recent {
         #[command(subcommand)]
@@ -846,6 +867,7 @@ enum CommandAction {
     ApplicationUpdate(UpdateArgs),
     Plugin(PluginCommand),
     Probe { file: PathBuf, json: bool },
+    Qc(crate::qc_cli::QcRun),
     RecentList,
     ConfigPath,
     Paths { json: bool },
@@ -977,6 +999,22 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
         Some(CliCommand::Probe { file, json }) => {
             validate_input_file(&file)?;
             CommandAction::Probe { file, json }
+        }
+        Some(CliCommand::Qc {
+            inputs,
+            json,
+            no_sharpness,
+            cell_um,
+        }) => {
+            if !(cell_um.is_finite() && cell_um > 0.0) {
+                anyhow::bail!("--cell-um must be a positive number");
+            }
+            CommandAction::Qc(crate::qc_cli::QcRun {
+                inputs,
+                json,
+                sharpness: !no_sharpness,
+                cell_um,
+            })
         }
         Some(CliCommand::Recent {
             command: RecentCommand::List,
@@ -1134,6 +1172,7 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             crate::probe::run(file, *json)?;
             Ok(true)
         }
+        CommandAction::Qc(run) => crate::qc_cli::run(run).map(|_| true),
         CommandAction::RecentList => {
             print_recent_files();
             Ok(true)

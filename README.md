@@ -255,6 +255,12 @@ For brightfield IHC and special stains, **Quantify Stain in Region…** (right-c
 
 The panel places the map over the whole slide (the default, for maps made at a fixed downsample of the slide), over its scanned region, from the top-left corner at a given downsample (level-0 pixels per map pixel), or at a given pixel size in µm. Opacity, smoothing and visibility change at once. What was shown is remembered per slide in `<data>/heatmaps.toml` and shown again when the slide opens; **Remove** forgets it. Heat maps appear in viewport copies and exported images.
 
+## Tissue QC
+
+**Check Tissue Quality** (right-click a brightfield slide) looks for pen marks, possible tissue folds and out-of-focus areas, cell by cell (128 µm cells, or 512 px without a pixel size), and colours the marked cells over the slide: blue for pen, orange for possible folds, yellow for possibly out of focus. It runs as a status-bar job and reports what share of the tissue each covers; **Copy Tissue QC Summary** copies that line and **Hide Tissue QC** removes the overlay. `eov qc` does the same for many slides from the command line, as text or JSON.
+
+How it decides: a low-resolution pass classifies each pixel as glass, tissue (by saturation, with Otsu's threshold) or ink (green, blue to cyan, or black, colours H&E and IHC stains do not produce; skipped for trichrome and other green or blue stains). A cell with at least 15 % ink is a pen mark. A tissue cell whose darkness (the optical density of its brightest channel, so bright red blood does not count) is at least 2.5 times the slide's median is a possible fold. A second pass reads the cells that are mostly tissue at about 2 µm/px and compares their fine detail (the variance of the Laplacian relative to the variance of the image) with the slide's median: below 35 % is possibly out of focus. Tissue without fine detail, such as fibrin, mucus or necrosis, can be marked as well. The thresholds are relative to each slide, and the marks are for review, not measurements.
+
 ## Supported Formats
 
 eov opens slides through [OpenSlide](https://openslide.org/), so it opens the formats OpenSlide supports on the host system, and it reads OME-TIFF itself (see below). The application explicitly offers these common extensions in the file picker:
@@ -301,6 +307,7 @@ The application can be launched as a desktop viewer or used through a small CLI 
 ```text
 eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
 eov probe [--json] <FILE>
+eov qc [--json] [--no-sharpness] [--cell-um <UM>] <SLIDES>...
 eov recent list
 eov config-path
 eov paths [--json]
@@ -333,6 +340,7 @@ eov --cpu slide.svs
 eov --gpu --filtering-mode lanczos slide.svs
 eov --log-level debug probe fixtures/C3L-00088-22.svs
 eov probe --json slide.svs > slide.json
+eov qc --json cohort/ > qc.json                   # pen marks, folds and blur per slide
 eov --config /tmp/config.toml config-path
 eov paths
 eov recent list

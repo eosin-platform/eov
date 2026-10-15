@@ -33,6 +33,7 @@ mod notices;
 mod overlays;
 mod panel;
 pub(crate) mod publish;
+mod qc;
 mod surfaces;
 
 use crate::AppWindow;

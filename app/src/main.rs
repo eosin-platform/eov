@@ -37,6 +37,7 @@ mod paths;
 mod plugin_runtime;
 mod plugins;
 mod probe;
+mod qc_cli;
 mod quantify_panel;
 mod recent;
 mod render;

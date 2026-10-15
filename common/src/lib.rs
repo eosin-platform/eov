@@ -36,6 +36,7 @@ pub mod overlay;
 pub mod paths;
 pub mod postprocess;
 pub mod processing;
+pub mod qc;
 pub mod render;
 pub mod stain;
 pub mod tile;

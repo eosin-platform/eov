@@ -82,8 +82,8 @@ struct Saved {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scale: Option<f64>,
     color_map: String,
-    threshold: f32,
-    opacity: f32,
+    threshold: f64,
+    opacity: f64,
     smooth: bool,
     visible: bool,
 }
@@ -131,6 +131,11 @@ fn remember(key: &str, saved: Option<Saved>) {
     }
 }
 
+/// A slider value as people would write it (0.3, not 0.30000001…).
+fn rounded(value: f32) -> f64 {
+    (f64::from(value) * 1000.0).round() / 1000.0
+}
+
 fn placement_from(id: &str, scale: Option<f64>) -> Placement {
     match (id, scale) {
         ("fit-bounds", _) => Placement::FitBounds,
@@ -158,8 +163,8 @@ impl Shown {
                 _ => None,
             },
             color_map: self.color_map.id().to_string(),
-            threshold: self.threshold,
-            opacity: self.opacity,
+            threshold: rounded(self.threshold),
+            opacity: rounded(self.opacity),
             smooth: self.smooth,
             visible: self.visible,
         }
@@ -197,7 +202,7 @@ impl UiHost {
                 scale: None,
                 color_map: ColorMap::default().id().to_string(),
                 threshold: 0.0,
-                opacity: HeatStyle::default().opacity,
+                opacity: f64::from(HeatStyle::default().opacity),
                 smooth: false,
                 visible: true,
             })
@@ -280,8 +285,8 @@ impl UiHost {
             placement,
             scale_text: settings.scale.map(trim_number).unwrap_or_default(),
             color_map: ColorMap::from_id(&settings.color_map).unwrap_or_default(),
-            threshold: settings.threshold.clamp(0.0, 1.0),
-            opacity: settings.opacity.clamp(0.0, 1.0),
+            threshold: settings.threshold.clamp(0.0, 1.0) as f32,
+            opacity: settings.opacity.clamp(0.0, 1.0) as f32,
             smooth: settings.smooth,
             visible: settings.visible,
             placed: Err(String::new()),

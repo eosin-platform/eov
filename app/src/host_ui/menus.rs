@@ -179,6 +179,22 @@ impl UiHost {
                 },
                 "",
             ));
+            let (brightfield, qc_shown) = self.qc_menu_state(file_id as i32);
+            if brightfield {
+                items.push(item(
+                    "host:qc",
+                    if qc_shown {
+                        "Check Tissue Quality Again"
+                    } else {
+                        "Check Tissue Quality"
+                    },
+                    "",
+                ));
+                if qc_shown {
+                    items.push(item("host:qc-copy", "Copy Tissue QC Summary", "copy"));
+                    items.push(item("host:qc-hide", "Hide Tissue QC", ""));
+                }
+            }
             mark_last_separator(&mut items);
         }
 
@@ -394,6 +410,21 @@ impl UiHost {
         if host_command == "heatmap" {
             self.open_heatmap_panel_for(file_id as i32);
             return true;
+        }
+        match host_command {
+            "qc" => {
+                self.run_tissue_qc(file_id as i32);
+                return true;
+            }
+            "qc-copy" => {
+                self.copy_tissue_qc(file_id as i32);
+                return true;
+            }
+            "qc-hide" => {
+                self.hide_tissue_qc(file_id as i32);
+                return true;
+            }
+            _ => {}
         }
         if let Some(id) = host_command.strip_prefix("measurement-delete:") {
             self.apply_host_edit(file_id, HostEdit::Remove(vec![id.to_string()]), true);

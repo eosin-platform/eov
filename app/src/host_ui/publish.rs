@@ -411,6 +411,7 @@ impl UiHost {
             self.store.remove_file(*id);
             if let Ok(file_id) = i32::try_from(*id) {
                 self.heatmap_file_closed(file_id);
+                self.tissue_qc_file_closed(file_id);
             }
             self.undo.borrow_mut().clear_file(*id);
             tracker.properties.remove(id);
