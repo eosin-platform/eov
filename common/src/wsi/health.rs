@@ -18,10 +18,13 @@
 //!    bad-region list, a clean handle is published, and the caller gets
 //!    [`Error::CorruptRegion`] — the shared handle never stays poisoned
 //!    because of one bad tile;
-//! 3. rate-limits reopening with a token bucket plus exponential backoff
-//!    after failed opens, so a slide on a dead network share is not hammered.
-//!    While a reopen is not allowed callers get the transient
-//!    [`Error::HandlePoisoned`].
+//! 3. rate-limits the *probes* with a token bucket. When no token is left,
+//!    the region is remembered provisionally for a few seconds (reads of it
+//!    fail fast with the transient [`Error::HandlePoisoned`], so it cannot
+//!    re-poison the handle in a loop) and the shared handle is still
+//!    replaced. Every reopen backs off exponentially after failed opens, so
+//!    a slide on a dead network share is not hammered; while backing off,
+//!    reads fail with [`Error::HandlePoisoned`].
 
 use crate::openslide::OpenSlide;
 use crate::{Error, Result};
@@ -33,15 +36,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
-/// Reopen attempts allowed in a burst.
-const REOPEN_BURST: f64 = 4.0;
-/// Sustained reopen rate (tokens per second).
-const REOPEN_RATE_PER_SEC: f64 = 4.0;
+/// Probe reopens allowed in a burst (enough for a screenful of bad tiles).
+const REOPEN_BURST: f64 = 16.0;
+/// Sustained probe reopen rate (tokens per second).
+const REOPEN_RATE_PER_SEC: f64 = 8.0;
 /// Backoff after the first failed open; doubles per consecutive failure.
 const REOPEN_BACKOFF_BASE: Duration = Duration::from_millis(250);
 const REOPEN_BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// How long a confirmed-bad region fails fast before it is retried.
 pub(crate) const BAD_REGION_TTL: Duration = Duration::from_secs(300);
+/// How long a region whose failure could not be verified (no probe token)
+/// fails fast before it is retried.
+const PROVISIONAL_TTL: Duration = Duration::from_secs(5);
 /// Bound on remembered bad regions per slide.
 const MAX_BAD_REGIONS: usize = 4096;
 /// Minimum spacing of user-visible warnings per slide.
@@ -180,6 +186,11 @@ impl RecoveryState {
         self.consecutive_failures = 0;
         self.retry_at = None;
     }
+
+    /// Whether the failure backoff allows an open now (ignoring tokens).
+    fn backoff_elapsed(&self, now: Instant) -> bool {
+        self.retry_at.is_none_or(|retry_at| now >= retry_at)
+    }
 }
 
 #[derive(Default)]
@@ -187,6 +198,25 @@ struct Counters {
     poison_events: AtomicU64,
     reopens: AtomicU64,
     failed_reopens: AtomicU64,
+}
+
+/// A remembered failure of a region or associated image.
+struct BadEntry {
+    since: Instant,
+    message: String,
+    /// Failed on a fresh handle too (permanent), as opposed to provisional.
+    confirmed: bool,
+}
+
+impl BadEntry {
+    fn expired(&self, now: Instant) -> bool {
+        let ttl = if self.confirmed {
+            BAD_REGION_TTL
+        } else {
+            PROVISIONAL_TTL
+        };
+        now.duration_since(self.since) >= ttl
+    }
 }
 
 /// Shape of the slide, used to reject a reopened handle if the file was
@@ -213,7 +243,7 @@ pub(crate) struct HandleCell {
     current: RwLock<Arc<HandleSlot>>,
     recovery: Mutex<RecoveryState>,
     counters: Counters,
-    bad: Mutex<HashMap<BadKey, (Instant, String)>>,
+    bad: Mutex<HashMap<BadKey, BadEntry>>,
     last_error: Mutex<Option<String>>,
     last_warning: Mutex<Option<Instant>>,
     failing: std::sync::atomic::AtomicBool,
@@ -274,7 +304,7 @@ impl HandleCell {
     fn bad_count(&self) -> usize {
         let now = Instant::now();
         let mut bad = self.bad.lock();
-        bad.retain(|_, (since, _)| now.duration_since(*since) < BAD_REGION_TTL);
+        bad.retain(|_, entry| !entry.expired(now));
         bad.len()
     }
 
@@ -282,43 +312,62 @@ impl HandleCell {
         self.bad.lock().clear();
     }
 
-    fn bad_message(&self, key: &BadKey) -> Option<String> {
+    /// The error to fail fast with if `key` is remembered as bad.
+    fn remembered_failure(&self, key: &BadKey) -> Option<Error> {
         let mut bad = self.bad.lock();
-        match bad.get(key) {
-            Some((since, message)) if since.elapsed() < BAD_REGION_TTL => Some(message.clone()),
-            Some(_) => {
-                bad.remove(key);
-                None
-            }
-            None => None,
+        let entry = bad.get(key)?;
+        if entry.expired(Instant::now()) {
+            bad.remove(key);
+            return None;
         }
+        Some(if entry.confirmed {
+            key.clone().into_error(entry.message.clone())
+        } else {
+            Error::HandlePoisoned(format!(
+                "{} (failed recently; retrying shortly)",
+                entry.message
+            ))
+        })
     }
 
-    fn mark_bad(&self, key: BadKey, message: String) {
+    fn remember(&self, key: &Option<BadKey>, message: &str, confirmed: bool) {
+        let Some(key) = key else {
+            return;
+        };
         let mut bad = self.bad.lock();
         if bad.len() >= MAX_BAD_REGIONS
             && let Some(oldest) = bad
                 .iter()
-                .min_by_key(|(_, (since, _))| *since)
+                .min_by_key(|(_, entry)| entry.since)
                 .map(|(key, _)| key.clone())
         {
             bad.remove(&oldest);
         }
-        bad.insert(key, (Instant::now(), message));
+        bad.insert(
+            key.clone(),
+            BadEntry {
+                since: Instant::now(),
+                message: message.to_string(),
+                confirmed,
+            },
+        );
     }
 
     fn record_error(&self, message: &str) {
         *self.last_error.lock() = Some(message.to_string());
+        // Log the file name only: full paths often contain accession numbers.
+        let name = self
+            .path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let now = Instant::now();
         let mut last = self.last_warning.lock();
         if last.is_none_or(|at| now.duration_since(at) >= WARN_INTERVAL) {
             *last = Some(now);
-            warn!(
-                "OpenSlide reported an error for {}: {message} (recovering)",
-                self.path.display()
-            );
+            warn!("OpenSlide reported an error for {name}: {message} (recovering)");
         } else {
-            debug!("OpenSlide error for {}: {message}", self.path.display());
+            debug!("OpenSlide error for {name}: {message}");
         }
     }
 
@@ -358,9 +407,9 @@ impl HandleCell {
         mut op: impl FnMut(&OpenSlide) -> Result<T>,
     ) -> Result<T> {
         if let Some(key) = &key
-            && let Some(message) = self.bad_message(key)
+            && let Some(err) = self.remembered_failure(key)
         {
-            return Err(key.clone().into_error(message));
+            return Err(err);
         }
 
         let mut slot = self.current();
@@ -398,6 +447,27 @@ impl HandleCell {
         )))
     }
 
+    /// Opens a fresh handle for recovery, recording failures (backoff).
+    fn open_for_recovery(&self, recovery: &mut RecoveryState, now: Instant) -> Result<OpenSlide> {
+        match self.open_fresh() {
+            Ok(slide) => {
+                recovery.note_open_success();
+                Ok(slide)
+            }
+            Err(err) => {
+                recovery.note_open_failure(now);
+                self.counters.failed_reopens.fetch_add(1, Ordering::Relaxed);
+                self.failing.store(true, Ordering::Relaxed);
+                let message = format!("reopening failed: {err}");
+                self.record_error(&message);
+                Err(Error::HandlePoisoned(format!(
+                    "{}: {message}",
+                    self.path.display()
+                )))
+            }
+        }
+    }
+
     fn recover<T>(
         &self,
         failed: &Arc<HandleSlot>,
@@ -406,6 +476,7 @@ impl HandleCell {
         op: &mut impl FnMut(&OpenSlide) -> Result<T>,
     ) -> Result<Recovered<T>> {
         let mut recovery = self.recovery.lock();
+        let now = Instant::now();
 
         // Another thread may have replaced the handle while we waited.
         let current = self.current();
@@ -414,19 +485,17 @@ impl HandleCell {
             return Ok(Recovered::Retry(current));
         }
 
-        let now = Instant::now();
-        if let Err(wait) = recovery.acquire(now) {
-            return Err(Error::HandlePoisoned(format!(
-                "{}: reopening is rate-limited, retry in {} ms",
-                self.path.display(),
-                wait.as_millis().max(1)
-            )));
-        }
-
         if replaced {
             // Our own operation failed, but someone else already published a
             // healthy handle. Re-check on a private handle: if the data is
             // bad, retrying on the shared one would poison it again.
+            if recovery.acquire(now).is_err() {
+                self.remember(key, "probe deferred", false);
+                return Err(Error::HandlePoisoned(format!(
+                    "{}: read failed; retrying shortly",
+                    self.path.display()
+                )));
+            }
             let probe = match self.open_fresh() {
                 Ok(probe) => probe,
                 Err(err) => {
@@ -443,9 +512,7 @@ impl HandleCell {
             return match op(&probe) {
                 Ok(value) => Ok(Recovered::Done(value)),
                 Err(Error::HandlePoisoned(message)) => {
-                    if let Some(key) = key {
-                        self.mark_bad(key.clone(), message.clone());
-                    }
+                    self.remember(key, &message, true);
                     Err(match key {
                         Some(key) => key.clone().into_error(message),
                         None => Error::OpenSlide(message),
@@ -455,28 +522,36 @@ impl HandleCell {
             };
         }
 
-        let fresh = match self.open_fresh() {
-            Ok(fresh) => fresh,
-            Err(err) => {
-                recovery.note_open_failure(now);
-                self.counters.failed_reopens.fetch_add(1, Ordering::Relaxed);
-                self.failing.store(true, Ordering::Relaxed);
-                let message = format!("reopening failed: {err}");
-                self.record_error(&message);
-                return Err(Error::HandlePoisoned(format!(
-                    "{}: {message}",
-                    self.path.display()
-                )));
-            }
-        };
-        recovery.note_open_success();
+        // The shared handle is poisoned. Every path below replaces it,
+        // unless opens are backing off after failures.
+        if !recovery.backoff_elapsed(now) {
+            return Err(Error::HandlePoisoned(format!(
+                "{}: reopening is backing off after failures",
+                self.path.display()
+            )));
+        }
 
         if !attempted {
             // Our operation never ran; publish and let the caller run it.
+            let fresh = self.open_for_recovery(&mut recovery, now)?;
             return Ok(Recovered::Retry(self.publish(fresh)));
         }
 
+        if recovery.acquire(now).is_err() {
+            // No probe budget: remember the region provisionally so it cannot
+            // re-poison the handle in a loop, and restore the handle for
+            // everyone else.
+            self.remember(key, "probe deferred", false);
+            let fresh = self.open_for_recovery(&mut recovery, now)?;
+            self.publish(fresh);
+            return Err(Error::HandlePoisoned(format!(
+                "{}: read failed; retrying shortly",
+                self.path.display()
+            )));
+        }
+
         // Probe: run the failed operation on the fresh, unpublished handle.
+        let fresh = self.open_for_recovery(&mut recovery, now)?;
         match op(&fresh) {
             Ok(value) => {
                 self.publish(fresh);
@@ -485,21 +560,11 @@ impl HandleCell {
             Err(Error::HandlePoisoned(message)) => {
                 // It fails on a fresh handle too: the data is bad.
                 drop(fresh);
-                if let Some(key) = key {
-                    self.mark_bad(key.clone(), message.clone());
-                }
-                // Replace the poisoned shared handle with a clean one.
-                if recovery.acquire(Instant::now()).is_ok() {
-                    match self.open_fresh() {
-                        Ok(clean) => {
-                            self.publish(clean);
-                        }
-                        Err(err) => {
-                            recovery.note_open_failure(Instant::now());
-                            self.counters.failed_reopens.fetch_add(1, Ordering::Relaxed);
-                            self.record_error(&format!("reopening failed: {err}"));
-                        }
-                    }
+                self.remember(key, &message, true);
+                // Replace the poisoned shared handle with a clean one (no
+                // probe token needed).
+                if let Ok(clean) = self.open_for_recovery(&mut recovery, Instant::now()) {
+                    self.publish(clean);
                 }
                 Err(match key {
                     Some(key) => key.clone().into_error(message),
@@ -530,12 +595,12 @@ mod tests {
     fn token_bucket_limits_bursts_and_refills() {
         let mut state = RecoveryState::new();
         let start = Instant::now();
-        for _ in 0..4 {
+        for _ in 0..16 {
             state.acquire(start).unwrap();
         }
         let wait = state.acquire(start).unwrap_err();
-        assert!(wait <= Duration::from_millis(250), "{wait:?}");
-        state.acquire(start + Duration::from_millis(260)).unwrap();
+        assert!(wait <= Duration::from_millis(125), "{wait:?}");
+        state.acquire(start + Duration::from_millis(130)).unwrap();
     }
 
     #[test]

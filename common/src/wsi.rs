@@ -1250,6 +1250,38 @@ mod tests {
     }
 
     #[test]
+    fn a_burst_of_bad_tiles_leaves_the_shared_handle_usable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("truncated.tiff");
+        // Like a truncated copy: the bottom half of level 0 is unreadable.
+        let mut level0 = TiffLevel::new(256, 256, 32);
+        for ty in 4..8 {
+            for tx in 0..8 {
+                level0 = level0.with_broken_tile(tx, ty);
+            }
+        }
+        let spec = TiffSpec {
+            levels: vec![level0, TiffLevel::new(128, 128, 32)],
+            ..TiffSpec::default()
+        };
+        write_tiff(&path, &spec, gradient).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+
+        for ty in 4..8 {
+            for tx in 0..8 {
+                let read = wsi.read_region(tx * 32, ty * 32, 0, 32, 32);
+                assert!(read.is_err(), "tile {tx},{ty}");
+            }
+            // Good tiles keep reading between the bad ones.
+            assert!(wsi.read_region(0, 0, 0, 32, 32).is_ok());
+        }
+        let health = wsi.health();
+        assert_eq!(health.state, HealthState::Healthy);
+        assert!(health.bad_regions >= 16, "{health:?}");
+        assert!(wsi.read_region(0, 0, 1, 128, 128).is_ok());
+    }
+
+    #[test]
     fn reopening_backs_off_when_the_file_is_gone() {
         let dir = tempfile::tempdir().unwrap();
         let path = broken_file(dir.path());
