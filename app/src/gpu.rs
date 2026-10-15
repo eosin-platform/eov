@@ -209,7 +209,11 @@ pub(crate) struct QueuedFrame {
     pub(crate) color: GpuColorUniform,
     /// Screen-space sharpening of the composited frame (stage 6), 0 = off.
     pub(crate) sharpness: f32,
-    /// Read the finished frame back for the CPU filter chain (RND-6); see
+    /// Composite the background and sharpen (stages 5–6). Off for frames
+    /// read back for plugin filters: they stay transparent outside the
+    /// slide, and the filter job finishes them after the filters.
+    pub(crate) composite: bool,
+    /// Read the frame back for the CPU filter chain (RND-6); see
     /// [`GpuRenderer::poll_readbacks`].
     pub(crate) readback: Option<ReadbackTag>,
 }
@@ -225,6 +229,8 @@ pub(crate) struct ReadbackTag {
     pub(crate) scale: f64,
     /// Increases with every readback a pane requests.
     pub(crate) generation: u64,
+    /// What follows the filters: the background and the sharpening.
+    pub(crate) finish: crate::render_pool::CpuRenderPostProcess,
 }
 
 /// A frame read back from the GPU: tightly packed RGBA.
@@ -279,6 +285,7 @@ impl QueuedFrame {
             v.to_bits().hash(&mut hasher);
         }
         self.sharpness.to_bits().hash(&mut hasher);
+        self.composite.hash(&mut hasher);
         self.draws.len().hash(&mut hasher);
         for draw in &self.draws {
             draw.tile.coord.hash(&mut hasher);
@@ -301,7 +308,17 @@ impl QueuedFrame {
 
     /// Whether the frame needs the sharpening post pass.
     fn sharpens(&self) -> bool {
-        self.sharpness > 0.001
+        self.composite && self.sharpness > 0.001
+    }
+
+    /// What the frame is cleared to: the background, or transparent for a
+    /// frame that the filter job finishes.
+    fn clear_color(&self) -> wgpu::Color {
+        if self.composite {
+            CLEAR_COLOR
+        } else {
+            wgpu::Color::TRANSPARENT
+        }
     }
 }
 
@@ -1751,7 +1768,7 @@ impl GpuRenderer {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
+                        load: wgpu::LoadOp::Clear(frame.clear_color()),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -2000,6 +2017,7 @@ mod tests {
             draws: Vec::new(),
             color,
             sharpness,
+            composite: true,
             readback: None,
         }
     }
@@ -2016,6 +2034,11 @@ mod tests {
         assert_ne!(base, frame(neutral, 0.5).fingerprint());
         assert!(!frame(neutral, 0.0).sharpens());
         assert!(frame(neutral, 0.5).sharpens());
+        // Frames for plugin filters are finished on the CPU.
+        let mut for_filters = frame(neutral, 0.5);
+        for_filters.composite = false;
+        assert!(!for_filters.sharpens());
+        assert_ne!(for_filters.fingerprint(), frame(neutral, 0.5).fingerprint());
     }
 
     // ---- Headless GPU: the shaders against the CPU reference ------------
@@ -2130,6 +2153,7 @@ mod tests {
                 }],
                 color: pipeline.gpu_uniform(),
                 sharpness: pipeline.sharpness(),
+                composite: true,
                 readback: None,
             },
         );
@@ -2183,6 +2207,7 @@ mod tests {
                     }],
                     color: pipeline.gpu_uniform(),
                     sharpness: 0.0,
+                    composite: true,
                     readback: None,
                 },
             );
@@ -2283,12 +2308,17 @@ mod tests {
             }],
             color: ProcessingPipeline::identity().gpu_uniform(),
             sharpness: 0.0,
+            composite: false,
             readback: Some(ReadbackTag {
                 pane_uid: 7,
                 file_id: 1,
                 viewport: eov_common::Viewport::new(width as f64, TILE as f64, 100.0, 100.0),
                 scale: 1.0,
                 generation,
+                finish: crate::render_pool::CpuRenderPostProcess {
+                    pipeline: Arc::new(ProcessingPipeline::identity()),
+                    background: crate::color::VIEWPORT_BACKGROUND,
+                },
             }),
         }
     }
@@ -2406,6 +2436,7 @@ mod tests {
                 draws,
                 color: ProcessingPipeline::identity().gpu_uniform(),
                 sharpness: 0.0,
+                composite: true,
                 readback: None,
             },
         );
@@ -2455,6 +2486,10 @@ mod tests {
         let (_, _, surface) = renderer.read_surface_rgba(slot).unwrap();
         assert_eq!(frame.pixels, surface, "rows are unpadded");
         assert!(!renderer.readbacks_pending());
+        // Frames for plugin filters stay transparent outside the slide.
+        let row_end = width as usize * 4;
+        assert_eq!(&frame.pixels[row_end - 4..row_end], &[0, 0, 0, 0]);
+        assert_eq!(frame.pixels[3], 255, "the slide is opaque");
 
         // An unchanged frame is not rendered again, but still read back.
         let _ = renderer.queue_frame(slot, tagged_frame(width, 2));

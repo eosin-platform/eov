@@ -1,13 +1,14 @@
 //! CPU frame rendering on a worker pool.
 //!
 //! A job composites a pane's tiles, colour-processes the frame, runs the
-//! plugin filters and builds the pixel buffer Slint displays — all on the
-//! pool, so the UI thread only swaps images in (RND-6). Jobs are keyed by
-//! the pane's stable id, not its position (RND-9).
+//! plugin filters over the slide's pixels, composites the background and
+//! sharpens, building the pixel buffer Slint displays — all on the pool, so
+//! the UI thread only swaps images in (RND-6). Jobs are keyed by the pane's
+//! stable id, not its position (RND-9).
 
 use crate::blitter;
 use crate::plugin_runtime::filters::ChainSnapshot;
-use eov_common::processing::ProcessingPipeline;
+use eov_common::processing::{ProcessingPipeline, composite_onto};
 use eov_common::{TileData, Viewport};
 use eov_plugin_api::abi::FilterView;
 use parking_lot::Mutex;
@@ -29,9 +30,10 @@ pub struct CachedCpuFrame {
     pub width: u32,
     pub height: u32,
     pub viewport: Viewport,
-    /// The frame as displayed before plugin filters: colour-processed and
-    /// composited onto the background (filters run again on this one when
-    /// only they change).
+    /// The frame colour-processed (stages 2–4) but before plugin filters,
+    /// compositing and sharpening: transparent outside the slide. When only
+    /// the filters change they run again on this one, and the frame is
+    /// finished again ([`CpuRenderPostProcess::finish`]).
     pub pixels: Vec<u8>,
     /// The same frame before colour processing, transparent outside the
     /// slide, and axis-aligned with the slide (`viewport.aligned()`, not
@@ -40,8 +42,8 @@ pub struct CachedCpuFrame {
     pub source: Vec<u8>,
 }
 
-/// Colour processing of a CPU frame.
-#[derive(Clone)]
+/// Colour processing of a CPU frame, around the plugin filters.
+#[derive(Clone, Debug)]
 pub struct CpuRenderPostProcess {
     /// Stages 2–6 of `eov_common::processing`: stain transform, tone,
     /// quantisation, compositing and screen-space sharpening.
@@ -51,15 +53,38 @@ pub struct CpuRenderPostProcess {
 }
 
 impl CpuRenderPostProcess {
-    /// Processes a frame whose pixels outside the slide are transparent.
-    pub fn apply(&self, buffer: &mut [u8], width: u32, height: u32) {
-        self.pipeline
-            .apply_rgba(buffer, width, height, self.background);
+    /// Stages 2–4 (stain transform, tone, quantisation) on a frame whose
+    /// pixels outside the slide are transparent; they stay transparent.
+    pub fn color(&self, buffer: &mut [u8]) {
+        self.pipeline.apply_color(buffer);
+    }
+
+    /// What follows the plugin filters: compositing onto the background
+    /// and screen-space sharpening (stages 5–6).
+    pub fn finish(&self, buffer: &mut [u8], width: u32, height: u32) {
+        composite_onto(buffer, self.background);
+        self.pipeline.sharpen(buffer, width, height);
+    }
+
+    /// Every stage, with the plugin filters (if any) on the slide's pixels
+    /// between [`color`](Self::color) and [`finish`](Self::finish).
+    pub fn apply(
+        &self,
+        buffer: &mut [u8],
+        width: u32,
+        height: u32,
+        filters: Option<&FrameFilters>,
+    ) {
+        self.color(buffer);
+        if let Some(filters) = filters {
+            filters.apply(buffer, width, height);
+        }
+        self.finish(buffer, width, height);
     }
 }
 
-/// The plugin filters to run on a finished frame, and what they are told
-/// about the view the frame shows.
+/// The plugin filters to run on a colour-processed frame (transparent
+/// outside the slide), and what they are told about the view it shows.
 #[derive(Clone)]
 pub struct FrameFilters {
     pub chain: Arc<ChainSnapshot>,
@@ -337,9 +362,11 @@ pub fn composite_preview(
 
 /// Composites the job's tiles into `source` (axis-aligned with the slide,
 /// transparent outside it, unprocessed), turns that frame to the view's
-/// orientation into `buffer`, colour-processes `buffer`, and returns the
-/// filtered frame to display. `None` when a newer job for the pane
-/// superseded this one.
+/// orientation into `buffer` and colour-processes `buffer` (still
+/// transparent outside the slide), and returns the frame to display: the
+/// plugin filters run over `buffer`'s pixels, then the background and the
+/// sharpening are added. `None` when a newer job for the pane superseded
+/// this one.
 fn render_job(
     job: &CpuRenderJob,
     latest_jobs: &Mutex<HashMap<u32, u64>>,
@@ -368,7 +395,7 @@ fn render_job(
     }
 
     eov_common::blitter::orient_frame(source, aligned_width, aligned_height, orientation, buffer);
-    job.postprocess.apply(buffer, job.width, job.height);
+    job.postprocess.color(buffer);
     if !current() {
         return None;
     }
@@ -380,13 +407,8 @@ fn render_job(
     if let Some(filters) = &job.filters {
         filters.apply(bytes, job.width, job.height);
     }
+    job.postprocess.finish(bytes, job.width, job.height);
     current().then_some(display)
-}
-
-/// Colour-processes an interaction preview (the synchronous counterpart of
-/// a render job): `buffer` must be transparent outside the slide.
-pub fn apply_postprocess(buffer: &mut [u8], width: u32, height: u32, pp: &CpuRenderPostProcess) {
-    pp.apply(buffer, width, height);
 }
 
 fn draw_command_into_chunk(
@@ -492,14 +514,18 @@ mod tests {
         let mut pixels = vec![0u8; 4 * 2 * 4];
         let mut source = vec![0u8; 4 * 2 * 4];
         let display = render_job(&job, &latest, &mut pixels, &mut source).unwrap();
-        for row in pixels.chunks(16) {
+        for row in display.as_bytes().chunks(16) {
             assert_eq!(&row[..3], &expected);
             assert_eq!(row[3], 255);
             // The background is not tone-mapped (stage 5 follows stage 4).
             assert_eq!(&row[8..16], &[30, 30, 30, 255, 30, 30, 30, 255]);
         }
-        // Without filters the displayed frame is the processed one.
-        assert_eq!(display.as_bytes(), pixels.as_slice());
+        // The frame kept for the filters is processed and still transparent
+        // outside the slide.
+        for row in pixels.chunks(16) {
+            assert_eq!(&row[..3], &expected);
+            assert_eq!(&row[8..16], &[0; 8]);
+        }
         // The unprocessed frame keeps the transparency outside the slide.
         for row in source.chunks(16) {
             assert_eq!(&row[..8], &[100, 150, 200, 255, 100, 150, 200, 255]);
@@ -507,8 +533,30 @@ mod tests {
         }
         // The synchronous preview path gives the same result.
         let mut preview = source.clone();
-        apply_postprocess(&mut preview, 4, 2, &job.postprocess);
-        assert_eq!(preview, pixels);
+        job.postprocess.apply(&mut preview, 4, 2, None);
+        assert_eq!(preview.as_slice(), display.as_bytes());
+    }
+
+    /// Plugin filters see the slide's pixels, transparent outside it, and
+    /// the background is composited after them, untouched.
+    #[test]
+    fn filters_run_on_the_slide_pixels_only() {
+        let mut job = job_with_tile(ProcessingPipeline::identity());
+        let chain = crate::plugin_runtime::filters::test_chain(&["invert"]);
+        job.filters = Some(FrameFilters {
+            chain: chain.read(),
+            view: FilterView::default(),
+        });
+        let latest = Mutex::new(HashMap::from([(3, 7)]));
+        let (mut pixels, mut source) = (vec![0u8; 32], vec![0u8; 32]);
+        let display = render_job(&job, &latest, &mut pixels, &mut source).unwrap();
+        for row in display.as_bytes().chunks(16) {
+            // The test filter inverts red.
+            assert_eq!(&row[..4], &[155, 150, 200, 255]);
+            assert_eq!(&row[8..16], &[30, 30, 30, 255, 30, 30, 30, 255]);
+        }
+        // The frame kept for filtering again is the unfiltered one.
+        assert_eq!(&pixels[..4], &[100, 150, 200, 255]);
     }
 
     /// A turned view's frame is the aligned composite turned (exactly), and
@@ -518,7 +566,7 @@ mod tests {
         let plain = job_with_tile(ProcessingPipeline::identity());
         let latest = Mutex::new(HashMap::from([(3, 7)]));
         let (mut aligned, mut aligned_source) = (vec![0u8; 32], vec![0u8; 32]);
-        render_job(&plain, &latest, &mut aligned, &mut aligned_source).unwrap();
+        let upright = render_job(&plain, &latest, &mut aligned, &mut aligned_source).unwrap();
         for orientation in eov_common::viewport::Orientation::all() {
             let mut job = job_with_tile(ProcessingPipeline::identity());
             let (w, h) = orientation.swap(4, 2);
@@ -526,8 +574,10 @@ mod tests {
             job.height = h;
             job.viewport.orientation = orientation;
             let (mut pixels, mut source) = (vec![0u8; 32], vec![0u8; 32]);
-            render_job(&job, &latest, &mut pixels, &mut source).unwrap();
+            let display = render_job(&job, &latest, &mut pixels, &mut source).unwrap();
             let mut expected = vec![0u8; 32];
+            eov_common::blitter::orient_frame(upright.as_bytes(), 4, 2, orientation, &mut expected);
+            assert_eq!(display.as_bytes(), expected.as_slice(), "{orientation:?}");
             eov_common::blitter::orient_frame(&aligned, 4, 2, orientation, &mut expected);
             assert_eq!(pixels, expected, "{orientation:?}");
             assert_eq!(source, aligned_source, "{orientation:?}");

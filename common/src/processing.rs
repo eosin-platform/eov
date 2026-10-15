@@ -14,6 +14,9 @@
 //! 3. **Tone**: gamma → brightness → contrast ([`ToneAdjustments`]).
 //! 4. **Quantise** to 8 bits, rounding to nearest. Stages 2–3 are evaluated
 //!    in floating point without intermediate rounding.
+//!
+//!    The viewer runs plugin filters here, on the slide's pixels: the rest
+//!    of the frame is still transparent.
 //! 5. **Composite** pixels outside the slide (alpha 0) onto the background.
 //! 6. **Sharpen** in *screen space*: a 3×3 Laplacian unsharp mask
 //!    `c + k·(4c − n − s − w − e)` on the quantised, composited frame, with

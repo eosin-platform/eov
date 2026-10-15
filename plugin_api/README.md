@@ -139,7 +139,9 @@ mapping to the pane changes. Use `ViewInfo::image_to_screen` and
 (`visible` is the bounding box of the visible area). Filter frames arrive
 as shown on screen, turned; their `FilterView` carries no orientation
 (the FFI struct is frozen), so read it from the pane's `ViewInfo` in the
-snapshot.
+snapshot. They hold the slide's pixels after eov's stain and tone
+adjustments, and are transparent outside the slide: eov composites the
+background and sharpens after the filters.
 
 ## Plugin manifest
 
