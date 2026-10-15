@@ -1784,6 +1784,7 @@ version = "1.0.0"
 dependencies = [
  "abi_stable",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "toml 0.8.23",
 ]

@@ -31,10 +31,31 @@
 //! data = "<svg>...</svg>"
 //! ```
 
+pub mod abi;
 pub mod ffi;
 pub mod host;
 pub mod manifest;
+pub mod protocol;
+pub mod sdk;
+pub mod testing;
 pub mod viewport_filter;
+
+/// Everything a plugin usually needs: `use eov_plugin_api::prelude::*;`.
+pub mod prelude {
+    pub use crate::abi::{FfiErrorKind, FilterView, RegionRequest};
+    pub use crate::protocol::*;
+    pub use crate::sdk::{Frame, Host, HostError, HostResult, Image, Job, Layer, Plugin, Surface};
+    pub use serde_json::{Map, Value, json};
+}
+
+/// Re-exports used by [`export_plugin!`]; not part of the public API.
+#[doc(hidden)]
+pub mod __private {
+    pub use abi_stable::library::{
+        CheckTypeLayout, LibHeader, RootModuleResult,
+        __call_root_module_loader as call_root_module_loader,
+    };
+}
 
 pub use host::{
     ActiveSidebar, HostLogLevel, HostSnapshot, HostToolMode, LevelInfo, ModalDialogRequest,
