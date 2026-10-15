@@ -229,6 +229,8 @@ pub struct ViewportState {
     // --- Pan inertia animation ---
     /// Is currently dragging
     is_dragging: bool,
+    /// Whether the active drag was started by `start_external_drag`.
+    external_drag: bool,
     /// Last drag position
     drag_start: DVec2,
     /// Recent absolute drag samples used to estimate release velocity.
@@ -281,6 +283,7 @@ impl ViewportState {
         Self {
             viewport,
             is_dragging: false,
+            external_drag: false,
             drag_start: DVec2::ZERO,
             drag_samples: Vec::with_capacity(8),
             inertia_start_velocity: DVec2::ZERO,
@@ -306,6 +309,7 @@ impl ViewportState {
     pub fn start_drag(&mut self, x: f64, y: f64) {
         let now = Instant::now();
         self.is_dragging = true;
+        self.external_drag = false;
         self.drag_start = DVec2::new(x, y);
         self.drag_samples.clear();
         self.drag_samples.push((self.drag_start, now));
@@ -359,6 +363,7 @@ impl ViewportState {
 
         let now = Instant::now();
         self.is_dragging = false;
+        self.external_drag = false;
 
         if let (Some((first_position, first_time)), Some((last_position, last_time))) = (
             self.drag_samples.first().copied(),
@@ -402,6 +407,7 @@ impl ViewportState {
     pub fn start_external_drag(&mut self) {
         self.stop();
         self.is_dragging = true;
+        self.external_drag = true;
         self.drag_samples.clear();
         self.last_update = Instant::now();
     }
@@ -418,10 +424,11 @@ impl ViewportState {
 
     /// End an external drag sequence without starting inertia.
     pub fn end_external_drag(&mut self) {
-        if !self.is_dragging {
+        if !self.is_dragging || !self.external_drag {
             return;
         }
         self.is_dragging = false;
+        self.external_drag = false;
         self.drag_samples.clear();
         self.last_update = Instant::now();
     }
@@ -604,8 +611,17 @@ impl ViewportState {
     /// Ideal for scroll wheel input — each tick compounds onto the target
     /// while the viewport smoothly converges via exponential smoothing.
     pub fn zoom_at(&mut self, factor: f64, screen_x: f64, screen_y: f64) {
+        // A wheel zoom always wins over a dangling external drag (for
+        // example a minimap drag whose release was never delivered), which
+        // would otherwise freeze `update()` forever.
+        self.end_external_drag();
         self.navigation_start_time = None;
         self.zoom_start_time = None; // cancel any timed animation
+        if !self.zoom_chasing {
+            // Start the chase from "now"; otherwise the first frame after an
+            // idle period sees a multi-second dt and jumps to the target.
+            self.last_update = Instant::now();
+        }
 
         let anchor_screen = DVec2::new(screen_x, screen_y);
         let anchor_image = self.viewport.screen_to_image(screen_x, screen_y);
@@ -917,5 +933,23 @@ mod tests {
 
         assert!(state.inertia_start_time.is_some());
         assert!(state.inertia_start_velocity.length() <= INERTIA_MAX_VELOCITY + 0.1);
+    }
+}
+
+#[cfg(test)]
+mod external_drag_tests {
+    use super::*;
+
+    #[test]
+    fn wheel_zoom_ends_a_dangling_external_drag_but_not_a_mouse_pan() {
+        let mut state = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
+        state.start_external_drag();
+        state.zoom_at(1.5, 400.0, 300.0);
+        assert!(state.update() || state.is_moving(), "zoom must animate after a dangling drag");
+
+        let mut panning = ViewportState::new(800.0, 600.0, 10_000.0, 8_000.0);
+        panning.start_drag(10.0, 10.0);
+        panning.zoom_at(1.5, 400.0, 300.0);
+        assert!(!panning.update(), "a mouse pan keeps priority over the zoom chase");
     }
 }

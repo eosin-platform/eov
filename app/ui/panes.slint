@@ -195,6 +195,13 @@ component PaneView inherits Rectangle {
                     root.pane-focused(root.pane-data.id);
                     root.minimap-navigate(nx, ny);
                 }
+                minimap-drag-start => {
+                    root.pane-focused(root.pane-data.id);
+                    root.minimap-drag-start();
+                }
+                minimap-drag-end => {
+                    root.minimap-drag-end();
+                }
                 zoom-slider-changed(value) => {
                     root.pane-focused(root.pane-data.id);
                     root.zoom-slider-changed(root.pane-data.id, value);
@@ -204,6 +211,9 @@ component PaneView inherits Rectangle {
                     root.file-dropped(path);
                 }
                 interaction-started => {
+                    // Every pointer press focuses its pane first, so tool
+                    // gestures are applied to this pane's slide.
+                    root.pane-focused(root.pane-data.id);
                     root.viewport-interaction-started(root.pane-data.id);
                 }
                 tool-mouse-down(x, y) => {
