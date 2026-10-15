@@ -373,6 +373,8 @@ This feature can be accessed via the "Export Dataset" action in the toolbar (ico
 eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--metadata csv|json] --white-threshold 0.8
 ```
 
+`--deidentify` (or **De-identify** in the dialog) names slides by opaque ids derived from their content (`slide-3f2a…`, the same for a slide in every run and at every site) in folders, file names and metadata, and writes no slide paths, file names, input paths or annotation file names, for datasets shared outside the institution. Patches never include the slide label or macro image.
+
 The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
 
 ### Examples

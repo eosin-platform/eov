@@ -201,6 +201,12 @@ pub struct DatasetPatchesOptions {
     pub max_candidates_per_slide: u64,
     /// Only plan the run (validate, open slides, count tiles); write nothing.
     pub dry_run: bool,
+    /// Name slides by an opaque id derived from their content
+    /// (`slide-<hash>`) in folders, file names and metadata, and leave out
+    /// their paths and file names, input paths and annotation files, for
+    /// datasets shared outside the institution. Labels and macro images are
+    /// never part of a dataset.
+    pub deidentify: bool,
 }
 
 impl Default for DatasetPatchesOptions {
@@ -217,6 +223,7 @@ impl Default for DatasetPatchesOptions {
             hash_files: true,
             max_candidates_per_slide: 10_000_000,
             dry_run: false,
+            deidentify: false,
         }
     }
 }

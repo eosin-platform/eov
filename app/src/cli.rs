@@ -287,6 +287,12 @@ struct DatasetPatchesArgs {
     /// writing anything.
     #[arg(long)]
     dry_run: bool,
+
+    /// Name slides by opaque ids derived from their content, and write no
+    /// slide paths or file names, for datasets shared outside the
+    /// institution.
+    #[arg(long)]
+    deidentify: bool,
 }
 
 /// A parsed `eov dataset patches` invocation.
@@ -378,6 +384,7 @@ impl DatasetPatchesArgs {
                 hash_files: !self.no_hash,
                 max_candidates_per_slide: self.max_candidates,
                 dry_run: self.dry_run,
+                deidentify: self.deidentify,
             },
         }
     }

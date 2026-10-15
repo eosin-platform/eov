@@ -36,10 +36,20 @@ pub struct ExtractionParameters {
     pub max_tiles_per_slide: Option<u64>,
     pub seed: Option<u64>,
     pub image_format: super::config::PatchImageFormat,
+    /// Slides are named by opaque ids; no paths or file names are written.
+    #[serde(default)]
+    pub deidentified: bool,
 }
 
 impl ExtractionParameters {
     pub fn new(config: &DatasetPatchesConfig, options: &DatasetPatchesOptions) -> Self {
+        let mut annotations = options.annotations.clone();
+        if options.deidentify
+            && let Some(annotations) = &mut annotations
+        {
+            // Where the annotations came from names the slides.
+            annotations.source = super::config::AnnotationSource::Sidecar;
+        }
         Self {
             tile_size: config.tile_size,
             stride: config.stride,
@@ -47,10 +57,11 @@ impl ExtractionParameters {
             resolution: options.resolution,
             tissue_filter: options.tissue_filter,
             stain_normalization: options.stain_normalization.clone(),
-            annotations: options.annotations.clone(),
+            annotations,
             max_tiles_per_slide: options.max_tiles_per_slide,
             seed: options.seed,
             image_format: options.image_format,
+            deidentified: options.deidentify,
         }
     }
 }
