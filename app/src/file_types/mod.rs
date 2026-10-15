@@ -25,6 +25,10 @@
 //! the user runs them. The tests check that the shipped assets match
 //! [`SLIDE_TYPES`], and that it covers every extension eov opens.
 
+// The Linux files are only generated on Linux (and checked by the tests on
+// every platform).
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 #[cfg(target_os = "linux")]
 mod linux;
 // The registry plan is tested everywhere and carried out on Windows.
@@ -309,7 +313,8 @@ mod tests {
 
     #[test]
     fn the_shipped_mime_package_is_generated_from_the_table() {
-        let shipped = include_str!("../../../assets/linux/io.eosin.eov.xml");
+        // Git may check text files out with CRLF on Windows.
+        let shipped = include_str!("../../../assets/linux/io.eosin.eov.xml").replace("\r\n", "\n");
         assert_eq!(
             shipped,
             mime_package(),
@@ -319,7 +324,8 @@ mod tests {
 
     #[test]
     fn the_shipped_desktop_entry_is_generated_from_the_table() {
-        let shipped = include_str!("../../../assets/linux/io.eosin.eov.desktop");
+        let shipped =
+            include_str!("../../../assets/linux/io.eosin.eov.desktop").replace("\r\n", "\n");
         assert_eq!(
             shipped,
             desktop_entry("eov", false),

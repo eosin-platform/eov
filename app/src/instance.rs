@@ -88,6 +88,7 @@ pub(crate) enum Transport {
 
 /// Socket paths up to this length fit `sockaddr_un` everywhere (104 bytes
 /// on macOS, 108 on Linux, with the terminating NUL).
+#[cfg(unix)]
 const MAX_SOCKET_PATH: usize = 100;
 
 impl Transport {

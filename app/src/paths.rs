@@ -380,8 +380,8 @@ mod tests {
             PathBuf::from(r"C:\slides\a.svs")
         );
         assert_eq!(
-            canonical(Path::new(r"\\?\Z:\not mounted\a.svs")),
-            PathBuf::from(r"Z:\not mounted\a.svs")
+            canonical(Path::new(r"\\?\C:\no such eov folder\a.svs")),
+            PathBuf::from(r"C:\no such eov folder\a.svs")
         );
     }
 }
