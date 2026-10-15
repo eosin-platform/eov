@@ -273,6 +273,35 @@ impl HeatMap {
     }
 }
 
+/// One pixel per tile, for heat-map images: the colour ramp at full
+/// opacity for scored tiles, red for unreadable ones; glass and tiles not
+/// analysed stay transparent. Pixel `(col, row)` covers tile `(col, row)`.
+pub fn tile_map(grid: &TileGrid, tiles: &[(TileCoord, TileState)], lo: f32, hi: f32) -> Image {
+    let (width, height) = (grid.cols.max(1), grid.rows.max(1));
+    let mut data = vec![0u8; width as usize * height as usize * 4];
+    let span = (hi - lo).max(1e-9);
+    for (coord, state) in tiles {
+        if !grid.contains(*coord) {
+            continue;
+        }
+        let color = match state {
+            TileState::Analysed { mae, .. } => {
+                let [r, g, b, _] = colormap((mae - lo) / span);
+                [r, g, b, 255]
+            }
+            TileState::Failed => [FAILED[0], FAILED[1], FAILED[2], 255],
+            TileState::Background => continue,
+        };
+        let i = (coord.row as usize * width as usize + coord.col as usize) * 4;
+        data[i..i + 4].copy_from_slice(&color);
+    }
+    Image {
+        width,
+        height,
+        data,
+    }
+}
+
 /// How a pane shows slide pixels, from eov's display pipeline: the tone
 /// curve (gamma, brightness, contrast) and screen-space sharpening, applied
 /// to reconstructions so that they compare with the slide as shown (VAE-17).

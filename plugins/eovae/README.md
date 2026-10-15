@@ -14,6 +14,9 @@ reconstructs worse. It is a research tool, **not for diagnosis**.
   covered, and CSV export with a provenance manifest.
 - A **tile grid** overlay, and automatic analysis of the visible tiles while
   an overlay is shown.
+- **Batch runs** over a cohort without a window (`eov batch run
+  eovae:analyze`): per-tile scores, a heat map and a summary with the run's
+  provenance for each slide.
 
 eovae 1.0 needs eov 1.0 or newer (plugin API 1.0).
 
@@ -128,6 +131,65 @@ starts a separate result set; changing one while a job runs cancels the job.
 state,mae,max_error`, level-0 coordinates of the in-slide part of the tile)
 and `<name>.manifest.json` with the run specification and slide identity.
 
+## Batch runs
+
+```sh
+eov batch run eovae:analyze SLIDES… --out DIR [--param name=value …]
+```
+
+eov starts eovae without a window and sends it one slide at a time
+(`eov batch list` shows the command and its parameters). For each slide,
+eovae analyses every tile at the model's resolution, skipping glass, and
+writes into `DIR/<slide>/`:
+
+- `tiles.csv`: one row per tile: `col,row` in the grid, `x,y,width,height`
+  in level-0 pixels (the part inside the slide), `width_um,height_um`,
+  `level`, `state` (`analysed`, `background` or `unreadable`), a
+  `background` flag (0/1), and the anomaly score `mae` (mean absolute
+  reconstruction error over the tile's pixels and RGB channels, 0–1) with
+  `max_error`, the largest per-pixel error;
+- `heatmap.png`: one pixel per tile (`col,row`), viridis from the colour
+  range's low to high end, unreadable tiles red, glass and tiles not
+  analysed transparent. Each pixel covers `level0_px_per_pixel` level-0
+  pixels, given in the summary and in the PNG's text chunks;
+- `summary.json`: tiles analysed, background, unreadable and not analysed;
+  the score distribution (count, mean, std, min, p05, p25, median, p75,
+  p95, max); the model's file, SHA-256 over the model and its external
+  weights, model card, input, output, layout, tile size and training µm/px;
+  the preprocessing (its source and the full contract); the level,
+  downsample and µm/px used and the ratio to the model's; the device asked
+  for and used, its precision and any CPU fallback, the batch size and
+  threads; the ONNX Runtime and plugin versions; the run key; warnings. The
+  same summary goes into eov's `DIR/batch.json`, with eov's version, the
+  plugin package's SHA-256 and the parameters.
+
+The settings chosen in eov's VAE sidebar apply: the model, device, batch
+size, threads, TF32, resolution, background skipping and preprocessing
+changes. They are the parameters' defaults, so `batch.json` records them,
+and a parameter overrides one for the run only (nothing is saved):
+
+| parameter | values |
+| --- | --- |
+| `model` | path of an `.onnx` file |
+| `device` | `auto` (CUDA, else the CPU), `cpu`, `cuda` |
+| `batch_size`, `threads` | numbers (`threads=0`: every core) |
+| `tf32`, `skip_background` | `true`, `false` |
+| `resolution` | `auto` (the level closest to the model's µm/px) or a downsample, e.g. `4` |
+| `heat_range` | `auto` (p05–p95 of each slide) or `lo,hi` (the same colour scale for every slide) |
+| `cache` | `off` (default: every tile is computed, nothing stored), `store` (results are also kept for eov's viewer), `reuse` (tiles stored before for the same run, as keyed above, are taken from the cache) |
+
+A slide that cannot be analysed (an unreadable file, a model that cannot
+run, CUDA asked for but unavailable) is reported as failed in `batch.json`
+with the reason, and the run goes on with the next one. Memory stays
+bounded on any slide size: tiles stream through the pipeline and only one
+score per tile is kept. For example, to compare a cohort on one scale with
+CUDA:
+
+```sh
+eov batch run eovae:analyze cohort/ --out results/ \
+    --param device=cuda --param heat_range=0,0.05
+```
+
 ## ONNX Runtime and CUDA
 
 eovae opens ONNX Runtime (1.22 or newer) when the first model loads, from the
@@ -176,6 +238,9 @@ checks need more:
   it (agreement to about 1e-7).
 - `scripts/check_ui.sh` compiles the sidebar with the Slint version eov uses
   and checks every pushed property against its declared type.
+- `EOVAE_ORT_LIB=… cargo test --release batch_runs_with_onnx_runtime --
+  --ignored` runs the batch command with ONNX Runtime and the HistoVAE
+  reference model (another model: `EOVAE_BATCH_MODEL`).
 
 ## Packaging
 
@@ -208,7 +273,8 @@ with `--zstd`.
 
 `src/plugin.rs` (state, events, model loading, engines, jobs),
 `src/presenter.rs` (pushes the sidebar, overlays, HUD and settings),
-`src/sidebar.rs`, `src/pipeline.rs` (one job), `src/engine.rs` and
-`src/ort_backend.rs` (inference), `src/tiling.rs`, `src/contract.rs`,
-`src/model.rs`, `src/onnx_scan.rs`, `src/run.rs`, `src/slide.rs`,
-`src/results.rs`, `src/db.rs`, `src/render.rs`, `src/stats.rs`.
+`src/sidebar.rs`, `src/batch.rs` (`eov batch run eovae:analyze`),
+`src/pipeline.rs` (one job), `src/engine.rs` and `src/ort_backend.rs`
+(inference), `src/tiling.rs`, `src/contract.rs`, `src/model.rs`,
+`src/onnx_scan.rs`, `src/run.rs`, `src/slide.rs`, `src/results.rs`,
+`src/db.rs`, `src/render.rs`, `src/png.rs`, `src/stats.rs`.

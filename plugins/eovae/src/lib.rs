@@ -11,9 +11,12 @@
 //!   [`presenter`] pushes what is visible; [`sidebar`] is the panel.
 //! - [`pipeline`] runs a job; [`engine`] is the inference interface and
 //!   `ort_backend` its ONNX Runtime implementation (feature `onnx`).
+//! - [`batch`] is the headless `analyze` command (`eov batch run`).
 //! - [`tiling`], [`contract`], [`model`], [`onnx_scan`], [`run`], [`slide`],
-//!   [`results`], [`db`], [`render`] and [`stats`] are host-independent.
+//!   [`results`], [`db`], [`render`], [`png`] and [`stats`] are
+//!   host-independent.
 
+pub mod batch;
 pub mod config;
 pub mod contract;
 pub mod db;
@@ -24,6 +27,7 @@ pub mod onnx_scan;
 pub mod ort_backend;
 pub mod pipeline;
 pub mod plugin;
+pub mod png;
 pub mod presenter;
 pub mod render;
 pub mod results;

@@ -115,6 +115,57 @@ pub fn runtime_candidates(plugin_root: &Path, configured: Option<&Path>) -> Vec<
 #[derive(Clone, Debug)]
 struct Runtime {
     path: PathBuf,
+    /// "1.28.3", from the runtime's build information.
+    version: Option<String>,
+}
+
+/// The runtime's own version (`OrtGetApiBase()->GetVersionString()`), read
+/// from the library ort has just loaded from `path`.
+fn library_version(path: &Path) -> Option<String> {
+    // SAFETY: `path` names the ONNX Runtime library that is already loaded,
+    // so this opens the same library again; `OrtGetApiBase` and
+    // `GetVersionString` are its stable C API, and the version string is
+    // static and copied before the handle is released.
+    unsafe {
+        let library = libloading::Library::new(path).ok()?;
+        let get_api_base: libloading::Symbol<
+            unsafe extern "system" fn() -> *const ort::sys::OrtApiBase,
+        > = library.get(b"OrtGetApiBase").ok()?;
+        let base = get_api_base();
+        if base.is_null() {
+            return None;
+        }
+        let version = ((*base).GetVersionString)();
+        if version.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(version)
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+/// The version in ONNX Runtime's build information
+/// (`ORT Build Info: git-branch=rel-1.28.3, git-commit-id=…`): the release
+/// branch's number, or the branch and commit for other builds.
+fn version_of(build_info: &str) -> Option<String> {
+    let field = |name: &str| {
+        build_info
+            .split(',')
+            .filter_map(|part| part.split_once('='))
+            .find(|(key, _)| key.trim().ends_with(name))
+            .map(|(_, value)| value.trim().to_string())
+    };
+    let branch = field("git-branch")?;
+    match branch.strip_prefix("rel-") {
+        Some(version) => Some(version.to_string()),
+        None => Some(match field("git-commit-id") {
+            Some(commit) => format!("{branch} ({commit})"),
+            None => branch,
+        }),
+    }
 }
 
 pub struct OrtBackend {
@@ -144,7 +195,12 @@ impl OrtBackend {
             match result {
                 Ok(Ok(builder)) => {
                     builder.with_name("eovae").commit();
-                    let runtime = Runtime { path: candidate };
+                    let version = library_version(&candidate)
+                        .or_else(|| catch_unwind(ort::info).ok().and_then(version_of));
+                    let runtime = Runtime {
+                        path: candidate,
+                        version,
+                    };
                     *slot = Some(runtime.clone());
                     return Ok(runtime);
                 }
@@ -446,6 +502,14 @@ impl Backend for OrtBackend {
             None => "ONNX Runtime is loaded with the first model.".to_string(),
         }
     }
+
+    fn runtime_version(&self) -> Option<String> {
+        self.runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .and_then(|runtime| runtime.version.clone())
+    }
 }
 
 fn any_set(flags: &[Arc<AtomicBool>]) -> bool {
@@ -608,6 +672,30 @@ fn collect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_information_names_the_version() {
+        assert_eq!(
+            version_of(
+                "ORT Build Info: git-branch=rel-1.19.0, git-commit-id=26250ae, build type=Release"
+            )
+            .as_deref(),
+            Some("1.19.0")
+        );
+        assert_eq!(
+            version_of(
+                "ORT Build Info: git-branch=HEAD, git-commit-id=0d68ff6, build type=Release"
+            )
+            .as_deref(),
+            Some("HEAD (0d68ff6)")
+        );
+        assert_eq!(version_of("something else"), None);
+        // A file that is not ONNX Runtime has no version.
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join(library_names()[0]);
+        std::fs::write(&fake, b"not a library").unwrap();
+        assert_eq!(library_version(&fake), None);
+    }
 
     #[test]
     fn candidates_prefer_explicit_paths_then_the_package_then_the_system() {

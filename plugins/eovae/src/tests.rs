@@ -1106,3 +1106,407 @@ fn a_new_grid_changes_the_layers_min_zoom_in_place() {
         .count();
     assert_eq!(created, 1, "the layer was not recreated");
 }
+
+// ---------------------------------------------------------------------------
+// Headless batch runs (`eov batch run eovae:analyze`)
+// ---------------------------------------------------------------------------
+
+/// The plugin as `eov batch` starts it: no window, slide A published, no
+/// panes. `model` false leaves the saved model unset.
+fn batch_setup_with(model_name: &str, config: Value, model: bool) -> Setup {
+    let dir = tempfile::tempdir().unwrap();
+    let model_path = write_fixtures(dir.path(), model_name);
+    let mut init = test_init("eovae");
+    init.headless = true;
+    let mut config = config;
+    if model {
+        config
+            .as_object_mut()
+            .unwrap()
+            .insert("model_path".into(), json!(model_path.to_string_lossy()));
+    }
+    init.settings.insert("config".into(), config);
+    let (host, requests) = mock_host(dir.path(), Reads::Slide);
+    {
+        let mut state = host.state();
+        state.snapshot.panes.clear();
+        state.snapshot.focused_pane = None;
+    }
+    let harness = Harness::with_host(host, init.clone()).unwrap();
+    harness
+        .send(HostEvent::Ready {
+            restore_sidebar: false,
+        })
+        .unwrap();
+    Setup {
+        harness,
+        requests,
+        dir,
+        init,
+    }
+}
+
+fn batch_setup() -> Setup {
+    batch_setup_with("vae.onnx", json!({"device": "cpu"}), true)
+}
+
+/// The parameters eov sends: the command's defaults with `given` over them.
+fn batch_params<P: Plugin>(harness: &TestHarness<P>, given: Value) -> Map<String, Value> {
+    let mut params: Map<String, Value> = harness.state().batch_commands["analyze"]
+        .params
+        .iter()
+        .filter(|p| !p.default.is_null())
+        .map(|p| (p.name.clone(), p.default.clone()))
+        .collect();
+    params.extend(given.as_object().cloned().unwrap_or_default());
+    params
+}
+
+/// Analyses slide A as `eov batch run` does: open, run, wait for the
+/// result, close.
+fn run_batch<P: Plugin>(
+    harness: &TestHarness<P>,
+    run_id: &str,
+    given: Value,
+    out: &Path,
+) -> BatchFinishArgs {
+    let file = harness.state().snapshot.files[0].clone();
+    let params = batch_params(harness, given);
+    harness
+        .send(HostEvent::FileOpened { file: file.clone() })
+        .unwrap();
+    harness
+        .send(HostEvent::BatchRun {
+            run_id: run_id.into(),
+            command_id: "analyze".into(),
+            file: file.clone(),
+            output_dir: out.to_string_lossy().into_owned(),
+            params,
+        })
+        .unwrap();
+    let mut finished = None;
+    wait_until("the slide's result", || {
+        finished = harness
+            .state()
+            .batch_finished
+            .iter()
+            .find(|f| f.run_id == run_id)
+            .cloned();
+        finished.is_some()
+    });
+    harness
+        .send(HostEvent::FileClosed {
+            file_id: file.file_id,
+        })
+        .unwrap();
+    finished.unwrap()
+}
+
+impl Setup {
+    fn batch_params(&self, given: Value) -> Map<String, Value> {
+        batch_params(&self.harness, given)
+    }
+
+    fn run_batch(&self, run_id: &str, given: Value, out: &Path) -> BatchFinishArgs {
+        run_batch(&self.harness, run_id, given, out)
+    }
+}
+
+#[test]
+fn headless_starts_offer_the_batch_command_and_no_window_ui() {
+    let s = batch_setup();
+    let state = s.harness.state();
+    let spec = &state.batch_commands["analyze"];
+    assert!(spec.description.contains("tiles.csv"), "{spec:?}");
+    // The saved settings are the defaults, so eov's manifest records them.
+    let default = |name: &str| {
+        spec.params
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.default.clone())
+            .unwrap()
+    };
+    assert!(default("model").as_str().unwrap().ends_with("vae.onnx"));
+    assert_eq!(default("device"), json!("cpu"));
+    assert_eq!(default("cache"), json!("off"));
+    // Nothing for a window.
+    assert!(state.toolbar_buttons.is_empty() && state.hud_buttons.is_empty());
+    assert!(state.surfaces.is_empty());
+}
+
+#[test]
+fn a_batch_run_writes_tile_scores_a_heat_map_and_a_summary() {
+    let s = batch_setup();
+    let out = tempfile::tempdir().unwrap();
+    let finish = s.run_batch("analyze-1", json!({}), out.path());
+    assert!(finish.ok, "{finish:?}");
+    assert_eq!(finish.outputs, ["tiles.csv", "heatmap.png", "summary.json"]);
+    // tiles.csv: every tile of level 1 (32×16); the right half is glass.
+    let csv = std::fs::read_to_string(out.path().join("tiles.csv")).unwrap();
+    let mut lines = csv.lines();
+    assert_eq!(
+        lines.next().unwrap(),
+        "col,row,x,y,width,height,width_um,height_um,level,state,background,mae,max_error"
+    );
+    let rows: Vec<Vec<&str>> = lines.map(|line| line.split(',').collect()).collect();
+    assert_eq!(rows.len(), 32 * 16);
+    let tissue: Vec<&Vec<&str>> = rows.iter().filter(|r| r[9] == "analysed").collect();
+    assert_eq!(tissue.len(), 256);
+    assert_eq!(rows.iter().filter(|r| r[10] == "1").count(), 256);
+    // Level-0 position and size, and µm at 0.5 µm/px.
+    assert_eq!(
+        rows[0][..9],
+        ["0", "0", "0", "0", "128", "128", "64.00", "64.00", "1"]
+    );
+    // The test engine is off by 0.02 in [-1, 1]: 2.55 grey levels.
+    let mae: f64 = tissue[0][11].parse().unwrap();
+    assert!((mae - 0.01).abs() < 0.001, "{mae}");
+    // heatmap.png: one pixel per tile, glass transparent.
+    let png = std::fs::read(out.path().join("heatmap.png")).unwrap();
+    let map = crate::png::decode_rgba(&png).unwrap();
+    assert_eq!((map.width, map.height), (32, 16));
+    assert_eq!(map.rgba[3], 255, "tissue");
+    assert_eq!(map.rgba[16 * 4 + 3], 0, "glass");
+    assert!(
+        map.text
+            .iter()
+            .any(|(k, v)| k == "eovae:level0_px_per_pixel" && v == "128"),
+        "{:?}",
+        map.text
+    );
+    // summary.json, the same as in eov's batch.json.
+    let summary: Value =
+        serde_json::from_str(&std::fs::read_to_string(out.path().join("summary.json")).unwrap())
+            .unwrap();
+    assert_eq!(summary, finish.summary);
+    assert_eq!(summary["complete"], true);
+    assert_eq!(summary["tiles"]["analysed"], 256);
+    assert_eq!(summary["tiles"]["background"], 256);
+    assert_eq!(summary["tiles"]["tile_um"], 64.0);
+    assert_eq!(summary["resolution"]["level"], 1);
+    assert_eq!(summary["resolution"]["model_mpp"], 2.0);
+    assert_eq!(summary["device"]["used"], "cpu");
+    assert_eq!(
+        summary["device"]["batch_size"], 4,
+        "the model's fixed batch"
+    );
+    assert_eq!(summary["onnx_runtime"], "test");
+    assert_eq!(summary["model"]["file"], "vae.onnx");
+    assert_eq!(summary["model"]["sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(summary["preprocessing"]["source"], "model metadata");
+    assert_eq!(summary["heatmap"]["level0_px_per_pixel"], 128.0);
+    let scores = &summary["scores"];
+    assert_eq!(scores["count"], 256);
+    for key in [
+        "mean", "std", "min", "p05", "p25", "median", "p75", "p95", "max",
+    ] {
+        assert!(scores[key].is_number(), "{key}: {scores}");
+    }
+    // Progress reached eov; every read was at level 1; nothing was saved.
+    assert!(!s.harness.state().batch_progress.is_empty());
+    let reads = s.reads();
+    assert_eq!(reads.len(), 32 * 16);
+    assert!(reads.iter().all(|r| r.level == 1));
+    assert!(s.harness.calls_to("settings.set").is_empty());
+}
+
+#[test]
+fn batch_parameters_apply_to_one_run_and_bad_ones_fail_the_slide() {
+    let s = batch_setup();
+    let out = tempfile::tempdir().unwrap();
+    // CUDA is not available in tests: the slide fails and says why.
+    let finish = s.run_batch("analyze-1", json!({"device": "cuda"}), out.path());
+    assert!(!finish.ok);
+    let message = finish.message.unwrap();
+    assert!(message.contains("CUDA is not available"), "{message}");
+    let finish = s.run_batch("analyze-2", json!({"cache": "sometimes"}), out.path());
+    assert!(!finish.ok);
+    assert!(finish.message.unwrap().contains("off, store or reuse"));
+    // One colour scale for every slide.
+    let finish = s.run_batch("analyze-3", json!({"heat_range": "0,0.02"}), out.path());
+    assert!(finish.ok, "{finish:?}");
+    assert_eq!(finish.summary["heatmap"]["range"], json!([0.0, 0.02]));
+    let png = std::fs::read(out.path().join("heatmap.png")).unwrap();
+    let rgba = crate::png::decode_rgba(&png).unwrap().rgba;
+    let expected = crate::render::colormap(0.5);
+    for c in 0..3 {
+        assert!(
+            (i32::from(rgba[c]) - i32::from(expected[c])).abs() <= 2,
+            "{:?} vs {expected:?}",
+            &rgba[..4]
+        );
+    }
+    // The run's parameters were not saved as settings.
+    drop(s.harness);
+}
+
+#[test]
+fn batch_runs_without_a_usable_model_say_how_to_choose_one() {
+    let s = batch_setup_with("vae.onnx", json!({"device": "cpu"}), false);
+    let out = tempfile::tempdir().unwrap();
+    let finish = s.run_batch("analyze-1", json!({}), out.path());
+    assert!(!finish.ok);
+    assert!(
+        finish
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("--param model="),
+        "{finish:?}"
+    );
+    let missing = s.dir.path().join("missing.onnx");
+    let finish = s.run_batch(
+        "analyze-2",
+        json!({"model": missing.to_string_lossy()}),
+        out.path(),
+    );
+    assert!(!finish.ok);
+    assert!(finish.message.unwrap().contains("cannot be used"));
+    // Unknown commands are refused, not left waiting.
+    let file = s.harness.state().snapshot.files[0].clone();
+    s.harness
+        .send(HostEvent::BatchRun {
+            run_id: "nope-1".into(),
+            command_id: "nope".into(),
+            file,
+            output_dir: out.path().to_string_lossy().into_owned(),
+            params: Map::new(),
+        })
+        .unwrap();
+    let finished = s.harness.state().batch_finished.clone();
+    let refused = finished.iter().find(|f| f.run_id == "nope-1").unwrap();
+    assert!(!refused.ok && refused.message.as_deref().unwrap().contains("analyze"));
+}
+
+#[test]
+fn batch_results_can_be_stored_for_the_viewer_and_reused() {
+    let s = batch_setup();
+    let first = tempfile::tempdir().unwrap();
+    let finish = s.run_batch("analyze-1", json!({"cache": "store"}), first.path());
+    assert!(finish.ok, "{finish:?}");
+    let reads = s.reads().len();
+    // The same slide and settings again: nothing to compute.
+    let second = tempfile::tempdir().unwrap();
+    let finish = s.run_batch("analyze-2", json!({"cache": "reuse"}), second.path());
+    assert!(finish.ok, "{finish:?}");
+    assert_eq!(s.reads().len(), reads, "every tile came from the cache");
+    assert_eq!(finish.summary["tiles"]["from_cache"], 512);
+    assert_eq!(
+        std::fs::read_to_string(first.path().join("tiles.csv")).unwrap(),
+        std::fs::read_to_string(second.path().join("tiles.csv")).unwrap()
+    );
+    // The default computes every tile.
+    let third = tempfile::tempdir().unwrap();
+    let finish = s.run_batch("analyze-3", json!({}), third.path());
+    assert!(finish.ok);
+    assert_eq!(finish.summary["tiles"]["from_cache"], 0);
+    assert_eq!(s.reads().len(), reads * 2);
+}
+
+#[test]
+fn shutting_down_ends_a_running_batch_slide() {
+    let s = batch_setup_with("hang-vae.onnx", json!({"device": "cpu"}), true);
+    let host = s.harness.host().clone();
+    let out = tempfile::tempdir().unwrap();
+    let file = host.state().snapshot.files[0].clone();
+    let params = s.batch_params(json!({}));
+    s.harness
+        .send(HostEvent::BatchRun {
+            run_id: "analyze-1".into(),
+            command_id: "analyze".into(),
+            file,
+            output_dir: out.path().to_string_lossy().into_owned(),
+            params,
+        })
+        .unwrap();
+    wait_until("inference", || s.reads().len() >= 4);
+    let started = Instant::now();
+    drop(s.harness);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "shutdown was prompt"
+    );
+    // eov heard that the slide was not finished.
+    let state = host.state();
+    let finish = state
+        .batch_finished
+        .iter()
+        .find(|f| f.run_id == "analyze-1")
+        .expect("a result");
+    assert!(!finish.ok);
+    assert!(
+        finish.message.as_deref().unwrap().contains("cancelled"),
+        "{finish:?}"
+    );
+}
+
+/// `analyze` with ONNX Runtime and the HistoVAE reference model:
+/// `EOVAE_ORT_LIB=/path/to/libonnxruntime.so.1 cargo test --release
+/// batch_runs_with_onnx_runtime -- --ignored` (another model:
+/// `EOVAE_BATCH_MODEL`).
+#[cfg(feature = "onnx")]
+#[test]
+#[ignore = "needs ONNX Runtime (EOVAE_ORT_LIB) and the HistoVAE reference model"]
+fn batch_runs_with_onnx_runtime() {
+    type Real = TestHarness<Eovae<crate::ort_backend::OrtBackend>>;
+    let model = std::env::var_os("EOVAE_BATCH_MODEL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("HistoVAE/pretrained/HistoVae_reconstruct.onnx")
+        });
+    assert!(model.exists(), "no model at {}", model.display());
+    let dir = tempfile::tempdir().unwrap();
+    write_fixtures(dir.path(), "unused.onnx");
+    let mut init = test_init("eovae");
+    init.headless = true;
+    init.settings.insert(
+        "config".into(),
+        json!({"model_path": model.to_string_lossy(), "device": "cpu"}),
+    );
+    let (host, requests) = mock_host(dir.path(), Reads::Slide);
+    {
+        let mut state = host.state();
+        state.snapshot.panes.clear();
+        // 0.25 µm/px, close to the model's 0.227: level 0, 256-px tiles.
+        let file = &mut state.snapshot.files[0];
+        file.mpp_x = Some(0.25);
+        file.mpp_y = Some(0.25);
+    }
+    let harness = Real::with_host(host, init).unwrap();
+    harness
+        .send(HostEvent::Ready {
+            restore_sidebar: false,
+        })
+        .unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let started = Instant::now();
+    let finish = run_batch(&harness, "analyze-1", json!({}), out.path());
+    assert!(finish.ok, "{finish:?}");
+    let summary = &finish.summary;
+    println!(
+        "{} tiles in {:.1} s on {}, ONNX Runtime {}: MAE mean {}",
+        summary["tiles"]["analysed"],
+        started.elapsed().as_secs_f64(),
+        summary["device"]["label"],
+        summary["onnx_runtime"],
+        summary["scores"]["mean"]
+    );
+    assert_eq!(summary["tiles"]["analysed"], 64);
+    assert_eq!(summary["tiles"]["background"], 64);
+    assert_eq!(summary["resolution"]["level"], 0);
+    assert_eq!(summary["resolution"]["mismatched"], false);
+    assert_eq!(summary["model"]["card"], "HistoVAE reference (CAMELYON17)");
+    assert!(
+        summary["onnx_runtime"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("1.")),
+        "{summary}"
+    );
+    let mean = summary["scores"]["mean"].as_f64().unwrap();
+    assert!(mean > 0.0 && mean < 0.5, "{mean}");
+    assert_eq!(requests.lock().unwrap().len(), 128);
+    for file in ["tiles.csv", "heatmap.png", "summary.json"] {
+        assert!(out.path().join(file).is_file(), "{file}");
+    }
+}

@@ -182,6 +182,12 @@ pub trait Backend: Send + Sync + 'static {
 
     /// Which inference runtime is in use, for the sidebar.
     fn runtime_label(&self) -> String;
+
+    /// The inference runtime's version once it is loaded, for run
+    /// manifests.
+    fn runtime_version(&self) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -308,6 +314,10 @@ pub(crate) mod testing {
 
         fn runtime_label(&self) -> String {
             "test runtime".to_string()
+        }
+
+        fn runtime_version(&self) -> Option<String> {
+            Some("test".to_string())
         }
     }
 }

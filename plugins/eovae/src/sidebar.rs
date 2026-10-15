@@ -114,7 +114,7 @@ fn mib(bytes: u64) -> String {
     }
 }
 
-fn thousands(value: f64) -> String {
+pub(crate) fn thousands(value: f64) -> String {
     let digits = format!("{:.0}", value.max(0.0));
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
