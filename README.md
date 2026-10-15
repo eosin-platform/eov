@@ -143,7 +143,7 @@ installed plugins. On macOS, **Ctrl** below means **⌘**.
 | PageDown, PageUp | Next or previous slide of the folder |
 | I | Slide information (label, macro image, properties, pixel size) |
 | Ctrl+C, Ctrl+E | Copy the view as an image, export the view |
-| F, +, - | Fit the slide, zoom in, zoom out |
+| F, Shift+F, +, - | Fit the slide, fit its tissue (without the empty glass), zoom in, zoom out |
 | Arrows (Shift: further) | Pan |
 | 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
 | [, ], Shift+H | Rotate the view 90° left or right, mirror it |
