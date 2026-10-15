@@ -1612,6 +1612,7 @@ dependencies = [
  "image",
  "indicatif",
  "libc",
+ "naga 29.0.4",
  "natord",
  "objc",
  "open",

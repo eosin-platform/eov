@@ -147,6 +147,8 @@ tempfile = "3"
 eov-common = { path = "../common", features = ["test-support"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.17.1" }
+# Validates the viewer's WGSL (the same naga as wgpu's).
+naga = { version = "29", features = ["wgsl-in"] }
 
 [features]
 default = ["distribution-cargo"]

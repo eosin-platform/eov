@@ -357,12 +357,6 @@ pub struct FilePaneState {
     pub last_render_deconv_e_visible: bool,
     pub last_render_deconv_isolated: IsolatedChannel,
     pub hud: HudSettings,
-    /// Cached stain normalization parameters.
-    pub cached_stain_params: Option<crate::stain::StainNormParams>,
-    /// Tile epoch at which stain params were last computed.
-    pub stain_params_epoch: u64,
-    /// Stain normalization method for which cached params were computed.
-    pub stain_params_method: StainNormalization,
     /// ID of the currently pending async CPU render job for this pane.
     pub pending_cpu_job_id: Option<u64>,
     /// Whether the pane is showing an interaction preview and still needs a
@@ -400,9 +394,6 @@ impl FilePaneState {
             last_render_deconv_e_visible: true,
             last_render_deconv_isolated: IsolatedChannel::None,
             hud: HudSettings::default(),
-            cached_stain_params: None,
-            stain_params_epoch: 0,
-            stain_params_method: StainNormalization::None,
             pending_cpu_job_id: None,
             needs_settled_cpu_render: false,
             last_render_filter_revision: 0,

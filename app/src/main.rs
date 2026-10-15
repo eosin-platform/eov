@@ -7,6 +7,7 @@ mod cache_budget;
 mod callbacks;
 mod cli;
 mod clipboard;
+mod color;
 mod config;
 mod distribution;
 mod file_ops;
@@ -20,7 +21,6 @@ mod plugin_runtime;
 mod plugins;
 mod render;
 mod render_pool;
-mod stain;
 mod state;
 #[cfg(test)]
 mod test_support;

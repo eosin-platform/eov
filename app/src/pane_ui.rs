@@ -99,6 +99,7 @@ pub(crate) fn set_cached_pane_cpu_result(pane: PaneId, image: Image, frame: Cach
             && let Some(pool) = crate::render_pool::global()
         {
             pool.recycle_buffer(old_frame.pixels);
+            pool.recycle_buffer(old_frame.source);
         }
         cache[pane.0].content = Some(image);
         cache[pane.0].cpu_frame = Some(frame);
@@ -174,6 +175,7 @@ pub(crate) fn clear_cached_pane(pane: PaneId) {
             && let Some(pool) = crate::render_pool::global()
         {
             pool.recycle_buffer(old_frame.pixels);
+            pool.recycle_buffer(old_frame.source);
         }
         cache[pane.0] = PaneRenderCacheEntry::default();
     });

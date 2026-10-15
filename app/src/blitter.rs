@@ -8,7 +8,6 @@ use slint::{Rgba8Pixel, SharedPixelBuffer};
 // Re-export all public blitting primitives from common.
 pub use eov_common::blitter::{
     BlitRect, CoarseSrc, TileSrc, blit_tile, blit_tile_lanczos3, blit_tile_trilinear,
-    fast_fill_rgba,
 };
 
 pub struct FrameSrc<'a> {
