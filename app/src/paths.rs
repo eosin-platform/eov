@@ -98,3 +98,19 @@ pub(crate) fn legacy_config_dir() -> Option<PathBuf> {
 pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
     eov_common::paths::expand_tilde(path)
 }
+
+/// A slide or folder path as eov shows, compares and stores it: absolute,
+/// with symbolic links resolved, and on Windows without the `\\?\` prefix
+/// that `std::fs::canonicalize` adds (SH-15). Explorer, other programs and
+/// people reading a copied path do not understand `\\?\C:\…` or
+/// `\\?\UNC\server\…`. A path that cannot be resolved (missing, or on a
+/// drive that is not mounted) comes back as given, only simplified.
+pub(crate) fn canonical(path: &Path) -> PathBuf {
+    dunce::canonicalize(path).unwrap_or_else(|_| simplified(path))
+}
+
+/// `path` without a `\\?\` prefix that can be dropped safely, for paths
+/// stored by older versions (Windows; unchanged elsewhere).
+pub(crate) fn simplified(path: &Path) -> PathBuf {
+    dunce::simplified(path).to_path_buf()
+}

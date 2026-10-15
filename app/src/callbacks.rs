@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, warn};
+use tracing::warn;
 
 /// Edge drops this close together are one multi-file drop.
 const EDGE_DROP_GROUPING: Duration = Duration::from_millis(400);
@@ -395,7 +395,7 @@ fn open_path_with_series(
     path: PathBuf,
     mode: crate::file_ops::OpenFileMode,
 ) {
-    let normalized_path = std::fs::canonicalize(&path).unwrap_or(path);
+    let normalized_path = crate::paths::canonical(&path);
     let skip_series_sync = normalized_path.parent().is_some_and(|parent| {
         let guard = state.read();
         guard.find_tab_by_path(&normalized_path).is_some()
@@ -417,7 +417,7 @@ fn focus_existing_file(
     render_timer: &Rc<Timer>,
     path: &std::path::Path,
 ) -> bool {
-    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let normalized_path = crate::paths::canonical(path);
     let Some((pane, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
         return false;
     };
@@ -449,7 +449,7 @@ fn open_existing_file_in_new_tab(
     render_timer: &Rc<Timer>,
     path: &std::path::Path,
 ) -> bool {
-    let normalized_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let normalized_path = crate::paths::canonical(path);
     let Some((_, tab_id)) = state.read().find_tab_by_path(&normalized_path) else {
         return false;
     };
@@ -496,7 +496,7 @@ fn navigate_series_to_folder(
 fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let should_initialize = state.read().current_series_path().is_none();
     if should_initialize && let Some(home) = default_series_home() {
-        let home = std::fs::canonicalize(&home).unwrap_or(home);
+        let home = crate::paths::canonical(&home);
         let revision = {
             let mut state = state.write();
             state.set_opened_series(
@@ -528,7 +528,7 @@ pub(crate) fn activate_series_entry_path(
     render_timer: &Rc<Timer>,
     path: PathBuf,
 ) {
-    let path = std::fs::canonicalize(&path).unwrap_or(path);
+    let path = crate::paths::canonical(&path);
     if !path.exists() {
         return;
     }
@@ -589,7 +589,7 @@ pub(crate) fn open_folder_as_series(
     state: &Arc<RwLock<AppState>>,
     folder: PathBuf,
 ) {
-    let normalized_folder = std::fs::canonicalize(&folder).unwrap_or(folder.clone());
+    let normalized_folder = crate::paths::canonical(&folder);
     {
         let mut state = state.write();
         state.set_bottom_panel_visible(true, state::BottomPanelKind::Series);
@@ -934,12 +934,12 @@ pub fn setup_callbacks(
                     request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
                 }
                 "open-folder" => {
-                    let state = state_handle.read();
-                    if let Some(file) = state.get_file(tab_id)
-                        && let Some(parent) = file.path.parent()
-                        && let Err(err) = open::that(parent)
-                    {
-                        error!("Failed to open folder: {}", err);
+                    let path = state_handle
+                        .read()
+                        .get_file(tab_id)
+                        .map(|file| file.path.clone());
+                    if let Some(path) = path {
+                        crate::desktop::reveal(path);
                     }
                 }
                 "copy-path" => {
@@ -1454,12 +1454,9 @@ pub fn setup_callbacks(
         let state = Arc::clone(&state);
 
         ui.on_open_containing_folder(move |id| {
-            let state = state.read();
-            if let Some(file) = state.get_file(id)
-                && let Some(parent) = file.path.parent()
-                && let Err(e) = open::that(parent)
-            {
-                error!("Failed to open folder: {}", e);
+            let path = state.read().get_file(id).map(|file| file.path.clone());
+            if let Some(path) = path {
+                crate::desktop::reveal(path);
             }
         });
     }
@@ -1867,12 +1864,7 @@ pub fn setup_callbacks(
 
     {
         ui.on_series_item_open_containing_folder(move |path_str| {
-            let path = PathBuf::from(path_str.as_str());
-            if let Some(parent) = path.parent()
-                && let Err(err) = open::that(parent)
-            {
-                error!("Failed to open folder: {}", err);
-            }
+            crate::desktop::reveal(PathBuf::from(path_str.as_str()));
         });
     }
 

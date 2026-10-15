@@ -12,6 +12,7 @@ mod clipboard;
 mod color;
 mod config;
 mod dataset_dialog;
+mod desktop;
 mod distribution;
 mod export_dialog;
 mod file_ops;
@@ -135,6 +136,9 @@ fn request_render_loop(
 }
 
 fn main() -> Result<()> {
+    // Before anything can change it: programs eov starts get this
+    // environment back (SH-15).
+    desktop::remember_launch_environment();
     // Windows GUI build: attach to the terminal for CLI use, or show fatal
     // errors in a message box (SH-2). No-op elsewhere.
     win_console::init();

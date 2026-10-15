@@ -60,7 +60,7 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
         .map(|entry| entry.path())
         .filter(|path| path.is_dir() || (path.is_file() && is_supported_wsi_path(path)))
         .map(|path| {
-            let normalized_path = fs::canonicalize(&path).unwrap_or(path.clone());
+            let normalized_path = crate::paths::canonical(&path);
             let filename = normalized_path
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
@@ -92,7 +92,7 @@ fn thumbnail_cache_dir() -> PathBuf {
 }
 
 fn thumbnail_cache_key(path: &Path) -> Option<String> {
-    let normalized_path = fs::canonicalize(path).ok()?;
+    let normalized_path = dunce::canonicalize(path).ok()?;
     let fingerprint = eov_common::file_id::compute_fingerprint(&normalized_path).ok()?;
     let mut hasher = Sha256::new();
     hasher.update(eov_common::file_id::hex_digest(&fingerprint).as_bytes());
@@ -377,7 +377,7 @@ pub fn set_series_from_folder(
     navigation: SeriesNavigationMode,
     open_first: bool,
 ) {
-    let normalized_folder = fs::canonicalize(&folder_path).unwrap_or(folder_path);
+    let normalized_folder = crate::paths::canonical(&folder_path);
     if navigation != SeriesNavigationMode::Initialize
         && state
             .read()
@@ -454,7 +454,7 @@ pub fn open_file(
         pane_view_model,
     } = ui_context;
 
-    let normalized_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let normalized_path = crate::paths::canonical(&path);
 
     let existing_tab = {
         let state_guard = state.read();
@@ -613,7 +613,7 @@ thread_local! {
 /// Opens `path` at `view` instead of fitting it to the pane, the next time
 /// it is opened.
 pub(crate) fn set_initial_view(path: &Path, view: crate::session::SavedView) {
-    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = crate::paths::canonical(path);
     INITIAL_VIEWS.with(|views| views.borrow_mut().insert(path, view));
 }
 

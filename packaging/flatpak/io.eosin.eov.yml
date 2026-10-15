@@ -24,6 +24,9 @@ finish-args:
   - --filesystem=/media:ro
   - --filesystem=/run/media:ro
   - --filesystem=/mnt:ro
+  # "Open Containing Folder" asks the file manager to show the slide
+  # selected (org.freedesktop.FileManager1.ShowItems).
+  - --talk-name=org.freedesktop.FileManager1
 
 # Build-only files: headers, pkg-config data and static libraries.
 cleanup:

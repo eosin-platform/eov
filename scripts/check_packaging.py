@@ -5,8 +5,9 @@
 - The OpenSlide fork commit and the libdicom/uthash checksums agree between
   packaging/shared/build-openslide.sh, the Flatpak manifest and the
   third-party notices (SH-19).
-- AppRun does not export LD_LIBRARY_PATH (UPD-13), and the desktop entry's
-  StartupWMClass matches the app id eov sets (SH-19).
+- AppRun does not export LD_LIBRARY_PATH (UPD-13) or any variable without
+  saving its launch value for the programs eov starts (SH-15), and the
+  desktop entry's StartupWMClass matches the app id eov sets (SH-19).
 - The Flatpak grants network and input access (UPD-5).
 
 Exit status 1 lists every problem found.
@@ -98,6 +99,16 @@ def check_linux_metadata(problems: list[str]) -> None:
     code = "\n".join(line for line in apprun.splitlines() if not line.lstrip().startswith("#"))
     if "LD_LIBRARY_PATH" in code:
         problems.append("packaging/appimage/AppRun sets LD_LIBRARY_PATH; bundled libraries use RUNPATH")
+    # Programs eov starts get the launch environment back (SH-15): every
+    # variable AppRun changes needs its launch value saved.
+    for name in re.findall(r"^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)", code, re.MULTILINE):
+        if name.startswith("EOV_ORIG_") or name == "EOV_SAVED_ENV":
+            continue
+        if f"EOV_ORIG_{name}" not in code or "EOV_SAVED_ENV" not in code:
+            problems.append(
+                f"packaging/appimage/AppRun exports {name} without saving its launch value "
+                f"(EOV_ORIG_{name} and EOV_SAVED_ENV, see app/src/desktop.rs)"
+            )
     desktop = read("assets/linux/io.eosin.eov.desktop")
     app_id = re.search(r'APP_XDG_ID: &str = "([^"]+)"', read("app/src/main.rs"))
     wm_class = re.search(r"^StartupWMClass=(.+)$", desktop, re.MULTILINE)

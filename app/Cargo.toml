@@ -145,6 +145,9 @@ libc = "0.2"
 [target.'cfg(target_os = "linux")'.dependencies]
 x11-dl = "2"
 raw-window-handle = "0.6"
+# org.freedesktop.FileManager1.ShowItems for "Open Containing Folder" (the
+# same zbus Slint's winit backend already uses).
+zbus = { version = "5.14", default-features = false, features = ["async-io", "blocking-api"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.48", features = [

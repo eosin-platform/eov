@@ -117,13 +117,6 @@ impl UiHost {
 
     pub(crate) fn open_plugin_folder(&self) {
         let _ = std::fs::create_dir_all(&self.plugin_dir);
-        if let Err(error) = open::that(&self.plugin_dir) {
-            self.notify(
-                NotifyLevel::Error,
-                "Could not open the plugin folder",
-                Some(&error.to_string()),
-                None,
-            );
-        }
+        crate::desktop::open_folder(self.plugin_dir.clone(), "Could not open the plugin folder");
     }
 }

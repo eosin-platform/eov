@@ -9,7 +9,6 @@ use eov_common::{
 };
 use eov_plugin_api::protocol::Rect;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -180,7 +179,7 @@ pub struct OpenedSeries {
 }
 
 fn normalize_recent_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::paths::canonical(path)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -856,7 +855,7 @@ impl AppState {
     }
 
     pub fn find_tab_by_path(&self, path: &std::path::Path) -> Option<(PaneId, i32)> {
-        let normalized_path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let normalized_path = crate::paths::canonical(path);
         self.panes
             .iter()
             .enumerate()

@@ -108,6 +108,9 @@ impl PaneView {
 }
 
 /// The active tool.
+// One value per controller, never kept in collections: boxing the plugin
+// tool's spec would only add an allocation.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolChoice {
     Navigate,

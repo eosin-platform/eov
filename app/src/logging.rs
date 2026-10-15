@@ -133,11 +133,13 @@ pub(crate) fn take_crash_report() -> Option<PathBuf> {
     Some(newest)
 }
 
-/// Opens the log folder in the file manager.
+/// Opens the log folder in the file manager (on a worker; a failure is
+/// reported in the window).
 pub(crate) fn open_log_folder() -> Result<(), String> {
     let dir = log_dir();
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    open::that(&dir).map_err(|error| error.to_string())
+    crate::desktop::open_folder(dir, "Could not open the log folder");
+    Ok(())
 }
 
 /// A file's name for info-level messages (full paths only at debug level).

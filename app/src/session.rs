@@ -43,11 +43,13 @@ struct TabSession {
 
 impl TabSession {
     fn path(&self) -> Option<PathBuf> {
-        match (&self.path, &self.os_path) {
-            (_, Some(hex)) => crate::recent::decode_os(hex),
-            (Some(path), None) => Some(PathBuf::from(path)),
-            (None, None) => None,
-        }
+        let path = match (&self.path, &self.os_path) {
+            (_, Some(hex)) => crate::recent::decode_os(hex)?,
+            (Some(path), None) => PathBuf::from(path),
+            (None, None) => return None,
+        };
+        // Older versions stored `\\?\` paths on Windows (SH-15).
+        Some(crate::paths::simplified(&path))
     }
 }
 
