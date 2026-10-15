@@ -171,6 +171,11 @@ export component AppWindow inherits Window {
     in-out property <[PropertyRow]> slide-info-rows: [];
     in-out property <int> slide-info-total-rows: 0;
     in-out property <string> slide-info-filter;
+    in-out property <string> slide-info-pixel-size;
+    in-out property <bool> slide-info-pixel-size-manual: false;
+    in-out property <string> slide-info-pixel-size-input;
+    callback slide-info-pixel-size-set(string);
+    callback slide-info-pixel-size-cleared();
     callback slide-info-requested(/* tab id */ int);
     callback slide-info-hide-label-toggled(bool);
     callback slide-info-filter-edited(string);
@@ -1517,6 +1522,15 @@ export component AppWindow inherits Window {
         rows: root.slide-info-rows;
         total-rows: root.slide-info-total-rows;
         filter <=> root.slide-info-filter;
+        pixel-size-text: root.slide-info-pixel-size;
+        pixel-size-manual: root.slide-info-pixel-size-manual;
+        pixel-size-input <=> root.slide-info-pixel-size-input;
+        pixel-size-set(text) => {
+            root.slide-info-pixel-size-set(text);
+        }
+        pixel-size-cleared => {
+            root.slide-info-pixel-size-cleared();
+        }
         close-requested => {
             root.slide-info-visible = false;
         }

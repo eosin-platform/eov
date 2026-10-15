@@ -219,6 +219,9 @@ pub struct OpenFile {
     pub roi: Option<Rect>,
     /// Host measurements.
     pub measurements: Vec<HostMeasurement>,
+    /// Pixel size (µm/px, both axes) set by the user for a slide that does
+    /// not record one, or records a wrong one.
+    pub calibration_override: Option<f64>,
 }
 
 pub struct NewOpenFile {
@@ -1176,6 +1179,7 @@ impl AppState {
             thumbnail,
             roi: None,
             measurements: Vec::new(),
+            calibration_override: None,
         });
 
         let target_pane = if target_pane.0 < self.panes.len() {

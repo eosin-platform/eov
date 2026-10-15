@@ -135,8 +135,8 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
                 downsample: level.downsample,
             })
             .collect(),
-        mpp_x: props.mpp_x,
-        mpp_y: props.mpp_y,
+        mpp_x: calibration(file).mpp_x,
+        mpp_y: calibration(file).mpp_y,
         objective_power: props.objective_power,
         vendor: props.vendor.clone(),
         scan_date: props.scan_date.clone(),
@@ -158,8 +158,12 @@ pub(crate) fn file_info(file: &OpenFile, identity: Option<&str>) -> FileInfo {
     }
 }
 
-/// The calibration of a slide.
+/// The calibration of a slide: a manual pixel size when the user set one,
+/// else what the file records.
 pub(crate) fn calibration(file: &OpenFile) -> Calibration {
+    if let Some(um) = file.calibration_override {
+        return Calibration::new(Some(um), Some(um));
+    }
     let props = file.wsi.properties();
     Calibration::new(props.mpp_x, props.mpp_y)
 }
@@ -209,6 +213,18 @@ fn measurement_infos(file: &OpenFile) -> Vec<MeasurementInfo> {
 impl UiHost {
     /// A slide's identity is known: publish it and announce the file.
     fn identity_ready(&self, file_id: FileId, identity: Option<String>) {
+        // A manual pixel size saved for this slide applies from now on.
+        if let Some(um) = identity
+            .as_deref()
+            .and_then(crate::calibration_store::lookup)
+            && let Ok(id) = i32::try_from(file_id)
+        {
+            let mut state = self.state.write();
+            if let Some(file) = state.get_file_mut(id) {
+                file.calibration_override = Some(um);
+                state.request_render();
+            }
+        }
         self.tracker
             .borrow_mut()
             .identities
@@ -241,7 +257,7 @@ impl UiHost {
     }
 
     /// Publishes immediately (startup, after commands).
-    pub(super) fn publish_now(&self) {
+    pub(crate) fn publish_now(&self) {
         let state = self.state.read();
         self.after_frame(&state);
     }

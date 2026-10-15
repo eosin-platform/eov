@@ -324,10 +324,7 @@ pub fn update_tabs(
             if let Some(file_id) = state.active_file_id_for_pane(pane)
                 && let Some(file) = state.get_file(file_id)
             {
-                zoom_display = zoom_display_info(
-                    1.0,
-                    crate::callbacks::native_magnification(file.wsi.properties()),
-                );
+                zoom_display = zoom_display_info(1.0, crate::callbacks::native_magnification(file));
             }
 
             if let Some(file_id) = state.active_file_id_for_pane(pane)
@@ -360,10 +357,8 @@ pub fn update_tabs(
                     height: rect.height,
                 };
                 zoom_slider_position = zoom_to_slider_value(vp.zoom);
-                zoom_display = zoom_display_info(
-                    vp.zoom,
-                    crate::callbacks::native_magnification(file.wsi.properties()),
-                );
+                zoom_display =
+                    zoom_display_info(vp.zoom, crate::callbacks::native_magnification(file));
             }
 
             let metadata_items = build_metadata_items(state, pane, &viewport_info);
@@ -372,9 +367,9 @@ pub fn update_tabs(
             let hud = if let Some(file_id) = state.active_file_id_for_pane(pane)
                 && let Some(file) = state.get_file(file_id)
             {
-                let props = file.wsi.properties();
-                let mpp_x = props.mpp_x.unwrap_or(0.0) as f32;
-                let mpp_y = props.mpp_y.unwrap_or(0.0) as f32;
+                let calibration = crate::host_ui::calibration(file);
+                let mpp_x = calibration.mpp_x.unwrap_or(0.0) as f32;
+                let mpp_y = calibration.mpp_y.unwrap_or(0.0) as f32;
                 let color = crate::color::hud_color_info(file, pane);
                 file.pane_state(pane)
                     .map(|ps| {

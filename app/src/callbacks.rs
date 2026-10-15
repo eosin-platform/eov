@@ -267,18 +267,15 @@ pub(crate) fn frame_active_viewport(state: &mut AppState) -> bool {
 }
 
 /// The objective-equivalent magnification of a slide's full resolution:
-/// the scanner's objective power, or about 10 µm ÷ MPP when only the pixel
-/// size is known (0.25 µm/px ≈ 40×).
-pub(crate) fn native_magnification(props: &eov_common::WsiProperties) -> Option<f64> {
-    props
+/// the scanner's objective power, or about 10 µm ÷ pixel size when only
+/// the pixel size is known (0.25 µm/px ≈ 40×), including a manual one.
+pub(crate) fn native_magnification(file: &state::OpenFile) -> Option<f64> {
+    file.wsi
+        .properties()
         .objective_power
         .filter(|power| power.is_finite() && *power > 0.0)
         .or_else(|| {
-            let mpp = match (props.mpp_x, props.mpp_y) {
-                (Some(x), Some(y)) => (x + y) / 2.0,
-                (Some(v), None) | (None, Some(v)) => v,
-                (None, None) => return None,
-            };
+            let mpp = crate::host_ui::calibration(file).average()?;
             (mpp.is_finite() && mpp > 0.0).then(|| 10.0 / mpp)
         })
 }
@@ -298,7 +295,7 @@ pub(crate) fn magnify_active_viewport(
     let native = state
         .active_file_id_for_pane(pane)
         .and_then(|file_id| state.get_file(file_id))
-        .map(|file| native_magnification(file.wsi.properties()));
+        .map(native_magnification);
     let zoom = match (magnification, native) {
         (_, None) => return Ok(false),
         (None, _) => 1.0,
@@ -2183,7 +2180,7 @@ pub fn setup_callbacks(
                 let objective_power = state
                     .active_file_id_for_pane(state.focused_pane)
                     .and_then(|file_id| state.get_file(file_id))
-                    .map(|file| native_magnification(file.wsi.properties()))
+                    .map(native_magnification)
                     .unwrap_or(None);
                 let requested_zoom = parse_zoom_input(value.as_str(), objective_power);
                 if let Some(viewport) = state.active_viewport_mut()
@@ -2489,6 +2486,24 @@ pub fn setup_callbacks(
         });
     }
     ui.on_slide_info_copy_all(crate::slide_info::copy_all);
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_pixel_size_set(move |text| {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::set_pixel_size(&ui, &state, Some(&text));
+            }
+        });
+    }
+    {
+        let state = Arc::clone(&state);
+        let ui_weak = ui_weak.clone();
+        ui.on_slide_info_pixel_size_cleared(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                crate::slide_info::set_pixel_size(&ui, &state, None);
+            }
+        });
+    }
     {
         let ui_weak = ui_weak.clone();
         ui.on_slide_info_copy_row(move |index| {

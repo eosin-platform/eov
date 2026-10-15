@@ -27,6 +27,8 @@ struct Panel {
     shown: Vec<usize>,
     /// Bumped per open, so late images for another slide are dropped.
     generation: u64,
+    /// The slide shown.
+    file_id: Option<i32>,
 }
 
 thread_local! {
@@ -66,8 +68,11 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
         panel.generation += 1;
         panel.shown = (0..rows.len()).collect();
         panel.rows = rows;
+        panel.file_id = Some(file_id);
         panel.generation
     });
+    show_pixel_size(ui, &state.read(), file_id);
+    ui.set_slide_info_pixel_size_input(SharedString::new());
     ui.set_slide_info_title(SharedString::from(title));
     ui.set_slide_info_filter(SharedString::new());
     ui.set_slide_info_hide_label(crate::config::load_hide_slide_label());
@@ -233,6 +238,92 @@ pub(crate) fn copy_row(ui: &AppWindow, index: i32) {
         crate::clipboard::copy_text(value);
         ui.set_status_text(SharedString::from(format!("Copied {key}")));
     }
+}
+
+/// Describes the pixel size that applies to `file_id` and its source.
+fn show_pixel_size(ui: &AppWindow, state: &AppState, file_id: i32) {
+    let Some(file) = state.get_file(file_id) else {
+        return;
+    };
+    let props = file.wsi.properties();
+    let text = match (file.calibration_override, props.mpp_x, props.mpp_y) {
+        (Some(um), _, _) => format!("{} µm/px (set by you)", eov_common::format_decimal(um)),
+        (None, Some(x), Some(y)) => format!(
+            "{} × {} µm/px (from the file)",
+            eov_common::format_decimal(x),
+            eov_common::format_decimal(y)
+        ),
+        (None, Some(v), None) | (None, None, Some(v)) => format!(
+            "{} µm/px (one axis in the file)",
+            eov_common::format_decimal(v)
+        ),
+        (None, None, None) => "not recorded — measurements are in pixels".to_string(),
+    };
+    ui.set_slide_info_pixel_size(SharedString::from(text));
+    ui.set_slide_info_pixel_size_manual(file.calibration_override.is_some());
+}
+
+/// Sets (`Some`) or clears the manual pixel size of the slide shown, here
+/// and for future sessions (by slide identity).
+pub(crate) fn set_pixel_size(ui: &AppWindow, state: &Arc<RwLock<AppState>>, text: Option<&str>) {
+    let Some(file_id) = PANEL.with(|panel| panel.borrow().file_id) else {
+        return;
+    };
+    let um = match text {
+        Some(text) => match crate::calibration_store::parse_um_per_px(text) {
+            Some(um) => Some(um),
+            None => {
+                ui.set_status_text(SharedString::from(
+                    "Enter the pixel size in µm per pixel, e.g. 0.25",
+                ));
+                return;
+            }
+        },
+        None => None,
+    };
+    let (wsi, name) = {
+        let state = state.read();
+        let Some(file) = state.get_file(file_id) else {
+            return;
+        };
+        (file.wsi.clone(), file.filename.clone())
+    };
+    // Usually already computed (and cached) when the slide was opened.
+    let saved = match wsi.identity() {
+        Ok(identity) => crate::calibration_store::store(identity.key(), um, &name),
+        Err(error) => Err(error.to_string()),
+    };
+    if let Err(error) = &saved {
+        tracing::warn!("Could not save the pixel size: {error}");
+    }
+    {
+        let mut state = state.write();
+        if let Some(file) = state.get_file_mut(file_id) {
+            file.calibration_override = um;
+        }
+        state.request_render();
+    }
+    show_pixel_size(ui, &state.read(), file_id);
+    ui.set_slide_info_pixel_size_input(SharedString::new());
+    crate::host_ui::with_host(|host| {
+        host.publish_now();
+        host.request_render();
+        match (saved, um) {
+            (Ok(()), Some(um)) => host.notify(
+                NotifyLevel::Info,
+                &format!("Pixel size set to {} µm/px", eov_common::format_decimal(um)),
+                Some("Measurements, the scale bar and exports use it; it is remembered for this slide."),
+                None,
+            ),
+            (Ok(()), None) => host.status("Using the pixel size recorded in the file"),
+            (Err(error), _) => host.notify(
+                NotifyLevel::Warning,
+                "The pixel size applies to this session only",
+                Some(&error),
+                None,
+            ),
+        }
+    });
 }
 
 pub(crate) fn set_hide_label(ui: &AppWindow, hidden: bool) {

@@ -4,6 +4,7 @@
 mod backend;
 mod blitter;
 mod cache_budget;
+mod calibration_store;
 mod callbacks;
 mod cli;
 mod clipboard;

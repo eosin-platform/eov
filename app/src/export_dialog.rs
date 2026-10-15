@@ -223,10 +223,7 @@ pub(crate) fn default_settings(state: &AppState, pane: PaneId) -> SlintExportSet
     let file = state
         .active_file_id_for_pane(pane)
         .and_then(|id| state.get_file(id));
-    let calibrated = file.is_some_and(|f| {
-        let props = f.wsi.properties();
-        props.mpp_x.or(props.mpp_y).is_some_and(|mpp| mpp > 0.0)
-    });
+    let calibrated = file.is_some_and(|f| crate::host_ui::calibration(f).average().is_some());
     let mut settings = SlintExportSettings {
         dpi: 150,
         filtering_mode: SlintExportFilteringMode::Trilinear,
@@ -663,12 +660,11 @@ fn run_export(
     let dpi = f64::from(settings.dpi.max(1));
     let request = build_request(capture, settings, &manager, dpi);
     let prepared = prepare(capture, settings, &request, true);
-    let props = capture.wsi.properties();
     let metadata = ImageMetadata::for_export(
         &request,
         dpi,
-        props.mpp_x,
-        props.mpp_y,
+        capture.calibration.mpp_x,
+        capture.calibration.mpp_y,
         Some(request.processing.summary().provenance()),
     );
     let source = ExportSource {
