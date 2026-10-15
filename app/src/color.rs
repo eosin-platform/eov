@@ -1,6 +1,10 @@
 //! Colour processing for the viewer: every pane's HUD settings resolved into
 //! the canonical pipeline of `eov_common::processing` (CLR-5), with stain
-//! normalisation fitted once per slide on a worker thread (CLR-1, CLR-7).
+//! normalisation fitted once per slide on a worker thread (CLR-1, CLR-7),
+//! and each slide's ICC profile read and sampled into its conversion to
+//! sRGB on a worker thread too (colour management, AUDIT §14.1). Panes
+//! colour-manage a slide that has a usable profile unless the slide's
+//! toggle (`OpenFile::color_management`) is off.
 //!
 //! Fits go into the process-wide stain cache under the same key the export
 //! path uses (`StainCacheKey::for_file` with default options), so panes,
@@ -15,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 
 use eov_common::WsiFile;
+use eov_common::color_management::DisplayTransform;
 use eov_common::postprocess::ToneAdjustments;
 use eov_common::processing::{ColorSettings, ProcessingPipeline};
 use eov_common::stain::{
@@ -63,7 +68,12 @@ pub(crate) enum SlideFit {
 struct FitJobs {
     running: HashSet<StainCacheKey>,
     failed: HashMap<StainCacheKey, Arc<str>>,
-    /// Completed fits (successful or not) per slide identity.
+    /// Colour profiles being read, by slide identity.
+    profiles_running: HashSet<String>,
+    /// Colour profiles read: their conversion to sRGB, or why there is none.
+    profiles: HashMap<String, Result<Arc<DisplayTransform>, Arc<str>>>,
+    /// Completed jobs (fits and profile reads, successful or not) per slide
+    /// identity.
     finished: HashMap<String, u64>,
 }
 
@@ -183,15 +193,89 @@ fn run_fit(
     *jobs.finished.entry(key.slide).or_default() += 1;
 }
 
-/// `true` while any stain fit is running (the render loop keeps polling so
-/// panes pick the result up).
-pub(crate) fn fits_pending() -> bool {
-    !FIT_JOBS.lock().running.is_empty()
+/// `true` while any stain fit or profile read is running (the render loop
+/// keeps polling so panes pick the result up).
+pub(crate) fn jobs_pending() -> bool {
+    let jobs = FIT_JOBS.lock();
+    !jobs.running.is_empty() || !jobs.profiles_running.is_empty()
 }
 
-/// Open files whose slide finished a fit since the last call: their panes
-/// must render again with the estimate (or without normalisation, if it
-/// failed).
+// ─── Colour profiles (ICC → sRGB) ────────────────────────────────────────────
+
+/// A slide's colour profile, for colour management.
+#[derive(Clone, Debug)]
+pub(crate) enum SlideProfile {
+    /// The slide has no ICC profile.
+    None,
+    /// Being read and sampled on a worker thread.
+    Pending,
+    Ready(Arc<DisplayTransform>),
+    /// eov cannot use the profile: the slide is shown as scanned.
+    Unsupported(Arc<str>),
+}
+
+/// The colour profile of the slide open as `file_id`: from the shared
+/// table, or read on a worker thread and [`SlideProfile::Pending`] until it
+/// is.
+pub(crate) fn slide_profile(file_id: i32, wsi: &WsiFile) -> SlideProfile {
+    if wsi.properties().icc_profile_size.is_none() {
+        return SlideProfile::None;
+    }
+    let identity = slide_identity(file_id, wsi);
+    let mut jobs = FIT_JOBS.lock();
+    match jobs.profiles.get(&identity) {
+        Some(Ok(transform)) => return SlideProfile::Ready(Arc::clone(transform)),
+        Some(Err(error)) => return SlideProfile::Unsupported(Arc::clone(error)),
+        None => {}
+    }
+    if jobs.profiles_running.insert(identity.clone()) {
+        let wsi = wsi.clone();
+        let job_identity = identity.clone();
+        let spawned = std::thread::Builder::new()
+            .name("icc-profile".into())
+            .spawn(move || read_profile(wsi, job_identity));
+        if let Err(err) = spawned {
+            jobs.profiles_running.remove(&identity);
+            jobs.profiles.insert(
+                identity,
+                Err(format!("cannot start a worker thread: {err}").into()),
+            );
+        }
+    }
+    SlideProfile::Pending
+}
+
+fn read_profile(wsi: WsiFile, identity: String) {
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match wsi.icc_profile() {
+            Ok(Some(bytes)) => DisplayTransform::from_icc(&bytes)
+                .map(Arc::new)
+                .map_err(|error| error.to_string()),
+            Ok(None) => Err("the slide has no colour profile".to_string()),
+            Err(error) => Err(format!("the colour profile cannot be read: {error}")),
+        }))
+        .unwrap_or_else(|_| Err("reading the colour profile failed unexpectedly".to_string()));
+    match &result {
+        Ok(transform) => debug!(
+            "colour profile of {}: {:?}",
+            wsi.properties().path.display(),
+            transform
+        ),
+        Err(error) => warn!(
+            "colour management unavailable for {}: {error}",
+            wsi.properties().path.display()
+        ),
+    }
+    let mut jobs = FIT_JOBS.lock();
+    jobs.profiles_running.remove(&identity);
+    *jobs.finished.entry(identity.clone()).or_default() += 1;
+    jobs.profiles
+        .insert(identity, result.map_err(|error| error.into()));
+}
+
+/// Open files whose slide finished a fit or a profile read since the last
+/// call: their panes must render again with the estimate or the colour
+/// management (or without, if it failed).
 pub(crate) fn files_with_new_fits() -> Vec<i32> {
     let jobs = FIT_JOBS.lock();
     if jobs.finished.is_empty() {
@@ -223,6 +307,7 @@ pub(crate) fn retain_files(open: &HashSet<i32>) {
 struct CachedPipeline {
     settings: ColorSettings,
     estimate: Option<Arc<StainEstimate>>,
+    transform: Option<Arc<DisplayTransform>>,
     pipeline: Arc<ProcessingPipeline>,
 }
 
@@ -236,16 +321,46 @@ pub(crate) struct PaneColor {
     pub(crate) settings: ColorSettings,
     /// Why stain normalisation is unavailable for this slide, if it is.
     pub(crate) fit_error: Option<Arc<str>>,
+    /// The slide's colour profile (whether or not it is applied).
+    pub(crate) profile: SlideProfile,
+}
+
+/// The conversion a slide's panes apply: its profile's, unless the slide's
+/// colour management is off.
+pub(crate) fn file_color_management(file: &OpenFile) -> Option<Arc<DisplayTransform>> {
+    match slide_profile(file.id, &file.wsi) {
+        SlideProfile::Ready(transform) if file.color_management => Some(transform),
+        _ => None,
+    }
 }
 
 /// Resolves the colour processing of `pane` showing `file`, starting the
-/// slide's stain fit if the settings need one.
+/// slide's stain fit and profile read if they are needed.
 pub(crate) fn pane_color(file: &OpenFile, pane: PaneId) -> PaneColor {
     let hud = file.pane_state(pane).map(|ps| ps.hud).unwrap_or_default();
-    resolve(file.id, &file.wsi, pane, &hud_color_settings(&hud))
+    let profile = slide_profile(file.id, &file.wsi);
+    let transform = match &profile {
+        SlideProfile::Ready(transform) if file.color_management => Some(Arc::clone(transform)),
+        _ => None,
+    };
+    let mut color = resolve(
+        file.id,
+        &file.wsi,
+        pane,
+        &hud_color_settings(&hud),
+        transform,
+    );
+    color.profile = profile;
+    color
 }
 
-fn resolve(file_id: i32, wsi: &WsiFile, pane: PaneId, settings: &ColorSettings) -> PaneColor {
+fn resolve(
+    file_id: i32,
+    wsi: &WsiFile,
+    pane: PaneId,
+    settings: &ColorSettings,
+    transform: Option<Arc<DisplayTransform>>,
+) -> PaneColor {
     let fit = settings
         .required_estimate()
         .map(|method| slide_fit(file_id, wsi, method));
@@ -270,16 +385,22 @@ fn resolve(file_id: i32, wsi: &WsiFile, pane: PaneId, settings: &ColorSettings) 
         let key = (file_id, pane.0);
         if let Some(cached) = panes.get(&key)
             && cached.settings == applied
-            && same_estimate(cached.estimate.as_ref(), estimate.as_ref())
+            && same(cached.estimate.as_ref(), estimate.as_ref())
+            && same(cached.transform.as_ref(), transform.as_ref())
         {
             return Arc::clone(&cached.pipeline);
         }
-        let pipeline = Arc::new(applied.pipeline(estimate.as_deref()));
+        let pipeline = Arc::new(
+            applied
+                .pipeline(estimate.as_deref())
+                .with_color_management(transform.clone()),
+        );
         panes.insert(
             key,
             CachedPipeline {
                 settings: applied,
                 estimate,
+                transform,
                 pipeline: Arc::clone(&pipeline),
             },
         );
@@ -289,10 +410,11 @@ fn resolve(file_id: i32, wsi: &WsiFile, pane: PaneId, settings: &ColorSettings) 
         pipeline,
         settings: settings.clone(),
         fit_error,
+        profile: SlideProfile::None,
     }
 }
 
-fn same_estimate(a: Option<&Arc<StainEstimate>>, b: Option<&Arc<StainEstimate>>) -> bool {
+fn same<T>(a: Option<&Arc<T>>, b: Option<&Arc<T>>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => Arc::ptr_eq(a, b),
@@ -301,6 +423,53 @@ fn same_estimate(a: Option<&Arc<StainEstimate>>, b: Option<&Arc<StainEstimate>>)
 }
 
 // ─── HUD ─────────────────────────────────────────────────────────────────────
+
+/// What the HUD shows about a slide's colour management.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) enum ColorManagementInfo {
+    /// The slide has no colour profile.
+    #[default]
+    NoProfile,
+    /// The profile is being read.
+    Pending,
+    /// Colours converted from the named profile to sRGB.
+    On(String),
+    /// Colours as scanned; the slide has the named profile.
+    Off(String),
+    /// The profile cannot be used, and why.
+    Unsupported(String),
+}
+
+impl ColorManagementInfo {
+    /// The HUD indicator's state: 0 none, 1 on, 2 off, 3 pending, 4
+    /// unsupported (`HudSettings.color-management`).
+    pub(crate) fn code(&self) -> i32 {
+        match self {
+            Self::NoProfile => 0,
+            Self::On(_) => 1,
+            Self::Off(_) => 2,
+            Self::Pending => 3,
+            Self::Unsupported(_) => 4,
+        }
+    }
+
+    /// The indicator's tooltip.
+    pub(crate) fn tooltip(&self) -> String {
+        match self {
+            Self::NoProfile => String::new(),
+            Self::Pending => "Reading the slide's colour profile…".to_string(),
+            Self::On(name) => format!(
+                "Colour-managed: the slide's profile \"{name}\" is converted to sRGB. Click to show the colours as scanned"
+            ),
+            Self::Off(name) => format!(
+                "Colours as scanned. Click to convert the slide's profile \"{name}\" to sRGB"
+            ),
+            Self::Unsupported(reason) => {
+                format!("Not colour-managed: {reason}")
+            }
+        }
+    }
+}
 
 /// What the HUD shows about a pane's colours (CLR-9).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -312,6 +481,8 @@ pub(crate) struct HudColorInfo {
     pub(crate) badge: String,
     /// Problems: stain-label mismatches, unavailable normalisation, …
     pub(crate) warnings: Vec<String>,
+    /// The slide's colour management.
+    pub(crate) color_management: ColorManagementInfo,
 }
 
 /// The HUD's view of `pane` showing `file`.
@@ -329,10 +500,24 @@ fn describe(color: &PaneColor, stain_label: Option<&str>) -> HudColorInfo {
             "Colour normalisation is unavailable for this slide: {error}"
         ));
     }
+    let color_management = match (&color.profile, color.pipeline.color_management()) {
+        (SlideProfile::None, _) => ColorManagementInfo::NoProfile,
+        (SlideProfile::Pending, _) => ColorManagementInfo::Pending,
+        (SlideProfile::Unsupported(reason), _) => {
+            ColorManagementInfo::Unsupported(reason.to_string())
+        }
+        (SlideProfile::Ready(transform), Some(_)) => {
+            ColorManagementInfo::On(transform.description().to_string())
+        }
+        (SlideProfile::Ready(transform), None) => {
+            ColorManagementInfo::Off(transform.description().to_string())
+        }
+    };
     HudColorInfo {
         modified: color.settings.is_modified(),
         badge: color.pipeline.summary().badge().unwrap_or_default(),
         warnings,
+        color_management,
     }
 }
 
@@ -450,16 +635,16 @@ mod tests {
             gamma: 1.4,
             ..HudSettings::default()
         });
-        let a = resolve(file_id, &wsi, PaneId(0), &settings);
-        let b = resolve(file_id, &wsi, PaneId(0), &settings);
+        let a = resolve(file_id, &wsi, PaneId(0), &settings, None);
+        let b = resolve(file_id, &wsi, PaneId(0), &settings, None);
         assert!(Arc::ptr_eq(&a.pipeline, &b.pipeline));
         settings.tone = ToneAdjustments::new(1.5, 0.0, 1.0);
-        let c = resolve(file_id, &wsi, PaneId(0), &settings);
+        let c = resolve(file_id, &wsi, PaneId(0), &settings, None);
         assert!(!Arc::ptr_eq(&a.pipeline, &c.pipeline));
 
         // Normalisation is pending until the fit lands, then applied.
         settings.normalization = Some(StainFitMethod::Macenko);
-        let first = resolve(file_id, &wsi, PaneId(0), &settings);
+        let first = resolve(file_id, &wsi, PaneId(0), &settings, None);
         let info = describe(&first, None);
         assert!(info.modified);
         assert!(
@@ -468,7 +653,7 @@ mod tests {
             info.badge
         );
         wait_for_fit(file_id, &wsi, StainFitMethod::Macenko);
-        let ready = resolve(file_id, &wsi, PaneId(0), &settings);
+        let ready = resolve(file_id, &wsi, PaneId(0), &settings, None);
         assert!(ready.pipeline.summary().estimate.is_some());
         let info = describe(&ready, Some("H&E"));
         assert!(
@@ -498,7 +683,7 @@ mod tests {
         // must leave a usable, honest pipeline.
         let file_id = 9003;
         let fit = wait_for_fit(file_id, &wsi, StainFitMethod::Macenko);
-        let color = resolve(file_id, &wsi, PaneId(0), &settings);
+        let color = resolve(file_id, &wsi, PaneId(0), &settings, None);
         let info = describe(&color, None);
         match fit {
             SlideFit::Failed(_) => {
@@ -512,6 +697,90 @@ mod tests {
             }
             SlideFit::Pending => panic!("the fit did not finish"),
         }
+        retain_files(&HashSet::new());
+    }
+
+    fn wait_for_profile(file_id: i32, wsi: &WsiFile) -> SlideProfile {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            match slide_profile(file_id, wsi) {
+                SlideProfile::Pending if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                other => return other,
+            }
+        }
+    }
+
+    /// A slide with an Adobe RGB profile: read once off the calling
+    /// thread, then applied to its panes' pipelines, and named on the HUD.
+    #[test]
+    fn slides_with_a_profile_are_colour_managed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("managed.svs");
+        let mut spec = eov_common::test_support::TiffSpec::aperio(256, 256, 64, 4);
+        spec.icc_profile = Some(eov_common::color_management::test_profiles::adobe_rgb());
+        eov_common::test_support::write_tiff(&path, &spec, |x, y| {
+            [200, (x % 200) as u8, (y % 220) as u8]
+        })
+        .unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        let file_id = 9004;
+        let SlideProfile::Ready(transform) = wait_for_profile(file_id, &wsi) else {
+            panic!("the profile is read");
+        };
+        assert!(!transform.is_identity());
+        // Read once: later lookups share the conversion.
+        let SlideProfile::Ready(again) = slide_profile(file_id, &wsi) else {
+            panic!("cached");
+        };
+        assert!(Arc::ptr_eq(&transform, &again));
+
+        let settings = ColorSettings::default();
+        let mut on = resolve(
+            file_id,
+            &wsi,
+            PaneId(0),
+            &settings,
+            Some(Arc::clone(&transform)),
+        );
+        on.profile = SlideProfile::Ready(Arc::clone(&transform));
+        assert!(on.pipeline.color_management().is_some());
+        let info = describe(&on, None);
+        assert_eq!(info.color_management.code(), 1);
+        assert!(!info.modified, "converted colours are not 'processed'");
+        assert!(info.badge.is_empty());
+        let mut off = resolve(file_id, &wsi, PaneId(0), &settings, None);
+        off.profile = SlideProfile::Ready(Arc::clone(&transform));
+        assert!(off.pipeline.color_management().is_none());
+        assert!(!Arc::ptr_eq(&on.pipeline, &off.pipeline));
+        let info = describe(&off, None);
+        assert_eq!(info.color_management.code(), 2);
+        assert!(
+            info.color_management
+                .tooltip()
+                .contains(transform.description())
+        );
+
+        // Slides without a profile have no indicator.
+        let plain = he_slide(dir.path());
+        assert!(matches!(slide_profile(9005, &plain), SlideProfile::None));
+        assert_eq!(ColorManagementInfo::default().code(), 0);
+        retain_files(&HashSet::new());
+    }
+
+    #[test]
+    fn unusable_profiles_are_reported_not_applied() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.svs");
+        let mut spec = eov_common::test_support::TiffSpec::aperio(128, 128, 64, 4);
+        spec.icc_profile = Some(vec![7; 300]);
+        eov_common::test_support::write_tiff(&path, &spec, |_, _| [200, 150, 200]).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        let SlideProfile::Unsupported(reason) = wait_for_profile(9006, &wsi) else {
+            panic!("a broken profile is not used");
+        };
+        assert!(reason.contains("profile"), "{reason}");
         retain_files(&HashSet::new());
     }
 }

@@ -412,7 +412,10 @@ impl Host {
         self.command(methods::FILE_OPEN, &OpenFileArgs { path: path.into() })
     }
 
-    /// Reads slide pixels on the calling thread.
+    /// Reads slide pixels on the calling thread. For RGB slides they are
+    /// the slide's own colours, as scanned: eov's colour adjustments and
+    /// its colour management (ICC profile to sRGB, see
+    /// [`DisplayAdjustments::color_managed`]) apply to the display only.
     ///
     /// Multichannel slides (see [`FileInfo::channel_names`]) come back as
     /// RGBA too: their visible channels composited with the user's current

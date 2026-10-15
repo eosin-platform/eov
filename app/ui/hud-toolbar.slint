@@ -59,6 +59,9 @@ export component HudToolbar inherits Rectangle {
     // The view's turn (see `ViewportInfo`).
     in property <int> rotation-degrees: 0;
     in property <bool> flipped: false;
+    // Colour management (see `HudSettings.color-management`).
+    in property <int> color-management: 0;
+    in property <string> color-management-tooltip: "";
 
     callback fit-to-view();
     callback zoom-in();
@@ -69,6 +72,7 @@ export component HudToolbar inherits Rectangle {
     callback dismiss-plugin-menu();
     // 0 rotate left, 1 rotate right, 2 flip, 3 reset the turn.
     callback orientation-changed(int);
+    callback color-management-toggled();
 
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
@@ -90,6 +94,7 @@ export component HudToolbar inherits Rectangle {
         : rotate-right-btn.hovered ? rotate-right-btn.tooltip-text
         : flip-btn.hovered ? flip-btn.tooltip-text
         : angle-touch.has-hover ? "Reset rotation"
+        : icc-touch.has-hover ? root.color-management-tooltip
         : adjust-btn.hovered ? adjust-btn.tooltip-text
         : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
             ? root.plugin-buttons[root.hovered-plugin].tooltip
@@ -102,6 +107,7 @@ export component HudToolbar inherits Rectangle {
         : rotate-right-btn.hovered ? rotate-right-btn.absolute-position.x - root.absolute-position.x + rotate-right-btn.width / 2
         : flip-btn.hovered ? flip-btn.absolute-position.x - root.absolute-position.x + flip-btn.width / 2
         : angle-touch.has-hover ? angle-label.absolute-position.x - root.absolute-position.x + angle-label.width / 2
+        : icc-touch.has-hover ? icc-chip.absolute-position.x - root.absolute-position.x + icc-chip.width / 2
         : adjust-btn.hovered ? adjust-btn.absolute-position.x - root.absolute-position.x + adjust-btn.width / 2
         : root.hovered-plugin-x;
 
@@ -271,6 +277,42 @@ export component HudToolbar inherits Rectangle {
                 angle-touch := TouchArea {
                     clicked => {
                         root.orientation-changed(3);
+                    }
+                }
+            }
+
+            // Colour management: lit while the slide's ICC profile is
+            // converted to sRGB; clicking turns it on or off.
+            icc-chip := Rectangle {
+                width: root.color-management != 0 ? 42px : 0px;
+                height: 38px;
+                visible: root.color-management != 0;
+                background: icc-touch.has-hover ? #ffffff22 : root.color-management == 1 ? #ffffff15 : transparent;
+
+                Text {
+                    text: "ICC";
+                    color: root.color-management == 1 ? white
+                        : root.color-management == 4 ? #f5c26b
+                        : #8a8f96;
+                    font-size: 12px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                // A line through the text while colours are as scanned.
+                if root.color-management == 2: Rectangle {
+                    x: 10px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 20px;
+                    height: 1.5px;
+                    background: #8a8f96;
+                }
+
+                icc-touch := TouchArea {
+                    enabled: root.color-management == 1 || root.color-management == 2;
+                    clicked => {
+                        root.color-management-toggled();
                     }
                 }
             }

@@ -5,8 +5,10 @@
 //!
 //! The region is read at the finest level that keeps it within
 //! [`MAX_PIXELS`], on a worker, as a status-bar job that can be cancelled.
-//! Scripts' `quantify` ([`crate::scripting`]) measures the same way, with
-//! [`Quantification`].
+//! Its pixels are the slide's own colours, as scanned: neither the panes'
+//! adjustments nor the colour management (ICC profile to sRGB) apply to
+//! what is measured. Scripts' `quantify` ([`crate::scripting`]) measures
+//! the same way, with [`Quantification`].
 
 use crate::state::{AppState, OpenFile};
 use crate::{AppWindow, ChoiceItem, ResultRow};

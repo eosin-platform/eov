@@ -743,6 +743,7 @@ pub fn render_export_bands(
             blitter::orient_frame(&aligned, region.2, region.3, orientation, &mut buffer);
         }
         request.processing.apply_color(&mut buffer);
+        request.processing.apply_color_management(&mut buffer);
         composite_onto(&mut buffer, request.background);
 
         let out_rows = band_end - band_start;

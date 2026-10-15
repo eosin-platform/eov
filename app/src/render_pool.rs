@@ -1,10 +1,11 @@
 //! CPU frame rendering on a worker pool.
 //!
 //! A job composites a pane's tiles, colour-processes the frame, runs the
-//! plugin filters over the slide's pixels, composites the background and
-//! sharpens, building the pixel buffer Slint displays — all on the pool, so
-//! the UI thread only swaps images in (RND-6). Jobs are keyed by the pane's
-//! stable id, not its position (RND-9).
+//! plugin filters over the slide's pixels, converts them to sRGB when the
+//! slide is colour-managed, composites the background and sharpens,
+//! building the pixel buffer Slint displays — all on the pool, so the UI
+//! thread only swaps images in (RND-6). Jobs are keyed by the pane's stable
+//! id, not its position (RND-9).
 
 use crate::blitter;
 use crate::plugin_runtime::filters::ChainSnapshot;
@@ -59,9 +60,11 @@ impl CpuRenderPostProcess {
         self.pipeline.apply_color(buffer);
     }
 
-    /// What follows the plugin filters: compositing onto the background
-    /// and screen-space sharpening (stages 5–6).
+    /// What follows the plugin filters: the colour management (the slide's
+    /// ICC profile to sRGB, when on), compositing onto the background and
+    /// screen-space sharpening (stages 5–6).
     pub fn finish(&self, buffer: &mut [u8], width: u32, height: u32) {
+        self.pipeline.apply_color_management(buffer);
         composite_onto(buffer, self.background);
         self.pipeline.sharpen(buffer, width, height);
     }
@@ -582,6 +585,37 @@ mod tests {
             assert_eq!(pixels, expected, "{orientation:?}");
             assert_eq!(source, aligned_source, "{orientation:?}");
         }
+    }
+
+    /// Colour management follows the filters: they see the slide's own
+    /// colours, and the displayed frame is converted (the background is
+    /// not).
+    #[test]
+    fn colour_management_follows_the_filters() {
+        let transform = Arc::new(
+            eov_common::color_management::DisplayTransform::from_icc(
+                &eov_common::color_management::test_profiles::adobe_rgb(),
+            )
+            .unwrap(),
+        );
+        let pipeline =
+            ProcessingPipeline::identity().with_color_management(Some(Arc::clone(&transform)));
+        let mut job = job_with_tile(pipeline);
+        let chain = crate::plugin_runtime::filters::test_chain(&["invert"]);
+        job.filters = Some(FrameFilters {
+            chain: chain.read(),
+            view: FilterView::default(),
+        });
+        let latest = Mutex::new(HashMap::from([(3, 7)]));
+        let (mut pixels, mut source) = (vec![0u8; 32], vec![0u8; 32]);
+        let display = render_job(&job, &latest, &mut pixels, &mut source).unwrap();
+        let expected = transform.apply_pixel([155, 150, 200]);
+        for row in display.as_bytes().chunks(16) {
+            assert_eq!(&row[..3], &expected);
+            assert_eq!(&row[8..16], &[30, 30, 30, 255, 30, 30, 30, 255]);
+        }
+        // Kept for refiltering: neither filtered nor converted.
+        assert_eq!(&pixels[..4], &[100, 150, 200, 255]);
     }
 
     #[test]

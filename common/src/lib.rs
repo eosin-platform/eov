@@ -20,10 +20,13 @@
 //! * [`file_id`]: [`SlideIdentity`], the stable key for per-slide data.
 //! * [`convert`]: pyramidal TIFF and OME-TIFF copies of a slide or a
 //!   region, optionally de-identified.
+//! * [`processing`] and [`color_management`]: the canonical colour
+//!   pipeline, from stain transforms to ICC profiles converted to sRGB.
 
 pub mod blitter;
 pub mod cache;
 pub mod channels;
+pub mod color_management;
 pub mod convert;
 pub mod dataset;
 pub mod error;

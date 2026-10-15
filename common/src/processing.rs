@@ -16,7 +16,11 @@
 //!    in floating point without intermediate rounding.
 //!
 //!    The viewer runs plugin filters here, on the slide's pixels: the rest
-//!    of the frame is still transparent.
+//!    of the frame is still transparent. Then, when the slide is
+//!    colour-managed, its pixels are converted from the slide's ICC profile
+//!    to sRGB through a 3D lookup table and quantised again
+//!    ([`crate::color_management`]); plugins see the colours before this
+//!    conversion, as region reads return them.
 //! 5. **Composite** pixels outside the slide (alpha 0) onto the background.
 //! 6. **Sharpen** in *screen space*: a 3×3 Laplacian unsharp mask
 //!    `c + k·(4c − n − s − w − e)` on the quantised, composited frame, with
@@ -25,13 +29,17 @@
 //! 7. **Overlays** (annotations, measurements, scale bar, badges).
 //!
 //! The CPU implementation in this module is the reference. The WGSL in
-//! [`wgsl`] implements stages 2–3 identically; [`wgsl::emulate_color`] is a
-//! line-by-line Rust transcription of that WGSL used by the golden tests.
+//! [`wgsl`] implements stages 2–3 and the colour management identically;
+//! [`wgsl::emulate_color`] and [`wgsl::emulate_icc`] are line-by-line Rust
+//! transcriptions of that WGSL used by the golden tests.
 //! On the GPU, stage 6 belongs in a separate full-screen pass over the
 //! composited frame ([`wgsl::SHARPEN_POST_PASS`]).
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
+use crate::color_management::{DisplayTransform, GRID_SCALE, LUT_SIZE};
 use crate::postprocess::{self, ToneAdjustments, quantize};
 use crate::stain::{
     FitChecks, NormalizationTarget, StainBasis, StainChannel, StainEstimate, StainFitMethod,
@@ -337,6 +345,11 @@ pub struct ProcessingSummary {
     /// e.g. `"isolating stain 3 (the stain model has 2 stains)"`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_applied: Vec<String>,
+    /// The ICC profile converted to sRGB (colour management), by name. Not
+    /// part of [`badge`](Self::badge) or [`is_modified`](Self::is_modified):
+    /// converted colours are the slide's colours, shown correctly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_profile: Option<String>,
 }
 
 impl ProcessingSummary {
@@ -454,14 +467,20 @@ impl ProcessingSummary {
     pub fn provenance(&self) -> String {
         let not_applied = (!self.not_applied.is_empty())
             .then(|| format!("Not applied: {}.", self.not_applied.join("; ")));
+        let managed = self.color_profile.as_ref().map(|name| {
+            format!("Colour-managed: converted from the slide's ICC profile \"{name}\" to sRGB.")
+        });
         if !self.is_modified() {
-            let scanned = "Colours as scanned (no processing).".to_string();
+            let scanned = match &managed {
+                Some(line) => format!("{line} No other processing."),
+                None => "Colours as scanned (no processing).".to_string(),
+            };
             return match not_applied {
                 Some(line) => format!("{scanned} {line}"),
                 None => scanned,
             };
         }
-        let mut lines = Vec::new();
+        let mut lines: Vec<String> = managed.into_iter().collect();
         if let Some(method) = &self.normalization {
             if self.normalization_pending {
                 lines.push(format!(
@@ -505,8 +524,9 @@ impl ProcessingSummary {
     }
 }
 
-/// A resolved pipeline: stain transform + tone + sharpening, in the
-/// canonical order. Cheap to clone; safe to share across threads.
+/// A resolved pipeline: stain transform + tone, colour management and
+/// sharpening, in the canonical order. Cheap to clone; safe to share across
+/// threads.
 #[derive(Clone, Debug)]
 pub struct ProcessingPipeline {
     stain: StainTransform,
@@ -514,6 +534,8 @@ pub struct ProcessingPipeline {
     tone: ToneAdjustments,
     tone_lut: [u8; 256],
     sharpness: f32,
+    /// The slide's ICC profile → sRGB, when the slide is colour-managed.
+    color_management: Option<Arc<DisplayTransform>>,
     summary: ProcessingSummary,
 }
 
@@ -531,6 +553,7 @@ impl ProcessingPipeline {
             tone: ToneAdjustments::default(),
             tone_lut: ToneAdjustments::default().lut(),
             sharpness: 0.0,
+            color_management: None,
             summary: ProcessingSummary::default(),
         }
     }
@@ -572,12 +595,36 @@ impl ProcessingPipeline {
             tone,
             tone_lut: tone.lut(),
             sharpness: if sharpness > 0.001 { sharpness } else { 0.0 },
+            color_management: None,
             summary,
         }
     }
 
+    /// The pipeline with the slide's colours converted from its ICC profile
+    /// to sRGB (`Some`), or as scanned (`None`).
+    pub fn with_color_management(mut self, transform: Option<Arc<DisplayTransform>>) -> Self {
+        self.summary.color_profile = transform.as_ref().map(|t| t.description().to_string());
+        self.color_management = transform;
+        self
+    }
+
+    /// The colour management applied, if the slide is colour-managed.
+    pub fn color_management(&self) -> Option<&Arc<DisplayTransform>> {
+        self.color_management.as_ref()
+    }
+
+    /// The colour management changes pixels (an sRGB profile does not).
+    fn converts_colors(&self) -> bool {
+        self.color_management
+            .as_ref()
+            .is_some_and(|transform| !transform.is_identity())
+    }
+
     pub fn is_identity(&self) -> bool {
-        self.stain.is_identity() && self.tone.is_identity() && self.sharpness == 0.0
+        self.stain.is_identity()
+            && self.tone.is_identity()
+            && self.sharpness == 0.0
+            && !self.converts_colors()
     }
 
     pub fn stain_transform(&self) -> &StainTransform {
@@ -633,6 +680,14 @@ impl ProcessingPipeline {
         });
     }
 
+    /// The colour management at the end of stage 4, on an RGBA buffer
+    /// (parallel); pixels with alpha 0 are outside the slide and untouched.
+    pub fn apply_color_management(&self, buffer: &mut [u8]) {
+        if let Some(transform) = &self.color_management {
+            transform.apply_rgba(buffer);
+        }
+    }
+
     /// Stage 6 on a full frame.
     pub fn sharpen(&self, buffer: &mut [u8], width: u32, height: u32) {
         postprocess::sharpen_rgba(buffer, width, height, self.sharpness);
@@ -643,11 +698,13 @@ impl ProcessingPipeline {
     /// are blended (straight alpha).
     pub fn apply_rgba(&self, buffer: &mut [u8], width: u32, height: u32, background: [u8; 3]) {
         self.apply_color(buffer);
+        self.apply_color_management(buffer);
         composite_onto(buffer, background);
         self.sharpen(buffer, width, height);
     }
 
-    /// Uniform block for the WGSL in [`wgsl`].
+    /// Uniform block for the WGSL in [`wgsl`]. The colour management's
+    /// table is bound separately (see [`wgsl::ICC_FUNCTIONS`]).
     pub fn gpu_uniform(&self) -> GpuColorUniform {
         GpuColorUniform {
             tone: [
@@ -657,6 +714,11 @@ impl ProcessingPipeline {
                 self.sharpness,
             ],
             stain: self.stain.gpu_params(),
+            icc: if self.converts_colors() {
+                [1.0, GRID_SCALE, (LUT_SIZE - 2) as f32, 0.0]
+            } else {
+                [0.0; 4]
+            },
         }
     }
 }
@@ -686,26 +748,29 @@ pub fn composite_onto(buffer: &mut [u8], background: [u8; 3]) {
     });
 }
 
-/// GPU uniform block for stages 2–3 (and the sharpening amount): 9 × vec4
-/// (144 bytes), std140-compatible. Matches `EovColorParams` in
-/// [`wgsl::COLOR_PARAMS_STRUCT`].
+/// GPU uniform block for stages 2–3, the colour management and the
+/// sharpening amount: 10 × vec4 (160 bytes), std140-compatible. Matches
+/// `EovColorParams` in [`wgsl::COLOR_PARAMS_STRUCT`].
 ///
 /// * `tone` — `x`: 1/γ, `y`: brightness, `z`: contrast, `w`: sharpening
 ///   amount.
 /// * `stain` — see [`StainGpuParams`].
+/// * `icc` — `x`: colour management on (1) or off (0), `y`:
+///   [`GRID_SCALE`], `z`: the last table cell (`LUT_SIZE - 2`).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct GpuColorUniform {
     pub tone: [f32; 4],
     pub stain: StainGpuParams,
+    pub icc: [f32; 4],
 }
 
 impl GpuColorUniform {
-    pub const SIZE: usize = 144;
+    pub const SIZE: usize = 160;
 
-    /// The 36 floats in declaration order (for `bytemuck::cast_slice`).
-    pub fn to_array(&self) -> [f32; 36] {
-        let mut out = [0.0f32; 36];
+    /// The 40 floats in declaration order (for `bytemuck::cast_slice`).
+    pub fn to_array(&self) -> [f32; 40] {
+        let mut out = [0.0f32; 40];
         let rows = [
             self.tone,
             self.stain.mode,
@@ -716,6 +781,7 @@ impl GpuColorUniform {
             self.stain.w[0],
             self.stain.w[1],
             self.stain.w[2],
+            self.icc,
         ];
         for (i, row) in rows.iter().enumerate() {
             out[i * 4..i * 4 + 4].copy_from_slice(row);
@@ -750,6 +816,7 @@ impl GpuColorUniform {
                 inv_stain_r1,
                 deconv,
             ),
+            icc: [0.0; 4],
         }
     }
 }
@@ -776,6 +843,8 @@ struct EovColorParams {
     stain_w0: vec4<f32>,
     stain_w1: vec4<f32>,
     stain_w2: vec4<f32>,
+    // x: colour management on, y: table cells per 8-bit level, z: last cell
+    icc: vec4<f32>,
 };
 "#;
 
@@ -824,6 +893,66 @@ fn eov_tone(rgb: vec3<f32>) -> vec3<f32> {
 
 fn eov_color(rgb: vec3<f32>) -> vec3<f32> {
     return eov_tone(eov_stain(rgb));
+}
+"#;
+
+    /// The colour management (`eov_icc`), on the output of `eov_color`:
+    /// the pixel quantised to 8 bits as on the CPU, interpolated
+    /// tetrahedrally in the slide's table, clamped. Expects `color_params`
+    /// and the table as `icc_lut: texture_3d<f32>` (`LUT_SIZE`³ texels of
+    /// `DisplayTransform::gpu_texels`: x blue, y green, z red) in scope.
+    pub const ICC_FUNCTIONS: &str = r#"
+// ICC profile -> sRGB (eov_common::color_management).
+fn eov_icc_node(r: i32, g: i32, b: i32) -> vec3<f32> {
+    return textureLoad(icc_lut, vec3<i32>(b, g, r), 0).rgb;
+}
+
+fn eov_icc(rgb: vec3<f32>) -> vec3<f32> {
+    if (color_params.icc.x < 0.5) {
+        return rgb;
+    }
+    // The 8-bit pixel (stage 4), rounded half up as on the CPU.
+    let q = floor(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + vec3<f32>(0.5));
+    let p = q * color_params.icc.y;
+    let i = min(vec3<i32>(floor(p)), vec3<i32>(i32(color_params.icc.z + 0.5)));
+    let f = p - vec3<f32>(i);
+    let r = i.x;
+    let g = i.y;
+    let b = i.z;
+    let c000 = eov_icc_node(r, g, b);
+    let c111 = eov_icc_node(r + 1, g + 1, b + 1);
+    var c1: vec3<f32>;
+    var c2: vec3<f32>;
+    var w: vec4<f32>;
+    if (f.x >= f.y) {
+        if (f.y >= f.z) {
+            c1 = eov_icc_node(r + 1, g, b);
+            c2 = eov_icc_node(r + 1, g + 1, b);
+            w = vec4<f32>(1.0 - f.x, f.x - f.y, f.y - f.z, f.z);
+        } else if (f.x >= f.z) {
+            c1 = eov_icc_node(r + 1, g, b);
+            c2 = eov_icc_node(r + 1, g, b + 1);
+            w = vec4<f32>(1.0 - f.x, f.x - f.z, f.z - f.y, f.y);
+        } else {
+            c1 = eov_icc_node(r, g, b + 1);
+            c2 = eov_icc_node(r + 1, g, b + 1);
+            w = vec4<f32>(1.0 - f.z, f.z - f.x, f.x - f.y, f.y);
+        }
+    } else if (f.z >= f.y) {
+        c1 = eov_icc_node(r, g, b + 1);
+        c2 = eov_icc_node(r, g + 1, b + 1);
+        w = vec4<f32>(1.0 - f.z, f.z - f.y, f.y - f.x, f.x);
+    } else if (f.z >= f.x) {
+        c1 = eov_icc_node(r, g + 1, b);
+        c2 = eov_icc_node(r, g + 1, b + 1);
+        w = vec4<f32>(1.0 - f.y, f.y - f.z, f.z - f.x, f.x);
+    } else {
+        c1 = eov_icc_node(r, g + 1, b);
+        c2 = eov_icc_node(r + 1, g + 1, b);
+        w = vec4<f32>(1.0 - f.y, f.y - f.x, f.x - f.z, f.z);
+    }
+    let out = w.x * c000 + w.y * c1 + w.z * c2 + w.w * c111;
+    return clamp(out, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 "#;
 
@@ -922,6 +1051,68 @@ fn fs_eov_sharpen(input: EovSharpenVertex) -> @location(0) vec4<f32> {
             *value = (rgb[ch] * (-delta).exp()).clamp(0.0, 1.0);
         }
         out
+    }
+
+    /// Line-by-line Rust transcription of `eov_icc`, reading the nodes from
+    /// `lut` (`DisplayTransform::lut`): what the shader computes for an
+    /// unquantised `[0, 1]` input.
+    pub fn emulate_icc(params: &GpuColorUniform, lut: &[[f32; 3]], rgb: [f32; 3]) -> [f32; 3] {
+        let icc = params.icc;
+        if icc[0] < 0.5 {
+            return rgb;
+        }
+        let n = crate::color_management::LUT_SIZE;
+        let node = |r: i32, g: i32, b: i32| lut[(r as usize * n + g as usize) * n + b as usize];
+        let q = rgb.map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5).floor());
+        let p = q.map(|v| v * icc[1]);
+        let last = (icc[2] + 0.5) as i32;
+        let i = p.map(|v| (v.floor() as i32).min(last));
+        let f = [p[0] - i[0] as f32, p[1] - i[1] as f32, p[2] - i[2] as f32];
+        let (r, g, b) = (i[0], i[1], i[2]);
+        let c000 = node(r, g, b);
+        let c111 = node(r + 1, g + 1, b + 1);
+        let (c1, c2, w) = if f[0] >= f[1] {
+            if f[1] >= f[2] {
+                (
+                    node(r + 1, g, b),
+                    node(r + 1, g + 1, b),
+                    [1.0 - f[0], f[0] - f[1], f[1] - f[2], f[2]],
+                )
+            } else if f[0] >= f[2] {
+                (
+                    node(r + 1, g, b),
+                    node(r + 1, g, b + 1),
+                    [1.0 - f[0], f[0] - f[2], f[2] - f[1], f[1]],
+                )
+            } else {
+                (
+                    node(r, g, b + 1),
+                    node(r + 1, g, b + 1),
+                    [1.0 - f[2], f[2] - f[0], f[0] - f[1], f[1]],
+                )
+            }
+        } else if f[2] >= f[1] {
+            (
+                node(r, g, b + 1),
+                node(r, g + 1, b + 1),
+                [1.0 - f[2], f[2] - f[1], f[1] - f[0], f[0]],
+            )
+        } else if f[2] >= f[0] {
+            (
+                node(r, g + 1, b),
+                node(r, g + 1, b + 1),
+                [1.0 - f[1], f[1] - f[2], f[2] - f[0], f[0]],
+            )
+        } else {
+            (
+                node(r, g + 1, b),
+                node(r + 1, g + 1, b),
+                [1.0 - f[1], f[1] - f[0], f[0] - f[2], f[2]],
+            )
+        };
+        [0, 1, 2].map(|c| {
+            (w[0] * c000[c] + w[1] * c1[c] + w[2] * c2[c] + w[3] * c111[c]).clamp(0.0, 1.0)
+        })
     }
 
     fn emulate_tone(params: &GpuColorUniform, rgb: [f32; 3]) -> [f32; 3] {
@@ -1349,8 +1540,100 @@ mod tests {
         assert!(summary.alters_stain_colors());
     }
 
+    /// The colour management stage: the WGSL transcription matches the CPU
+    /// table lookup, and the pipeline converts slide pixels only.
     #[test]
-    fn uniform_layout_is_144_bytes() {
+    fn colour_management_matches_on_cpu_and_gpu() {
+        let transform = Arc::new(
+            DisplayTransform::from_icc(&crate::color_management::test_profiles::adobe_rgb())
+                .unwrap(),
+        );
+        let settings = ColorSettings {
+            tone: ToneAdjustments::new(1.2, 0.02, 1.1),
+            ..ColorSettings::default()
+        };
+        let pipeline = settings
+            .pipeline(None)
+            .with_color_management(Some(Arc::clone(&transform)));
+        let params = pipeline.gpu_uniform();
+        assert_eq!(params.icc[0], 1.0);
+        let mut worst = 0u8;
+        for rgb in sample_pixels() {
+            let cpu = transform.apply_pixel(pipeline.color_pixel(rgb));
+            let unit = rgb.map(|v| f32::from(v) / 255.0);
+            let gpu =
+                wgsl::emulate_icc(&params, transform.lut(), wgsl::emulate_color(&params, unit))
+                    .map(|v| (v * 255.0).round() as u8);
+            for c in 0..3 {
+                worst = worst.max(cpu[c].abs_diff(gpu[c]));
+            }
+        }
+        assert!(
+            worst <= 1,
+            "CPU and GPU colour management differ by {worst}"
+        );
+
+        // Stage order: tone, then the conversion, then the background.
+        let mut frame = vec![200, 100, 150, 255, 0, 0, 0, 0];
+        pipeline.apply_rgba(&mut frame, 2, 1, [30, 30, 30]);
+        assert_eq!(
+            &frame[..3],
+            &transform.apply_pixel(pipeline.color_pixel([200, 100, 150]))
+        );
+        assert_eq!(
+            &frame[4..],
+            &[30, 30, 30, 255],
+            "the background is not converted"
+        );
+
+        // An sRGB profile is no conversion at all.
+        let srgb = Arc::new(
+            DisplayTransform::from_icc(&crate::color_management::test_profiles::srgb()).unwrap(),
+        );
+        let plain = ProcessingPipeline::identity().with_color_management(Some(srgb));
+        assert!(plain.is_identity());
+        assert_eq!(plain.gpu_uniform().icc, [0.0; 4]);
+        assert!(
+            !ProcessingPipeline::identity()
+                .with_color_management(Some(transform))
+                .is_identity()
+        );
+    }
+
+    #[test]
+    fn colour_management_is_named_in_the_provenance_only() {
+        let transform = Arc::new(
+            DisplayTransform::from_icc(&crate::color_management::test_profiles::display_p3())
+                .unwrap(),
+        );
+        let name = transform.description().to_string();
+        let managed = ProcessingPipeline::identity().with_color_management(Some(transform));
+        let summary = managed.summary();
+        assert_eq!(summary.color_profile.as_deref(), Some(name.as_str()));
+        assert!(!summary.is_modified());
+        assert_eq!(summary.badge(), None);
+        assert_eq!(
+            summary.provenance(),
+            format!(
+                "Colour-managed: converted from the slide's ICC profile \"{name}\" to sRGB. No other processing."
+            )
+        );
+        let toned = ColorSettings {
+            tone: ToneAdjustments::new(1.4, 0.0, 1.0),
+            ..ColorSettings::default()
+        }
+        .pipeline(None)
+        .with_color_management(managed.color_management().cloned());
+        assert!(toned.summary().provenance().starts_with("Colour-managed"));
+        assert!(toned.summary().provenance().contains("Tone: gamma 1.40."));
+        assert_eq!(
+            ProcessingPipeline::identity().summary().provenance(),
+            "Colours as scanned (no processing)."
+        );
+    }
+
+    #[test]
+    fn uniform_layout_is_160_bytes() {
         assert_eq!(
             std::mem::size_of::<GpuColorUniform>(),
             GpuColorUniform::SIZE
@@ -1370,6 +1653,7 @@ mod tests {
         let a = u.to_array();
         assert_eq!(&a[0..4], &[0.5, 0.1, 1.1, 0.3]);
         assert_eq!(a[4], 1.0);
+        assert_eq!(&a[36..40], &[0.0; 4], "no colour management");
     }
 
     #[test]
@@ -1404,8 +1688,17 @@ mod tests {
             wgsl::COLOR_PARAMS_STRUCT,
             wgsl::COLOR_FUNCTIONS
         );
+        let icc_module = format!(
+            "{}\n@group(0) @binding(0) var<uniform> color_params: EovColorParams;\n\
+             @group(0) @binding(1) var icc_lut: texture_3d<f32>;\n{}\n{}\n\
+             @fragment fn fs_test(@location(0) rgb: vec3<f32>) -> @location(0) vec4<f32> {{ return vec4<f32>(eov_icc(eov_color(rgb)), 1.0); }}",
+            wgsl::COLOR_PARAMS_STRUCT,
+            wgsl::COLOR_FUNCTIONS,
+            wgsl::ICC_FUNCTIONS
+        );
         for (name, source) in [
             ("color", color_module.as_str()),
+            ("icc", icc_module.as_str()),
             ("sharpen", wgsl::SHARPEN_POST_PASS),
         ] {
             let module = naga::front::wgsl::parse_str(source)

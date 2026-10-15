@@ -12,6 +12,8 @@ pub(crate) struct PaneRenderCacheEntry {
     pub(crate) minimap_thumbnail: Option<Image>,
     /// How `minimap_thumbnail` is turned (it follows the pane's view).
     pub(crate) minimap_orientation: eov_common::viewport::Orientation,
+    /// The colour profile `minimap_thumbnail` is converted from, if any.
+    pub(crate) minimap_color: Option<u64>,
     pub(crate) cpu_frame: Option<CachedCpuFrame>,
     /// Reused for the frames shown while the view moves (CPU backend).
     pub(crate) preview_buffer: Vec<u8>,
@@ -23,6 +25,7 @@ impl Clone for PaneRenderCacheEntry {
             content: self.content.clone(),
             minimap_thumbnail: self.minimap_thumbnail.clone(),
             minimap_orientation: self.minimap_orientation,
+            minimap_color: self.minimap_color,
             cpu_frame: None,
             preview_buffer: Vec::new(),
         }
@@ -179,10 +182,12 @@ pub(crate) fn set_cached_pane_minimap(
     pane: PaneId,
     image: Option<Image>,
     orientation: eov_common::viewport::Orientation,
+    color: Option<u64>,
 ) {
     with_pane_render_cache(pane.0 + 1, |cache| {
         cache[pane.0].minimap_thumbnail = image;
         cache[pane.0].minimap_orientation = orientation;
+        cache[pane.0].minimap_color = color;
     });
 }
 

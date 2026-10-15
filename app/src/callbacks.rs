@@ -460,6 +460,51 @@ pub(crate) fn reset_linked_alignment(ui: &AppWindow, state: &Arc<RwLock<AppState
     ui.set_status_text("The panes are aligned as they are now".into());
 }
 
+/// Turns the colour management (ICC profile → sRGB) of `pane`'s slide on or
+/// off. Returns whether it is on now; `None` (and a status message) when
+/// the slide has no profile eov can use.
+pub(crate) fn toggle_pane_color_management(
+    ui: &AppWindow,
+    state: &mut AppState,
+    pane: PaneId,
+) -> Option<bool> {
+    let file_id = state.active_file_id_for_pane(pane)?;
+    let file = state.get_file_mut(file_id)?;
+    let crate::color::SlideProfile::Ready(transform) =
+        crate::color::slide_profile(file.id, &file.wsi)
+    else {
+        ui.set_status_text("This slide has no colour profile eov can use".into());
+        return None;
+    };
+    file.color_management = !file.color_management;
+    let on = file.color_management;
+    file.invalidate_render_state();
+    state.request_render();
+    ui.set_status_text(
+        if on {
+            format!(
+                "Colour-managed: the slide's profile \"{}\" is converted to sRGB",
+                transform.description()
+            )
+        } else {
+            "Colours as scanned (colour management off)".to_string()
+        }
+        .into(),
+    );
+    Some(on)
+}
+
+/// Turns the colour management of the focused pane's slide on or off. For
+/// key bindings; returns whether it is on now (`None`: no usable profile).
+pub(crate) fn toggle_color_management(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+) -> Option<bool> {
+    let mut state = state.write();
+    let pane = state.active_viewport_pane();
+    toggle_pane_color_management(ui, &mut state, pane)
+}
+
 fn toggle_viewport_lock(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let viewport_lock_enabled = {
         let mut state = state.write();
@@ -2443,6 +2488,25 @@ pub fn setup_callbacks(
         let tile_cache = Arc::clone(&tile_cache);
         let render_timer = Rc::clone(&render_timer);
         let ui_weak = ui_weak.clone();
+
+        ui.on_hud_color_management_toggled({
+            let state_handle = Arc::clone(&state_handle);
+            let tile_cache = Arc::clone(&tile_cache);
+            let render_timer = Rc::clone(&render_timer);
+            let ui_weak = ui_weak.clone();
+            move |pane| {
+                let Some(ui) = ui_weak.upgrade() else {
+                    return;
+                };
+                {
+                    let mut state = state_handle.write();
+                    let pane = pane_from_index(pane);
+                    state.set_focused_pane(pane);
+                    toggle_pane_color_management(&ui, &mut state, pane);
+                }
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
 
         ui.on_hud_deconv_h_view_toggled(move |pane| {
             {

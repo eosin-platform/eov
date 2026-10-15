@@ -81,6 +81,9 @@ struct CpuPaneSnapshot {
     content_missing: bool,
     minimap_missing: bool,
     minimap_image: Option<Image>,
+    /// The colour profile `minimap_image` is converted from (see
+    /// [`minimap_color`]).
+    minimap_color: Option<u64>,
     tile_manager: Arc<TileManager>,
     tile_loader: Arc<TileLoader>,
     viewport_state: eov_common::ViewportState,
@@ -823,19 +826,31 @@ pub(crate) fn thumbnail_image_for_file(
         orientation,
         buffer.make_mut_bytes(),
     );
+    // In the panes' colours.
+    if let Some(transform) = crate::color::file_color_management(file) {
+        transform.apply_rgba(buffer.make_mut_bytes());
+    }
     Some(Image::from_rgba8(buffer))
 }
 
+/// The colour profile a slide's minimap is converted from, if any.
+fn minimap_color(file: &OpenFile) -> Option<u64> {
+    crate::color::file_color_management(file).map(|transform| transform.id())
+}
+
 /// Whether the pane's minimap needs its thumbnail (again): none yet, or
-/// turned differently from the view.
+/// turned or colour-managed differently from the view.
 fn minimap_stale(
     pane: PaneId,
     pane_count: usize,
     orientation: eov_common::viewport::Orientation,
+    color: Option<u64>,
 ) -> bool {
     crate::with_pane_render_cache(pane_count, |cache| {
         cache.get(pane.0).is_none_or(|entry| {
-            entry.minimap_thumbnail.is_none() || entry.minimap_orientation != orientation
+            entry.minimap_thumbnail.is_none()
+                || entry.minimap_orientation != orientation
+                || entry.minimap_color != color
         })
     })
 }
@@ -1033,7 +1048,7 @@ pub(crate) fn update_and_render(
     }
 
     let mut keep_running =
-        render_requested || cpu_jobs_pending || crate::color::fits_pending() || gpu_filters::busy();
+        render_requested || cpu_jobs_pending || crate::color::jobs_pending() || gpu_filters::busy();
     let mut rendered_frame = completed_cpu_frame;
     let filter_chain = state.filter_chain.clone();
     let filter_revision = state.filter_revision;
@@ -1060,7 +1075,8 @@ pub(crate) fn update_and_render(
             .pane_state(pane)
             .map(|pane_state| pane_state.viewport.viewport.orientation)
             .unwrap_or_default();
-        let minimap_missing = minimap_stale(pane, pane_count, orientation);
+        let color = minimap_color(file);
+        let minimap_missing = minimap_stale(pane, pane_count, orientation, color);
         let content_missing = crate::with_pane_render_cache(pane_count, |cache| {
             cache
                 .get(pane.0)
@@ -1077,6 +1093,7 @@ pub(crate) fn update_and_render(
                 pane,
                 thumbnail_image_for_file(file, orientation),
                 orientation,
+                color,
             );
         }
 
@@ -1177,7 +1194,7 @@ fn update_and_render_cpu(
     }
 
     let mut keep_running =
-        frame.render_requested || frame.cpu_jobs_pending || crate::color::fits_pending();
+        frame.render_requested || frame.cpu_jobs_pending || crate::color::jobs_pending();
     let mut rendered_frame = completed_cpu_frame;
 
     for pane_index in 0..frame.pane_count {
@@ -1198,6 +1215,7 @@ fn update_and_render_cpu(
                 snapshot.pane,
                 snapshot.minimap_image.clone(),
                 snapshot.viewport_state.viewport.orientation,
+                snapshot.minimap_color,
             );
         }
 
@@ -1295,7 +1313,8 @@ fn collect_cpu_frame_snapshot(
             .pane_state(pane)
             .map(|pane_state| pane_state.viewport.viewport.orientation)
             .unwrap_or_default();
-        let minimap_missing = minimap_stale(pane, pane_count, orientation);
+        let minimap_color = minimap_color(file);
+        let minimap_missing = minimap_stale(pane, pane_count, orientation, minimap_color);
         let tile_manager = Arc::clone(&file.tile_manager);
         let tile_loader = Arc::clone(&file.tile_loader);
         let minimap_image = if file_switched || minimap_missing {
@@ -1401,6 +1420,7 @@ fn collect_cpu_frame_snapshot(
             content_missing,
             minimap_missing,
             minimap_image,
+            minimap_color,
             tile_manager,
             tile_loader,
             viewport_state,
@@ -2218,6 +2238,7 @@ fn render_pane_gpu(
                 orientation: vp.orientation,
                 draws,
                 color: color.pipeline.gpu_uniform(),
+                icc: color.pipeline.color_management().cloned(),
                 sharpness: color.pipeline.sharpness(),
                 composite: !filtered,
                 readback,

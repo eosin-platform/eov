@@ -296,6 +296,9 @@ pub struct OpenFile {
     /// Pixel size (µm/px, both axes) set by the user for a slide that does
     /// not record one, or records a wrong one.
     pub calibration_override: Option<f64>,
+    /// Convert the slide's colours from its ICC profile to sRGB, when it
+    /// has a usable one (on by default; see `crate::color`).
+    pub color_management: bool,
 }
 
 pub struct NewOpenFile {
@@ -1299,6 +1302,7 @@ impl AppState {
             roi: None,
             measurements: Vec::new(),
             calibration_override: None,
+            color_management: true,
         });
 
         let target_pane = if target_pane.0 < self.panes.len() {

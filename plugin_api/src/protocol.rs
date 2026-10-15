@@ -133,6 +133,10 @@ pub struct FileInfo {
     /// Names of associated images (`label`, `macro`, `thumbnail`, …).
     #[serde(default)]
     pub associated_images: Vec<String>,
+    /// The slide has an ICC colour profile. eov converts its colours to
+    /// sRGB for display and export (unless the user turns that off, see
+    /// [`DisplayAdjustments::color_managed`]); region reads and filter
+    /// frames always carry the slide's own, unconverted colours.
     #[serde(default)]
     pub has_icc_profile: bool,
     /// Stain label parsed from slide metadata (e.g. `"H&E"`), if any.
@@ -1738,6 +1742,13 @@ pub struct DisplayAdjustments {
     /// What the viewer shows as its colour badge (empty when unmodified).
     #[serde(default)]
     pub badge: String,
+    /// The pane converts the slide's colours from its ICC profile to sRGB
+    /// (colour management), after every other adjustment and after plugin
+    /// filters. Region reads and filter frames are never converted: to
+    /// match an overlay derived from slide pixels to the screen exactly,
+    /// convert it with the slide's profile too.
+    #[serde(default)]
+    pub color_managed: bool,
 }
 
 impl Default for DisplayAdjustments {
@@ -1750,6 +1761,7 @@ impl Default for DisplayAdjustments {
             stain_normalization: None,
             modified: false,
             badge: String::new(),
+            color_managed: false,
         }
     }
 }
