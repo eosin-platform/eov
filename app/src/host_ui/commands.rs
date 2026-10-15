@@ -223,6 +223,7 @@ fn apply_view(host: &UiHost, command: ViewCommand) {
         let mut state = host.state.write();
         let pane = match &command {
             ViewCommand::Set(args) => args.pane,
+            ViewCommand::Orientation(args) => args.pane,
             ViewCommand::Pan(args) => args.pane,
             ViewCommand::Zoom(args) => args.pane,
             ViewCommand::Fit(pane) => *pane,
@@ -247,6 +248,13 @@ fn apply_view(host: &UiHost, command: ViewCommand) {
                     viewport.smooth_set_center_zoom(args.center_x, args.center_y, args.zoom);
                 } else {
                     viewport.set_center_zoom(args.center_x, args.center_y, args.zoom);
+                }
+            }
+            ViewCommand::Orientation(args) => {
+                if let Some(orientation) =
+                    eov_common::viewport::Orientation::from_degrees(args.rotation_deg, args.flipped)
+                {
+                    viewport.set_orientation(orientation);
                 }
             }
             ViewCommand::Pan(args) => viewport.viewport.pan(-args.dx, -args.dy),

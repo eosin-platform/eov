@@ -488,6 +488,7 @@ impl MockHost {
             | methods::VIEW_ZOOM
             | methods::VIEW_FIT
             | methods::VIEW_FRAME
+            | methods::VIEW_ORIENTATION
             | methods::APP_CYCLE_PANE
             | methods::APP_CYCLE_TAB
             | methods::APP_SERIES => null,

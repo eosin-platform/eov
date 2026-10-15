@@ -19,6 +19,25 @@ pub(crate) struct Bookmark {
     pub center_y: f64,
     /// Screen pixels per level-0 pixel.
     pub zoom: f64,
+    /// Clockwise view rotation in degrees (a multiple of 90); absent in
+    /// bookmarks made before views could turn.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rotation: u32,
+    /// Mirrored left to right (after the rotation).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flipped: bool,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
+impl Bookmark {
+    /// How the bookmarked view is turned.
+    pub fn orientation(&self) -> eov_common::viewport::Orientation {
+        eov_common::viewport::Orientation::from_degrees(f64::from(self.rotation), self.flipped)
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -129,6 +148,8 @@ mod tests {
             center_x: 10.0,
             center_y: 20.0,
             zoom: 0.5,
+            rotation: 0,
+            flipped: false,
         }
     }
 
@@ -153,5 +174,35 @@ mod tests {
         };
         assert!(add_in(&path, "slide-a", "a.svs", invalid).is_err());
         assert_eq!(list_in(&path, "slide-b").len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+
+    #[test]
+    fn bookmarks_keep_their_turn_and_old_ones_read() {
+        let old = "[slide.abc]\nname = \"a.svs\"\n[[slide.abc.bookmark]]\nname = \"x\"\ncenter_x = 1.0\ncenter_y = 2.0\nzoom = 0.5\n";
+        let store: Store = toml::from_str(old).unwrap();
+        let bookmark = &store.slide["abc"].bookmark[0];
+        assert_eq!(
+            bookmark.orientation(),
+            eov_common::viewport::Orientation::IDENTITY
+        );
+        let turned = Bookmark {
+            rotation: 270,
+            flipped: true,
+            ..bookmark.clone()
+        };
+        let text = toml::to_string(&turned).unwrap();
+        let back: Bookmark = toml::from_str(&text).unwrap();
+        assert_eq!(back, turned);
+        assert_eq!(
+            back.orientation(),
+            eov_common::viewport::Orientation::new(3, true)
+        );
+        // An upright bookmark is written as before.
+        assert!(!toml::to_string(bookmark).unwrap().contains("rotation"));
     }
 }

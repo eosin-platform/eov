@@ -253,6 +253,8 @@ pub fn hidden_viewport_info() -> ViewportInfo {
         image_width: 1.0,
         image_height: 1.0,
         level: 0,
+        rotation: 0,
+        flipped: false,
     }
 }
 
@@ -343,6 +345,8 @@ pub fn update_tabs(
                     level: file.tile_manager.wsi().best_level_for_downsample(
                         vp.effective_downsample() / f64::from(ui.window().scale_factor()).max(1e-6),
                     ) as i32,
+                    rotation: vp.orientation.degrees() as i32,
+                    flipped: vp.orientation.flipped(),
                 };
                 // Relative to what the thumbnail shows (the content bounds
                 // of sparse slides).
@@ -382,9 +386,11 @@ pub fn update_tabs(
                         })
                         .unwrap_or_default()
                         .into();
-                        if let Some((um_x, _, _)) = spacing
+                        let turned = ps.viewport.viewport.orientation.swaps_axes();
+                        if let Some((um_x, um_y, _)) = spacing
                             && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
-                                um_x / ps.viewport.viewport.zoom.max(1e-12),
+                                if turned { um_y } else { um_x }
+                                    / ps.viewport.viewport.zoom.max(1e-12),
                                 SCALE_BAR_MAX_PX,
                                 ps.hud.measurement_unit,
                             )

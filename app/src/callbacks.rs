@@ -311,6 +311,45 @@ pub(crate) fn magnify_active_viewport(
     Ok(true)
 }
 
+/// Turns the focused pane's slide `quarter_turns` × 90° clockwise as seen on
+/// screen (negative: counterclockwise), about the view centre; a fitted
+/// view stays fitted. Level-0 coordinates are unaffected. Callers mirror
+/// locked panes and request a render (as with the other `*_active_viewport`
+/// actions).
+pub(crate) fn rotate_active_viewport(state: &mut AppState, quarter_turns: i32) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let orientation = viewport.viewport.orientation.turned(quarter_turns);
+    viewport.set_orientation(orientation);
+    true
+}
+
+/// Mirrors the focused pane's slide left to right as seen on screen.
+pub(crate) fn flip_active_viewport(state: &mut AppState) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let orientation = viewport.viewport.orientation.mirrored();
+    viewport.set_orientation(orientation);
+    true
+}
+
+/// Shows the focused pane's slide upright and unmirrored again.
+pub(crate) fn reset_active_orientation(state: &mut AppState) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let changed = !viewport.viewport.orientation.is_identity();
+    viewport.set_orientation(eov_common::viewport::Orientation::IDENTITY);
+    changed
+}
+
+/// `hud-orientation-changed` actions (see `hud-toolbar.slint`).
+const HUD_ROTATE_LEFT: i32 = 0;
+const HUD_ROTATE_RIGHT: i32 = 1;
+const HUD_FLIP: i32 = 2;
+
 pub(crate) fn zoom_active_viewport(state: &mut AppState, factor: f64) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
         return false;
@@ -1620,6 +1659,8 @@ pub fn setup_callbacks(
                 if let Some(vs) = state.active_viewport_mut() {
                     let nx = (nx as f64).clamp(0.0, 1.0);
                     let ny = (ny as f64).clamp(0.0, 1.0);
+                    // The minimap shows the slide turned like the view.
+                    let (nx, ny) = vs.viewport.orientation.to_image_normalized(nx, ny);
                     let vp = &mut vs.viewport;
                     let (new_x, new_y) = match region {
                         Some(region) => (
@@ -2238,6 +2279,34 @@ pub fn setup_callbacks(
                 let mut state = state_handle.write();
                 state.set_focused_pane(pane_from_index(pane));
                 let changed = zoom_active_viewport(&mut state, 1.0 / ACTION_ZOOM_FACTOR);
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
+                    state.request_render();
+                }
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
+    // Rotation and mirroring of a pane's view (HUD buttons).
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_hud_orientation_changed(move |pane, action| {
+            {
+                let mut state = state_handle.write();
+                state.set_focused_pane(pane_from_index(pane));
+                let changed = match action {
+                    HUD_ROTATE_LEFT => rotate_active_viewport(&mut state, -1),
+                    HUD_ROTATE_RIGHT => rotate_active_viewport(&mut state, 1),
+                    HUD_FLIP => flip_active_viewport(&mut state),
+                    _ => reset_active_orientation(&mut state),
+                };
                 let synced = state.mirror_locked_viewports_from_active();
                 if changed || synced {
                     state.request_render();

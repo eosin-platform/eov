@@ -449,6 +449,16 @@ impl HostApi {
                 self.push(Command::View(ViewCommand::Set(args)));
                 null
             }
+            methods::VIEW_ORIENTATION => {
+                let args: ViewOrientationArgs = parse(args)?;
+                if eov_common::viewport::Orientation::from_degrees(args.rotation_deg, args.flipped)
+                    .is_none()
+                {
+                    return Err(invalid("rotation_deg must be a multiple of 90"));
+                }
+                self.push(Command::View(ViewCommand::Orientation(args)));
+                null
+            }
             methods::VIEW_PAN => {
                 let args: ViewPanArgs = parse(args)?;
                 finite(&[args.dx, args.dy])?;

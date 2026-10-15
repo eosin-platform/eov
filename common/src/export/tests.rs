@@ -64,6 +64,34 @@ fn full_resolution_region_export_is_pixel_exact_in_any_band_size() {
     }
 }
 
+/// A turned view exports as shown: the unturned export, turned, in any band
+/// size (bands of a quarter turn are column strips of the slide).
+#[test]
+fn turned_views_export_turned() {
+    use crate::viewport::Orientation;
+    let dir = tempfile::tempdir().unwrap();
+    let manager = slide(dir.path());
+    let mut request = ExportRequest::region(37.0, 51.0, 300.0, 200.0, 1.0, (600.0, 400.0));
+    request.filtering = FilteringMode::Bilinear;
+    let (plain, _) = render(&manager, &request);
+    for orientation in Orientation::all() {
+        let mut turned = request.clone();
+        turned.viewport.orientation = orientation;
+        let (w, h) = orientation.swap(300.0, 200.0);
+        turned.viewport.width = w;
+        turned.viewport.height = h;
+        let mut expected = vec![0; plain.pixels.len()];
+        crate::blitter::orient_frame(&plain.pixels, 300, 200, orientation, &mut expected);
+        for band in [None, Some(7), Some(64)] {
+            turned.band_rows = band;
+            let (image, report) = render(&manager, &turned);
+            assert_eq!((image.width, image.height), (w as usize, h as usize));
+            assert!(report.is_complete());
+            assert!(image.pixels == expected, "{orientation:?}, band {band:?}");
+        }
+    }
+}
+
 #[test]
 fn processing_sharpening_and_overlays_are_band_independent() {
     let dir = tempfile::tempdir().unwrap();

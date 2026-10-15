@@ -99,7 +99,7 @@ The `Host` methods, grouped (see the API docs for every type):
 | Pixels | `read_region` (any level, straight or premultiplied alpha, through a plugin-private handle), `read_associated_image` (label, macro, thumbnail) |
 | Overlays | `create_layer` → `Layer`: `upsert`, `remove_objects`, `clear`, `select`, `highlight`, `put_raster` (split large rasters into chunk objects to update parts of them), `set_visible`, `set_visible_in_pane`, `set_min_zoom`, `update` |
 | UI | `add_toolbar_button`, `add_hud_button`, `register_tool` (host-drawn shapes, point placement, momentary hotkeys, custom tools with raw pointer and key input; `ToolSpec.keys` claims only the keys a tool uses, leaving the rest to eov), `register_hotkey`, `set_badge` (notices fixed to the panes), `open_surface` (sidebars, modals and windows from `.slint` files with properties and callbacks), `confirm`, `open_file_dialog`, `save_file_dialog`, `copy_text` |
-| Navigation | `set_view`, `pan`, `zoom`, `fit`, `frame`, `display_adjustments`, `cycle_pane`, `cycle_tab`, `series`, `open_file`, `request_render` |
+| Navigation | `set_view`, `set_view_orientation`, `pan`, `zoom`, `fit`, `frame`, `display_adjustments`, `cycle_pane`, `cycle_tab`, `series`, `open_file`, `request_render` |
 | Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
 | Filters | `register_filter`, `set_filter_enabled` (CPU RGBA filters run in the render path) |
 | Settings | `setting`, `set_setting`, `remove_setting` (persisted per plugin) |
@@ -121,6 +121,16 @@ Coordinates are level-0 pixels of the slide (x right, y down). Layer ids are
 unique per plugin across all open slides, so include the file id when a
 slide gets its own layer (`format!("cells-{file_id}")`). Panes are named by
 stable ids that survive reordering.
+
+A pane's view may be turned: `ViewInfo::rotation_deg` (clockwise, in steps
+of 90°) and then `ViewInfo::flipped` (mirrored left to right). Level-0
+coordinates, overlays, measurements and the ROI are unaffected; only the
+mapping to the pane changes. Use `ViewInfo::image_to_screen` and
+`screen_to_image` for pane positions instead of `(x - visible.x) * zoom`
+(`visible` is the bounding box of the visible area). Filter frames arrive
+as shown on screen, turned; their `FilterView` carries no orientation
+(the FFI struct is frozen), so read it from the pane's `ViewInfo` in the
+snapshot.
 
 ## Plugin manifest
 

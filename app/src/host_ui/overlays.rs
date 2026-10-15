@@ -131,6 +131,7 @@ fn view_transform(viewport: &Viewport, scale: f64, calibration: &Calibration) ->
         height: viewport.height,
         scale,
         mpp: calibration.average(),
+        orientation: viewport.orientation,
     }
 }
 
@@ -321,15 +322,21 @@ impl UiHost {
             .collect();
         sync_model(&pane.labels, labels);
 
-        let Some(displayed) = &pane.displayed else {
+        let Some(displayed) = pane
+            .displayed
+            .as_ref()
+            .filter(|displayed| displayed.view.orientation == view.orientation)
+        else {
             return empty(pane);
         };
-        // Reproject the displayed frame onto the current view.
+        // Reproject the displayed frame onto the current view: same turn,
+        // so its top-left corner stays its top-left corner.
         let ratio = view.zoom / displayed.view.zoom.max(1e-12);
+        let (x, y) = view.to_logical(displayed.view.image_at_logical(0.0, 0.0));
         PaneOverlayFields {
             image: displayed.image.clone(),
-            x: ((displayed.view.left - view.left) * view.zoom) as f32,
-            y: ((displayed.view.top - view.top) * view.zoom) as f32,
+            x: x as f32,
+            y: y as f32,
             width: (displayed.view.width * ratio) as f32,
             height: (displayed.view.height * ratio) as f32,
             labels: ModelRc::from(Rc::clone(&pane.labels)),

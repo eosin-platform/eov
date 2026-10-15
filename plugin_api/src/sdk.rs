@@ -621,6 +621,25 @@ impl Host {
         self.command(methods::VIEW_FIT, &PaneArgs { pane })
     }
 
+    /// Turns a pane's view (default: the focused one): `rotation_deg`
+    /// clockwise (a multiple of 90), then mirrored left to right if
+    /// `flipped`. Level-0 coordinates are unaffected.
+    pub fn set_view_orientation(
+        &self,
+        pane: Option<PaneId>,
+        rotation_deg: f64,
+        flipped: bool,
+    ) -> HostResult<()> {
+        self.command(
+            methods::VIEW_ORIENTATION,
+            &ViewOrientationArgs {
+                pane,
+                rotation_deg,
+                flipped,
+            },
+        )
+    }
+
     /// How a pane displays its slide (tone adjustments, normalisation), so
     /// overlays made from slide pixels can match it.
     pub fn display_adjustments(&self, pane: Option<PaneId>) -> HostResult<DisplayAdjustments> {

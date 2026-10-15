@@ -34,7 +34,8 @@ pub struct CachedCpuFrame {
     /// only they change).
     pub pixels: Vec<u8>,
     /// The same frame before colour processing, transparent outside the
-    /// slide. Interaction previews reproject this one, so that no pixel is
+    /// slide, and axis-aligned with the slide (`viewport.aligned()`, not
+    /// turned). Interaction previews reproject this one, so that no pixel is
     /// colour-processed twice. Empty for frames rendered on the GPU.
     pub source: Vec<u8>,
 }
@@ -334,10 +335,11 @@ pub fn composite_preview(
         });
 }
 
-/// Composites the job's tiles into `buffer` (transparent outside the slide),
-/// keeps that unprocessed frame in `source`, colour-processes `buffer`, and
-/// returns the filtered frame to display. `None` when a newer job for the
-/// pane superseded this one.
+/// Composites the job's tiles into `source` (axis-aligned with the slide,
+/// transparent outside it, unprocessed), turns that frame to the view's
+/// orientation into `buffer`, colour-processes `buffer`, and returns the
+/// filtered frame to display. `None` when a newer job for the pane
+/// superseded this one.
 fn render_job(
     job: &CpuRenderJob,
     latest_jobs: &Mutex<HashMap<u32, u64>>,
@@ -349,10 +351,14 @@ fn render_job(
         return None;
     }
     let cancelled = || !current();
+    // The blits are laid out axis-aligned with the slide; the frame is
+    // turned to the view's orientation after compositing.
+    let orientation = job.viewport.orientation;
+    let (aligned_width, aligned_height) = orientation.swap(job.width, job.height);
     composite_frame(
-        buffer,
-        job.width,
-        job.height,
+        source,
+        aligned_width,
+        aligned_height,
         &job.fallback_blits,
         &job.fine_blits,
         &cancelled,
@@ -361,8 +367,7 @@ fn render_job(
         return None;
     }
 
-    let len = buffer.len().min(source.len());
-    source[..len].copy_from_slice(&buffer[..len]);
+    eov_common::blitter::orient_frame(source, aligned_width, aligned_height, orientation, buffer);
     job.postprocess.apply(buffer, job.width, job.height);
     if !current() {
         return None;
@@ -504,6 +509,29 @@ mod tests {
         let mut preview = source.clone();
         apply_postprocess(&mut preview, 4, 2, &job.postprocess);
         assert_eq!(preview, pixels);
+    }
+
+    /// A turned view's frame is the aligned composite turned (exactly), and
+    /// its unprocessed source stays aligned for reprojection.
+    #[test]
+    fn turned_jobs_turn_the_composited_frame() {
+        let plain = job_with_tile(ProcessingPipeline::identity());
+        let latest = Mutex::new(HashMap::from([(3, 7)]));
+        let (mut aligned, mut aligned_source) = (vec![0u8; 32], vec![0u8; 32]);
+        render_job(&plain, &latest, &mut aligned, &mut aligned_source).unwrap();
+        for orientation in eov_common::viewport::Orientation::all() {
+            let mut job = job_with_tile(ProcessingPipeline::identity());
+            let (w, h) = orientation.swap(4, 2);
+            job.width = w;
+            job.height = h;
+            job.viewport.orientation = orientation;
+            let (mut pixels, mut source) = (vec![0u8; 32], vec![0u8; 32]);
+            render_job(&job, &latest, &mut pixels, &mut source).unwrap();
+            let mut expected = vec![0u8; 32];
+            eov_common::blitter::orient_frame(&aligned, 4, 2, orientation, &mut expected);
+            assert_eq!(pixels, expected, "{orientation:?}");
+            assert_eq!(source, aligned_source, "{orientation:?}");
+        }
     }
 
     #[test]
