@@ -541,8 +541,8 @@ For other languages:
 
 1. Read the `.info` file: `PORT PID SECRET`, where `SECRET` is 64 hex digits. With port 0, connect to the Unix-domain socket next to it (`<name>.sock`); otherwise to `127.0.0.1:PORT`.
 2. Send the 8 bytes `eov-rpc1` and 32 random bytes `N1`.
-3. Read 32 bytes `P` and 32 bytes `N2`. `P` must be HMAC-SHA256(secret, `server` ‖ `N1`); if it is not, the program is not eov: send nothing more.
-4. Send HMAC-SHA256(secret, `client` ‖ `N2`).
+3. Read 32 bytes `P` and 32 bytes `N2`. `P` must be HMAC-SHA256(secret, `rpc-server` ‖ `N1`); if it is not, the program is not eov: send nothing more.
+4. Send HMAC-SHA256(secret, `rpc-client` ‖ `N2`). (eov's single-instance protocol, `eov-ipc1`, proves other roles, so a handshake of one can never be relayed into the other.)
 5. Then each call is a frame, a 4-byte big-endian length and that many bytes of UTF-8 JSON, answered by a frame. Make as many calls as you like, one at a time; open more connections to work in parallel.
 
 Calls are JSON-RPC 2.0 style: `{"jsonrpc": "2.0", "id": 1, "method": "view.get", "params": {"pane": 1}}` (`jsonrpc` and `params` may be left out) is answered by `{"jsonrpc": "2.0", "id": 1, "result": ...}` or by `{"jsonrpc": "2.0", "id": 1, "error": {"code": -32001, "message": "there is no pane 7 (see panes)", "data": {"kind": "not_found"}}}`. Every call is answered, parameters are named, unknown parameters are refused, and batches are not supported.

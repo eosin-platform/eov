@@ -51,6 +51,10 @@ import sys
 __all__ = ["Client", "Endpoint", "EovError", "endpoint_name", "find_endpoint", "runtime_dirs"]
 
 PROTOCOL = b"eov-rpc1"
+# The roles each side proves the secret as (eov's single-instance protocol
+# uses others, so neither handshake can be relayed into the other).
+SERVER_ROLE = b"rpc-server"
+CLIENT_ROLE = b"rpc-client"
 NONCE_BYTES = 32
 PROOF_BYTES = 32
 SECRET_BYTES = 32
@@ -281,10 +285,10 @@ def _handshake(sock, secret):
     sock.sendall(PROTOCOL + client_nonce)
     answer = _recv_exact(sock, PROOF_BYTES + NONCE_BYTES)
     server_proof, server_nonce = answer[:PROOF_BYTES], answer[PROOF_BYTES:]
-    expected = hmac.new(secret, b"server" + client_nonce, hashlib.sha256).digest()
+    expected = hmac.new(secret, SERVER_ROLE + client_nonce, hashlib.sha256).digest()
     if not hmac.compare_digest(server_proof, expected):
         raise EovError("the program at the endpoint is not the eov that registered there")
-    sock.sendall(hmac.new(secret, b"client" + server_nonce, hashlib.sha256).digest())
+    sock.sendall(hmac.new(secret, CLIENT_ROLE + server_nonce, hashlib.sha256).digest())
 
 
 def _read_frame(sock):

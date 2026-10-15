@@ -79,11 +79,11 @@ impl WireClient {
         stream.read_exact(&mut answer).unwrap();
         assert_eq!(
             answer[..32],
-            hmac(&secret, b"server", &nonce)[..],
+            hmac(&secret, b"rpc-server", &nonce)[..],
             "eov proves the secret"
         );
         stream
-            .write_all(&hmac(&secret, b"client", &answer[32..]))
+            .write_all(&hmac(&secret, b"rpc-client", &answer[32..]))
             .unwrap();
         Self { stream, next_id: 1 }
     }

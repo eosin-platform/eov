@@ -26,8 +26,10 @@
 //!   second one starts on its own instead.
 //! - **Scripts.** The same endpoint serves the scripting interface
 //!   ([`crate::scripting`]) under a second protocol name, `eov-rpc1`: the
-//!   same proof of the secret, then any number of calls, each a frame of at
-//!   most 1 MiB answered by a frame of at most 64 MiB (pixels). Every
+//!   same proof of the secret (for other roles, so that neither handshake
+//!   can be relayed into the other protocol), then any number of calls,
+//!   each a frame of at most 1 MiB answered by a frame of at most 64 MiB
+//!   (pixels). Every
 //!   connection is served on a thread of its own (at most
 //!   [`MAX_CONNECTIONS`]), so a script that keeps its connection open never
 //!   holds up a second eov.
@@ -782,18 +784,36 @@ impl Drop for Server {
     }
 }
 
-/// Proves the secret to a client and has it prove the secret back (the
-/// client's nonce follows the protocol name it sent).
-fn authenticate(connection: &mut Connection, secret: &[u8; SECRET_BYTES]) -> io::Result<()> {
+/// The roles the server and the client prove the secret as in protocol
+/// `magic`. Scripts prove other roles than eovs handing over files, so a
+/// handshake of one protocol can never be relayed into the other. The
+/// single-instance roles are unchanged, so eovs of other versions still
+/// hand files to each other.
+fn roles(magic: &[u8; 8]) -> (&'static [u8], &'static [u8]) {
+    if magic == SCRIPT_MAGIC {
+        (b"rpc-server", b"rpc-client")
+    } else {
+        (b"server", b"client")
+    }
+}
+
+/// Proves the secret to a client of protocol `magic` and has it prove the
+/// secret back (the client's nonce follows the protocol name it sent).
+fn authenticate(
+    connection: &mut Connection,
+    secret: &[u8; SECRET_BYTES],
+    magic: &[u8; 8],
+) -> io::Result<()> {
+    let (server, client) = roles(magic);
     let mut client_nonce = [0; NONCE_BYTES];
     connection.read_exact(&mut client_nonce)?;
     let server_nonce = random_bytes::<NONCE_BYTES>();
-    connection.write_all(&proof(secret, b"server", &client_nonce))?;
+    connection.write_all(&proof(secret, server, &client_nonce))?;
     connection.write_all(&server_nonce)?;
     connection.flush()?;
     let mut client_proof = [0; PROOF_BYTES];
     connection.read_exact(&mut client_proof)?;
-    if !proof_holds(secret, b"client", &server_nonce, &client_proof) {
+    if !proof_holds(secret, client, &server_nonce, &client_proof) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "the client does not know the secret",
@@ -821,7 +841,7 @@ fn handle(
     } else {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "not an eov"));
     };
-    authenticate(&mut connection, secret)?;
+    authenticate(&mut connection, secret, &magic)?;
     if script {
         let Some(serve) = &handlers.script else {
             return Err(io::Error::other("scripts are not served"));
@@ -899,6 +919,7 @@ fn open_session(
     connection
         .set_timeout(timing.io)
         .map_err(ForwardError::Unreachable)?;
+    let (server, client) = roles(magic);
     let client_nonce = random_bytes::<NONCE_BYTES>();
     let mut server_proof = [0; PROOF_BYTES];
     let mut server_nonce = [0; NONCE_BYTES];
@@ -909,14 +930,14 @@ fn open_session(
         .and_then(|()| connection.read_exact(&mut server_proof))
         .and_then(|()| connection.read_exact(&mut server_nonce))
         .map_err(ForwardError::Unreachable)?;
-    if !proof_holds(&info.secret, b"server", &client_nonce, &server_proof) {
+    if !proof_holds(&info.secret, server, &client_nonce, &server_proof) {
         return Err(ForwardError::Failed(format!(
             "the program listening at {} is not the eov that registered there",
             endpoint.dir.display()
         )));
     }
     connection
-        .write_all(&proof(&info.secret, b"client", &server_nonce))
+        .write_all(&proof(&info.secret, client, &server_nonce))
         .map_err(|error| ForwardError::Failed(error.to_string()))?;
     Ok(connection)
 }
@@ -1470,6 +1491,47 @@ mod tests {
             assert!(read_frame(&mut connection, MAX_SCRIPT_REPLY_BYTES).is_err());
             assert!(ended.recv_timeout(Duration::from_millis(300)).is_err());
         }
+    }
+
+    /// A program a client mistakes for eov (a hijacked port) relays the
+    /// client's handshake to the real eov under the other protocol: the
+    /// client sees through it, and no session opens.
+    #[test]
+    fn handshakes_cannot_be_relayed_into_the_other_protocol() {
+        for (client_protocol, relayed_as) in [(MAGIC, SCRIPT_MAGIC), (SCRIPT_MAGIC, MAGIC)] {
+            let dir = tempfile::tempdir().unwrap();
+            let endpoint = Endpoint::new(dir.path().join("run"), "eov-test".into(), Transport::Tcp);
+            let (handler, ended) = echo_scripts();
+            let (_server, received) = running_with(&endpoint, fast(), Some(handler));
+            let real = read_info(&endpoint).unwrap();
+            let relay = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let relay_port = relay.local_addr().unwrap().port();
+            std::thread::spawn(move || {
+                let (mut client, _) = relay.accept().unwrap();
+                let mut eov = TcpStream::connect((Ipv4Addr::LOCALHOST, real.port)).unwrap();
+                let mut magic = [0; 8];
+                client.read_exact(&mut magic).unwrap();
+                eov.write_all(relayed_as).unwrap();
+                let (mut client_in, mut eov_out) =
+                    (client.try_clone().unwrap(), eov.try_clone().unwrap());
+                std::thread::spawn(move || {
+                    let _ = io::copy(&mut client_in, &mut eov_out);
+                });
+                let _ = io::copy(&mut eov, &mut client);
+            });
+            let decoy = Info {
+                port: relay_port,
+                ..read_info(&endpoint).unwrap()
+            };
+            let relayed = open_session(&endpoint, &decoy, fast(), client_protocol);
+            assert!(
+                matches!(relayed, Err(ForwardError::Failed(_))),
+                "the client must refuse the relayed proof"
+            );
+            assert!(ended.recv_timeout(Duration::from_millis(300)).is_err());
+            assert!(received.recv_timeout(Duration::from_millis(100)).is_err());
+        }
+        assert_ne!(roles(MAGIC), roles(SCRIPT_MAGIC));
     }
 
     #[test]
