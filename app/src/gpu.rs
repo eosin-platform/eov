@@ -34,24 +34,27 @@ struct VertexOutput {
     @location(2) mip_blend: f32,
     @location(3) @interpolate(flat) fine_layer: i32,
     @location(4) @interpolate(flat) coarse_layer: i32,
+    @location(5) fine_tex_size: vec2<f32>,
 };
 
-struct Adjustments {
-    inv_gamma: f32,
-    brightness: f32,
-    contrast: f32,
-    stain_norm_enabled: f32,
-    inv_stain_row0: vec4<f32>,
-    inv_stain_row1: vec4<f32>,
-    sharpness: f32,
-    deconv_enabled: f32,
-    deconv_isolated: f32,
-    _pad0: f32,
-    deconv_inv_row0: vec4<f32>,
-    deconv_inv_row1: vec4<f32>,
-    deconv_stain_h: vec4<f32>,
-    deconv_stain_e: vec4<f32>,
-    deconv_visibility: vec4<f32>,
+// Canonical colour pipeline (stages 2-3). Keep `EovColorParams` and the
+// `eov_*` functions identical to eov_common::processing::wgsl.
+struct EovColorParams {
+    // x: 1/gamma, y: brightness, z: contrast, w: sharpening amount
+    tone: vec4<f32>,
+    // x: stain transform enabled, y: isolated stain index + 1 (0 = blended),
+    // z: isolated stain multiplier, w: number of stains
+    stain_mode: vec4<f32>,
+    // xyz: ln(I0) per channel
+    stain_log_i0: vec4<f32>,
+    // rows of the source pseudo-inverse S+
+    stain_pinv0: vec4<f32>,
+    stain_pinv1: vec4<f32>,
+    stain_pinv2: vec4<f32>,
+    // columns of W = T * diag(m) - S
+    stain_w0: vec4<f32>,
+    stain_w1: vec4<f32>,
+    stain_w2: vec4<f32>,
 };
 
 @vertex
@@ -63,6 +66,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.mip_blend = input.mip_blend;
     output.fine_layer = input.fine_layer;
     output.coarse_layer = input.coarse_layer;
+    output.fine_tex_size = input.fine_tex_size;
     return output;
 }
 
@@ -73,109 +77,97 @@ var tile_array: texture_2d_array<f32>;
 var tile_sampler: sampler;
 
 @group(0) @binding(2)
-var<uniform> adjustments: Adjustments;
+var<uniform> color_params: EovColorParams;
 
-fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
-    if adjustments.stain_norm_enabled < 0.5 {
-        return color;
+// Fused stain normalisation + deconvolution (eov_common::stain::transform).
+fn eov_stain(rgb: vec3<f32>) -> vec3<f32> {
+    if (color_params.stain_mode.x < 0.5) {
+        return rgb;
     }
-    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
-    let od = -log(rgb);
-    let od_sum = od.r + od.g + od.b;
-    if od_sum <= 0.15 || od_sum >= 6.0 {
-        return color;
+    let od = color_params.stain_log_i0.xyz - log(max(rgb * 255.0, vec3<f32>(1.0)));
+    let c = max(vec3<f32>(
+        dot(color_params.stain_pinv0.xyz, od),
+        dot(color_params.stain_pinv1.xyz, od),
+        dot(color_params.stain_pinv2.xyz, od),
+    ), vec3<f32>(0.0));
+    let iso = i32(color_params.stain_mode.y + 0.5);
+    if (iso > 0) {
+        var ci = c.x;
+        if (iso == 2) {
+            ci = c.y;
+        }
+        if (iso == 3) {
+            ci = c.z;
+        }
+        let g = exp(-color_params.stain_mode.z * ci);
+        return vec3<f32>(g, g, g);
     }
-    let c0 = max(dot(adjustments.inv_stain_row0.xyz, od), 0.0);
-    let c1 = max(dot(adjustments.inv_stain_row1.xyz, od), 0.0);
-    let nc0 = c0 * adjustments.inv_stain_row0.w;
-    let nc1 = c1 * adjustments.inv_stain_row1.w;
-    let ref_h = vec3<f32>(0.6442, 0.7170, 0.2668);
-    let ref_e = vec3<f32>(0.0927, 0.9545, 0.2832);
-    let new_od = ref_h * nc0 + ref_e * nc1;
-    let new_rgb = exp(-new_od);
-    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+    let delta = color_params.stain_w0.xyz * c.x
+        + color_params.stain_w1.xyz * c.y
+        + color_params.stain_w2.xyz * c.z;
+    return clamp(rgb * exp(-delta), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-fn apply_deconv(color: vec4<f32>) -> vec4<f32> {
-    if adjustments.deconv_enabled < 0.5 {
-        return color;
+// Gamma, brightness, contrast (eov_common::postprocess::ToneAdjustments).
+fn eov_tone(rgb: vec3<f32>) -> vec3<f32> {
+    let x = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    var g = x;
+    if (abs(color_params.tone.x - 1.0) > 0.000001) {
+        g = pow(x, vec3<f32>(color_params.tone.x));
     }
-    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
-    let od = -log(rgb);
-    let od_sum = od.r + od.g + od.b;
-    let iso = i32(adjustments.deconv_isolated + 0.5);
-    if od_sum <= 0.15 {
-        return color;
-    }
-    if od_sum >= 6.0 && iso == 0 {
-        return color;
-    }
-    let c_h = max(dot(adjustments.deconv_inv_row0.xyz, od), 0.0);
-    let c_e = max(dot(adjustments.deconv_inv_row1.xyz, od), 0.0);
-    if iso == 1 {
-        // Isolated hematoxylin grayscale
-        let v = exp(-c_h);
-        return vec4<f32>(v, v, v, color.a);
-    }
-    if iso == 2 {
-        // Isolated eosin grayscale
-        let v = exp(-c_e);
-        return vec4<f32>(v, v, v, color.a);
-    }
-    // Blended mode
-    let vis_h = adjustments.deconv_visibility.x;
-    let vis_e = adjustments.deconv_visibility.y;
-    if vis_h < 0.5 && vis_e < 0.5 {
-        return vec4<f32>(1.0, 1.0, 1.0, color.a);
-    }
-    var new_od = vec3<f32>(0.0);
-    if vis_h >= 0.5 {
-        new_od += adjustments.deconv_stain_h.xyz * c_h * adjustments.deconv_stain_h.w;
-    }
-    if vis_e >= 0.5 {
-        new_od += adjustments.deconv_stain_e.xyz * c_e * adjustments.deconv_stain_e.w;
-    }
-    let new_rgb = exp(-new_od);
-    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+    let c = (g + vec3<f32>(color_params.tone.y) - vec3<f32>(0.5)) * color_params.tone.z + vec3<f32>(0.5);
+    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-fn apply_adj(color: vec4<f32>) -> vec4<f32> {
-    let g = vec3<f32>(
-        pow(color.r, adjustments.inv_gamma),
-        pow(color.g, adjustments.inv_gamma),
-        pow(color.b, adjustments.inv_gamma),
-    );
-    let b = g + vec3<f32>(adjustments.brightness);
-    let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
-    return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+fn eov_color(rgb: vec3<f32>) -> vec3<f32> {
+    return eov_tone(eov_stain(rgb));
 }
 
-// Unsharp mask: sharpen by subtracting a blurred version from the original.
-// Uses a 3x3 box blur approximation (single-pass Laplacian).
-fn apply_sharpen(uv: vec2<f32>, layer: i32, center: vec4<f32>) -> vec4<f32> {
-    if adjustments.sharpness < 0.001 {
-        return center;
-    }
-    let tex_size = vec2<f32>(textureDimensions(tile_array, 0));
-    let step = 1.0 / tex_size;
-    // Sample 4-connected neighbors for Laplacian
-    let n = textureSample(tile_array, tile_sampler, uv + vec2<f32>(0.0, -step.y), layer);
-    let s = textureSample(tile_array, tile_sampler, uv + vec2<f32>(0.0, step.y), layer);
-    let w = textureSample(tile_array, tile_sampler, uv + vec2<f32>(-step.x, 0.0), layer);
-    let e = textureSample(tile_array, tile_sampler, uv + vec2<f32>(step.x, 0.0), layer);
-    // Laplacian = 4*center - neighbors  (high-pass detail)
-    let detail = center.rgb * 4.0 - (n.rgb + s.rgb + w.rgb + e.rgb);
-    // Blend: output = center + sharpness * detail
-    let sharpened = center.rgb + adjustments.sharpness * detail;
-    return vec4<f32>(clamp(sharpened, vec3<f32>(0.0), vec3<f32>(1.0)), center.a);
+// Stage 6, evaluated in the tile pass until the renderer has a dedicated
+// post pass: a screen-space Laplacian unsharp mask whose neighbours are one
+// *screen* pixel away (dpdx/dpdy), each passed through the same colour
+// pipeline, so its strength does not depend on zoom or pyramid level. The
+// canonical implementation runs over the composited frame
+// (eov_common::processing::wgsl::SHARPEN_POST_PASS); once that pass is used,
+// upload `tone.w = 0` for the tile pass.
+fn eov_sharpen(rgb: vec3<f32>, n: vec3<f32>, s: vec3<f32>, w: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
+    let k = color_params.tone.w;
+    return clamp(rgb + k * (4.0 * rgb - (n + s + w + e)), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn sample_tile(
+    fine_uv: vec2<f32>,
+    coarse_uv: vec2<f32>,
+    fine_layer: i32,
+    coarse_layer: i32,
+    mip_blend: f32,
+) -> vec4<f32> {
+    let fine = textureSampleLevel(tile_array, tile_sampler, fine_uv, fine_layer, 0.0);
+    let coarse = textureSampleLevel(tile_array, tile_sampler, coarse_uv, coarse_layer, 0.0);
+    return mix(fine, coarse, mip_blend);
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let fine = textureSample(tile_array, tile_sampler, input.fine_uv, input.fine_layer);
-    let coarse = textureSample(tile_array, tile_sampler, input.coarse_uv, input.coarse_layer);
-    let blended = mix(fine, coarse, input.mip_blend);
-    return apply_adj(apply_deconv(apply_stain_norm(apply_sharpen(input.fine_uv, input.fine_layer, blended))));
+    // One screen pixel in UV space (derivatives need uniform control flow).
+    let fdx = dpdx(input.fine_uv);
+    let fdy = dpdy(input.fine_uv);
+    let cdx = dpdx(input.coarse_uv);
+    let cdy = dpdy(input.coarse_uv);
+    let texel = sample_tile(input.fine_uv, input.coarse_uv, input.fine_layer, input.coarse_layer, input.mip_blend);
+    let rgb = eov_color(texel.rgb);
+    if (color_params.tone.w < 0.001) {
+        return vec4<f32>(rgb, texel.a);
+    }
+    // Keep neighbour samples inside this tile's texels (border included).
+    let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
+    let lo = vec2<f32>(0.5) / layer_size;
+    let hi = (input.fine_tex_size - vec2<f32>(0.5)) / layer_size;
+    let n = eov_color(sample_tile(clamp(input.fine_uv - fdy, lo, hi), input.coarse_uv - cdy, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
+    let s = eov_color(sample_tile(clamp(input.fine_uv + fdy, lo, hi), input.coarse_uv + cdy, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
+    let w = eov_color(sample_tile(clamp(input.fine_uv - fdx, lo, hi), input.coarse_uv - cdx, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
+    let e = eov_color(sample_tile(clamp(input.fine_uv + fdx, lo, hi), input.coarse_uv + cdx, input.fine_layer, input.coarse_layer, input.mip_blend).rgb);
+    return vec4<f32>(eov_sharpen(rgb, n, s, w, e), texel.a);
 }
 "#;
 
@@ -201,22 +193,24 @@ struct VertexOutput {
     @location(5) fine_tex_size: vec2<f32>,
 };
 
-struct Adjustments {
-    inv_gamma: f32,
-    brightness: f32,
-    contrast: f32,
-    stain_norm_enabled: f32,
-    inv_stain_row0: vec4<f32>,
-    inv_stain_row1: vec4<f32>,
-    sharpness: f32,
-    deconv_enabled: f32,
-    deconv_isolated: f32,
-    _pad0: f32,
-    deconv_inv_row0: vec4<f32>,
-    deconv_inv_row1: vec4<f32>,
-    deconv_stain_h: vec4<f32>,
-    deconv_stain_e: vec4<f32>,
-    deconv_visibility: vec4<f32>,
+// Canonical colour pipeline (stages 2-3). Keep `EovColorParams` and the
+// `eov_*` functions identical to eov_common::processing::wgsl.
+struct EovColorParams {
+    // x: 1/gamma, y: brightness, z: contrast, w: sharpening amount
+    tone: vec4<f32>,
+    // x: stain transform enabled, y: isolated stain index + 1 (0 = blended),
+    // z: isolated stain multiplier, w: number of stains
+    stain_mode: vec4<f32>,
+    // xyz: ln(I0) per channel
+    stain_log_i0: vec4<f32>,
+    // rows of the source pseudo-inverse S+
+    stain_pinv0: vec4<f32>,
+    stain_pinv1: vec4<f32>,
+    stain_pinv2: vec4<f32>,
+    // columns of W = T * diag(m) - S
+    stain_w0: vec4<f32>,
+    stain_w1: vec4<f32>,
+    stain_w2: vec4<f32>,
 };
 
 @vertex
@@ -239,7 +233,7 @@ var tile_array: texture_2d_array<f32>;
 var tile_sampler: sampler;
 
 @group(0) @binding(2)
-var<uniform> adjustments: Adjustments;
+var<uniform> color_params: EovColorParams;
 
 const PI: f32 = 3.14159265358979323846;
 const LANCZOS_A: f32 = 3.0;
@@ -259,98 +253,61 @@ fn lanczos_weight(x: f32) -> f32 {
     return sinc(x) * sinc(x / LANCZOS_A);
 }
 
-fn apply_stain_norm(color: vec4<f32>) -> vec4<f32> {
-    if adjustments.stain_norm_enabled < 0.5 {
-        return color;
+// Fused stain normalisation + deconvolution (eov_common::stain::transform).
+fn eov_stain(rgb: vec3<f32>) -> vec3<f32> {
+    if (color_params.stain_mode.x < 0.5) {
+        return rgb;
     }
-    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
-    let od = -log(rgb);
-    let od_sum = od.r + od.g + od.b;
-    if od_sum <= 0.15 || od_sum >= 6.0 {
-        return color;
+    let od = color_params.stain_log_i0.xyz - log(max(rgb * 255.0, vec3<f32>(1.0)));
+    let c = max(vec3<f32>(
+        dot(color_params.stain_pinv0.xyz, od),
+        dot(color_params.stain_pinv1.xyz, od),
+        dot(color_params.stain_pinv2.xyz, od),
+    ), vec3<f32>(0.0));
+    let iso = i32(color_params.stain_mode.y + 0.5);
+    if (iso > 0) {
+        var ci = c.x;
+        if (iso == 2) {
+            ci = c.y;
+        }
+        if (iso == 3) {
+            ci = c.z;
+        }
+        let g = exp(-color_params.stain_mode.z * ci);
+        return vec3<f32>(g, g, g);
     }
-    let c0 = max(dot(adjustments.inv_stain_row0.xyz, od), 0.0);
-    let c1 = max(dot(adjustments.inv_stain_row1.xyz, od), 0.0);
-    let nc0 = c0 * adjustments.inv_stain_row0.w;
-    let nc1 = c1 * adjustments.inv_stain_row1.w;
-    let ref_h = vec3<f32>(0.6442, 0.7170, 0.2668);
-    let ref_e = vec3<f32>(0.0927, 0.9545, 0.2832);
-    let new_od = ref_h * nc0 + ref_e * nc1;
-    let new_rgb = exp(-new_od);
-    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+    let delta = color_params.stain_w0.xyz * c.x
+        + color_params.stain_w1.xyz * c.y
+        + color_params.stain_w2.xyz * c.z;
+    return clamp(rgb * exp(-delta), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-fn apply_deconv(color: vec4<f32>) -> vec4<f32> {
-    if adjustments.deconv_enabled < 0.5 {
-        return color;
+// Gamma, brightness, contrast (eov_common::postprocess::ToneAdjustments).
+fn eov_tone(rgb: vec3<f32>) -> vec3<f32> {
+    let x = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    var g = x;
+    if (abs(color_params.tone.x - 1.0) > 0.000001) {
+        g = pow(x, vec3<f32>(color_params.tone.x));
     }
-    let rgb = max(color.rgb, vec3<f32>(1.0 / 255.0));
-    let od = -log(rgb);
-    let od_sum = od.r + od.g + od.b;
-    let iso = i32(adjustments.deconv_isolated + 0.5);
-    if od_sum <= 0.15 {
-        return color;
-    }
-    if od_sum >= 6.0 && iso == 0 {
-        return color;
-    }
-    let c_h = max(dot(adjustments.deconv_inv_row0.xyz, od), 0.0);
-    let c_e = max(dot(adjustments.deconv_inv_row1.xyz, od), 0.0);
-    if iso == 1 {
-        let v = exp(-c_h);
-        return vec4<f32>(v, v, v, color.a);
-    }
-    if iso == 2 {
-        let v = exp(-c_e);
-        return vec4<f32>(v, v, v, color.a);
-    }
-    let vis_h = adjustments.deconv_visibility.x;
-    let vis_e = adjustments.deconv_visibility.y;
-    if vis_h < 0.5 && vis_e < 0.5 {
-        return vec4<f32>(1.0, 1.0, 1.0, color.a);
-    }
-    var new_od = vec3<f32>(0.0);
-    if vis_h >= 0.5 {
-        new_od += adjustments.deconv_stain_h.xyz * c_h * adjustments.deconv_stain_h.w;
-    }
-    if vis_e >= 0.5 {
-        new_od += adjustments.deconv_stain_e.xyz * c_e * adjustments.deconv_stain_e.w;
-    }
-    let new_rgb = exp(-new_od);
-    return vec4<f32>(clamp(new_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+    let c = (g + vec3<f32>(color_params.tone.y) - vec3<f32>(0.5)) * color_params.tone.z + vec3<f32>(0.5);
+    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-fn apply_adj(color: vec4<f32>) -> vec4<f32> {
-    let g = vec3<f32>(
-        pow(color.r, adjustments.inv_gamma),
-        pow(color.g, adjustments.inv_gamma),
-        pow(color.b, adjustments.inv_gamma),
-    );
-    let b = g + vec3<f32>(adjustments.brightness);
-    let c = (b - vec3<f32>(0.5)) * adjustments.contrast + vec3<f32>(0.5);
-    return vec4<f32>(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+fn eov_color(rgb: vec3<f32>) -> vec3<f32> {
+    return eov_tone(eov_stain(rgb));
 }
 
-fn apply_sharpen(uv: vec2<f32>, layer: i32, center: vec4<f32>) -> vec4<f32> {
-    if adjustments.sharpness < 0.001 {
-        return center;
-    }
-    let tex_size = vec2<f32>(textureDimensions(tile_array, 0));
-    let step = 1.0 / tex_size;
-    let n = textureSampleLevel(tile_array, tile_sampler, uv + vec2<f32>(0.0, -step.y), layer, 0.0);
-    let s = textureSampleLevel(tile_array, tile_sampler, uv + vec2<f32>(0.0, step.y), layer, 0.0);
-    let w = textureSampleLevel(tile_array, tile_sampler, uv + vec2<f32>(-step.x, 0.0), layer, 0.0);
-    let e = textureSampleLevel(tile_array, tile_sampler, uv + vec2<f32>(step.x, 0.0), layer, 0.0);
-    let detail = center.rgb * 4.0 - (n.rgb + s.rgb + w.rgb + e.rgb);
-    let sharpened = center.rgb + adjustments.sharpness * detail;
-    return vec4<f32>(clamp(sharpened, vec3<f32>(0.0), vec3<f32>(1.0)), center.a);
+// Stage 6 in the tile pass (see the bilinear/trilinear shader): screen-space
+// neighbours, each through the colour pipeline. Neighbours use bilinear
+// samples to keep the cost bounded.
+fn eov_sharpen(rgb: vec3<f32>, n: vec3<f32>, s: vec3<f32>, w: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
+    let k = color_params.tone.w;
+    return clamp(rgb + k * (4.0 * rgb - (n + s + w + e)), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-@fragment
-fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
+fn lanczos_sample(uv: vec2<f32>, layer: i32, tile_size: vec2<f32>) -> vec4<f32> {
     let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
-    let tile_size = input.fine_tex_size;
-    let uv_pixel = input.fine_uv * layer_size - 0.5;
+    let uv_pixel = uv * layer_size - 0.5;
     let center = floor(uv_pixel);
     let fract_part = uv_pixel - center;
 
@@ -367,7 +324,7 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
             let wy = lanczos_weight(f32(j) - fract_part.y);
             let w = wx * wy;
 
-            let sample = textureSampleLevel(tile_array, tile_sampler, sample_uv, input.fine_layer, 0.0);
+            let sample = textureSampleLevel(tile_array, tile_sampler, sample_uv, layer, 0.0);
             color += sample * w;
             weight_sum += w;
         }
@@ -376,8 +333,27 @@ fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
     if weight_sum > 0.0 {
         color = color / weight_sum;
     }
+    return clamp(color, vec4<f32>(0.0), vec4<f32>(1.0));
+}
 
-    return apply_adj(apply_deconv(apply_stain_norm(apply_sharpen(input.fine_uv, input.fine_layer, clamp(color, vec4<f32>(0.0), vec4<f32>(1.0))))));
+@fragment
+fn fs_lanczos(input: VertexOutput) -> @location(0) vec4<f32> {
+    // One screen pixel in UV space (derivatives need uniform control flow).
+    let fdx = dpdx(input.fine_uv);
+    let fdy = dpdy(input.fine_uv);
+    let texel = lanczos_sample(input.fine_uv, input.fine_layer, input.fine_tex_size);
+    let rgb = eov_color(texel.rgb);
+    if (color_params.tone.w < 0.001) {
+        return vec4<f32>(rgb, texel.a);
+    }
+    let layer_size = vec2<f32>(textureDimensions(tile_array, 0));
+    let lo = vec2<f32>(0.5) / layer_size;
+    let hi = (input.fine_tex_size - vec2<f32>(0.5)) / layer_size;
+    let n = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv - fdy, lo, hi), input.fine_layer, 0.0).rgb);
+    let s = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv + fdy, lo, hi), input.fine_layer, 0.0).rgb);
+    let w = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv - fdx, lo, hi), input.fine_layer, 0.0).rgb);
+    let e = eov_color(textureSampleLevel(tile_array, tile_sampler, clamp(input.fine_uv + fdx, lo, hi), input.fine_layer, 0.0).rgb);
+    return vec4<f32>(eov_sharpen(rgb, n, s, w, e), texel.a);
 }
 "#;
 
@@ -464,24 +440,13 @@ impl SurfaceSlot {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, PartialEq)]
 struct AdjustmentsUniform {
-    inv_gamma: f32,
-    brightness: f32,
-    contrast: f32,
-    stain_norm_enabled: f32,
-    // Row 0 of inverse source stain matrix + scale_h
-    inv_stain_r0: [f32; 4], // [inv[0][0], inv[0][1], inv[0][2], scale_h]
-    // Row 1 of inverse source stain matrix + scale_e
-    inv_stain_r1: [f32; 4], // [inv[1][0], inv[1][1], inv[1][2], scale_e]
-    sharpness: f32,
-    // Color deconvolution parameters
-    deconv_enabled: f32,  // 0.0 = disabled, 1.0 = enabled
-    deconv_isolated: f32, // 0.0 = blended, 1.0 = H isolated, 2.0 = E isolated
-    _pad0: f32,
-    deconv_inv_row0: [f32; 4],   // inverse stain row 0 + H intensity
-    deconv_inv_row1: [f32; 4],   // inverse stain row 1 + E intensity
-    deconv_stain_h: [f32; 4],    // H stain OD vector
-    deconv_stain_e: [f32; 4],    // E stain OD vector
-    deconv_visibility: [f32; 4], // [h_vis, e_vis, 0, 0]
+    // Layout of `EovColorParams` in the shaders, i.e.
+    // `eov_common::processing::GpuColorUniform` (9 × vec4, 144 bytes).
+    tone: [f32; 4],         // [1/gamma, brightness, contrast, sharpness]
+    stain_mode: [f32; 4],   // [enabled, isolated stain + 1, isolated multiplier, stains]
+    stain_log_i0: [f32; 4], // ln(I0) per channel
+    stain_pinv: [[f32; 4]; 3],
+    stain_w: [[f32; 4]; 3],
 }
 
 #[derive(Clone)]
@@ -1467,31 +1432,25 @@ impl GpuRenderer {
                 .write_buffer(&runtime.vertex_buffer, 0, bytemuck::cast_slice(&flat));
         }
 
-        // Upload adjustments uniform only when values changed.
+        // Upload the colour-pipeline uniform only when values changed. The
+        // legacy normalisation and deconvolution parameters are fused into
+        // one stain transform (eov_common::processing).
+        let color = eov_common::processing::GpuColorUniform::from_legacy(
+            frame.gamma,
+            frame.brightness,
+            frame.contrast,
+            frame.sharpness,
+            frame.stain_norm_enabled,
+            frame.inv_stain_r0,
+            frame.inv_stain_r1,
+            &frame.deconv_params,
+        );
         let adj = AdjustmentsUniform {
-            inv_gamma: if frame.gamma > 0.001 {
-                1.0 / frame.gamma
-            } else {
-                1.0
-            },
-            brightness: frame.brightness,
-            contrast: frame.contrast,
-            stain_norm_enabled: if frame.stain_norm_enabled { 1.0 } else { 0.0 },
-            inv_stain_r0: frame.inv_stain_r0,
-            inv_stain_r1: frame.inv_stain_r1,
-            sharpness: frame.sharpness,
-            deconv_enabled: if frame.deconv_params.enabled {
-                1.0
-            } else {
-                0.0
-            },
-            deconv_isolated: frame.deconv_params.isolated_mode,
-            _pad0: 0.0,
-            deconv_inv_row0: frame.deconv_params.inv_row0,
-            deconv_inv_row1: frame.deconv_params.inv_row1,
-            deconv_stain_h: frame.deconv_params.stain_h,
-            deconv_stain_e: frame.deconv_params.stain_e,
-            deconv_visibility: frame.deconv_params.visibility,
+            tone: color.tone,
+            stain_mode: color.stain.mode,
+            stain_log_i0: color.stain.log_i0,
+            stain_pinv: color.stain.pinv,
+            stain_w: color.stain.w,
         };
         if last_adjustments.as_ref() != Some(&adj) {
             runtime

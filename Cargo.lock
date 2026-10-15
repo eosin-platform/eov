@@ -1765,6 +1765,7 @@ dependencies = [
  "glam 0.30.10",
  "image 0.25.8",
  "lru",
+ "naga 29.0.4",
  "openslide-rs",
  "parking_lot",
  "pkg-config",

@@ -14,6 +14,7 @@ pub mod imaging;
 pub mod overlay;
 pub mod paths;
 pub mod postprocess;
+pub mod processing;
 pub mod render;
 pub mod stain;
 pub mod tile;

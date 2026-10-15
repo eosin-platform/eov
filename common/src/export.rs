@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::blitter::{self, BlitRect, CoarseSrc, TileSrc};
-use crate::postprocess;
 use crate::render::{FilteringMode, TrilinearLevels, calculate_trilinear_levels};
 use crate::stain;
 use crate::{
@@ -44,6 +43,22 @@ pub struct ExportSettings {
     pub deconv_e_visible: bool,
     /// Color deconvolution: isolated channel (0=none, 1=hematoxylin, 2=eosin).
     pub deconv_isolated_channel: u8,
+}
+
+impl ExportSettings {
+    /// The colour-processing part of these settings.
+    pub fn color_settings(&self) -> crate::processing::ColorSettings {
+        crate::processing::ColorSettings::from_legacy(
+            self.stain_normalization,
+            self.deconv_h_intensity,
+            self.deconv_h_visible,
+            self.deconv_e_intensity,
+            self.deconv_e_visible,
+            self.deconv_isolated_channel,
+            crate::postprocess::ToneAdjustments::new(self.gamma, self.brightness, self.contrast),
+            self.sharpness,
+        )
+    }
 }
 
 impl Default for ExportSettings {
@@ -90,7 +105,6 @@ pub fn export_viewport(viewport: &Viewport, dpi: u32) -> Viewport {
 ///
 /// This function is CPU-only and intended for off-screen export. It
 /// loads any missing tiles synchronously before rendering.
-#[allow(deprecated)] // Migrated to the processing pipeline in the next change.
 pub fn render_export(
     tile_manager: &TileManager,
     tile_cache: &TileCache,
@@ -158,15 +172,10 @@ pub fn render_export(
     };
 
     // ── Build blit commands ──
+    // Pixels outside the slide stay transparent until the processing
+    // pipeline composites them onto the background (canonical order).
     let buf_len = export_width as usize * export_height as usize * 4;
     let mut buffer = vec![0u8; buf_len];
-    blitter::fast_fill_rgba(
-        &mut buffer,
-        settings.background_rgba[0],
-        settings.background_rgba[1],
-        settings.background_rgba[2],
-        settings.background_rgba[3],
-    );
 
     // Fallback blits from coarser pyramid levels
     let level_count = wsi.level_count();
@@ -233,57 +242,25 @@ pub fn render_export(
         );
     }
 
-    // ── Post-processing ──
-    // Stain normalization
-    let stain_params = if settings.stain_normalization != StainNormalization::None {
-        let tile_slices: Vec<&[u8]> = fine_tiles
-            .iter()
-            .map(|(_, td)| td.data.as_slice())
-            .collect();
-        let params = stain::compute_cpu_stain_params(settings.stain_normalization, &tile_slices);
-        stain::apply_stain_params_to_buffer(&mut buffer, &params);
-        Some(params)
-    } else {
-        None
-    };
-
-    // Color deconvolution
-    let deconv_is_default = settings.deconv_h_visible
-        && settings.deconv_e_visible
-        && (settings.deconv_h_intensity - 1.0).abs() < 0.001
-        && (settings.deconv_e_intensity - 1.0).abs() < 0.001
-        && settings.deconv_isolated_channel == 0;
-    if !deconv_is_default {
-        let deconv_params = stain::build_deconv_params(
-            settings.deconv_h_intensity,
-            settings.deconv_h_visible,
-            settings.deconv_e_intensity,
-            settings.deconv_e_visible,
-            settings.deconv_isolated_channel,
-            stain_params.as_ref(),
-        );
-        if deconv_params.enabled {
-            stain::apply_color_deconvolution(&mut buffer, &deconv_params);
-        }
-    }
-
-    // Sharpening
-    if settings.sharpness > 0.001 {
-        postprocess::apply_sharpening(&mut buffer, export_width, export_height, settings.sharpness);
-    }
-
-    // Gamma / brightness / contrast
-    let has_adjustments = (settings.gamma - 1.0).abs() > 0.001
-        || settings.brightness.abs() > 0.001
-        || (settings.contrast - 1.0).abs() > 0.001;
-    if has_adjustments {
-        postprocess::apply_adjustments(
-            &mut buffer,
-            settings.gamma,
-            settings.brightness,
-            settings.contrast,
-        );
-    }
+    // ── Post-processing (canonical order, see `processing`) ──
+    // Stain normalisation uses one slide-level fit shared through the global
+    // cache, so the preview and the final export (and every DPI) agree.
+    let color = settings.color_settings();
+    let estimate = color.required_estimate().and_then(|method| {
+        let options = stain::StainEstimateOptions::default();
+        let key = stain::StainCacheKey::for_file(&wsi.properties().path, method, &options);
+        stain::global_stain_cache()
+            .get_or_try_insert_with(key, || stain::estimate_slide_stain(wsi, method, &options))
+            .ok()
+    });
+    let pipeline = color.pipeline(estimate.as_deref());
+    let bg = settings.background_rgba;
+    pipeline.apply_rgba(
+        &mut buffer,
+        export_width,
+        export_height,
+        [bg[0], bg[1], bg[2]],
+    );
 
     Some(RgbaImageData {
         width: export_width as usize,
