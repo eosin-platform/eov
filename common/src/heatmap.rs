@@ -9,6 +9,12 @@
 //! through a colour map; pixels whose alpha is zero, NaN values and values
 //! below the threshold are left transparent. Colour images are drawn with
 //! their own colours.
+//!
+//! A PNG can say where it lies on the slide in `tEXt` chunks:
+//! `eov:level0_px_per_pixel` (`"sx,sy"`, or one number for both axes) and,
+//! optionally, `eov:origin` (`"x,y"`, level-0 pixels, default `0,0`).
+//! eovae's `eovae:level0_px_per_pixel` is read too. Such maps are placed
+//! [`Placement::FromFile`] by default.
 
 use std::path::Path;
 
@@ -27,6 +33,16 @@ pub enum HeatValues {
     Color(Vec<u8>),
 }
 
+/// Where a map says it lies: its first pixel's level-0 corner and the
+/// level-0 pixels each map pixel covers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FileGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub scale_x: f64,
+    pub scale_y: f64,
+}
+
 /// A decoded heat map.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeatMap {
@@ -35,6 +51,8 @@ pub struct HeatMap {
     pub values: HeatValues,
     /// How the file's pixels became values, for the user.
     pub scaling: String,
+    /// The placement the file records, if any.
+    pub geometry: Option<FileGeometry>,
 }
 
 impl HeatMap {
@@ -53,8 +71,71 @@ pub fn decode_bytes(bytes: &[u8]) -> Result<HeatMap, String> {
     if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
         decode_tiff(bytes)
     } else {
-        decode_image(bytes)
+        let mut map = decode_image(bytes)?;
+        map.geometry = png_geometry(bytes);
+        Ok(map)
     }
+}
+
+/// The `tEXt` entries of a PNG (keyword, text), wherever they are.
+fn png_text(bytes: &[u8]) -> Vec<(String, String)> {
+    const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    let mut entries = Vec::new();
+    if !bytes.starts_with(SIGNATURE) {
+        return entries;
+    }
+    let mut at = SIGNATURE.len();
+    while at + 12 <= bytes.len() {
+        let length = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        let kind = &bytes[at + 4..at + 8];
+        let Some(data) = bytes.get(at + 8..at + 8 + length) else {
+            break;
+        };
+        if kind == b"tEXt"
+            && let Some(split) = data.iter().position(|b| *b == 0)
+        {
+            // Latin-1: each byte is its code point.
+            let latin1 = |b: &[u8]| b.iter().map(|&c| char::from(c)).collect::<String>();
+            entries.push((latin1(&data[..split]), latin1(&data[split + 1..])));
+        }
+        if kind == b"IEND" {
+            break;
+        }
+        at += 12 + length;
+    }
+    entries
+}
+
+fn pair(text: &str) -> Option<(f64, f64)> {
+    let mut parts = text.split(',').map(|part| part.trim().parse::<f64>().ok());
+    match (parts.next().flatten(), parts.next(), parts.next()) {
+        (Some(a), None, None) => Some((a, a)),
+        (Some(a), Some(Some(b)), None) => Some((a, b)),
+        _ => None,
+    }
+}
+
+fn png_geometry(bytes: &[u8]) -> Option<FileGeometry> {
+    let text = png_text(bytes);
+    let get = |key: &str| {
+        text.iter()
+            .find(|(keyword, _)| keyword == key)
+            .map(|(_, value)| value.as_str())
+    };
+    let (scale_x, scale_y) = get("eov:level0_px_per_pixel")
+        .or_else(|| get("eovae:level0_px_per_pixel"))
+        .and_then(pair)
+        .filter(|(x, y)| x.is_finite() && y.is_finite() && *x > 0.0 && *y > 0.0)?;
+    let (x, y) = get("eov:origin")
+        .and_then(pair)
+        .filter(|(x, y)| x.is_finite() && y.is_finite())
+        .unwrap_or((0.0, 0.0));
+    Some(FileGeometry {
+        x,
+        y,
+        scale_x,
+        scale_y,
+    })
 }
 
 fn check_size(width: u32, height: u32) -> Result<(), String> {
@@ -209,6 +290,7 @@ fn from_gray8(width: u32, height: u32, values: &[u8], alpha: Option<&[u8]>) -> H
         height,
         values: HeatValues::Scalar(values),
         scaling: "8-bit values, 0–255 shown as 0–1".to_string(),
+        geometry: None,
     }
 }
 
@@ -226,6 +308,7 @@ fn from_gray16(width: u32, height: u32, values: &[u16], alpha: Option<&[u16]>) -
         height,
         values: HeatValues::Scalar(values),
         scaling: "16-bit values, 0–65535 shown as 0–1".to_string(),
+        geometry: None,
     }
 }
 
@@ -262,6 +345,7 @@ fn from_float(width: u32, height: u32, samples: &[f64]) -> HeatMap {
         height,
         values: HeatValues::Scalar(values),
         scaling,
+        geometry: None,
     }
 }
 
@@ -290,6 +374,7 @@ fn from_rgba8(width: u32, height: u32, rgba: Vec<u8>) -> HeatMap {
         height,
         values: HeatValues::Color(rgba),
         scaling: "colour image, drawn as it is".to_string(),
+        geometry: None,
     }
 }
 
@@ -474,6 +559,8 @@ pub enum Placement {
     Downsample(f64),
     /// From the top-left corner, one map pixel per this many micrometres.
     Micrometres(f64),
+    /// Where the file says it lies ([`HeatMap::geometry`]).
+    FromFile,
 }
 
 impl Placement {
@@ -483,11 +570,13 @@ impl Placement {
             Self::FitBounds => "fit-bounds",
             Self::Downsample(_) => "downsample",
             Self::Micrometres(_) => "micrometres",
+            Self::FromFile => "from-file",
         }
     }
 }
 
-/// The level-0 rectangle the map covers.
+/// The level-0 rectangle the map covers. `file` is what the map records
+/// about its placement ([`HeatMap::geometry`]).
 pub fn placement_rect(
     map_width: u32,
     map_height: u32,
@@ -495,9 +584,19 @@ pub fn placement_rect(
     slide: (u64, u64),
     bounds: Option<SlideRect>,
     mpp: Option<(f64, f64)>,
+    file: Option<FileGeometry>,
 ) -> Result<SlideRect, String> {
     let (w, h) = (f64::from(map_width), f64::from(map_height));
     let rect = match placement {
+        Placement::FromFile => {
+            let file = file.ok_or_else(|| "the file does not say where it lies".to_string())?;
+            SlideRect {
+                x: file.x,
+                y: file.y,
+                width: w * file.scale_x,
+                height: h * file.scale_y,
+            }
+        }
         Placement::FitSlide => SlideRect {
             x: 0.0,
             y: 0.0,
@@ -655,6 +754,60 @@ mod tests {
     }
 
     #[test]
+    fn pngs_can_say_where_they_lie() {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(std::io::Cursor::new(&mut bytes), 2, 1);
+            encoder.set_color(png::ColorType::Grayscale);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .add_text_chunk("eov:level0_px_per_pixel".into(), "256,128".into())
+                .unwrap();
+            encoder
+                .add_text_chunk("eov:origin".into(), "1000, 2000".into())
+                .unwrap();
+            let mut writer = encoder.write_header().unwrap();
+            writer.write_image_data(&[10, 200]).unwrap();
+        }
+        let map = decode_bytes(&bytes).unwrap();
+        assert_eq!(
+            map.geometry,
+            Some(FileGeometry {
+                x: 1000.0,
+                y: 2000.0,
+                scale_x: 256.0,
+                scale_y: 128.0
+            })
+        );
+        let rect =
+            placement_rect(2, 1, Placement::FromFile, (1, 1), None, None, map.geometry).unwrap();
+        assert_eq!(
+            (rect.x, rect.y, rect.width, rect.height),
+            (1000.0, 2000.0, 512.0, 128.0)
+        );
+        // eovae's key, one number for both axes; no origin means 0, 0.
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(std::io::Cursor::new(&mut bytes), 1, 1);
+            encoder.set_color(png::ColorType::Grayscale);
+            encoder
+                .add_text_chunk("eovae:level0_px_per_pixel".into(), "512".into())
+                .unwrap();
+            let mut writer = encoder.write_header().unwrap();
+            writer.write_image_data(&[1]).unwrap();
+        }
+        let geometry = decode_bytes(&bytes).unwrap().geometry.unwrap();
+        assert_eq!(
+            (geometry.x, geometry.scale_x, geometry.scale_y),
+            (0.0, 512.0, 512.0)
+        );
+        assert!(
+            placement_rect(1, 1, Placement::FromFile, (1, 1), None, None, None).is_err(),
+            "a map without a placement cannot be placed from the file"
+        );
+    }
+
+    #[test]
     fn oversized_and_unreadable_files_are_refused() {
         assert!(decode_bytes(b"not an image").is_err());
         assert!(check_size(8192, 8192).is_ok());
@@ -690,6 +843,7 @@ mod tests {
             height: 1,
             values: HeatValues::Scalar(vec![0.0, 0.4, 1.0]),
             scaling: String::new(),
+            geometry: None,
         };
         let style = HeatStyle {
             color_map: ColorMap::Gray,
@@ -716,11 +870,27 @@ mod tests {
 
     #[test]
     fn maps_are_placed_and_tiled_in_slide_pixels() {
-        let fit =
-            placement_rect(100, 50, Placement::FitSlide, (40_000, 20_000), None, None).unwrap();
+        let fit = placement_rect(
+            100,
+            50,
+            Placement::FitSlide,
+            (40_000, 20_000),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!((fit.width, fit.height), (40_000.0, 20_000.0));
-        let down =
-            placement_rect(100, 50, Placement::Downsample(256.0), (1, 1), None, None).unwrap();
+        let down = placement_rect(
+            100,
+            50,
+            Placement::Downsample(256.0),
+            (1, 1),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!((down.width, down.height), (25_600.0, 12_800.0));
         let um = placement_rect(
             100,
@@ -729,11 +899,14 @@ mod tests {
             (1, 1),
             None,
             Some((0.25, 0.5)),
+            None,
         )
         .unwrap();
         assert_eq!((um.width, um.height), (25_600.0, 6_400.0));
-        assert!(placement_rect(1, 1, Placement::Micrometres(1.0), (1, 1), None, None).is_err());
-        assert!(placement_rect(1, 1, Placement::FitBounds, (1, 1), None, None).is_err());
+        assert!(
+            placement_rect(1, 1, Placement::Micrometres(1.0), (1, 1), None, None, None).is_err()
+        );
+        assert!(placement_rect(1, 1, Placement::FitBounds, (1, 1), None, None, None).is_err());
 
         let tiles = tiles(2500, 1000);
         assert_eq!(tiles.len(), 3);
