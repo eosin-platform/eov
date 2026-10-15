@@ -4,11 +4,11 @@ use super::manifest::{
     EovReleaseManifest, PlatformArtifact, PluginReleaseManifest, normalize_version,
     release_manifest_url, release_tag, validate_self_update_target,
 };
-use super::network::{NetworkPermission, ReleaseClient, require_permission};
+use super::network::{NetworkPermission, ReleaseClient};
 use super::plugins::{
     self, RegistryReplacement, RemotePackagePlan, RemotePluginRequest, install_verified_stage,
 };
-use super::prompt::confirm;
+use super::prompt::Interaction;
 use crate::distribution::{self, Distribution};
 use crate::plugins::discovery::{
     InspectedPluginPackage, inspect_plugin_package, inspect_staged_plugin_package,
@@ -17,7 +17,6 @@ use crate::version::BUILD_VERSION;
 use anyhow::{Context, Result, bail};
 use semver::{Version, VersionReq};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -119,11 +118,14 @@ pub fn application_update(
         }
         None => None,
     };
-    let permission = require_permission(
+    let mut interaction = Interaction::terminal(options.yes);
+    let permission = NetworkPermission::require(
         options.allow_network,
         "This command needs release metadata and verified update artifacts from GitHub.",
+        &mut interaction,
+        super::policy::current(),
     )?;
-    let client = ReleaseClient::new(&format!("eov/{BUILD_VERSION}"));
+    let client = ReleaseClient::for_build();
     let manifest_url = release_manifest_url(
         super::manifest::EOV_REPOSITORY,
         requested_version.as_ref().map(release_tag).as_deref(),
@@ -142,13 +144,12 @@ pub fn application_update(
         &permission,
     )?;
     print_plan(&plan, options.app_only);
-    confirm(
+    interaction.confirm(
         if requires_restart(&plan.app.distribution, plan.app.action) {
             "EOV will exit and restart to replace the application."
         } else {
             "EOV will apply the verified update transaction."
         },
-        options.yes,
     )?;
     execute_plan(
         plugin_dir,
@@ -1149,23 +1150,13 @@ fn download_verified(
     permission: &NetworkPermission,
     artifact: &PlatformArtifact,
 ) -> Result<Vec<u8>> {
-    let bytes = client.get_bytes(permission, &artifact.url)?;
-    let actual = sha256_bytes(&bytes);
-    if !actual.eq_ignore_ascii_case(&artifact.sha256) {
-        bail!(
-            "SHA-256 mismatch for {}: expected {}, got {}",
-            artifact.url,
-            artifact.sha256,
-            actual
-        );
-    }
-    Ok(bytes)
-}
-
-fn sha256_bytes(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    let download = client.download_verified(
+        permission,
+        &artifact.url,
+        &artifact.sha256,
+        &crate::paths::updates_dir(),
+    )?;
+    Ok(fs::read(download.file.path())?)
 }
 
 fn appimage_stage_path() -> Result<PathBuf> {
@@ -1318,10 +1309,20 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let current = temp.path().join("eov");
         let staged = temp.path().join("stage");
-        for name in ["eov.exe", "eov-update-helper.exe", "libopenslide-1.dll", "LICENSE-MIT"] {
+        for name in [
+            "eov.exe",
+            "eov-update-helper.exe",
+            "libopenslide-1.dll",
+            "LICENSE-MIT",
+        ] {
             touch(&current.join(name));
         }
-        for name in ["eov.exe", "eov-update-helper.exe", "libopenslide-1.dll", "zlib1.dll"] {
+        for name in [
+            "eov.exe",
+            "eov-update-helper.exe",
+            "libopenslide-1.dll",
+            "zlib1.dll",
+        ] {
             touch(&staged.join(name));
         }
         verify_portable_folder_is_owned(&current, &staged).unwrap();

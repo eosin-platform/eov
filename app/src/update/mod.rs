@@ -8,7 +8,9 @@ mod homebrew;
 pub mod manifest;
 pub mod network;
 mod plugins;
-mod prompt;
+pub mod policy;
+pub mod prompt;
+pub mod transport;
 
 pub use plugins::{
     OutputFormat as PluginOutputFormat, info as plugin_info, install as plugin_install,

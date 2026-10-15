@@ -4,8 +4,8 @@ use super::manifest::{
     EovReleaseManifest, OfficialPluginCatalogEntry, PlatformArtifact, PluginReleaseManifest,
     canonical_repository, normalize_version, release_manifest_url, release_tag,
 };
-use super::network::{NetworkPermission, ReleaseClient, require_permission};
-use super::prompt::confirm;
+use super::network::{NetworkPermission, ReleaseClient};
+use super::prompt::Interaction;
 use crate::plugins::discovery::{
     InspectedPluginPackage, inspect_plugin_package, inspect_staged_plugin_package,
     invalidate_plugin_package_cache,
@@ -125,9 +125,11 @@ pub fn list(plugin_dir: &Path, allow_network: bool) -> Result<()> {
     match NetworkPermission::acquire(
         allow_network,
         "This command needs the current EOV official plugin catalog.",
+        &mut Interaction::terminal(false),
+        super::policy::current(),
     )? {
         Some(permission) => {
-            let client = ReleaseClient::new(&format!("eov/{BUILD_VERSION}"));
+            let client = ReleaseClient::for_build();
             match fetch_current_catalog(&client, &permission) {
                 Ok(value) => catalog = Some(value),
                 Err(error) => eprintln!("warning: could not load official plugin catalog: {error}"),
@@ -197,7 +199,7 @@ pub fn remove(plugin_dir: &Path, query: &str, yes: bool) -> Result<()> {
     if selected.len() > 1 {
         message.push_str(&format!("\nPackages removed: {}", selected.len()));
     }
-    confirm(&message, yes)?;
+    Interaction::terminal(yes).confirm(&message)?;
 
     let mut registry = load_registry(plugin_dir)?;
     let old_registry_entry = registry.plugins.remove(&id);
@@ -239,16 +241,16 @@ pub fn install(
 
     let remote = !matches!(source, PluginSource::Local(_));
     let permission = if remote {
-        Some(require_permission(
+        Some(NetworkPermission::require(
             allow_network,
             "This command needs release metadata and a verified plugin artifact from GitHub.",
+            &mut Interaction::terminal(yes),
+            super::policy::current(),
         )?)
     } else {
         None
     };
-    let client = permission
-        .as_ref()
-        .map(|_| ReleaseClient::new(&format!("eov/{BUILD_VERSION}")));
+    let client = permission.as_ref().map(|_| ReleaseClient::for_build());
     let plan = resolve_install_plan(
         source,
         existing_packages,
@@ -263,7 +265,7 @@ pub fn install(
     {
         print_third_party_warning();
     }
-    confirm("Install this plugin?", yes)?;
+    Interaction::terminal(yes).confirm("Install this plugin?")?;
     execute_install(plugin_dir, plan, permission.as_ref())
 }
 
@@ -543,8 +545,14 @@ fn download_remote_artifact(
     plan: &RemotePackagePlan,
     permission: &NetworkPermission,
 ) -> Result<Vec<u8>> {
-    let client = ReleaseClient::new(&format!("eov/{BUILD_VERSION}"));
-    client.get_bytes(permission, &plan.artifact.url)
+    let client = ReleaseClient::for_build();
+    let download = client.download_verified(
+        permission,
+        &plan.artifact.url,
+        &plan.artifact.sha256,
+        &crate::paths::updates_dir(),
+    )?;
+    Ok(fs::read(download.file.path())?)
 }
 
 fn fetch_current_catalog(
