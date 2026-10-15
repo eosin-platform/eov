@@ -89,6 +89,86 @@ pub(crate) fn try_alloc(len: usize) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// Per-axis weights of an area-averaging (box) resampler: output pixel `i`
+/// covers source interval `[i * scale, (i + 1) * scale)` and every source
+/// pixel contributes in proportion to its overlap.
+pub(crate) struct AreaAxis {
+    /// `(first source index, weights)` per output pixel; weights sum to 1.
+    spans: Vec<(usize, Vec<f32>)>,
+}
+
+impl AreaAxis {
+    pub(crate) fn new(src_len: usize, dst_len: usize) -> Self {
+        let scale = src_len as f64 / dst_len.max(1) as f64;
+        let spans = (0..dst_len)
+            .map(|i| {
+                let start = i as f64 * scale;
+                let end = ((i + 1) as f64 * scale).min(src_len as f64);
+                let first = (start.floor() as usize).min(src_len.saturating_sub(1));
+                let last = (end.ceil() as usize).clamp(first + 1, src_len.max(first + 1));
+                let total = (end - start).max(f64::MIN_POSITIVE);
+                let weights = (first..last)
+                    .map(|s| {
+                        let lo = (s as f64).max(start);
+                        let hi = ((s + 1) as f64).min(end);
+                        ((hi - lo).max(0.0) / total) as f32
+                    })
+                    .collect();
+                (first, weights)
+            })
+            .collect();
+        Self { spans }
+    }
+}
+
+/// Resizes straight RGBA `src` (`sw` x `sh`) to `dw` x `dh` by area
+/// averaging. Intended for downscaling; upscaling degenerates to
+/// nearest-neighbour.
+pub(crate) fn resize_area(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> {
+    debug_assert_eq!(src.len(), sw * sh * 4);
+    if dw == sw && dh == sh {
+        return src.to_vec();
+    }
+    let xs = AreaAxis::new(sw, dw);
+    let ys = AreaAxis::new(sh, dh);
+
+    // Horizontal pass into f32 rows.
+    let mut horizontal = vec![0f32; sh * dw * 4];
+    for y in 0..sh {
+        let row = &src[y * sw * 4..(y + 1) * sw * 4];
+        let out = &mut horizontal[y * dw * 4..(y + 1) * dw * 4];
+        for (x, (first, weights)) in xs.spans.iter().enumerate() {
+            let mut acc = [0f32; 4];
+            for (k, w) in weights.iter().enumerate() {
+                let p = &row[(first + k) * 4..(first + k) * 4 + 4];
+                for c in 0..4 {
+                    acc[c] += f32::from(p[c]) * w;
+                }
+            }
+            out[x * 4..x * 4 + 4].copy_from_slice(&acc);
+        }
+    }
+
+    // Vertical pass.
+    let mut dst = vec![0u8; dw * dh * 4];
+    for (y, (first, weights)) in ys.spans.iter().enumerate() {
+        let out = &mut dst[y * dw * 4..(y + 1) * dw * 4];
+        for x in 0..dw {
+            let mut acc = [0f32; 4];
+            for (k, w) in weights.iter().enumerate() {
+                let p = &horizontal[((first + k) * dw + x) * 4..((first + k) * dw + x) * 4 + 4];
+                for c in 0..4 {
+                    acc[c] += p[c] * w;
+                }
+            }
+            for c in 0..4 {
+                out[x * 4 + c] = (acc[c] + 0.5).clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    dst
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +240,16 @@ mod tests {
         let mut out = vec![0u8; 8];
         argb_to_rgba(&pixels, &mut out, AlphaMode::Straight, [9, 8, 7]);
         assert_eq!(out, [1, 2, 3, 255, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn area_resize_averages_and_preserves_flat_colours() {
+        // 4x1 -> 2x1 averages pairs.
+        let src = [0, 0, 0, 255, 100, 100, 100, 255, 200, 0, 0, 255, 0, 0, 200, 255];
+        assert_eq!(resize_area(&src, 4, 1, 2, 1), [50, 50, 50, 255, 100, 0, 100, 255]);
+        // Non-integer ratios keep a flat image flat.
+        let flat: Vec<u8> = std::iter::repeat_n([7u8, 77, 177, 255], 7 * 5).flatten().collect();
+        let small = resize_area(&flat, 7, 5, 3, 2);
+        assert!(small.as_chunks::<4>().0.iter().all(|p| *p == [7, 77, 177, 255]));
     }
 }

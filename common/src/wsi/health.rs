@@ -57,6 +57,8 @@ pub(crate) enum BadKey {
         width: u32,
         height: u32,
     },
+    AssociatedImage(String),
+    IccProfile(Option<String>),
 }
 
 impl BadKey {
@@ -76,6 +78,13 @@ impl BadKey {
                 height,
                 message,
             },
+            BadKey::AssociatedImage(name) => {
+                Error::OpenSlide(format!("associated image {name:?} is unreadable: {message}"))
+            }
+            BadKey::IccProfile(name) => Error::OpenSlide(format!(
+                "ICC profile{} is unreadable: {message}",
+                name.map(|n| format!(" of {n:?}")).unwrap_or_default()
+            )),
         }
     }
 }

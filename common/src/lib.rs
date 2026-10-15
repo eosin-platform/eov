@@ -36,5 +36,6 @@ pub use render::{FilteringMode, RenderBackend, TrilinearLevels, calculate_trilin
 pub use tile::{TileCoord, TileData, TileManager};
 pub use viewport::{Viewport, ViewportState};
 pub use wsi::{
-    AlphaMode, HealthState, OpenOptions, SlideBounds, SlideHealth, WsiFile, WsiLevel, WsiProperties,
+    AlphaMode, AssociatedImage, HealthState, OpenOptions, SlideBounds, SlideHealth, Thumbnail,
+    ThumbnailOptions, ThumbnailRegion, ThumbnailSource, WsiFile, WsiLevel, WsiProperties,
 };

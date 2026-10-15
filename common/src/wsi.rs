@@ -35,7 +35,9 @@ mod health;
 mod metadata;
 mod pixels;
 pub mod registry;
+mod thumbnail;
 
+use crate::imaging::RgbaImageData;
 use crate::openslide::OpenSlide;
 use crate::{Error, Result};
 use health::{BadKey, Geometry, HandleCell};
@@ -46,6 +48,7 @@ use tracing::{debug, info};
 
 pub use health::{HealthState, SlideHealth};
 pub use pixels::AlphaMode;
+pub use thumbnail::{Thumbnail, ThumbnailOptions, ThumbnailRegion, ThumbnailSource};
 pub use registry::{
     DEFAULT_OPENSLIDE_CACHE_BYTES, openslide_cache_capacity, recommended_openslide_cache_bytes,
     set_openslide_cache_capacity,
@@ -63,6 +66,23 @@ pub const COARSE_TILE_SIZE: u32 = 1024;
 /// 1 GiB of RGBA. Larger requests fail with [`Error::RegionTooLarge`]
 /// instead of aborting the process on allocation failure.
 pub const MAX_REGION_PIXELS: u64 = 1 << 28;
+
+/// Largest associated image [`WsiFile::read_associated_image`] decodes.
+pub const MAX_ASSOCIATED_IMAGE_PIXELS: u64 = 1 << 28;
+
+/// An associated image of a slide, such as `label`, `macro` or `thumbnail`.
+///
+/// The `label` image usually shows the case/accession number and sometimes
+/// the patient's name: treat it as protected health information (offer a
+/// "hide label" option, strip it from de-identified exports).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssociatedImage {
+    pub name: String,
+    pub width: u64,
+    pub height: u64,
+    /// Size of its ICC profile in bytes, if it has one.
+    pub icc_profile_size: Option<u64>,
+}
 
 /// A rectangle in level-0 pixel coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -265,6 +285,8 @@ pub(crate) struct SharedSlide {
     pub(crate) shareable: bool,
     properties: WsiProperties,
     property_map: BTreeMap<String, String>,
+    associated_images: Vec<AssociatedImage>,
+    icc_profile: parking_lot::Mutex<Option<Option<Vec<u8>>>>,
 }
 
 /// How [`WsiFile::open_with`] opens a slide.
@@ -300,6 +322,30 @@ impl std::fmt::Debug for WsiFile {
             .field("tile_size", &self.tile_size)
             .finish_non_exhaustive()
     }
+}
+
+fn read_associated_images(
+    slide: &OpenSlide,
+    property_map: &BTreeMap<String, String>,
+) -> Result<Vec<AssociatedImage>> {
+    let mut names = slide.associated_image_names()?;
+    names.sort();
+    names
+        .into_iter()
+        .map(|name| {
+            let (width, height) = slide.associated_image_dimensions(&name)?;
+            let icc_profile_size = property_map
+                .get(&format!("openslide.associated.{name}.icc-size"))
+                .and_then(|value| value.trim().parse().ok())
+                .filter(|&size: &u64| size > 0);
+            Ok(AssociatedImage {
+                name,
+                width,
+                height,
+                icc_profile_size,
+            })
+        })
+        .collect()
 }
 
 fn read_metadata(path: &Path, slide: &OpenSlide) -> Result<(WsiProperties, BTreeMap<String, String>)> {
@@ -402,6 +448,7 @@ impl WsiFile {
         info!("Opening WSI file: {}", path.display());
         let slide = OpenSlide::open(path)?;
         let (properties, property_map) = read_metadata(path, &slide)?;
+        let associated_images = read_associated_images(&slide, &property_map)?;
         let geometry = Geometry::of(&slide)?;
 
         info!(
@@ -425,6 +472,8 @@ impl WsiFile {
             shareable: options.share,
             properties,
             property_map,
+            associated_images,
+            icc_profile: parking_lot::Mutex::new(None),
         });
         Ok(Self {
             shared: registry::register(shared),
@@ -477,6 +526,87 @@ impl WsiFile {
     /// Every OpenSlide property, ordered by name.
     pub fn property_map(&self) -> &BTreeMap<String, String> {
         &self.shared.property_map
+    }
+
+    /// The slide's associated images (label, macro, thumbnail, ...), sorted
+    /// by name.
+    pub fn associated_images(&self) -> &[AssociatedImage] {
+        &self.shared.associated_images
+    }
+
+    /// The associated image called `name`, if the slide has one.
+    pub fn associated_image(&self, name: &str) -> Option<&AssociatedImage> {
+        self.shared
+            .associated_images
+            .iter()
+            .find(|image| image.name == name)
+    }
+
+    /// Decodes an associated image as opaque RGBA (composited onto the
+    /// slide's background colour like [`read_region`](Self::read_region)).
+    pub fn read_associated_image(&self, name: &str) -> Result<RgbaImageData> {
+        self.read_associated_image_with(name, AlphaMode::Composited)
+    }
+
+    /// Decodes an associated image with an explicit [`AlphaMode`].
+    pub fn read_associated_image_with(&self, name: &str, mode: AlphaMode) -> Result<RgbaImageData> {
+        let info = self
+            .associated_image(name)
+            .ok_or_else(|| Error::AssociatedImageNotFound(name.to_string()))?;
+        let pixels = info.width.saturating_mul(info.height);
+        if pixels > MAX_ASSOCIATED_IMAGE_PIXELS {
+            return Err(Error::RegionTooLarge {
+                width: info.width,
+                height: info.height,
+                max_pixels: MAX_ASSOCIATED_IMAGE_PIXELS,
+            });
+        }
+        let (width, height, argb) = self
+            .shared
+            .handle
+            .run(Some(BadKey::AssociatedImage(name.to_string())), |slide| {
+                slide.read_associated_image_argb(name, MAX_ASSOCIATED_IMAGE_PIXELS)
+            })?;
+        let mut out = pixels::try_alloc(argb.len() * 4)?;
+        pixels::argb_to_rgba(&argb, &mut out, mode, self.shared.properties.background_color);
+        Ok(RgbaImageData {
+            width: width as usize,
+            height: height as usize,
+            pixels: out,
+        })
+    }
+
+    /// The slide's ICC colour profile, if it has one. Pixels are returned
+    /// in the device colour space this profile describes. Cached after the
+    /// first successful read.
+    pub fn icc_profile(&self) -> Result<Option<Vec<u8>>> {
+        if let Some(cached) = self.shared.icc_profile.lock().as_ref() {
+            return Ok(cached.clone());
+        }
+        if self.shared.properties.icc_profile_size.is_none() {
+            return Ok(None);
+        }
+        let profile = self
+            .shared
+            .handle
+            .run(Some(BadKey::IccProfile(None)), |slide| slide.icc_profile())?;
+        *self.shared.icc_profile.lock() = Some(profile.clone());
+        Ok(profile)
+    }
+
+    /// The ICC profile of an associated image, if it has one.
+    pub fn associated_image_icc_profile(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let info = self
+            .associated_image(name)
+            .ok_or_else(|| Error::AssociatedImageNotFound(name.to_string()))?;
+        if info.icc_profile_size.is_none() {
+            return Ok(None);
+        }
+        self.shared
+            .handle
+            .run(Some(BadKey::IccProfile(Some(name.to_string()))), |slide| {
+                slide.associated_image_icc_profile(name)
+            })
     }
 
     /// Get tile size
@@ -698,24 +828,6 @@ impl WsiFile {
         let x = (tile_start_x as f64 * level_info.downsample) as i64;
         let y = (tile_start_y as f64 * level_info.downsample) as i64;
         self.read_region(x, y, level, actual_width, actual_height)
-    }
-
-    /// Get the thumbnail image if available
-    pub fn thumbnail(&self, max_size: u32) -> Result<Vec<u8>> {
-        let _ = max_size;
-        // Use the lowest resolution level
-        let level = self.max_level();
-        let level_info = self
-            .level(level)
-            .ok_or(Error::InvalidLevel(level, self.max_level()))?;
-
-        self.read_region(
-            0,
-            0,
-            level,
-            level_info.width.min(u32::MAX as u64) as u32,
-            level_info.height.min(u32::MAX as u64) as u32,
-        )
     }
 }
 
@@ -1080,6 +1192,41 @@ mod tests {
         assert_eq!(wsi.properties().regions.len(), 2);
         let gap = wsi.read_region(15_000, 10_000, 0, 8, 8).unwrap();
         assert!(gap.as_chunks::<4>().0.iter().all(|p| *p == [255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn exposes_associated_images_and_icc_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.svs");
+        let mut spec = TiffSpec::aperio(128, 96, 32, 4);
+        spec.icc_profile = Some(vec![7; 300]);
+        write_tiff(&path, &spec, gradient).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+
+        let names: Vec<_> = wsi.associated_images().iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["label", "macro", "thumbnail"]);
+        let label = wsi.associated_image("label").unwrap();
+        assert_eq!((label.width, label.height), (24, 16));
+        assert_eq!(label.icc_profile_size, None);
+
+        let image = wsi.read_associated_image("label").unwrap();
+        assert_eq!((image.width, image.height), (24, 16));
+        assert!(image.pixels.as_chunks::<4>().0.iter().all(|p| *p == [10, 20, 30, 255]));
+        assert!(matches!(
+            wsi.read_associated_image("barcode"),
+            Err(Error::AssociatedImageNotFound(_))
+        ));
+
+        assert_eq!(wsi.properties().icc_profile_size, Some(300));
+        assert_eq!(wsi.icc_profile().unwrap(), Some(vec![7; 300]));
+        assert_eq!(wsi.icc_profile().unwrap(), Some(vec![7; 300]), "cached");
+        assert_eq!(wsi.associated_image_icc_profile("label").unwrap(), None);
+        assert!(wsi.associated_image_icc_profile("barcode").is_err());
+
+        // Slides without a profile.
+        let plain = WsiFile::open(pyramid_file(dir.path())).unwrap();
+        assert_eq!(plain.icc_profile().unwrap(), None);
+        assert!(plain.associated_images().is_empty());
     }
 
     #[test]
