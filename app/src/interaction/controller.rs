@@ -359,6 +359,8 @@ pub struct Controller {
     drawing: Option<Drawing>,
     hover: Option<Hover>,
     hover_handle: Option<(ObjectKey, usize)>,
+    /// A tooltip shown for an object of a non-interactive layer.
+    passive_tooltip: Option<String>,
     last_click: Option<Click>,
     cursor: HashMap<usize, Cursor>,
     /// Plain scrolling pans (trackpad mode); Ctrl/⌘+scroll zooms.
@@ -376,6 +378,7 @@ impl Controller {
             drawing: None,
             hover: None,
             hover_handle: None,
+            passive_tooltip: None,
             last_click: None,
             cursor: HashMap::new(),
             scroll_pans: false,
@@ -861,6 +864,15 @@ impl Controller {
         let point = view.to_image(input.x, input.y);
         match &mut self.gesture {
             Gesture::Idle => {
+                // Custom tools see the pointer while it hovers too (cursor
+                // reticles, previews); the host coalesces these moves.
+                if self.tool.is_custom()
+                    && let Some(file_id) = view.file_id
+                    && let Some(effect) =
+                        self.custom_event(view, file_id, ProtoPointerKind::Move, &input, 0.0)
+                {
+                    effects.push(effect);
+                }
                 self.update_hover(view, input, point, effects);
                 if let Some(drawing) = &mut self.drawing
                     && drawing.pane == view.index
@@ -1271,6 +1283,24 @@ impl Controller {
 
         let new_key = target.key().cloned();
         let old_key = self.hover.as_ref().map(|h| h.key.clone());
+        // Objects of layers that cannot be picked still show their
+        // tooltips (heat maps, predictions), without hover events.
+        if new_key.is_none() && old_key.is_none() {
+            let passive = self.passive_tooltip_at(view, file_id, point);
+            if let Some(text) = &passive {
+                effects.push(Effect::Tooltip(Some(TooltipRequest {
+                    pane: view.index,
+                    window_x: input.window_x,
+                    window_y: input.window_y,
+                    text: text.clone(),
+                })));
+            } else if self.passive_tooltip.is_some() {
+                effects.push(Effect::Tooltip(None));
+            }
+            self.passive_tooltip = passive;
+            return;
+        }
+        self.passive_tooltip = None;
         if new_key == old_key {
             if let (Some(hover), Some(text)) = (
                 &self.hover,
@@ -1339,6 +1369,20 @@ impl Controller {
             key,
             tooltip,
         });
+    }
+
+    /// The tooltip of the topmost object under `point` in a visible layer
+    /// that cannot be picked (no interaction, just information).
+    fn passive_tooltip_at(&self, view: &PaneView, file_id: FileId, point: Point) -> Option<String> {
+        let params = self.pick_params(view, file_id, point);
+        self.store
+            .hit_test(params, |layer| !self.can_pick(layer))
+            .into_iter()
+            .find_map(|hit| {
+                self.store
+                    .object(&hit.key)
+                    .and_then(|object| object.object.tooltip.clone())
+            })
     }
 
     /// The topmost pickable object of each owner under `point`.
@@ -1931,7 +1975,9 @@ impl Controller {
                     },
                 });
             }
-            return (effects, input.text != keys::TAB);
+            // The tool sees every key, but Tab and the app's Ctrl/⌘
+            // shortcuts (undo, close, open, …) still work while it is active.
+            return (effects, input.text != keys::TAB && !input.modifiers.primary);
         }
         if !input.pressed {
             return (effects, false);

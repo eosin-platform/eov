@@ -72,6 +72,8 @@ pub struct MockLayer {
     pub selection: Vec<String>,
     /// Panes the plugin hid the layer in (`layer.set_pane_visibility`).
     pub hidden_panes: std::collections::BTreeSet<PaneId>,
+    /// Objects drawn highlighted (`layer.highlight`).
+    pub highlighted: Vec<String>,
 }
 
 /// A surface as the mock host stores it.
@@ -96,6 +98,9 @@ pub struct MockState {
     pub toolbar_buttons: BTreeMap<String, ToolbarButtonSpec>,
     pub hud_buttons: BTreeMap<String, HudButtonSpec>,
     pub tools: BTreeMap<String, ToolSpec>,
+    pub hotkeys: BTreeMap<String, HotkeySpec>,
+    /// Badges by id: (slide, text).
+    pub badges: BTreeMap<String, (Option<FileId>, String)>,
     pub active_tool: Option<String>,
     pub filters: BTreeMap<String, FilterSpec>,
     pub undo: Vec<UndoPushArgs>,
@@ -271,6 +276,28 @@ impl MockHost {
                 state.hud_buttons.remove(&args.id);
                 null
             }
+            methods::BADGE_SET => {
+                let args: BadgeArgs = parse(args)?;
+                match args.text {
+                    Some(text) => {
+                        state.badges.insert(args.badge_id, (args.file_id, text));
+                    }
+                    None => {
+                        state.badges.remove(&args.badge_id);
+                    }
+                }
+                null
+            }
+            methods::HOTKEY_REGISTER => {
+                let spec: HotkeySpec = parse(args)?;
+                state.hotkeys.insert(spec.hotkey_id.clone(), spec);
+                null
+            }
+            methods::HOTKEY_UNREGISTER => {
+                let args: IdArgs = parse(args)?;
+                state.hotkeys.remove(&args.id);
+                null
+            }
             methods::TOOL_REGISTER => {
                 let spec: ToolSpec = parse(args)?;
                 state.tools.insert(spec.tool_id.clone(), spec);
@@ -306,6 +333,7 @@ impl MockHost {
                         rasters: BTreeMap::new(),
                         selection: Vec::new(),
                         hidden_panes: Default::default(),
+                        highlighted: Vec::new(),
                     },
                 );
                 null
@@ -333,6 +361,11 @@ impl MockHost {
             methods::LAYER_REMOVE => {
                 let args: IdArgs = parse(args)?;
                 state.layers.remove(&args.id);
+                null
+            }
+            methods::LAYER_HIGHLIGHT => {
+                let args: SelectArgs = parse(args)?;
+                layer_mut(&mut state, &args.layer_id)?.highlighted = args.object_ids;
                 null
             }
             methods::LAYER_SET_MIN_ZOOM => {
@@ -636,6 +669,7 @@ pub fn test_init(plugin_id: &str) -> PluginInit {
         data_dir: data_dir.to_string_lossy().into_owned(),
         cache_dir: cache_dir.to_string_lossy().into_owned(),
         settings: Map::new(),
+        legacy_config_dir: None,
     }
 }
 
@@ -844,6 +878,36 @@ mod tests {
         assert!(mock_layer.rasters.contains_key("map"));
         drop(state);
         assert_eq!(host.display_adjustments(None).unwrap().gamma, 1.0);
+    }
+
+    #[test]
+    fn hotkeys_badges_and_highlights_reach_the_host() {
+        use crate::sdk::Host;
+        let mock = MockHost::new();
+        let host = Host::from_ffi(mock.to_ffi());
+        host.register_hotkey(HotkeySpec {
+            hotkey_id: "next".into(),
+            hotkey: Hotkey::key("j"),
+            description: "Next object".into(),
+        })
+        .unwrap();
+        host.set_badge("predicted", Some(1), Some("Predicted"))
+            .unwrap();
+        host.create_layer(LayerSpec::new("cells", 1)).unwrap();
+        host.layer("cells").highlight(vec!["a".into()]).unwrap();
+        {
+            let state = mock.state();
+            assert!(state.hotkeys.contains_key("next"));
+            assert_eq!(
+                state.badges["predicted"],
+                (Some(1), "Predicted".to_string())
+            );
+            assert_eq!(state.layers["cells"].highlighted, ["a"]);
+        }
+        host.set_badge("predicted", None, None).unwrap();
+        host.unregister_hotkey("next").unwrap();
+        let state = mock.state();
+        assert!(state.badges.is_empty() && state.hotkeys.is_empty());
     }
 
     #[test]

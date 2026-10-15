@@ -385,6 +385,7 @@ impl Surfaces {
                         .unwrap_or(DEFAULT_SIDEBAR_WIDTH)
                         .clamp(180.0, 640.0);
                     ui.set_plugin_sidebar_width(width);
+                    ui.set_plugin_sidebar_captures_keyboard(spec.capture_keyboard);
                     ui.set_plugin_sidebar_factory(embedded_factory(definition, data));
                     ui.set_show_plugin_sidebar(true);
                 }
@@ -460,6 +461,7 @@ impl Surfaces {
         if let Some(ui) = host.ui() {
             ui.set_plugin_modal_width(surface.spec.width.unwrap_or(480.0).clamp(200.0, 1600.0));
             ui.set_plugin_modal_height(surface.spec.height.unwrap_or(320.0).clamp(120.0, 1200.0));
+            ui.set_plugin_modal_captures_keyboard(surface.spec.capture_keyboard);
             ui.set_plugin_modal_factory(embedded_factory(
                 surface.definition.clone(),
                 Rc::clone(&surface.data),

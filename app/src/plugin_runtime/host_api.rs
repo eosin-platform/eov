@@ -138,13 +138,14 @@ impl HostApi {
 
             methods::TOOLBAR_ADD => {
                 let spec: ToolbarButtonSpec = parse(args)?;
+                let id = spec.button_id.clone();
                 let warning = self
                     .shared
                     .contributions
                     .lock()
                     .add_toolbar(&self.ctx.id, spec)
                     .map_err(invalid)?;
-                self.warn(warning);
+                self.refused(&id, warning);
                 self.push(Command::ContributionsChanged);
                 null
             }
@@ -196,18 +197,39 @@ impl HostApi {
                 self.push(Command::ContributionsChanged);
                 null
             }
+            methods::HOTKEY_REGISTER => {
+                let spec: HotkeySpec = parse(args)?;
+                let id = spec.hotkey_id.clone();
+                let warning = self
+                    .shared
+                    .contributions
+                    .lock()
+                    .register_hotkey(&self.ctx.id, spec)
+                    .map_err(invalid)?;
+                self.refused(&id, warning);
+                null
+            }
+            methods::HOTKEY_UNREGISTER => {
+                let args: IdArgs = parse(args)?;
+                self.shared
+                    .contributions
+                    .lock()
+                    .unregister_hotkey(&self.ctx.id, &args.id);
+                null
+            }
             methods::TOOL_REGISTER => {
                 let spec: ToolSpec = parse(args)?;
                 if let Some(style) = &spec.preview_style {
                     check_style(style)?;
                 }
+                let id = spec.tool_id.clone();
                 let warning = self
                     .shared
                     .contributions
                     .lock()
                     .register_tool(&self.ctx.id, spec)
                     .map_err(invalid)?;
-                self.warn(warning);
+                self.refused(&id, warning);
                 self.push(Command::ContributionsChanged);
                 null
             }
@@ -288,6 +310,24 @@ impl HostApi {
                     .overlays
                     .remove_objects(&self.owner, &args.layer_id, &args.object_ids)
                     .map_err(FfiError::failed)?;
+                self.push(Command::OverlaysChanged);
+                null
+            }
+            methods::BADGE_SET => {
+                let args: BadgeArgs = parse(args)?;
+                validate_badge_id(&args.badge_id)?;
+                self.shared
+                    .set_badge(&self.ctx.id, &args.badge_id, args.file_id, args.text)
+                    .map_err(invalid)?;
+                self.push(Command::Render);
+                null
+            }
+            methods::LAYER_HIGHLIGHT => {
+                let args: SelectArgs = parse(args)?;
+                self.shared
+                    .overlays
+                    .set_highlight(&self.owner, &args.layer_id, &args.object_ids)
+                    .map_err(invalid)?;
                 self.push(Command::OverlaysChanged);
                 null
             }
@@ -620,14 +660,20 @@ impl HostApi {
         }
     }
 
-    fn warn(&self, warning: Option<String>) {
+    /// Reports a refused hotkey to the user and to the plugin.
+    fn refused(&self, id: &str, warning: Option<String>) {
         if let Some(message) = warning {
             tracing::warn!("{message}");
             self.push(Command::Notify(NotifyArgs {
                 level: NotifyLevel::Warning,
-                message,
+                message: message.clone(),
                 detail: None,
             }));
+            self.push(Command::Refused {
+                what: "hotkey".to_string(),
+                id: id.to_string(),
+                reason: message,
+            });
         }
     }
 
@@ -759,6 +805,13 @@ impl HostFfi for HostApi {
             self.put_raster_inner(raster)
         })
     }
+}
+
+fn validate_badge_id(id: &str) -> Result<(), FfiError> {
+    if id.is_empty() || id.len() > 64 {
+        return Err(invalid("badge ids must be 1–64 bytes"));
+    }
+    Ok(())
 }
 
 fn parse<T: DeserializeOwned>(args: &str) -> Result<T, FfiError> {

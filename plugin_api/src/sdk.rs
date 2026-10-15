@@ -481,6 +481,41 @@ impl Host {
         )
     }
 
+    /// Shows a short notice fixed to the corner of the panes showing
+    /// `file_id` (every pane with a slide for `None`); it does not move with
+    /// the view. `text: None` removes it.
+    pub fn set_badge(
+        &self,
+        badge_id: &str,
+        file_id: Option<FileId>,
+        text: Option<&str>,
+    ) -> HostResult<()> {
+        self.command(
+            methods::BADGE_SET,
+            &BadgeArgs {
+                badge_id: badge_id.to_string(),
+                file_id,
+                text: text.map(str::to_string),
+            },
+        )
+    }
+
+    /// Binds a key of its own (not tied to a button or tool); presses
+    /// arrive as [`HostEvent::HotkeyPressed`]. A reserved or taken key is
+    /// refused with [`HostEvent::RegistrationRefused`].
+    pub fn register_hotkey(&self, spec: HotkeySpec) -> HostResult<()> {
+        self.command(methods::HOTKEY_REGISTER, &spec)
+    }
+
+    pub fn unregister_hotkey(&self, hotkey_id: &str) -> HostResult<()> {
+        self.command(
+            methods::HOTKEY_UNREGISTER,
+            &IdArgs {
+                id: hotkey_id.to_string(),
+            },
+        )
+    }
+
     pub fn register_tool(&self, spec: ToolSpec) -> HostResult<()> {
         self.command(methods::TOOL_REGISTER, &spec)
     }
@@ -849,6 +884,18 @@ impl Layer {
             pixels: image.into_pixels(),
             smooth,
         }))
+    }
+
+    /// Draws these objects with the layer's hover style (an empty list
+    /// clears it), e.g. while a row of the plugin's own list is hovered.
+    pub fn highlight(&self, object_ids: Vec<String>) -> HostResult<()> {
+        self.host.command(
+            methods::LAYER_HIGHLIGHT,
+            &SelectArgs {
+                layer_id: self.layer_id.clone(),
+                object_ids,
+            },
+        )
     }
 
     /// Hides the layer below `min_zoom` screen pixels per level-0 pixel

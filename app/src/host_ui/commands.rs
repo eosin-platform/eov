@@ -129,7 +129,7 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
             host.request_render();
         }
         Command::UndoPush(args) => {
-            host.undo.borrow_mut().push(UndoEntry {
+            let dropped = host.undo.borrow_mut().push(UndoEntry {
                 file_id: args.file_id,
                 label: args.label,
                 action: UndoAction::Plugin {
@@ -137,6 +137,7 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
                     entry_id: args.entry_id,
                 },
             });
+            host.undo_dropped(dropped);
             host.refresh_undo_ui();
         }
         Command::UndoClear(args) => {
@@ -171,6 +172,12 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
             );
         }
         Command::OverlaysChanged => host.redraw_overlays(),
+        Command::Refused { what, id, reason } => {
+            host.post(
+                EventTarget::Plugin(Arc::clone(plugin_id)),
+                HostEvent::RegistrationRefused { what, id, reason },
+            );
+        }
     }
 }
 

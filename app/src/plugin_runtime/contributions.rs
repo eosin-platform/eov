@@ -5,7 +5,8 @@
 //! and hotkeys are checked against the host's shortcuts and each other.
 
 use eov_plugin_api::protocol::{
-    ButtonUpdate, FilterSpec, Hotkey, HudButtonSpec, MenuItem, PaneId, ToolSpec, ToolbarButtonSpec,
+    ButtonUpdate, FilterSpec, Hotkey, HotkeySpec, HudButtonSpec, MenuItem, PaneId, ToolSpec,
+    ToolbarButtonSpec,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -117,6 +118,13 @@ impl HudEntry {
     }
 }
 
+/// A plugin key binding of its own.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HotkeyEntry {
+    pub plugin_id: Arc<str>,
+    pub spec: HotkeySpec,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolEntry {
     pub plugin_id: Arc<str>,
@@ -137,6 +145,7 @@ pub struct Contributions {
     toolbar: Vec<ToolbarEntry>,
     hud: Vec<HudEntry>,
     tools: Vec<ToolEntry>,
+    hotkeys: Vec<HotkeyEntry>,
     filters: Vec<FilterEntry>,
     seq: u64,
     revision: u64,
@@ -167,8 +176,13 @@ impl Contributions {
                 .as_ref()
                 .map(|h| (&e.plugin_id, &e.spec.tool_id, h))
         });
+        let hotkeys = self
+            .hotkeys
+            .iter()
+            .map(|e| (&e.plugin_id, &e.spec.hotkey_id, &e.spec.hotkey));
         toolbar
             .chain(tools)
+            .chain(hotkeys)
             .find(|(owner, id, h)| {
                 !(&***owner == plugin_id && id.as_str() == own_id) && hotkey_signature(h) == wanted
             })
@@ -484,7 +498,7 @@ impl Contributions {
                 momentary: tool.spec.hotkey.as_ref().is_some_and(|h| h.momentary),
             });
         }
-        self.toolbar().into_iter().find_map(|e| {
+        if let Some(target) = self.toolbar().into_iter().find_map(|e| {
             e.spec
                 .hotkey
                 .as_ref()
@@ -493,7 +507,61 @@ impl Contributions {
                     plugin_id: Arc::clone(&e.plugin_id),
                     button_id: e.spec.button_id.clone(),
                 })
-        })
+        }) {
+            return Some(target);
+        }
+        self.hotkeys
+            .iter()
+            .find(|e| hotkey_signature(&e.spec.hotkey) == wanted)
+            .map(|e| HotkeyTarget::Hotkey {
+                plugin_id: Arc::clone(&e.plugin_id),
+                hotkey_id: e.spec.hotkey_id.clone(),
+            })
+    }
+
+    // -- hotkeys -------------------------------------------------------------------
+
+    /// Adds or replaces a plugin key binding. A key that is reserved or taken
+    /// is refused with the reason (nothing is registered then).
+    pub fn register_hotkey(
+        &mut self,
+        plugin_id: &Arc<str>,
+        spec: HotkeySpec,
+    ) -> Result<Option<String>, String> {
+        validate_id("hotkey", &spec.hotkey_id)?;
+        let exists =
+            |e: &HotkeyEntry| e.plugin_id == *plugin_id && e.spec.hotkey_id == spec.hotkey_id;
+        if !self.hotkeys.iter().any(exists)
+            && self
+                .hotkeys
+                .iter()
+                .filter(|e| e.plugin_id == *plugin_id)
+                .count()
+                >= 64
+        {
+            return Err("plugins may register at most 64 hotkeys".to_string());
+        }
+        let mut hotkey = Some(spec.hotkey.clone());
+        if let Some(warning) = self.vet_hotkey(plugin_id, &spec.hotkey_id, &mut hotkey) {
+            return Ok(Some(warning));
+        }
+        self.revision += 1;
+        match self.hotkeys.iter_mut().find(|e| exists(e)) {
+            Some(entry) => entry.spec = spec,
+            None => self.hotkeys.push(HotkeyEntry {
+                plugin_id: Arc::clone(plugin_id),
+                spec,
+            }),
+        }
+        Ok(None)
+    }
+
+    pub fn unregister_hotkey(&mut self, plugin_id: &str, hotkey_id: &str) -> bool {
+        let before = self.hotkeys.len();
+        self.hotkeys
+            .retain(|e| !(&*e.plugin_id == plugin_id && e.spec.hotkey_id == hotkey_id));
+        self.revision += 1;
+        before != self.hotkeys.len()
     }
 
     // -- filters -----------------------------------------------------------------
@@ -569,6 +637,7 @@ impl Contributions {
         self.toolbar.retain(|e| &*e.plugin_id != plugin_id);
         self.hud.retain(|e| &*e.plugin_id != plugin_id);
         self.tools.retain(|e| &*e.plugin_id != plugin_id);
+        self.hotkeys.retain(|e| &*e.plugin_id != plugin_id);
         self.filters.retain(|e| &*e.plugin_id != plugin_id);
         self.revision += 1;
     }
@@ -584,6 +653,10 @@ pub enum HotkeyTarget {
     Button {
         plugin_id: Arc<str>,
         button_id: String,
+    },
+    Hotkey {
+        plugin_id: Arc<str>,
+        hotkey_id: String,
     },
 }
 
@@ -692,6 +765,38 @@ mod tests {
                 button_id: "p".into()
             })
         );
+    }
+
+    #[test]
+    fn plugin_hotkeys_are_vetted_and_dispatched() {
+        let mut c = Contributions::default();
+        let spec = |id: &str, key: &str| HotkeySpec {
+            hotkey_id: id.into(),
+            hotkey: Hotkey::key(key),
+            description: String::new(),
+        };
+        assert!(
+            c.register_hotkey(&plugin("a"), spec("next", "j"))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            c.hotkey_target("J", false, false, false),
+            Some(HotkeyTarget::Hotkey {
+                plugin_id: plugin("a"),
+                hotkey_id: "next".into()
+            })
+        );
+        // Taken and reserved keys are refused, with the reason.
+        let refused = c.register_hotkey(&plugin("b"), spec("mine", "j")).unwrap();
+        assert!(refused.unwrap().contains("a:next"));
+        assert!(
+            c.register_hotkey(&plugin("b"), spec("fit", "f"))
+                .unwrap()
+                .is_some()
+        );
+        assert!(c.unregister_hotkey("a", "next"));
+        assert_eq!(c.hotkey_target("j", false, false, false), None);
     }
 
     #[test]

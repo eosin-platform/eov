@@ -390,6 +390,30 @@ export component Viewport inherits Rectangle {
         }
     }
 
+    // Plugin badges (top-centre): fixed to the pane, not to the slide.
+    if root.hud.plugin-badges != "": Rectangle {
+        x: (root.width - self.width) / 2;
+        y: 12px;
+        width: min(root.width - 48px, plugin-badge-text.preferred-width + 20px);
+        height: plugin-badge-text.preferred-height + 10px;
+        background: #000000c8;
+        border-radius: 5px;
+        border-width: 1px;
+        border-color: #f5c26b80;
+
+        plugin-badge-text := Text {
+            x: 10px;
+            y: 5px;
+            width: parent.width - 20px;
+            text: root.hud.plugin-badges;
+            color: #f5c26b;
+            font-size: 12px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+
     // Scale bar (bottom-left)
     if root.show-scale-bar: ScaleBar {
         x: 16px;

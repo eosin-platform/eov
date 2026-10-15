@@ -434,6 +434,20 @@ impl UiHost {
                 );
                 true
             }
+            Some(HotkeyTarget::Hotkey {
+                plugin_id,
+                hotkey_id,
+            }) => {
+                let pane = {
+                    let state = self.state.read();
+                    state.pane_uid(state.focused_pane)
+                };
+                self.post(
+                    EventTarget::Plugin(plugin_id),
+                    HostEvent::HotkeyPressed { hotkey_id, pane },
+                );
+                true
+            }
             None => !primary && !modifiers.alt && self.magnification_key(&name),
         }
     }

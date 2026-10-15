@@ -88,14 +88,22 @@ fn invert(change: &HostChange) -> HostChange {
 }
 
 impl UndoStack {
-    pub fn push(&mut self, entry: UndoEntry) {
+    /// Records a change. Returns the entries it made unreachable: the redo
+    /// history of its slide, and the oldest entry beyond [`MAX_ENTRIES`]
+    /// (their owners are told, so they can free what they kept for them).
+    pub fn push(&mut self, entry: UndoEntry) -> Vec<UndoEntry> {
         // A new change invalidates the redo history of its slide.
         let file_id = entry.file_id;
-        self.redo.retain(|e| !in_scope(e, file_id));
+        let (dropped, kept): (Vec<UndoEntry>, Vec<UndoEntry>) = std::mem::take(&mut self.redo)
+            .into_iter()
+            .partition(|e| in_scope(e, file_id));
+        self.redo = kept;
+        let mut dropped = dropped;
         self.undo.push(entry);
         if self.undo.len() > MAX_ENTRIES {
-            self.undo.remove(0);
+            dropped.push(self.undo.remove(0));
         }
+        dropped
     }
 
     pub fn can_undo(&self, file_id: Option<FileId>) -> bool {

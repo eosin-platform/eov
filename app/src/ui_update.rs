@@ -377,6 +377,11 @@ pub fn update_tabs(
                         // A horizontal bar measures with the horizontal pixel
                         // size (UI-6).
                         let spacing = crate::host_ui::calibration(file).spacing();
+                        hud.plugin_badges = crate::host_ui::with_host(|host| {
+                            host.shared.badges_for(i64::from(file.id)).join("\n")
+                        })
+                        .unwrap_or_default()
+                        .into();
                         if let Some((um_x, _, _)) = spacing
                             && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
                                 um_x / ps.viewport.viewport.zoom.max(1e-12),
@@ -724,6 +729,7 @@ fn ui_hud_settings(
         color_warning: SharedString::from(color.warnings.join("\n")),
         scale_bar_width: 0.0,
         scale_bar_label: SharedString::new(),
+        plugin_badges: SharedString::new(),
     }
 }
 

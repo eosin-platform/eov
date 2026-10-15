@@ -129,6 +129,7 @@ export component AppWindow inherits Window {
     in-out property <float> plugin-modal-width: 0;
     in-out property <float> plugin-modal-height: 0;
     in-out property <component-factory> plugin-modal-factory;
+    in-out property <bool> plugin-modal-captures-keyboard: true;
 
     callback lanczos-confirm-accepted();
     callback lanczos-confirm-cancelled();
@@ -207,6 +208,7 @@ export component AppWindow inherits Window {
     in-out property <bool> show-plugin-sidebar: false;
     in-out property <float> plugin-sidebar-width: 0;
     in-out property <component-factory> plugin-sidebar-factory;
+    in-out property <bool> plugin-sidebar-captures-keyboard: true;
     in-out property <[PluginButtonData]> plugin-buttons: [];
     in-out property <bool> undo-enabled: false;
     in-out property <bool> redo-enabled: false;
@@ -543,10 +545,30 @@ export component AppWindow inherits Window {
                     background: Theme.border;
                 }
 
-                ComponentContainer {
+                // Keys typed into the plugin's fields stay there instead of
+                // reaching eov's shortcuts (SurfaceSpec::capture_keyboard).
+                FocusScope {
                     width: parent.width;
                     height: parent.height;
-                    component-factory: root.plugin-sidebar-factory;
+                    focus-on-click: false;
+                    key-pressed(e) => {
+                        if root.plugin-sidebar-captures-keyboard && e.text != Key.Escape {
+                            accept
+                        }
+                        reject
+                    }
+                    key-released(e) => {
+                        if root.plugin-sidebar-captures-keyboard && e.text != Key.Escape {
+                            accept
+                        }
+                        reject
+                    }
+
+                    ComponentContainer {
+                        width: parent.width;
+                        height: parent.height;
+                        component-factory: root.plugin-sidebar-factory;
+                    }
                 }
             }
 
@@ -1452,10 +1474,28 @@ export component AppWindow inherits Window {
 
             TouchArea { }
 
-            ComponentContainer {
+            FocusScope {
                 width: parent.width;
                 height: parent.height;
-                component-factory: root.plugin-modal-factory;
+                focus-on-click: false;
+                key-pressed(e) => {
+                    if root.plugin-modal-captures-keyboard && e.text != Key.Escape {
+                        accept
+                    }
+                    reject
+                }
+                key-released(e) => {
+                    if root.plugin-modal-captures-keyboard && e.text != Key.Escape {
+                        accept
+                    }
+                    reject
+                }
+
+                ComponentContainer {
+                    width: parent.width;
+                    height: parent.height;
+                    component-factory: root.plugin-modal-factory;
+                }
             }
         }
     }

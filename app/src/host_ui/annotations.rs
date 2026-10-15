@@ -220,11 +220,12 @@ impl UiHost {
         };
         self.sync_host_layers(file_id, roi, &measurements, &calibration, unit);
         if record {
-            self.undo.borrow_mut().push(UndoEntry {
+            let dropped = self.undo.borrow_mut().push(UndoEntry {
                 file_id: Some(file_id),
                 label: label.to_string(),
                 action: UndoAction::Host(change),
             });
+            self.undo_dropped(dropped);
         }
         self.refresh_undo_ui();
         self.redraw_overlays();

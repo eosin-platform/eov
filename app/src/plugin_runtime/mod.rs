@@ -199,6 +199,8 @@ impl PluginRuntime {
             data_dir: data_dir.to_string_lossy().into_owned(),
             cache_dir: cache_dir.to_string_lossy().into_owned(),
             settings,
+            legacy_config_dir: crate::paths::legacy_config_dir()
+                .map(|dir| dir.to_string_lossy().into_owned()),
         };
         let host = HostApi::new(Arc::clone(&ctx), Arc::clone(&self.shared)).into_ffi();
         let started = Instant::now();

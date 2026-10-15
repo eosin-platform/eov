@@ -225,7 +225,7 @@ pub fn resolve_style(layer: &Layer, object: &StoredObject, hovered: bool) -> Sty
             .selected_style
             .clone()
             .unwrap_or_else(|| selected_variant(&base))
-    } else if hovered {
+    } else if hovered || layer.highlighted.contains(&object.object.object_id) {
         layer
             .spec
             .hover_style

@@ -129,6 +129,8 @@ pub struct Layer {
     max_image_extent: f64,
     /// Panes (stable ids) the owner hid this layer in.
     pub hidden_panes: BTreeSet<u32>,
+    /// Objects the owner asked to draw highlighted (hover style).
+    pub highlighted: BTreeSet<String>,
 }
 
 impl Layer {
@@ -145,6 +147,7 @@ impl Layer {
             max_screen_extent: 0.0,
             max_image_extent: 0.0,
             hidden_panes: BTreeSet::new(),
+            highlighted: BTreeSet::new(),
         };
         let style = layer.spec.style.clone();
         layer.note_style(&style);
@@ -766,6 +769,20 @@ impl OverlayStore {
         }
         self.with_layer(owner, layer_id, |layer, _| {
             layer.spec.min_zoom = min_zoom;
+            Ok(())
+        })
+    }
+
+    /// Draws `object_ids` with the layer's hover style (replacing the
+    /// previous highlight), e.g. while the owner's list hovers them.
+    pub fn set_highlight(
+        &self,
+        owner: &Owner,
+        layer_id: &str,
+        object_ids: &[String],
+    ) -> Result<(), String> {
+        self.with_layer(owner, layer_id, |layer, _| {
+            layer.highlighted = object_ids.iter().cloned().collect();
             Ok(())
         })
     }

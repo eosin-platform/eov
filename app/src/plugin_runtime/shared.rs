@@ -139,9 +139,18 @@ pub enum Command {
     Post(String),
     /// The plugin's overlay layers changed; redraw.
     OverlaysChanged,
+    /// Tell the plugin that part of a registration was refused.
+    Refused {
+        what: String,
+        id: String,
+        reason: String,
+    },
 }
 
 type Wake = Box<dyn Fn() + Send + Sync>;
+
+/// (plugin, badge id) → (slide, or every slide; text).
+type Badges = std::collections::BTreeMap<(Arc<str>, String), (Option<FileId>, String)>;
 
 /// The host state every plugin handle shares.
 pub struct HostShared {
@@ -159,6 +168,8 @@ pub struct HostShared {
     wake_scheduled: AtomicBool,
     next_id: AtomicU64,
     pub host_version: String,
+    /// Plugin badges.
+    badges: Mutex<Badges>,
 }
 
 impl HostShared {
@@ -176,7 +187,51 @@ impl HostShared {
             wake_scheduled: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
             host_version: host_version.to_string(),
+            badges: Mutex::new(Default::default()),
         }
+    }
+
+    /// Sets or (with `None`) removes a plugin badge. A plugin may show at
+    /// most 8 badges.
+    pub fn set_badge(
+        &self,
+        plugin_id: &Arc<str>,
+        badge_id: &str,
+        file_id: Option<FileId>,
+        text: Option<String>,
+    ) -> Result<(), String> {
+        let mut badges = self.badges.lock();
+        let key = (Arc::clone(plugin_id), badge_id.to_string());
+        match text {
+            None => {
+                badges.remove(&key);
+            }
+            Some(text) => {
+                let text = text.trim().to_string();
+                if text.is_empty() || text.chars().count() > 200 {
+                    return Err("badge text must be 1–200 characters".to_string());
+                }
+                let count = badges
+                    .keys()
+                    .filter(|(owner, _)| owner == plugin_id)
+                    .count();
+                if !badges.contains_key(&key) && count >= 8 {
+                    return Err("plugins may show at most 8 badges".to_string());
+                }
+                badges.insert(key, (file_id, text));
+            }
+        }
+        Ok(())
+    }
+
+    /// The badge texts for a pane showing `file_id`, in a stable order.
+    pub fn badges_for(&self, file_id: FileId) -> Vec<String> {
+        self.badges
+            .lock()
+            .values()
+            .filter(|(file, _)| file.is_none_or(|file| file == file_id))
+            .map(|(_, text)| text.clone())
+            .collect()
     }
 
     /// Installs the function that schedules [`Self::take_commands`] on the UI
@@ -273,7 +328,50 @@ impl HostShared {
             .lock()
             .retain(|(owner, _)| &**owner != plugin_id);
         self.contributions.lock().remove_plugin(plugin_id);
+        self.badges
+            .lock()
+            .retain(|(owner, _), _| &**owner != plugin_id);
         self.overlays
             .remove_owner(&crate::overlay::Owner::plugin(plugin_id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shared() -> HostShared {
+        HostShared::new(Arc::new(OverlayStore::new()), SettingsStore::new(), "1.0.0")
+    }
+
+    #[test]
+    fn badges_are_bounded_scoped_and_forgotten_with_their_plugin() {
+        let shared = shared();
+        let a: Arc<str> = Arc::from("a");
+        shared
+            .set_badge(&a, "all", None, Some("Everywhere".into()))
+            .unwrap();
+        shared
+            .set_badge(&a, "one", Some(2), Some("Slide two".into()))
+            .unwrap();
+        assert_eq!(shared.badges_for(1), ["Everywhere"]);
+        assert_eq!(shared.badges_for(2).len(), 2);
+        assert!(
+            shared
+                .set_badge(&a, "long", None, Some("x".repeat(201)))
+                .is_err()
+        );
+        for i in 0..6 {
+            shared
+                .set_badge(&a, &format!("b{i}"), None, Some("b".into()))
+                .unwrap();
+        }
+        assert!(
+            shared
+                .set_badge(&a, "ninth", None, Some("c".into()))
+                .is_err()
+        );
+        shared.forget_plugin("a");
+        assert!(shared.badges_for(2).is_empty());
     }
 }

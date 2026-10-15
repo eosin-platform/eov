@@ -421,7 +421,35 @@ impl UiHost {
     /// Queues an event; it is delivered by the next [`Self::pump`], which is
     /// scheduled on the event loop. Safe to call while `AppState` is locked.
     pub(crate) fn post(&self, target: EventTarget, event: HostEvent) {
-        self.events.borrow_mut().push_back((target, event));
+        {
+            let mut events = self.events.borrow_mut();
+            // Pointer moves queue up while a plugin is busy: keep only the
+            // latest one per tool and pane.
+            if let HostEvent::Pointer {
+                tool_id,
+                pane,
+                event: new,
+                ..
+            } = &event
+                && new.kind == eov_plugin_api::protocol::PointerKind::Move
+                && let Some((
+                    last_target,
+                    HostEvent::Pointer {
+                        tool_id: last_tool,
+                        pane: last_pane,
+                        event: last,
+                        ..
+                    },
+                )) = events.back()
+                && last.kind == eov_plugin_api::protocol::PointerKind::Move
+                && last_tool == tool_id
+                && last_pane == pane
+                && *last_target == target
+            {
+                events.pop_back();
+            }
+            events.push_back((target, event));
+        }
         self.schedule_pump();
     }
 
@@ -612,6 +640,26 @@ impl UiHost {
                 notices::show_toast(&ui, &text, level);
             }
             self.notices.borrow().apply(&ui);
+        }
+    }
+
+    /// Tells plugins which of their undo entries were dropped.
+    pub(crate) fn undo_dropped(&self, dropped: Vec<crate::plugin_runtime::undo::UndoEntry>) {
+        let mut by_plugin: std::collections::BTreeMap<Arc<str>, Vec<String>> = Default::default();
+        for entry in dropped {
+            if let crate::plugin_runtime::undo::UndoAction::Plugin {
+                plugin_id,
+                entry_id,
+            } = entry.action
+            {
+                by_plugin.entry(plugin_id).or_default().push(entry_id);
+            }
+        }
+        for (plugin_id, entry_ids) in by_plugin {
+            self.post(
+                EventTarget::Plugin(plugin_id),
+                HostEvent::UndoDropped { entry_ids },
+            );
         }
     }
 

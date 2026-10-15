@@ -64,6 +64,10 @@ pub struct PluginInit {
     /// Persisted per-plugin settings (see `settings.*` methods).
     #[serde(default)]
     pub settings: Map<String, Value>,
+    /// Where eov before 1.0 kept per-user files (e.g. `~/.config/eov`), for
+    /// migrating data a plugin stored there. Read it; don't write it.
+    #[serde(default)]
+    pub legacy_config_dir: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -500,6 +504,16 @@ pub struct Hotkey {
     /// Hold-to-use: the tool is active only while the key is held.
     #[serde(default)]
     pub momentary: bool,
+}
+
+/// A plugin key binding (see [`methods::HOTKEY_REGISTER`]).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct HotkeySpec {
+    pub hotkey_id: String,
+    pub hotkey: Hotkey,
+    /// What the key does, for listings of key bindings.
+    #[serde(default)]
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1204,6 +1218,27 @@ pub enum HostEvent {
         filter_id: String,
         enabled: bool,
     },
+    /// The host dropped some of the plugin's undo entries (the history is
+    /// bounded, and a new change discards the redo history of its slide):
+    /// they will never be undone or redone, so their data can be freed.
+    UndoDropped {
+        entry_ids: Vec<String>,
+    },
+    /// A hotkey registered with [`methods::HOTKEY_REGISTER`] was pressed.
+    HotkeyPressed {
+        hotkey_id: String,
+        /// The focused pane, if any.
+        #[serde(default)]
+        pane: Option<PaneId>,
+    },
+    /// Part of a registration was refused, e.g. a hotkey that eov or
+    /// another plugin already uses (`what`: `"hotkey"`; `id`: the button,
+    /// tool or hotkey id).
+    RegistrationRefused {
+        what: String,
+        id: String,
+        reason: String,
+    },
     /// A slide's region of interest was drawn, changed or removed (`None`).
     RoiChanged {
         file_id: FileId,
@@ -1278,6 +1313,11 @@ pub mod methods {
     /// `IdArgs { id: button_id }` → `null`
     pub const HUD_REMOVE: &str = "hud.remove";
 
+    /// `HotkeySpec` → `null`. A key binding of its own, not tied to a
+    /// toolbar button or tool; presses arrive as `HotkeyPressed`.
+    pub const HOTKEY_REGISTER: &str = "hotkey.register";
+    /// `IdArgs { id: hotkey_id }` → `null`
+    pub const HOTKEY_UNREGISTER: &str = "hotkey.unregister";
     /// `ToolSpec` → `null`
     pub const TOOL_REGISTER: &str = "tool.register";
     /// `IdArgs { id: tool_id }` → `null`
@@ -1302,6 +1342,13 @@ pub mod methods {
     pub const LAYER_REMOVE_OBJECTS: &str = "layer.remove_objects";
     /// `IdArgs { id: layer_id }` → `null`. Removes every object.
     pub const LAYER_CLEAR: &str = "layer.clear";
+    /// `BadgeArgs` → `null`. Shows (or with `text: None` removes) a short
+    /// notice fixed to the corner of every pane showing a slide, which does
+    /// not move with the view (e.g. "Predicted — research use only").
+    pub const BADGE_SET: &str = "badge.set";
+    /// `SelectArgs` → `null`. Draws these objects with the layer's hover
+    /// style (an empty list clears it), e.g. while a list row is hovered.
+    pub const LAYER_HIGHLIGHT: &str = "layer.highlight";
     /// `MinZoomArgs` → `null`. Hides the layer below a zoom level.
     pub const LAYER_SET_MIN_ZOOM: &str = "layer.set_min_zoom";
     /// `PaneVisibilityArgs` → `null`. Shows or hides the layer in one pane
@@ -1401,6 +1448,7 @@ pub mod event_names {
     pub const EMPTY_AREA_CLICKED: &str = "empty_area_clicked";
     pub const CONTEXT_MENU_REQUESTED: &str = "context_menu_requested";
     pub const ROI_CHANGED: &str = "roi_changed";
+    pub const HOTKEY_PRESSED: &str = "hotkey_pressed";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1439,6 +1487,18 @@ pub struct OpenFileArgs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdArgs {
     pub id: String,
+}
+
+/// Arguments of [`methods::BADGE_SET`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BadgeArgs {
+    pub badge_id: String,
+    /// The slide whose panes show it; `None`: every pane with a slide.
+    #[serde(default)]
+    pub file_id: Option<FileId>,
+    /// At most 200 characters; `None` removes the badge.
+    #[serde(default)]
+    pub text: Option<String>,
 }
 
 /// Arguments of [`methods::LAYER_SET_MIN_ZOOM`].
