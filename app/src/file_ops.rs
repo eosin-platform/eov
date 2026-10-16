@@ -996,12 +996,14 @@ fn finish_open(
 
     // Opened meanwhile under another spelling of the path.
     let existing_tab = state.read().find_tab_by_path(&path);
+    let mut planes = String::new();
     let (level_count, warnings) = if let Some((pane, tab_id)) = existing_tab {
         let mut state_guard = state.write();
         state_guard.activate_tab_in_pane(pane, tab_id);
         state_guard.add_to_recent(&path);
         (None, Vec::new())
     } else {
+        planes = plane_hint(&opened.wsi);
         let (levels, warnings) = install_slide(
             &ui,
             &state,
@@ -1040,7 +1042,7 @@ fn finish_open(
                 crate::logging::file_label(&path)
             );
             tracing::debug!("Opened {}", path.display());
-            format!("Opened {name} ({levels} levels)")
+            format!("Opened {name} ({levels} levels){planes}")
         }
         None => format!("Focused {name}"),
     };
@@ -1048,6 +1050,42 @@ fn finish_open(
     report_view_warnings(&path, &warnings);
     request_render_loop(&render_timer, &ui.as_weak(), &state, &tile_cache);
     resolve_open_waiters(&path, opened_file_id(&state, &path));
+}
+
+/// The focal planes and time points of a slide that has several, with the
+/// keys that step through them, for the status line when it opens ("" for
+/// most slides).
+fn plane_hint(wsi: &eov_common::WsiFile) -> String {
+    use crate::shortcuts::Action;
+    let shortcuts = crate::shortcuts::current();
+    let mut text = String::new();
+    for (count, what, actions) in [
+        (
+            wsi.focal_planes(),
+            "focal planes",
+            [Action::NextFocalPlane, Action::PreviousFocalPlane],
+        ),
+        (
+            wsi.time_points(),
+            "time points",
+            [Action::NextTimePoint, Action::PreviousTimePoint],
+        ),
+    ] {
+        if count <= 1 {
+            continue;
+        }
+        let keys = actions
+            .map(|action| shortcuts.label(action))
+            .into_iter()
+            .filter(|key| !key.is_empty())
+            .collect::<Vec<_>>()
+            .join(" / ");
+        text.push_str(&format!(" · {count} {what}"));
+        if !keys.is_empty() {
+            text.push_str(&format!(": {keys}"));
+        }
+    }
+    text
 }
 
 /// Adds an opened slide to the state and starts loading its tiles.

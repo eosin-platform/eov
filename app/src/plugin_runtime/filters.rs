@@ -6,6 +6,7 @@
 //! disables filters that keep failing and quarantines plugins that panic.
 
 use super::contributions::Contributions;
+use super::usage::PluginUsage;
 use abi_stable::std_types::{RSliceMut, RStr};
 use arc_swap::ArcSwap;
 use eov_plugin_api::abi::{FfiError, FfiErrorKind, FilterFrame, FilterView, PluginBox};
@@ -13,6 +14,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Instant;
 
 /// Consecutive failures after which a filter is switched off.
 pub const MAX_CONSECUTIVE_FAILURES: u32 = 3;
@@ -22,6 +24,8 @@ pub struct ActiveFilter {
     pub filter_id: String,
     instance: Arc<PluginBox>,
     failures: AtomicU32,
+    /// Where the time the filter takes is counted.
+    usage: Option<Arc<PluginUsage>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +83,7 @@ impl ChainSnapshot {
                     .expect("backup")
                     .extend_from_slice(&pixels[..expected]);
             }
+            let started = Instant::now();
             let result = filter.instance.apply_filter(
                 RStr::from_str(&filter.filter_id),
                 FilterFrame {
@@ -89,6 +94,9 @@ impl ChainSnapshot {
                     view,
                 },
             );
+            if let Some(usage) = &filter.usage {
+                usage.record_filter(started.elapsed());
+            }
             match result.into_result() {
                 Ok(()) => {
                     filter.failures.store(0, Ordering::Relaxed);
@@ -150,6 +158,7 @@ impl FilterChain {
         &self,
         contributions: &Contributions,
         instances: &HashMap<Arc<str>, Arc<PluginBox>>,
+        usage: &HashMap<Arc<str>, Arc<PluginUsage>>,
     ) {
         let filters = contributions
             .filters()
@@ -163,6 +172,7 @@ impl FilterChain {
                         filter_id: entry.spec.filter_id.clone(),
                         instance: Arc::clone(instance),
                         failures: AtomicU32::new(0),
+                        usage: usage.get(&entry.plugin_id).cloned(),
                     })
             })
             .collect();
@@ -245,7 +255,11 @@ mod tests {
                 .unwrap();
         }
         let chain = FilterChain::default();
-        chain.rebuild(&contributions, &HashMap::from([(plugin, instance)]));
+        chain.rebuild(
+            &contributions,
+            &HashMap::from([(plugin, instance)]),
+            &HashMap::new(),
+        );
         chain
     }
 

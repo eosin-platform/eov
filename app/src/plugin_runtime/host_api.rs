@@ -809,6 +809,7 @@ fn guarded<T>(ctx: &PluginContext, f: impl FnOnce() -> Result<T, FfiError>) -> F
 
 impl HostFfi for HostApi {
     fn call(&self, method: RStr<'_>, args_json: RStr<'_>) -> FfiResult<RString> {
+        self.ctx.usage.record_host_call();
         guarded(&self.ctx, || {
             self.check_access()?;
             self.handle(method.as_str(), args_json.as_str())
@@ -819,7 +820,9 @@ impl HostFfi for HostApi {
     fn read_region(&self, request: RegionRequest) -> FfiResult<Pixels> {
         guarded(&self.ctx, || {
             self.check_access()?;
-            self.read_region_inner(request)
+            let pixels = self.read_region_inner(request)?;
+            self.ctx.usage.record_region_read(pixels.data.len() as u64);
+            Ok(pixels)
         })
     }
 

@@ -221,6 +221,8 @@ export struct PluginRowData {
     detail: string,
     // A newer version found by Check for Updates ("" if none).
     update: string,
+    // What the plugin has cost since it started ("" when it is not running).
+    usage: string,
     can-enable: bool,
     can-disable: bool,
     can-remove: bool,

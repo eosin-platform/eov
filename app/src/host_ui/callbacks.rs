@@ -381,6 +381,7 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_plugins_panel_visible(true);
         }
+        with_host(|host| host.watch_plugin_usage());
     });
     ui.on_plugin_enable_requested(|plugin_id, enable| {
         with_host(|host| host.set_plugin_enabled(&plugin_id, enable));

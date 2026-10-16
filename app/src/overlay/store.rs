@@ -492,6 +492,16 @@ pub struct PickParams {
     pub tolerance_px: f64,
 }
 
+/// What one owner keeps in the store.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OwnerUsage {
+    pub layers: usize,
+    pub objects: usize,
+    pub rasters: usize,
+    /// Bytes of raster pixels.
+    pub raster_bytes: u64,
+}
+
 /// A consistent view of the layers of one file for rendering.
 #[derive(Clone, Debug, Default)]
 pub struct FileLayers {
@@ -848,6 +858,25 @@ impl OverlayStore {
         }
     }
 
+    /// The layers, objects and raster memory `owner` keeps.
+    pub fn owner_usage(&self, owner: &Owner) -> OwnerUsage {
+        let inner = self.inner.read();
+        let mut usage = OwnerUsage::default();
+        for layer in inner
+            .layers
+            .values()
+            .filter(|layer| &layer.key.owner == owner)
+        {
+            usage.layers += 1;
+            usage.objects += layer.objects.len();
+            for raster in layer.rasters.values() {
+                usage.rasters += 1;
+                usage.raster_bytes += raster.premultiplied.len() as u64;
+            }
+        }
+        usage
+    }
+
     /// Removes every layer of `owner` (plugin unloaded or quarantined).
     pub fn remove_owner(&self, owner: &Owner) {
         let mut inner = self.inner.write();
@@ -1111,6 +1140,59 @@ mod tests {
             mpp: None,
             tolerance_px: 4.0,
         }
+    }
+
+    #[test]
+    fn owners_usage_counts_their_layers_objects_and_rasters() {
+        let store = OverlayStore::new();
+        store
+            .create_layer(plugin(), LayerSpec::new("marks", 1))
+            .unwrap();
+        store
+            .create_layer(plugin(), LayerSpec::new("heat", 1))
+            .unwrap();
+        store
+            .create_layer(Owner::plugin("other"), LayerSpec::new("marks", 1))
+            .unwrap();
+        store
+            .upsert(
+                &plugin(),
+                "marks",
+                vec![square("a", 0.0, 0.0, 10.0), point("b", 5.0, 5.0)],
+                false,
+            )
+            .unwrap();
+        store
+            .put_raster(
+                &plugin(),
+                "heat",
+                StoredRaster {
+                    object_id: "map".into(),
+                    rect: Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 100.0,
+                        height: 100.0,
+                    },
+                    width: 4,
+                    height: 2,
+                    premultiplied: Arc::new(vec![0; 32]),
+                    smooth: false,
+                    seq: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store.owner_usage(&plugin()),
+            OwnerUsage {
+                layers: 2,
+                objects: 2,
+                rasters: 1,
+                raster_bytes: 32,
+            }
+        );
+        assert_eq!(store.owner_usage(&Owner::plugin("other")).layers, 1);
+        assert_eq!(store.owner_usage(&Owner::Host), OwnerUsage::default());
     }
 
     #[test]

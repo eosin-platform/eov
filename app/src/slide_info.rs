@@ -122,41 +122,15 @@ fn summary(wsi: &WsiFile) -> String {
         props.height,
         if levels == 1 { "level" } else { "levels" }
     );
-    use crate::shortcuts::Action;
-    let planes = [
-        (
-            wsi.focal_planes(),
-            wsi.focal_plane(),
-            "focal planes",
-            [Action::NextFocalPlane, Action::PreviousFocalPlane],
-        ),
-        (
-            wsi.time_points(),
-            wsi.time_point(),
-            "time points",
-            [Action::NextTimePoint, Action::PreviousTimePoint],
-        ),
-    ];
-    for (count, current, what, actions) in planes {
-        if count <= 1 {
-            continue;
+    // The keys that step through them are in the status line when the
+    // slide opens, and in the Keyboard Shortcuts panel.
+    for (count, current, what) in [
+        (wsi.focal_planes(), wsi.focal_plane(), "focal plane"),
+        (wsi.time_points(), wsi.time_point(), "time point"),
+    ] {
+        if count > 1 {
+            text.push_str(&format!(" · {what} {} of {count}", current + 1));
         }
-        let shortcuts = crate::shortcuts::current();
-        let keys = actions
-            .map(|action| shortcuts.label(action))
-            .into_iter()
-            .filter(|key| !key.is_empty())
-            .collect::<Vec<_>>()
-            .join(" / ");
-        text.push_str(&format!(
-            " · {count} {what} (showing {}{})",
-            current + 1,
-            if keys.is_empty() {
-                String::new()
-            } else {
-                format!("; {keys}")
-            }
-        ));
     }
     if let Some(set) = wsi.channels() {
         let names: Vec<&str> = set

@@ -142,6 +142,8 @@ pub(crate) struct UiHost {
     app_update: RefCell<Option<app_update::AppUpdate>>,
     /// Its status-bar job while it applies.
     app_update_job: RefCell<Option<String>>,
+    /// Refreshes the Plugins panel's resource use while it is open.
+    plugin_usage_timer: Timer,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -213,6 +215,7 @@ pub(crate) fn init(
         plugin_updates: RefCell::new(HashMap::new()),
         app_update: RefCell::new(None),
         app_update_job: RefCell::new(None),
+        plugin_usage_timer: Timer::default(),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();

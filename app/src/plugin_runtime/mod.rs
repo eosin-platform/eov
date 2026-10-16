@@ -14,6 +14,7 @@ pub mod loader;
 pub mod settings;
 pub mod shared;
 pub mod undo;
+pub mod usage;
 
 use abi_stable::std_types::RStr;
 use eov_plugin_api::abi::{FfiError, FfiErrorKind, PluginBox};
@@ -272,8 +273,28 @@ impl PluginRuntime {
     /// Republishes the enabled filters to the renderer.
     pub fn rebuild_filters(&self) {
         let instances = self.instances();
+        let usage: HashMap<Arc<str>, Arc<usage::PluginUsage>> = self
+            .slots
+            .iter()
+            .filter_map(|slot| {
+                let ctx = slot.ctx.as_ref()?;
+                Some((Arc::clone(&ctx.id), Arc::clone(&ctx.usage)))
+            })
+            .collect();
         let contributions = self.shared.contributions.lock();
-        self.filters.rebuild(&contributions, &instances);
+        self.filters.rebuild(&contributions, &instances, &usage);
+    }
+
+    /// What plugin `id` has cost since it started, in one line, or `None`
+    /// when it is not running.
+    pub fn usage_summary(&self, id: &str) -> Option<String> {
+        let slot = self.slots.iter().find(|slot| slot.id() == id)?;
+        let ctx = slot.ctx.as_ref().filter(|_| slot.is_active())?;
+        let overlays = self
+            .shared
+            .overlays
+            .owner_usage(&crate::overlay::store::Owner::Plugin(Arc::clone(&ctx.id)));
+        Some(ctx.usage.snapshot().summary(&overlays))
     }
 
     /// Delivers an event to its target(s), in plugin-id order. A plugin that
@@ -318,6 +339,7 @@ impl PluginRuntime {
             let started = Instant::now();
             let reply = instance.handle_event(RStr::from_str(&text)).into_result();
             let elapsed = started.elapsed();
+            ctx.usage.record_event(&event_type, elapsed);
             if elapsed > SLOW_HANDLER {
                 tracing::warn!(
                     "Plugin '{}' took {} ms to handle '{event_type}'; slow handlers stall the UI",
@@ -579,6 +601,31 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn the_time_plugins_take_is_counted() {
+        let (dir, mut rt) = runtime();
+        start(&mut rt, dir.path(), "echo_usage").unwrap();
+        assert_eq!(
+            rt.usage_summary("echo_usage").as_deref(),
+            Some("Nothing measured yet")
+        );
+        for _ in 0..3 {
+            rt.deliver(
+                &EventTarget::All,
+                &HostEvent::Ready {
+                    restore_sidebar: false,
+                },
+            );
+        }
+        let summary = rt.usage_summary("echo_usage").unwrap();
+        assert!(summary.starts_with("UI thread "), "{summary}");
+        assert!(summary.contains(" in 3 events ("), "{summary}");
+        // Plugins that are not running have nothing to show.
+        assert!(rt.usage_summary("nobody").is_none());
+        rt.disable("echo_usage");
+        assert!(rt.usage_summary("echo_usage").is_none());
     }
 
     #[test]
