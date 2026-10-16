@@ -360,6 +360,9 @@ pub struct WsiFile {
     view: Option<Arc<WsiProperties>>,
     /// Tile size to use
     tile_size: u32,
+    /// The plane and channel display this view reads, when it is
+    /// [`pinned`](Self::pinned) (`None`: what the slide shows now).
+    pin: Option<Arc<source::Pin>>,
 }
 
 impl std::fmt::Debug for WsiFile {
@@ -405,6 +408,7 @@ impl WsiFile {
                 shared,
                 view: None,
                 tile_size: DEFAULT_TILE_SIZE,
+                pin: None,
             });
         }
 
@@ -461,6 +465,7 @@ impl WsiFile {
             shared: registry::register(shared),
             view: None,
             tile_size: DEFAULT_TILE_SIZE,
+            pin: None,
         })
     }
 
@@ -513,6 +518,7 @@ impl WsiFile {
             shared: Arc::clone(&self.shared),
             view: (view.levels.len() > self.shared.properties.levels.len()).then_some(view),
             tile_size: self.tile_size,
+            pin: self.pin.clone(),
         }
     }
 
@@ -522,7 +528,18 @@ impl WsiFile {
             shared: Arc::clone(&self.shared),
             view: None,
             tile_size: self.tile_size,
+            pin: self.pin.clone(),
         }
+    }
+
+    /// This view, reading the focal plane, time point and channel display
+    /// the slide shows now even after they change: for reads that take a
+    /// while (a copy, an export, a quantification) while the viewer may
+    /// move on. A slide whose pixels cannot change is returned as it is.
+    pub fn pinned(&self) -> WsiFile {
+        let mut pinned = self.clone();
+        pinned.pin = self.shared.source.pin().map(Arc::new);
+        pinned
     }
 
     /// Whether this view includes synthetic levels.
@@ -580,8 +597,12 @@ impl WsiFile {
         self.channels().is_some()
     }
 
-    /// How the channels are drawn now; shared by every clone of the slide.
+    /// How the channels are drawn now; shared by every clone of the slide
+    /// (a [`pinned`](Self::pinned) view: how it draws them).
     pub fn channel_display(&self) -> Option<ChannelDisplay> {
+        if let Some(compositor) = self.pin.as_ref().and_then(|pin| pin.compositor.as_ref()) {
+            return Some(compositor.display.clone());
+        }
         self.shared.source.channel_display()
     }
 
@@ -605,9 +626,13 @@ impl WsiFile {
         self.shared.source.focal_planes()
     }
 
-    /// The focal plane shown (0 = the first).
+    /// The focal plane shown (0 = the first), or the one a
+    /// [`pinned`](Self::pinned) view reads.
     pub fn focal_plane(&self) -> u32 {
-        self.shared.source.focal_plane()
+        match &self.pin {
+            Some(pin) => pin.focal_plane,
+            None => self.shared.source.focal_plane(),
+        }
     }
 
     /// Shows focal plane `z` from now on, for every reader of the slide.
@@ -622,9 +647,13 @@ impl WsiFile {
         self.shared.source.time_points()
     }
 
-    /// The time point shown (0 = the first).
+    /// The time point shown (0 = the first), or the one a
+    /// [`pinned`](Self::pinned) view reads.
     pub fn time_point(&self) -> u32 {
-        self.shared.source.time_point()
+        match &self.pin {
+            Some(pin) => pin.time_point,
+            None => self.shared.source.time_point(),
+        }
     }
 
     /// Shows time point `t` from now on, for every reader of the slide; as
@@ -863,7 +892,10 @@ impl WsiFile {
             width,
             height,
         };
-        self.shared.source.read_region_into(region, mode, out)
+        match &self.pin {
+            Some(pin) => self.shared.source.read_pinned_into(region, mode, out, pin),
+            None => self.shared.source.read_region_into(region, mode, out),
+        }
     }
 
     /// Validates a region read and returns its size in bytes.

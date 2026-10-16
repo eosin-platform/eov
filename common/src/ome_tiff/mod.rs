@@ -37,7 +37,7 @@ use crate::channels::{
     ChannelDisplay, ChannelInfo, ChannelLut, ChannelSet, ChannelStats, Compositor,
 };
 use crate::imaging::RgbaImageData;
-use crate::wsi::source::{Opened, Region, SlideSource};
+use crate::wsi::source::{Opened, Pin, Region, SlideSource};
 use crate::wsi::{
     AlphaMode, AssociatedImage, HealthState, MAX_ASSOCIATED_IMAGE_PIXELS, SlideHealth, WsiLevel,
     WsiProperties, pixels,
@@ -1406,17 +1406,70 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
 }
 
 impl OmeTiffSource {
-    /// The planes of `level` at the current focal plane and time point.
-    fn planes_of(&self, level: usize) -> &[PlaneRef] {
-        let z = self
-            .focal_plane
-            .load(Ordering::Relaxed)
-            .min(self.size_z - 1);
-        let t = self
-            .time_point
-            .load(Ordering::Relaxed)
-            .min(self.stacks.len() / self.size_z - 1);
+    /// The planes of `level` at focal plane `z` and time point `t` (clamped
+    /// to the planes there are).
+    fn planes_at(&self, level: usize, z: usize, t: usize) -> &[PlaneRef] {
+        let z = z.min(self.size_z - 1);
+        let t = t.min(self.stacks.len() / self.size_z - 1);
         &self.stacks[t * self.size_z + z][level]
+    }
+
+    /// Reads `region` at the current plane and display, or at `pin`'s.
+    fn read_with(
+        &self,
+        region: Region,
+        mode: AlphaMode,
+        out: &mut [u8],
+        pin: Option<&Pin>,
+    ) -> Result<()> {
+        let level = &self.levels[region.level as usize];
+        let no_data = match mode {
+            AlphaMode::Composited => {
+                let [r, g, b] = self.background;
+                [r, g, b, 255]
+            }
+            AlphaMode::Straight | AlphaMode::Premultiplied => [0, 0, 0, 0],
+        };
+        for px in out.as_chunks_mut::<4>().0 {
+            *px = no_data;
+        }
+        let origin_x = level_coordinate(region.x, level.downsample);
+        let origin_y = level_coordinate(region.y, level.downsample);
+        let Some(clip) = Clip::new(
+            origin_x,
+            origin_y,
+            region.width,
+            region.height,
+            (level.width, level.height),
+        ) else {
+            return Ok(());
+        };
+        let (z, t) = match pin {
+            Some(pin) => (pin.focal_plane as usize, pin.time_point as usize),
+            None => (
+                self.focal_plane.load(Ordering::Relaxed),
+                self.time_point.load(Ordering::Relaxed),
+            ),
+        };
+        let planes = self.planes_at(region.level as usize, z, t);
+        let result = match &self.content {
+            Content::Rgb => self.copy_color(&planes[0].ifd, &clip, out),
+            Content::Channels { display, .. } => {
+                let compositor = pin
+                    .and_then(|pin| pin.compositor.clone())
+                    .unwrap_or_else(|| Arc::clone(&display.read()));
+                self.composite(planes, &compositor, &clip, out)
+            }
+        };
+        if matches!(mode, AlphaMode::Composited) {
+            // Chunks the writer left out are transparent: show background.
+            for px in out.as_chunks_mut::<4>().0 {
+                if px[3] == 0 {
+                    *px = no_data;
+                }
+            }
+        }
+        result.map_err(|error| self.region_error(error, region))
     }
 
     fn region_error(&self, error: ChunkError, region: Region) -> Error {
@@ -1517,45 +1570,32 @@ impl OmeTiffSource {
 
 impl SlideSource for OmeTiffSource {
     fn read_region_into(&self, region: Region, mode: AlphaMode, out: &mut [u8]) -> Result<()> {
-        let level = &self.levels[region.level as usize];
-        let no_data = match mode {
-            AlphaMode::Composited => {
-                let [r, g, b] = self.background;
-                [r, g, b, 255]
-            }
-            AlphaMode::Straight | AlphaMode::Premultiplied => [0, 0, 0, 0],
+        self.read_with(region, mode, out, None)
+    }
+
+    fn pin(&self) -> Option<Pin> {
+        let compositor = match &self.content {
+            Content::Channels { display, .. } => Some(Arc::clone(&display.read())),
+            Content::Rgb => None,
         };
-        for px in out.as_chunks_mut::<4>().0 {
-            *px = no_data;
+        if compositor.is_none() && self.stacks.len() == 1 {
+            return None;
         }
-        let origin_x = level_coordinate(region.x, level.downsample);
-        let origin_y = level_coordinate(region.y, level.downsample);
-        let Some(clip) = Clip::new(
-            origin_x,
-            origin_y,
-            region.width,
-            region.height,
-            (level.width, level.height),
-        ) else {
-            return Ok(());
-        };
-        let planes = self.planes_of(region.level as usize);
-        let result = match &self.content {
-            Content::Rgb => self.copy_color(&planes[0].ifd, &clip, out),
-            Content::Channels { display, .. } => {
-                let compositor = Arc::clone(&display.read());
-                self.composite(planes, &compositor, &clip, out)
-            }
-        };
-        if matches!(mode, AlphaMode::Composited) {
-            // Chunks the writer left out are transparent: show background.
-            for px in out.as_chunks_mut::<4>().0 {
-                if px[3] == 0 {
-                    *px = no_data;
-                }
-            }
-        }
-        result.map_err(|error| self.region_error(error, region))
+        Some(Pin {
+            focal_plane: self.focal_plane(),
+            time_point: self.time_point(),
+            compositor,
+        })
+    }
+
+    fn read_pinned_into(
+        &self,
+        region: Region,
+        mode: AlphaMode,
+        out: &mut [u8],
+        pin: &Pin,
+    ) -> Result<()> {
+        self.read_with(region, mode, out, Some(pin))
     }
 
     fn read_associated_image(&self, name: &str, _mode: AlphaMode) -> Result<RgbaImageData> {

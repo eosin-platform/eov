@@ -100,7 +100,7 @@ impl UiHost {
             .state
             .read()
             .get_file(file_id)
-            .map(|file| file.wsi.clone())
+            .map(|file| file.wsi.pinned())
         else {
             return;
         };

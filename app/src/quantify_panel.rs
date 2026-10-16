@@ -110,7 +110,7 @@ impl Quantification {
         thresholds: [f32; 3],
     ) -> Self {
         Self {
-            wsi: file.wsi.without_synthetic_levels(),
+            wsi: file.wsi.without_synthetic_levels().pinned(),
             region,
             preset,
             stain,

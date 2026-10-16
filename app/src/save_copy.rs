@@ -214,7 +214,9 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
             return;
         };
         Target {
-            wsi: file.wsi.without_synthetic_levels(),
+            // The plane and channels shown now, whatever the viewer shows
+            // while the copy is written.
+            wsi: file.wsi.without_synthetic_levels().pinned(),
             file_name: file.filename.clone(),
             folder: file.path.parent().map(Path::to_path_buf),
             roi: file.roi.as_ref().and_then(roi_bounds),

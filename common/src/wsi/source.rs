@@ -9,12 +9,24 @@
 //! top, the same way for every backend.
 
 use super::{AlphaMode, AssociatedImage, SlideHealth, WsiProperties};
-use crate::channels::{ChannelDisplay, ChannelSet};
+use crate::channels::{ChannelDisplay, ChannelSet, Compositor};
 use crate::imaging::RgbaImageData;
 use crate::{Error, Result};
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 use tracing::{debug, warn};
+
+/// What a source's reads show at one moment (focal plane, time point,
+/// channel display), so a long read such as a copy or an export keeps
+/// showing it while the viewer moves on (see [`crate::WsiFile::pinned`]).
+#[derive(Clone)]
+pub(crate) struct Pin {
+    pub focal_plane: u32,
+    pub time_point: u32,
+    /// The channel display of a multichannel slide.
+    pub compositor: Option<Arc<Compositor>>,
+}
 
 /// A region of a real level: `x`, `y` in level-0 pixels (may be negative),
 /// `width` x `height` pixels of `level`.
@@ -85,6 +97,24 @@ pub(crate) trait SlideSource: Send + Sync {
                 "the slide has one focal plane".to_string(),
             ))
         }
+    }
+
+    /// What reads show now, for sources whose pixels can change (planes,
+    /// channel displays); `None` for the others.
+    fn pin(&self) -> Option<Pin> {
+        None
+    }
+
+    /// [`read_region_into`](Self::read_region_into), showing `pin` rather
+    /// than what reads show now.
+    fn read_pinned_into(
+        &self,
+        region: Region,
+        mode: AlphaMode,
+        out: &mut [u8],
+        _pin: &Pin,
+    ) -> Result<()> {
+        self.read_region_into(region, mode, out)
     }
 
     /// Time points the slide has (time series; 1 for most slides).

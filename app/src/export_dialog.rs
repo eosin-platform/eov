@@ -93,7 +93,12 @@ thread_local! {
 #[derive(Clone)]
 struct Capture {
     file_id: i32,
-    /// Stored levels only: exports never draw synthetic ones.
+    /// The id the viewer's tiles of the slide are cached under now: it
+    /// changes with the focal plane or the channel display, so cached tiles
+    /// under this id show what `wsi` reads.
+    tile_file_id: i32,
+    /// Stored levels only: exports never draw synthetic ones. Pinned to the
+    /// focal plane and channel display shown when the export started.
     wsi: WsiFile,
     file_name: String,
     viewport: Viewport,
@@ -154,7 +159,8 @@ fn capture(
     };
     Some(Capture {
         file_id,
-        wsi: file.wsi.clone(),
+        tile_file_id: file.tile_manager.file_id(),
+        wsi: file.wsi.pinned(),
         file_name: file.filename.clone(),
         viewport: pane_state.viewport.viewport.clone(),
         tile_cache: Arc::clone(tile_cache),
@@ -748,7 +754,7 @@ fn render_preview(
     capture: &Capture,
     settings: &SlintExportSettings,
 ) -> Result<(RgbaImageData, Vec<String>), ExportError> {
-    let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
+    let manager = TileManager::new(capture.wsi.clone(), capture.tile_file_id);
     let full = build_request(capture, settings, f64::from(settings.dpi.max(1)), None);
     let (width, height) = full.output_size();
     let factor = (f64::from(PREVIEW_MAX_SIDE) / f64::from(width.max(height))).min(1.0);
@@ -781,7 +787,7 @@ fn run_export(
     format: ExportFormat,
     control: &JobControl,
 ) -> Result<ExportReport, ExportError> {
-    let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
+    let manager = TileManager::new(capture.wsi.clone(), capture.tile_file_id);
     let dpi = f64::from(settings.dpi.max(1));
     let request = build_request(capture, settings, dpi, Some(&|| control.is_cancelled()));
     if control.is_cancelled() {
@@ -1275,7 +1281,7 @@ pub(crate) fn copy_view(
     let spawned = std::thread::Builder::new()
         .name("eov-copy-view".to_string())
         .spawn(move || {
-            let manager = TileManager::new(captured.wsi.clone(), captured.file_id);
+            let manager = TileManager::new(captured.wsi.clone(), captured.tile_file_id);
             let request = build_request(&captured, &settings, dpi, Some(&|| false));
             let prepared = prepare(&captured, &settings, &request, false);
             let source = ExportSource {
@@ -1459,6 +1465,7 @@ mod tests {
         let viewport = Viewport::new(256.0, 256.0, 512.0, 512.0);
         let captured = Capture {
             file_id: 1,
+            tile_file_id: 1,
             wsi,
             file_name: "slide.tif".to_string(),
             viewport,
@@ -1533,6 +1540,7 @@ mod tests {
             .unwrap();
         let mut captured = Capture {
             file_id: 1,
+            tile_file_id: 1,
             wsi: WsiFile::open(&slide).unwrap(),
             file_name: "slide.tif".to_string(),
             viewport: Viewport::new(128.0, 128.0, 256.0, 256.0),
@@ -1582,6 +1590,7 @@ mod tests {
         let transform = Arc::new(DisplayTransform::from_icc(&profile).unwrap());
         let captured = Capture {
             file_id: 1,
+            tile_file_id: 1,
             wsi: WsiFile::open(&slide).unwrap(),
             file_name: "slide.svs".to_string(),
             viewport: Viewport::new(64.0, 64.0, 128.0, 128.0),
@@ -1684,6 +1693,7 @@ mod tests {
         viewport.orientation = eov_common::viewport::Orientation::new(1, false);
         let captured = Capture {
             file_id: 1,
+            tile_file_id: 1,
             wsi,
             file_name: "slide.tif".to_string(),
             viewport,
@@ -1738,6 +1748,44 @@ mod tests {
         assert!(edge[0] > 200 && edge[1] > 150 && edge[2] < 80, "{edge:?}");
         let inside = px(200, 400);
         assert_eq!(inside[..3], [200, 100, 150], "inside the ROI");
+    }
+
+    /// An export reads one snapshot of a slide whose pixels can change:
+    /// the channel display shown when it started, and the viewer's tiles
+    /// cached for that display.
+    #[test]
+    fn exports_keep_the_display_and_tiles_they_started_with() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let setup = crate::test_support::HostWithSlide::new();
+            let (state, tile_cache, file_id) = (&setup.state, &setup.tile_cache, setup.file_id);
+            let settings = SlintExportSettings::default();
+            let pane = state.read().focused_pane;
+            let before = capture(&state.read(), tile_cache, pane, None, false, &settings).unwrap();
+            assert_eq!(before.tile_file_id, file_id);
+
+            // The display changes and the viewer's tiles move to a new id,
+            // as a channel or focal plane change rebuilds them.
+            let mut display = setup.wsi.channel_display().unwrap();
+            display.channels[0].visible = false;
+            setup.wsi.set_channel_display(display).unwrap();
+            let new_id = {
+                let mut state = state.write();
+                let new_id = state.allocate_file_id();
+                let file = state.get_file_mut(file_id).unwrap();
+                file.tile_manager = Arc::new(
+                    TileManager::new(setup.wsi.with_synthetic_levels(), new_id)
+                        .with_tile_cache(Arc::clone(tile_cache)),
+                );
+                new_id
+            };
+
+            // The earlier export keeps reading what it started with ...
+            assert!(before.wsi.channel_display().unwrap().channels[0].visible);
+            // ... and a new one reads the new display and its tiles.
+            let after = capture(&state.read(), tile_cache, pane, None, false, &settings).unwrap();
+            assert_eq!(after.tile_file_id, new_id);
+            assert!(!after.wsi.channel_display().unwrap().channels[0].visible);
+        });
     }
 
     #[test]

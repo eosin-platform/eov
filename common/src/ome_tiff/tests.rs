@@ -1182,6 +1182,35 @@ fn time_points_of_a_time_series_can_be_shown_one_by_one() {
     assert!(wsi.set_time_point(3).is_err());
     assert_eq!(wsi.time_point(), 2, "a refused time point changes nothing");
 
+    // A pinned view keeps reading the plane and display it was made with.
+    let pinned = wsi.pinned();
+    wsi.set_focal_plane(0).unwrap();
+    wsi.set_time_point(0).unwrap();
+    wsi.set_channel_display(display(&[[255, 255, 255]], 0.0, 1400.0, 1.0))
+        .unwrap();
+    let read = |slide: &WsiFile| slide.read_region(40, 40, 0, 4, 4).unwrap()[0];
+    assert_eq!(
+        (pinned.focal_plane(), pinned.time_point()),
+        (1, 2),
+        "the pinned view says what it reads"
+    );
+    assert_eq!(
+        (f64::from(read(&pinned)) / 255.0 * 7.0).round(),
+        6.0,
+        "plane 5 with the old window (0–700)"
+    );
+    assert_eq!(
+        (f64::from(read(&wsi)) / 255.0 * 14.0).round(),
+        1.0,
+        "plane 0 with the new window (0–1400)"
+    );
+    assert_eq!(pinned.channel_display().unwrap().channels[0].max, 700.0);
+    assert_eq!(
+        pinned.with_synthetic_levels().focal_plane(),
+        1,
+        "other views of a pinned view stay pinned"
+    );
+
     // A time point with a missing plane is left out with the ones after it.
     let cut = dir.path().join("cut.ome.tif");
     write_ome_tiff(&cut, &six(5), |plane, _, _| 100.0 * (plane as f64 + 1.0)).unwrap();
