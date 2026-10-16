@@ -1371,6 +1371,23 @@ pub enum HostEvent {
         #[serde(default)]
         params: Map<String, Value>,
     },
+    /// The answer to [`methods::MODEL_FETCH`]: the model is stored and
+    /// verified (`path` and `model`), or it is not (`error`). The host has
+    /// already told the user why a download failed or was refused; plugins
+    /// need not repeat it. `cancelled` is set when the user declined the
+    /// download or cancelled it (and `error` says so).
+    ModelFetched {
+        request_id: String,
+        /// The model's main file.
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        model: Option<ModelRecord>,
+        #[serde(default)]
+        error: Option<String>,
+        #[serde(default)]
+        cancelled: bool,
+    },
     /// Sent by newer hosts for events this plugin version does not know.
     #[serde(other)]
     Unknown,
@@ -1567,6 +1584,18 @@ pub mod methods {
     pub const ROI_GET: &str = "roi.get";
     /// `FileArgs` → `Vec<MeasurementInfo>`
     pub const MEASUREMENTS_LIST: &str = "measurements.list";
+
+    /// `ModelFetchArgs` → `RequestId`: makes a model available in eov's
+    /// model store, downloading it (after the user agrees, with progress in
+    /// the status bar) when it is not stored yet, and verifying every file
+    /// against its SHA-256. The answer arrives as
+    /// [`HostEvent::ModelFetched`](super::HostEvent::ModelFetched).
+    pub const MODEL_FETCH: &str = "model.fetch";
+    /// `ModelResolveArgs` → `Option<ModelRecord>`: the stored model whose
+    /// main file has this SHA-256, if any (never downloads).
+    pub const MODEL_RESOLVE: &str = "model.resolve";
+    /// `{}` → `Vec<ModelRecord>`: every stored model.
+    pub const MODEL_LIST: &str = "model.list";
 
     /// `PostArgs` → `null`. Delivers `Posted { token }` on the UI thread.
     pub const POST: &str = "post";
@@ -2004,6 +2033,200 @@ pub struct TextArgs {
     pub text: String,
 }
 
+/// A file a model needs next to its main file, such as the external
+/// weights of an ONNX model (`model.onnx.data`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModelFileSpec {
+    /// Lower-case hex SHA-256 of the file.
+    pub sha256: String,
+    /// Where to download it: absolute, or relative to the main file's URL.
+    /// `None`: the main file's folder with `file_name`.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// The name it is stored under. Required when `url` is `None`;
+    /// otherwise the URL's last path segment by default.
+    #[serde(default)]
+    pub file_name: Option<String>,
+    /// Its size in bytes, when known: checked, and a download stops as
+    /// soon as it would be larger.
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
+/// Arguments of [`methods::MODEL_FETCH`]. Models are stored by the
+/// SHA-256 of their main file, so the same model is downloaded once for
+/// every plugin and every eov of this user.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModelFetchArgs {
+    /// Where to download the main file. The administrator's policy can
+    /// provide a site copy by SHA-256 (it then wins), so `None` is allowed;
+    /// without either, only a model already stored can be answered.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Lower-case hex SHA-256 of the main file.
+    pub sha256: String,
+    /// Its size in bytes, when known (checked; caps the download).
+    #[serde(default)]
+    pub size: Option<u64>,
+    /// The name the main file is stored under (default: the URL's last
+    /// path segment).
+    #[serde(default)]
+    pub file_name: Option<String>,
+    /// What the model is called, shown when asking the user and recorded.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Files stored in the same folder as the main file.
+    #[serde(default)]
+    pub companions: Vec<ModelFileSpec>,
+}
+
+/// Arguments of [`methods::MODEL_RESOLVE`].
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModelResolveArgs {
+    /// SHA-256 of the main file.
+    pub sha256: String,
+}
+
+/// A companion file of a stored model.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModelCompanion {
+    pub file_name: String,
+    pub sha256: String,
+    pub size: u64,
+    /// Its absolute path (next to the main file).
+    #[serde(default)]
+    pub path: String,
+}
+
+/// A model in eov's model store (`eov model list`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModelRecord {
+    /// SHA-256 of the main file: the model's identity in the store.
+    pub sha256: String,
+    /// Absolute path of the main file.
+    pub path: String,
+    pub file_name: String,
+    /// Size of the main file in bytes.
+    pub size: u64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Where it was downloaded from (without credentials or query);
+    /// `None` for a file imported with `eov model import`.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// When it was stored (UTC, RFC 3339).
+    #[serde(default)]
+    pub fetched_at: Option<String>,
+    /// The plugin that asked for it, or `eov` for the command line.
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub companions: Vec<ModelCompanion>,
+    /// Provided read-only by the administrator (`model_dirs` in the
+    /// policy).
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+impl ModelRecord {
+    /// Whether the record holds a companion with this SHA-256 and name.
+    pub fn has_companion(&self, sha256: &str, file_name: &str) -> bool {
+        self.companions
+            .iter()
+            .any(|c| c.sha256.eq_ignore_ascii_case(sha256) && c.file_name == file_name)
+    }
+}
+
+/// Whether `text` is a SHA-256 in hex (64 digits, either case).
+pub fn is_sha256_hex(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Checks a name a model file is stored under: one plain file name that
+/// every platform accepts.
+pub fn check_model_file_name(name: &str) -> Result<(), String> {
+    // Windows device names, with or without an extension.
+    let stem = name.split('.').next().unwrap_or_default();
+    let reserved = ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|r| stem.eq_ignore_ascii_case(r))
+        || (stem.len() == 4
+            && stem.is_ascii()
+            && ["COM", "LPT"]
+                .iter()
+                .any(|p| stem[..3].eq_ignore_ascii_case(p))
+            && stem.as_bytes()[3].is_ascii_digit());
+    if name.is_empty()
+        || name.len() > 200
+        || name.starts_with('.')
+        || name.ends_with('.')
+        || name.ends_with(' ')
+        || name.chars().any(|c| {
+            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
+        || reserved
+    {
+        return Err(format!(
+            "'{name}' cannot be a model's file name (use a plain name such as model.onnx)"
+        ));
+    }
+    Ok(())
+}
+
+impl ModelFileSpec {
+    fn check(&self, what: &str) -> Result<(), String> {
+        if !is_sha256_hex(&self.sha256) {
+            return Err(format!(
+                "the {what}'s sha256 must be 64 hex digits, not '{}'",
+                self.sha256
+            ));
+        }
+        if let Some(name) = &self.file_name {
+            check_model_file_name(name)?;
+        }
+        if self.size == Some(0) {
+            return Err(format!("the {what}'s size cannot be 0"));
+        }
+        Ok(())
+    }
+}
+
+impl ModelFetchArgs {
+    /// Checks what the host checks before it accepts a request (URLs are
+    /// checked by the host).
+    pub fn validate(&self) -> Result<(), String> {
+        ModelFileSpec {
+            sha256: self.sha256.clone(),
+            url: self.url.clone(),
+            file_name: self.file_name.clone(),
+            size: self.size,
+        }
+        .check("model")?;
+        let mut names: Vec<&str> = self.file_name.iter().map(String::as_str).collect();
+        for companion in &self.companions {
+            companion.check("companion")?;
+            let name = companion.file_name.as_deref();
+            if companion.url.is_none() && name.is_none() {
+                return Err("a companion without a url needs a file_name".to_string());
+            }
+            if let Some(name) = name {
+                if names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                    return Err(format!("two files of the model are named '{name}'"));
+                }
+                names.push(name);
+            }
+        }
+        if self.companions.len() > 64 {
+            return Err("a model has at most 64 companion files".to_string());
+        }
+        Ok(())
+    }
+}
+
 /// Slide-wide JSON map type used by `file.properties`.
 pub type PropertyMap = BTreeMap<String, String>;
 
@@ -2110,6 +2333,92 @@ mod tests {
             "{text}"
         );
         assert_eq!(serde_json::from_str::<FileInfo>(&text).unwrap(), file);
+    }
+
+    #[test]
+    fn model_events_and_requests_are_additive() {
+        // Only the request id is required, so later fields stay optional.
+        let event: HostEvent =
+            serde_json::from_str(r#"{"type":"model_fetched","request_id":"model-1"}"#).unwrap();
+        assert_eq!(
+            event,
+            HostEvent::ModelFetched {
+                request_id: "model-1".into(),
+                path: None,
+                model: None,
+                error: None,
+                cancelled: false,
+            }
+        );
+        let args: ModelFetchArgs = serde_json::from_str(
+            r#"{"sha256":"70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92"}"#,
+        )
+        .unwrap();
+        assert!(args.validate().is_ok());
+        let record: ModelRecord =
+            serde_json::from_str(r#"{"sha256":"a","path":"/m","file_name":"m","size":1}"#).unwrap();
+        assert!(record.companions.is_empty() && !record.read_only);
+    }
+
+    #[test]
+    fn model_requests_are_validated() {
+        let sha = "70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92";
+        let base = ModelFetchArgs {
+            sha256: sha.into(),
+            ..Default::default()
+        };
+        assert!(base.validate().is_ok());
+        let upper = ModelFetchArgs {
+            sha256: sha.to_ascii_uppercase(),
+            ..base.clone()
+        };
+        assert!(upper.validate().is_ok(), "either case is hex");
+        for bad in [
+            ModelFetchArgs {
+                sha256: "70a8".into(),
+                ..base.clone()
+            },
+            ModelFetchArgs {
+                size: Some(0),
+                ..base.clone()
+            },
+            ModelFetchArgs {
+                file_name: Some("../escape.onnx".into()),
+                ..base.clone()
+            },
+            ModelFetchArgs {
+                file_name: Some("m.onnx".into()),
+                companions: vec![ModelFileSpec {
+                    sha256: sha.into(),
+                    file_name: Some("M.ONNX".into()),
+                    ..Default::default()
+                }],
+                ..base.clone()
+            },
+        ] {
+            assert!(bad.validate().is_err(), "{bad:?}");
+        }
+        for name in [
+            "",
+            ".hidden",
+            "a/b",
+            "a\\b",
+            "c:x",
+            "CON",
+            "com1.onnx",
+            "x.",
+            "x\n",
+        ] {
+            assert!(check_model_file_name(name).is_err(), "{name:?}");
+        }
+        for name in [
+            "model.onnx",
+            "HistoVae_reconstruct.onnx.data",
+            "console.onnx",
+            "aaé.onnx",
+        ] {
+            assert!(check_model_file_name(name).is_ok(), "{name:?}");
+        }
     }
 
     #[test]

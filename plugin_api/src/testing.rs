@@ -120,6 +120,14 @@ pub struct MockState {
     /// What `view.display` answers.
     pub display: DisplayAdjustments,
     pub posted: Vec<String>,
+    /// The model store: what `model.resolve` and `model.list` answer, by
+    /// the SHA-256 of the main file (lower case). See
+    /// [`MockState::add_model`].
+    pub models: BTreeMap<String, ModelRecord>,
+    /// `model.fetch` requests, in order, with the request id each was
+    /// answered with. Answer them with [`TestHarness::finish_model_fetch`]
+    /// or [`TestHarness::cancel_model_fetch`].
+    pub model_fetches: Vec<(String, ModelFetchArgs)>,
     /// Serves `read_region`; without one a mid-grey opaque image is returned.
     pub region_reader: Option<Box<RegionReader>>,
     /// Methods that fail with [`FfiErrorKind::Unsupported`], to emulate an
@@ -128,6 +136,12 @@ pub struct MockState {
 }
 
 impl MockState {
+    /// Puts a model in the mock's model store.
+    pub fn add_model(&mut self, record: ModelRecord) {
+        self.models
+            .insert(record.sha256.to_ascii_lowercase(), record);
+    }
+
     /// The arguments of every recorded call to `method`.
     pub fn calls_to(&self, method: &str) -> Vec<Value> {
         self.calls
@@ -591,6 +605,26 @@ impl MockHost {
                 state.posted.push(args.token);
                 null
             }
+            methods::MODEL_FETCH => {
+                let args: ModelFetchArgs = parse(args)?;
+                args.validate()
+                    .map_err(|e| FfiError::new(FfiErrorKind::InvalidArguments, e))?;
+                drop(state);
+                let request_id = self.fresh_id("model");
+                self.state().model_fetches.push((request_id.clone(), args));
+                json!(RequestId { request_id })
+            }
+            methods::MODEL_RESOLVE => {
+                let args: ModelResolveArgs = parse(args)?;
+                if !is_sha256_hex(&args.sha256) {
+                    return Err(FfiError::new(
+                        FfiErrorKind::InvalidArguments,
+                        "sha256 must be 64 hex digits",
+                    ));
+                }
+                json!(state.models.get(&args.sha256.to_ascii_lowercase()))
+            }
+            methods::MODEL_LIST => json!(state.models.values().collect::<Vec<_>>()),
             other => {
                 return Err(FfiError::new(
                     FfiErrorKind::Unsupported,
@@ -772,6 +806,54 @@ impl<P: Plugin> TestHarness<P> {
             surface_id: surface_id.to_string(),
             name: name.to_string(),
             args,
+        })
+    }
+
+    /// The last `model.fetch` request: the request id it was answered with
+    /// and its arguments.
+    pub fn last_model_fetch(&self) -> Option<(String, ModelFetchArgs)> {
+        self.state().model_fetches.last().cloned()
+    }
+
+    /// Answers the `model.fetch` request `request_id` as eov does: with the
+    /// stored model (which then also goes into the mock's model store, so
+    /// `model.resolve` finds it) or with the error eov reported.
+    pub fn finish_model_fetch(
+        &self,
+        request_id: &str,
+        outcome: Result<ModelRecord, String>,
+    ) -> Result<Value, FfiError> {
+        let event = match outcome {
+            Ok(record) => {
+                self.state().add_model(record.clone());
+                HostEvent::ModelFetched {
+                    request_id: request_id.to_string(),
+                    path: Some(record.path.clone()),
+                    model: Some(record),
+                    error: None,
+                    cancelled: false,
+                }
+            }
+            Err(error) => HostEvent::ModelFetched {
+                request_id: request_id.to_string(),
+                path: None,
+                model: None,
+                error: Some(error),
+                cancelled: false,
+            },
+        };
+        self.send(event)
+    }
+
+    /// Answers `request_id` as eov does when the user declines or cancels
+    /// the download.
+    pub fn cancel_model_fetch(&self, request_id: &str) -> Result<Value, FfiError> {
+        self.send(HostEvent::ModelFetched {
+            request_id: request_id.to_string(),
+            path: None,
+            model: None,
+            error: Some("The download was cancelled.".to_string()),
+            cancelled: true,
         })
     }
 
@@ -1068,5 +1150,168 @@ mod tests {
         assert_eq!(sdk_host.setting::<f64>("threshold").unwrap(), Some(0.5));
         sdk_host.remove_setting("threshold").unwrap();
         assert_eq!(sdk_host.setting::<f64>("threshold").unwrap(), None);
+    }
+
+    const MODEL_SHA: &str = "70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92";
+
+    /// Uses a stored model, or asks eov for it, on a toolbar click.
+    struct ModelUser {
+        host: Host,
+        request: std::sync::Mutex<Option<String>>,
+    }
+
+    impl Plugin for ModelUser {
+        fn create(host: Host, _init: PluginInit) -> Result<Self, String> {
+            Ok(Self {
+                host,
+                request: std::sync::Mutex::new(None),
+            })
+        }
+
+        fn on_event(&self, event: HostEvent) -> Result<(), String> {
+            match event {
+                HostEvent::ToolbarButtonClicked { .. } => {
+                    if let Some(model) = self.host.resolve_model(MODEL_SHA).map_err(String::from)? {
+                        self.host.info(format!("using {}", model.path));
+                        return Ok(());
+                    }
+                    let request = self
+                        .host
+                        .fetch_model(ModelFetchArgs {
+                            url: Some("https://models.example.org/m.onnx".into()),
+                            sha256: MODEL_SHA.into(),
+                            name: Some("Reference".into()),
+                            companions: vec![ModelFileSpec {
+                                sha256: "cd2735866bd69648eb17df97f196f266e6e2569f8c21fa1e9779fb7e3a233ef8"
+                                    .into(),
+                                file_name: Some("m.onnx.data".into()),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        })
+                        .map_err(String::from)?;
+                    *self.request.lock().unwrap() = Some(request);
+                }
+                HostEvent::ModelFetched {
+                    request_id,
+                    path,
+                    error,
+                    cancelled,
+                    ..
+                } if self.request.lock().unwrap().as_deref() == Some(request_id.as_str()) => {
+                    match (path, error) {
+                        (Some(path), _) => self.host.info(format!("using {path}")),
+                        (None, _) if cancelled => self.host.info("not now"),
+                        (None, error) => self.host.info(format!("failed: {error:?}")),
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+
+    fn logged(harness: &TestHarness<ModelUser>) -> Vec<String> {
+        harness
+            .calls_to("log")
+            .iter()
+            .map(|args| args["message"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn models_are_fetched_once_and_then_resolved() {
+        let harness = TestHarness::<ModelUser>::new().unwrap();
+        let click = || {
+            harness
+                .send(HostEvent::ToolbarButtonClicked {
+                    button_id: "x".into(),
+                })
+                .unwrap()
+        };
+        click();
+        let (request, args) = harness.last_model_fetch().expect("the plugin asked");
+        assert_eq!(args.sha256, MODEL_SHA);
+        assert_eq!(args.companions.len(), 1);
+        harness
+            .finish_model_fetch(
+                &request,
+                Ok(ModelRecord {
+                    sha256: MODEL_SHA.into(),
+                    path: "/models/70a8/m.onnx".into(),
+                    file_name: "m.onnx".into(),
+                    size: 10,
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+        assert_eq!(logged(&harness), ["using /models/70a8/m.onnx"]);
+        // Stored now: the next click resolves it without a download.
+        click();
+        assert_eq!(harness.state().model_fetches.len(), 1);
+        assert_eq!(logged(&harness).len(), 2);
+        let listed = Host::from_ffi(harness.host().to_ffi()).models().unwrap();
+        assert_eq!(listed.len(), 1);
+    }
+
+    #[test]
+    fn declined_and_failed_fetches_reach_the_plugin() {
+        let harness = TestHarness::<ModelUser>::new().unwrap();
+        let click = || {
+            harness
+                .send(HostEvent::ToolbarButtonClicked {
+                    button_id: "x".into(),
+                })
+                .unwrap()
+        };
+        click();
+        let (request, _) = harness.last_model_fetch().unwrap();
+        harness.cancel_model_fetch(&request).unwrap();
+        click();
+        let (request, _) = harness.last_model_fetch().unwrap();
+        harness
+            .finish_model_fetch(&request, Err("SHA-256 mismatch".into()))
+            .unwrap();
+        assert_eq!(
+            logged(&harness),
+            ["not now", "failed: Some(\"SHA-256 mismatch\")"]
+        );
+        assert!(harness.state().models.is_empty());
+    }
+
+    #[test]
+    fn model_requests_are_checked_and_old_hosts_refuse_them() {
+        let mock = MockHost::new();
+        let host = Host::from_ffi(mock.to_ffi());
+        let bad = host
+            .fetch_model(ModelFetchArgs {
+                sha256: "abc".into(),
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert_eq!(bad.kind, FfiErrorKind::InvalidArguments);
+        let nameless = host
+            .fetch_model(ModelFetchArgs {
+                sha256: MODEL_SHA.into(),
+                companions: vec![ModelFileSpec {
+                    sha256: MODEL_SHA.into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(nameless.message.contains("file_name"), "{nameless}");
+        assert_eq!(host.resolve_model(MODEL_SHA).unwrap(), None);
+        mock.state()
+            .unsupported
+            .push(methods::MODEL_FETCH.to_string());
+        assert!(
+            host.fetch_model(ModelFetchArgs {
+                sha256: MODEL_SHA.into(),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .is_unsupported()
+        );
     }
 }
