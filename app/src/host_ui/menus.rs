@@ -92,8 +92,9 @@ impl UiHost {
                 super::publish::view_info(&state, PaneId(pane), scale),
                 file.is_some_and(|f| f.roi.is_some()),
                 file.is_some_and(|f| !f.measurements.is_empty()),
+                // Turned by any angle (a mirror alone has its toggle).
                 file.and_then(|f| f.pane_state(PaneId(pane)))
-                    .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
+                    .is_some_and(|ps| ps.viewport.viewport.orientation.degrees() != 0.0),
                 file.is_some_and(|f| f.wsi.is_multichannel()),
                 // Whether the slide is colour-managed, for slides with a
                 // usable profile.
@@ -143,7 +144,10 @@ impl UiHost {
                 Action::Flip,
             ));
             if turned {
-                items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
+                items.push(with_key(
+                    item("host:view-reset-orientation", "Reset Rotation", ""),
+                    Action::ResetRotation,
+                ));
             }
             mark_last_separator(&mut items);
         }
@@ -418,7 +422,7 @@ impl UiHost {
                         "rotate-right" => crate::callbacks::rotate_active_viewport(&mut state, 1),
                         "rotate-left" => crate::callbacks::rotate_active_viewport(&mut state, -1),
                         "flip" => crate::callbacks::flip_active_viewport(&mut state),
-                        _ => crate::callbacks::reset_active_orientation(&mut state),
+                        _ => crate::callbacks::reset_active_rotation(&mut state),
                     };
                     if changed {
                         state.mirror_locked_viewports_from_active();

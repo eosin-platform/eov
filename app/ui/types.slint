@@ -147,6 +147,10 @@ export struct MinimapRect {
     y: float,
     width: float,
     height: float,
+    // The view's outline as SVG path commands in thousandths of the
+    // thumbnail, when the view is turned by an angle that is not a quarter
+    // turn (the thumbnail shows the nearest one); empty otherwise.
+    outline: string,
 }
 
 export struct ViewportInfo {
@@ -156,9 +160,13 @@ export struct ViewportInfo {
     image-width: float,
     image-height: float,
     level: int,
-    // Clockwise rotation of the view in degrees (0, 90, 180, 270), then a
-    // left-right mirror when `flipped`.
-    rotation: int,
+    // Clockwise rotation of the view in degrees (any angle, 0 to 360), then
+    // a left-right mirror when `flipped`; `rotation-text` is the angle as
+    // shown ("37.5"), `rotation-input-text` with every decimal it has, for
+    // editing.
+    rotation: float,
+    rotation-text: string,
+    rotation-input-text: string,
     flipped: bool,
 }
 

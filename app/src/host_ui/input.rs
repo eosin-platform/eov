@@ -382,6 +382,20 @@ impl UiHost {
                 .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, -1)),
             Action::RotateRight => self
                 .with_focused_viewport(|state| crate::callbacks::rotate_active_viewport(state, 1)),
+            Action::RotateLeftFine | Action::RotateRightFine => {
+                let step = crate::rotation::FINE_STEP_DEGREES;
+                let degrees = if action == Action::RotateLeftFine {
+                    -step
+                } else {
+                    step
+                };
+                self.with_focused_viewport(|state| {
+                    crate::callbacks::rotate_active_viewport_by(state, degrees)
+                });
+            }
+            Action::ResetRotation => {
+                self.with_focused_viewport(crate::callbacks::reset_active_rotation)
+            }
             Action::Flip => self.with_focused_viewport(crate::callbacks::flip_active_viewport),
             Action::LinkSlides => {
                 crate::callbacks::toggle_slide_link(&ui, &self.state);
@@ -479,6 +493,8 @@ impl UiHost {
                 }
             }
             if let Some(viewport) = state.active_viewport_mut() {
+                // The view's turn then, at once; the field glides there.
+                viewport.set_orientation(visit.orientation);
                 viewport.smooth_set_center_zoom(visit.center_x, visit.center_y, visit.zoom);
             }
             state.mirror_locked_viewports_from_active();

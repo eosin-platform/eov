@@ -658,8 +658,8 @@ impl Host {
         self.command(methods::VIEW_FIT, &PaneArgs { pane })
     }
 
-    /// Turns a pane's view (default: the focused one): `rotation_deg`
-    /// clockwise (a multiple of 90), then mirrored left to right if
+    /// Turns a pane's view (default: the focused one) about its centre:
+    /// `rotation_deg` clockwise (any angle), then mirrored left to right if
     /// `flipped`. Level-0 coordinates are unaffected.
     pub fn set_view_orientation(
         &self,

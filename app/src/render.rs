@@ -836,11 +836,13 @@ fn merge_wanted_tiles(lists: Vec<Vec<eov_common::TileCoord>>) -> Vec<eov_common:
     merged
 }
 
-/// The slide's minimap thumbnail turned like the pane's view.
+/// The slide's minimap thumbnail turned like the pane's view: by its
+/// nearest quarter turn (the minimap outlines the rest of the turn).
 pub(crate) fn thumbnail_image_for_file(
     file: &OpenFile,
     orientation: eov_common::viewport::Orientation,
 ) -> Option<Image> {
+    let orientation = orientation.quarter_part();
     let thumbnail = file.thumbnail.as_ref()?;
     let (width, height) = orientation.swap(thumbnail.width, thumbnail.height);
     let needed = width as usize * height as usize * 4;
@@ -878,7 +880,7 @@ fn minimap_stale(
     crate::with_pane_render_cache(pane_count, |cache| {
         cache.get(pane.0).is_none_or(|entry| {
             entry.minimap_thumbnail.is_none()
-                || entry.minimap_orientation != orientation
+                || entry.minimap_orientation != orientation.quarter_part()
                 || entry.minimap_color != color
         })
     })

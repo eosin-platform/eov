@@ -259,7 +259,9 @@ pub fn hidden_viewport_info() -> ViewportInfo {
         image_width: 1.0,
         image_height: 1.0,
         level: 0,
-        rotation: 0,
+        rotation: 0.0,
+        rotation_text: SharedString::from("0"),
+        rotation_input_text: SharedString::from("0"),
         flipped: false,
     }
 }
@@ -271,7 +273,22 @@ pub fn full_minimap_rect() -> MinimapRect {
         y: 0.0,
         width: 1.0,
         height: 1.0,
+        outline: SharedString::default(),
     }
+}
+
+/// A minimap outline (normalised points) as the SVG path commands the
+/// minimap draws, in thousandths of the thumbnail.
+fn minimap_outline_commands(outline: &[[f64; 2]]) -> SharedString {
+    let mut commands = String::new();
+    for (i, p) in outline.iter().enumerate() {
+        commands.push_str(if i == 0 { "M " } else { " L " });
+        commands.push_str(&format!("{:.2} {:.2}", p[0] * 1000.0, p[1] * 1000.0));
+    }
+    if !commands.is_empty() {
+        commands.push_str(" Z");
+    }
+    SharedString::from(commands)
 }
 
 /// Update the tabs UI from the current state
@@ -351,7 +368,10 @@ pub fn update_tabs(
                     level: file.tile_manager.wsi().best_level_for_downsample(
                         vp.effective_downsample() / f64::from(ui.window().scale_factor()).max(1e-6),
                     ) as i32,
-                    rotation: vp.orientation.degrees() as i32,
+                    rotation: vp.orientation.degrees() as f32,
+                    rotation_text: crate::rotation::degrees_label(vp.orientation.degrees()).into(),
+                    rotation_input_text: crate::rotation::degrees_text(vp.orientation.degrees())
+                        .into(),
                     flipped: vp.orientation.flipped(),
                 };
                 // Relative to what the thumbnail shows (the content bounds
@@ -360,11 +380,22 @@ pub fn update_tabs(
                     Some(thumbnail) => vp.minimap_rect_within(&thumbnail.region),
                     None => viewport_state.minimap_rect(),
                 };
+                // At angles other than quarter turns the outline tilts on
+                // the thumbnail (turned by the nearest quarter turn).
+                let outline = if vp.orientation.is_quarter_turn() {
+                    SharedString::default()
+                } else {
+                    minimap_outline_commands(&match file.thumbnail.as_ref() {
+                        Some(thumbnail) => vp.minimap_outline_within(&thumbnail.region),
+                        None => viewport_state.minimap_outline(),
+                    })
+                };
                 minimap_rect = MinimapRect {
                     x: rect.x,
                     y: rect.y,
                     width: rect.width,
                     height: rect.height,
+                    outline,
                 };
                 zoom_slider_position = zoom_to_slider_value(vp.zoom);
                 zoom_display =
@@ -392,11 +423,10 @@ pub fn update_tabs(
                         })
                         .unwrap_or_default()
                         .into();
-                        let turned = ps.viewport.viewport.orientation.swaps_axes();
+                        // Along the screen's x axis, whatever the turn.
                         if let Some((um_x, um_y, _)) = spacing
                             && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
-                                if turned { um_y } else { um_x }
-                                    / ps.viewport.viewport.zoom.max(1e-12),
+                                ps.viewport.viewport.screen_x_um_per_px(um_x, um_y),
                                 SCALE_BAR_MAX_PX,
                                 ps.hud.measurement_unit,
                             )

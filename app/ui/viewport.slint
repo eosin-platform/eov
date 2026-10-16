@@ -72,6 +72,8 @@ export component Viewport inherits Rectangle {
     callback hud-zoom-input(string);
     callback hud-zoom-in();
     callback hud-orientation-changed(int);
+    // An angle typed into the HUD's angle field.
+    callback hud-rotation-input(string);
     callback hud-color-management-toggled();
     callback hud-zoom-out();
     callback hud-deconv-h-intensity-changed(float);
@@ -279,9 +281,14 @@ export component Viewport inherits Rectangle {
         has-adjustments: root.hud.modified;
         plugin-buttons: root.plugin-hud-buttons;
         rotation-degrees: root.viewport-info.rotation;
+        rotation-text: root.viewport-info.rotation-text;
+        rotation-input-text: root.viewport-info.rotation-input-text;
         flipped: root.viewport-info.flipped;
         orientation-changed(action) => {
             root.hud-orientation-changed(action);
+        }
+        rotation-input(text) => {
+            root.hud-rotation-input(text);
         }
         color-management: root.hud.color-management;
         color-management-tooltip: root.hud.color-management-tooltip;

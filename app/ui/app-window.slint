@@ -392,6 +392,7 @@ export component AppWindow inherits Window {
     callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
     callback hud-orientation-changed(int, int);
+    callback hud-rotation-input(int, string);
     callback hud-color-management-toggled(int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
@@ -961,6 +962,9 @@ export component AppWindow inherits Window {
                     }
                     hud-orientation-changed(pane, action) => {
                         root.hud-orientation-changed(pane, action);
+                    }
+                    hud-rotation-input(pane, text) => {
+                        root.hud-rotation-input(pane, text);
                     }
                     hud-color-management-toggled(pane) => {
                         root.hud-color-management-toggled(pane);

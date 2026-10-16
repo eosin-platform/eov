@@ -5,6 +5,8 @@
 //! A view is recorded when it settles (the same debounce as plugins'
 //! `ViewChanged`), and only when it differs noticeably from the previous
 //! one: moved by more than half a screen, or zoomed by more than 1.5×.
+//! Each entry keeps the view's turn (any angle, and the mirror), which
+//! stepping back or forward restores; turning alone refines the entry.
 
 use std::collections::HashMap;
 
@@ -21,6 +23,8 @@ pub(crate) struct Visit {
     /// Pane size in logical pixels, to judge "half a screen".
     pub width: f64,
     pub height: f64,
+    /// How the view was turned.
+    pub orientation: eov_common::viewport::Orientation,
 }
 
 impl Visit {
@@ -132,7 +136,28 @@ mod tests {
             zoom,
             width: 1000.0,
             height: 800.0,
+            orientation: Default::default(),
         }
+    }
+
+    /// Entries come back with the angle they were seen at; turning alone
+    /// makes no entry.
+    #[test]
+    fn steps_restore_the_angle_of_each_field() {
+        use eov_common::viewport::Orientation;
+        let tilted = |x: f64, degrees: f64| Visit {
+            orientation: Orientation::from_degrees(degrees, false).unwrap(),
+            ..at(x, 1.0)
+        };
+        let mut history = History::default();
+        history.settled(3, tilted(0.0, 37.25));
+        history.settled(3, tilted(9000.0, 37.25));
+        history.settled(3, tilted(9000.0, 0.0)); // turned only: refines
+        let back = history.back(3, |_| true).unwrap();
+        assert_eq!(back, tilted(0.0, 37.25));
+        assert_eq!(back.orientation.degrees(), 37.25);
+        history.settled(3, back);
+        assert_eq!(history.forward(3, |_| true), Some(tilted(9000.0, 0.0)));
     }
 
     #[test]

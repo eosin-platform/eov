@@ -1959,7 +1959,24 @@ mod tests {
                 turned
             );
         }
-        assert!(crate::callbacks::reset_active_orientation(&mut state));
+        // Resetting the rotation keeps the mirror (it has its own toggle);
+        // locked panes follow any angle.
+        assert!(crate::callbacks::reset_active_rotation(&mut state));
+        assert!(!crate::callbacks::reset_active_rotation(&mut state));
+        assert!(crate::callbacks::set_active_rotation(&mut state, 37.5));
+        assert!(crate::callbacks::rotate_active_viewport_by(
+            &mut state, -5.0
+        ));
+        state.mirror_locked_viewports_from_active();
+        let file = state.get_file(file_id).unwrap();
+        // Mirrored, turning counterclockwise on screen adds to the angle
+        // (which turns before the mirror).
+        let tilted = eov_common::viewport::Orientation::from_degrees(42.5, true).unwrap();
+        for pane in [PaneId::PRIMARY, second] {
+            let orientation = file.pane_state(pane).unwrap().viewport.viewport.orientation;
+            assert_eq!(orientation, tilted, "{pane:?}");
+        }
+        assert!(!crate::callbacks::set_active_rotation(&mut state, f64::NAN));
     }
 
     #[test]
