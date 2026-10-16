@@ -249,6 +249,18 @@ export component PluginsPanel inherits Rectangle {
                                         height: self.preferred-height;
                                     }
 
+                                    // What the plugin has cost since it started
+                                    // (only while it runs; refreshed while the
+                                    // panel is open).
+                                    if row.usage != "": Text {
+                                        text: row.usage;
+                                        color: Theme.text-secondary;
+                                        font-size: 11px;
+                                        wrap: word-wrap;
+                                        height: self.preferred-height;
+                                        accessible-description: @tr("Resources used since the plugin started");
+                                    }
+
                                     if row.detail != "": Text {
                                         text: row.detail;
                                         color: Theme.warning;

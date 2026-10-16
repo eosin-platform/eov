@@ -126,6 +126,9 @@ fn operated(ui: &AppWindow) -> usize {
         .len()
 }
 
+/// The resource use of the running plugin in `fill`.
+const USAGE: &str = "UI thread 12 ms in 340 events (0.1%)";
+
 fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(rows))
 }
@@ -182,6 +185,7 @@ fn fill(ui: &AppWindow) {
         version: "0.2.4".into(),
         status: "Active".into(),
         update: "0.2.5".into(),
+        usage: USAGE.into(),
         can_disable: true,
         can_remove: true,
         ..Default::default()
@@ -413,6 +417,31 @@ fn dialog_controls_act_on_their_actions() {
         tissue.invoke_accessible_default_action();
         assert_eq!(ui.get_dataset_export_settings().tissue_only, !before);
         assert_eq!(tissue.accessible_checked(), Some(!before));
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn a_running_plugin_shows_what_it_costs() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        fill(&ui);
+        ui.set_plugins_panel_visible(true);
+        let usage = find(&ui, AccessibleRole::Text, USAGE);
+        assert_eq!(
+            usage.accessible_description().as_deref(),
+            Some("Resources used since the plugin started")
+        );
+        // A plugin that does not run has no such line.
+        let rows = ui.get_plugin_rows();
+        let mut row = rows.row_data(0).unwrap();
+        row.usage = "".into();
+        rows.set_row_data(0, row);
+        settle(&ui);
+        assert_eq!(
+            ElementHandle::find_by_accessible_label(&ui, USAGE).count(),
+            0
+        );
         ui.hide().unwrap();
     });
 }
