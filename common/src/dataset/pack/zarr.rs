@@ -15,7 +15,7 @@ pub(super) fn pack(patches: &Patches, cancel: &AtomicBool) -> std::io::Result<Op
     let store = replace_when_complete(&patches.dir, ZARR_STORE, |store| {
         write_store(patches, store, cancel)
     })?;
-    Ok(store.map(|store| patches.report(store)))
+    Ok(store.map(|store| patches.report(store, None)))
 }
 
 fn write_json(path: &Path, value: &Value) -> std::io::Result<()> {
@@ -182,6 +182,7 @@ mod tests {
             (packed.patches, packed.tile_size, packed.slides),
             (8, 64, 1)
         );
+        assert_eq!(packed.library, None);
         let store = out.join(ZARR_STORE);
         let images = read_json(&store.join("images/.zarray"));
         assert_eq!(images["shape"], json!([8, 64, 64, 3]));

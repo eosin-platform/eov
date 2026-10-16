@@ -135,6 +135,24 @@ enum CliPatchFormat {
     Jpeg,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum CliPackFormat {
+    /// <DIR>/patches.zarr, a zarr v2 store (needs nothing installed).
+    #[default]
+    Zarr,
+    /// <DIR>/patches.h5, written by the HDF5 library (1.10 or newer).
+    Hdf5,
+}
+
+impl CliPackFormat {
+    fn to_common(self) -> dataset::PackFormat {
+        match self {
+            Self::Zarr => dataset::PackFormat::Zarr,
+            Self::Hdf5 => dataset::PackFormat::Hdf5,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum DatasetCommand {
     /// Extract image patches from whole-slide images.
@@ -169,15 +187,45 @@ EXIT STATUS:\n  \
   2    invalid arguments, no slides found, or an incompatible output directory\n  \
   130  cancelled with Ctrl-C (metadata so far is kept; re-run to resume)")]
     Patches(Box<DatasetPatchesArgs>),
-    /// Pack a dataset's patches into one zarr store.
+    /// Pack a dataset's patches into one zarr store or HDF5 file.
     ///
-    /// Writes <DIR>/patches.zarr (zarr v2, zstd chunks): images (N, H, W, 3)
-    /// uint8, masks (N, H, W) when the dataset has them, coords (N, 2)
-    /// level-0 x and y, slide (N,) and label (N,) indices, and attributes
-    /// listing the slides and classes. Readable with zarr-python.
+    /// Writes <DIR>/patches.zarr (--format zarr, the default: zarr v2 with
+    /// zstd chunks, readable with zarr-python) or <DIR>/patches.h5 (--format
+    /// hdf5: deflate chunks, readable with h5py), with the same arrays:
+    /// images (N, H, W, 3) uint8 with one chunk per patch, masks (N, H, W)
+    /// when the dataset has them, coords (N, 2) level-0 x and y, slide (N,)
+    /// and label (N,) indices, and attributes listing the slides and classes
+    /// (in HDF5 as JSON text: json.loads(f.attrs["slides"])). Patches keep
+    /// the order of the metadata; an earlier store or file is replaced once
+    /// the new one is complete.
+    #[command(after_help = "HDF5:\n  \
+  --format hdf5 loads the HDF5 C library (1.10 or newer) when it runs: eov is\n  \
+  not built with it. It is looked for in this order:\n    \
+    --hdf5-library <PATH> or EOV_HDF5_LIBRARY (only that library, when given)\n    \
+    $HDF5_DIR/lib, then $CONDA_PREFIX/lib (Windows: %CONDA_PREFIX%\\Library\\bin)\n    \
+    the system's library: libhdf5.so, libhdf5_serial.so and the sonames of\n    \
+    1.10, 1.12 and 1.14 (.103, .200, .310) on Linux; libhdf5.dylib, also in\n    \
+    /opt/homebrew/lib, /usr/local/lib and /opt/local/lib, on macOS; hdf5.dll\n    \
+    on Windows\n  \
+  Install it with, for example, `sudo apt install libhdf5-310` (libhdf5-103-1t64\n  \
+  on Ubuntu 24.04), `sudo dnf install hdf5`, `brew install hdf5` or\n  \
+  `conda install -c conda-forge hdf5`. --format zarr needs no library.\n\n\
+EXIT STATUS:\n  \
+  0    packed\n  \
+  1    failed (an earlier store or file is kept)\n  \
+  130  cancelled with Ctrl-C (an earlier store or file is kept)")]
     Pack {
         /// A folder written by `eov dataset patches`.
         dir: PathBuf,
+
+        /// What to write.
+        #[arg(long, value_enum, default_value_t = CliPackFormat::Zarr)]
+        format: CliPackFormat,
+
+        /// The HDF5 library to write with (the file, or a folder with it),
+        /// instead of searching for one. Also EOV_HDF5_LIBRARY.
+        #[arg(long, value_name = "PATH")]
+        hdf5_library: Option<PathBuf>,
     },
 }
 
@@ -1170,19 +1218,34 @@ enum CommandAction {
     LaunchUi,
     ApplicationUpdate(UpdateArgs),
     Plugin(PluginCommand),
-    Probe { file: PathBuf, json: bool },
+    Probe {
+        file: PathBuf,
+        json: bool,
+    },
     Qc(crate::qc_cli::QcRun),
     RecentList,
     ConfigPath,
-    Paths { json: bool },
-    FileTypes { register: bool, dry_run: bool },
+    Paths {
+        json: bool,
+    },
+    FileTypes {
+        register: bool,
+        dry_run: bool,
+    },
     DatasetPatches(Box<DatasetJob>),
-    DatasetPack(PathBuf),
+    DatasetPack {
+        dir: PathBuf,
+        options: dataset::PackOptions,
+    },
     Convert(Box<ConvertArgs>),
-    BatchList { json: bool },
+    BatchList {
+        json: bool,
+    },
     BatchRun(Box<crate::batch::RunOptions>),
     Call(ScriptCall),
-    ScriptEndpoint { json: bool },
+    ScriptEndpoint {
+        json: bool,
+    },
 }
 
 /// A parsed `eov call`.
@@ -1349,7 +1412,17 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
             DatasetCommand::Patches(args) => {
                 CommandAction::DatasetPatches(Box::new(args.into_job()))
             }
-            DatasetCommand::Pack { dir } => CommandAction::DatasetPack(dir),
+            DatasetCommand::Pack {
+                dir,
+                format,
+                hdf5_library,
+            } => CommandAction::DatasetPack {
+                dir,
+                options: dataset::PackOptions {
+                    format: format.to_common(),
+                    hdf5_library,
+                },
+            },
         },
         Some(CliCommand::Convert(args)) => CommandAction::Convert(args),
         Some(CliCommand::Batch { command }) => match command {
@@ -1520,7 +1593,7 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             run_dataset_patches_cli(job)?;
             Ok(true)
         }
-        CommandAction::DatasetPack(dir) => {
+        CommandAction::DatasetPack { dir, options } => {
             let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             {
                 let cancel = std::sync::Arc::clone(&cancel);
@@ -1528,14 +1601,19 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
                     cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                 });
             }
-            match dataset::pack_zarr(dir, &cancel)? {
+            match dataset::pack(dir, options, &cancel)? {
                 Some(report) => println!(
-                    "Packed {} patch(es) of {} px from {} slide(s){} into {}",
+                    "Packed {} patch(es) of {} px from {} slide(s){} into {}{}",
                     report.patches,
                     report.tile_size,
                     report.slides,
                     if report.with_masks { " with masks" } else { "" },
-                    report.store.display()
+                    report.store.display(),
+                    report
+                        .library
+                        .as_ref()
+                        .map(|library| format!(" (written by {library})"))
+                        .unwrap_or_default()
                 ),
                 None => {
                     eprintln!("Cancelled; nothing was changed.");
@@ -2310,6 +2388,39 @@ mod tests {
         let options = parse(&["--", "probe", "--cpu"]).unwrap();
         assert!(options.launches_ui());
         assert_eq!(options.files, [OsString::from("probe"), "--cpu".into()]);
+    }
+
+    #[test]
+    fn dataset_pack_writes_zarr_unless_asked_for_hdf5() {
+        let CommandAction::DatasetPack { dir, options } =
+            parse(&["dataset", "pack", "ds"]).unwrap().command
+        else {
+            panic!("not dataset pack");
+        };
+        assert_eq!(dir, PathBuf::from("ds"));
+        assert_eq!(options, dataset::PackOptions::default());
+        assert_eq!(options.format, dataset::PackFormat::Zarr);
+
+        let CommandAction::DatasetPack { options, .. } = parse(&[
+            "dataset",
+            "pack",
+            "ds",
+            "--format",
+            "hdf5",
+            "--hdf5-library",
+            "/opt/hdf5/lib/libhdf5.so",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("not dataset pack");
+        };
+        assert_eq!(options.format, dataset::PackFormat::Hdf5);
+        assert_eq!(
+            options.hdf5_library.as_deref(),
+            Some(Path::new("/opt/hdf5/lib/libhdf5.so"))
+        );
+        assert!(parse(&["dataset", "pack", "ds", "--format", "hdf4"]).is_err());
     }
 
     #[test]

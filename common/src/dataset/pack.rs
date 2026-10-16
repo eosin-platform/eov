@@ -1,25 +1,43 @@
-//! Packing a dataset into one zarr v2 store (AUDIT §14.5), for training code
-//! that reads arrays rather than many files: `eov dataset pack <dir>`.
+//! Packing a dataset into one zarr store or HDF5 file (AUDIT §14.5), for
+//! training code that reads arrays rather than many files:
+//! `eov dataset pack <dir> [--format zarr|hdf5]`.
 //!
-//! [`pack_zarr`] reads the dataset's patch records (`metadata.jsonl`, else
+//! [`pack`] reads the dataset's patch records (`metadata.jsonl`, else
 //! `metadata.csv`, else `metadata.json`), decodes every patch and mask, and
-//! writes `<dir>/patches.zarr`, readable with zarr-python
-//! (`zarr.open("patches.zarr")`):
+//! writes one of:
+//!
+//! * [`PackFormat::Zarr`] (the default): `<dir>/patches.zarr`, a zarr v2
+//!   store with zstd chunks and consolidated metadata (`.zmetadata`),
+//!   readable with zarr-python (`zarr.open("patches.zarr")`).
+//! * [`PackFormat::Hdf5`]: `<dir>/patches.h5`, written by the HDF5 C
+//!   library (1.10 or newer), which eov loads at run time
+//!   ([`crate::hdf5`]); readable with h5py (`h5py.File("patches.h5")`).
+//!   Chunks are deflated (level 4), `coords` and `slide` with the shuffle
+//!   filter first. The file uses the HDF5 1.8 format.
+//!
+//! Both hold the same arrays:
 //!
 //! | Array    | Shape          | Type   | Contents |
 //! |----------|----------------|--------|----------|
-//! | `images` | (N, H, W, 3)   | uint8  | the patches, one zstd chunk each |
+//! | `images` | (N, H, W, 3)   | uint8  | the patches, one chunk each |
 //! | `masks`  | (N, H, W)      | uint8  | their masks, when the dataset has them |
 //! | `coords` | (N, 2)         | int64  | level-0 x and y of each patch |
 //! | `slide`  | (N,)           | int32  | index into the `slides` attribute |
 //! | `label`  | (N,)           | uint8  | class index from `classes.json` (0: none) |
 //!
-//! Patches keep the order of the records. The group's attributes list the
-//! slides (id, stem, pixel size, read level and downsample), the classes,
-//! the tile size and eov's version; `.zmetadata` holds the consolidated
-//! metadata. The store is written under a temporary name and renamed when
-//! complete, replacing an earlier one.
+//! The one-dimensional arrays (and `coords`) are chunked by 65 536 rows.
+//! Patches keep the order of the records. The attributes of the store's
+//! root group are the same in both: `slides` (per slide its id, stem, pixel
+//! size, read level, downsample and size), `classes` (index → name),
+//! `tile_size`, `patches`, `eov_version` and a `description`. HDF5 has no
+//! nested attributes, so there `slides` and `classes` are JSON text, UTF-8
+//! strings: `json.loads(f.attrs["slides"])`.
+//!
+//! The output is written under a temporary name (`<name>.<pid>.partial`)
+//! and renamed when complete, replacing an earlier one; a cancelled or
+//! failed pack leaves an earlier one as it was.
 
+mod hdf5;
 mod zarr;
 
 use super::metadata::{CSV_FILE, JSON_FILE, JSONL_FILE, TileRecord, for_each_csv, for_each_jsonl};
@@ -30,10 +48,32 @@ use std::sync::atomic::AtomicBool;
 
 /// The zarr store's directory name.
 pub const ZARR_STORE: &str = "patches.zarr";
+/// The HDF5 file's name.
+pub const HDF5_FILE: &str = "patches.h5";
 /// Rows of the one-dimensional arrays per chunk.
 const ROW_CHUNK: usize = 65_536;
 
-/// What [`pack_zarr`] wrote.
+/// What [`pack`] writes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PackFormat {
+    /// `patches.zarr`, which needs nothing installed.
+    #[default]
+    Zarr,
+    /// `patches.h5`, which needs the HDF5 library (1.10 or newer).
+    Hdf5,
+}
+
+/// How [`pack`] packs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PackOptions {
+    pub format: PackFormat,
+    /// The HDF5 library to write with (the file, or a folder with it),
+    /// instead of searching for one; without it, `EOV_HDF5_LIBRARY` names
+    /// it when set ([`crate::hdf5::LIBRARY_ENV`]).
+    pub hdf5_library: Option<PathBuf>,
+}
+
+/// What [`pack`] wrote.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackReport {
     /// The store or file written.
@@ -42,12 +82,31 @@ pub struct PackReport {
     pub tile_size: u32,
     pub slides: usize,
     pub with_masks: bool,
+    /// The HDF5 library that wrote the file: its version and where it was
+    /// loaded from.
+    pub library: Option<String>,
+}
+
+/// Packs the dataset in `dir` as `options` say. Returns `Ok(None)` when
+/// cancelled.
+pub fn pack(
+    dir: &Path,
+    options: &PackOptions,
+    cancel: &AtomicBool,
+) -> std::io::Result<Option<PackReport>> {
+    match options.format {
+        PackFormat::Zarr => zarr::pack(&Patches::read(dir)?, cancel),
+        PackFormat::Hdf5 => {
+            let search = crate::hdf5::LibrarySearch::from_env(options.hdf5_library.as_deref());
+            hdf5::pack(&Patches::read(dir)?, &search, cancel)
+        }
+    }
 }
 
 /// Packs the dataset in `dir` into `dir/patches.zarr`. Returns `Ok(None)`
 /// when cancelled.
 pub fn pack_zarr(dir: &Path, cancel: &AtomicBool) -> std::io::Result<Option<PackReport>> {
-    zarr::pack(&Patches::read(dir)?, cancel)
+    pack(dir, &PackOptions::default(), cancel)
 }
 
 /// A dataset's patch records, checked, and what every format writes of
@@ -218,13 +277,14 @@ impl Patches {
         attributes
     }
 
-    fn report(&self, store: PathBuf) -> PackReport {
+    fn report(&self, store: PathBuf, library: Option<String>) -> PackReport {
         PackReport {
             store,
             patches: self.len(),
             tile_size: self.width,
             slides: self.slides.len(),
             with_masks: self.with_masks,
+            library,
         }
     }
 }
@@ -435,5 +495,10 @@ mod tests {
     fn folders_without_records_are_refused() {
         let temp = tempfile::tempdir().unwrap();
         assert!(pack_zarr(temp.path(), &AtomicBool::new(false)).is_err());
+        let options = PackOptions {
+            format: PackFormat::Hdf5,
+            hdf5_library: None,
+        };
+        assert!(pack(temp.path(), &options, &AtomicBool::new(false)).is_err());
     }
 }
