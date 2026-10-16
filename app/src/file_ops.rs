@@ -149,9 +149,17 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
             && path
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"));
-        if is_dicom
-            && let Some(uid) = eov_common::dataset::dicom_series_uid_within(&path, 256 * 1024)
+        let header = is_dicom
+            .then(|| eov_common::dataset::DicomHeader::read(&path, 256 * 1024))
+            .flatten();
+        if header
+            .as_ref()
+            .is_some_and(|header| header.non_slide_reason().is_some())
         {
+            // Annotations exported next to the slide, reports, segmentations.
+            continue;
+        }
+        if let Some(uid) = header.and_then(|header| header.series_uid) {
             if let Some(&index) = series_index.get(&uid) {
                 instances[index] += 1;
                 continue;
@@ -1169,6 +1177,25 @@ mod tests {
         bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
         bytes.extend_from_slice(&value);
         fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn dicom_files_that_are_not_slides_are_not_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dicom(&dir.path().join("slide.dcm"), "1.2.3");
+        // An annotations file exported next to the slide.
+        let mut bytes = vec![0u8; 128];
+        bytes.extend_from_slice(b"DICM");
+        let class = b"1.2.840.10008.5.1.4.1.1.91.1";
+        bytes.extend_from_slice(&[0x02, 0x00, 0x02, 0x00, b'U', b'I']);
+        bytes.extend_from_slice(&(class.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(class);
+        fs::write(dir.path().join("slide.annotations.dcm"), bytes).unwrap();
+        let names: Vec<String> = enumerate_series_entries(dir.path())
+            .into_iter()
+            .map(|entry| entry.filename)
+            .collect();
+        assert_eq!(names, ["slide.dcm"]);
     }
 
     #[test]

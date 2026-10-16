@@ -372,6 +372,9 @@ impl std::fmt::Debug for WsiFile {
     }
 }
 
+/// DICOM Microscopy Bulk Simple Annotations Storage.
+const BULK_ANNOTATIONS_SOP_CLASS: &str = "1.2.840.10008.5.1.4.1.1.91.1";
+
 impl WsiFile {
     /// Opens a slide, reusing the shared handle if the same unchanged file
     /// is already open in this process.
@@ -411,6 +414,21 @@ impl WsiFile {
             path.file_name().unwrap_or_default().to_string_lossy()
         );
         tracing::debug!("Opening WSI file: {}", path.display());
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"))
+            && let Some(header) = crate::dataset::DicomHeader::read(path, 1 << 16)
+            && let Some(reason) = header.non_slide_reason()
+        {
+            // Annotations exported next to a slide, reports: say what the
+            // file is rather than that OpenSlide cannot read it.
+            let hint = if header.sop_class_uid.as_deref() == Some(BULK_ANNOTATIONS_SOP_CLASS) {
+                " (open its slide and import it with the annotations plugin)"
+            } else {
+                ""
+            };
+            return Err(Error::UnsupportedFormat(format!("{reason}{hint}")));
+        }
         let source::Opened {
             source,
             properties,
@@ -934,6 +952,24 @@ mod tests {
         assert_eq!(wsi.property("openslide.vendor"), Some("generic-tiff"));
         assert!(wsi.property_map().contains_key("openslide.level-count"));
         assert_eq!(props.content_bounds(), SlideBounds::full(512, 384));
+    }
+
+    #[test]
+    fn dicom_annotations_are_not_opened_as_slides() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.annotations.dcm");
+        let mut bytes = vec![0u8; 128];
+        bytes.extend_from_slice(b"DICM");
+        bytes.extend_from_slice(&[0x02, 0x00, 0x02, 0x00, b'U', b'I']);
+        bytes.extend_from_slice(&(BULK_ANNOTATIONS_SOP_CLASS.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(BULK_ANNOTATIONS_SOP_CLASS.as_bytes());
+        std::fs::write(&path, bytes).unwrap();
+        let error = WsiFile::open(&path).unwrap_err().to_string();
+        assert!(
+            error.contains("DICOM Microscopy Bulk Simple Annotations, not a whole-slide image")
+                && error.contains("annotations plugin"),
+            "{error}"
+        );
     }
 
     #[test]
