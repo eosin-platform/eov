@@ -450,13 +450,13 @@ export component Viewport inherits Rectangle {
         height: 0px;
         key-pressed(e) => {
             if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
-                accept
+                return accept;
             }
             reject
         }
         key-released(e) => {
             if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, false, false) {
-                accept
+                return accept;
             }
             reject
         }

@@ -254,7 +254,7 @@ export component HudToolbar inherits Rectangle {
                                 root.editing-zoom = false;
                                 self.text = root.zoom-input-text;
                                 root.release-keyboard();
-                                accept
+                                return accept;
                             }
                             reject
                         }
@@ -426,6 +426,7 @@ export component HudToolbar inherits Rectangle {
         // The menu takes the keyboard: Escape closes it.
         DialogKeys {
             title: "Menu";
+            takes-back: false;
             cancel => {
                 root.plugin-menu-open = false;
             }

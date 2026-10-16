@@ -602,6 +602,73 @@ fn enter_does_the_default_action() {
     });
 }
 
+/// A key the slide takes is not handed to the window's shortcuts too (it
+/// ran twice: `]` turned the view 180°, `=` zoomed two steps).
+#[test]
+fn a_key_the_slide_takes_runs_once() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let (ui, slide_keys) = window_with_slide_keyboard();
+        let (global_keys, tick) = counter();
+        ui.on_global_key(move |_, _, _, _, _, pressed, _| {
+            if pressed {
+                tick();
+            }
+            true
+        });
+        let before = slide_keys.get();
+        key(&ui, "]");
+        assert_eq!(slide_keys.get(), before + 1);
+        assert_eq!(global_keys.get(), 0, "the shortcut ran a second time");
+        ui.hide().unwrap();
+    });
+}
+
+/// Escape closes the confirmation over the Plugins panel, not the panel;
+/// the panel has the keyboard again.
+#[test]
+fn escape_closes_the_surface_on_top_only() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let (cancelled, tick) = counter();
+        ui.on_plugin_confirm_cancelled(tick);
+        ui.set_plugins_panel_visible(true);
+        settle(&ui);
+        ui.set_plugin_confirm_visible(true);
+        settle(&ui);
+        key(&ui, Key::Escape);
+        assert_eq!(cancelled.get(), 1);
+        assert!(!ui.get_plugin_confirm_visible());
+        assert!(ui.get_plugins_panel_visible());
+        key(&ui, Key::Escape);
+        assert!(!ui.get_plugins_panel_visible());
+        ui.hide().unwrap();
+    });
+}
+
+/// While a dialog or panel over the window is open, the window's shortcuts
+/// do not run behind it (UI-7).
+#[test]
+fn shortcuts_do_not_run_behind_a_dialog() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let (global_keys, tick) = counter();
+        ui.on_global_key(move |_, _, _, _, _, pressed, _| {
+            if pressed {
+                tick();
+            }
+            true
+        });
+        key(&ui, "m");
+        assert_eq!(global_keys.get(), 1, "with no dialog open");
+        ui.set_measurements_panel_visible(true);
+        settle(&ui);
+        key(&ui, "m");
+        assert_eq!(global_keys.get(), 1);
+        ui.hide().unwrap();
+    });
+}
+
 #[test]
 fn tab_moves_through_a_dialogs_fields_without_leaving_it() {
     use slint::platform::Key;

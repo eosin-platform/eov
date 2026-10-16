@@ -7,6 +7,12 @@
 // the dialog's fields and back to the dialog without leaving it. The window
 // gives the keyboard back to itself when the dialog closes.
 
+/// Asks the open dialog to take the keyboard back (a confirmation shown over
+/// it closed).
+export global DialogFocus {
+    in-out property <int> restore-count;
+}
+
 export component DialogKeys inherits FocusScope {
     /// The dialog's title: its name for assistive technology.
     in property <string> title;
@@ -15,8 +21,19 @@ export component DialogKeys inherits FocusScope {
     /// Takes the keyboard when it opens (false for a panel that floats over
     /// the slide and leaves the keyboard where it is).
     in property <bool> take-focus: true;
+    /// Takes the keyboard back when a confirmation shown over it closes
+    /// (false for the confirmations themselves, and for the panels and
+    /// menus over the slide).
+    in property <bool> takes-back: true;
     callback cancel();
     callback default-action();
+
+    property <int> restore-count: DialogFocus.restore-count;
+    changed restore-count => {
+        if root.takes-back && root.take-focus {
+            root.focus();
+        }
+    }
 
     // A click outside the dialog goes through to its backdrop.
     focus-on-click: false;
