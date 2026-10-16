@@ -5,11 +5,47 @@ use super::UiHost;
 use crate::PluginRowData;
 use crate::plugin_runtime::PluginStatus;
 use eov_plugin_api::protocol::NotifyLevel;
-use slint::{ModelRc, VecModel};
+use slint::{Model, ModelRc, VecModel};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// How often the open Plugins panel shows the plugins' resource use again.
+const USAGE_REFRESH: std::time::Duration = std::time::Duration::from_secs(2);
+
 impl UiHost {
+    /// Keeps the Plugins panel's resource use current while it is open.
+    pub(crate) fn watch_plugin_usage(&self) {
+        self.plugin_usage_timer
+            .start(slint::TimerMode::Repeated, USAGE_REFRESH, || {
+                super::with_host(|host| host.refresh_plugin_usage());
+            });
+    }
+
+    /// Updates the usage line of each row in place (a new model would
+    /// reset the list's scroll position).
+    fn refresh_plugin_usage(&self) {
+        let Some(ui) = self.ui() else {
+            return;
+        };
+        if !ui.get_plugins_panel_visible() {
+            self.plugin_usage_timer.stop();
+            return;
+        }
+        let rows = ui.get_plugin_rows();
+        let runtime = self.runtime.borrow();
+        for index in 0..rows.row_count() {
+            let Some(mut row) = rows.row_data(index) else {
+                continue;
+            };
+            let usage: slint::SharedString =
+                runtime.usage_summary(&row.id).unwrap_or_default().into();
+            if row.usage != usage {
+                row.usage = usage;
+                rows.set_row_data(index, row);
+            }
+        }
+    }
+
     pub(crate) fn refresh_plugin_panel(&self) {
         let Some(ui) = self.ui() else {
             return;
@@ -69,6 +105,10 @@ impl UiHost {
                         .into(),
                     detail: detail.join(" ").into(),
                     update: updates.get(&slot.info.id).cloned().unwrap_or_default().into(),
+                    usage: runtime
+                        .usage_summary(&slot.info.id)
+                        .unwrap_or_default()
+                        .into(),
                     can_enable,
                     can_disable,
                     can_remove: package.is_some_and(|package| !package.system),

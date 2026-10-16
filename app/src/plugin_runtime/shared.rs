@@ -75,6 +75,8 @@ pub struct PluginContext {
     /// The extracted package; surfaces and assets resolve inside it.
     pub root: PathBuf,
     revoked: AtomicBool,
+    /// What the plugin has cost so far (the Plugins panel shows it).
+    pub usage: Arc<super::usage::PluginUsage>,
 }
 
 impl PluginContext {
@@ -83,6 +85,7 @@ impl PluginContext {
             id: Arc::from(id),
             root,
             revoked: AtomicBool::new(false),
+            usage: Arc::new(super::usage::PluginUsage::new()),
         }
     }
 
