@@ -19,7 +19,7 @@ component SeriesCard inherits Rectangle {
     border-radius: 8px;
     background: touch.has-hover ? Theme.surface-hover : Theme.surface;
     accessible-role: list-item;
-    accessible-label: root.item.is-directory ? "Folder " + root.item.name : root.item.name;
+    accessible-label: root.item.is-directory ? @tr("Folder {}", root.item.name) : root.item.name;
     accessible-description: root.item.metadata-tooltip;
     accessible-item-selectable: !root.item.is-directory;
     accessible-item-selected: root.selected;
@@ -173,7 +173,7 @@ component SeriesCard inherits Rectangle {
                 opacity: 0.55;
 
                 Text {
-                    text: "Loading thumbnail";
+                    text: @tr("Loading thumbnail");
                     color: Theme.text-secondary;
                     font-size: 11px;
                     horizontal-alignment: center;
@@ -182,7 +182,7 @@ component SeriesCard inherits Rectangle {
             }
 
             if !item.is-directory && !item.is-loading && !item.has-thumbnail: Text {
-                text: "No Preview";
+                text: @tr("No Preview");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -202,7 +202,7 @@ export component SeriesBar inherits Rectangle {
     /// Only entries containing this (name, stain, objective) are shown.
     in-out property <string> filter;
     /// The current order ("A–Z", "Newest", "Stain").
-    in property <string> sort-label: "A–Z";
+    in property <string> sort-label: @tr("A–Z");
     callback filter-edited(string);
     callback sort-cycled();
     callback open-folder-requested();
@@ -256,7 +256,7 @@ export component SeriesBar inherits Rectangle {
 
             back-button := SvgIconButton {
                 icon-source: @image-url("icons/back.svg");
-                tooltip-text: "Back";
+                tooltip-text: @tr("Back");
                 enabled: root.can-go-back;
                 clicked => {
                     root.go-back();
@@ -272,7 +272,7 @@ export component SeriesBar inherits Rectangle {
 
             forward-button := SvgIconButton {
                 icon-source: @image-url("icons/forward.svg");
-                tooltip-text: "Forward";
+                tooltip-text: @tr("Forward");
                 enabled: root.can-go-forward;
                 clicked => {
                     root.go-forward();
@@ -288,7 +288,7 @@ export component SeriesBar inherits Rectangle {
 
             up-button := SvgIconButton {
                 icon-source: @image-url("icons/up.svg");
-                tooltip-text: "Up";
+                tooltip-text: @tr("Up");
                 enabled: root.can-go-up;
                 clicked => {
                     root.go-up();
@@ -311,7 +311,7 @@ export component SeriesBar inherits Rectangle {
 
             open-folder-button := SvgIconButton {
                 icon-source: @image-url("icons/open-file.svg");
-                tooltip-text: "Open Folder";
+                tooltip-text: @tr("Open Folder");
                 clicked => {
                     root.open-folder-requested();
                 }
@@ -351,8 +351,8 @@ export component SeriesBar inherits Rectangle {
                     font-size: 11px;
                     vertical-alignment: center;
                     single-line: true;
-                    accessible-label: "Filter the series";
-                    accessible-placeholder-text: "Filter (name, stain)";
+                    accessible-label: @tr("Filter the series");
+                    accessible-placeholder-text: @tr("Filter (name, stain)");
                     edited => {
                         root.filter-edited(self.text);
                     }
@@ -369,7 +369,7 @@ export component SeriesBar inherits Rectangle {
                 if root.filter == "": Text {
                     x: 6px;
                     height: parent.height;
-                    text: "Filter (name, stain)";
+                    text: @tr("Filter (name, stain)");
                     color: Theme.text-secondary;
                     font-size: 11px;
                     vertical-alignment: center;
@@ -387,8 +387,8 @@ export component SeriesBar inherits Rectangle {
                 border-color: Theme.border;
                 background: sort-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
-                accessible-label: "Order: " + root.sort-label;
-                accessible-description: "Order: by name, newest first or by stain";
+                accessible-label: @tr("Order: {}", root.sort-label);
+                accessible-description: @tr("Order: by name, newest first or by stain");
                 accessible-action-default => {
                     root.sort-cycled();
                 }
@@ -408,9 +408,9 @@ export component SeriesBar inherits Rectangle {
                     }
                     changed has-hover => {
                         if self.has-hover {
-                            root.show-tooltip("Order: by name, newest first or by stain", sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
+                            root.show-tooltip(@tr("Order: by name, newest first or by stain"), sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
                         } else {
-                            root.clear-tooltip("Order: by name, newest first or by stain");
+                            root.clear-tooltip(@tr("Order: by name, newest first or by stain"));
                         }
                     }
                 }
@@ -418,7 +418,7 @@ export component SeriesBar inherits Rectangle {
 
             hide-button := SvgIconButton {
                 icon-source: @image-url("icons/hide-series.svg");
-                tooltip-text: "Hide Series Bar";
+                tooltip-text: @tr("Hide Series Bar");
                 clicked => {
                     root.hide-requested();
                 }
@@ -448,7 +448,7 @@ export component SeriesBar inherits Rectangle {
             spacing: 8px;
 
             Text {
-                text: "Empty folder";
+                text: @tr("Empty folder");
                 color: Theme.text-primary;
                 font-size: 15px;
                 font-weight: 600;
@@ -456,7 +456,7 @@ export component SeriesBar inherits Rectangle {
             }
 
             Text {
-                text: "No folders or supported WSI files are visible here.";
+                text: @tr("No folders or supported WSI files are visible here.");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -487,7 +487,7 @@ export component SeriesBar inherits Rectangle {
         series-layout := HorizontalLayout {
             x: -root.scroll-x;
             accessible-role: list;
-            accessible-label: "Slides and folders";
+            accessible-label: @tr("Slides and folders");
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 12px;

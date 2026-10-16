@@ -310,7 +310,7 @@ component PaneView inherits Rectangle {
             border-color: Theme.drop-border;
 
             Text {
-                text: root.os-file-hover-side == 0 ? "Open Left" : "Open Right";
+                text: root.os-file-hover-side == 0 ? @tr("Open Left") : @tr("Open Right");
                 color: Theme.drop-text;
                 font-size: 18px;
                 font-weight: 700;
@@ -346,7 +346,7 @@ component PaneView inherits Rectangle {
             border-color: Theme.drop-border;
 
             Text {
-                text: root.split-drop-side == 0 ? "Create Left Pane" : "Create Right Pane";
+                text: root.split-drop-side == 0 ? @tr("Create Left Pane") : @tr("Create Right Pane");
                 color: Theme.drop-text;
                 font-size: 18px;
                 font-weight: 700;

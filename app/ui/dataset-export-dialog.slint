@@ -38,7 +38,7 @@ export component DatasetExportDialog inherits Rectangle {
 
     // Escape cancels, Enter starts the export (Enter in a field applies it).
     DialogKeys {
-        title: "Export Dataset";
+        title: @tr("Export Dataset");
         has-default-action: true;
         cancel => {
             root.cancel-requested();
@@ -65,7 +65,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                 // Title
                 Text {
-                    text: "Export Dataset";
+                    text: @tr("Export Dataset");
                     color: Theme.text-primary;
                     font-size: 16px;
                     font-weight: 700;
@@ -74,7 +74,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                 // --- Inputs Section ---
                 Text {
-                    text: "Inputs";
+                    text: @tr("Inputs");
                     color: Theme.text-primary;
                     font-size: 12px;
                     font-weight: 600;
@@ -98,7 +98,7 @@ export component DatasetExportDialog inherits Rectangle {
                             padding: 2px;
                             spacing: 0px;
                             accessible-role: list;
-                            accessible-label: "Inputs";
+                            accessible-label: @tr("Inputs");
 
                             for item[idx] in root.settings.inputs: Rectangle {
                                 height: 22px;
@@ -149,7 +149,7 @@ export component DatasetExportDialog inherits Rectangle {
                         border-width: 1px;
                         border-color: Theme.border;
                         accessible-role: button;
-                        accessible-label: "Add slides or folders";
+                        accessible-label: @tr("Add slides or folders");
                         accessible-action-default => {
                             root.add-input-requested();
                         }
@@ -178,7 +178,7 @@ export component DatasetExportDialog inherits Rectangle {
                         border-width: 1px;
                         border-color: root.selected-input-index >= 0 ? Theme.border : Theme.outline;
                         accessible-role: button;
-                        accessible-label: "Remove the selected input";
+                        accessible-label: @tr("Remove the selected input");
                         accessible-enabled: root.selected-input-index >= 0;
                         accessible-action-default => {
                             if root.selected-input-index >= 0 {
@@ -208,7 +208,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                 // --- Output Section ---
                 Text {
-                    text: "Output";
+                    text: @tr("Output");
                     color: Theme.text-primary;
                     font-size: 12px;
                     font-weight: 600;
@@ -234,7 +234,7 @@ export component DatasetExportDialog inherits Rectangle {
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 overflow: elide;
-                                accessible-label: "Output folder: " + root.settings.output-dir;
+                                accessible-label: @tr("Output folder: {}", root.settings.output-dir);
                             }
                         }
                     }
@@ -247,7 +247,7 @@ export component DatasetExportDialog inherits Rectangle {
                         border-width: 1px;
                         border-color: Theme.border;
                         accessible-role: button;
-                        accessible-label: "Change the output folder";
+                        accessible-label: @tr("Change the output folder");
                         accessible-action-default => {
                             root.change-output-dir-requested();
                         }
@@ -259,7 +259,7 @@ export component DatasetExportDialog inherits Rectangle {
                         }
 
                         Text {
-                            text: "Change";
+                            text: @tr("Change");
                             color: Theme.text-primary;
                             font-size: 12px;
                             horizontal-alignment: center;
@@ -278,7 +278,7 @@ export component DatasetExportDialog inherits Rectangle {
                         horizontal-stretch: 1;
 
                         Text {
-                            text: "Tile Size";
+                            text: @tr("Tile Size");
                             color: Theme.text-secondary;
                             font-size: 11px;
                         }
@@ -293,7 +293,7 @@ export component DatasetExportDialog inherits Rectangle {
                             tile-size-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
-                                accessible-label: "Tile size";
+                                accessible-label: @tr("Tile size");
                                 color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
@@ -318,7 +318,7 @@ export component DatasetExportDialog inherits Rectangle {
                         horizontal-stretch: 1;
 
                         Text {
-                            text: "Stride";
+                            text: @tr("Stride");
                             color: Theme.text-secondary;
                             font-size: 11px;
                         }
@@ -333,7 +333,7 @@ export component DatasetExportDialog inherits Rectangle {
                             stride-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
-                                accessible-label: "Stride";
+                                accessible-label: @tr("Stride");
                                 color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
@@ -358,7 +358,7 @@ export component DatasetExportDialog inherits Rectangle {
                         horizontal-stretch: 1;
 
                         Text {
-                            text: "Threads";
+                            text: @tr("Threads");
                             color: Theme.text-secondary;
                             font-size: 11px;
                         }
@@ -373,7 +373,7 @@ export component DatasetExportDialog inherits Rectangle {
                             threads-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
-                                accessible-label: "Threads";
+                                accessible-label: @tr("Threads");
                                 color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
@@ -396,7 +396,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                 // --- White Threshold ---
                 Text {
-                    text: "White Threshold";
+                    text: @tr("White Threshold");
                     color: Theme.text-secondary;
                     font-size: 11px;
                 }
@@ -409,7 +409,7 @@ export component DatasetExportDialog inherits Rectangle {
                         horizontal-stretch: 1;
                         height: 28px;
                         accessible-role: slider;
-                        accessible-label: "White threshold";
+                        accessible-label: @tr("White threshold");
                         accessible-value: round(root.settings.white-threshold * 100) + "%";
                         accessible-value-minimum: 0;
                         accessible-value-maximum: 1;
@@ -482,7 +482,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                             white-text-input := TextInput {
                                 horizontal-stretch: 1;
-                                accessible-label: "White threshold (%)";
+                                accessible-label: @tr("White threshold (%)");
                                 color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
@@ -515,7 +515,7 @@ export component DatasetExportDialog inherits Rectangle {
                     spacing: 8px;
                     height: 22px;
                     accessible-role: checkbox;
-                    accessible-label: "Tissue only (skip patches that are mostly background)";
+                    accessible-label: @tr("Tissue only (skip patches that are mostly background)");
                     accessible-checkable: true;
                     accessible-checked: root.settings.tissue-only;
                     accessible-action-default => {
@@ -543,7 +543,7 @@ export component DatasetExportDialog inherits Rectangle {
                     }
 
                     Text {
-                        text: "Tissue only (skip patches that are mostly background)";
+                        text: @tr("Tissue only (skip patches that are mostly background)");
                         color: Theme.text-secondary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -563,7 +563,7 @@ export component DatasetExportDialog inherits Rectangle {
                     spacing: 8px;
                     height: 22px;
                     accessible-role: checkbox;
-                    accessible-label: "Leave out pen marks, folds and blurred areas";
+                    accessible-label: @tr("Leave out pen marks, folds and blurred areas");
                     accessible-checkable: true;
                     accessible-checked: root.settings.exclude-qc;
                     accessible-action-default => {
@@ -591,7 +591,7 @@ export component DatasetExportDialog inherits Rectangle {
                     }
 
                     Text {
-                        text: "Leave out pen marks, folds and blurred areas (tissue QC)";
+                        text: @tr("Leave out pen marks, folds and blurred areas (tissue QC)");
                         color: Theme.text-secondary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -611,7 +611,7 @@ export component DatasetExportDialog inherits Rectangle {
                     spacing: 8px;
                     height: 22px;
                     accessible-role: checkbox;
-                    accessible-label: "De-identify (name slides by ids; write no file names or paths)";
+                    accessible-label: @tr("De-identify (name slides by ids; write no file names or paths)");
                     accessible-checkable: true;
                     accessible-checked: root.settings.deidentify;
                     accessible-action-default => {
@@ -639,7 +639,7 @@ export component DatasetExportDialog inherits Rectangle {
                     }
 
                     Text {
-                        text: "De-identify (name slides by ids; write no file names or paths)";
+                        text: @tr("De-identify (name slides by ids; write no file names or paths)");
                         color: Theme.text-secondary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -679,7 +679,7 @@ export component DatasetExportDialog inherits Rectangle {
                         border-width: 1px;
                         border-color: Theme.border;
                         accessible-role: button;
-                        accessible-label: "Cancel";
+                        accessible-label: @tr("Cancel");
                         accessible-action-default => {
                             root.cancel-requested();
                         }
@@ -691,7 +691,7 @@ export component DatasetExportDialog inherits Rectangle {
                         }
 
                         Text {
-                            text: "Cancel";
+                            text: @tr("Cancel");
                             color: Theme.text-primary;
                             font-size: 12px;
                             horizontal-alignment: center;
@@ -706,8 +706,8 @@ export component DatasetExportDialog inherits Rectangle {
                         border-radius: 4px;
                         background: confirm-btn-touch.has-hover ? Theme.accent-hover : Theme.accent;
                         accessible-role: button;
-                        accessible-label: "Confirm";
-                        accessible-description: "Starts the export";
+                        accessible-label: @tr("Confirm");
+                        accessible-description: @tr("Starts the export");
                         accessible-action-default => {
                             root.export-requested();
                         }
@@ -719,7 +719,7 @@ export component DatasetExportDialog inherits Rectangle {
                         }
 
                         Text {
-                            text: "Confirm";
+                            text: @tr("Confirm");
                             color: Theme.text-on-accent;
                             font-size: 12px;
                             horizontal-alignment: center;

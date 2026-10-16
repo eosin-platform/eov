@@ -23,7 +23,7 @@ export component Viewport inherits Rectangle {
     in property <ViewportInfo> viewport-info;
     in property <string> zoom-display-text: "100%";
     in property <string> zoom-input-text: "100";
-    in property <string> zoom-tooltip: "100% = 1 image pixel per display pixel";
+    in property <string> zoom-tooltip: @tr("100% = 1 image pixel per display pixel");
     in property <image> minimap-thumbnail;
     in property <MinimapRect> minimap-rect;
     in property <bool> show-minimap: true;
@@ -106,7 +106,7 @@ export component Viewport inherits Rectangle {
             height: 100%;
             source: content;
             image-fit: fill;
-            accessible-label: "Slide view";
+            accessible-label: @tr("Slide view");
         }
 
         // Annotations and measurements are listed in their panels.
@@ -153,7 +153,7 @@ export component Viewport inherits Rectangle {
             border-radius: 8px;
 
             Text {
-                text: "Loading...";
+                text: @tr("Loading...");
                 color: Theme.text-primary;
                 font-size: 12px;
                 horizontal-alignment: center;

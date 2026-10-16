@@ -233,7 +233,7 @@ component SegmentButton inherits Rectangle {
     border-width: root.active ? Theme.selected-width : 0px;
     border-color: Theme.accent-bright;
     accessible-role: radio-button;
-    accessible-label: root.group != "" ? root.group + ": " + root.text : root.text;
+    accessible-label: root.group != "" ? @tr("{}: {}", root.group, root.text) : root.text;
     accessible-checkable: true;
     accessible-checked: root.active;
     accessible-action-default => {
@@ -269,7 +269,7 @@ component DpiChip inherits Rectangle {
     border-width: root.active ? Theme.selected-width : 0px;
     border-color: Theme.accent-bright;
     accessible-role: radio-button;
-    accessible-label: root.chip-value + " DPI";
+    accessible-label: @tr("{} DPI", root.chip-value);
     accessible-checkable: true;
     accessible-checked: root.active;
     accessible-action-default => {
@@ -419,8 +419,8 @@ component ColorField inherits Rectangle {
             border-width: 1px;
             border-color: swatch-touch.has-hover ? Theme.outline-hover : Theme.outline-medium;
             accessible-role: button;
-            accessible-label: "Colour";
-            accessible-description: "Opens the colours to choose from";
+            accessible-label: @tr("Colour");
+            accessible-description: @tr("Opens the colours to choose from");
             accessible-action-default => {
                 color-popup.show();
             }
@@ -433,7 +433,7 @@ component ColorField inherits Rectangle {
         }
 
         Text {
-            text: "Opacity";
+            text: @tr("Opacity");
             color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
@@ -457,7 +457,7 @@ component ColorField inherits Rectangle {
                 font-size: 10px;
                 horizontal-alignment: right;
                 vertical-alignment: center;
-                accessible-label: "Opacity (%)";
+                accessible-label: @tr("Opacity (%)");
 
                 accepted => {
                     root.opacity-changed(max(0, min(100, self.text.to-float())));
@@ -498,7 +498,7 @@ component ColorField inherits Rectangle {
                 spacing: 6px;
 
                 Text {
-                    text: "Pick a Color";
+                    text: @tr("Pick a Color");
                     color: Theme.text-primary;
                     font-size: 10px;
                     font-weight: 500;
@@ -509,7 +509,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #E74C3C;
-                        name: "Red";
+                        name: @tr("Red");
                         selected: root.current-color == #E74C3C;
                         picked(c) => {
                             root.current-color = c;
@@ -520,7 +520,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #E67E22;
-                        name: "Orange";
+                        name: @tr("Orange");
                         selected: root.current-color == #E67E22;
                         picked(c) => {
                             root.current-color = c;
@@ -531,7 +531,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #F1C40F;
-                        name: "Yellow";
+                        name: @tr("Yellow");
                         selected: root.current-color == #F1C40F;
                         picked(c) => {
                             root.current-color = c;
@@ -542,7 +542,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2ECC71;
-                        name: "Green";
+                        name: @tr("Green");
                         selected: root.current-color == #2ECC71;
                         picked(c) => {
                             root.current-color = c;
@@ -553,7 +553,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #1ABC9C;
-                        name: "Turquoise";
+                        name: @tr("Turquoise");
                         selected: root.current-color == #1ABC9C;
                         picked(c) => {
                             root.current-color = c;
@@ -564,7 +564,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #3498DB;
-                        name: "Blue";
+                        name: @tr("Blue");
                         selected: root.current-color == #3498DB;
                         picked(c) => {
                             root.current-color = c;
@@ -579,7 +579,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #9B59B6;
-                        name: "Purple";
+                        name: @tr("Purple");
                         selected: root.current-color == #9B59B6;
                         picked(c) => {
                             root.current-color = c;
@@ -590,7 +590,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #E91E8A;
-                        name: "Pink";
+                        name: @tr("Pink");
                         selected: root.current-color == #E91E8A;
                         picked(c) => {
                             root.current-color = c;
@@ -601,7 +601,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #C0392B;
-                        name: "Dark red";
+                        name: @tr("Dark red");
                         selected: root.current-color == #C0392B;
                         picked(c) => {
                             root.current-color = c;
@@ -612,7 +612,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #27AE60;
-                        name: "Dark green";
+                        name: @tr("Dark green");
                         selected: root.current-color == #27AE60;
                         picked(c) => {
                             root.current-color = c;
@@ -623,7 +623,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2980B9;
-                        name: "Dark blue";
+                        name: @tr("Dark blue");
                         selected: root.current-color == #2980B9;
                         picked(c) => {
                             root.current-color = c;
@@ -634,7 +634,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #8E44AD;
-                        name: "Dark purple";
+                        name: @tr("Dark purple");
                         selected: root.current-color == #8E44AD;
                         picked(c) => {
                             root.current-color = c;
@@ -649,7 +649,7 @@ component ColorField inherits Rectangle {
                     spacing: 4px;
                     PickerSwatch {
                         swatch-color: #FFFFFF;
-                        name: "White";
+                        name: @tr("White");
                         selected: root.current-color == #FFFFFF;
                         picked(c) => {
                             root.current-color = c;
@@ -660,7 +660,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #ECF0F1;
-                        name: "Light grey";
+                        name: @tr("Light grey");
                         selected: root.current-color == #ECF0F1;
                         picked(c) => {
                             root.current-color = c;
@@ -671,7 +671,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #95A5A6;
-                        name: "Grey";
+                        name: @tr("Grey");
                         selected: root.current-color == #95A5A6;
                         picked(c) => {
                             root.current-color = c;
@@ -682,7 +682,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #7F8C8D;
-                        name: "Dark grey";
+                        name: @tr("Dark grey");
                         selected: root.current-color == #7F8C8D;
                         picked(c) => {
                             root.current-color = c;
@@ -693,7 +693,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #2C3E50;
-                        name: "Navy";
+                        name: @tr("Navy");
                         selected: root.current-color == #2C3E50;
                         picked(c) => {
                             root.current-color = c;
@@ -704,7 +704,7 @@ component ColorField inherits Rectangle {
 
                     PickerSwatch {
                         swatch-color: #000000;
-                        name: "Black";
+                        name: @tr("Black");
                         selected: root.current-color == #000000;
                         picked(c) => {
                             root.current-color = c;
@@ -720,7 +720,7 @@ component ColorField inherits Rectangle {
                     alignment: center;
 
                     Text {
-                        text: "R";
+                        text: @tr("Red, as one letter" => "R");
                         color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
@@ -738,7 +738,7 @@ component ColorField inherits Rectangle {
                         rgb-r-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            accessible-label: "Red (0–255)";
+                            accessible-label: @tr("Red (0–255)");
                             text: root.current-color.red;
                             color: Theme.text-value;
                             font-size: 9px;
@@ -755,7 +755,7 @@ component ColorField inherits Rectangle {
                     }
 
                     Text {
-                        text: "G";
+                        text: @tr("Green, as one letter" => "G");
                         color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
@@ -773,7 +773,7 @@ component ColorField inherits Rectangle {
                         rgb-g-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            accessible-label: "Green (0–255)";
+                            accessible-label: @tr("Green (0–255)");
                             text: root.current-color.green;
                             color: Theme.text-value;
                             font-size: 9px;
@@ -790,7 +790,7 @@ component ColorField inherits Rectangle {
                     }
 
                     Text {
-                        text: "B";
+                        text: @tr("Blue, as one letter" => "B");
                         color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
@@ -808,7 +808,7 @@ component ColorField inherits Rectangle {
                         rgb-b-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
-                            accessible-label: "Blue (0–255)";
+                            accessible-label: @tr("Blue (0–255)");
                             text: root.current-color.blue;
                             color: Theme.text-value;
                             font-size: 9px;
@@ -891,7 +891,7 @@ component StrokeStyleSelector inherits Rectangle {
         alignment: start;
 
         Text {
-            text: "Stroke";
+            text: @tr("Stroke");
             color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
@@ -900,8 +900,8 @@ component StrokeStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Solid";
-            group: "Stroke";
+            text: @tr("Solid");
+            group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.solid;
             clicked => {
                 root.style-changed(StrokeStyle.solid);
@@ -911,8 +911,8 @@ component StrokeStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Dashed";
-            group: "Stroke";
+            text: @tr("Dashed");
+            group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.dashed;
             clicked => {
                 root.style-changed(StrokeStyle.dashed);
@@ -922,8 +922,8 @@ component StrokeStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Dotted";
-            group: "Stroke";
+            text: @tr("Dotted");
+            group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.dotted;
             clicked => {
                 root.style-changed(StrokeStyle.dotted);
@@ -932,8 +932,8 @@ component StrokeStyleSelector inherits Rectangle {
         }
 
         if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
-            label: "L";
-            name: "Dash length";
+            label: @tr("Dash length, as one letter" => "L");
+            name: @tr("Dash length");
             value: root.dash-length;
             value-changed(v) => {
                 root.dash-length-changed(v);
@@ -944,8 +944,8 @@ component StrokeStyleSelector inherits Rectangle {
         }
 
         if root.stroke-style == StrokeStyle.dashed: SmallTextInput {
-            label: "G";
-            name: "Gap between dashes";
+            label: @tr("Gap between dashes, as one letter" => "G");
+            name: @tr("Gap between dashes");
             value: root.dash-gap;
             value-changed(v) => {
                 root.dash-gap-changed(v);
@@ -956,8 +956,8 @@ component StrokeStyleSelector inherits Rectangle {
         }
 
         if root.stroke-style == StrokeStyle.dotted: SmallTextInput {
-            label: "S";
-            name: "Spacing of the dots";
+            label: @tr("Spacing of dots, as one letter" => "S");
+            name: @tr("Spacing of the dots");
             value: root.dot-spacing;
             value-changed(v) => {
                 root.dot-spacing-changed(v);
@@ -982,7 +982,7 @@ component CapStyleSelector inherits Rectangle {
         alignment: start;
 
         Text {
-            text: "Caps";
+            text: @tr("Caps");
             color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
@@ -991,8 +991,8 @@ component CapStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Round";
-            group: "Caps";
+            text: @tr("Round");
+            group: @tr("Caps");
             active: root.cap-style == CapStyle.round;
             clicked => {
                 root.cap-changed(CapStyle.round);
@@ -1002,8 +1002,8 @@ component CapStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Square";
-            group: "Caps";
+            text: @tr("Square");
+            group: @tr("Caps");
             active: root.cap-style == CapStyle.square;
             clicked => {
                 root.cap-changed(CapStyle.square);
@@ -1013,8 +1013,8 @@ component CapStyleSelector inherits Rectangle {
 
         SegmentButton {
             width: 52px;
-            text: "Flat";
-            group: "Caps";
+            text: @tr("Flat");
+            group: @tr("Caps");
             active: root.cap-style == CapStyle.flat;
             clicked => {
                 root.cap-changed(CapStyle.flat);
@@ -1086,7 +1086,7 @@ export component ExportDialog inherits Rectangle {
     // Dialog card – centered, anchored below toolbar
     // Escape cancels, Enter exports.
     DialogKeys {
-        title: "Export Image";
+        title: @tr("Export Image");
         has-default-action: true;
         cancel => {
             root.cancel-requested();
@@ -1129,7 +1129,7 @@ export component ExportDialog inherits Rectangle {
                         alignment: center;
 
                         Text {
-                            text: "Export Preview";
+                            text: @tr("Export Preview");
                             color: Theme.text-strong;
                             font-size: 13px;
                             font-weight: 600;
@@ -1162,7 +1162,7 @@ export component ExportDialog inherits Rectangle {
                                 y: 8px;
                                 source: root.preview-info.preview-image;
                                 image-fit: contain;
-                                accessible-label: "Export preview";
+                                accessible-label: @tr("Export preview");
                             }
                         }
 
@@ -1171,19 +1171,19 @@ export component ExportDialog inherits Rectangle {
                             alignment: center;
 
                             Text {
-                                text: "Estimated Size: " + (Math.round(root.estimated-mb * 100) / 100) + " MB";
+                                text: @tr("Estimated Size: {} MB", Math.round(root.estimated-mb * 100) / 100);
                                 color: Theme.text-label;
                                 font-size: 10px;
                             }
 
                             Text {
-                                text: root.export-width + " × " + root.export-height + " px";
+                                text: @tr("{} × {} px", root.export-width, root.export-height);
                                 color: Theme.text-label;
                                 font-size: 10px;
                             }
 
                             if root.preview-info.rendering: Text {
-                                text: "Rendering preview…";
+                                text: @tr("Rendering preview…");
                                 color: Theme.text-label;
                                 font-size: 10px;
                             }
@@ -1232,7 +1232,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Resolution (DPI) -------
                         SectionHeader {
-                                text: "Resolution (DPI)";
+                                text: @tr("Resolution (DPI)");
                                 icon-source: @image-url("icons/resolution.svg");
                             }
 
@@ -1241,7 +1241,7 @@ export component ExportDialog inherits Rectangle {
 
                                 ExportSlider {
                                     horizontal-stretch: 1;
-                                    label: "Resolution (DPI)";
+                                    label: @tr("Resolution (DPI)");
                                     step: 10;
                                     value: root.settings.dpi;
                                     min-value: 72;
@@ -1306,7 +1306,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Filtering Mode -------
                         SectionHeader {
-                                text: "Filtering Mode";
+                                text: @tr("Filtering Mode");
                                 icon-source: @image-url("icons/sample-mode.svg");
                             }
 
@@ -1316,8 +1316,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Bilinear";
-                                    group: "Filtering mode";
+                                    text: @tr("Bilinear");
+                                    group: @tr("Filtering mode");
                                     active: root.settings.filtering-mode == ExportFilteringMode.bilinear;
                                     clicked => {
                                         root.settings.filtering-mode = ExportFilteringMode.bilinear;
@@ -1327,8 +1327,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Trilinear";
-                                    group: "Filtering mode";
+                                    text: @tr("Trilinear");
+                                    group: @tr("Filtering mode");
                                     active: root.settings.filtering-mode == ExportFilteringMode.trilinear;
                                     clicked => {
                                         root.settings.filtering-mode = ExportFilteringMode.trilinear;
@@ -1338,8 +1338,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Lanczos";
-                                    group: "Filtering mode";
+                                    text: @tr("Lanczos");
+                                    group: @tr("Filtering mode");
                                     active: root.settings.filtering-mode == ExportFilteringMode.lanczos;
                                     clicked => {
                                         root.settings.filtering-mode = ExportFilteringMode.lanczos;
@@ -1352,16 +1352,16 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Image Adjustment -------
                         SectionHeader {
-                                text: "Image Adjustment";
+                                text: @tr("Image Adjustment");
                                 icon-source: @image-url("icons/settings.svg");
                             }
 
                             LabelRow {
-                                label: "Sharpness";
+                                label: @tr("Sharpness");
                             }
 
                             ExportSlider {
-                                label: "Sharpness";
+                                label: @tr("Sharpness");
                                 step: 0.05;
                                 value: root.settings.sharpness;
                                 min-value: 0.0;
@@ -1377,11 +1377,11 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "Gamma";
+                                label: @tr("Gamma");
                             }
 
                             ExportSlider {
-                                label: "Gamma";
+                                label: @tr("Gamma");
                                 step: 0.05;
                                 value: root.settings.gamma;
                                 min-value: 0.2;
@@ -1398,11 +1398,11 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "Brightness";
+                                label: @tr("Brightness");
                             }
 
                             ExportSlider {
-                                label: "Brightness";
+                                label: @tr("Brightness");
                                 step: 0.05;
                                 value: root.settings.brightness;
                                 min-value: -1.0;
@@ -1418,11 +1418,11 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "Contrast";
+                                label: @tr("Contrast");
                             }
 
                             ExportSlider {
-                                label: "Contrast";
+                                label: @tr("Contrast");
                                 step: 0.05;
                                 value: root.settings.contrast;
                                 min-value: 0.2;
@@ -1442,7 +1442,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Stain Normalization -------
                         SectionHeader {
-                                text: "Stain Normalization";
+                                text: @tr("Stain Normalization");
                                 icon-source: @image-url("icons/settings.svg");
                             }
 
@@ -1452,8 +1452,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "None";
-                                    group: "Stain normalization";
+                                    text: @tr("Stain normalization" => "None");
+                                    group: @tr("Stain normalization");
                                     active: root.settings.stain-normalization == StainNormalization.none;
                                     clicked => {
                                         root.settings.stain-normalization = StainNormalization.none;
@@ -1463,8 +1463,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Macenko";
-                                    group: "Stain normalization";
+                                    text: @tr("Macenko");
+                                    group: @tr("Stain normalization");
                                     active: root.settings.stain-normalization == StainNormalization.macenko;
                                     clicked => {
                                         root.settings.stain-normalization = StainNormalization.macenko;
@@ -1474,8 +1474,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Vahadane";
-                                    group: "Stain normalization";
+                                    text: @tr("Vahadane");
+                                    group: @tr("Stain normalization");
                                     active: root.settings.stain-normalization == StainNormalization.vahadane;
                                     clicked => {
                                         root.settings.stain-normalization = StainNormalization.vahadane;
@@ -1488,7 +1488,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Color Deconvolution -------
                         SectionHeader {
-                                text: "Color Deconvolution";
+                                text: @tr("Color Deconvolution");
                                 icon-source: @image-url("icons/settings.svg");
                             }
 
@@ -1498,7 +1498,7 @@ export component ExportDialog inherits Rectangle {
                                 height: 28px;
 
                                 ToggleSwitch {
-                                    label: "Hematoxylin";
+                                    label: @tr("Hematoxylin");
                                     checked: root.settings.deconv-hematoxylin-visible;
                                     toggled(v) => {
                                         root.settings.deconv-hematoxylin-visible = v;
@@ -1508,11 +1508,11 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "H Intensity";
+                                label: @tr("H Intensity");
                             }
 
                             ExportSlider {
-                                label: "Hematoxylin intensity";
+                                label: @tr("Hematoxylin intensity");
                                 step: 0.05;
                                 value: root.settings.deconv-hematoxylin-intensity;
                                 min-value: 0.0;
@@ -1534,7 +1534,7 @@ export component ExportDialog inherits Rectangle {
                                 height: 28px;
 
                                 ToggleSwitch {
-                                    label: "Eosin";
+                                    label: @tr("Eosin");
                                     checked: root.settings.deconv-eosin-visible;
                                     toggled(v) => {
                                         root.settings.deconv-eosin-visible = v;
@@ -1544,11 +1544,11 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "E Intensity";
+                                label: @tr("E Intensity");
                             }
 
                             ExportSlider {
-                                label: "Eosin intensity";
+                                label: @tr("Eosin intensity");
                                 step: 0.05;
                                 value: root.settings.deconv-eosin-intensity;
                                 min-value: 0.0;
@@ -1565,7 +1565,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             LabelRow {
-                                label: "Isolated Channel";
+                                label: @tr("Isolated Channel");
                             }
 
                             HorizontalLayout {
@@ -1574,8 +1574,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "None";
-                                    group: "Isolated channel";
+                                    text: @tr("Isolated channel" => "None");
+                                    group: @tr("Isolated channel");
                                     active: root.settings.deconv-isolated-channel == IsolatedChannel.none;
                                     clicked => {
                                         root.settings.deconv-isolated-channel = IsolatedChannel.none;
@@ -1585,8 +1585,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Hematoxylin";
-                                    group: "Isolated channel";
+                                    text: @tr("Hematoxylin");
+                                    group: @tr("Isolated channel");
                                     active: root.settings.deconv-isolated-channel == IsolatedChannel.hematoxylin;
                                     clicked => {
                                         root.settings.deconv-isolated-channel = IsolatedChannel.hematoxylin;
@@ -1596,8 +1596,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "Eosin";
-                                    group: "Isolated channel";
+                                    text: @tr("Eosin");
+                                    group: @tr("Isolated channel");
                                     active: root.settings.deconv-isolated-channel == IsolatedChannel.eosin;
                                     clicked => {
                                         root.settings.deconv-isolated-channel = IsolatedChannel.eosin;
@@ -1610,7 +1610,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Measurement -------
                         SectionHeader {
-                                text: "Measurement";
+                                text: @tr("Measurement");
                                 icon-source: @image-url("icons/measure.svg");
                             }
 
@@ -1618,7 +1618,7 @@ export component ExportDialog inherits Rectangle {
                                 height: 32px;
                                 Text {
                                     x: 8px;
-                                    text: "Measure a distance in the viewport to enable these settings.";
+                                    text: @tr("Measure a distance in the viewport to enable these settings.");
                                     color: Theme.text-hint;
                                     font-size: 10px;
                                     vertical-alignment: center;
@@ -1627,7 +1627,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             if root.settings.has-measurement: ToggleSwitch {
-                                label: "Show Measurement";
+                                label: @tr("Show Measurement");
                                 checked: root.settings.show-measurement;
                                 enabled: root.settings.has-measurement;
                                 toggled(v) => {
@@ -1640,7 +1640,7 @@ export component ExportDialog inherits Rectangle {
                                 spacing: 4px;
 
                                 LabelRow {
-                                    label: "Color";
+                                    label: @tr("Color");
                                 }
 
                                 ColorField {
@@ -1659,11 +1659,11 @@ export component ExportDialog inherits Rectangle {
                                 }
 
                                 LabelRow {
-                                    label: "Thickness";
+                                    label: @tr("Thickness");
                                 }
 
                                 ExportSlider {
-                                    label: "Measurement line thickness";
+                                    label: @tr("Measurement line thickness");
                                     step: 0.5;
                                     value: root.settings.measurement-thickness;
                                     min-value: 0.5;
@@ -1712,11 +1712,11 @@ export component ExportDialog inherits Rectangle {
                                 }
 
                                 LabelRow {
-                                    label: "Font Size";
+                                    label: @tr("Font Size");
                                 }
 
                                 ExportSlider {
-                                    label: "Measurement font size";
+                                    label: @tr("Measurement font size");
                                     step: 1;
                                     value: root.settings.measurement-font-size;
                                     min-value: 6;
@@ -1737,7 +1737,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Region of Interest -------
                         SectionHeader {
-                                text: "Region of Interest";
+                                text: @tr("Region of Interest");
                             // ROI icon drawn inline (matches toolbar icon)
                             icon-source: @image-url("icons/navigate.svg");
                             }
@@ -1746,7 +1746,7 @@ export component ExportDialog inherits Rectangle {
                                 height: 32px;
                                 Text {
                                     x: 8px;
-                                    text: "Select a region of interest in the viewport to enable these settings.";
+                                    text: @tr("Select a region of interest in the viewport to enable these settings.");
                                     color: Theme.text-hint;
                                     font-size: 10px;
                                     vertical-alignment: center;
@@ -1755,7 +1755,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             if root.settings.has-roi: ToggleSwitch {
-                                label: "Show Outline";
+                                label: @tr("Show Outline");
                                 checked: root.settings.show-roi-outline;
                                 enabled: root.settings.has-roi;
                                 toggled(v) => {
@@ -1768,7 +1768,7 @@ export component ExportDialog inherits Rectangle {
                                 spacing: 4px;
 
                                 LabelRow {
-                                    label: "Color";
+                                    label: @tr("Color");
                                 }
 
                                 ColorField {
@@ -1787,11 +1787,11 @@ export component ExportDialog inherits Rectangle {
                                 }
 
                                 LabelRow {
-                                    label: "Thickness";
+                                    label: @tr("Thickness");
                                 }
 
                                 ExportSlider {
-                                    label: "Region outline thickness";
+                                    label: @tr("Region outline thickness");
                                     step: 0.5;
                                     value: root.settings.roi-thickness;
                                     min-value: 0.5;
@@ -1848,11 +1848,11 @@ export component ExportDialog inherits Rectangle {
                                 SectionDivider { }
 
                                 LabelRow {
-                                    label: "Outside Overlay";
+                                    label: @tr("Outside Overlay");
                                 }
 
                                 ToggleSwitch {
-                                    label: "Enable Overlay";
+                                    label: @tr("Enable Overlay");
                                     checked: root.settings.roi-outside-overlay;
                                     toggled(v) => {
                                         root.settings.roi-outside-overlay = v;
@@ -1880,12 +1880,12 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Figure -------
                         SectionHeader {
-                                text: "Figure";
+                                text: @tr("Figure");
                                 icon-source: @image-url("icons/measure.svg");
                             }
 
                             ToggleSwitch {
-                                label: "Scale Bar";
+                                label: @tr("Scale Bar");
                                 checked: root.settings.show-scale-bar;
                                 toggled(v) => {
                                     root.settings.show-scale-bar = v;
@@ -1894,7 +1894,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             ToggleSwitch {
-                                label: "Colour Processing Note";
+                                label: @tr("Colour Processing Note");
                                 checked: root.settings.show-processing-note;
                                 toggled(v) => {
                                     root.settings.show-processing-note = v;
@@ -1906,7 +1906,7 @@ export component ExportDialog inherits Rectangle {
 
                             // ------- Format -------
                         SectionHeader {
-                                text: "Format";
+                                text: @tr("Format");
                                 icon-source: @image-url("icons/export.svg");
                             }
 
@@ -1916,8 +1916,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "JPEG (Smaller)";
-                                    group: "Format";
+                                    text: @tr("JPEG (Smaller)");
+                                    group: @tr("Format");
                                     active: root.settings.format == ExportFormat.jpeg;
                                     clicked => {
                                         root.settings.format = ExportFormat.jpeg;
@@ -1927,8 +1927,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "PNG (Lossless)";
-                                    group: "Format";
+                                    text: @tr("PNG (Lossless)");
+                                    group: @tr("Format");
                                     active: root.settings.format == ExportFormat.png;
                                     clicked => {
                                         root.settings.format = ExportFormat.png;
@@ -1938,8 +1938,8 @@ export component ExportDialog inherits Rectangle {
 
                                 SegmentButton {
                                     horizontal-stretch: 1;
-                                    text: "TIFF (Lossless)";
-                                    group: "Format";
+                                    text: @tr("TIFF (Lossless)");
+                                    group: @tr("Format");
                                     active: root.settings.format == ExportFormat.tiff;
                                     clicked => {
                                         root.settings.format = ExportFormat.tiff;
@@ -1952,12 +1952,12 @@ export component ExportDialog inherits Rectangle {
                                 spacing: 4px;
 
                                 LabelRow {
-                                    label: "Quality";
+                                    label: @tr("Quality");
                                 }
 
                                 ExportSlider {
                                     enabled: root.settings.format == ExportFormat.jpeg;
-                                    label: "JPEG quality";
+                                    label: @tr("JPEG quality");
                                     step: 5;
                                     value: root.settings.jpeg-quality;
                                     min-value: 1;
@@ -2008,8 +2008,8 @@ export component ExportDialog inherits Rectangle {
                             border-width: 1px;
                             border-color: Theme.outline;
                             accessible-role: button;
-                            accessible-label: "Reset";
-                            accessible-description: "Restores the default export settings";
+                            accessible-label: @tr("Reset");
+                            accessible-description: @tr("Restores the default export settings");
                             accessible-action-default => {
                                 root.reset-requested();
                             }
@@ -2021,7 +2021,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             reset-text := Text {
-                                text: "Reset";
+                                text: @tr("Reset");
                                 accessible-role: none;
                                 color: Theme.error;
                                 font-size: 12px;
@@ -2045,7 +2045,7 @@ export component ExportDialog inherits Rectangle {
                             border-width: 1px;
                             border-color: Theme.border;
                             accessible-role: button;
-                            accessible-label: "Cancel";
+                            accessible-label: @tr("Cancel");
                             accessible-action-default => {
                                 root.cancel-requested();
                             }
@@ -2057,7 +2057,7 @@ export component ExportDialog inherits Rectangle {
                             }
 
                             cancel-text := Text {
-                                text: "Cancel";
+                                text: @tr("Cancel");
                                 accessible-role: none;
                                 color: Theme.text-primary;
                                 font-size: 12px;
@@ -2073,7 +2073,7 @@ export component ExportDialog inherits Rectangle {
                             border-radius: 4px;
                             background: export-touch.has-hover ? Theme.accent-hover : Theme.accent;
                             accessible-role: button;
-                            accessible-label: "Export";
+                            accessible-label: @tr("Export");
                             accessible-action-default => {
                                 root.export-requested();
                             }
@@ -2101,7 +2101,7 @@ export component ExportDialog inherits Rectangle {
                                 }
 
                                 Text {
-                                    text: "Export";
+                                    text: @tr("Export");
                                     accessible-role: none;
                                     color: Theme.text-on-accent;
                                     font-size: 12px;

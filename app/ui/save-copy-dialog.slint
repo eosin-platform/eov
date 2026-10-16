@@ -158,7 +158,7 @@ export component SaveCopyDialog inherits Rectangle {
 
     // Escape cancels, Enter saves.
     DialogKeys {
-        title: "Save a Copy of the Slide";
+        title: @tr("Save a Copy of the Slide");
         has-default-action: true;
         cancel => {
             root.cancel-requested();
@@ -185,7 +185,7 @@ export component SaveCopyDialog inherits Rectangle {
                 spacing: 10px;
 
                 Text {
-                    text: "Save a Copy of the Slide";
+                    text: @tr("Save a Copy of the Slide");
                     color: Theme.text-primary;
                     font-size: 16px;
                     font-weight: 700;
@@ -199,11 +199,11 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Heading {
-                    text: "Area";
+                    text: @tr("Area");
                 }
 
                 Choice {
-                    text: "Whole slide";
+                    text: @tr("Whole slide");
                     detail: root.settings.whole-text;
                     checked: root.settings.area == 0;
                     clicked => {
@@ -213,8 +213,8 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Choice {
-                    text: "Region of interest";
-                    detail: root.settings.has-roi ? root.settings.roi-text : "Draw one with the region tool first";
+                    text: @tr("Region of interest");
+                    detail: root.settings.has-roi ? root.settings.roi-text : @tr("Draw one with the region tool first");
                     checked: root.settings.area == 1;
                     enabled: root.settings.has-roi;
                     clicked => {
@@ -224,12 +224,12 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Heading {
-                    text: "Format";
+                    text: @tr("Format");
                 }
 
                 Choice {
-                    text: "Pyramidal TIFF";
-                    detail: "Opens in eov, QuPath, OpenSlide and most WSI tools";
+                    text: @tr("Pyramidal TIFF");
+                    detail: @tr("Opens in eov, QuPath, OpenSlide and most WSI tools");
                     checked: root.settings.format == 0;
                     clicked => {
                         root.settings.format = 0;
@@ -238,8 +238,8 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Choice {
-                    text: "OME-TIFF";
-                    detail: "For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)";
+                    text: @tr("OME-TIFF");
+                    detail: @tr("For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)");
                     checked: root.settings.format == 1;
                     clicked => {
                         root.settings.format = 1;
@@ -248,11 +248,11 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Heading {
-                    text: "Compression";
+                    text: @tr("Compression");
                 }
 
                 Choice {
-                    text: "JPEG, high quality (90)";
+                    text: @tr("JPEG, high quality (90)");
                     checked: root.settings.compression == 0;
                     clicked => {
                         root.settings.compression = 0;
@@ -261,7 +261,7 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Choice {
-                    text: "JPEG, smaller files (80)";
+                    text: @tr("JPEG, smaller files (80)");
                     checked: root.settings.compression == 1;
                     clicked => {
                         root.settings.compression = 1;
@@ -270,8 +270,8 @@ export component SaveCopyDialog inherits Rectangle {
                 }
 
                 Choice {
-                    text: "Lossless (Deflate)";
-                    detail: "Exact pixels; several times larger";
+                    text: @tr("Lossless (Deflate)");
+                    detail: @tr("Exact pixels; several times larger");
                     checked: root.settings.compression == 2;
                     clicked => {
                         root.settings.compression = 2;
@@ -284,7 +284,7 @@ export component SaveCopyDialog inherits Rectangle {
                     spacing: 8px;
                     height: 22px;
                     accessible-role: checkbox;
-                    accessible-label: "De-identify";
+                    accessible-label: @tr("De-identify");
                     accessible-checkable: true;
                     accessible-checked: root.settings.deidentify;
                     accessible-action-default => {
@@ -312,7 +312,7 @@ export component SaveCopyDialog inherits Rectangle {
                     }
 
                     Text {
-                        text: "De-identify";
+                        text: @tr("De-identify");
                         color: Theme.text-primary;
                         font-size: 12px;
                         vertical-alignment: center;
@@ -329,8 +329,8 @@ export component SaveCopyDialog inherits Rectangle {
 
                 Text {
                     text: root.settings.deidentify
-                        ? "No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed."
-                        : "The copy keeps the label and macro images and every property of the slide, which can identify the patient.";
+                        ? @tr("No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed.")
+                        : @tr("The copy keeps the label and macro images and every property of the slide, which can identify the patient.");
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
@@ -355,14 +355,14 @@ export component SaveCopyDialog inherits Rectangle {
                     alignment: end;
 
                     DialogButton {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         clicked => {
                             root.cancel-requested();
                         }
                     }
 
                     DialogButton {
-                        text: "Save…";
+                        text: @tr("Save…");
                         primary: true;
                         clicked => {
                             root.save-requested();

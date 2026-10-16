@@ -19,7 +19,7 @@ export component BookmarkDialog inherits Rectangle {
     }
 
     DialogKeys {
-        title: "Add Bookmark";
+        title: @tr("Add Bookmark");
         forward-focus: name-input;
         has-default-action: true;
         cancel => {
@@ -46,7 +46,7 @@ export component BookmarkDialog inherits Rectangle {
                 spacing: 12px;
 
                 Text {
-                    text: "Add Bookmark";
+                    text: @tr("Add Bookmark");
                     color: Theme.text-primary;
                     font-size: 14px;
                     font-weight: 600;
@@ -76,7 +76,7 @@ export component BookmarkDialog inherits Rectangle {
                         font-size: 12px;
                         vertical-alignment: center;
                         single-line: true;
-                        accessible-label: "Bookmark name";
+                        accessible-label: @tr("Bookmark name");
                         accepted => {
                             root.accepted(self.text);
                         }
@@ -99,7 +99,7 @@ export component BookmarkDialog inherits Rectangle {
                         border-width: 1px;
                         border-color: Theme.border;
                         accessible-role: button;
-                        accessible-label: "Cancel";
+                        accessible-label: @tr("Cancel");
                         accessible-action-default => {
                             root.cancelled();
                         }
@@ -111,7 +111,7 @@ export component BookmarkDialog inherits Rectangle {
                         }
 
                         cancel-text := Text {
-                            text: "Cancel";
+                            text: @tr("Cancel");
                             accessible-role: none;
                             color: Theme.text-primary;
                             font-size: 12px;
@@ -126,7 +126,7 @@ export component BookmarkDialog inherits Rectangle {
                         border-radius: 4px;
                         background: add-touch.has-hover ? Theme.accent-hover : Theme.accent;
                         accessible-role: button;
-                        accessible-label: "Add";
+                        accessible-label: @tr("Add");
                         accessible-action-default => {
                             root.accepted(root.name);
                         }
@@ -138,7 +138,7 @@ export component BookmarkDialog inherits Rectangle {
                         }
 
                         add-text := Text {
-                            text: "Add";
+                            text: @tr("Add");
                             accessible-role: none;
                             color: Theme.text-on-accent;
                             font-size: 12px;

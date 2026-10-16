@@ -77,7 +77,7 @@ export component StatusBar inherits Rectangle {
                 background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
                 border-radius: 3px;
                 accessible-role: button;
-                accessible-label: "Cancel " + job.title;
+                accessible-label: @tr("Cancel {}", job.title);
                 accessible-action-default => {
                     root.job-cancel-requested(job.id);
                 }
@@ -105,7 +105,7 @@ export component StatusBar inherits Rectangle {
             border-radius: 3px;
             accessible-role: button;
             accessible-label: messages-text.text;
-            accessible-description: root.unread-errors ? "Some are errors" : "";
+            accessible-description: root.unread-errors ? @tr("Some are errors") : "";
             accessible-expandable: true;
             accessible-expanded: root.notifications-open;
             accessible-action-default => {
@@ -118,7 +118,7 @@ export component StatusBar inherits Rectangle {
             }
 
             messages-text := Text {
-                text: root.unread-notifications > 0 ? "● " + root.unread-notifications + " message" + (root.unread-notifications == 1 ? "" : "s") : "Messages";
+                text: root.unread-notifications > 0 ? "● " + @tr("{n} message" | "{n} messages" % root.unread-notifications) : @tr("Messages");
                 color: root.unread-errors ? Theme.danger : root.unread-notifications > 0 ? Theme.warning : Theme.text-secondary;
                 font-size: 11px;
                 horizontal-alignment: center;
@@ -162,7 +162,7 @@ export component NotificationsPopup inherits Rectangle {
             height: 24px;
             Text {
                 horizontal-stretch: 1;
-                text: "Messages";
+                text: @tr("Messages");
                 color: Theme.text-primary;
                 font-size: 13px;
                 font-weight: 600;
@@ -174,13 +174,13 @@ export component NotificationsPopup inherits Rectangle {
                 border-radius: 3px;
                 background: logs-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
-                accessible-label: "Open Log Folder";
+                accessible-label: @tr("Open Log Folder");
                 accessible-action-default => {
                     root.log-folder-requested();
                 }
 
                 logs-text := Text {
-                    text: "Open Log Folder";
+                    text: @tr("Open Log Folder");
                     accessible-role: none;
                     color: Theme.text-secondary;
                     font-size: 11px;
@@ -200,13 +200,13 @@ export component NotificationsPopup inherits Rectangle {
                 border-radius: 3px;
                 background: clear-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
-                accessible-label: "Clear messages";
+                accessible-label: @tr("Clear messages");
                 accessible-action-default => {
                     root.cleared();
                 }
 
                 clear-text := Text {
-                    text: "Clear";
+                    text: @tr("Clear");
                     accessible-role: none;
                     color: Theme.text-secondary;
                     font-size: 11px;
@@ -226,7 +226,7 @@ export component NotificationsPopup inherits Rectangle {
                 border-radius: 3px;
                 background: close-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
-                accessible-label: "Close messages";
+                accessible-label: @tr("Close messages");
                 accessible-action-default => {
                     root.dismissed();
                 }
@@ -255,7 +255,7 @@ export component NotificationsPopup inherits Rectangle {
                 spacing: 4px;
 
                 if root.items.length == 0: Text {
-                    text: "No messages.";
+                    text: @tr("No messages.");
                     color: Theme.text-secondary;
                     font-size: 12px;
                 }
@@ -278,7 +278,7 @@ export component NotificationsPopup inherits Rectangle {
                             font-size: 12px;
                             wrap: word-wrap;
                             // The stripe's colour, for assistive technology.
-                            accessible-description: item.level == 3 ? "Error" : item.level == 2 ? "Warning" : item.level == 1 ? "Done" : "Information";
+                            accessible-description: item.level == 3 ? @tr("Error") : item.level == 2 ? @tr("Warning") : item.level == 1 ? @tr("Done") : @tr("Information");
                         }
 
                         if item.detail != "": Text {

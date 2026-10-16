@@ -156,7 +156,7 @@ export component HudSettingsPanel inherits Rectangle {
     }
 
     DialogKeys {
-        title: "Image Adjustments";
+        title: @tr("Image Adjustments");
         takes-back: false;
         cancel => {
             root.close-requested();
@@ -173,7 +173,7 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
-                text: "Image Adjustments";
+                text: @tr("Image Adjustments");
                 color: Theme.text-strong;
                 font-size: 11px;
                 font-weight: 700;
@@ -187,7 +187,7 @@ export component HudSettingsPanel inherits Rectangle {
         }
 
         HudSlider {
-            label: "Sharpness";
+            label: @tr("Sharpness");
             value: root.sharpness;
             min-value: 0.0;
             max-value: 1.0;
@@ -203,7 +203,7 @@ export component HudSettingsPanel inherits Rectangle {
         }
 
         HudSlider {
-            label: "Gamma";
+            label: @tr("Gamma");
             value: root.gamma;
             min-value: 0.2;
             max-value: 3.0;
@@ -215,7 +215,7 @@ export component HudSettingsPanel inherits Rectangle {
         }
 
         HudSlider {
-            label: "Brightness";
+            label: @tr("Brightness");
             value: root.brightness;
             min-value: -1.0;
             max-value: 1.0;
@@ -226,7 +226,7 @@ export component HudSettingsPanel inherits Rectangle {
         }
 
         HudSlider {
-            label: "Contrast";
+            label: @tr("Contrast");
             value: root.contrast;
             min-value: 0.2;
             max-value: 3.0;
@@ -248,7 +248,7 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
-                text: "Units";
+                text: @tr("Units");
                 color: Theme.text-label;
                 font-size: 11px;
                 vertical-alignment: center;
@@ -270,7 +270,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.measurement-unit == MeasurementUnit.um ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Micrometres (µm)";
+                    accessible-label: @tr("Micrometres (µm)");
                     accessible-checkable: true;
                     accessible-checked: root.measurement-unit == MeasurementUnit.um;
                     accessible-action-default => {
@@ -301,7 +301,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.measurement-unit == MeasurementUnit.mm ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Millimetres (mm)";
+                    accessible-label: @tr("Millimetres (mm)");
                     accessible-checkable: true;
                     accessible-checked: root.measurement-unit == MeasurementUnit.mm;
                     accessible-action-default => {
@@ -315,7 +315,7 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "mm";
+                        text: @tr("mm");
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.mm ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -332,7 +332,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.measurement-unit == MeasurementUnit.inches ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Inches and mils";
+                    accessible-label: @tr("Inches and mils");
                     accessible-checkable: true;
                     accessible-checked: root.measurement-unit == MeasurementUnit.inches;
                     accessible-action-default => {
@@ -346,7 +346,7 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "in/mil";
+                        text: @tr("in/mil");
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.inches ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -368,7 +368,7 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
-                text: "Stain Norm";
+                text: @tr("Stain Norm");
                 color: Theme.text-label;
                 font-size: 11px;
                 vertical-alignment: center;
@@ -390,7 +390,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.none ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Stain normalization: none";
+                    accessible-label: @tr("Stain normalization: none");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.none;
                     accessible-action-default => {
@@ -404,7 +404,7 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "None";
+                        text: @tr("Stain normalization" => "None");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.none ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -421,7 +421,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.macenko ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Stain normalization: Macenko";
+                    accessible-label: @tr("Stain normalization: Macenko");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.macenko;
                     accessible-action-default => {
@@ -435,7 +435,7 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "Macenko";
+                        text: @tr("Macenko");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.macenko ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -452,7 +452,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.vahadane ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: "Stain normalization: Vahadane";
+                    accessible-label: @tr("Stain normalization: Vahadane");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.vahadane;
                     accessible-action-default => {
@@ -466,7 +466,7 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "Vahadane";
+                        text: @tr("Vahadane");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.vahadane ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -488,7 +488,7 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
-                text: "Color Deconvolution";
+                text: @tr("Color Deconvolution");
                 color: Theme.text-strong;
                 font-size: 11px;
                 font-weight: 700;
@@ -507,7 +507,7 @@ export component HudSettingsPanel inherits Rectangle {
                 property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
                 accessible-role: slider;
-                accessible-label: "Hematoxylin intensity";
+                accessible-label: @tr("Hematoxylin intensity");
                 accessible-value: h-intensity-text.text;
                 accessible-value-minimum: 0;
                 accessible-value-maximum: 3;
@@ -593,7 +593,7 @@ export component HudSettingsPanel inherits Rectangle {
                 background: root.deconv-isolated-channel == IsolatedChannel.hematoxylin ? Theme.stain-hematoxylin : h-view-touch.has-hover ? Theme.hover-fill : transparent;
                 border-width: 1px;
                 accessible-role: button;
-                accessible-label: "View hematoxylin alone";
+                accessible-label: @tr("View hematoxylin alone");
                 accessible-checkable: true;
                 accessible-checked: root.deconv-isolated-channel == IsolatedChannel.hematoxylin;
                 accessible-action-default => {
@@ -617,7 +617,7 @@ export component HudSettingsPanel inherits Rectangle {
                 border-radius: 4px;
                 background: h-eye-touch.has-hover ? Theme.hover-fill : transparent;
                 accessible-role: checkbox;
-                accessible-label: "Show hematoxylin";
+                accessible-label: @tr("Show hematoxylin");
                 accessible-checkable: true;
                 accessible-checked: root.deconv-hematoxylin-visible;
                 accessible-action-default => {
@@ -625,7 +625,7 @@ export component HudSettingsPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "H";
+                    text: @tr("Hematoxylin, as one letter" => "H");
                     accessible-role: none;
                     color: Theme.stain-hematoxylin;
                     opacity: root.deconv-hematoxylin-visible ? 1.0 : 0.35;
@@ -662,7 +662,7 @@ export component HudSettingsPanel inherits Rectangle {
                 property <length> track-right: 52px;
                 property <length> track-width: parent.width - self.track-left - self.track-right;
                 accessible-role: slider;
-                accessible-label: "Eosin intensity";
+                accessible-label: @tr("Eosin intensity");
                 accessible-value: e-intensity-text.text;
                 accessible-value-minimum: 0;
                 accessible-value-maximum: 3;
@@ -748,7 +748,7 @@ export component HudSettingsPanel inherits Rectangle {
                 background: root.deconv-isolated-channel == IsolatedChannel.eosin ? Theme.stain-eosin : e-view-touch.has-hover ? Theme.hover-fill : transparent;
                 border-width: 1px;
                 accessible-role: button;
-                accessible-label: "View eosin alone";
+                accessible-label: @tr("View eosin alone");
                 accessible-checkable: true;
                 accessible-checked: root.deconv-isolated-channel == IsolatedChannel.eosin;
                 accessible-action-default => {
@@ -772,7 +772,7 @@ export component HudSettingsPanel inherits Rectangle {
                 border-radius: 4px;
                 background: e-eye-touch.has-hover ? Theme.hover-fill : transparent;
                 accessible-role: checkbox;
-                accessible-label: "Show eosin";
+                accessible-label: @tr("Show eosin");
                 accessible-checkable: true;
                 accessible-checked: root.deconv-eosin-visible;
                 accessible-action-default => {
@@ -780,7 +780,7 @@ export component HudSettingsPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "E";
+                    text: @tr("Eosin, as one letter" => "E");
                     accessible-role: none;
                     color: Theme.stain-eosin;
                     opacity: root.deconv-eosin-visible ? 1.0 : 0.35;
@@ -826,7 +826,7 @@ export component HudSettingsPanel inherits Rectangle {
         border-bottom-left-radius: root.border-radius;
         border-bottom-right-radius: root.border-radius;
         accessible-role: button;
-        accessible-label: "Reset to Defaults";
+        accessible-label: @tr("Reset to Defaults");
         accessible-action-default => {
             root.reset-adjustments();
         }
@@ -838,7 +838,7 @@ export component HudSettingsPanel inherits Rectangle {
         }
 
         Text {
-            text: "Reset to Defaults";
+            text: @tr("Reset to Defaults");
             accessible-role: none;
             color: Theme.error;
             font-size: 11px;

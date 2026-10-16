@@ -31,7 +31,7 @@ export component PluginsPanel inherits Rectangle {
     }
 
     DialogKeys {
-        title: "Plugins";
+        title: @tr("Plugins");
         cancel => {
             root.close-requested();
         }
@@ -56,7 +56,7 @@ export component PluginsPanel inherits Rectangle {
                     spacing: 8px;
                     Text {
                         horizontal-stretch: 1;
-                        text: "Plugins";
+                        text: @tr("Plugins");
                         color: Theme.text-primary;
                         font-size: 15px;
                         font-weight: 600;
@@ -80,7 +80,7 @@ export component PluginsPanel inherits Rectangle {
                         }
 
                         check-text := Text {
-                            text: root.checking ? "Checking…" : "Check for updates";
+                            text: root.checking ? @tr("Checking…") : @tr("Check for updates");
                             accessible-role: none;
                             color: root.checking ? Theme.text-secondary : Theme.text-primary;
                             font-size: 11px;
@@ -104,13 +104,13 @@ export component PluginsPanel inherits Rectangle {
                         border-width: 1px;
                         border-color: Theme.border;
                         accessible-role: button;
-                        accessible-label: "Open plugin folder";
+                        accessible-label: @tr("Open plugin folder");
                         accessible-action-default => {
                             root.open-folder-requested();
                         }
 
                         folder-text := Text {
-                            text: "Open plugin folder";
+                            text: @tr("Open plugin folder");
                             accessible-role: none;
                             color: Theme.text-primary;
                             font-size: 11px;
@@ -131,7 +131,7 @@ export component PluginsPanel inherits Rectangle {
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
                         accessible-role: button;
-                        accessible-label: "Close";
+                        accessible-label: @tr("Close");
                         accessible-action-default => {
                             root.close-requested();
                         }
@@ -154,7 +154,7 @@ export component PluginsPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: root.plugin-dir != "" ? "Plugin packages (.eop) are loaded from " + root.plugin-dir : "";
+                    text: root.plugin-dir != "" ? @tr("Plugin packages (.eop) are loaded from {}", root.plugin-dir) : "";
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
@@ -184,7 +184,7 @@ export component PluginsPanel inherits Rectangle {
                         spacing: 6px;
 
                         if root.rows.length == 0: Text {
-                            text: "No plugins are installed.";
+                            text: @tr("No plugins are installed.");
                             color: Theme.text-secondary;
                             font-size: 12px;
                         }
@@ -215,7 +215,7 @@ export component PluginsPanel inherits Rectangle {
                                             font-weight: 600;
                                         }
                                         Text {
-                                            text: row.version + (row.api-version != "" ? "  (plugin API " + row.api-version + ")" : "");
+                                            text: row.api-version != "" ? @tr("{}  (plugin API {})", row.version, row.api-version) : row.version;
                                             color: Theme.text-secondary;
                                             font-size: 11px;
                                             vertical-alignment: center;
@@ -236,7 +236,7 @@ export component PluginsPanel inherits Rectangle {
                                     }
 
                                     Text {
-                                        text: row.status + (row.update != "" ? " · version " + row.update + " is available" : "");
+                                        text: row.update != "" ? @tr("{} · version {} is available", row.status, row.update) : row.status;
                                         color: row.status-level == 0 ? Theme.success : row.status-level == 1 ? Theme.text-secondary : Theme.danger;
                                         font-size: 11px;
                                         wrap: word-wrap;
@@ -270,14 +270,14 @@ export component PluginsPanel inherits Rectangle {
                                         border-radius: 4px;
                                         background: update-touch.has-hover ? Theme.accent-hover : Theme.accent;
                                         accessible-role: button;
-                                        accessible-label: "Update " + row.name;
+                                        accessible-label: @tr("Update {}", row.name);
                                         accessible-description: row.update;
                                         accessible-action-default => {
                                             root.update-requested(row.id);
                                         }
 
                                         update-text := Text {
-                                            text: "Update";
+                                            text: @tr("Update");
                                             accessible-role: none;
                                             color: Theme.text-on-accent;
                                             font-size: 11px;
@@ -300,13 +300,13 @@ export component PluginsPanel inherits Rectangle {
                                         border-width: 1px;
                                         border-color: Theme.border;
                                         accessible-role: button;
-                                        accessible-label: (row.can-disable ? "Disable " : "Enable ") + row.name;
+                                        accessible-label: row.can-disable ? @tr("Disable {}", row.name) : @tr("Enable {}", row.name);
                                         accessible-action-default => {
                                             root.enable-requested(row.id, !row.can-disable);
                                         }
 
                                         toggle-text := Text {
-                                            text: row.can-disable ? "Disable" : "Enable";
+                                            text: row.can-disable ? @tr("Disable") : @tr("Enable");
                                             accessible-role: none;
                                             color: Theme.text-primary;
                                             font-size: 11px;
@@ -329,13 +329,13 @@ export component PluginsPanel inherits Rectangle {
                                         border-width: 1px;
                                         border-color: Theme.border;
                                         accessible-role: button;
-                                        accessible-label: "Remove " + row.name;
+                                        accessible-label: @tr("Remove {}", row.name);
                                         accessible-action-default => {
                                             root.remove-requested(row.id);
                                         }
 
                                         remove-text := Text {
-                                            text: "Remove";
+                                            text: @tr("Remove");
                                             accessible-role: none;
                                             color: Theme.danger;
                                             font-size: 11px;

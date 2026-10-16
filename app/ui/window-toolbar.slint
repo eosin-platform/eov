@@ -33,7 +33,7 @@ export component WindowToolbar inherits Rectangle {
     // What undo/redo would revert ("Add marker", "Set region of interest").
     in property <string> undo-label: "";
     in property <string> redo-label: "";
-    in property <string> measure-mode-label: "Distance";
+    in property <string> measure-mode-label: @tr("Distance");
     in property <int> plugin-count: 0;
     in property <bool> plugin-problems: false;
     in property <FilteringMode> filtering-mode: FilteringMode.trilinear;
@@ -45,9 +45,9 @@ export component WindowToolbar inherits Rectangle {
     property <length> plugin-hovered-tooltip-top-y: 0px;
     /// Keys from the shortcut table, for tooltips.
     in property <ShortcutLabels> shortcuts;
-    property <string> undo-tooltip-text: (root.undo-label != "" ? "Undo " + root.undo-label : "Undo")
+    property <string> undo-tooltip-text: (root.undo-label != "" ? @tr("Undo {}", root.undo-label) : @tr("Undo"))
         + (root.shortcuts.undo != "" ? " (" + root.shortcuts.undo + ")" : "");
-    property <string> redo-tooltip-text: (root.redo-label != "" ? "Redo " + root.redo-label : "Redo")
+    property <string> redo-tooltip-text: (root.redo-label != "" ? @tr("Redo {}", root.redo-label) : @tr("Redo"))
         + (root.shortcuts.redo != "" ? " (" + root.shortcuts.redo + ")" : "");
 
     callback open-file-requested();
@@ -81,7 +81,7 @@ export component WindowToolbar inherits Rectangle {
     out property <length> filter-combo-width: filter-combo-area.width;
     out property <bool> hovered-tooltip-visible: hovered-tooltip-text != "";
     out property <string> hovered-tooltip-text:
-        open-button.hovered ? open-button.tooltip-text : undo-button.hovered ? undo-button.tooltip-text : redo-button.hovered ? redo-button.tooltip-text : series-button.hovered ? series-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : viewport-lock-button.hovered ? viewport-lock-button.tooltip-text : link-button.hovered ? link-button.tooltip-text : align-button.hovered ? align-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : theme-button.hovered ? theme-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : plugins-button.hovered ? plugins-button.tooltip-text : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? "Minimize window" : !root.use-native-window-controls && maximize-touch.has-hover ? "Maximize window" : !root.use-native-window-controls && close-win-touch.has-hover ? "Close window" : "";
+        open-button.hovered ? open-button.tooltip-text : undo-button.hovered ? undo-button.tooltip-text : redo-button.hovered ? redo-button.tooltip-text : series-button.hovered ? series-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : viewport-lock-button.hovered ? viewport-lock-button.tooltip-text : link-button.hovered ? link-button.tooltip-text : align-button.hovered ? align-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : theme-button.hovered ? theme-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : plugins-button.hovered ? plugins-button.tooltip-text : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? @tr("Minimize window") : !root.use-native-window-controls && maximize-touch.has-hover ? @tr("Maximize window") : !root.use-native-window-controls && close-win-touch.has-hover ? @tr("Close window") : "";
     out property <length> hovered-tooltip-center-x:
         open-button.hovered ? open-button.absolute-position.x + open-button.width / 2 : undo-button.hovered ? undo-button.absolute-position.x + undo-button.width / 2 : redo-button.hovered ? redo-button.absolute-position.x + redo-button.width / 2 : series-button.hovered ? series-button.absolute-position.x + series-button.width / 2 : minimap-button.hovered ? minimap-button.absolute-position.x + minimap-button.width / 2 : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.x + viewport-lock-button.width / 2 : link-button.hovered ? link-button.absolute-position.x + link-button.width / 2 : align-button.hovered ? align-button.absolute-position.x + align-button.width / 2 : navigate-button.hovered ? navigate-button.absolute-position.x + navigate-button.width / 2 : roi-button.hovered ? roi-button.absolute-position.x + roi-button.width / 2 : measure-button.hovered ? measure-button.absolute-position.x + measure-button.width / 2 : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2 : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2 : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2 : scale-bar-button.hovered ? scale-bar-button.absolute-position.x + scale-bar-button.width / 2 : theme-button.hovered ? theme-button.absolute-position.x + theme-button.width / 2 : dataset-export-button.hovered ? dataset-export-button.absolute-position.x + dataset-export-button.width / 2 : plugins-button.hovered ? plugins-button.absolute-position.x + plugins-button.width / 2 : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-center-x : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2 : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize_control.width / 2 : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close_control.width / 2 : 0px;
     out property <length> hovered-tooltip-top-y:
@@ -115,7 +115,7 @@ export component WindowToolbar inherits Rectangle {
                 spacing: 4px;
 
                 open-button := OpenFileToolButton {
-                    tooltip-text: "Open file (right-click for folder or recent)";
+                    tooltip-text: @tr("Open file (right-click for folder or recent)");
                     clicked => {
                         root.open-file-requested();
                     }
@@ -144,7 +144,7 @@ export component WindowToolbar inherits Rectangle {
 
                 series-button := SvgToolButton {
                     icon-source: @image-url("icons/series.svg");
-                    tooltip-text: root.show-series-bar ? "Hide Series Bar" : "Show Series Bar";
+                    tooltip-text: root.show-series-bar ? @tr("Hide Series Bar") : @tr("Show Series Bar");
                     is-active: root.show-series-bar;
                     checkable: true;
                     clicked => {
@@ -153,7 +153,7 @@ export component WindowToolbar inherits Rectangle {
                 }
 
                 minimap-button := MinimapToolButton {
-                    tooltip-text: "Toggle minimap";
+                    tooltip-text: @tr("Toggle minimap");
                     is-active: root.show-minimap;
                     checkable: true;
                     clicked => {
@@ -163,7 +163,7 @@ export component WindowToolbar inherits Rectangle {
 
                 viewport-lock-button := SvgToolButton {
                     icon-source: root.viewport-lock-enabled ? @image-url("icons/viewport-lock-enabled.svg") : @image-url("icons/viewport-lock-disabled.svg");
-                    tooltip-text: "Viewport lock";
+                    tooltip-text: @tr("Viewport lock");
                     is-active: root.viewport-lock-enabled;
                     checkable: true;
                     clicked => {
@@ -173,7 +173,7 @@ export component WindowToolbar inherits Rectangle {
 
                 link-button := SvgToolButton {
                     icon-source: @image-url("icons/link-slides.svg");
-                    tooltip-text: root.slide-link-enabled ? "Unlink panes" : "Link panes with different slides";
+                    tooltip-text: root.slide-link-enabled ? @tr("Unlink panes") : @tr("Link panes with different slides");
                     is-active: root.slide-link-enabled;
                     checkable: true;
                     clicked => {
@@ -187,8 +187,8 @@ export component WindowToolbar inherits Rectangle {
                     visible: root.slide-link-enabled;
                     icon-source: @image-url("icons/align-slides.svg");
                     tooltip-text: root.alignment-adjust-enabled
-                        ? "Done adjusting (saves the alignment)"
-                        : "Adjust alignment: move one pane alone";
+                        ? @tr("Done adjusting (saves the alignment)")
+                        : @tr("Adjust alignment: move one pane alone");
                     is-active: root.alignment-adjust-enabled;
                     checkable: true;
                     clicked => {
@@ -207,7 +207,7 @@ export component WindowToolbar inherits Rectangle {
 
                 navigate-button := SvgToolButton {
                     icon-source: @image-url("icons/navigate.svg");
-                    tooltip-text: "Navigate" + (root.shortcuts.navigate != "" ? " (" + root.shortcuts.navigate + ")" : "");
+                    tooltip-text: @tr("Navigate") + (root.shortcuts.navigate != "" ? " (" + root.shortcuts.navigate + ")" : "");
                     is-active: root.current-tool == ToolType.navigate;
                     checkable: true;
                     clicked => {
@@ -216,7 +216,7 @@ export component WindowToolbar inherits Rectangle {
                 }
 
                 roi-button := RoiToolButton {
-                    tooltip-text: "Region of interest" + (root.shortcuts.roi != "" ? " (" + root.shortcuts.roi + ")" : "");
+                    tooltip-text: @tr("Region of interest") + (root.shortcuts.roi != "" ? " (" + root.shortcuts.roi + ")" : "");
                     is-active: root.current-tool == ToolType.region-of-interest;
                     checkable: true;
                     clicked => {
@@ -226,8 +226,9 @@ export component WindowToolbar inherits Rectangle {
 
                 measure-button := SvgToolButton {
                     icon-source: @image-url("icons/measure.svg");
-                    tooltip-text: "Measure: " + root.measure-mode-label
-                        + (root.shortcuts.measure != "" ? " (" + root.shortcuts.measure + "; right-click for more)" : " (right-click for more)");
+                    tooltip-text: root.shortcuts.measure != ""
+                        ? @tr("Measure: {} ({}; right-click for more)", root.measure-mode-label, root.shortcuts.measure)
+                        : @tr("Measure: {} (right-click for more)", root.measure-mode-label);
                     is-active: root.current-tool == ToolType.measure;
                     checkable: true;
                     clicked => {
@@ -248,7 +249,7 @@ export component WindowToolbar inherits Rectangle {
                 }
 
                 metadata-button := MetadataToolButton {
-                    tooltip-text: "Toggle metadata HUD";
+                    tooltip-text: @tr("Toggle metadata HUD");
                     is-active: root.show-metadata;
                     checkable: true;
                     clicked => {
@@ -258,7 +259,7 @@ export component WindowToolbar inherits Rectangle {
 
                 scale-bar-button := SvgToolButton {
                     icon-source: @image-url("icons/toggle-measure.svg");
-                    tooltip-text: "Toggle scale bar";
+                    tooltip-text: @tr("Toggle scale bar");
                     is-active: root.show-scale-bar;
                     checkable: true;
                     clicked => {
@@ -269,7 +270,7 @@ export component WindowToolbar inherits Rectangle {
                 // Dark, light or high contrast (`theme` in config.toml).
                 theme-button := SvgToolButton {
                     icon-source: @image-url("icons/theme.svg");
-                    tooltip-text: "Theme: " + (Theme.kind == ThemeKind.light ? "Light" : Theme.kind == ThemeKind.high-contrast ? "High contrast" : "Dark");
+                    tooltip-text: @tr("Theme: {}", Theme.kind == ThemeKind.light ? @tr("Light") : Theme.kind == ThemeKind.high-contrast ? @tr("High Contrast") : @tr("Dark"));
                     clicked => {
                         root.theme-menu-requested(self.absolute-position.x, self.absolute-position.y + self.height + 2px);
                     }
@@ -277,7 +278,7 @@ export component WindowToolbar inherits Rectangle {
 
                 dataset-export-button := SvgToolButton {
                     icon-source: @image-url("icons/dataset.svg");
-                    tooltip-text: "Export Dataset";
+                    tooltip-text: @tr("Export Dataset");
                     clicked => {
                         root.dataset-export-requested();
                     }
@@ -294,8 +295,8 @@ export component WindowToolbar inherits Rectangle {
 
                 cpu-button := ToolButton {
                     width: 40px;
-                    icon: "CPU";
-                    tooltip-text: "Use CPU renderer";
+                    icon: @tr("CPU");
+                    tooltip-text: @tr("Use CPU renderer");
                     is-active: root.render-mode == RenderMode.cpu;
                     checkable: true;
                     clicked => {
@@ -305,8 +306,8 @@ export component WindowToolbar inherits Rectangle {
 
                 gpu-button := ToolButton {
                     width: 40px;
-                    icon: "GPU";
-                    tooltip-text: root.gpu-rendering-available ? "Use GPU renderer" : "GPU renderer unavailable";
+                    icon: @tr("GPU");
+                    tooltip-text: root.gpu-rendering-available ? @tr("Use GPU renderer") : @tr("GPU renderer unavailable");
                     enabled: root.gpu-rendering-available;
                     is-active: root.render-mode == RenderMode.gpu;
                     checkable: true;
@@ -327,7 +328,7 @@ export component WindowToolbar inherits Rectangle {
                         border-width: 1px;
                         border-color: root.filter-popup-visible ? Theme.accent : Theme.border;
                         accessible-role: combobox;
-                        accessible-label: "Filtering mode";
+                        accessible-label: @tr("Filtering mode");
                         accessible-value: filter-mode-text.text;
                         accessible-expandable: true;
                         accessible-expanded: root.filter-popup-visible;
@@ -350,7 +351,7 @@ export component WindowToolbar inherits Rectangle {
                             spacing: 4px;
 
                             filter-mode-text := Text {
-                                text: root.filtering-mode == FilteringMode.bilinear ? "Bilinear" : root.filtering-mode == FilteringMode.trilinear ? "Trilinear" : "Lanczos-3";
+                                text: root.filtering-mode == FilteringMode.bilinear ? @tr("Bilinear") : root.filtering-mode == FilteringMode.trilinear ? @tr("Trilinear") : @tr("Lanczos-3");
                                 color: Theme.text-primary;
                                 font-size: 11px;
                                 vertical-alignment: center;
@@ -418,7 +419,7 @@ export component WindowToolbar inherits Rectangle {
 
             plugins-button := SvgToolButton {
                 icon-source: @image-url("icons/plugin.svg");
-                tooltip-text: root.plugin-problems ? "Plugins (some could not be started)" : "Plugins (" + root.plugin-count + ")";
+                tooltip-text: root.plugin-problems ? @tr("Plugins (some could not be started)") : @tr("Plugins ({})", root.plugin-count);
                 is-active: root.plugin-problems;
                 clicked => {
                     root.plugins-panel-requested();
@@ -445,7 +446,7 @@ export component WindowToolbar inherits Rectangle {
             background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
             accessible-role: button;
-            accessible-label: "Minimize window";
+            accessible-label: @tr("Minimize window");
             accessible-action-default => {
                 root.window-minimize();
             }
@@ -472,7 +473,7 @@ export component WindowToolbar inherits Rectangle {
             background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
             border-radius: 0px;
             accessible-role: button;
-            accessible-label: "Maximize window";
+            accessible-label: @tr("Maximize window");
             accessible-action-default => {
                 root.window-maximize();
             }
@@ -499,7 +500,7 @@ export component WindowToolbar inherits Rectangle {
             background: close-win-touch.has-hover ? Theme.close-hover : transparent;
             border-radius: 0px;
             accessible-role: button;
-            accessible-label: "Close window";
+            accessible-label: @tr("Close window");
             accessible-action-default => {
                 root.window-close();
             }

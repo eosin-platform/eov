@@ -30,7 +30,7 @@ export component ShortcutsPanel inherits Rectangle {
         }
 
         DialogKeys {
-            title: "Keyboard Shortcuts";
+            title: @tr("Keyboard Shortcuts");
             cancel => {
                 root.close();
             }
@@ -54,7 +54,7 @@ export component ShortcutsPanel inherits Rectangle {
                     HorizontalLayout {
                         vertical-stretch: 0;
                         Text {
-                            text: "Keyboard Shortcuts";
+                            text: @tr("Keyboard Shortcuts");
                             color: Theme.text-primary;
                             font-size: 14px;
                             font-weight: 600;
@@ -68,7 +68,7 @@ export component ShortcutsPanel inherits Rectangle {
                             border-radius: 4px;
                             background: close-touch.has-hover ? Theme.surface-hover : transparent;
                             accessible-role: button;
-                            accessible-label: "Close";
+                            accessible-label: @tr("Close");
                             accessible-action-default => {
                                 root.close();
                             }
@@ -134,7 +134,7 @@ export component ShortcutsPanel inherits Rectangle {
                                         }
 
                                         Text {
-                                            text: row.keys == "" ? "no key" : row.keys;
+                                            text: row.keys == "" ? @tr("no key") : row.keys;
                                             color: row.keys == "" ? Theme.text-secondary : Theme.text-primary;
                                             font-size: 12px;
                                             font-family: "monospace";
@@ -167,13 +167,13 @@ export component ShortcutsPanel inherits Rectangle {
                             border-width: 1px;
                             border-color: Theme.border;
                             accessible-role: button;
-                            accessible-label: "Copy Config Path";
+                            accessible-label: @tr("Copy Config Path");
                             accessible-action-default => {
                                 root.copy-config-path();
                             }
 
                             copy-text := Text {
-                                text: "Copy Config Path";
+                                text: @tr("Copy Config Path");
                                 accessible-role: none;
                                 color: Theme.text-primary;
                                 font-size: 12px;

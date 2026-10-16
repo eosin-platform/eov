@@ -34,8 +34,8 @@ export component Minimap inherits Rectangle {
     border-color: Theme.border;
     clip: true;
     accessible-role: image;
-    accessible-label: "Minimap";
-    accessible-description: "The whole slide; click or drag to move the view there";
+    accessible-label: @tr("Minimap");
+    accessible-description: @tr("The whole slide; click or drag to move the view there");
     // As a click in the middle: the view is centred on the slide.
     accessible-action-default => {
         root.drag-start();
@@ -101,7 +101,7 @@ export component ZoomSlider inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     accessible-role: slider;
-    accessible-label: "Zoom";
+    accessible-label: @tr("Zoom");
     accessible-value: zoom-tooltip-label;
     accessible-value-minimum: 0;
     accessible-value-maximum: 1;
@@ -127,7 +127,7 @@ export component ZoomSlider inherits Rectangle {
         height: root.track-top;
         background: plus-touch.has-hover ? Theme.surface-hover : transparent;
         accessible-role: button;
-        accessible-label: "Zoom in";
+        accessible-label: @tr("Zoom in");
         accessible-action-default => {
             root.value-changed(Math.min(1, root.clamped-value + 0.08));
         }
@@ -191,7 +191,7 @@ export component ZoomSlider inherits Rectangle {
         height: root.track-bottom;
         background: minus-touch.has-hover ? Theme.surface-hover : transparent;
         accessible-role: button;
-        accessible-label: "Zoom out";
+        accessible-label: @tr("Zoom out");
         accessible-action-default => {
             root.value-changed(Math.max(0, root.clamped-value - 0.08));
         }

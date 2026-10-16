@@ -643,6 +643,17 @@ The in-tree plugins under `plugins/` are full examples. To try them:
 
 The packaged plugin buttons should appear in the toolbar, and the plugin sidebars/windows can then be opened from the app UI.
 
+## Translating the Interface
+
+The texts of eov's window (`app/ui/*.slint`) are marked for translation with `@tr`. A translation is a gettext catalog that is compiled into eov:
+
+1. Extract the texts into a template with Slint's extractor (`cargo install slint-tr-extractor`):
+   `find app/ui -name '*.slint' | xargs slint-tr-extractor -o app/translations/eov.pot`
+2. Start a catalog for the language from the template, for example with gettext's `msginit -i app/translations/eov.pot -o app/translations/de/LC_MESSAGES/eov.po -l de`, and translate it in any .po editor. A text's context is the component it appears in.
+3. Build eov: `app/build.rs` compiles every `app/translations/<language>/LC_MESSAGES/eov.po` in. eov shows the language of the system (`LANG`) when it has a catalog for it, and English otherwise (and when there is no catalog at all). When the texts change, update a catalog with `msgmerge -U app/translations/de/LC_MESSAGES/eov.po app/translations/eov.pot`.
+
+Only the window's own texts are translated. Messages that come from eov's Rust code (the status bar, notifications and toasts, menus built while eov runs, the dialogs' summaries, the command line) and the plugins' panels stay in English.
+
 ## Configuration And Persistence
 
 eov keeps its state under `~/.eov/` (or `$EOV_HOME`):

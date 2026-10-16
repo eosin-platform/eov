@@ -646,7 +646,7 @@ component Tab inherits Rectangle {
     border-color: transparent;
     opacity: is-dragging ? 0.35 : 1.0;
     accessible-role: tab;
-    accessible-label: root.data.title + (root.data.is-modified ? " (modified)" : "");
+    accessible-label: root.data.is-modified ? @tr("{} (modified)", root.data.title) : root.data.title;
     accessible-description: root.data.path;
     accessible-item-selectable: true;
     accessible-item-selected: root.data.is-active;
@@ -767,7 +767,7 @@ component Tab inherits Rectangle {
         Rectangle {
             width: self.height;
             accessible-role: button;
-            accessible-label: "Close " + data.title;
+            accessible-label: @tr("Close {}", data.title);
             accessible-action-default => {
                 root.close-requested(data.id);
             }
@@ -830,7 +830,7 @@ export component TabBar inherits Rectangle {
     height: 35px;
     background: Theme.surface;
     accessible-role: tab-list;
-    accessible-label: "Tabs";
+    accessible-label: @tr("Tabs");
 
     Rectangle {
         y: 0px;
@@ -918,7 +918,7 @@ export component TabBar inherits Rectangle {
                 height: 35px;
                 background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
-                accessible-label: "New tab";
+                accessible-label: @tr("New tab");
                 accessible-action-default => {
                     root.new-tab-requested(root.pane-id);
                 }
@@ -963,7 +963,7 @@ export component TabBar inherits Rectangle {
         height: 35px;
         background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
         accessible-role: button;
-        accessible-label: "New tab";
+        accessible-label: @tr("New tab");
         accessible-action-default => {
             root.new-tab-requested(root.pane-id);
         }

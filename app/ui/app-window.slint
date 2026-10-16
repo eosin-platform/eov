@@ -79,7 +79,7 @@ export component AppWindow inherits Window {
     in-out property <image> secondary-minimap-thumbnail;
     in-out property <MinimapRect> minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
     in-out property <MinimapRect> secondary-minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
-    in-out property <string> status-text: "Ready";
+    in-out property <string> status-text: @tr("Ready");
     in-out property <bool> is-loading: false;
     in-out property <bool> split-enabled: false;
     in-out property <int> focused-pane: 0;
@@ -144,8 +144,8 @@ export component AppWindow inherits Window {
     in-out property <bool> plugin-confirm-visible: false;
     in-out property <string> plugin-confirm-title: "";
     in-out property <string> plugin-confirm-message: "";
-    in-out property <string> plugin-confirm-confirm-label: "Confirm";
-    in-out property <string> plugin-confirm-cancel-label: "Cancel";
+    in-out property <string> plugin-confirm-confirm-label: @tr("Confirm");
+    in-out property <string> plugin-confirm-cancel-label: @tr("Cancel");
     in-out property <bool> plugin-confirm-destructive: false;
     in-out property <bool> show-plugin-modal: false;
     in-out property <float> plugin-modal-width: 0;
@@ -275,7 +275,7 @@ export component AppWindow inherits Window {
     callback save-copy-settings-changed(SaveCopySettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
-    in-out property <string> measure-mode-label: "Distance";
+    in-out property <string> measure-mode-label: @tr("Distance");
 
     in-out property <bool> debug-mode: false;
     in-out property <float> fps: 0;
@@ -293,7 +293,7 @@ export component AppWindow inherits Window {
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
     in-out property <string> series-filter;
-    in-out property <string> series-sort-label: "A–Z";
+    in-out property <string> series-sort-label: @tr("A–Z");
     callback series-filter-edited(string);
     callback series-sort-cycled();
     in-out property <string> series-selected-path: "";
@@ -833,7 +833,7 @@ export component AppWindow inherits Window {
                         root.context-menu-items = [
                             {
                                 id: "close",
-                                label: "Close",
+                                label: @tr("Close"),
                                 icon: "",
                                 shortcut: root.shortcut-labels.close-tab,
                                 enabled: true,
@@ -841,7 +841,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-others",
-                                label: "Close Others",
+                                label: @tr("Close Others"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false,
@@ -849,7 +849,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-right",
-                                label: "Close to the Right",
+                                label: @tr("Close to the Right"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -857,7 +857,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-all",
-                                label: "Close All",
+                                label: @tr("Close All"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -865,7 +865,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "open-folder",
-                                label: "Open Containing Folder",
+                                label: @tr("Open Containing Folder"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -873,7 +873,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "copy-path",
-                                label: "Copy Path",
+                                label: @tr("Copy Path"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -881,7 +881,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "slide-info",
-                                label: "Slide Information",
+                                label: @tr("Slide Information"),
                                 icon: "",
                                 shortcut: root.shortcut-labels.slide-info,
                                 enabled: true,
@@ -889,7 +889,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "save-copy",
-                                label: "Save a Copy of the Slide…",
+                                label: @tr("Save a Copy of the Slide…"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -897,7 +897,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "split-right",
-                                label: "Split Right",
+                                label: @tr("Split Right"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -1127,7 +1127,7 @@ export component AppWindow inherits Window {
                     root.context-menu-items = [
                         {
                             id: "series-open",
-                            label: "Open",
+                            label: @tr("Open"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1135,7 +1135,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-open-new-tab",
-                            label: "Open in New Tab",
+                            label: @tr("Open in New Tab"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1143,7 +1143,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-open-folder",
-                            label: "Open Containing Folder",
+                            label: @tr("Open Containing Folder"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1151,7 +1151,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-copy-path",
-                            label: "Copy Path",
+                            label: @tr("Copy Path"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1324,7 +1324,7 @@ export component AppWindow inherits Window {
         accessible-role: text;
         accessible-label: root.toast-text;
         // The border's colour, for assistive technology.
-        accessible-description: root.toast-level == 3 ? "Error" : root.toast-level == 2 ? "Warning" : "";
+        accessible-description: root.toast-level == 3 ? @tr("Error") : root.toast-level == 2 ? @tr("Warning") : "";
         accessible-live-region: polite;
 
         toast-label := Text {
@@ -1371,7 +1371,7 @@ export component AppWindow inherits Window {
                 background: bilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
                 accessible-role: radio-button;
-                accessible-label: "Bilinear (Low Quality)";
+                accessible-label: @tr("Bilinear (Low Quality)");
                 accessible-checkable: true;
                 accessible-checked: root.filtering-mode == FilteringMode.bilinear;
                 accessible-action-default => {
@@ -1389,7 +1389,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.bilinear ? "✓ Bilinear (Low Quality)" : "   Bilinear (Low Quality)";
+                        text: (root.filtering-mode == FilteringMode.bilinear ? "✓ " : "   ") + @tr("Bilinear (Low Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -1403,7 +1403,7 @@ export component AppWindow inherits Window {
                 background: trilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
                 accessible-role: radio-button;
-                accessible-label: "Trilinear (Balanced)";
+                accessible-label: @tr("Trilinear (Balanced)");
                 accessible-checkable: true;
                 accessible-checked: root.filtering-mode == FilteringMode.trilinear;
                 accessible-action-default => {
@@ -1421,7 +1421,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.trilinear ? "✓ Trilinear (Balanced)" : "   Trilinear (Balanced)";
+                        text: (root.filtering-mode == FilteringMode.trilinear ? "✓ " : "   ") + @tr("Trilinear (Balanced)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -1435,7 +1435,7 @@ export component AppWindow inherits Window {
                 background: lanczos3-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
                 accessible-role: radio-button;
-                accessible-label: "Lanczos-3 (High Quality)";
+                accessible-label: @tr("Lanczos-3 (High Quality)");
                 accessible-checkable: true;
                 accessible-checked: root.filtering-mode == FilteringMode.lanczos3;
                 accessible-action-default => {
@@ -1453,7 +1453,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.lanczos3 ? "✓ Lanczos-3 (High Quality)" : "   Lanczos-3 (High Quality)";
+                        text: (root.filtering-mode == FilteringMode.lanczos3 ? "✓ " : "   ") + @tr("Lanczos-3 (High Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
@@ -1818,7 +1818,7 @@ export component AppWindow inherits Window {
         }
 
         DialogKeys {
-            title: "Lanczos Filtering (CPU)";
+            title: @tr("Lanczos Filtering (CPU)");
             takes-back: false;
             has-default-action: true;
             cancel => {
@@ -1848,7 +1848,7 @@ export component AppWindow inherits Window {
                     spacing: 12px;
 
                     Text {
-                        text: "Lanczos Filtering (CPU)";
+                        text: @tr("Lanczos Filtering (CPU)");
                         color: Theme.text-primary;
                         font-size: 14px;
                         font-weight: 600;
@@ -1856,7 +1856,7 @@ export component AppWindow inherits Window {
                     }
 
                     Text {
-                        text: "Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?";
+                        text: @tr("Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?");
                         color: Theme.text-secondary;
                         font-size: 12px;
                         wrap: word-wrap;
@@ -1879,7 +1879,7 @@ export component AppWindow inherits Window {
                             border-width: 1px;
                             border-color: Theme.border;
                             accessible-role: button;
-                            accessible-label: "Cancel";
+                            accessible-label: @tr("Cancel");
                             accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-cancelled();
@@ -1895,7 +1895,7 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: "Cancel";
+                                text: @tr("Cancel");
                                 color: Theme.text-primary;
                                 font-size: 12px;
                                 horizontal-alignment: center;
@@ -1912,7 +1912,7 @@ export component AppWindow inherits Window {
                             border-width: 1px;
                             border-color: Theme.border;
                             accessible-role: button;
-                            accessible-label: "Use Trilinear";
+                            accessible-label: @tr("Use Trilinear");
                             accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-use-trilinear();
@@ -1928,7 +1928,7 @@ export component AppWindow inherits Window {
                             }
 
                             use-trilinear-text := Text {
-                                text: "Use Trilinear";
+                                text: @tr("Use Trilinear");
                                 color: Theme.text-primary;
                                 font-size: 12px;
                                 horizontal-alignment: center;
@@ -1943,7 +1943,7 @@ export component AppWindow inherits Window {
                             border-radius: 4px;
                             background: confirm-touch.has-hover ? Theme.accent-hover : Theme.accent;
                             accessible-role: button;
-                            accessible-label: "Confirm";
+                            accessible-label: @tr("Confirm");
                             accessible-action-default => {
                                 root.lanczos-confirm-visible = false;
                                 root.lanczos-confirm-accepted();
@@ -1959,7 +1959,7 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: "Confirm";
+                                text: @tr("Confirm");
                                 color: Theme.text-on-accent;
                                 font-size: 12px;
                                 horizontal-alignment: center;

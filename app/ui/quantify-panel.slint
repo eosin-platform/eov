@@ -80,7 +80,7 @@ export component QuantifyPanel inherits Rectangle {
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
                         accessible-role: button;
-                        accessible-label: "Close";
+                        accessible-label: @tr("Close");
                         accessible-action-default => {
                             root.close-requested();
                         }
@@ -110,7 +110,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Stain model";
+                    text: @tr("Stain model");
                     color: Theme.text-secondary;
                     font-size: 11px;
                 }
@@ -129,7 +129,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Stain to measure";
+                    text: @tr("Stain to measure");
                     color: Theme.text-secondary;
                     font-size: 11px;
                 }
@@ -152,7 +152,7 @@ export component QuantifyPanel inherits Rectangle {
                     alignment: start;
 
                     NumberField {
-                        label: "Weak (1+) from";
+                        label: @tr("Weak (1+) from");
                         accepted => {
                             if !root.running {
                                 root.run-requested();
@@ -165,7 +165,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
-                        label: "Moderate (2+) from";
+                        label: @tr("Moderate (2+) from");
                         accepted => {
                             if !root.running {
                                 root.run-requested();
@@ -178,7 +178,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
-                        label: "Strong (3+) from";
+                        label: @tr("Strong (3+) from");
                         accepted => {
                             if !root.running {
                                 root.run-requested();
@@ -192,7 +192,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Thresholds are stain concentrations (optical density along the stain's vector), as the deconvolution view shows them.";
+                    text: @tr("Thresholds are stain concentrations (optical density along the stain's vector), as the deconvolution view shows them.");
                     color: Theme.text-secondary;
                     font-size: 10px;
                     wrap: word-wrap;
@@ -237,7 +237,7 @@ export component QuantifyPanel inherits Rectangle {
                     alignment: end;
 
                     PanelButton {
-                        text: "Copy Results";
+                        text: @tr("Copy Results");
                         enabled: root.results.length > 0;
                         clicked => {
                             root.copy-requested();
@@ -245,7 +245,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     PanelButton {
-                        text: root.running ? "Measuring…" : "Quantify";
+                        text: root.running ? @tr("Measuring…") : @tr("Quantify");
                         primary: true;
                         enabled: !root.running;
                         clicked => {

@@ -75,7 +75,7 @@ export component HudToolbar inherits Rectangle {
     in property <float> zoom-level: 1.0;
     in property <string> zoom-display-text: "100%";
     in property <string> zoom-input-text: "100";
-    in property <string> zoom-tooltip: "100% = 1 image pixel per display pixel";
+    in property <string> zoom-tooltip: @tr("100% = 1 image pixel per display pixel");
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
     in property <[HudToolbarButtonData]> plugin-buttons: [];
@@ -115,7 +115,7 @@ export component HudToolbar inherits Rectangle {
         : rotate-left-btn.hovered ? rotate-left-btn.tooltip-text
         : rotate-right-btn.hovered ? rotate-right-btn.tooltip-text
         : flip-btn.hovered ? flip-btn.tooltip-text
-        : angle-touch.has-hover ? "Reset rotation"
+        : angle-touch.has-hover ? @tr("Reset rotation")
         : adjust-btn.hovered ? adjust-btn.tooltip-text
         : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
             ? root.plugin-buttons[root.hovered-plugin].tooltip
@@ -170,7 +170,7 @@ export component HudToolbar inherits Rectangle {
             zoom-out-btn := HudButton {
                 width: 30px;
                 text: "−";
-                tooltip-text: "Zoom out";
+                tooltip-text: @tr("Zoom out");
                 clicked => {
                     root.zoom-out();
                 }
@@ -183,7 +183,7 @@ export component HudToolbar inherits Rectangle {
                 border-radius: 0px;
                 background: zoom-touch.has-hover || root.editing-zoom ? Theme.hover-fill : transparent;
                 accessible-role: spinbox;
-                accessible-label: "Zoom";
+                accessible-label: @tr("Zoom");
                 accessible-description: root.zoom-tooltip;
                 accessible-value: root.zoom-display-text;
                 accessible-action-increment => {
@@ -226,7 +226,7 @@ export component HudToolbar inherits Rectangle {
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         text: root.zoom-input-text;
-                        accessible-label: "Zoom";
+                        accessible-label: @tr("Zoom");
 
                         accepted => {
                             root.cancel-zoom-edit = false;
@@ -272,7 +272,7 @@ export component HudToolbar inherits Rectangle {
             zoom-in-btn := HudButton {
                 width: 30px;
                 text: "+";
-                tooltip-text: "Zoom in";
+                tooltip-text: @tr("Zoom in");
                 clicked => {
                     root.zoom-in();
                 }
@@ -282,7 +282,7 @@ export component HudToolbar inherits Rectangle {
 
             rotate-left-btn := HudButton {
                 icon-source: @image-url("icons/rotate-left.svg");
-                tooltip-text: "Rotate left 90°";
+                tooltip-text: @tr("Rotate left 90°");
                 clicked => {
                     root.orientation-changed(0);
                 }
@@ -290,7 +290,7 @@ export component HudToolbar inherits Rectangle {
 
             rotate-right-btn := HudButton {
                 icon-source: @image-url("icons/rotate-right.svg");
-                tooltip-text: "Rotate right 90°";
+                tooltip-text: @tr("Rotate right 90°");
                 clicked => {
                     root.orientation-changed(1);
                 }
@@ -298,7 +298,7 @@ export component HudToolbar inherits Rectangle {
 
             flip-btn := HudButton {
                 icon-source: @image-url("icons/flip-horizontal.svg");
-                tooltip-text: root.flipped ? "Unflip" : "Flip horizontally";
+                tooltip-text: root.flipped ? @tr("Unflip") : @tr("Flip horizontally");
                 active: root.flipped;
                 checkable: true;
                 clicked => {
@@ -313,7 +313,7 @@ export component HudToolbar inherits Rectangle {
                 visible: root.rotation-degrees != 0;
                 background: angle-touch.has-hover ? Theme.hover-fill-strong : transparent;
                 accessible-role: button;
-                accessible-label: "Reset rotation";
+                accessible-label: @tr("Reset rotation");
                 accessible-description: root.rotation-degrees + "°";
                 accessible-action-default => {
                     root.orientation-changed(3);
@@ -379,11 +379,11 @@ export component HudToolbar inherits Rectangle {
 
             adjust-btn := HudButton {
                 icon-source: @image-url("icons/settings.svg");
-                tooltip-text: "Adjustments";
+                tooltip-text: @tr("Adjustments");
                 active: root.dropdown-open || root.has-adjustments;
                 expandable: true;
                 expanded: root.dropdown-open;
-                accessible-description: root.has-adjustments ? "The colours are adjusted" : "";
+                accessible-description: root.has-adjustments ? @tr("The colours are adjusted") : "";
                 clicked => {
                     root.toggle-dropdown();
                 }
@@ -425,7 +425,7 @@ export component HudToolbar inherits Rectangle {
 
         // The menu takes the keyboard: Escape closes it.
         DialogKeys {
-            title: "Menu";
+            title: @tr("Menu");
             takes-back: false;
             cancel => {
                 root.plugin-menu-open = false;

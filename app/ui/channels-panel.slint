@@ -199,7 +199,7 @@ component WindowSlider inherits Rectangle {
             height: 100%;
             source: root.histogram;
             image-fit: fill;
-            accessible-label: "Histogram of " + root.name;
+            accessible-label: @tr("Histogram of {}", root.name);
         }
     }
 
@@ -227,7 +227,7 @@ component WindowSlider inherits Rectangle {
         border-radius: 2px;
         background: Theme.handle;
         accessible-role: slider;
-        accessible-label: end == 0 ? "Lower end of " + root.name : "Upper end of " + root.name;
+        accessible-label: end == 0 ? @tr("Lower end of {}", root.name) : @tr("Upper end of {}", root.name);
         accessible-value: end == 0 ? root.low-text : root.high-text;
         accessible-value-minimum: 0;
         accessible-value-maximum: 1;
@@ -391,7 +391,7 @@ export component ChannelsPanel inherits Rectangle {
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
                         accessible-role: button;
-                        accessible-label: "Close";
+                        accessible-label: @tr("Close");
                         accessible-action-default => {
                             root.close-requested();
                         }
@@ -428,7 +428,7 @@ export component ChannelsPanel inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         SmallButton {
-                            text: "Auto contrast";
+                            text: @tr("Auto contrast");
                             clicked => {
                                 root.auto-contrast-requested();
                             }
@@ -438,7 +438,7 @@ export component ChannelsPanel inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         SmallButton {
-                            text: "Show all";
+                            text: @tr("Show all");
                             clicked => {
                                 root.show-all-requested();
                             }
@@ -448,7 +448,7 @@ export component ChannelsPanel inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         SmallButton {
-                            text: "Reset";
+                            text: @tr("Reset");
                             clicked => {
                                 root.picker-row = -1;
                                 root.reset-requested();
@@ -461,21 +461,21 @@ export component ChannelsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: "Colours:";
+                        text: @tr("Colours:");
                         color: Theme.text-secondary;
                         font-size: 11px;
                         vertical-alignment: center;
                     }
 
                     for palette in [
-                        { id: "standard", name: "Standard" },
-                        { id: "colour-blind-safe", name: "Colour-blind safe" },
-                        { id: "okabe-ito", name: "Okabe–Ito" },
+                        { id: "standard", name: @tr("Standard") },
+                        { id: "colour-blind-safe", name: @tr("Colour-blind safe") },
+                        { id: "okabe-ito", name: @tr("Okabe–Ito") },
                     ]: VerticalLayout {
                         alignment: center;
                         SmallButton {
                             text: palette.name;
-                            description: "Colour palette";
+                            description: @tr("Colour palette");
                             clicked => {
                                 root.palette-requested(palette.id);
                             }
@@ -511,7 +511,7 @@ export component ChannelsPanel inherits Rectangle {
                                             alignment: center;
                                             Check {
                                                 checked: row.visible;
-                                                label: "Show " + row.name;
+                                                label: @tr("Show {}", row.name);
                                                 toggled(visible) => {
                                                     root.visibility-toggled(row.index, visible);
                                                 }
@@ -528,7 +528,7 @@ export component ChannelsPanel inherits Rectangle {
                                                 border-width: 1px;
                                                 border-color: root.picker-row == row.index ? Theme.text-strong : Theme.outline-strong;
                                                 accessible-role: button;
-                                                accessible-label: "Colour of " + row.name;
+                                                accessible-label: @tr("Colour of {}", row.name);
                                                 accessible-expandable: true;
                                                 accessible-expanded: root.picker-row == row.index;
                                                 accessible-action-default => {
@@ -564,10 +564,10 @@ export component ChannelsPanel inherits Rectangle {
                                         VerticalLayout {
                                             alignment: center;
                                             SmallButton {
-                                                text: "Solo";
+                                                text: @tr("Solo");
                                                 active: row.solo;
                                                 checkable: true;
-                                                description: "Show " + row.name + " alone";
+                                                description: @tr("Show {} alone", row.name);
                                                 clicked => {
                                                     root.solo-toggled(row.index);
                                                 }
@@ -597,7 +597,7 @@ export component ChannelsPanel inherits Rectangle {
                                             alignment: center;
                                             ValueField {
                                                 text: row.min-text;
-                                                label: "Minimum of " + row.name;
+                                                label: @tr("Minimum of {}", row.name);
                                                 entered(text) => {
                                                     root.min-entered(row.index, text);
                                                 }
@@ -616,7 +616,7 @@ export component ChannelsPanel inherits Rectangle {
                                             alignment: center;
                                             ValueField {
                                                 text: row.max-text;
-                                                label: "Maximum of " + row.name;
+                                                label: @tr("Maximum of {}", row.name);
                                                 entered(text) => {
                                                     root.max-entered(row.index, text);
                                                 }
@@ -636,7 +636,7 @@ export component ChannelsPanel inherits Rectangle {
                                             GammaSlider {
                                                 width: 72px;
                                                 position: row.gamma-position;
-                                                label: "Gamma of " + row.name;
+                                                label: @tr("Gamma of {}", row.name);
                                                 value-text: row.gamma-text;
                                                 moved(position) => {
                                                     root.gamma-moved(row.index, position);
@@ -649,7 +649,7 @@ export component ChannelsPanel inherits Rectangle {
                                             ValueField {
                                                 width: 42px;
                                                 text: row.gamma-text;
-                                                label: "Gamma of " + row.name;
+                                                label: @tr("Gamma of {}", row.name);
                                                 entered(text) => {
                                                     root.gamma-entered(row.index, text);
                                                 }
@@ -670,7 +670,7 @@ export component ChannelsPanel inherits Rectangle {
                                             border-width: 1px;
                                             border-color: chip-touch.has-hover ? Theme.text-strong : Theme.outline-medium;
                                             accessible-role: button;
-                                            accessible-label: "Colour " + (chip-index + 1) + " of " + root.chip-colors.length;
+                                            accessible-label: @tr("Colour {} of {}", chip-index + 1, root.chip-colors.length);
                                             accessible-action-default => {
                                                 root.color-chosen(row.index, chip);
                                                 root.picker-row = -1;
@@ -692,7 +692,7 @@ export component ChannelsPanel inherits Rectangle {
 
                 Text {
                     vertical-stretch: 0;
-                    text: "Windows are in the file's sample values: at the lower end a channel is black, at the upper end its full colour. γ above 1 brightens dim signal. Settings are kept for this slide; exports and plugins see the same picture.";
+                    text: @tr("Windows are in the file's sample values: at the lower end a channel is black, at the upper end its full colour. γ above 1 brightens dim signal. Settings are kept for this slide; exports and plugins see the same picture.");
                     color: Theme.text-secondary;
                     font-size: 10px;
                     wrap: word-wrap;
