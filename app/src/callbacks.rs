@@ -2465,6 +2465,8 @@ pub fn setup_callbacks(
                         text.trim()
                     )));
                 }
+                // The field closed: keys are shortcuts again.
+                ui.invoke_focus_keyboard();
                 request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
             }
         });

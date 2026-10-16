@@ -324,7 +324,10 @@ export component HudToolbar inherits Rectangle {
                                 root.cancel-angle-edit = true;
                                 root.editing-angle = false;
                                 self.text = root.rotation-input-text;
-                                accept
+                                // The angle as it was (the keyboard goes
+                                // back to the shortcuts).
+                                root.rotation-input(root.rotation-input-text);
+                                return accept;
                             }
                             reject
                         }
