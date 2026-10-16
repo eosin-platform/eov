@@ -470,7 +470,45 @@ fn host_items(
         [p.x as f32, p.y as f32]
     };
 
-    if let Some(roi) = capture.roi {
+    if let Some(roi) = capture.roi
+        && !viewport.orientation.is_quarter_turn()
+    {
+        // At other angles the level-0 rectangle shows as a turned one.
+        let corners = vec![
+            to_px(roi.x, roi.y),
+            to_px(roi.x + roi.width, roi.y),
+            to_px(roi.x + roi.width, roi.y + roi.height),
+            to_px(roi.x, roi.y + roi.height),
+        ];
+        if settings.roi_outside_overlay {
+            let (w, h) = request.output_size();
+            let (w, h) = (w as f32, h as f32);
+            // Even-odd: the image with the ROI as a hole.
+            items.push(OverlayItem::Polygon {
+                rings: vec![
+                    vec![[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]],
+                    corners.clone(),
+                ],
+                color: overlay_color(settings.roi_outside_color, settings.roi_outside_opacity),
+            });
+        }
+        if settings.show_roi_outline {
+            items.push(OverlayItem::Polyline {
+                points: corners,
+                closed: true,
+                color: overlay_color(settings.roi_color, settings.roi_opacity),
+                thickness: settings.roi_thickness * k,
+                stroke: stroke_style(
+                    settings.roi_stroke_style,
+                    settings.roi_dash_length,
+                    settings.roi_dash_gap,
+                    settings.roi_dot_spacing,
+                    k,
+                ),
+                cap: cap_style(settings.roi_cap_style),
+            });
+        }
+    } else if let Some(roi) = capture.roi {
         // Opposite corners; a turned view may swap them.
         let a = to_px(roi.x, roi.y);
         let b = to_px(roi.x + roi.width, roi.y + roi.height);
@@ -1730,6 +1768,40 @@ mod tests {
         assert!(edge[0] > 200 && edge[1] > 150 && edge[2] < 80, "{edge:?}");
         let inside = px(200, 400);
         assert_eq!(inside[..3], [200, 100, 150], "inside the ROI");
+
+        // At any other angle: the turned view's area, the background
+        // outside the slide, and the layers and the ROI turned with it.
+        let mut captured = captured;
+        captured.viewport.zoom = 0.6;
+        captured.viewport.orientation =
+            eov_common::viewport::Orientation::from_degrees(30.0, false).unwrap();
+        let path = dir.path().join("tilted.png");
+        run_export(
+            &captured,
+            &settings,
+            &path,
+            ExportFormat::Png,
+            &JobControl::new(),
+        )
+        .unwrap();
+        let image = image::open(&path).unwrap().to_rgba8();
+        assert_eq!(image.dimensions(), (512, 512));
+        let evp = ExportRequest::new(captured.viewport.clone(), f64::from(settings.dpi))
+            .export_viewport();
+        let px = |x: f64, y: f64| {
+            let p = evp.image_to_screen(x, y);
+            image.get_pixel(p.x as u32, p.y as u32).0
+        };
+        assert_eq!(px(96.0, 96.0)[..3], [255, 0, 0], "the plugin square");
+        assert_eq!(px(400.0, 120.0)[..3], [200, 100, 150], "the slide");
+        let edge = px(356.0, 256.0);
+        assert!(edge[0] > 200 && edge[1] > 150 && edge[2] < 80, "{edge:?}");
+        assert_eq!(px(356.0, 306.0)[..3], [200, 100, 150], "inside the ROI");
+        // The output's corner shows beyond the slide.
+        let corner = evp.screen_to_image(1.5, 1.5);
+        assert!(corner.x < 0.0 || corner.y < 0.0 || corner.x > 512.0 || corner.y > 512.0);
+        let background = legacy_settings(&settings).background_rgba;
+        assert_eq!(image.get_pixel(1, 1).0[..3], background[..3]);
     }
 
     #[test]

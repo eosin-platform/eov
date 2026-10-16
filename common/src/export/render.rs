@@ -13,9 +13,13 @@
 //! worker thread.
 //!
 //! A turned view (see [`crate::viewport::Orientation`]) exports as it shows
-//! on screen: each output band is rendered from the matching part of the
-//! frame drawn axis-aligned with the image (a column strip for odd quarter
-//! turns), then turned.
+//! on screen. For quarter turns each output band is rendered from the
+//! matching part of the frame drawn axis-aligned with the image (a column
+//! strip for odd quarter turns), then turned exactly. Other angles draw the
+//! tiles that touch a band's turned strip of the slide straight into the
+//! band, as the viewer does (see [`crate::blitter::FrameMap`]); outside
+//! the slide is the background. Memory stays bounded the same way: tiles
+//! that no remaining band touches are dropped.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 
-use crate::blitter::{self, BlitRect, CoarseSrc, TileSrc};
+use crate::blitter::{self, BlitRect, CoarseSrc, FrameMap, TileSrc};
 use crate::job::JobControl;
 use crate::overlay::{Canvas, OverlayItem, embedded_font};
 use crate::postprocess::sharpen_rows_into;
@@ -149,15 +153,28 @@ impl ExportRequest {
 
     /// Physical size of an output pixel along the output's x and y axes
     /// (µm), from the slide's level-0 pixel size (a quarter-turned view
-    /// swaps them).
+    /// swaps them; other angles mix them along each axis).
     pub fn output_pixel_size_um(
         &self,
         mpp_x: Option<f64>,
         mpp_y: Option<f64>,
     ) -> (Option<f64>, Option<f64>) {
         let f = self.level0_per_output_px();
-        let valid = |v: Option<f64>| v.filter(|m| m.is_finite() && *m > 0.0).map(|m| m * f);
-        self.viewport.orientation.swap(valid(mpp_x), valid(mpp_y))
+        let valid = |v: Option<f64>| v.filter(|m| m.is_finite() && *m > 0.0);
+        let orientation = self.viewport.orientation;
+        if orientation.is_quarter_turn() {
+            let scaled = |v: Option<f64>| valid(v).map(|m| m * f);
+            return orientation.swap(scaled(mpp_x), scaled(mpp_y));
+        }
+        let (Some(mpp_x), Some(mpp_y)) = (valid(mpp_x), valid(mpp_y)) else {
+            return (None, None);
+        };
+        // An output pixel step along each output axis, in level-0 pixels.
+        let along = |x: f64, y: f64| {
+            let step = orientation.to_image(glam::DVec2::new(x, y)) * f;
+            (step.x * mpp_x).hypot(step.y * mpp_y)
+        };
+        (Some(along(1.0, 0.0)), Some(along(0.0, 1.0)))
     }
 
     fn validate(&self) -> Result<(), ExportError> {
@@ -322,6 +339,19 @@ impl<'a> TileStore<'a> {
 
     fn get(&self, coord: &TileCoord) -> Option<&Arc<TileData>> {
         self.tiles.get(coord).and_then(Option::as_ref)
+    }
+
+    /// Drops tiles that do not meet the level-0 quadrilateral the
+    /// remaining bands of a turned export cover.
+    fn keep_meeting(&mut self, quad: &[glam::DVec2; 4], manager: &TileManager) {
+        self.tiles.retain(|coord, _| {
+            let Some(info) = manager.wsi().level(coord.level) else {
+                return false;
+            };
+            let span = coord.tile_size as f64 * info.downsample;
+            let (left, top) = (coord.x as f64 * span, coord.y as f64 * span);
+            rect_meets_quad(left, top, left + span, top + span, quad)
+        });
     }
 
     /// Drops tiles outside the level-0 rectangle the remaining bands cover.
@@ -501,7 +531,8 @@ fn blit(
 }
 
 /// The export drawn axis-aligned with the image: `width × height` output
-/// pixels covering `bounds` (the output turned back for a turned view).
+/// pixels covering `bounds` (the output turned back for a turned view; for
+/// angles other than quarter turns, the turned output's bounding box).
 struct Plan {
     width: u32,
     height: u32,
@@ -539,31 +570,162 @@ fn region_bounds(plan: &Plan, region: (u32, u32, u32, u32)) -> ViewportBounds {
     }
 }
 
-/// Renders the region `(x, y, width, height)` of the aligned output
-/// (transparent where there is no slide) into `buffer`.
+/// What a band draws into.
+enum BandTarget {
+    /// The region `(x, y, width, height)` of the aligned output (quarter
+    /// turns).
+    Aligned((u32, u32, u32, u32)),
+    /// `width × rows` output pixels turned by another angle: their level-0
+    /// corners, and where they fall in the aligned layout.
+    Turned {
+        width: u32,
+        rows: u32,
+        quad: [glam::DVec2; 4],
+        map: FrameMap,
+    },
+}
+
+impl BandTarget {
+    /// The level-0 bounding box of what the target shows.
+    fn area(&self, plan: &Plan) -> ViewportBounds {
+        match self {
+            Self::Aligned(region) => region_bounds(plan, *region),
+            Self::Turned { quad, .. } => {
+                let xs = quad.iter().map(|p| p.x);
+                let ys = quad.iter().map(|p| p.y);
+                ViewportBounds {
+                    left: xs.clone().fold(f64::INFINITY, f64::min),
+                    right: xs.fold(f64::NEG_INFINITY, f64::max),
+                    top: ys.clone().fold(f64::INFINITY, f64::min),
+                    bottom: ys.fold(f64::NEG_INFINITY, f64::max),
+                }
+            }
+        }
+    }
+
+    /// The tiles of `level` that show in the target (uncapped).
+    fn tiles(
+        &self,
+        manager: &TileManager,
+        plan: &Plan,
+        level: u32,
+        area: &ViewportBounds,
+    ) -> Vec<TileCoord> {
+        let tiles = tiles_in_rect(manager, level, area.left, area.top, area.right, area.bottom);
+        match self {
+            Self::Aligned(_) => tiles,
+            Self::Turned { quad, .. } => {
+                let downsample = manager
+                    .wsi()
+                    .level(level)
+                    .map(|info| info.downsample)
+                    .unwrap_or(plan.downsample);
+                tiles
+                    .into_iter()
+                    .filter(|c| {
+                        let span = c.tile_size as f64 * downsample;
+                        let (left, top) = (c.x as f64 * span, c.y as f64 * span);
+                        rect_meets_quad(left, top, left + span, top + span, quad)
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// The output pixel the tile rects are relative to.
+    fn offset(&self) -> (u32, u32) {
+        match self {
+            Self::Aligned(region) => (region.0, region.1),
+            Self::Turned { .. } => (0, 0),
+        }
+    }
+
+    /// Draws one tile into the target's `buffer`.
+    #[allow(clippy::too_many_arguments)]
+    fn draw(
+        &self,
+        buffer: &mut [u8],
+        tile: &TileData,
+        rect: BlitRect,
+        filtering: FilteringMode,
+        coarse: Option<&CoarseBlend>,
+        nearest: bool,
+    ) {
+        match self {
+            Self::Aligned(region) => blit(
+                buffer, region.2, region.3, tile, rect, filtering, coarse, nearest,
+            ),
+            Self::Turned {
+                width, rows, map, ..
+            } => blit_turned(
+                buffer, *width, *rows, tile, rect, filtering, coarse, nearest, map,
+            ),
+        }
+    }
+}
+
+/// [`blit`] into rows of an output turned by an angle that is not a
+/// quarter turn.
+#[allow(clippy::too_many_arguments)]
+fn blit_turned(
+    buffer: &mut [u8],
+    width: u32,
+    rows: u32,
+    tile: &TileData,
+    rect: BlitRect,
+    filtering: FilteringMode,
+    coarse: Option<&CoarseBlend>,
+    nearest: bool,
+    map: &FrameMap,
+) {
+    let src = TileSrc {
+        data: &tile.data,
+        width: tile.width,
+        height: tile.height,
+        border: tile.border,
+    };
+    if nearest {
+        blitter::blit_tile_nearest_turned(buffer, width, rows, src, rect, map);
+        return;
+    }
+    match (filtering, coarse) {
+        (FilteringMode::Lanczos3, _) => {
+            blitter::blit_tile_lanczos3_turned(buffer, width, rows, src, rect, map)
+        }
+        (FilteringMode::Trilinear, Some(c)) => {
+            let csrc = CoarseSrc {
+                data: &c.tile.data,
+                width: c.tile.width,
+                height: c.tile.height,
+                border: c.tile.border,
+                uv_min: c.uv_min,
+                uv_max: c.uv_max,
+                blend: c.blend,
+            };
+            blitter::blit_tile_trilinear_turned(buffer, width, rows, src, &csrc, rect, map);
+        }
+        _ => blitter::blit_tile_turned(buffer, width, rows, src, rect, map),
+    }
+}
+
+/// Renders what `target` shows of the output (transparent where there is
+/// no slide) into `buffer`.
 fn render_region(
     source: &ExportSource,
     plan: &Plan,
     store: &mut TileStore,
     buffer: &mut [u8],
-    region: (u32, u32, u32, u32),
+    target: &BandTarget,
     stats: &mut Stats,
 ) {
     let manager = source.tile_manager;
-    let (offset, width, rows) = ((region.0, region.1), region.2, region.3);
-    let area = region_bounds(plan, region);
+    let offset = target.offset();
+    let area = target.area(plan);
     let (left, top, right, bottom) = (area.left, area.top, area.right, area.bottom);
-    let fine = tiles_in_rect(manager, plan.level, left, top, right, bottom);
+    let fine = target.tiles(manager, plan, plan.level, &area);
     let mut wanted = fine.clone();
     if let Some(tri) = plan.trilinear {
-        wanted.extend(tiles_in_rect(
-            manager,
-            tri.level_coarse,
-            left,
-            top,
-            right,
-            bottom,
-        ));
+        wanted.extend(target.tiles(manager, plan, tri.level_coarse, &area));
     }
     store.ensure(&wanted);
 
@@ -598,10 +760,8 @@ fn render_region(
                         let tile = store.get(c).expect("checked above").clone();
                         let rect =
                             tile_rect(plan.zoom, &plan.bounds, info.downsample, c, &tile, offset);
-                        blit(
+                        target.draw(
                             buffer,
-                            width,
-                            rows,
                             &tile,
                             rect,
                             FilteringMode::Bilinear,
@@ -634,10 +794,8 @@ fn render_region(
         let coarse = plan
             .trilinear
             .and_then(|tri| coarse_blend(manager, store, tri, plan.downsample, coord, &tile));
-        blit(
+        target.draw(
             buffer,
-            width,
-            rows,
             &tile,
             rect,
             plan.filtering,
@@ -675,6 +833,75 @@ fn auto_band_rows(manager: &TileManager, plan: &Plan, width: u32, across: f64) -
     by_buffer.min(by_tiles) as u32
 }
 
+/// [`auto_band_rows`] for an output turned by an angle that is not a
+/// quarter turn: a band of `n` rows touches the tiles of a turned
+/// `width × n` strip, about `width·n/t² + 2·(width + n)·k/t` of them for
+/// tiles of `t` output pixels (`k = |sin| + |cos|`).
+fn auto_band_rows_turned(
+    manager: &TileManager,
+    plan: &Plan,
+    width: u32,
+    orientation: Orientation,
+) -> u32 {
+    let by_buffer = (BAND_BUFFER_BYTES / (width as usize * 4).max(1)).clamp(8, 512) as f64;
+    let ts = manager.tile_size_for_level(plan.level) as f64;
+    let t = (ts * plan.downsample * plan.zoom).max(1e-9);
+    let mut tile_bytes = (ts + 2.0) * (ts + 2.0) * 4.0;
+    if plan.trilinear.is_some() {
+        tile_bytes *= 1.25;
+    }
+    let budget = BAND_TILE_BYTES / tile_bytes;
+    let corner = orientation.to_screen(glam::DVec2::new(1.0, 0.0));
+    let k = corner.x.abs() + corner.y.abs();
+    let w = f64::from(width);
+    let fixed = 2.0 * w * k / t + 4.0;
+    let per_row = w / (t * t) + 2.0 * k / t;
+    let by_tiles = ((budget - fixed) / per_row).floor().max(8.0);
+    by_buffer.min(by_tiles) as u32
+}
+
+/// The level-0 corners of output rows `first..last` (all columns) of the
+/// export viewport `evp`.
+fn rows_quad(evp: &Viewport, first: u32, last: u32) -> [glam::DVec2; 4] {
+    let (y0, y1) = (f64::from(first), f64::from(last));
+    [
+        evp.screen_to_image(0.0, y0),
+        evp.screen_to_image(evp.width, y0),
+        evp.screen_to_image(evp.width, y1),
+        evp.screen_to_image(0.0, y1),
+    ]
+}
+
+/// Whether the level-0 rectangle `left..right × top..bottom` meets the
+/// convex quadrilateral `quad` (separating axes: the rectangle's and the
+/// quad's edge normals).
+fn rect_meets_quad(left: f64, top: f64, right: f64, bottom: f64, quad: &[glam::DVec2; 4]) -> bool {
+    let corners = [
+        glam::DVec2::new(left, top),
+        glam::DVec2::new(right, top),
+        glam::DVec2::new(right, bottom),
+        glam::DVec2::new(left, bottom),
+    ];
+    let separated = |axis: glam::DVec2| {
+        let project = |points: &[glam::DVec2; 4]| {
+            points
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                    let d = p.dot(axis);
+                    (lo.min(d), hi.max(d))
+                })
+        };
+        let (a0, a1) = project(&corners);
+        let (b0, b1) = project(quad);
+        a1 < b0 || b1 < a0
+    };
+    let edges = [quad[1] - quad[0], quad[2] - quad[1]];
+    ![glam::DVec2::X, glam::DVec2::Y]
+        .into_iter()
+        .chain(edges.iter().map(|e| e.perp()))
+        .any(separated)
+}
+
 /// Renders the export band by band into `sink`.
 pub fn render_export_bands(
     source: &ExportSource,
@@ -693,8 +920,14 @@ pub fn render_export_bands(
     }
     let evp = request.export_viewport();
     let orientation = evp.orientation;
+    let turned = !orientation.is_quarter_turn();
     let (width, height) = request.output_size();
-    let (aligned_width, aligned_height) = orientation.swap(width, height);
+    let (aligned_width, aligned_height) = if turned {
+        let (w, h) = orientation.turned_extent(f64::from(width), f64::from(height));
+        (w.ceil() as u32, h.ceil() as u32)
+    } else {
+        orientation.swap(width, height)
+    };
     let filtering = effective_filter(request.filtering, evp.zoom);
     let tri =
         calculate_trilinear_levels(wsi, 1.0 / evp.zoom, filtering == FilteringMode::Trilinear);
@@ -721,8 +954,16 @@ pub fn render_export_bands(
     };
     let band_rows = request
         .band_rows
-        .unwrap_or_else(|| auto_band_rows(manager, &plan, width, across))
+        .unwrap_or_else(|| {
+            if turned {
+                auto_band_rows_turned(manager, &plan, width, orientation)
+            } else {
+                auto_band_rows(manager, &plan, width, across)
+            }
+        })
         .max(1);
+    // Where the output's pixels fall in the aligned layout (other angles).
+    let layout = FrameMap::aligned_layout(&evp);
     let sharpen = request.processing.sharpness();
     let halo = u32::from(sharpen > 0.0);
     let stride = width as usize * 4;
@@ -748,15 +989,27 @@ pub fn render_export_bands(
         let rows = r1 - r0;
         buffer.clear();
         buffer.resize(rows as usize * stride, 0);
-        // The part of the aligned output these rows show.
-        let region = orientation.aligned_rect(plan.width, plan.height, 0, r0, width, rows);
-        if orientation.is_identity() {
-            render_region(source, &plan, &mut store, &mut buffer, region, &mut stats);
+        if turned {
+            // Straight into the band: the tiles its turned strip touches.
+            let target = BandTarget::Turned {
+                width,
+                rows,
+                quad: rows_quad(&evp, r0, r1),
+                map: layout.from_row(r0),
+            };
+            render_region(source, &plan, &mut store, &mut buffer, &target, &mut stats);
         } else {
-            aligned.clear();
-            aligned.resize(buffer.len(), 0);
-            render_region(source, &plan, &mut store, &mut aligned, region, &mut stats);
-            blitter::orient_frame(&aligned, region.2, region.3, orientation, &mut buffer);
+            // The part of the aligned output these rows show.
+            let region = orientation.aligned_rect(plan.width, plan.height, 0, r0, width, rows);
+            let target = BandTarget::Aligned(region);
+            if orientation.is_identity() {
+                render_region(source, &plan, &mut store, &mut buffer, &target, &mut stats);
+            } else {
+                aligned.clear();
+                aligned.resize(buffer.len(), 0);
+                render_region(source, &plan, &mut store, &mut aligned, &target, &mut stats);
+                blitter::orient_frame(&aligned, region.2, region.3, orientation, &mut buffer);
+            }
         }
         request.processing.apply_color(&mut buffer);
         request.processing.apply_color_management(&mut buffer);
@@ -797,9 +1050,19 @@ pub fn render_export_bands(
         // Tiles outside the remaining bands are never needed again.
         let next = band_end.saturating_sub(halo);
         if next < height {
-            let rest =
-                orientation.aligned_rect(plan.width, plan.height, 0, next, width, height - next);
-            store.evict_outside(&region_bounds(&plan, rest), manager);
+            if turned {
+                store.keep_meeting(&rows_quad(&evp, next, height), manager);
+            } else {
+                let rest = orientation.aligned_rect(
+                    plan.width,
+                    plan.height,
+                    0,
+                    next,
+                    width,
+                    height - next,
+                );
+                store.evict_outside(&region_bounds(&plan, rest), manager);
+            }
         }
         band_start = band_end;
     }

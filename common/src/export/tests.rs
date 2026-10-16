@@ -92,6 +92,130 @@ fn turned_views_export_turned() {
     }
 }
 
+/// The pattern bilinearly sampled at level-0 point `(x, y)` (pixel
+/// centres at half-integers, edges clamped): what a level-0 render of a
+/// view shows at a pixel whose centre maps there.
+fn sampled(x: f64, y: f64) -> [f64; 3] {
+    let (x, y) = (x - 0.5, y - 0.5);
+    let (x0, y0) = (x.floor(), y.floor());
+    let (fx, fy) = (x - x0, y - y0);
+    let at = |dx: f64, dy: f64| {
+        let px = (x0 + dx).clamp(0.0, 599.0) as u32;
+        let py = (y0 + dy).clamp(0.0, 399.0) as u32;
+        pattern(px, py).map(f64::from)
+    };
+    let (a, b, c, d) = (at(0.0, 0.0), at(1.0, 0.0), at(0.0, 1.0), at(1.0, 1.0));
+    std::array::from_fn(|i| {
+        a[i] * (1.0 - fx) * (1.0 - fy)
+            + b[i] * fx * (1.0 - fy)
+            + c[i] * (1.0 - fx) * fy
+            + d[i] * fx * fy
+    })
+}
+
+/// A view turned by another angle exports as it shows: every output
+/// pixel is the slide at the level-0 point its centre maps to (sampled
+/// once), the background outside the slide, in any band size.
+#[test]
+fn freely_turned_views_export_the_turned_area() {
+    use crate::viewport::Orientation;
+    let dir = tempfile::tempdir().unwrap();
+    let manager = slide(dir.path());
+    for (degrees, flipped, center) in [
+        (30.0, false, (300.0, 200.0)),
+        (45.0, true, (310.0, 190.0)),
+        (200.5, false, (520.0, 330.0)),
+    ] {
+        let mut viewport = Viewport::new(240.0, 160.0, 600.0, 400.0);
+        viewport.zoom = 1.0;
+        viewport.center.x = center.0;
+        viewport.center.y = center.1;
+        viewport.orientation = Orientation::from_degrees(degrees, flipped).unwrap();
+        let mut request = ExportRequest::new(viewport, 96.0);
+        request.filtering = FilteringMode::Bilinear;
+        request.background = [1, 2, 3];
+        let (image, report) = render(&manager, &request);
+        assert_eq!((image.width, image.height), (240, 160));
+        assert!(report.is_complete());
+        assert_eq!(report.level, 0);
+        let evp = request.export_viewport();
+        let (mut slide_pixels, mut background) = (0, 0);
+        for y in 0..160u32 {
+            for x in 0..240u32 {
+                let p = evp.screen_to_image(f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let i = ((y * 240 + x) * 4) as usize;
+                let got = &image.pixels[i..i + 4];
+                assert_eq!(got[3], 255);
+                // Pixel centres within a hair of the slide's edge may go
+                // either way.
+                let edge = [p.x, 600.0 - p.x, p.y, 400.0 - p.y]
+                    .into_iter()
+                    .map(f64::abs)
+                    .fold(f64::INFINITY, f64::min);
+                if edge < 1e-3 {
+                    continue;
+                }
+                if !(0.0..600.0).contains(&p.x) || !(0.0..400.0).contains(&p.y) {
+                    assert_eq!(&got[..3], &[1, 2, 3], "{degrees}°: {x},{y} is outside");
+                    background += 1;
+                    continue;
+                }
+                slide_pixels += 1;
+                let expected = sampled(p.x, p.y);
+                // Positions are rounded to 1/256 of a pixel, values to
+                // whole levels.
+                for c in 0..3 {
+                    assert!(
+                        (f64::from(got[c]) - expected[c]).abs() < 1.5,
+                        "{degrees}°: {x},{y} channel {c}: {} vs {:.2}",
+                        got[c],
+                        expected[c]
+                    );
+                }
+            }
+        }
+        assert!(slide_pixels > 10_000, "{degrees}°");
+        if center.0 > 400.0 {
+            assert!(background > 1000, "{degrees}°: the view crosses the edge");
+        }
+        for band in [Some(1), Some(7), Some(64)] {
+            request.band_rows = band;
+            assert_eq!(
+                render(&manager, &request).0,
+                image,
+                "{degrees}°, band {band:?}"
+            );
+        }
+    }
+}
+
+/// The scale bar of a turned export measures along the output's x axis.
+#[test]
+fn turned_exports_size_their_pixels_along_the_output_axes() {
+    use crate::viewport::Orientation;
+    let mut request = ExportRequest::region(0.0, 0.0, 200.0, 100.0, 2.0, (600.0, 400.0));
+    assert_eq!(
+        request.output_pixel_size_um(Some(0.25), Some(0.5)),
+        (Some(0.5), Some(1.0))
+    );
+    request.viewport.orientation = Orientation::new(1, false);
+    assert_eq!(
+        request.output_pixel_size_um(Some(0.25), Some(0.5)),
+        (Some(1.0), Some(0.5))
+    );
+    request.viewport.orientation = Orientation::from_degrees(30.0, false).unwrap();
+    let (x, y) = request.output_pixel_size_um(Some(0.25), Some(0.5));
+    let (sin, cos) = 30f64.to_radians().sin_cos();
+    let expected_x = (cos * 2.0 * 0.25).hypot(sin * 2.0 * 0.5);
+    let expected_y = (sin * 2.0 * 0.25).hypot(cos * 2.0 * 0.5);
+    assert!((x.unwrap() - expected_x).abs() < 1e-12);
+    assert!((y.unwrap() - expected_y).abs() < 1e-12);
+    // Isotropic pixels keep their size at any angle.
+    let (x, _) = request.output_pixel_size_um(Some(0.5), Some(0.5));
+    assert!((x.unwrap() - 1.0).abs() < 1e-12);
+    assert_eq!(request.output_pixel_size_um(None, Some(0.5)), (None, None));
+}
+
 #[test]
 fn processing_sharpening_and_overlays_are_band_independent() {
     let dir = tempfile::tempdir().unwrap();
