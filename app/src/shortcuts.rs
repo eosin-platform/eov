@@ -28,6 +28,10 @@ pub(crate) enum Action {
     /// The next or previous focal plane of a Z-stack.
     NextFocalPlane,
     PreviousFocalPlane,
+    /// Colour management of the focused slide (its ICC profile to sRGB).
+    ColorManagement,
+    /// Slide pixels as squares above 100%.
+    PixelView,
     CopyView,
     ExportView,
     Quit,
@@ -159,6 +163,9 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::Channels, "channels", "Channels of the slide", G::Slides, false, &[]),
     info(A::NextFocalPlane, "next-focal-plane", "Next focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowUp"]),
     info(A::PreviousFocalPlane, "previous-focal-plane", "Previous focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowDown"]),
+    // No default keys: users can bind them.
+    info(A::ColorManagement, "color-management", "Convert the slide's colours to sRGB, or show them as scanned", G::Slides, false, &[]),
+    info(A::PixelView, "pixel-view", "Show the slide's pixels as squares above 100%", G::Navigation, false, &[]),
     info(A::CopyView, "copy-view", "Copy the view as an image", G::Slides, false, &["Ctrl+C"]),
     info(A::ExportView, "export-view", "Export the view", G::Slides, false, &["Ctrl+E"]),
     info(A::Fit, "fit", "Fit the slide to the pane", G::Navigation, false, &["F"]),

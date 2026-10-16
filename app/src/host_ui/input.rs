@@ -341,6 +341,14 @@ impl UiHost {
             }
             Action::Channels => crate::channels::open_for_focused_pane(self),
             Action::NextFocalPlane => self.step_focal_plane(1),
+            Action::ColorManagement => {
+                crate::callbacks::toggle_color_management(&ui, &self.state);
+                self.request_render();
+            }
+            Action::PixelView => {
+                crate::callbacks::toggle_pixel_view(&ui, &self.state);
+                self.request_render();
+            }
             Action::PreviousFocalPlane => self.step_focal_plane(-1),
             Action::CopyView | Action::ExportView => {
                 let pane = self.state.read().active_viewport_pane();
