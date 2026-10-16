@@ -74,6 +74,8 @@ eov plugin disable|enable <PLUGIN>
 eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
+eov call <METHOD> [PARAMS] [--out <FILE>]
+eov script-endpoint [--json]
 ```
 
 `eov convert` (and **Save a Copy of the Slide…** in the tab menu) writes a tiled, pyramidal TIFF or OME-TIFF that eov, OpenSlide, QuPath and libvips read, with the slide's pixel size, objective power, stain and ICC profile. `--deidentify` leaves out the label, macro and thumbnail images and every property but the geometry, pixel size, objective power and stain; it does not remove text or marks inside the scanned image itself. See the [repository README](https://github.com/eosin-platform/eov#converting-and-de-identifying-slides) for details.
@@ -93,6 +95,8 @@ Useful options include:
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin.
 
 `eov probe` prints a slide's size, levels, pixel size, objective, stain, bounds, ICC profile size, associated images, quickhash and every OpenSlide property (`--json` for scripts). `eov paths` lists every file and folder eov keeps data in, with their sizes.
+
+Scripts drive the running eov through its local, authenticated endpoint (a per-user Unix socket or localhost port; nothing listens on the network): `eov call slides`, `eov call region.read '{"x": 0, "y": 0, "width": 512, "height": 512}' --out tile.png`, or the dependency-free Python client in the repository's `clients/python`. They open slides, move views, read regions, set the ROI, add measurements and bookmarks, quantify stains and export views; `scripting = false` in the config turns it off. See "Scripting" in the [full documentation](https://github.com/eosin-platform/eov#scripting).
 
 Run `eov --help` or `eov dataset patches --help` for the complete, version-specific help text.
 
@@ -131,6 +135,7 @@ Example configuration:
 render_backend = "gpu"
 filtering_mode = "trilinear"
 single_instance = true                  # false: every launch starts its own eov
+scripting = true                        # false: refuse every call from scripts
 trusted_link_servers = ["slides01"]     # Windows: network paths eov:// links may open
 ```
 

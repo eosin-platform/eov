@@ -62,6 +62,8 @@ struct RenderPaneRequest<'a> {
     target_height: f64,
     force_render: bool,
     filtering_mode: FilteringMode,
+    /// `AppState::pixel_view`.
+    pixel_view: bool,
     filter_chain: &'a crate::plugin_runtime::filters::SharedFilterChain,
     /// Stable id of the pane (what plugins and render jobs know it by).
     pane_uid: u32,
@@ -81,6 +83,9 @@ struct CpuPaneSnapshot {
     content_missing: bool,
     minimap_missing: bool,
     minimap_image: Option<Image>,
+    /// The colour profile `minimap_image` is converted from (see
+    /// [`minimap_color`]).
+    minimap_color: Option<u64>,
     tile_manager: Arc<TileManager>,
     tile_loader: Arc<TileLoader>,
     viewport_state: eov_common::ViewportState,
@@ -123,8 +128,17 @@ struct CpuPaneSnapshot {
     /// The pane's colour processing, resolved when the snapshot was taken.
     color: crate::color::PaneColor,
     filtering_mode: FilteringMode,
+    /// `AppState::pixel_view`.
+    pixel_view: bool,
     filter_revision: u64,
     last_render_filter_revision: u64,
+}
+
+/// Whether a frame of `viewport` (physical pixels) samples the slide's
+/// pixels as squares: the pixel view, where the frame magnifies the slide
+/// beyond full resolution.
+fn pixel_view_applies(pixel_view: bool, viewport: &Viewport) -> bool {
+    pixel_view && viewport.zoom > 1.0 + 1e-9
 }
 
 struct CpuFrameSnapshot {
@@ -165,7 +179,6 @@ struct CpuFrameStateUpdate {
     last_render_deconv_e_visible: bool,
     last_render_deconv_isolated: crate::state::IsolatedChannel,
     last_render_filter_revision: u64,
-    gpu_surface_valid: bool,
 }
 
 struct CpuPaneExecution {
@@ -274,8 +287,9 @@ fn cached_cpu_frame_matches(
         && (cpu_frame.viewport.image_height - viewport.image_height).abs() <= 1e-6
 }
 
-/// Runs the (changed) plugin filters again over the pane's last frame,
-/// when that frame still shows `viewport`. `None` otherwise.
+/// Runs the (changed) plugin filters again over the pane's last
+/// colour-processed frame, when that frame still shows `viewport`, and
+/// finishes it with `postprocess`. `None` otherwise.
 #[allow(clippy::too_many_arguments)]
 fn refilter_cached_frame(
     pane: PaneId,
@@ -286,6 +300,7 @@ fn refilter_cached_frame(
     render_height: u32,
     filter_chain: &crate::plugin_runtime::filters::SharedFilterChain,
     scale: f64,
+    postprocess: &CpuRenderPostProcess,
 ) -> Option<Image> {
     crate::with_pane_render_cache(pane.0 + 1, |cache| {
         let entry = cache.get_mut(pane.0)?;
@@ -301,6 +316,7 @@ fn refilter_cached_frame(
         if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
             filters.apply(pixels, render_width, render_height);
         }
+        postprocess.finish(pixels, render_width, render_height);
         Some(Image::from_rgba8(buffer))
     })
 }
@@ -321,6 +337,9 @@ mod gpu_filters {
         filtering: bool,
         /// The pane's frame changed while busy: read it back again after.
         dirty: bool,
+        /// The frame shown is older than the pane's: the next render reads
+        /// it back again, even if nothing changes until then.
+        stale: bool,
         /// Newest generation shown; older results are dropped.
         shown: u64,
     }
@@ -349,7 +368,8 @@ mod gpu_filters {
         pub(super) tag: ReadbackTag,
         pub(super) width: u32,
         pub(super) height: u32,
-        /// The frame before filtering.
+        /// The frame before filtering: colour-processed, transparent outside
+        /// the slide.
         pub(super) unfiltered: Vec<u8>,
         pub(super) display: slint::SharedPixelBuffer<slint::Rgba8Pixel>,
     }
@@ -361,12 +381,14 @@ mod gpu_filters {
 
     /// A readback tag for the pane's next frame, or `None` (the frame is
     /// remembered as dirty) while the pane's previous frame is still being
-    /// read back or filtered.
+    /// read back or filtered. `finish` completes the frame after the
+    /// filters.
     pub(super) fn request(
         pane_uid: u32,
         file_id: i32,
         viewport: &Viewport,
         scale: f64,
+        finish: &CpuRenderPostProcess,
     ) -> Option<ReadbackTag> {
         PANES.with(|panes| {
             let mut panes = panes.borrow_mut();
@@ -384,6 +406,7 @@ mod gpu_filters {
                 viewport: viewport.clone(),
                 scale,
                 generation,
+                finish: finish.clone(),
             })
         })
     }
@@ -424,6 +447,8 @@ mod gpu_filters {
                     if let Some(filters) = filters {
                         filters.apply(bytes, frame.width, frame.height);
                     }
+                    // The GPU left the background and the sharpening out.
+                    frame.tag.finish.finish(bytes, frame.width, frame.height);
                     let _ = sender.send(FilteredFrame {
                         tag: frame.tag,
                         width: frame.width,
@@ -441,7 +466,7 @@ mod gpu_filters {
                 // Readbacks the renderer dropped (a reset) never arrive.
                 for pane in panes.panes.values_mut() {
                     if pane.awaiting_readback.take().is_some() {
-                        pane.dirty = true;
+                        pane.stale = true;
                         lost = true;
                     }
                 }
@@ -462,7 +487,10 @@ mod gpu_filters {
                     continue;
                 };
                 pane.filtering = false;
-                again |= std::mem::take(&mut pane.dirty);
+                if std::mem::take(&mut pane.dirty) {
+                    pane.stale = true;
+                    again = true;
+                }
                 if frame.tag.generation > pane.shown {
                     pane.shown = frame.tag.generation;
                     ready.retain(|older| older.tag.pane_uid != frame.tag.pane_uid);
@@ -501,6 +529,19 @@ mod gpu_filters {
             shown = true;
         }
         (shown, again)
+    }
+
+    /// Whether the pane's filtered frame is out of date (its frame changed
+    /// while it was busy, or its readback was lost): it must be read back
+    /// again. Clears the flag.
+    pub(super) fn take_stale(pane_uid: u32) -> bool {
+        PANES.with(|panes| {
+            panes
+                .borrow_mut()
+                .panes
+                .get_mut(&pane_uid)
+                .is_some_and(|pane| std::mem::take(&mut pane.stale))
+        })
     }
 
     /// Whether any pane is waiting for a readback or a filter job.
@@ -814,19 +855,31 @@ pub(crate) fn thumbnail_image_for_file(
         orientation,
         buffer.make_mut_bytes(),
     );
+    // In the panes' colours.
+    if let Some(transform) = crate::color::file_color_management(file) {
+        transform.apply_rgba(buffer.make_mut_bytes());
+    }
     Some(Image::from_rgba8(buffer))
 }
 
+/// The colour profile a slide's minimap is converted from, if any.
+fn minimap_color(file: &OpenFile) -> Option<u64> {
+    crate::color::file_color_management(file).map(|transform| transform.id())
+}
+
 /// Whether the pane's minimap needs its thumbnail (again): none yet, or
-/// turned differently from the view.
+/// turned or colour-managed differently from the view.
 fn minimap_stale(
     pane: PaneId,
     pane_count: usize,
     orientation: eov_common::viewport::Orientation,
+    color: Option<u64>,
 ) -> bool {
     crate::with_pane_render_cache(pane_count, |cache| {
         cache.get(pane.0).is_none_or(|entry| {
-            entry.minimap_thumbnail.is_none() || entry.minimap_orientation != orientation
+            entry.minimap_thumbnail.is_none()
+                || entry.minimap_orientation != orientation
+                || entry.minimap_color != color
         })
     })
 }
@@ -882,6 +935,7 @@ fn begin_color_frame(state: &mut AppState) {
     if refitted.is_empty() {
         return;
     }
+    crate::export_dialog::slide_colors_changed(&refitted);
     for file in state
         .open_files
         .iter_mut()
@@ -911,6 +965,13 @@ pub(crate) fn update_and_render(
     state: &Arc<RwLock<AppState>>,
     tile_cache: &Arc<TileCache>,
 ) -> bool {
+    // A minimised window shows nothing, and the GPU does not render for
+    // it, so a readback for plugin filters would never arrive: the loop
+    // stops until the window is back (its focus or visibility event starts
+    // it again, see `callbacks`).
+    if ui.window().is_minimized() {
+        return false;
+    }
     if let Some(reason) = crate::gpu::take_failure() {
         use_cpu_after_gpu_failure(ui, &mut state.write(), &reason);
         crate::host_ui::with_host(|host| {
@@ -936,6 +997,7 @@ pub(crate) fn update_and_render(
             state.render_backend,
         )
     };
+    crate::export_dialog::refresh_stale_preview(ui, state, tile_cache);
 
     if render_backend == RenderBackend::Cpu {
         return update_and_render_cpu(ui, state, tile_cache, completed_cpu_frame, cpu_jobs_pending);
@@ -943,6 +1005,7 @@ pub(crate) fn update_and_render(
 
     let mut state = state.write();
     let filtering_mode = state.filtering_mode;
+    let pixel_view = state.pixel_view;
     let pane_count = state.panes.len();
     let active_file_ids: Vec<Option<i32>> = state
         .panes
@@ -1024,7 +1087,7 @@ pub(crate) fn update_and_render(
     }
 
     let mut keep_running =
-        render_requested || cpu_jobs_pending || crate::color::fits_pending() || gpu_filters::busy();
+        render_requested || cpu_jobs_pending || crate::color::jobs_pending() || gpu_filters::busy();
     let mut rendered_frame = completed_cpu_frame;
     let filter_chain = state.filter_chain.clone();
     let filter_revision = state.filter_revision;
@@ -1051,7 +1114,8 @@ pub(crate) fn update_and_render(
             .pane_state(pane)
             .map(|pane_state| pane_state.viewport.viewport.orientation)
             .unwrap_or_default();
-        let minimap_missing = minimap_stale(pane, pane_count, orientation);
+        let color = minimap_color(file);
+        let minimap_missing = minimap_stale(pane, pane_count, orientation, color);
         let content_missing = crate::with_pane_render_cache(pane_count, |cache| {
             cache
                 .get(pane.0)
@@ -1068,6 +1132,7 @@ pub(crate) fn update_and_render(
                 pane,
                 thumbnail_image_for_file(file, orientation),
                 orientation,
+                color,
             );
         }
 
@@ -1081,6 +1146,7 @@ pub(crate) fn update_and_render(
                 target_height: content_height,
                 force_render,
                 filtering_mode,
+                pixel_view,
                 filter_chain: &filter_chain,
                 pane_uid,
                 filter_revision,
@@ -1168,7 +1234,7 @@ fn update_and_render_cpu(
     }
 
     let mut keep_running =
-        frame.render_requested || frame.cpu_jobs_pending || crate::color::fits_pending();
+        frame.render_requested || frame.cpu_jobs_pending || crate::color::jobs_pending();
     let mut rendered_frame = completed_cpu_frame;
 
     for pane_index in 0..frame.pane_count {
@@ -1189,6 +1255,7 @@ fn update_and_render_cpu(
                 snapshot.pane,
                 snapshot.minimap_image.clone(),
                 snapshot.viewport_state.viewport.orientation,
+                snapshot.minimap_color,
             );
         }
 
@@ -1278,6 +1345,7 @@ fn collect_cpu_frame_snapshot(
         });
 
         let filtering_mode = state.filtering_mode;
+        let pixel_view = state.pixel_view;
         let Some(file) = state.open_files.iter_mut().find(|file| file.id == file_id) else {
             panes.push(None);
             continue;
@@ -1286,7 +1354,8 @@ fn collect_cpu_frame_snapshot(
             .pane_state(pane)
             .map(|pane_state| pane_state.viewport.viewport.orientation)
             .unwrap_or_default();
-        let minimap_missing = minimap_stale(pane, pane_count, orientation);
+        let minimap_color = minimap_color(file);
+        let minimap_missing = minimap_stale(pane, pane_count, orientation, minimap_color);
         let tile_manager = Arc::clone(&file.tile_manager);
         let tile_loader = Arc::clone(&file.tile_loader);
         let minimap_image = if file_switched || minimap_missing {
@@ -1392,6 +1461,7 @@ fn collect_cpu_frame_snapshot(
             content_missing,
             minimap_missing,
             minimap_image,
+            minimap_color,
             tile_manager,
             tile_loader,
             viewport_state,
@@ -1432,6 +1502,7 @@ fn collect_cpu_frame_snapshot(
             needs_settled_cpu_render,
             color,
             filtering_mode,
+            pixel_view,
             filter_revision,
         }));
     }
@@ -1476,7 +1547,6 @@ fn apply_cpu_render_commit(state: &Arc<RwLock<AppState>>, execution: CpuPaneExec
             pane_state.last_render_deconv_e_visible = frame_update.last_render_deconv_e_visible;
             pane_state.last_render_deconv_isolated = frame_update.last_render_deconv_isolated;
             pane_state.last_render_filter_revision = frame_update.last_render_filter_revision;
-            pane_state.gpu_surface_valid = frame_update.gpu_surface_valid;
         }
 
         if let Some(pending_cpu_job_id) = execution.commit.pending_cpu_job_id {
@@ -1720,6 +1790,10 @@ fn render_cpu_pane_from_snapshot(
         };
     }
 
+    let postprocess = CpuRenderPostProcess {
+        pipeline: Arc::clone(&snapshot.color.pipeline),
+        background: crate::color::VIEWPORT_BACKGROUND,
+    };
     if filters_changed
         && !snapshot.file_switched
         && !snapshot.content_missing
@@ -1737,6 +1811,7 @@ fn render_cpu_pane_from_snapshot(
             render_height,
             filter_chain,
             snapshot.scale,
+            &postprocess,
         )
     {
         commit.last_render_filter_revision = Some(snapshot.filter_revision);
@@ -1776,7 +1851,6 @@ fn render_cpu_pane_from_snapshot(
         last_render_deconv_e_visible: snapshot.hud_deconv_e_visible,
         last_render_deconv_isolated: snapshot.hud_deconv_isolated,
         last_render_filter_revision: snapshot.filter_revision,
-        gpu_surface_valid: false,
     });
 
     let Some(level_info) = snapshot.tile_manager.wsi().level(level).cloned() else {
@@ -1827,7 +1901,7 @@ fn render_cpu_pane_from_snapshot(
         level,
         coverage.as_ref(),
     );
-    let fine_commands = fine_blits(
+    let mut fine_commands = fine_blits(
         &snapshot.tile_manager,
         &aligned,
         &level_info,
@@ -1836,11 +1910,12 @@ fn render_cpu_pane_from_snapshot(
         effective_trilinear,
         is_adaptive_lanczos && effective_lanczos_weight >= 1.0,
     );
-
-    let postprocess = CpuRenderPostProcess {
-        pipeline: Arc::clone(&snapshot.color.pipeline),
-        background: crate::color::VIEWPORT_BACKGROUND,
-    };
+    let mut fallback_commands = fallback_commands;
+    if pixel_view_applies(snapshot.pixel_view, vp) {
+        for command in fallback_commands.iter_mut().chain(fine_commands.iter_mut()) {
+            command.kind = CpuBlitKind::Nearest;
+        }
+    }
 
     let preview_image = if is_moving {
         render_cached_preview(RenderCachedPreview {
@@ -2052,6 +2127,7 @@ fn render_pane_gpu(
         target_height,
         force_render,
         filtering_mode,
+        pixel_view,
         filter_chain,
         pane_uid,
         filter_revision,
@@ -2175,11 +2251,16 @@ fn render_pane_gpu(
     let color = crate::color::pane_color(file, pane);
     let slot = SurfaceSlot(pane.0);
 
-    // Plugin filters are CPU-only. The frame is still composited on the GPU;
-    // it is read back and filtered on the render pool (also when only the
-    // filters changed), and the pane shows the newest filtered frame
+    // Plugin filters are CPU-only. The frame is still colour-processed on
+    // the GPU, transparent outside the slide; it is read back, filtered and
+    // finished (background, sharpening) on the render pool (also when only
+    // the filters changed), and the pane shows the newest filtered frame
     // meanwhile (RND-6).
     let filtered = filter_chain.read().has_enabled_cpu_filters();
+    let finish = CpuRenderPostProcess {
+        pipeline: Arc::clone(&color.pipeline),
+        background: crate::color::VIEWPORT_BACKGROUND,
+    };
     let readback = if filtered {
         let current = crate::with_pane_render_cache(pane.0 + 1, |cache| {
             cache
@@ -2189,8 +2270,9 @@ fn render_pane_gpu(
                     cached_cpu_frame_matches(frame, file.id, vp, render_width, render_height)
                 })
         });
-        (frame_changed || filters_changed || !current)
-            .then(|| gpu_filters::request(pane_uid, file.id, vp, scale))
+        let stale = gpu_filters::take_stale(pane_uid);
+        (frame_changed || filters_changed || !current || stale)
+            .then(|| gpu_filters::request(pane_uid, file.id, vp, scale, &finish))
             .flatten()
     } else {
         None
@@ -2204,7 +2286,10 @@ fn render_pane_gpu(
                 orientation: vp.orientation,
                 draws,
                 color: color.pipeline.gpu_uniform(),
+                icc: color.pipeline.color_management().cloned(),
                 sharpness: color.pipeline.sharpness(),
+                composite: !filtered,
+                nearest: pixel_view_applies(pixel_view, vp),
                 readback,
             },
         )
@@ -2212,15 +2297,11 @@ fn render_pane_gpu(
     .flatten();
 
     if image.is_some() {
-        if let Some(pane_state) = file.pane_state_mut(pane) {
-            pane_state.gpu_surface_valid = true;
-        }
         ui.window().request_redraw();
     } else if let Some(pane_state) = file.pane_state_mut(pane) {
         pane_state.frame_count = 0;
         pane_state.last_render_level = u32::MAX;
         pane_state.tiles_loaded_since_render = 0;
-        pane_state.gpu_surface_valid = false;
     }
     let rendered = image.is_some();
 
@@ -2249,7 +2330,8 @@ struct RenderCachedPreview<'a> {
 
 /// The frame shown while the view moves: the pane's last unprocessed frame
 /// reprojected to the new view, with the cached tiles composited over it,
-/// colour-processed and filtered. `None` when there is no usable last frame.
+/// colour-processed, filtered and finished. `None` when there is no usable
+/// last frame.
 fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
     let RenderCachedPreview {
         pane,
@@ -2335,10 +2417,8 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
             orientation,
             pixels,
         );
-        crate::render_pool::apply_postprocess(pixels, render_width, render_height, postprocess);
-        if let Some(filters) = frame_filters(filter_chain, file_id, pane_uid, viewport, scale) {
-            filters.apply(pixels, render_width, render_height);
-        }
+        let filters = frame_filters(filter_chain, file_id, pane_uid, viewport, scale);
+        postprocess.apply(pixels, render_width, render_height, filters.as_ref());
         Some(Image::from_rgba8(frame))
     })
 }
@@ -2811,6 +2891,39 @@ mod tests {
         });
     }
 
+    /// While the window is minimised the loop stops, whatever is pending.
+    #[test]
+    fn the_render_loop_stops_while_minimised() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            // Not shown: hiding the test thread's only shown window would
+            // queue a quit that ends the next test's event loop early.
+            let ui = AppWindow::new().unwrap();
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let state = Arc::new(RwLock::new(AppState::new()));
+            ui.window().set_minimized(true);
+            assert!(ui.window().is_minimized());
+            state.write().request_render();
+            assert!(!update_and_render(&ui, &state, &tile_cache));
+            assert!(state.read().needs_render, "the frame is drawn later");
+            ui.window().set_minimized(false);
+        });
+    }
+
+    /// The pixel view applies only where a frame magnifies the slide
+    /// beyond full resolution (physical pixels).
+    #[test]
+    fn pixel_view_starts_above_full_resolution() {
+        let mut viewport = Viewport::new(100.0, 100.0, 1000.0, 1000.0);
+        for (zoom, applies) in [(0.5, false), (1.0, false), (1.25, true), (8.0, true)] {
+            viewport.zoom = zoom;
+            assert_eq!(pixel_view_applies(true, &viewport), applies, "zoom {zoom}");
+            assert!(!pixel_view_applies(false, &viewport));
+        }
+        // The physical viewport counts: 1.0 logical at scale 2 is 2:1.
+        viewport.zoom = 1.0;
+        assert!(pixel_view_applies(true, &physical_viewport(&viewport, 2.0)));
+    }
+
     fn receive_filtered() -> (Vec<gpu_filters::FilteredFrame>, bool) {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -2825,19 +2938,33 @@ mod tests {
     #[test]
     fn gpu_frames_are_filtered_one_at_a_time_per_pane() {
         let viewport = Viewport::new(4.0, 2.0, 100.0, 100.0);
-        let chain = crate::plugin_runtime::filters::SharedFilterChain::default();
-        let first = gpu_filters::request(5, 1, &viewport, 1.0).expect("an idle pane reads back");
+        let chain = Arc::new(crate::plugin_runtime::filters::test_chain(&["invert"]));
+        let finish = CpuRenderPostProcess {
+            pipeline: Arc::new(eov_common::processing::ProcessingPipeline::identity()),
+            background: crate::color::VIEWPORT_BACKGROUND,
+        };
+        let first =
+            gpu_filters::request(5, 1, &viewport, 1.0, &finish).expect("an idle pane reads back");
         assert!(
-            gpu_filters::request(5, 1, &viewport, 1.0).is_none(),
+            gpu_filters::request(5, 1, &viewport, 1.0, &finish).is_none(),
             "one frame per pane at a time"
         );
         assert!(
-            gpu_filters::request(6, 1, &viewport, 1.0).is_some(),
+            gpu_filters::request(6, 1, &viewport, 1.0, &finish).is_some(),
             "panes are independent"
         );
         assert!(gpu_filters::busy());
 
-        let pixels: Vec<u8> = (0..32).collect();
+        // Slide pixels on the left, transparent outside the slide.
+        let pixels: Vec<u8> = (0u8..8)
+            .flat_map(|i| {
+                if i % 4 < 2 {
+                    [10 * i, 20, 30, 255]
+                } else {
+                    [0, 0, 0, 0]
+                }
+            })
+            .collect();
         let frame = ReadbackFrame {
             tag: first,
             width: 4,
@@ -2848,13 +2975,28 @@ mod tests {
         let (frames, again) = receive_filtered();
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].tag.pane_uid, 5);
-        assert_eq!(frames[0].display.as_bytes(), &pixels[..]);
+        // The filter (red inverted) ran on the slide, then the background
+        // was composited around it.
+        let expected: Vec<u8> = (0u8..8)
+            .flat_map(|i| {
+                if i % 4 < 2 {
+                    [255 - 10 * i, 20, 30, 255]
+                } else {
+                    [30, 30, 30, 255]
+                }
+            })
+            .collect();
+        assert_eq!(frames[0].display.as_bytes(), &expected[..]);
         assert_eq!(frames[0].unfiltered, pixels);
         assert!(again, "pane 5 changed while its frame was filtered");
+        // Its next render reads it back again, though nothing changed.
+        assert!(gpu_filters::take_stale(5));
+        assert!(!gpu_filters::take_stale(5), "once");
 
         // The renderer lost pane 6's readback: the pane renders again.
         assert!(gpu_filters::dispatch(Vec::new(), false, &chain));
         assert!(!gpu_filters::busy());
-        assert!(gpu_filters::request(6, 1, &viewport, 1.0).is_some());
+        assert!(gpu_filters::take_stale(6));
+        assert!(gpu_filters::request(6, 1, &viewport, 1.0, &finish).is_some());
     }
 }

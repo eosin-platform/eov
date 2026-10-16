@@ -8,10 +8,21 @@
 //! file. "Copy viewport image" renders the same way at screen resolution,
 //! with every overlay as on screen.
 //!
+//! Stain normalisation uses the viewer's fit of the slide
+//! ([`crate::color::slide_fit`], asked for when the export is set up):
+//! previews show the slide un-normalised while it runs, exports and copies
+//! wait for it on their thread, and a fit that failed is not tried again.
+//!
+//! A slide with a usable ICC profile is exported colour-managed (converted
+//! to sRGB, the file says so) like the viewer shows it, unless the dialog's
+//! "Convert to sRGB" is off: then its colours are exported as scanned and
+//! its profile is embedded in the file untouched.
+//!
 //! Overlays, bottom to top: overlay layers (the viewport's rasteriser) and
 //! their labels, then the host's ROI and measurements in the dialog's
 //! styles, the scale bar and the colour-processing note.
 
+use crate::color::SlideFit;
 use crate::host_ui::with_host;
 use crate::interaction::{Calibration, HostMeasurement, measure};
 use crate::overlay::Owner;
@@ -25,6 +36,8 @@ use crate::{
     ExportSettings as SlintExportSettings, IsolatedChannel as SlintIsolatedChannel,
     StainNormalization as SlintStainNormalization, StrokeStyle as SlintStrokeStyle,
 };
+use eov_common::color_management::DisplayTransform;
+use eov_common::export::ColorSpace;
 use eov_common::export::{
     BandSink, ExportError, ExportFormat, ExportReport, ExportRequest, ExportSource, FileSink,
     ImageMetadata, ImageSink, TiffCompression, render_export_bands,
@@ -34,6 +47,7 @@ use eov_common::overlay::{
     Canvas, CapStyle, Corner, FontArc, LabelStyle, OverlayColor, OverlayItem, ScaleBarStyle,
     StrokeStyle, embedded_font,
 };
+use eov_common::stain::StainFitMethod;
 use eov_common::{
     ExportSettings, FilteringMode, MeasurementUnit, RgbaImageData, StainNormalization, TileCache,
     TileManager, Viewport, WsiFile,
@@ -66,6 +80,9 @@ struct Dialog {
     preview_running: bool,
     /// Progress timers of running exports, by job id.
     progress_timers: HashMap<String, Timer>,
+    /// The slide's stain fit (or colour profile) finished since the preview
+    /// was rendered.
+    preview_stale: bool,
 }
 
 thread_local! {
@@ -87,19 +104,27 @@ struct Capture {
     unit: MeasurementUnit,
     /// Overlay layers drawn with the viewport's rasteriser.
     layers: Vec<Arc<Layer>>,
+    /// The slide's stain fit for the settings' normalisation, as the viewer
+    /// has it (see [`build_request`]).
+    fit: Option<(StainFitMethod, SlideFit)>,
+    /// The slide's colour profile, converted when the settings say so.
+    color_profile: Option<Arc<DisplayTransform>>,
+    /// The viewer's pixel view: exports above 1:1 show pixels as squares.
+    pixel_view: bool,
 }
 
-/// Captures the slide shown in `pane`. With `expected_file`, returns
-/// `None` when the pane shows another slide now. `host_layers` includes the
-/// host's ROI and measurement layers as drawn on screen; otherwise the
-/// export draws those from the dialog's settings. Heat maps are always
-/// included.
+/// Captures the slide shown in `pane` for an export with `settings`. With
+/// `expected_file`, returns `None` when the pane shows another slide now.
+/// `host_layers` includes the host's ROI and measurement layers as drawn on
+/// screen; otherwise the export draws those from the dialog's settings.
+/// Heat maps are always included.
 fn capture(
     state: &AppState,
     tile_cache: &Arc<TileCache>,
     pane: PaneId,
     expected_file: Option<i32>,
     host_layers: bool,
+    settings: &SlintExportSettings,
 ) -> Option<Capture> {
     let file_id = state.active_file_id_for_pane(pane)?;
     if expected_file.is_some_and(|expected| expected != file_id) {
@@ -118,6 +143,15 @@ fn capture(
         })
         .filter(|layer| pane_uid.is_none_or(|uid| layer.shown_in(uid)))
         .collect();
+    // Starts the viewer's fit of the slide if nobody has.
+    let fit = legacy_settings(settings)
+        .color_settings()
+        .required_estimate()
+        .map(|method| (method, crate::color::slide_fit(file_id, &file.wsi, method)));
+    let color_profile = match crate::color::slide_profile(file_id, &file.wsi) {
+        crate::color::SlideProfile::Ready(transform) => Some(transform),
+        _ => None,
+    };
     Some(Capture {
         file_id,
         wsi: file.wsi.clone(),
@@ -129,7 +163,47 @@ fn capture(
         calibration: crate::host_ui::calibration(file),
         unit: pane_state.hud.measurement_unit,
         layers,
+        fit,
+        color_profile,
+        pixel_view: state.pixel_view,
     })
+}
+
+/// What the exported pixels' colours mean: sRGB when converted, the
+/// slide's profile (read here, embedded untouched) when not (worker
+/// thread).
+fn export_color_space(capture: &Capture, request: &ExportRequest) -> ColorSpace {
+    if request.processing.color_management().is_some() {
+        return ColorSpace::Srgb;
+    }
+    match capture.wsi.icc_profile() {
+        Ok(Some(profile)) => ColorSpace::Profile(Arc::new(profile)),
+        _ => ColorSpace::Unspecified,
+    }
+}
+
+/// What the export does with the slide's colour profile, if it has one.
+fn color_management_note(capture: &Capture, request: &ExportRequest) -> Option<String> {
+    let profile = capture.color_profile.as_ref()?;
+    Some(if request.processing.color_management().is_some() {
+        format!(
+            "Colour-managed: \"{}\" converted to sRGB",
+            profile.description()
+        )
+    } else {
+        "Colours as scanned; the slide's colour profile is embedded".to_string()
+    })
+}
+
+/// Why the stain normalisation the settings ask for is not applied, if it
+/// cannot be.
+fn fit_note(capture: &Capture) -> Option<String> {
+    match &capture.fit {
+        Some((_, SlideFit::Failed(error))) => Some(format!(
+            "Stain normalisation is unavailable for this slide: {error}"
+        )),
+        _ => None,
+    }
 }
 
 // -- settings ---------------------------------------------------------------
@@ -180,11 +254,21 @@ fn export_format(s: &SlintExportSettings) -> ExportFormat {
     }
 }
 
-/// Copies the pane's colour adjustments into `settings`.
+/// Copies the pane's colour adjustments, and the slide's colour
+/// management, into `settings`.
 fn apply_hud(settings: &mut SlintExportSettings, state: &AppState, pane: PaneId) {
-    let hud = state
+    let file = state
         .active_file_id_for_pane(pane)
-        .and_then(|id| state.get_file(id))
+        .and_then(|id| state.get_file(id));
+    let profile = file.is_some_and(|file| {
+        matches!(
+            crate::color::slide_profile(file.id, &file.wsi),
+            crate::color::SlideProfile::Ready(_)
+        )
+    });
+    settings.has_color_profile = profile;
+    settings.color_management = profile && file.is_some_and(|file| file.color_management);
+    let hud = file
         .and_then(|file| file.pane_state(pane))
         .map(|pane_state| pane_state.hud)
         .unwrap_or_default();
@@ -518,17 +602,50 @@ fn host_items(
 }
 
 /// Builds the request for `capture` at `dpi` with `settings`' processing.
+/// A stain fit still running is waited for when `wait_for_fit` says how to
+/// cancel (exports, copies); previews (`None`) show the slide un-normalised
+/// meanwhile, and say so.
 fn build_request(
     capture: &Capture,
     settings: &SlintExportSettings,
-    manager: &TileManager,
     dpi: f64,
+    wait_for_fit: Option<&dyn Fn() -> bool>,
 ) -> ExportRequest {
-    let mut legacy = legacy_settings(settings);
-    legacy.dpi = dpi.round().max(1.0) as u32;
-    let mut request = legacy.request(manager, &capture.viewport);
+    let legacy = legacy_settings(settings);
+    let mut color = legacy.color_settings();
+    let fit = match &capture.fit {
+        Some((method, SlideFit::Pending)) => match wait_for_fit {
+            Some(cancelled) => crate::color::await_slide_fit(&capture.wsi, *method, cancelled),
+            None => SlideFit::Pending,
+        },
+        Some((_, fit)) => fit.clone(),
+        None => SlideFit::Pending,
+    };
+    let estimate = match fit {
+        SlideFit::Ready(estimate) => Some(estimate),
+        SlideFit::Failed(_) => {
+            // As the viewer shows it: not normalised (see `fit_note`).
+            color.normalization = None;
+            None
+        }
+        SlideFit::Pending => None,
+    };
     // Fractional DPI (screen scale factors) is kept exactly.
-    request.scale = dpi / 96.0;
+    let mut request = ExportRequest::new(capture.viewport.clone(), dpi);
+    request.filtering = legacy.filtering_mode;
+    request.pixel_view = capture.pixel_view;
+    let managed = settings
+        .color_management
+        .then(|| capture.color_profile.clone())
+        .flatten();
+    request.processing = color
+        .pipeline(estimate.as_deref())
+        .with_color_management(managed);
+    request.background = [
+        legacy.background_rgba[0],
+        legacy.background_rgba[1],
+        legacy.background_rgba[2],
+    ];
     request
 }
 
@@ -632,12 +749,16 @@ fn render_preview(
     settings: &SlintExportSettings,
 ) -> Result<(RgbaImageData, Vec<String>), ExportError> {
     let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
-    let full = build_request(capture, settings, &manager, f64::from(settings.dpi.max(1)));
+    let full = build_request(capture, settings, f64::from(settings.dpi.max(1)), None);
     let (width, height) = full.output_size();
     let factor = (f64::from(PREVIEW_MAX_SIDE) / f64::from(width.max(height))).min(1.0);
     let mut request = full;
     request.scale *= factor;
-    let prepared = prepare(capture, settings, &request, true);
+    let mut prepared = prepare(capture, settings, &request, true);
+    prepared.notes.extend(fit_note(capture));
+    prepared
+        .notes
+        .extend(color_management_note(capture, &request));
     let source = ExportSource {
         tile_manager: &manager,
         tile_cache: Some(&capture.tile_cache),
@@ -662,15 +783,29 @@ fn run_export(
 ) -> Result<ExportReport, ExportError> {
     let manager = TileManager::new(capture.wsi.clone(), capture.file_id);
     let dpi = f64::from(settings.dpi.max(1));
-    let request = build_request(capture, settings, &manager, dpi);
+    let request = build_request(capture, settings, dpi, Some(&|| control.is_cancelled()));
+    if control.is_cancelled() {
+        return Err(ExportError::Cancelled);
+    }
     let prepared = prepare(capture, settings, &request, true);
+    let mut provenance = request.processing.summary().provenance();
+    if let Some(note) = fit_note(capture) {
+        provenance.push(' ');
+        provenance.push_str(&note);
+        provenance.push('.');
+    }
+    let color_space = export_color_space(capture, &request);
+    if matches!(color_space, ColorSpace::Profile(_)) {
+        provenance.push_str(" The slide's colour profile is embedded.");
+    }
     let metadata = ImageMetadata::for_export(
         &request,
         dpi,
         capture.calibration.mpp_x,
         capture.calibration.mpp_y,
-        Some(request.processing.summary().provenance()),
-    );
+        Some(provenance),
+    )
+    .with_color_space(color_space);
     let source = ExportSource {
         tile_manager: &manager,
         tile_cache: Some(&capture.tile_cache),
@@ -686,6 +821,92 @@ fn run_export(
         sink.abort();
     }
     result
+}
+
+// -- scripted exports (`export.view`) ------------------------------------------
+
+/// What a script's export (`export.view`, [`crate::scripting`]) changes
+/// from the dialog's defaults for the slide; `None` keeps a default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScriptedOptions {
+    pub(crate) format: ExportFormat,
+    pub(crate) dpi: Option<u32>,
+    pub(crate) scale_bar: Option<bool>,
+    pub(crate) roi: Option<bool>,
+    pub(crate) measurements: Option<bool>,
+    pub(crate) processing_note: Option<bool>,
+}
+
+/// A pane's view to export for a script, captured on the UI thread with
+/// the dialog's default settings (the pane's colour processing, its ROI,
+/// measurements and overlay layers); [`Self::run`] renders it on a worker
+/// as the dialog's Export does.
+pub(crate) struct ScriptedExport {
+    capture: Capture,
+    settings: SlintExportSettings,
+    format: ExportFormat,
+}
+
+impl ScriptedExport {
+    /// The slide shown in `pane`, or `None` when it shows none.
+    pub(crate) fn capture(
+        state: &AppState,
+        tile_cache: &Arc<TileCache>,
+        pane: PaneId,
+        options: &ScriptedOptions,
+    ) -> Option<Self> {
+        let mut settings = default_settings(state, pane);
+        if let Some(dpi) = options.dpi {
+            settings.dpi = i32::try_from(dpi).unwrap_or(i32::MAX);
+        }
+        if let Some(show) = options.scale_bar {
+            settings.show_scale_bar = show;
+        }
+        if let Some(show) = options.roi {
+            settings.show_roi_outline = show && settings.has_roi;
+        }
+        if let Some(show) = options.measurements {
+            settings.show_measurement = show && settings.has_measurement;
+        }
+        if let Some(show) = options.processing_note {
+            settings.show_processing_note = show;
+        }
+        let capture = capture(state, tile_cache, pane, None, false, &settings)?;
+        Some(Self {
+            capture,
+            settings,
+            format: options.format,
+        })
+    }
+
+    /// The image's size in pixels.
+    pub(crate) fn output_size(&self) -> (u32, u32) {
+        ExportRequest::new(
+            self.capture.viewport.clone(),
+            f64::from(self.settings.dpi.max(1)),
+        )
+        .output_size()
+    }
+
+    /// The exported slide's file name.
+    pub(crate) fn file_name(&self) -> &str {
+        &self.capture.file_name
+    }
+
+    /// The exported slide's file id.
+    pub(crate) fn file_id(&self) -> i32 {
+        self.capture.file_id
+    }
+
+    /// Renders the export to `path` (a worker thread); a failed or
+    /// cancelled export leaves no file.
+    pub(crate) fn run(
+        &self,
+        path: &Path,
+        control: &JobControl,
+    ) -> Result<ExportReport, ExportError> {
+        run_export(&self.capture, &self.settings, path, self.format, control)
+    }
 }
 
 // -- the dialog (UI thread) ---------------------------------------------------
@@ -737,6 +958,33 @@ pub(crate) fn open(
     request_preview(ui, state, tile_cache);
 }
 
+/// Slides whose stain fit or colour profile has just finished: the preview
+/// of the dialog's slide renders again (see [`refresh_stale_preview`]).
+pub(crate) fn slide_colors_changed(file_ids: &[i32]) {
+    DIALOG.with(|dialog| {
+        let mut dialog = dialog.borrow_mut();
+        if dialog
+            .target
+            .is_some_and(|(_, file)| file_ids.contains(&file))
+        {
+            dialog.preview_stale = true;
+        }
+    });
+}
+
+/// Renders the preview again after [`slide_colors_changed`] (UI thread,
+/// no state lock held).
+pub(crate) fn refresh_stale_preview(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+) {
+    let stale = DIALOG.with(|dialog| std::mem::take(&mut dialog.borrow_mut().preview_stale));
+    if stale && ui.get_export_dialog_visible() {
+        request_preview(ui, state, tile_cache);
+    }
+}
+
 /// Remembers edited settings for the dialog's slide.
 pub(crate) fn settings_changed(settings: SlintExportSettings) {
     DIALOG.with(|dialog| {
@@ -784,13 +1032,21 @@ pub(crate) fn request_preview(
 fn spawn_preview(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: &Arc<TileCache>) {
     let (target, generation) =
         DIALOG.with(|dialog| (dialog.borrow().target, dialog.borrow().previews_wanted));
-    let captured = target
-        .and_then(|(pane, file_id)| capture(&state.read(), tile_cache, pane, Some(file_id), false));
+    let settings = ui.get_export_settings();
+    let captured = target.and_then(|(pane, file_id)| {
+        capture(
+            &state.read(),
+            tile_cache,
+            pane,
+            Some(file_id),
+            false,
+            &settings,
+        )
+    });
     let Some(captured) = captured else {
         DIALOG.with(|dialog| dialog.borrow_mut().preview_running = false);
         return;
     };
-    let settings = ui.get_export_settings();
     let mut info = ui.get_export_preview_info();
     info.rendering = true;
     ui.set_export_preview_info(info);
@@ -859,7 +1115,14 @@ pub(crate) fn export(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         return;
     };
     let settings = ui.get_export_settings();
-    let Some(captured) = capture(&state.read(), tile_cache, pane, Some(file_id), false) else {
+    let Some(captured) = capture(
+        &state.read(),
+        tile_cache,
+        pane,
+        Some(file_id),
+        false,
+        &settings,
+    ) else {
         ui.set_status_text(SharedString::from(
             "The slide is no longer shown in this pane",
         ));
@@ -992,9 +1255,10 @@ pub(crate) fn copy_view(
 ) {
     let (captured, mut settings) = {
         let state = state.read();
+        let settings = default_settings(&state, pane);
         (
-            capture(&state, tile_cache, pane, None, true),
-            default_settings(&state, pane),
+            capture(&state, tile_cache, pane, None, true, &settings),
+            settings,
         )
     };
     let Some(captured) = captured else {
@@ -1012,7 +1276,7 @@ pub(crate) fn copy_view(
         .name("eov-copy-view".to_string())
         .spawn(move || {
             let manager = TileManager::new(captured.wsi.clone(), captured.file_id);
-            let request = build_request(&captured, &settings, &manager, dpi);
+            let request = build_request(&captured, &settings, dpi, Some(&|| false));
             let prepared = prepare(&captured, &settings, &request, false);
             let source = ExportSource {
                 tile_manager: &manager,
@@ -1067,10 +1331,18 @@ fn copied_notice(copied: bool) {
                 None,
             );
         } else {
+            // The Flatpak has no X11 under Wayland, and eov's clipboard
+            // needs it for images (SH-10).
+            let flatpak_wayland = std::env::var_os("FLATPAK_ID").is_some()
+                && std::env::var_os("WAYLAND_DISPLAY").is_some();
             host.notify(
                 NotifyLevel::Error,
                 "Could not copy the image to the clipboard",
-                None,
+                Some(if flatpak_wayland {
+                    "The Flatpak cannot put images on the clipboard under Wayland yet. Export Image (Ctrl+E) saves the view to a file instead."
+                } else {
+                    "Export Image (Ctrl+E) saves the view to a file instead."
+                }),
                 None,
             );
         }
@@ -1201,6 +1473,9 @@ mod tests {
             calibration: Calibration::new(Some(0.5), Some(0.5)),
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
+            fit: None,
+            color_profile: None,
+            pixel_view: false,
         };
         let settings = SlintExportSettings {
             dpi: 192,
@@ -1245,6 +1520,128 @@ mod tests {
             .filter(|&(x, y)| px(x, y)[..3].iter().all(|&c| c < 40))
             .count();
         assert!(dark > 50, "no scale bar ({dark} dark pixels)");
+    }
+
+    /// The export uses the viewer's fit of the slide: a failed one is not
+    /// tried again (the export is not normalised, and says why), a pending
+    /// one is waited for by exports and not by previews.
+    #[test]
+    fn exports_use_the_viewer_s_stain_fit() {
+        let dir = tempfile::tempdir().unwrap();
+        let slide = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&slide, 256, 256, 256, |_, _| [200, 100, 150])
+            .unwrap();
+        let mut captured = Capture {
+            file_id: 1,
+            wsi: WsiFile::open(&slide).unwrap(),
+            file_name: "slide.tif".to_string(),
+            viewport: Viewport::new(128.0, 128.0, 256.0, 256.0),
+            tile_cache: Arc::new(TileCache::with_limits(16, 16 << 20)),
+            roi: None,
+            measurements: Vec::new(),
+            calibration: Calibration::new(None, None),
+            unit: MeasurementUnit::Um,
+            layers: Vec::new(),
+            fit: Some((
+                StainFitMethod::Macenko,
+                SlideFit::Failed("no tissue to fit".into()),
+            )),
+            color_profile: None,
+            pixel_view: false,
+        };
+        let settings = SlintExportSettings {
+            dpi: 96,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            stain_normalization: SlintStainNormalization::Macenko,
+            ..Default::default()
+        };
+        let request = build_request(&captured, &settings, 96.0, Some(&|| false));
+        assert!(request.processing.summary().normalization.is_none());
+        assert!(fit_note(&captured).unwrap().contains("no tissue to fit"));
+        // A preview does not wait for a running fit: it says it is pending.
+        captured.fit = Some((StainFitMethod::Macenko, SlideFit::Pending));
+        let preview = build_request(&captured, &settings, 96.0, None);
+        assert!(preview.processing.summary().normalization_pending);
+    }
+
+    /// A slide with a profile exports converted to sRGB (and says so), or,
+    /// with the conversion off, as scanned with its profile embedded.
+    #[test]
+    fn exports_are_colour_managed_or_carry_the_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let slide = dir.path().join("slide.svs");
+        let profile = eov_common::color_management::test_profiles::adobe_rgb();
+        let mut spec = eov_common::test_support::TiffSpec::aperio(128, 128, 64, 4);
+        spec.icc_profile = Some(profile.clone());
+        eov_common::test_support::write_tiff(&slide, &spec, |_, _| [60, 170, 90]).unwrap();
+        let transform = Arc::new(DisplayTransform::from_icc(&profile).unwrap());
+        let captured = Capture {
+            file_id: 1,
+            wsi: WsiFile::open(&slide).unwrap(),
+            file_name: "slide.svs".to_string(),
+            viewport: Viewport::new(64.0, 64.0, 128.0, 128.0),
+            tile_cache: Arc::new(TileCache::with_limits(16, 16 << 20)),
+            roi: None,
+            measurements: Vec::new(),
+            calibration: Calibration::new(None, None),
+            unit: MeasurementUnit::Um,
+            layers: Vec::new(),
+            fit: None,
+            color_profile: Some(Arc::clone(&transform)),
+            pixel_view: false,
+        };
+        let mut settings = SlintExportSettings {
+            dpi: 96,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            has_color_profile: true,
+            color_management: true,
+            format: SlintExportFormat::Png,
+            ..Default::default()
+        };
+        let export = |settings: &SlintExportSettings, name: &str| {
+            let path = dir.path().join(name);
+            run_export(
+                &captured,
+                settings,
+                &path,
+                ExportFormat::Png,
+                &JobControl::new(),
+            )
+            .unwrap();
+            let bytes = std::fs::read(&path).unwrap();
+            let pixel = image::load_from_memory(&bytes)
+                .unwrap()
+                .to_rgb8()
+                .get_pixel(32, 32)
+                .0;
+            (bytes, pixel)
+        };
+        let has = |bytes: &[u8], chunk: &[u8]| bytes.windows(4).any(|w| w == chunk);
+
+        let (managed, pixel) = export(&settings, "managed.png");
+        assert_eq!(pixel, transform.apply_pixel([60, 170, 90]));
+        assert!(has(&managed, b"sRGB") && !has(&managed, b"iCCP"));
+        let request = build_request(&captured, &settings, 96.0, None);
+        assert!(
+            color_management_note(&captured, &request)
+                .unwrap()
+                .contains("sRGB")
+        );
+
+        settings.color_management = false;
+        let (as_scanned, pixel) = export(&settings, "scanned.png");
+        assert_eq!(pixel, [60, 170, 90]);
+        assert!(has(&as_scanned, b"iCCP") && !has(&as_scanned, b"sRGB"));
     }
 
     /// A turned view exports as shown: slide, plugin layers and the ROI
@@ -1301,6 +1698,9 @@ mod tests {
             calibration: Calibration::new(Some(0.5), Some(0.5)),
             unit: MeasurementUnit::Um,
             layers: store.file_layers(1).layers,
+            fit: None,
+            color_profile: None,
+            pixel_view: false,
         };
         let settings = SlintExportSettings {
             dpi: 192,

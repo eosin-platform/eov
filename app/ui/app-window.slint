@@ -139,6 +139,9 @@ export component AppWindow inherits Window {
     in-out property <bool> plugin-problems: false;
 
     in-out property <bool> filter-popup-visible: false;
+    // Above 100%, the slide's pixels show as squares.
+    in-out property <bool> pixel-view: false;
+    callback pixel-view-toggled();
     in-out property <bool> lanczos-confirm-visible: false;
     in-out property <bool> lanczos-confirm-from-backend-switch: false;
     in-out property <bool> plugin-confirm-visible: false;
@@ -393,6 +396,7 @@ export component AppWindow inherits Window {
     callback hud-zoom-input(int, string);
     callback hud-zoom-in(int);
     callback hud-orientation-changed(int, int);
+    callback hud-color-management-toggled(int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
     callback hud-deconv-e-intensity-changed(int, float);
@@ -1035,6 +1039,9 @@ export component AppWindow inherits Window {
                     hud-orientation-changed(pane, action) => {
                         root.hud-orientation-changed(pane, action);
                     }
+                    hud-color-management-toggled(pane) => {
+                        root.hud-color-management-toggled(pane);
+                    }
                     hud-zoom-out(pane) => {
                         root.hud-zoom-out(pane);
                     }
@@ -1357,7 +1364,7 @@ export component AppWindow inherits Window {
         x: toolbar.filter-combo-abs-x;
         y: toolbar.filter-combo-abs-y;
         width: toolbar.filter-combo-width + 74px;
-        height: 3 * 26px + 4px;
+        height: 4 * 26px + 9px;
         background: Theme.context-menu-bg;
         border-radius: 4px;
         border-width: 1px;
@@ -1454,6 +1461,45 @@ export component AppWindow inherits Window {
                     padding-left: 8px;
                     Text {
                         text: (root.filtering-mode == FilteringMode.lanczos3 ? "✓ " : "   ") + @tr("Lanczos-3 (High Quality)");
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            // Above 1:1 the slide's pixels show as squares, whatever the
+            // filtering.
+            Rectangle {
+                height: 26px;
+                background: pixel-view-touch.has-hover ? Theme.context-menu-hover : transparent;
+                border-radius: 2px;
+                accessible-role: checkbox;
+                accessible-label: @tr("Show Pixels Above 100%");
+                accessible-checkable: true;
+                accessible-checked: root.pixel-view;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.pixel-view-toggled();
+                }
+
+                pixel-view-touch := TouchArea {
+                    clicked => {
+                        root.filter-popup-visible = false;
+                        root.pixel-view-toggled();
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: (root.pixel-view ? "✓ " : "   ") + @tr("Show Pixels Above 100%");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;

@@ -197,6 +197,22 @@ pub fn save_filtering_mode(mode: FilteringMode) -> Result<()> {
     save(|document| document["filtering_mode"] = value(name))
 }
 
+/// Whether panes show the slide's pixels as squares above 100%
+/// (`show_pixels`, off by default).
+pub fn load_pixel_view() -> bool {
+    with_document(|_, document| {
+        document
+            .get("show_pixels")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(false)
+    })
+    .unwrap_or(false)
+}
+
+pub fn save_pixel_view(on: bool) -> Result<()> {
+    save(|document| document["show_pixels"] = value(on))
+}
+
 /// The plugin whose sidebar should be restored at startup.
 pub fn load_sidebar_plugin() -> Result<Option<String>> {
     with_document(|_, document| {
@@ -359,6 +375,18 @@ pub fn load_single_instance() -> bool {
     with_document(|_, document| {
         document
             .get("single_instance")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true)
+    })
+    .unwrap_or(true)
+}
+
+/// Whether scripts may drive eov through its local endpoint (`scripting`,
+/// on by default; see [`crate::scripting`]).
+pub fn load_scripting() -> bool {
+    with_document(|_, document| {
+        document
+            .get("scripting")
             .and_then(|item| item.as_bool())
             .unwrap_or(true)
     })

@@ -650,6 +650,8 @@ fn run_slide(
             properties: Arc::new(wsi.property_map().clone()),
             roi: None,
             measurements: Vec::new(),
+            path: shown_path.clone(),
+            ..PublishedFile::default()
         },
     );
     headless.shared.publish(published);

@@ -61,6 +61,23 @@ pub(crate) struct RowView {
     pub gamma_position: f64,
 }
 
+/// Which focal plane and time point a slide shows, each as (shown, of how
+/// many).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlanePosition {
+    pub focal: (u32, u32),
+    pub time: (u32, u32),
+}
+
+impl PlanePosition {
+    pub(crate) fn of(wsi: &WsiFile) -> Self {
+        Self {
+            focal: (wsi.focal_plane(), wsi.focal_planes()),
+            time: (wsi.time_point(), wsi.time_points()),
+        }
+    }
+}
+
 /// The panel's state for one slide, without any UI: what the edits do.
 #[derive(Debug, Clone)]
 pub(crate) struct PanelState {
@@ -318,8 +335,8 @@ impl PanelState {
     }
 
     /// One line about the channels: how many are shown, the sample type,
-    /// and the planes not shown.
-    pub(crate) fn summary(&self) -> String {
+    /// and which focal plane and time point are shown.
+    pub(crate) fn summary(&self, planes: PlanePosition) -> String {
         let mut parts = vec![format!(
             "{} of {} channels shown",
             self.display.visible_count(),
@@ -329,11 +346,19 @@ impl PanelState {
         if let Some(bits) = self.set.significant_bits {
             parts.push(format!("{bits} significant bits"));
         }
-        if self.set.size_z > 1 {
-            parts.push(format!("focal plane 1 of {}", self.set.size_z));
-        }
-        if self.set.size_t > 1 {
-            parts.push(format!("time point 1 of {}", self.set.size_t));
+        for ((shown, count), declared, what) in [
+            (planes.focal, self.set.size_z, "focal plane"),
+            (planes.time, self.set.size_t, "time point"),
+        ] {
+            let count = count.max(1);
+            if count > 1 || declared > 1 {
+                let mut part = format!("{what} {} of {count}", shown.min(count - 1) + 1);
+                if declared > u64::from(count) {
+                    // The reader stops at planes it cannot show.
+                    part.push_str(&format!(" ({declared} in the file)"));
+                }
+                parts.push(part);
+            }
         }
         parts.join(" · ")
     }
@@ -535,7 +560,7 @@ pub(crate) fn open(host: &UiHost, file_id: i32) {
         .collect();
     let rows = Rc::new(VecModel::from(rows));
     ui.set_channels_title(format!("Channels · {file_name}").into());
-    ui.set_channels_summary(state.summary().into());
+    ui.set_channels_summary(state.summary(PlanePosition::of(&wsi)).into());
     ui.set_channel_rows(ModelRc::from(Rc::clone(&rows)));
     let chips: Vec<Color> = chip_colors().into_iter().map(slint_color).collect();
     ui.set_channel_chip_colors(ModelRc::from(Rc::new(VecModel::from(chips))));
@@ -603,30 +628,44 @@ pub(crate) fn edit(host: &UiHost, edit: Edit) {
     }) else {
         return;
     };
-    ui.set_channels_summary(
-        PANEL
-            .with(|panel| panel.borrow().as_ref().map(|open| open.state.summary()))
-            .unwrap_or_default()
-            .into(),
-    );
+    refresh_summary(&ui);
     if let Err(error) = wsi.set_channel_display(display) {
         host.status(&format!("Could not change the channels: {error}"));
         return;
     }
-    // Every open file reading through this slide's handle shows the new
-    // display (normally just the panel's own).
+    rebuild_slide(host, file_id, &wsi);
+    schedule_save();
+}
+
+/// Shows the open panel's summary again (after an edit, or another focal
+/// plane or time point).
+pub(crate) fn refresh_summary(ui: &AppWindow) {
+    let Some(summary) = PANEL.with(|panel| {
+        panel
+            .borrow()
+            .as_ref()
+            .map(|open| open.state.summary(PlanePosition::of(&open.wsi)))
+    }) else {
+        return;
+    };
+    ui.set_channels_summary(summary.into());
+}
+
+/// Draws slide `file_id` again after its pixels changed (a channel display,
+/// a focal plane): every open file reading through the same handle gets
+/// new tiles and a new minimap.
+pub(crate) fn rebuild_slide(host: &UiHost, file_id: i32, wsi: &WsiFile) {
     let sharing: Vec<i32> = host
         .state
         .read()
         .open_files
         .iter()
-        .filter(|file| file.id == file_id || file.wsi.shares_handle_with(&wsi))
+        .filter(|file| file.id == file_id || file.wsi.shares_handle_with(wsi))
         .map(|file| file.id)
         .collect();
     for id in sharing {
         schedule_rebuild(host, id);
     }
-    schedule_save();
 }
 
 /// Saves the open panel's display after a quiet moment.
@@ -802,7 +841,7 @@ fn finish_rebuild(
     for pane in panes.unwrap_or_default() {
         // The render loop draws the new thumbnail (in the pane's
         // orientation) into a pane without one.
-        crate::set_cached_pane_minimap(pane, None, Default::default());
+        crate::set_cached_pane_minimap(pane, None, Default::default(), None);
     }
     host.request_render();
     rebuild_done(host, file_id);
@@ -893,9 +932,26 @@ mod tests {
         assert!((rows[0].low - 0.025).abs() < 1e-9);
         assert!((rows[0].high - 0.5).abs() < 1e-9);
         assert!((rows[0].gamma_position - 0.5).abs() < 1e-9);
+        let at = |z, t| PlanePosition {
+            focal: (z, 3),
+            time: (t, 1),
+        };
         assert_eq!(
-            state.summary(),
+            state.summary(at(0, 0)),
             "3 of 3 channels shown · uint16 · focal plane 1 of 3"
+        );
+        assert_eq!(
+            state.summary(at(2, 0)),
+            "3 of 3 channels shown · uint16 · focal plane 3 of 3"
+        );
+        // A stack the reader cut short says how deep the file is.
+        let cut = PlanePosition {
+            focal: (0, 1),
+            time: (0, 1),
+        };
+        assert_eq!(
+            state.summary(cut),
+            "3 of 3 channels shown · uint16 · focal plane 1 of 1 (3 in the file)"
         );
     }
 
@@ -961,7 +1017,14 @@ mod tests {
         assert!(!state.rows().iter().any(|row| row.solo));
         state.apply(Edit::ShowAll);
         assert_eq!(state.display().visible_count(), 3);
-        assert!(state.summary().starts_with("3 of 3"));
+        assert!(
+            state
+                .summary(PlanePosition {
+                    focal: (0, 3),
+                    time: (0, 1)
+                })
+                .starts_with("3 of 3")
+        );
     }
 
     #[test]

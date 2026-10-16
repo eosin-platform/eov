@@ -158,6 +158,9 @@ export component PluginsPanel inherits Rectangle {
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
+                    // Only its own height: otherwise the text takes the panel's
+                    // spare height and pushes the list to the bottom.
+                    height: self.preferred-height;
                 }
 
                 if root.note != "": Text {
@@ -200,6 +203,9 @@ export component PluginsPanel inherits Rectangle {
                                 x: 10px;
                                 y: 8px;
                                 width: parent.width - 20px;
+                                // Inside the card's 8px padding (at the card's
+                                // full height, its last line ran past the edge).
+                                height: parent.height - 16px;
                                 spacing: 10px;
 
                                 VerticalLayout {

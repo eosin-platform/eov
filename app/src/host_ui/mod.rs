@@ -34,6 +34,7 @@ mod overlays;
 mod panel;
 pub(crate) mod publish;
 mod qc;
+mod stain_targets;
 mod surfaces;
 
 use crate::AppWindow;
@@ -58,9 +59,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub(crate) use annotations::HostEdit;
 pub(crate) use input::modifiers_from_slint;
 pub(crate) use overlays::PaneOverlayFields;
-pub(crate) use publish::calibration;
+pub(crate) use publish::{calibration, finish_alpha};
 
 thread_local! {
     static HOST: RefCell<Option<Rc<UiHost>>> = const { RefCell::new(None) };
@@ -815,6 +817,19 @@ impl UiHost {
         if let Some(ui) = self.ui() {
             ui.set_status_text(text.into());
         }
+    }
+}
+
+#[cfg(test)]
+impl UiHost {
+    /// The events waiting for plugins (tests run no event loop, so they
+    /// are not delivered).
+    pub(crate) fn queued_events(&self) -> Vec<HostEvent> {
+        self.events
+            .borrow()
+            .iter()
+            .map(|(_, event)| event.clone())
+            .collect()
     }
 }
 

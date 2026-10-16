@@ -88,7 +88,8 @@ fn every_control_has_a_name() {
         fill(&ui);
         assert_eq!(unnamed(&ui), Vec::<String>::new(), "a slide with its HUD");
         // The dialogs and panels, one at a time.
-        let surfaces: [(&str, SetVisible); 13] = [
+        let surfaces: [(&str, SetVisible); 14] = [
+            ("filtering menu", AppWindow::set_filter_popup_visible),
             ("channels", AppWindow::set_channels_panel_visible),
             ("notifications", AppWindow::set_notifications_visible),
             ("export", AppWindow::set_export_dialog_visible),
@@ -151,6 +152,8 @@ fn fill(ui: &AppWindow) {
             contrast: 1.0,
             scale_bar_width: 120.0,
             scale_bar_label: "100 µm".into(),
+            color_management: 1,
+            color_management_tooltip: "Colour management is on".into(),
             ..Default::default()
         },
         hud_buttons: model(vec![HudToolbarButtonData {
@@ -207,6 +210,9 @@ fn fill(ui: &AppWindow) {
     let mut dataset = ui.get_dataset_export_settings();
     dataset.inputs = model(vec!["/slides/a.svs".into()]);
     ui.set_dataset_export_settings(dataset);
+    let mut export = ui.get_export_settings();
+    export.has_color_profile = true;
+    ui.set_export_settings(export);
     ui.set_quantify_presets(model(vec![ChoiceItem {
         id: "hdab".into(),
         label: "H-DAB".into(),
@@ -252,6 +258,19 @@ fn slide_view_controls_report_their_state() {
         });
         find(&ui, AccessibleRole::Slider, "Gamma").invoke_accessible_increment_action();
         assert!((gamma.get() - 1.05).abs() < 1e-4, "{}", gamma.get());
+
+        // The colour management chip turns the slide's profile on and off.
+        let icc = find(&ui, AccessibleRole::Button, "Colour management");
+        assert_eq!(icc.accessible_checkable(), Some(true));
+        assert_eq!(icc.accessible_checked(), Some(true));
+        assert_eq!(
+            icc.accessible_description().as_deref(),
+            Some("Colour management is on")
+        );
+        let (turned, tick) = counter();
+        ui.on_hud_color_management_toggled(move |_| tick());
+        icc.invoke_accessible_default_action();
+        assert_eq!(turned.get(), 1);
         let unit = find(&ui, AccessibleRole::RadioButton, "Millimetres (mm)");
         assert_eq!(unit.accessible_checked(), Some(false));
         assert_eq!(
@@ -321,6 +340,15 @@ fn toolbar_toggles_report_their_state_and_act_on_their_action() {
             find(&ui, AccessibleRole::RadioButton, "Trilinear (Balanced)").accessible_checked(),
             Some(true)
         );
+        // The pixel view is a check box in the same menu.
+        let pixels = find(&ui, AccessibleRole::Checkbox, "Show Pixels Above 100%");
+        assert_eq!(pixels.accessible_checkable(), Some(true));
+        assert_eq!(pixels.accessible_checked(), Some(false));
+        let (switched, tick) = counter();
+        ui.on_pixel_view_toggled(tick);
+        pixels.invoke_accessible_default_action();
+        assert_eq!(switched.get(), 1);
+        assert!(!ui.get_filter_popup_visible(), "choosing closes the menu");
         ui.hide().unwrap();
     });
 }
@@ -347,6 +375,16 @@ fn dialog_controls_act_on_their_actions() {
         // As typed into its value field.
         sharpness.set_accessible_value("0.25");
         assert!((ui.get_export_settings().sharpness - 0.25).abs() < 1e-4);
+
+        // Offered for slides with a colour profile.
+        let mut settings = ui.get_export_settings();
+        settings.has_color_profile = true;
+        ui.set_export_settings(settings);
+        let icc = find(&ui, AccessibleRole::Switch, "Convert to sRGB (ICC profile)");
+        let converted = ui.get_export_settings().color_management;
+        icc.invoke_accessible_default_action();
+        assert_eq!(ui.get_export_settings().color_management, !converted);
+        assert_eq!(icc.accessible_checked(), Some(!converted));
 
         let scale_bar = find(&ui, AccessibleRole::Switch, "Scale Bar");
         assert_eq!(scale_bar.accessible_role(), Some(AccessibleRole::Switch));

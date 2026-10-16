@@ -115,6 +115,8 @@ pub struct JpegOptions {
     pub dpi: Option<u16>,
     /// Text for COM segments (split at 65 533 bytes).
     pub comment: Option<String>,
+    /// ICC profile for APP2 `ICC_PROFILE` segments (split at 65 519 bytes).
+    pub icc_profile: Option<Vec<u8>>,
 }
 
 impl Default for JpegOptions {
@@ -124,9 +126,14 @@ impl Default for JpegOptions {
             subsampling: Subsampling::None,
             dpi: None,
             comment: None,
+            icc_profile: None,
         }
     }
 }
+
+/// Bytes of profile per APP2 segment (65 535 less the length, the
+/// signature and the two sequence bytes).
+const ICC_CHUNK: usize = 65_519;
 
 fn scaled_table(base: &[u16; 64], quality: u8) -> [u16; 64] {
     let q = quality.clamp(1, 100) as u32;
@@ -351,6 +358,23 @@ impl<W: Write> JpegWriter<W> {
             out.write_all(&density.to_be_bytes())?;
             out.write_all(&density.to_be_bytes())?;
             out.write_all(&[0x00, 0x00])?;
+            // ICC profile, as the ICC specification's annex B embeds it.
+            if let Some(profile) = options.icc_profile.as_deref().filter(|p| !p.is_empty()) {
+                let count = profile.len().div_ceil(ICC_CHUNK);
+                if count > 255 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "the ICC profile is too large for a JPEG",
+                    ));
+                }
+                for (index, chunk) in profile.chunks(ICC_CHUNK).enumerate() {
+                    out.write_all(&[0xFF, 0xE2])?;
+                    out.write_all(&((chunk.len() + 16) as u16).to_be_bytes())?;
+                    out.write_all(b"ICC_PROFILE\0")?;
+                    out.write_all(&[(index + 1) as u8, count as u8])?;
+                    out.write_all(chunk)?;
+                }
+            }
             if let Some(comment) = options.comment.as_deref().filter(|c| !c.is_empty()) {
                 for chunk in comment.as_bytes().chunks(65_533) {
                     out.write_all(&[0xFF, 0xFE])?;
@@ -599,6 +623,8 @@ impl JpegTileEncoder {
                 subsampling,
                 dpi: None,
                 comment: None,
+                // Tiles carry no ICC segment; the TIFF's tag does.
+                icc_profile: None,
             },
         }
     }

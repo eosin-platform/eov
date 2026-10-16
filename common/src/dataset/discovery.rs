@@ -5,8 +5,9 @@
 //! * During directory scans, TIFFs that cannot be slides — single-channel
 //!   images (masks, label maps) or untiled images — are skipped and
 //!   reported. OME-TIFFs are never skipped: their channels are
-//!   single-sample planes by design. Files given explicitly are always
-//!   used.
+//!   single-sample planes by design. DICOM files of another storage class
+//!   than whole-slide images (exported annotations, reports) are skipped
+//!   the same way. Files given explicitly are always used.
 //! * Directory symlink loops are detected; hidden entries are ignored.
 //! * Multi-file formats (MIRAX, VMS/VMU, DICOM) list all their member files
 //!   so the dataset hash covers the image data, not just the index file.
@@ -128,7 +129,14 @@ pub fn discover_slides(inputs: &[PathBuf]) -> Discovery {
     for (path, explicit) in files {
         let ext = extension(&path).unwrap_or_default();
         if ext == "dcm" {
-            match dicom_series_uid(&path) {
+            let header = DicomHeader::read(&path, 1 << 20);
+            if !explicit
+                && let Some(reason) = header.as_ref().and_then(DicomHeader::non_slide_reason)
+            {
+                discovery.skipped.push(SkippedInput { path, reason });
+                continue;
+            }
+            match header.and_then(|header| header.series_uid) {
                 Some(uid) => {
                     let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
                     let group = dicom_groups.entry((dir.clone(), uid.clone())).or_default();
@@ -304,24 +312,81 @@ pub fn dicom_series_uid(path: &Path) -> Option<String> {
 /// [`dicom_series_uid`] reading at most `max_bytes` (the UID is in the
 /// header, usually within the first few kilobytes).
 pub fn dicom_series_uid_within(path: &Path, max_bytes: u64) -> Option<String> {
-    let mut buf = Vec::with_capacity(1 << 16);
-    File::open(path)
-        .ok()?
-        .take(max_bytes)
-        .read_to_end(&mut buf)
-        .ok()?;
-    if buf.len() < 132 || &buf[128..132] != b"DICM" {
-        return None;
+    DicomHeader::read(path, max_bytes)?.series_uid
+}
+
+/// The storage class of DICOM whole-slide images (VL Whole Slide Microscopy
+/// Image), the only one OpenSlide opens.
+pub const DICOM_WSI_SOP_CLASS: &str = "1.2.840.10008.5.1.4.1.1.77.1.6";
+
+/// What eov reads from the start of a DICOM file (`DICM` preamble).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DicomHeader {
+    /// Series Instance UID (0020,000E).
+    pub series_uid: Option<String>,
+    /// Media Storage SOP Class UID (0002,0002) of the file meta
+    /// information, else SOP Class UID (0008,0016).
+    pub sop_class_uid: Option<String>,
+}
+
+impl DicomHeader {
+    /// The header of the DICOM file at `path` from its first `max_bytes`,
+    /// or `None` when it is not a DICOM file.
+    pub fn read(path: &Path, max_bytes: u64) -> Option<Self> {
+        let mut buf = Vec::with_capacity(1 << 16);
+        File::open(path)
+            .ok()?
+            .take(max_bytes)
+            .read_to_end(&mut buf)
+            .ok()?;
+        if buf.len() < 132 || &buf[128..132] != b"DICM" {
+            return None;
+        }
+        let body = &buf[132..];
+        Some(Self {
+            series_uid: ui_value(body, 0x0020, 0x000E),
+            sop_class_uid: ui_value(body, 0x0002, 0x0002)
+                .or_else(|| ui_value(body, 0x0008, 0x0016)),
+        })
     }
-    // Tag (0020,000E) little-endian + VR "UI" + 16-bit length.
-    let pattern = [0x20, 0x00, 0x0E, 0x00, b'U', b'I'];
-    let start = buf[132..]
-        .windows(pattern.len())
-        .position(|w| w == pattern)?
-        + 132;
+
+    /// Why this file is not a slide, when its storage class says it is
+    /// something else (annotations, a report, a segmentation).
+    pub fn non_slide_reason(&self) -> Option<String> {
+        let class = self.sop_class_uid.as_deref()?;
+        if class == DICOM_WSI_SOP_CLASS {
+            return None;
+        }
+        let what = match class {
+            "1.2.840.10008.5.1.4.1.1.91.1" => "DICOM Microscopy Bulk Simple Annotations".into(),
+            "1.2.840.10008.5.1.4.1.1.66.4" => "a DICOM segmentation".into(),
+            "1.2.840.10008.5.1.4.1.1.30" => "a DICOM parametric map".into(),
+            "1.2.840.10008.5.1.4.1.1.104.1" => "a DICOM encapsulated PDF".into(),
+            class if class.starts_with("1.2.840.10008.5.1.4.1.1.88.") => {
+                "a DICOM structured report".into()
+            }
+            class => format!("a DICOM file of storage class {class}"),
+        };
+        Some(format!("{what}, not a whole-slide image"))
+    }
+}
+
+/// Why a DICOM file found by a directory scan is not a slide, if its
+/// storage class says so (an annotations file exported next to the slide).
+pub fn non_slide_dicom_reason(path: &Path) -> Option<String> {
+    DicomHeader::read(path, 1 << 16)?.non_slide_reason()
+}
+
+/// The value of the explicit-VR little-endian UI element (`group`,
+/// `element`) found first in `body`.
+fn ui_value(body: &[u8], group: u16, element: u16) -> Option<String> {
+    let [g0, g1] = group.to_le_bytes();
+    let [e0, e1] = element.to_le_bytes();
+    let pattern = [g0, g1, e0, e1, b'U', b'I'];
+    let start = body.windows(pattern.len()).position(|w| w == pattern)?;
     let len_at = start + pattern.len();
-    let len = u16::from_le_bytes([*buf.get(len_at)?, *buf.get(len_at + 1)?]) as usize;
-    let value = buf.get(len_at + 2..len_at + 2 + len)?;
+    let len = u16::from_le_bytes([*body.get(len_at)?, *body.get(len_at + 1)?]) as usize;
+    let value = body.get(len_at + 2..len_at + 2 + len)?;
     let uid: String = value
         .iter()
         .take_while(|&&b| b != 0)
@@ -500,6 +565,70 @@ mod tests {
         bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
         bytes.extend_from_slice(&value);
         fs::write(path, bytes).unwrap();
+    }
+
+    /// A DICOM file with file meta information naming its storage class.
+    fn write_dicom_of_class(path: &Path, class: &str, series: &str) {
+        let element = |group: u16, element: u16, value: &str| {
+            let mut value = value.as_bytes().to_vec();
+            if value.len() % 2 == 1 {
+                value.push(0);
+            }
+            let mut bytes = group.to_le_bytes().to_vec();
+            bytes.extend_from_slice(&element.to_le_bytes());
+            bytes.extend_from_slice(b"UI");
+            bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
+            bytes.extend_from_slice(&value);
+            bytes
+        };
+        let mut bytes = vec![0u8; 128];
+        bytes.extend_from_slice(b"DICM");
+        bytes.extend(element(0x0002, 0x0002, class));
+        bytes.extend(element(0x0002, 0x0010, "1.2.840.10008.1.2.1"));
+        bytes.extend(element(0x0008, 0x0016, class));
+        bytes.extend(element(0x0020, 0x000E, series));
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn dicom_files_that_are_not_images_are_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dicom_of_class(&dir.path().join("slide.dcm"), DICOM_WSI_SOP_CLASS, "1.2.3");
+        write_dicom_of_class(
+            &dir.path().join("slide.annotations.dcm"),
+            "1.2.840.10008.5.1.4.1.1.91.1",
+            "1.2.9",
+        );
+        write_dicom_of_class(
+            &dir.path().join("report.dcm"),
+            "1.2.840.10008.5.1.4.1.1.88.33",
+            "1.2.10",
+        );
+        let header = DicomHeader::read(&dir.path().join("slide.dcm"), 1 << 16).unwrap();
+        assert_eq!(header.sop_class_uid.as_deref(), Some(DICOM_WSI_SOP_CLASS));
+        assert_eq!(header.series_uid.as_deref(), Some("1.2.3"));
+        assert!(header.non_slide_reason().is_none());
+        assert!(
+            non_slide_dicom_reason(&dir.path().join("slide.annotations.dcm"))
+                .unwrap()
+                .contains("Bulk Simple Annotations")
+        );
+
+        let d = discover_slides(&[dir.path().to_path_buf()]);
+        assert_eq!(d.slides.len(), 1, "{:?}", d.slides);
+        assert!(d.slides[0].path.ends_with("slide.dcm"));
+        let mut reasons: Vec<String> = d.skipped.iter().map(|s| s.reason.clone()).collect();
+        reasons.sort();
+        assert_eq!(
+            reasons,
+            [
+                "DICOM Microscopy Bulk Simple Annotations, not a whole-slide image",
+                "a DICOM structured report, not a whole-slide image",
+            ]
+        );
+        // A file given by name is used whatever it is.
+        let d = discover_slides(&[dir.path().join("report.dcm")]);
+        assert_eq!(d.slides.len(), 1);
     }
 
     #[test]

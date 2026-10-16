@@ -107,6 +107,11 @@ jobs:
       - name: Unit tests
         working-directory: scripts
         run: python -m unittest discover -p 'test_*.py' -v
+      # Offline; the live tests run in the Rust suite (scripting::tests),
+      # against a test eov.
+      - name: Scripting client tests
+        working-directory: clients/python
+        run: python -m unittest discover -p 'test_*.py' -v
 
   check:
     name: Clippy and tests (Linux)

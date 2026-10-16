@@ -72,6 +72,7 @@ export component Viewport inherits Rectangle {
     callback hud-zoom-input(string);
     callback hud-zoom-in();
     callback hud-orientation-changed(int);
+    callback hud-color-management-toggled();
     callback hud-zoom-out();
     callback hud-deconv-h-intensity-changed(float);
     callback hud-deconv-e-intensity-changed(float);
@@ -292,6 +293,11 @@ export component Viewport inherits Rectangle {
         flipped: root.viewport-info.flipped;
         orientation-changed(action) => {
             root.hud-orientation-changed(action);
+        }
+        color-management: root.hud.color-management;
+        color-management-tooltip: root.hud.color-management-tooltip;
+        color-management-toggled => {
+            root.hud-color-management-toggled();
         }
         fit-to-view => {
             root.fit-to-view();

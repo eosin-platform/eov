@@ -81,7 +81,17 @@ impl UiHost {
                 !state.slide_link.landmarks.is_empty(),
             )
         };
-        let (file_id, view, has_roi, has_measurements, turned, multichannel) = {
+        let normalizing = {
+            let state = self.state.read();
+            state
+                .active_file_id_for_pane(PaneId(pane))
+                .and_then(|id| state.get_file(id))
+                .and_then(|file| file.pane_state(PaneId(pane)))
+                .is_some_and(|ps| {
+                    ps.hud.stain_normalization != eov_common::StainNormalization::None
+                })
+        };
+        let (file_id, view, has_roi, has_measurements, turned, multichannel, color_managed) = {
             let state = self.state.read();
             let file = state
                 .active_file_id_for_pane(PaneId(pane))
@@ -95,6 +105,15 @@ impl UiHost {
                 file.and_then(|f| f.pane_state(PaneId(pane)))
                     .is_some_and(|ps| !ps.viewport.viewport.orientation.is_identity()),
                 file.is_some_and(|f| f.wsi.is_multichannel()),
+                // Whether the slide is colour-managed, for slides with a
+                // usable profile.
+                file.and_then(|f| {
+                    matches!(
+                        crate::color::slide_profile(f.id, &f.wsi),
+                        crate::color::SlideProfile::Ready(_)
+                    )
+                    .then_some(f.color_management)
+                }),
             )
         };
         let keys = crate::shortcuts::current();
@@ -135,6 +154,44 @@ impl UiHost {
             ));
             if turned {
                 items.push(item("host:view-reset-orientation", "Reset Rotation", ""));
+            }
+            mark_last_separator(&mut items);
+        }
+        if let Some(on) = color_managed {
+            items.push(item(
+                "host:color-management",
+                if on {
+                    "Show Colours as Scanned"
+                } else {
+                    "Convert Colours to sRGB"
+                },
+                "",
+            ));
+            mark_last_separator(&mut items);
+        }
+        // The stain normalisation target (AUDIT §14.5), where the pane
+        // normalises.
+        if normalizing && file_id.is_some() {
+            items.push(item(
+                "host:stain-target-slide",
+                "Use This Slide as Stain Target",
+                "",
+            ));
+            if has_roi {
+                items.push(item(
+                    "host:stain-target-region",
+                    "Use the Region as Stain Target",
+                    "",
+                ));
+            }
+            items.push(item("host:stain-target-load", "Load Stain Target…", ""));
+            if crate::stain_target::current().is_some() {
+                items.push(item("host:stain-target-save", "Save Stain Target…", ""));
+                items.push(item(
+                    "host:stain-target-reset",
+                    "Use the Reference Stain Target",
+                    "",
+                ));
             }
             mark_last_separator(&mut items);
         }
@@ -384,6 +441,15 @@ impl UiHost {
             }
             return true;
         }
+        if host_command == "color-management" {
+            let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
+            if let (Some(pane), Some(ui)) = (pane, self.ui()) {
+                self.state.write().set_focused_pane(PaneId(pane));
+                crate::callbacks::toggle_color_management(&ui, &self.state);
+                self.request_render();
+            }
+            return true;
+        }
         if let Some(action) = host_command.strip_prefix("view-") {
             let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
             if let Some(pane) = pane {
@@ -415,6 +481,13 @@ impl UiHost {
         }
         if host_command == "heatmap" {
             self.open_heatmap_panel_for(file_id as i32);
+            return true;
+        }
+        if host_command.starts_with("stain-target-") {
+            let pane = self.menu.borrow().as_ref().map(|menu| menu.pane);
+            if let Some(pane) = pane {
+                self.stain_target_command(host_command, file_id as i32, pane);
+            }
             return true;
         }
         match host_command {

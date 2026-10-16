@@ -67,6 +67,10 @@ pub struct ExportRequest {
     /// Output pixels per viewport pixel (`dpi / 96`).
     pub scale: f64,
     pub filtering: FilteringMode,
+    /// Show the slide's pixels as squares (nearest neighbour) where the
+    /// export magnifies it beyond full resolution, as the viewer's pixel
+    /// view does; below that `filtering` applies.
+    pub pixel_view: bool,
     /// Colour processing (normally resolved once per slide and shared with
     /// the viewer, see `processing::ColorSettings::pipeline`).
     pub processing: ProcessingPipeline,
@@ -85,6 +89,7 @@ impl ExportRequest {
             viewport,
             scale: dpi / 96.0,
             filtering: FilteringMode::Trilinear,
+            pixel_view: false,
             processing: ProcessingPipeline::identity(),
             background: [255, 255, 255],
             overlays: Vec::new(),
@@ -456,6 +461,7 @@ fn coarse_blend(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blit(
     buffer: &mut [u8],
     width: u32,
@@ -464,6 +470,7 @@ fn blit(
     rect: BlitRect,
     filtering: FilteringMode,
     coarse: Option<&CoarseBlend>,
+    nearest: bool,
 ) {
     let src = TileSrc {
         data: &tile.data,
@@ -471,6 +478,10 @@ fn blit(
         height: tile.height,
         border: tile.border,
     };
+    if nearest {
+        blitter::blit_tile_nearest(buffer, width, rows, src, rect);
+        return;
+    }
     match (filtering, coarse) {
         (FilteringMode::Lanczos3, _) => blitter::blit_tile_lanczos3(buffer, width, rows, src, rect),
         (FilteringMode::Trilinear, Some(c)) => {
@@ -500,6 +511,8 @@ struct Plan {
     downsample: f64,
     filtering: FilteringMode,
     trilinear: Option<TrilinearLevels>,
+    /// Nearest-neighbour sampling: the pixel view, above 1:1.
+    nearest: bool,
 }
 
 #[derive(Default)]
@@ -593,6 +606,7 @@ fn render_region(
                             rect,
                             FilteringMode::Bilinear,
                             None,
+                            plan.nearest,
                         );
                     }
                     stats.used_fallback = true;
@@ -628,6 +642,7 @@ fn render_region(
             rect,
             plan.filtering,
             coarse.as_ref(),
+            plan.nearest,
         );
         stats.drawn.insert(*coord);
     }
@@ -697,6 +712,7 @@ pub fn render_export_bands(
             && tri.level_fine != tri.level_coarse
             && tri.blend > 0.01)
             .then_some(tri),
+        nearest: request.pixel_view && evp.zoom > 1.0,
     };
     let across = if orientation.swaps_axes() {
         plan.bounds.height()
@@ -743,6 +759,7 @@ pub fn render_export_bands(
             blitter::orient_frame(&aligned, region.2, region.3, orientation, &mut buffer);
         }
         request.processing.apply_color(&mut buffer);
+        request.processing.apply_color_management(&mut buffer);
         composite_onto(&mut buffer, request.background);
 
         let out_rows = band_end - band_start;

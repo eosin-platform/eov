@@ -75,6 +75,8 @@ image = { version = "0.25", default-features = false, features = [
 sha2 = "0.10"
 # Authenticates the single-instance messages (the same hmac zip uses).
 hmac = "0.12"
+# Pixels in answers to scripts (the base64 already in the dependency tree).
+base64 = "0.22"
 
 # Error handling
 anyhow = "1"

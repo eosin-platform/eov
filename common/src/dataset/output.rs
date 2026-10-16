@@ -114,6 +114,7 @@ pub fn encode_tile(
                 },
                 dpi: None,
                 comment: None,
+                icc_profile: None,
             };
             let mut writer = crate::export::JpegWriter::new(Vec::new(), width, height, &options)?;
             writer.write_rows(&rgb, height)?;

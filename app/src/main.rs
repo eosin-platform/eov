@@ -43,11 +43,13 @@ mod recent;
 mod render;
 mod render_pool;
 mod save_copy;
+mod scripting;
 mod series_case;
 mod session;
 mod shortcuts;
 mod slide_info;
 mod slide_link;
+mod stain_target;
 mod state;
 #[cfg(test)]
 mod test_support;
@@ -96,7 +98,20 @@ macro_rules! dbg_print {
 
 slint::include_modules!();
 
-/// Frame rate for viewport updates
+/// Frame rate for viewport updates.
+///
+/// Frame pacing: the render loop is a repeating 16 ms Slint timer, not
+/// vsync-aligned. Slint 1.17 has no frame callback for applications (its
+/// rendering notifier runs inside the window's rendering, too late to
+/// change that frame's properties), and winit 0.30 has none on X11 or
+/// Windows. Slint presents the window with `AutoVsync`, so frames are never
+/// torn, but a display above 60 Hz shows eov's updates at 60 fps. A window
+/// the compositor does not present (covered, on another workspace) can
+/// block the UI thread in the present: frames about a second apart were
+/// seen under GNOME's Xwayland, which delays plugin commands too (a shown
+/// window applies a plugin's `set_view` within a frame, ~17 ms). The loop
+/// stops altogether while nothing changes and while the window is
+/// minimised (see `render::update_and_render`).
 const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
@@ -118,6 +133,17 @@ fn request_render_loop(
     tile_cache: &Arc<TileCache>,
 ) {
     let should_start = {
+        // Taking the write lock while this thread already holds the state
+        // lock hangs the window (SH-1, PLG-2). Debug builds give up after a
+        // few seconds and say why instead (AUDIT §15.2).
+        #[cfg(debug_assertions)]
+        let mut state = state
+            .try_write_for(std::time::Duration::from_secs(5))
+            .expect(
+                "the app state stayed locked for 5 s: is it already locked further up this \
+                 thread's stack?",
+            );
+        #[cfg(not(debug_assertions))]
         let mut state = state.write();
         state.request_render();
         if state.render_loop_running {
@@ -182,19 +208,33 @@ fn main() -> Result<()> {
 
     // One eov per user and setup (SH-8): hand the request to the running
     // eov, before this one loads plugins, opens a window or a log file.
+    // An eov that does not hand over still takes the endpoint for scripts
+    // when no other eov holds it.
     let mut instance_server = None;
-    if launch_options.may_forward() && config::load_single_instance() {
+    let forwards = launch_options.may_forward() && config::load_single_instance();
+    let scripting_enabled = config::load_scripting();
+    if forwards || scripting_enabled {
         let endpoint = instance::Endpoint::for_setup(
             &config::resolve_config_path()?,
             &launch_options.plugin_dir,
         );
-        match instance::claim(&endpoint, &open_request, instance::Timing::default()) {
-            instance::Claim::Forwarded => {
-                info!("Handed the files to the running eov");
-                return Ok(());
+        if forwards {
+            match instance::claim(&endpoint, &open_request, instance::Timing::default()) {
+                instance::Claim::Forwarded => {
+                    info!("Handed the files to the running eov");
+                    return Ok(());
+                }
+                instance::Claim::Primary(server) => instance_server = Some(server),
+                instance::Claim::Standalone(reason) => warn!("{reason}"),
             }
-            instance::Claim::Primary(server) => instance_server = Some(server),
-            instance::Claim::Standalone(reason) => warn!("{reason}"),
+        } else {
+            match instance::Server::bind(&endpoint) {
+                Ok(server) => instance_server = server,
+                Err(error) => warn!("Scripts cannot reach this eov: {error}"),
+            }
+            if instance_server.is_none() {
+                info!("Another eov serves scripts for this setup");
+            }
         }
     }
     logging::start_session_log();
@@ -230,6 +270,7 @@ fn main() -> Result<()> {
 
     let mut initial_state = AppState::new();
     initial_state.viewport_lock_enabled = launch_options.viewport_lock_enabled;
+    initial_state.pixel_view = config::load_pixel_view();
     let state = Arc::new(RwLock::new(initial_state));
     let tile_cache = Arc::new(TileCache::with_budget(cache_budget::init(
         launch_options.cache_size_bytes,
@@ -369,14 +410,24 @@ fn main() -> Result<()> {
     host.ready();
     launch::report_problems(&problems);
 
-    // Files handed over by eovs started from now on open here (the
-    // listener only queues them; the event loop opens them).
+    // Files handed over by eovs started from now on open here, and scripts'
+    // calls are answered (the listener only queues them; the event loop
+    // handles them).
     if let Some(server) = instance_server.as_mut() {
-        server.serve(instance::Timing::default(), |request, answer| {
-            let _ = slint::invoke_from_event_loop(move || {
-                let _ = answer.send(launch::open_handed_over(request));
-            });
-        });
+        server.serve(
+            instance::Timing::default(),
+            instance::Handlers {
+                open: Arc::new(|request, answer| {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        let _ = answer.send(launch::open_handed_over(request));
+                    });
+                }),
+                script: Some(scripting::handler(
+                    scripting_enabled,
+                    Arc::clone(&host.shared),
+                )),
+            },
+        );
     }
     // Slides opened from the Finder and eov:// links arrive as Apple
     // events, also while the event loop starts (SH-8).

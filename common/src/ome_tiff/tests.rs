@@ -1100,3 +1100,96 @@ fn channel_names_fall_back_and_white_colours_are_replaced() {
     assert_eq!(colors, [BLUE, GREEN, RED]);
     assert_eq!(wsi.channels().unwrap().channels[2].emission_nm, Some(670.0));
 }
+
+#[test]
+fn focal_planes_of_a_z_stack_can_be_shown_one_by_one() {
+    let dir = tempfile::tempdir().unwrap();
+    // The writer stores its three "channels" as IFDs 0, 1 and 2 (each with
+    // SubIFD levels); the XML calls them focal planes 0–2 of one channel.
+    let mut spec = three_channels();
+    spec.xml = Some(
+        "<OME><Image ID=\"Image:0\"><Pixels ID=\"Pixels:0\" DimensionOrder=\"XYCZT\" \
+         Type=\"uint16\" SizeX=\"300\" SizeY=\"200\" SizeC=\"1\" SizeZ=\"3\" SizeT=\"1\">\
+         <Channel ID=\"Channel:0:0\" Name=\"DAPI\" SamplesPerPixel=\"1\"/>\
+         <TiffData IFD=\"0\" PlaneCount=\"3\"/></Pixels></Image></OME>"
+            .into(),
+    );
+    let path = dir.path().join("stack.ome.tif");
+    // Plane z is a constant 100 × (z + 1).
+    write_ome_tiff(&path, &spec, |plane, _, _| 100.0 * (plane as f64 + 1.0)).unwrap();
+    let wsi = WsiFile::open(&path).unwrap();
+    assert_eq!(wsi.focal_planes(), 3);
+    assert_eq!(wsi.channels().unwrap().len(), 1);
+    // A fixed window, so the composite shows the value.
+    wsi.set_channel_display(display(&[[255, 255, 255]], 0.0, 300.0, 1.0))
+        .unwrap();
+    let grey = |level: u32| {
+        let pixels = wsi.read_region(40, 40, level, 4, 4).unwrap();
+        pixels[0]
+    };
+    let first = grey(0);
+    wsi.set_focal_plane(2).unwrap();
+    assert_eq!(wsi.focal_plane(), 2);
+    let last = grey(0);
+    assert!(last > first, "plane 2 is brighter: {first} then {last}");
+    assert_eq!(grey(1), last, "lower levels come from the same plane");
+    wsi.set_focal_plane(1).unwrap();
+    let middle = grey(0);
+    assert!(first < middle && middle < last, "{first} {middle} {last}");
+    assert!(wsi.set_focal_plane(3).is_err());
+    assert_eq!(wsi.focal_plane(), 1, "a refused plane changes nothing");
+
+    // Slides without a stack have one plane.
+    let flat = write(dir.path(), "flat.ome.tif", &three_channels());
+    let flat = WsiFile::open(&flat).unwrap();
+    assert_eq!(flat.focal_planes(), 1);
+    assert!(flat.set_focal_plane(0).is_ok() && flat.set_focal_plane(1).is_err());
+}
+
+#[test]
+fn time_points_of_a_time_series_can_be_shown_one_by_one() {
+    let dir = tempfile::tempdir().unwrap();
+    // Six IFDs: two focal planes at each of three time points (XYCZT: the
+    // plane index is z + 2t).
+    let six = |plane_count: u32| {
+        let mut spec = OmeTiffSpec::channels(300, 200, 64, 2, &[("DAPI", BLUE); 6]);
+        spec.xml = Some(format!(
+            "<OME><Image ID=\"Image:0\"><Pixels ID=\"Pixels:0\" DimensionOrder=\"XYCZT\" \
+             Type=\"uint16\" SizeX=\"300\" SizeY=\"200\" SizeC=\"1\" SizeZ=\"2\" SizeT=\"3\">\
+             <Channel ID=\"Channel:0:0\" Name=\"DAPI\" SamplesPerPixel=\"1\"/>\
+             <TiffData IFD=\"0\" PlaneCount=\"{plane_count}\"/></Pixels></Image></OME>"
+        ));
+        spec
+    };
+    let path = dir.path().join("series.ome.tif");
+    // Plane p is a constant 100 × (p + 1).
+    write_ome_tiff(&path, &six(6), |plane, _, _| 100.0 * (plane as f64 + 1.0)).unwrap();
+    let wsi = WsiFile::open(&path).unwrap();
+    assert_eq!((wsi.focal_planes(), wsi.time_points()), (2, 3));
+    wsi.set_channel_display(display(&[[255, 255, 255]], 0.0, 700.0, 1.0))
+        .unwrap();
+    let value = |level: u32| {
+        let pixels = wsi.read_region(40, 40, level, 4, 4).unwrap();
+        (f64::from(pixels[0]) / 255.0 * 700.0 / 100.0).round() as u32
+    };
+    // (z, t) shows plane z + 2t, whose value is 100 × (z + 2t + 1).
+    for (z, t) in [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)] {
+        wsi.set_focal_plane(z).unwrap();
+        wsi.set_time_point(t).unwrap();
+        assert_eq!(value(0), z + 2 * t + 1, "plane {z} at time {t}");
+        assert_eq!(value(1), z + 2 * t + 1, "lower levels follow");
+    }
+    assert!(wsi.set_time_point(3).is_err());
+    assert_eq!(wsi.time_point(), 2, "a refused time point changes nothing");
+
+    // A time point with a missing plane is left out with the ones after it.
+    let cut = dir.path().join("cut.ome.tif");
+    write_ome_tiff(&cut, &six(5), |plane, _, _| 100.0 * (plane as f64 + 1.0)).unwrap();
+    let cut = WsiFile::open(&cut).unwrap();
+    assert_eq!((cut.focal_planes(), cut.time_points()), (2, 2));
+
+    // Slides that are not time series have one time point.
+    let flat = WsiFile::open(write(dir.path(), "flat.ome.tif", &three_channels())).unwrap();
+    assert_eq!(flat.time_points(), 1);
+    assert!(flat.set_time_point(0).is_ok() && flat.set_time_point(1).is_err());
+}

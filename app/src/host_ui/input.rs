@@ -340,6 +340,18 @@ impl UiHost {
                 crate::slide_info::open_for_pane(&ui, &self.state, pane);
             }
             Action::Channels => crate::channels::open_for_focused_pane(self),
+            Action::NextFocalPlane => self.step_plane(PlaneAxis::Focus, 1),
+            Action::NextTimePoint => self.step_plane(PlaneAxis::Time, 1),
+            Action::PreviousTimePoint => self.step_plane(PlaneAxis::Time, -1),
+            Action::ColorManagement => {
+                crate::callbacks::toggle_color_management(&ui, &self.state);
+                self.request_render();
+            }
+            Action::PixelView => {
+                crate::callbacks::toggle_pixel_view(&ui, &self.state);
+                self.request_render();
+            }
+            Action::PreviousFocalPlane => self.step_plane(PlaneAxis::Focus, -1),
             Action::CopyView | Action::ExportView => {
                 let pane = self.state.read().active_viewport_pane();
                 if action == Action::CopyView {
@@ -489,6 +501,55 @@ impl UiHost {
     /// Frames the focused slide's tissue, found in its minimap thumbnail,
     /// leaving out the empty glass around it (AUDIT §14.1, §14.5). Slides
     /// with no visible tissue are fitted whole.
+    /// Ctrl+↑ / Ctrl+↓: shows the next or previous focal plane of the
+    /// focused slide's Z-stack.
+    /// Shows the focused slide's next (`delta` 1) or previous (-1) focal
+    /// plane or time point.
+    fn step_plane(&self, axis: PlaneAxis, delta: i64) {
+        let found = {
+            let state = self.state.read();
+            let pane = state.active_viewport_pane();
+            state
+                .active_file_id_for_pane(pane)
+                .and_then(|id| state.get_file(id).map(|file| (id, file.wsi.clone())))
+        };
+        let Some((file_id, wsi)) = found else {
+            return;
+        };
+        let (count, current, what) = match axis {
+            PlaneAxis::Focus => (wsi.focal_planes(), wsi.focal_plane(), "focal plane"),
+            PlaneAxis::Time => (wsi.time_points(), wsi.time_point(), "time point"),
+        };
+        if count <= 1 {
+            self.status(&format!("This slide has one {what}"));
+            return;
+        }
+        let next = (i64::from(current) + delta).clamp(0, i64::from(count) - 1) as u32;
+        if next != current {
+            let changed = match axis {
+                PlaneAxis::Focus => wsi.set_focal_plane(next),
+                PlaneAxis::Time => wsi.set_time_point(next),
+            };
+            if let Err(error) = changed {
+                self.status(&format!("Could not change the {what}: {error}"));
+                return;
+            }
+            crate::channels::rebuild_slide(self, file_id, &wsi);
+            if let Some(ui) = self.ui() {
+                crate::channels::refresh_summary(&ui);
+            }
+        }
+        let mut text = format!("{} {} of {count}", capitalised(what), next + 1);
+        if axis == PlaneAxis::Time && wsi.focal_planes() > 1 {
+            text.push_str(&format!(
+                ", focal plane {} of {}",
+                wsi.focal_plane() + 1,
+                wsi.focal_planes()
+            ));
+        }
+        self.status(&text);
+    }
+
     fn fit_tissue(&self) {
         let framed = {
             let mut state = self.state.write();
@@ -794,4 +855,19 @@ mod tests {
             assert!(m.control && !m.meta);
         }
     }
+}
+
+/// What [`UiHost::step_plane`] steps through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlaneAxis {
+    Focus,
+    Time,
+}
+
+fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }

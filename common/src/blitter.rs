@@ -12,7 +12,10 @@
 //! source pixel indices), where `origin` is the tile's exact screen-space
 //! left edge and `scale` the number of source pixels per screen pixel.
 //! Fixed-point arithmetic rounds instead of truncating, so CPU output
-//! matches the GPU's within one grey level.
+//! matches the GPU's within one grey level. Nearest-neighbour sampling
+//! ([`blit_tile_nearest`], the pixel view above 1:1) takes the source pixel
+//! whose area holds that position, index `floor(position + 0.5)`, as a GPU
+//! sampler with nearest filtering does.
 //!
 //! Tile borders (see [`TileData::border`](crate::TileData::border)) are
 //! used for every tap that falls outside the tile's inner area; taps beyond
@@ -372,6 +375,79 @@ pub fn blit_tile(
                     );
                 }
             }
+        }
+    }
+}
+
+/// Nearest-neighbour tile blitter: every destination pixel takes the
+/// source pixel its centre falls in (pixel-centre convention), so a
+/// magnified slide shows its pixels as sharp squares. Positions beyond the
+/// inner area read the border, like the other samplers.
+pub fn blit_tile_nearest(
+    dest: &mut [u8],
+    dest_width: u32,
+    dest_height: u32,
+    tile: TileSrc,
+    rect: BlitRect,
+) {
+    let src = tile.data;
+    let (src_width, src_height, border) = (tile.width, tile.height, tile.border);
+    let Some(bounds) = clip(&rect, dest_width, dest_height) else {
+        return;
+    };
+    let (start_x, start_y, end_x, end_y) = bounds;
+    if !tile_data_fits(src, src_width, src_height, border) || !dest_fits(dest, dest_width, end_y) {
+        return;
+    }
+    if is_identity(&rect, src_width, src_height) {
+        copy_identity(dest, dest_width, src, src_width, border, &rect, bounds);
+        return;
+    }
+    let data_width = src_width + 2 * border;
+    let data_height = src_height + 2 * border;
+    let dest_stride = (dest_width * 4) as usize;
+    let src_stride = (data_width * 4) as usize;
+    let nearest = |axis: AxisMapping, src_range: u32, max_index: u32| -> Vec<usize> {
+        (axis.start..axis.end)
+            .map(|d| {
+                let pos = axis.src_index(d, 0.0, f64::from(src_range)) + f64::from(border);
+                let index = (pos + 0.5).floor();
+                let index = if index.is_finite() { index as i64 } else { 0 };
+                index.clamp(0, i64::from(max_index)) as usize
+            })
+            .collect()
+    };
+    let columns = nearest(
+        AxisMapping {
+            start: start_x,
+            end: end_x,
+            dest_origin: rect.x,
+            exact_origin: rect.exact_x,
+            exact_size: rect.exact_width,
+            scaled_size: rect.width,
+        },
+        src_width,
+        data_width - 1,
+    );
+    let rows = nearest(
+        AxisMapping {
+            start: start_y,
+            end: end_y,
+            dest_origin: rect.y,
+            exact_origin: rect.exact_y,
+            exact_size: rect.exact_height,
+            scaled_size: rect.height,
+        },
+        src_height,
+        data_height - 1,
+    );
+    for (row_index, &src_row) in rows.iter().enumerate() {
+        let dest_row = (start_y as usize + row_index) * dest_stride + start_x as usize * 4;
+        let src_row = src_row * src_stride;
+        for (col_index, &src_col) in columns.iter().enumerate() {
+            let s = src_row + src_col * 4;
+            let d = dest_row + col_index * 4;
+            dest[d..d + 4].copy_from_slice(&src[s..s + 4]);
         }
     }
 }
@@ -1185,6 +1261,51 @@ mod tests {
                 .iter()
                 .all(|p| p[0] == 151 && p[3] == 255)
         );
+    }
+
+    /// The pixel view: magnified, every output pixel is the source pixel
+    /// its centre falls in (sharp squares, no blending), seamless at tile
+    /// edges through the border.
+    #[test]
+    fn nearest_blits_show_the_source_pixels() {
+        let src = tile(4, 3, 1, |x, y| (x * 60 + y * 7) as u8);
+        let (w, h) = (4.0 * 2.5, 3.0 * 2.5);
+        let mut dest = vec![0u8; 16 * 16 * 4];
+        let r = rect(1.3, 2.2, w, h);
+        blit_tile_nearest(
+            &mut dest,
+            16,
+            16,
+            TileSrc {
+                data: &src,
+                width: 4,
+                height: 3,
+                border: 1,
+            },
+            r,
+        );
+        for y in r.y.max(0)..(r.y + r.height).min(16) {
+            for x in r.x.max(0)..(r.x + r.width).min(16) {
+                // Continuous source position of the pixel's centre.
+                let sx = (f64::from(x) + 0.5 - 1.3) / 2.5;
+                let sy = (f64::from(y) + 0.5 - 2.2) / 2.5;
+                let (ix, iy) = (
+                    sx.floor().clamp(0.0, 3.0) as u32,
+                    sy.floor().clamp(0.0, 2.0) as u32,
+                );
+                let expected = (ix * 60 + iy * 7) as u8;
+                assert_eq!(dest[((y * 16 + x) * 4) as usize], expected, "at {x},{y}");
+            }
+        }
+        // Only source values appear: nothing is blended.
+        let values: std::collections::HashSet<u8> = (0..4)
+            .flat_map(|x| (0..3).map(move |y| (x * 60 + y * 7) as u8))
+            .collect();
+        for y in r.y.max(0)..(r.y + r.height).min(16) {
+            for x in r.x.max(0)..(r.x + r.width).min(16) {
+                assert!(values.contains(&dest[((y * 16 + x) * 4) as usize]));
+            }
+        }
     }
 
     #[test]

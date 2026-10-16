@@ -252,7 +252,7 @@ fn repair_tail(path: &Path, csv: bool) -> std::io::Result<u64> {
 
 /// Streams the records of a JSON Lines file; lines that do not parse are
 /// skipped with a warning. A missing file has no records.
-fn for_each_jsonl<T: DeserializeOwned>(
+pub(crate) fn for_each_jsonl<T: DeserializeOwned>(
     path: &Path,
     mut f: impl FnMut(T) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
@@ -280,7 +280,7 @@ fn for_each_jsonl<T: DeserializeOwned>(
 
 /// Streams the records of a CSV file with a header; rows that do not parse
 /// are skipped with a warning. A missing file has no records.
-fn for_each_csv<T: DeserializeOwned>(
+pub(crate) fn for_each_csv<T: DeserializeOwned>(
     path: &Path,
     mut f: impl FnMut(T) -> std::io::Result<()>,
 ) -> std::io::Result<()> {

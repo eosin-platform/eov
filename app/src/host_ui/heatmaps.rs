@@ -29,6 +29,10 @@ const HEATMAP_Z: i32 = -60;
 
 const LAYER_PREFIX: &str = "host-heatmap-";
 
+/// The placement of a newly chosen map: [`Placement::FromFile`] when the
+/// file records one, else over the whole slide.
+const AUTO_PLACEMENT: &str = "auto";
+
 fn layer_id(file_id: i32) -> String {
     format!("{LAYER_PREFIX}{file_id}")
 }
@@ -139,6 +143,7 @@ fn rounded(value: f32) -> f64 {
 fn placement_from(id: &str, scale: Option<f64>) -> Placement {
     match (id, scale) {
         ("fit-bounds", _) => Placement::FitBounds,
+        ("from-file", _) => Placement::FromFile,
         ("downsample", Some(value)) => Placement::Downsample(value),
         ("micrometres", Some(value)) => Placement::Micrometres(value),
         _ => Placement::FitSlide,
@@ -198,7 +203,8 @@ impl UiHost {
             path: path.clone(),
             ..previous.unwrap_or_else(|| Saved {
                 path: path.clone(),
-                placement: "fit-slide".to_string(),
+                // Where the file says it lies, else over the slide.
+                placement: AUTO_PLACEMENT.to_string(),
                 scale: None,
                 color_map: ColorMap::default().id().to_string(),
                 threshold: 0.0,
@@ -278,7 +284,15 @@ impl UiHost {
                 return;
             }
         };
-        let placement = placement_from(&settings.placement, settings.scale);
+        let placement = if settings.placement == AUTO_PLACEMENT {
+            if map.geometry.is_some() {
+                Placement::FromFile
+            } else {
+                Placement::FitSlide
+            }
+        } else {
+            placement_from(&settings.placement, settings.scale)
+        };
         let shown = Shown {
             path: settings.path.clone(),
             map: Arc::new(map),
@@ -328,6 +342,7 @@ impl UiHost {
             (props.width, props.height),
             bounds,
             mpp,
+            map.geometry,
         )
     }
 
@@ -664,7 +679,11 @@ fn fill_panel(ui: &AppWindow, slide_name: &str, has_bounds: bool, shown: &Shown)
         )
         .into(),
     );
-    let mut placements = vec![("fit-slide", "Fit the slide")];
+    let mut placements = Vec::new();
+    if shown.map.geometry.is_some() {
+        placements.push(("from-file", "As the file says"));
+    }
+    placements.push(("fit-slide", "Fit the slide"));
     if has_bounds {
         placements.push(("fit-bounds", "Fit the scanned region"));
     }
@@ -750,6 +769,7 @@ mod tests {
                 height: 3,
                 values: HeatValues::Scalar((0..12).map(|i| i as f32 / 11.0).collect()),
                 scaling: "8-bit values".to_string(),
+                geometry: None,
             };
             let settings = Saved {
                 path: PathBuf::from("/maps/attention.png"),

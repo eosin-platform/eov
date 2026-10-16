@@ -388,7 +388,7 @@ export component SeriesBar inherits Rectangle {
                 background: sort-touch.has-hover ? Theme.surface-hover : transparent;
                 accessible-role: button;
                 accessible-label: @tr("Order: {}", root.sort-label);
-                accessible-description: @tr("Order: by name, newest first or by stain");
+                accessible-description: @tr("Order: by name, newest first, by stain or by case");
                 accessible-action-default => {
                     root.sort-cycled();
                 }
@@ -408,9 +408,9 @@ export component SeriesBar inherits Rectangle {
                     }
                     changed has-hover => {
                         if self.has-hover {
-                            root.show-tooltip(@tr("Order: by name, newest first or by stain"), sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
+                            root.show-tooltip(@tr("Order: by name, newest first, by stain or by case"), sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
                         } else {
-                            root.clear-tooltip(@tr("Order: by name, newest first or by stain"));
+                            root.clear-tooltip(@tr("Order: by name, newest first, by stain or by case"));
                         }
                     }
                 }
