@@ -1,8 +1,9 @@
 //! An append-only record of what eov ran with (AUDIT §14.6), for research
 //! reproducibility: each session's eov version and plugins (id, version,
 //! package SHA-256, origin, state), and every plugin install, update,
-//! removal, enabling or disabling and every application update or
-//! rollback, from the window or the command line.
+//! removal, enabling or disabling, every application update or rollback,
+//! and every model downloaded, imported or removed (`model_fetched`,
+//! `model_imported`, `model_removed`), from the window or the command line.
 //!
 //! It is `<data>/audit.jsonl`: one JSON object per line with `time` (UTC,
 //! RFC 3339), `unix` (seconds) and `event`. It names no slide paths. When it
@@ -58,11 +59,20 @@ pub(crate) fn record(event: &str, fields: Value) {
     }
 }
 
-fn record_in(path: &Path, event: &str, fields: Value) -> std::io::Result<()> {
-    let unix = std::time::SystemTime::now()
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// The current time as the audit log writes it (`2026-10-15T17:50:08Z`).
+pub(crate) fn now_rfc3339() -> String {
+    rfc3339(unix_now())
+}
+
+fn record_in(path: &Path, event: &str, fields: Value) -> std::io::Result<()> {
+    let unix = unix_now();
     let mut line = Map::new();
     line.insert("time".into(), json!(rfc3339(unix)));
     line.insert("unix".into(), json!(unix));

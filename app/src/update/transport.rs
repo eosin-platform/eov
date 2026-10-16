@@ -11,6 +11,8 @@
 //! - **Proxies** are taken from `HTTPS_PROXY`/`https_proxy` or
 //!   `ALL_PROXY`/`all_proxy` (`http://[user:password@]host:port`), and
 //!   `NO_PROXY`/`no_proxy` (comma-separated host suffixes, or `*`) is honoured.
+//!   This computer (`localhost`, loopback addresses) is always reached
+//!   directly.
 //! - **Certificates**: the operating system's certificate store is trusted in
 //!   addition to the bundled Mozilla roots, so TLS-intercepting firewalls whose
 //!   root is deployed to the OS work. `SSL_CERT_FILE` / `SSL_CERT_DIR` replace
@@ -26,6 +28,9 @@ pub struct HttpResponse {
     pub status: u16,
     pub location: Option<String>,
     pub content_length: Option<u64>,
+    /// `Content-Range` of a `206 Partial Content` answer to a `Range`
+    /// request (resumed model downloads).
+    pub content_range: Option<String>,
     pub body: Box<dyn Read + Send>,
 }
 
@@ -35,6 +40,7 @@ impl std::fmt::Debug for HttpResponse {
             .field("status", &self.status)
             .field("location", &self.location)
             .field("content_length", &self.content_length)
+            .field("content_range", &self.content_range)
             .finish_non_exhaustive()
     }
 }
@@ -120,6 +126,7 @@ impl Transport for UreqTransport {
             content_length: response
                 .header("Content-Length")
                 .and_then(|value| value.trim().parse().ok()),
+            content_range: response.header("Content-Range").map(str::to_string),
             body: Box::new(response.into_reader()),
         })
     }
@@ -222,7 +229,8 @@ impl NoProxy {
     }
 
     fn matches(&self, host: &str) -> bool {
-        if self.all {
+        // This computer is never reached through a proxy.
+        if self.all || is_loopback_host(host) {
             return true;
         }
         let host = host.to_ascii_lowercase();
@@ -230,6 +238,17 @@ impl NoProxy {
             .iter()
             .any(|suffix| host == *suffix || host.ends_with(&format!(".{suffix}")))
     }
+}
+
+/// Whether `host` (as `Url::host_str` gives it) names this computer:
+/// `localhost` or a loopback address.
+pub fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host.to_ascii_lowercase().ends_with(".localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// A request seen by [`MockTransport`]: the URL and the extra headers.
@@ -314,12 +333,14 @@ impl Transport for MockTransport {
                 status,
                 location: None,
                 content_length: Some(body.len() as u64),
+                content_range: None,
                 body: Box::new(std::io::Cursor::new(body)),
             }),
             Some(MockRoute::Redirect { status, location }) => Ok(HttpResponse {
                 status,
                 location: Some(location),
                 content_length: Some(0),
+                content_range: None,
                 body: Box::new(std::io::empty()),
             }),
             Some(MockRoute::Failure(message)) => Err(message),
@@ -327,6 +348,7 @@ impl Transport for MockTransport {
                 status: 404,
                 location: None,
                 content_length: Some(0),
+                content_range: None,
                 body: Box::new(std::io::empty()),
             }),
         }
@@ -365,6 +387,12 @@ mod tests {
         assert!(!no_proxy.matches("githubusercontent.com"));
         assert!(!no_proxy.matches("notgithub.com"));
         assert!(NoProxy::parse("*").matches("anything"));
+        // This computer never goes through the proxy.
+        let none = NoProxy::parse("");
+        for host in ["localhost", "127.0.0.1", "[::1]", "127.1.2.3"] {
+            assert!(none.matches(host), "{host}");
+        }
+        assert!(!none.matches("10.0.0.1"));
     }
 
     #[test]

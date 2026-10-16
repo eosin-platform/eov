@@ -25,6 +25,17 @@
 //! plugin_dirs = ["/opt/eov/plugins"]
 //! # Shown whenever the policy blocks an action.
 //! message = "Contact the service desk (x1234) to request changes."
+//! # Models for AI plugins (`eov model fetch`, a plugin's "Download model"):
+//! # unset follows allow_network; false allows only `eov model import`.
+//! allow_model_downloads = true
+//! # Only from these servers (required when allow_network = false).
+//! model_url_prefixes = ["https://models.example.org/"]
+//! # Read-only model stores provisioned for every user.
+//! model_dirs = ["/opt/eov/models"]
+//! # The site's copies of model files, by SHA-256: used instead of the URL
+//! # a plugin or the command line gives.
+//! [model_urls]
+//! "70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92" = "https://models.example.org/histovae/HistoVae_reconstruct.onnx"
 //! ```
 //!
 //! A file that exists but cannot be read or parsed is treated as the most
@@ -35,6 +46,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use url::Url;
 
 /// The effective deployment policy.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +57,14 @@ pub struct Policy {
     pub require_signatures: bool,
     pub plugin_dirs: Vec<PathBuf>,
     pub message: Option<String>,
+    /// Model downloads; `None` follows `allow_network`.
+    pub allow_model_downloads: Option<bool>,
+    /// URL prefixes models may be downloaded from (empty: any).
+    pub model_url_prefixes: Vec<String>,
+    /// The site's copies of model files: lower-case SHA-256 → URL.
+    pub model_urls: BTreeMap<String, String>,
+    /// Read-only model stores provisioned for every user.
+    pub model_dirs: Vec<PathBuf>,
     /// The file the policy came from, if any.
     pub source: Option<PathBuf>,
     /// Keys the file contained that this eov does not understand.
@@ -62,6 +82,10 @@ impl Default for Policy {
             require_signatures: false,
             plugin_dirs: Vec::new(),
             message: None,
+            allow_model_downloads: None,
+            model_url_prefixes: Vec::new(),
+            model_urls: BTreeMap::new(),
+            model_dirs: Vec::new(),
             source: None,
             unknown_keys: Vec::new(),
             error: None,
@@ -83,6 +107,14 @@ struct RawPolicy {
     plugin_dirs: Option<Vec<PathBuf>>,
     #[serde(default)]
     message: Option<String>,
+    #[serde(default)]
+    allow_model_downloads: Option<bool>,
+    #[serde(default)]
+    model_url_prefixes: Option<Vec<String>>,
+    #[serde(default)]
+    model_urls: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    model_dirs: Option<Vec<PathBuf>>,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -97,6 +129,10 @@ impl Policy {
             require_signatures: true,
             plugin_dirs: Vec::new(),
             message: None,
+            allow_model_downloads: Some(false),
+            model_url_prefixes: Vec::new(),
+            model_urls: BTreeMap::new(),
+            model_dirs: Vec::new(),
             source: Some(source.to_path_buf()),
             unknown_keys: Vec::new(),
             error: Some(error),
@@ -107,6 +143,16 @@ impl Policy {
     pub fn parse(text: &str, source: &Path) -> Result<Self> {
         let raw: RawPolicy = toml::from_str(text)?;
         let defaults = Self::default();
+        let mut unknown_keys: Vec<String> = raw.unknown.into_keys().collect();
+        // An entry that is not a SHA-256 can never match; say so.
+        let mut model_urls = BTreeMap::new();
+        for (sha256, url) in raw.model_urls.unwrap_or_default() {
+            if eov_plugin_api::protocol::is_sha256_hex(&sha256) {
+                model_urls.insert(sha256.to_ascii_lowercase(), url.trim().to_string());
+            } else {
+                unknown_keys.push(format!("model_urls.{sha256}"));
+            }
+        }
         Ok(Self {
             disable_self_update: raw
                 .disable_self_update
@@ -120,8 +166,19 @@ impl Policy {
                 .unwrap_or(defaults.require_signatures),
             plugin_dirs: raw.plugin_dirs.unwrap_or_default(),
             message: raw.message.filter(|message| !message.trim().is_empty()),
+            allow_model_downloads: raw.allow_model_downloads,
+            // Kept as written: one that does not parse matches nothing, so
+            // a typo narrows the list instead of opening it.
+            model_url_prefixes: raw
+                .model_url_prefixes
+                .unwrap_or_default()
+                .into_iter()
+                .map(|prefix| prefix.trim().to_string())
+                .collect(),
+            model_urls,
+            model_dirs: raw.model_dirs.unwrap_or_default(),
             source: Some(source.to_path_buf()),
-            unknown_keys: raw.unknown.into_keys().collect(),
+            unknown_keys,
             error: None,
         })
     }
@@ -203,6 +260,67 @@ impl Policy {
         Ok(())
     }
 
+    /// Refuses a model download from `url` when the policy does not allow
+    /// it (callers check every redirect too).
+    pub fn ensure_model_download_allowed(&self, url: &Url) -> Result<()> {
+        self.ensure_valid()?;
+        const IMPORT: &str = "Copy the model to this computer and add it with `eov model import <FILE> --sha256 <SHA-256>`.";
+        match self.allow_model_downloads {
+            Some(false) => bail!(
+                "Model downloads are disabled by {}. {IMPORT}{}",
+                self.describe_source(),
+                self.contact()
+            ),
+            None if !self.allow_network => bail!(
+                "Network access is disabled by {}, so models cannot be downloaded. {IMPORT}{}",
+                self.describe_source(),
+                self.contact()
+            ),
+            _ => {}
+        }
+        if !self.allow_network && self.model_url_prefixes.is_empty() {
+            bail!(
+                "{} disables network access and names no model servers (model_url_prefixes), so models cannot be downloaded. {IMPORT}{}",
+                self.describe_source(),
+                self.contact()
+            );
+        }
+        if !self.model_url_prefixes.is_empty()
+            && !self
+                .model_url_prefixes
+                .iter()
+                .any(|prefix| url_has_prefix(url, prefix))
+        {
+            bail!(
+                "{} is not on a model server that {} allows ({}).{}",
+                redacted_url(url),
+                self.describe_source(),
+                self.model_url_prefixes.join(", "),
+                self.contact()
+            );
+        }
+        Ok(())
+    }
+
+    /// Whether one of the policy's model URL prefixes names this
+    /// `http://` URL (plain HTTP is otherwise refused for models, except
+    /// on this computer).
+    pub fn allows_plain_http(&self, url: &Url) -> bool {
+        url.scheme() == "http"
+            && self
+                .model_url_prefixes
+                .iter()
+                .any(|prefix| url_has_prefix(url, prefix))
+    }
+
+    /// The administrator's copy of the model file with this SHA-256.
+    pub fn model_url(&self, sha256: &str) -> Option<&str> {
+        self.model_urls
+            .get(&sha256.to_ascii_lowercase())
+            .map(String::as_str)
+            .filter(|url| !url.is_empty())
+    }
+
     fn describe_source(&self) -> String {
         match &self.source {
             Some(path) => format!("the administrator policy {}", path.display()),
@@ -216,6 +334,40 @@ impl Policy {
             .map(|message| format!("\n{message}"))
             .unwrap_or_default()
     }
+}
+
+/// Whether `url` is below `prefix`: the same scheme, host and port, and a
+/// path that continues the prefix's at a `/`. A prefix that does not parse
+/// matches nothing.
+pub fn url_has_prefix(url: &Url, prefix: &str) -> bool {
+    let Ok(prefix) = Url::parse(prefix.trim()) else {
+        return false;
+    };
+    if prefix.host_str().is_none()
+        || url.scheme() != prefix.scheme()
+        || url.host_str().map(str::to_ascii_lowercase)
+            != prefix.host_str().map(str::to_ascii_lowercase)
+        || url.port_or_known_default() != prefix.port_or_known_default()
+    {
+        return false;
+    }
+    let base = prefix.path();
+    if base.ends_with('/') {
+        url.path().starts_with(base)
+    } else {
+        url.path() == base || url.path().starts_with(&format!("{base}/"))
+    }
+}
+
+/// `url` without credentials, query or fragment, for messages and records
+/// (signed URLs carry their secret in the query).
+pub fn redacted_url(url: &Url) -> String {
+    let mut url = url.clone();
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
 }
 
 /// The policy file location for this platform (or `$EOV_POLICY`).
@@ -325,6 +477,139 @@ disable_self_updates = true
                 .unwrap_err()
                 .to_string()
                 .contains("invalid policy file")
+        );
+    }
+
+    fn url(text: &str) -> Url {
+        Url::parse(text).unwrap()
+    }
+
+    #[test]
+    fn model_downloads_follow_the_network_unless_set() {
+        let any = url("https://models.example.org/a/m.onnx");
+        Policy::default()
+            .ensure_model_download_allowed(&any)
+            .unwrap();
+        let offline = Policy {
+            allow_network: false,
+            ..Policy::default()
+        };
+        let error = offline
+            .ensure_model_download_allowed(&any)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Network access is disabled") && error.contains("eov model import"),
+            "{error}"
+        );
+        // An offline site that serves its own models allows only those.
+        let site = Policy {
+            allow_network: false,
+            allow_model_downloads: Some(true),
+            model_url_prefixes: vec!["https://models.example.org/a".into()],
+            ..Policy::default()
+        };
+        site.ensure_model_download_allowed(&any).unwrap();
+        for refused in [
+            "https://models.example.org/ab/m.onnx",
+            "https://models.example.org.evil.test/a/m.onnx",
+            "http://models.example.org/a/m.onnx",
+            "https://models.example.org:8443/a/m.onnx",
+        ] {
+            assert!(
+                site.ensure_model_download_allowed(&url(refused)).is_err(),
+                "{refused}"
+            );
+        }
+        let no_servers = Policy {
+            model_url_prefixes: Vec::new(),
+            ..site.clone()
+        };
+        assert!(
+            no_servers
+                .ensure_model_download_allowed(&any)
+                .unwrap_err()
+                .to_string()
+                .contains("model_url_prefixes")
+        );
+        let disabled = Policy {
+            allow_model_downloads: Some(false),
+            message: Some("Ask IT.".into()),
+            ..Policy::default()
+        };
+        let error = disabled
+            .ensure_model_download_allowed(&any)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Model downloads are disabled") && error.contains("Ask IT."),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn parses_model_keys_and_fails_closed_on_typos() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("policy.toml");
+        std::fs::write(
+            &path,
+            r#"
+allow_model_downloads = true
+model_url_prefixes = ["https://models.example.org/", "not a url"]
+model_dirs = ["/opt/eov/models"]
+
+[model_urls]
+"70A8DEEF1F01716EFBC87FEB181EA398425D08B5E4984AD9D4AB2B83FD354F92" = "https://models.example.org/h.onnx"
+"histovae" = "https://models.example.org/x"
+"#,
+        )
+        .unwrap();
+        let policy = Policy::load_from(&path);
+        assert_eq!(policy.error, None);
+        assert_eq!(policy.allow_model_downloads, Some(true));
+        assert_eq!(policy.model_dirs, vec![PathBuf::from("/opt/eov/models")]);
+        assert_eq!(
+            policy.model_url("70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92"),
+            Some("https://models.example.org/h.onnx")
+        );
+        assert_eq!(policy.unknown_keys, vec!["model_urls.histovae".to_string()]);
+        policy
+            .ensure_model_download_allowed(&url("https://models.example.org/h.onnx"))
+            .unwrap();
+        // The unparsable prefix opens nothing.
+        let typo = Policy {
+            model_url_prefixes: vec!["not a url".into()],
+            ..policy.clone()
+        };
+        assert!(
+            typo.ensure_model_download_allowed(&url("https://elsewhere.test/m"))
+                .is_err()
+        );
+        let http = url("http://models.example.org/m.onnx");
+        assert!(!policy.allows_plain_http(&http));
+        let intranet = Policy {
+            model_url_prefixes: vec!["http://models.example.org/".into()],
+            ..Policy::default()
+        };
+        assert!(intranet.allows_plain_http(&http));
+
+        std::fs::write(&path, "allow_model_downloads = \"yes\"").unwrap();
+        let broken = Policy::load_from(&path);
+        assert!(
+            broken
+                .ensure_model_download_allowed(&url("https://models.example.org/m"))
+                .is_err()
+        );
+        assert_eq!(broken.allow_model_downloads, Some(false));
+    }
+
+    #[test]
+    fn urls_are_redacted_for_messages() {
+        assert_eq!(
+            redacted_url(&url(
+                "https://user:secret@s3.example.org/m.onnx?X-Amz-Signature=abc#x"
+            )),
+            "https://s3.example.org/m.onnx"
         );
     }
 

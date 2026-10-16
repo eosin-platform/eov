@@ -127,6 +127,8 @@ tempfile = "3"
 minisign-verify = "0.3"
 semver = { version = "1", features = ["serde"] }
 url = "2"
+# Model file names in URLs (the version url itself uses).
+percent-encoding = "2"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 # TLS roots for the updater: Mozilla's bundle plus the OS certificate store
 # (enterprise TLS inspection), see update/transport.rs.

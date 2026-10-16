@@ -35,6 +35,7 @@ pub(crate) const SUBCOMMANDS: &[&str] = &[
     "update",
     "upgrade",
     "plugin",
+    "model",
     "probe",
     "recent",
     "config-path",
