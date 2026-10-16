@@ -53,6 +53,38 @@ pub(crate) fn default_preset(stain_label: Option<&str>) -> StainPreset {
         .unwrap_or(StainPreset::HematoxylinDab)
 }
 
+/// Whether a slide's overview shows DAB brown (an IHC slide): brown pixels
+/// make up at least 2 % of its tissue. Used when the slide's metadata names
+/// no stain.
+pub(crate) fn shows_dab(rgba: &[u8]) -> bool {
+    let (mut tissue, mut brown) = (0u64, 0u64);
+    for p in rgba.as_chunks::<4>().0 {
+        if p[3] < 255 {
+            continue;
+        }
+        let [r, g, b] = [p[0], p[1], p[2]].map(|c| f32::from(c) / 255.0);
+        let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+        let saturation = if max > 0.0 { (max - min) / max } else { 0.0 };
+        if saturation < 0.12 || max < 0.15 {
+            // Glass or ink.
+            continue;
+        }
+        tissue += 1;
+        let d = max - min;
+        let hue = if max == r {
+            60.0 * ((g - b) / d).rem_euclid(6.0)
+        } else if max == g {
+            60.0 * ((b - r) / d + 2.0)
+        } else {
+            60.0 * ((r - g) / d + 4.0)
+        };
+        if (15.0..=50.0).contains(&hue) && saturation > 0.3 {
+            brown += 1;
+        }
+    }
+    tissue > 0 && brown * 50 >= tissue
+}
+
 /// What a quantification needs, captured on the UI thread; [`Self::run`]
 /// does the work on a worker. The panel and scripts' `quantify` use it.
 pub(crate) struct Quantification {
@@ -238,12 +270,19 @@ pub(crate) fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         state
             .active_file_id_for_pane(pane)
             .and_then(|id| state.get_file(id))
-            .map(|file| (file.id, file.roi, file.wsi.properties().stain.clone()))
+            .map(|file| {
+                (
+                    file.id,
+                    file.roi,
+                    file.wsi.properties().stain.clone(),
+                    file.thumbnail.as_ref().map(|thumb| shows_dab(&thumb.rgba)),
+                )
+            })
     };
     let notify = |text: &str| {
         crate::host_ui::with_host(|host| host.status(text));
     };
-    let Some((file_id, roi, stain_label)) = found else {
+    let Some((file_id, roi, stain_label, dab)) = found else {
         notify("Open a slide to quantify a stain");
         return;
     };
@@ -251,22 +290,31 @@ pub(crate) fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         notify("Draw a region of interest first (R), then quantify the stain in it");
         return;
     };
-    let preset = PANEL
-        .with(|panel| {
-            panel
-                .borrow()
-                .as_ref()
-                .filter(|p| p.file_id == file_id)
-                .map(|p| p.preset)
-        })
-        .filter(|preset| PRESETS.contains(preset))
-        .unwrap_or_else(|| default_preset(stain_label.as_deref()));
+    // The model and stain chosen last for this slide, else one suggested by
+    // its stain label, else by whether its overview shows DAB.
+    let previous = PANEL.with(|panel| {
+        panel
+            .borrow()
+            .as_ref()
+            .filter(|p| p.file_id == file_id && PRESETS.contains(&p.preset))
+            .map(|p| (p.preset, p.stain))
+    });
+    let preset = previous
+        .map(|(preset, _)| preset)
+        .unwrap_or_else(|| match (&stain_label, dab) {
+            (None, Some(false)) => StainPreset::HematoxylinEosin,
+            _ => default_preset(stain_label.as_deref()),
+        });
+    let stain = previous
+        .map(|(_, stain)| stain)
+        .filter(|stain| *stain < preset.basis().len())
+        .unwrap_or_else(|| default_stain(preset));
     PANEL.with(|panel| {
         *panel.borrow_mut() = Some(Panel {
             file_id,
             roi,
             preset,
-            stain: default_stain(preset),
+            stain,
             thresholds: Ok(DEFAULT_THRESHOLDS),
             result: None,
             cancel: None,
@@ -318,8 +366,8 @@ fn refresh(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         ui.set_quantify_region_text(
             format!(
                 "The region of interest, {} × {} px, read at level {level} ({:.0} × {:.0} px{mpp}).",
-                panel.roi.width.round(),
-                panel.roi.height.round(),
+                panel.roi.width.ceil(),
+                panel.roi.height.ceil(),
                 (panel.roi.width / downsample).ceil(),
                 (panel.roi.height / downsample).ceil(),
             )
@@ -583,6 +631,28 @@ pub(crate) fn close(ui: &AppWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dab_brown_is_told_from_haematoxylin_and_eosin() {
+        let pixels = |colours: &[[u8; 3]]| -> Vec<u8> {
+            colours
+                .iter()
+                .cycle()
+                .take(4000)
+                .flat_map(|c| [c[0], c[1], c[2], 255])
+                .collect()
+        };
+        let he = pixels(&[
+            [214, 140, 190],
+            [110, 80, 160],
+            [244, 244, 242],
+            [200, 30, 40],
+        ]);
+        assert!(!shows_dab(&he), "eosin, haematoxylin, glass and blood");
+        let ihc = pixels(&[[150, 100, 60], [110, 80, 160], [244, 244, 242]]);
+        assert!(shows_dab(&ihc));
+        assert!(!shows_dab(&pixels(&[[244, 244, 242]])), "glass only");
+    }
 
     #[test]
     fn thresholds_must_be_positive_and_rising() {
