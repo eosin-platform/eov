@@ -136,7 +136,8 @@ Current capabilities include:
 - A calibrated scale bar with automatic unit selection (µm, mm, inches) when microns-per-pixel metadata is available, and a pixel size you can set for slides that lack one (Slide Information, kept per slide).
 - A minimap thumbnail with viewport navigation and a zoom slider.
 - Slide Information (I): the label and macro images (with a privacy toggle to hide the label), and every property, searchable and copyable.
-- Objective-equivalent magnification presets (1–6, 0 for 1:1), fit to the slide or to its tissue, rotation in quarter turns and mirroring, full screen, and a remappable keyboard shortcut table (F1 lists it).
+- Objective-equivalent magnification presets (1–6, 0 for 1:1), fit to the slide or to its tissue, full screen, and a remappable keyboard shortcut table (F1 lists it).
+- Rotation by any angle about the pane centre, and mirroring: 90° steps ([ and ]), 5° steps ({ and }: Shift+[ and Shift+] on US keyboards), an exact angle typed into the HUD's angle field, and Reset Rotation (\\ or the viewport menu). Quarter turns stay exact; other angles are drawn straight from the tiles, alike on the CPU and the GPU. Overlays and their hit-testing, the minimap's outline, the scale bar, copies and exports (the turned area, with the background outside the slide), linked panes, bookmarks, history and the session follow the angle. Shapes stay in slide coordinates: a rectangle dragged in a turned view is the slide-aligned rectangle with the drag's ends as opposite corners, shown turned.
 - Back and forward through the views of a pane (Alt+←/→), named bookmarks of views (Ctrl+B), and the open slides and views restored at the next start.
 - A region of interest and a measurement suite: distance, path length, polygon, rectangle and ellipse area, and angle, in the slide's physical units, listed in a Measurements panel (copy, go to, CSV) and kept per slide.
 - Stain quantification in the region of interest for IHC (positive fraction, intensity bins, H-score; see [Stain Quantification](#stain-quantification)).
@@ -168,6 +169,7 @@ installed plugins. On macOS, **Ctrl** below means **⌘**.
 | Ctrl+→, Ctrl+← | Next or previous time point of a time series |
 | 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
 | [, ], Shift+H | Rotate the view 90° left or right, mirror it |
+| {, }, \\ | Rotate the view 5° left or right (Shift+[ and Shift+] on US keyboards), reset the rotation |
 | Ctrl+L | Link the panes' slides, so they move together (different slides too) |
 | Alt+←, Alt+→ | Back and forward through the pane's views |
 | Ctrl+B, Ctrl+Shift+B | Bookmark the view, list the slide's bookmarks |
@@ -743,7 +745,7 @@ eov call open '{"path": "/slides/S12-3456 A1.svs", "new_pane": true, "view": {"m
 
 **`close`** closes every tab of `slide`.
 
-**`view.get`** returns `pane`, `file_id`, `center_x`, `center_y`, `zoom`, `width` and `height` (the pane in logical pixels), `scale_factor`, `rotation_deg`, `flipped`, `visible` (the level-0 rectangle shown) and `magnification`. **`view.set`** centres the view on `x`, `y`, zooms to `zoom` or `magnification`, and turns it by `rotation` (0, 90, 180, 270) and `flipped`; anything left out stays. It applies at once (with `"animate": true`, it glides there as the viewer does, and the answer shows where it starts), panes locked to the focused one follow, and the answer is the view now shown, with `warnings`.
+**`view.get`** returns `pane`, `file_id`, `center_x`, `center_y`, `zoom`, `width` and `height` (the pane in logical pixels), `scale_factor`, `rotation_deg`, `flipped`, `visible` (the level-0 rectangle shown; its bounding box when the view is turned) and `magnification`. **`view.set`** centres the view on `x`, `y`, zooms to `zoom` or `magnification`, and turns it to `rotation` (degrees clockwise, any angle; `rotation_deg` reads back what was set) and `flipped`; anything left out stays. It applies at once (with `"animate": true`, it glides there as the viewer does, and the answer shows where it starts), panes locked to the focused one follow, and the answer is the view now shown, with `warnings`.
 
 ```bash
 eov call view.set '{"x": 41000, "y": 23500, "zoom": 1}'

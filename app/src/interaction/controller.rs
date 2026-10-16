@@ -563,6 +563,7 @@ impl Controller {
             zoom: view.zoom(),
             mpp: view.calibration.average(),
             tolerance_px: PICK_TOLERANCE_PX,
+            orientation: view.viewport.orientation,
         }
     }
 
@@ -2736,6 +2737,49 @@ mod tests {
             panic!("{effects:?}");
         };
         assert_eq!((rect.width, rect.height), (50.0, 70.0));
+    }
+
+    /// Shapes stay in level-0 coordinates: in a view turned by any angle, a
+    /// rectangle drag makes the level-0 rectangle with the drag's start and
+    /// end as opposite corners (it shows turned, like the slide), and a
+    /// measured line keeps its length.
+    #[test]
+    fn drags_in_turned_views_make_level_0_shapes() {
+        let mut v = view();
+        v.viewport.orientation =
+            eov_common::viewport::Orientation::from_degrees(30.0, false).unwrap();
+        let (start, end) = ((300.0, 250.0), (520.0, 330.0));
+        let a = v.to_image(start.0, start.1);
+        let b = v.to_image(end.0, end.1);
+        let mut c = Controller::new(Arc::new(OverlayStore::new()));
+        c.set_tool(ToolChoice::Roi);
+        let effects = drag(&mut c, &v, PointerButton::Left, start, end);
+        let Some(Effect::SetRoi {
+            rect: Some(rect), ..
+        }) = effects.iter().find(|e| matches!(e, Effect::SetRoi { .. }))
+        else {
+            panic!("{effects:?}");
+        };
+        let close = |x: f64, y: f64| (x - y).abs() < 1e-6;
+        assert!(close(rect.x, a[0].min(b[0])) && close(rect.y, a[1].min(b[1])));
+        assert!(close(rect.width, (a[0] - b[0]).abs()));
+        assert!(close(rect.height, (a[1] - b[1]).abs()));
+        // On screen its corners are the drag's ends.
+        let corner = v.viewport.image_to_screen(a[0], a[1]);
+        assert!(close(corner.x, start.0) && close(corner.y, start.1));
+
+        let mut c = Controller::new(Arc::new(OverlayStore::new()));
+        c.set_tool(ToolChoice::Measure(MeasureMode::Line));
+        let effects = drag(&mut c, &v, PointerButton::Left, start, end);
+        let Some(Effect::AddMeasurement { measurement, .. }) = effects
+            .iter()
+            .find(|e| matches!(e, Effect::AddMeasurement { .. }))
+        else {
+            panic!("no measurement: {effects:?}");
+        };
+        let length = geometry::shape_length(&measurement.shape);
+        let on_screen = (end.0 - start.0).hypot(end.1 - start.1);
+        assert!(close(length, on_screen / v.viewport.zoom), "{length}");
     }
 
     #[test]

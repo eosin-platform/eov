@@ -373,7 +373,7 @@ pub(super) struct ViewSet {
     zoom: Option<ZoomParam>,
     #[serde(default)]
     magnification: Option<f64>,
-    /// Degrees clockwise, a multiple of 90.
+    /// Degrees clockwise, any angle.
     #[serde(default)]
     rotation: Option<f64>,
     #[serde(default)]

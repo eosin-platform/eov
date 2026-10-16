@@ -131,8 +131,11 @@ unique per plugin across all open slides, so include the file id when a
 slide gets its own layer (`format!("cells-{file_id}")`). Panes are named by
 stable ids that survive reordering.
 
-A pane's view may be turned: `ViewInfo::rotation_deg` (clockwise, in steps
-of 90°) and then `ViewInfo::flipped` (mirrored left to right). Level-0
+A pane's view may be turned: `ViewInfo::rotation_deg` (clockwise, any angle
+from 0 up to 360; quarter turns are exactly 90, 180 and 270, other angles
+are kept to a millionth of a degree) and then `ViewInfo::flipped` (mirrored
+left to right). `view.orientation` (`Host::set_view_orientation`) takes any
+finite angle and turns the view about the pane centre. Level-0
 coordinates, overlays, measurements and the ROI are unaffected; only the
 mapping to the pane changes. Use `ViewInfo::image_to_screen` and
 `screen_to_image` for pane positions instead of `(x - visible.x) * zoom`

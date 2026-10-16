@@ -6,7 +6,9 @@
 //! coordinates of one to the other: offset, rotation, scale). Zoom follows
 //! the alignment's scale, which starts as the ratio of the pixel sizes
 //! (equal µm per screen pixel when both slides record one, else equal
-//! level-0 pixels); view turns follow so the panes keep turning together.
+//! level-0 pixels); view turns follow so the panes keep turning together,
+//! by any angle: the other panes turn by the alignment's own rotation, so
+//! aligned slides show alike however they lie on their glass.
 //!
 //! A new pair starts aligned as the panes are, so linking never jumps. The
 //! alignment is adjusted by moving or turning one pane alone ("adjust
@@ -105,7 +107,7 @@ impl Alignment {
     /// This alignment after the first slide's points are turned by `first`
     /// (`M · first`): the alignment once a view turns alone.
     fn after(&self, first: Orientation) -> Self {
-        let phi = f64::from(first.degrees());
+        let phi = first.degrees();
         let (rotation_deg, mirrored) = if first.flipped() {
             // R(θ)·Mirror = Mirror·R(−θ)
             (phi - self.rotation_deg, !self.mirrored)
@@ -119,10 +121,10 @@ impl Alignment {
         }
     }
 
-    /// The view turn closest to `M` (whole quarter turns).
+    /// `M` as a view turn: its rotation (any angle) and mirror.
     pub(crate) fn turn(&self) -> Orientation {
-        let quarter_turns = (self.rotation_deg / 90.0).round().rem_euclid(4.0) as i32;
-        Orientation::new(quarter_turns, self.mirrored)
+        Orientation::from_degrees(self.rotation_deg, self.mirrored)
+            .unwrap_or(Orientation::new(0, self.mirrored))
     }
 
     /// The alignment of two views as they are: `b`'s centre is where `a`'s
@@ -132,7 +134,7 @@ impl Alignment {
         let turn = a.orientation.then(b.orientation.inverse());
         let mut alignment = Self {
             scale,
-            rotation_deg: f64::from(turn.degrees()),
+            rotation_deg: turn.degrees(),
             mirrored: turn.flipped(),
             offset_x: 0.0,
             offset_y: 0.0,
@@ -807,19 +809,26 @@ mod tests {
         assert!(
             Alignment::from_landmarks([[1.0, 1.0]; 2], [[0.0, 0.0], [5.0, 5.0]], false).is_none()
         );
-        let near = Alignment {
+        // The panes turn by the alignment's own angle.
+        let tilted = Alignment {
             rotation_deg: 87.0,
             ..Alignment::identity()
         };
-        assert_eq!(near.turn(), Orientation::new(1, false));
+        assert_eq!(
+            tilted.turn(),
+            Orientation::from_degrees(87.0, false).unwrap()
+        );
     }
 
     /// Linking keeps the views as they are, and from then on moving one
     /// pane moves the other the same way on screen.
     #[test]
     fn linked_views_move_together_on_screen() {
-        for a_turn in Orientation::all() {
-            for b_turn in Orientation::all() {
+        let mut turns = Orientation::all().to_vec();
+        turns.push(Orientation::from_degrees(30.0, false).unwrap());
+        turns.push(Orientation::from_degrees(212.5, true).unwrap());
+        for &a_turn in &turns {
+            for &b_turn in &turns {
                 let mut a = Viewport::new(800.0, 600.0, 20_000.0, 10_000.0);
                 a.zoom = 0.2;
                 a.center.x = 5000.0;
@@ -895,7 +904,17 @@ mod tests {
         ));
         assert!(!sync_views(&mut state), "nothing moved since");
 
-        // Turning the focused pane turns the other one too.
+        // Turning the focused pane turns the other one too, by any angle:
+        // the difference stays.
+        assert!(crate::callbacks::rotate_active_viewport_by(&mut state, 5.0));
+        sync_views(&mut state);
+        assert_eq!(
+            view(&state, second).orientation,
+            Orientation::from_degrees(5.0, false).unwrap()
+        );
+        assert!(crate::callbacks::rotate_active_viewport_by(
+            &mut state, -5.0
+        ));
         assert!(crate::callbacks::rotate_active_viewport(&mut state, 1));
         sync_views(&mut state);
         assert_eq!(view(&state, second).orientation, Orientation::new(1, false));
@@ -962,6 +981,14 @@ mod tests {
         let expected = truth.apply(512.0, 512.0);
         assert!(close((follower.center.x, follower.center.y), expected));
         assert!((follower.zoom - 0.2).abs() < 1e-9);
+        // The other slide lies 10° turned on its glass: its pane turns
+        // back by that much, so both show the tissue alike.
+        assert_eq!(follower.orientation.degrees(), 350.0);
+        let leader = view(&state, PaneId::PRIMARY);
+        let p = leader.screen_to_image(100.0, 80.0);
+        let q = truth.apply(p.x, p.y);
+        let shown = follower.image_to_screen(q.0, q.1);
+        assert!(close((shown.x, shown.y), (100.0, 80.0)), "{shown:?}");
         assert!(reset_alignment(&mut state));
     }
 

@@ -321,6 +321,32 @@ pub(crate) fn rotate_active_viewport(state: &mut AppState, quarter_turns: i32) -
     true
 }
 
+/// Turns the focused pane's slide a further `degrees` clockwise as seen on
+/// screen (negative: counterclockwise), about the view centre: the fine
+/// rotation steps. A fitted view stays fitted.
+pub(crate) fn rotate_active_viewport_by(state: &mut AppState, degrees: f64) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let orientation = viewport.viewport.orientation.rotated(degrees);
+    viewport.set_orientation(orientation);
+    true
+}
+
+/// Turns the focused pane's slide to `degrees` clockwise (any angle, as
+/// typed into the HUD), keeping its mirror. `false` when there is no view
+/// or the angle is not finite.
+pub(crate) fn set_active_rotation(state: &mut AppState, degrees: f64) -> bool {
+    let Some(viewport) = state.active_viewport_mut() else {
+        return false;
+    };
+    let Some(orientation) = viewport.viewport.orientation.with_degrees(degrees) else {
+        return false;
+    };
+    viewport.set_orientation(orientation);
+    true
+}
+
 /// Mirrors the focused pane's slide left to right as seen on screen.
 pub(crate) fn flip_active_viewport(state: &mut AppState) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
@@ -331,14 +357,15 @@ pub(crate) fn flip_active_viewport(state: &mut AppState) -> bool {
     true
 }
 
-/// Shows the focused pane's slide upright and unmirrored again.
-pub(crate) fn reset_active_orientation(state: &mut AppState) -> bool {
+/// Shows the focused pane's slide upright again ("Reset rotation"). A mirror
+/// stays: it has its own toggle. Returns whether the view turned.
+pub(crate) fn reset_active_rotation(state: &mut AppState) -> bool {
     let Some(viewport) = state.active_viewport_mut() else {
         return false;
     };
-    let changed = !viewport.viewport.orientation.is_identity();
-    viewport.set_orientation(eov_common::viewport::Orientation::IDENTITY);
-    changed
+    let orientation = viewport.viewport.orientation;
+    viewport.set_orientation(orientation.upright());
+    orientation != orientation.upright()
 }
 
 /// `hud-orientation-changed` actions (see `hud-toolbar.slint`).
@@ -2422,6 +2449,39 @@ pub fn setup_callbacks(
         });
     }
 
+    // An exact angle typed into a pane's HUD.
+    {
+        let state_handle = Arc::clone(&state);
+        let tile_cache = Arc::clone(&tile_cache);
+        let render_timer = Rc::clone(&render_timer);
+        let ui_weak = ui_weak.clone();
+
+        ui.on_hud_rotation_input(move |pane, text| {
+            let parsed = crate::rotation::parse_degrees(text.as_str());
+            {
+                let mut state = state_handle.write();
+                state.set_focused_pane(pane_from_index(pane));
+                let changed =
+                    parsed.is_some_and(|degrees| set_active_rotation(&mut state, degrees));
+                let synced = state.mirror_locked_viewports_from_active();
+                if changed || synced {
+                    state.request_render();
+                }
+            }
+            if let Some(ui) = ui_weak.upgrade() {
+                if parsed.is_none() {
+                    ui.set_status_text(SharedString::from(format!(
+                        "“{}” is not an angle: type degrees clockwise, such as 37.5",
+                        text.trim()
+                    )));
+                }
+                // The field closed: keys are shortcuts again.
+                ui.invoke_focus_keyboard();
+                request_render_loop(&render_timer, &ui.as_weak(), &state_handle, &tile_cache);
+            }
+        });
+    }
+
     // Rotation and mirroring of a pane's view (HUD buttons).
     {
         let state_handle = Arc::clone(&state);
@@ -2437,7 +2497,7 @@ pub fn setup_callbacks(
                     HUD_ROTATE_LEFT => rotate_active_viewport(&mut state, -1),
                     HUD_ROTATE_RIGHT => rotate_active_viewport(&mut state, 1),
                     HUD_FLIP => flip_active_viewport(&mut state),
-                    _ => reset_active_orientation(&mut state),
+                    _ => reset_active_rotation(&mut state),
                 };
                 let synced = state.mirror_locked_viewports_from_active();
                 if changed || synced {

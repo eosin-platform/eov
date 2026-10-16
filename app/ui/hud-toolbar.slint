@@ -79,8 +79,10 @@ export component HudToolbar inherits Rectangle {
     in property <bool> dropdown-open: false;
     in property <bool> has-adjustments: false;
     in property <[HudToolbarButtonData]> plugin-buttons: [];
-    // The view's turn (see `ViewportInfo`).
-    in property <int> rotation-degrees: 0;
+    // The view's turn (see `ViewportInfo`): any angle, and as shown.
+    in property <float> rotation-degrees: 0;
+    in property <string> rotation-text: "0";
+    in property <string> rotation-input-text: "0";
     in property <bool> flipped: false;
     // Colour management (see `HudSettings.color-management`).
     in property <int> color-management: 0;
@@ -93,8 +95,10 @@ export component HudToolbar inherits Rectangle {
     callback zoom-input(string);
     callback plugin-button-clicked(/* plugin */ string, /* button */ string, /* menu item */ string);
     callback dismiss-plugin-menu();
-    // 0 rotate left, 1 rotate right, 2 flip, 3 reset the turn.
+    // 0 rotate left, 1 rotate right, 2 flip, 3 reset the rotation.
     callback orientation-changed(int);
+    // An angle typed into the angle field (degrees clockwise).
+    callback rotation-input(string);
     callback color-management-toggled();
     /// The zoom field or the plugin menu, which had the keyboard, is done
     /// with it.
@@ -102,6 +106,8 @@ export component HudToolbar inherits Rectangle {
 
     property <bool> editing-zoom: false;
     property <bool> cancel-zoom-edit: false;
+    property <bool> editing-angle: false;
+    property <bool> cancel-angle-edit: false;
     in-out property <bool> plugin-menu-open: false;
     property <string> plugin-menu-plugin-id: "";
     property <string> plugin-menu-button-id: "";
@@ -119,7 +125,7 @@ export component HudToolbar inherits Rectangle {
         : rotate-left-btn.hovered ? rotate-left-btn.tooltip-text
         : rotate-right-btn.hovered ? rotate-right-btn.tooltip-text
         : flip-btn.hovered ? flip-btn.tooltip-text
-        : angle-touch.has-hover ? @tr("Reset rotation")
+        : angle-touch.has-hover ? @tr("Rotation: click to type an angle")
         : icc-touch.has-hover ? root.color-management-tooltip
         : adjust-btn.hovered ? adjust-btn.tooltip-text
         : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
@@ -312,22 +318,26 @@ export component HudToolbar inherits Rectangle {
                 }
             }
 
-            // The angle, while the view is turned; clicking resets it.
+            // The view's angle; clicking it types an exact one.
             angle-label := Rectangle {
-                width: root.rotation-degrees != 0 ? 46px : 0px;
+                width: 56px;
                 height: 38px;
-                visible: root.rotation-degrees != 0;
-                background: angle-touch.has-hover ? Theme.hover-fill-strong : transparent;
+                background: angle-touch.has-hover || root.editing-angle ? Theme.hover-fill-strong : transparent;
                 accessible-role: button;
-                accessible-label: @tr("Reset rotation");
-                accessible-description: root.rotation-degrees + "°";
+                accessible-label: @tr("Rotation");
+                accessible-description: root.rotation-text + "°";
                 accessible-action-default => {
-                    root.orientation-changed(3);
+                    root.cancel-angle-edit = false;
+                    angle-text-input.text = root.rotation-input-text;
+                    root.editing-angle = true;
+                    angle-text-input.focus();
+                    angle-text-input.select-all();
                 }
 
                 Text {
-                    text: root.rotation-degrees + "°";
-                    color: Theme.text-value;
+                    visible: !root.editing-angle;
+                    text: root.rotation-text + "°";
+                    color: root.rotation-degrees != 0 ? Theme.text-value : Theme.text-secondary;
                     font-size: 13px;
                     font-weight: 600;
                     horizontal-alignment: center;
@@ -335,9 +345,69 @@ export component HudToolbar inherits Rectangle {
                     accessible-role: none;
                 }
 
+                Rectangle {
+                    visible: root.editing-angle;
+                    x: 4px;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width - 8px;
+                    height: 26px;
+                    background: Theme.input-bg;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Theme.accent-bright;
+
+                    angle-text-input := TextInput {
+                        accessible-label: @tr("Rotation in degrees");
+                        x: 4px;
+                        width: parent.width - 8px;
+                        color: Theme.text-strong;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        text: root.rotation-input-text;
+
+                        accepted => {
+                            root.cancel-angle-edit = false;
+                            root.editing-angle = false;
+                            root.rotation-input(self.text);
+                        }
+
+                        changed has-focus => {
+                            if !self.has-focus && root.editing-angle {
+                                if root.cancel-angle-edit {
+                                    root.cancel-angle-edit = false;
+                                    root.editing-angle = false;
+                                    self.text = root.rotation-input-text;
+                                } else {
+                                    root.editing-angle = false;
+                                    root.rotation-input(self.text);
+                                }
+                            }
+                        }
+
+                        key-pressed(e) => {
+                            if e.text == Key.Escape {
+                                root.cancel-angle-edit = true;
+                                root.editing-angle = false;
+                                self.text = root.rotation-input-text;
+                                // The angle as it was (the keyboard goes
+                                // back to the shortcuts).
+                                root.rotation-input(root.rotation-input-text);
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+                }
+
                 angle-touch := TouchArea {
+                    enabled: !root.editing-angle;
                     clicked => {
-                        root.orientation-changed(3);
+                        root.cancel-angle-edit = false;
+                        angle-text-input.text = root.rotation-input-text;
+                        root.editing-angle = true;
+                        angle-text-input.focus();
+                        angle-text-input.select-all();
                     }
                 }
             }

@@ -169,7 +169,12 @@ pub struct ViewInfo {
     /// Physical pixels per logical pixel of the window.
     #[serde(default = "default_scale_factor")]
     pub scale_factor: f64,
-    /// Clockwise view rotation in degrees (eov turns views in steps of 90).
+    /// Clockwise view rotation in degrees, `0 <= rotation_deg < 360`: any
+    /// angle (eov keeps it to a millionth of a degree; quarter turns are
+    /// exactly 90, 180 and 270). Map points with
+    /// [`image_to_screen`](Self::image_to_screen) and
+    /// [`screen_to_image`](Self::screen_to_image); `visible` is the turned
+    /// area's bounding box.
     #[serde(default)]
     pub rotation_deg: f64,
     /// The view is mirrored left to right, after the rotation.
@@ -1510,8 +1515,8 @@ pub mod methods {
     pub const VIEW_FIT: &str = "view.fit";
     /// `ViewFrameArgs` → `null`
     pub const VIEW_FRAME: &str = "view.frame";
-    /// `ViewOrientationArgs` → `null`: turns a pane's view (the rotation
-    /// must be a multiple of 90°).
+    /// `ViewOrientationArgs` → `null`: turns a pane's view, by any angle
+    /// (it must be finite), about the pane centre.
     pub const VIEW_ORIENTATION: &str = "view.orientation";
     /// `PaneArgs` → `DisplayAdjustments`: how the pane renders the slide,
     /// so overlays derived from slide pixels can match it.
@@ -1897,7 +1902,8 @@ pub struct ViewZoomArgs {
 pub struct ViewOrientationArgs {
     #[serde(default)]
     pub pane: Option<PaneId>,
-    /// Clockwise rotation in degrees, a multiple of 90.
+    /// Clockwise rotation in degrees: any finite angle (normalised to
+    /// `0..360`).
     pub rotation_deg: f64,
     /// Mirror left to right after the rotation.
     #[serde(default)]
@@ -2026,7 +2032,7 @@ mod tests {
         view.rotation_deg = 90.0;
         let (x, y) = view.image_to_screen(110.0, 50.0);
         assert!((x - 150.0).abs() < 1e-9 && (y - 120.0).abs() < 1e-9);
-        for rotation in [0.0, 90.0, 180.0, 270.0] {
+        for rotation in [0.0, 90.0, 180.0, 270.0, 37.5, 301.25] {
             for flipped in [false, true] {
                 view.rotation_deg = rotation;
                 view.flipped = flipped;

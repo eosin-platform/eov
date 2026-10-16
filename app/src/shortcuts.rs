@@ -51,6 +51,11 @@ pub(crate) enum Action {
     Magnify(Option<Magnification>),
     RotateLeft,
     RotateRight,
+    /// Fine rotation steps ([`crate::rotation::FINE_STEP_DEGREES`]).
+    RotateLeftFine,
+    RotateRightFine,
+    /// The view upright again (the mirror stays).
+    ResetRotation,
     Flip,
     LinkSlides,
     AdjustAlignment,
@@ -190,6 +195,10 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::Magnify(None), "zoom-1-to-1", "Zoom to one screen pixel per slide pixel", G::Navigation, false, &["0"]),
     info(A::RotateLeft, "rotate-left", "Rotate the view 90° to the left", G::Navigation, false, &["["]),
     info(A::RotateRight, "rotate-right", "Rotate the view 90° to the right", G::Navigation, false, &["]"]),
+    // Shift+[ and Shift+] on US layouts: the keys give the braces.
+    info(A::RotateLeftFine, "rotate-left-fine", "Rotate the view 5° to the left", G::Navigation, true, &["{"]),
+    info(A::RotateRightFine, "rotate-right-fine", "Rotate the view 5° to the right", G::Navigation, true, &["}"]),
+    info(A::ResetRotation, "reset-rotation", "Reset the rotation (upright again)", G::Navigation, false, &["\\"]),
     info(A::Flip, "flip", "Mirror the view left to right", G::Navigation, false, &["Shift+H"]),
     info(A::LinkSlides, "link-slides", "Link the panes' slides (move together)", G::Navigation, false, &["Ctrl+L"]),
     info(A::AdjustAlignment, "adjust-alignment", "Adjust the alignment of linked slides", G::Navigation, false, &[]),
@@ -596,6 +605,45 @@ mod tests {
         );
         assert_eq!(table.lookup("b", false, false, false), None);
         assert_eq!(table.lookup("7", false, false, false), None);
+    }
+
+    /// Fine rotation: Shift+[ and Shift+] (the braces they type on US
+    /// layouts, with or without Shift reported) and \ to reset; none of
+    /// them is taken by another action.
+    #[test]
+    fn fine_rotation_keys_are_bound_and_free() {
+        let table = Table::default();
+        assert_eq!(
+            table.lookup("{", false, true, false),
+            Some(Action::RotateLeftFine)
+        );
+        assert_eq!(
+            table.lookup("}", false, false, false),
+            Some(Action::RotateRightFine)
+        );
+        assert_eq!(
+            table.lookup("\\", false, false, false),
+            Some(Action::ResetRotation)
+        );
+        assert_eq!(
+            table.lookup("[", false, false, false),
+            Some(Action::RotateLeft)
+        );
+        assert!(action_info(Action::RotateRightFine).repeats);
+        // Every default key belongs to one action only.
+        let mut seen = std::collections::HashSet::new();
+        for info in ACTIONS {
+            for chord in table.chords(info.action) {
+                assert!(
+                    seen.insert(chord.clone()),
+                    "{} is bound twice",
+                    chord.label()
+                );
+            }
+        }
+        // And plugins cannot take them.
+        assert!(is_taken_by_host("{", false, true, false));
+        assert!(is_taken_by_host("\\", false, false, false));
     }
 
     #[test]

@@ -27,8 +27,9 @@ const LOD_DOT_PX: f64 = 1.5;
 const FAST_POINTS_THRESHOLD: usize = 20_000;
 
 /// Maps level-0 coordinates to the pixels of a raster target. A turned
-/// target (`orientation`) maps through the target drawn axis-aligned with
-/// the slide, turned about the centres.
+/// target (`orientation`, any angle) maps through the target drawn
+/// axis-aligned with the slide (the turned target's bounding box), turned
+/// about the centres.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewTransform {
     /// Level-0 coordinates of the top-left corner of the target drawn
@@ -52,7 +53,7 @@ impl ViewTransform {
     /// Level-0 rectangle covered by the target (its bounding box).
     pub fn visible_rect(self) -> Rect {
         let zoom = self.zoom.max(1e-12);
-        let (width, height) = self.orientation.swap(self.width, self.height);
+        let (width, height) = self.orientation.turned_extent(self.width, self.height);
         Rect {
             x: self.left,
             y: self.top,
@@ -69,7 +70,7 @@ impl ViewTransform {
             return (ax, ay);
         }
         let (w, h) = (self.width * self.scale, self.height * self.scale);
-        let (aw, ah) = self.orientation.swap(w, h);
+        let (aw, ah) = self.orientation.turned_extent(w, h);
         let (x, y) = self.orientation.to_screen_xy(ax - aw / 2.0, ay - ah / 2.0);
         (x + w / 2.0, y + h / 2.0)
     }
@@ -88,11 +89,20 @@ impl ViewTransform {
             (px, py)
         } else {
             let (w, h) = (self.width * self.scale, self.height * self.scale);
-            let (aw, ah) = self.orientation.swap(w, h);
+            let (aw, ah) = self.orientation.turned_extent(w, h);
             let (dx, dy) = self.orientation.to_image_xy(px - w / 2.0, py - h / 2.0);
             (dx + aw / 2.0, dy + ah / 2.0)
         };
         [self.left + ax / k, self.top + ay / k]
+    }
+
+    /// The physical-pixel displacements of one level-0 pixel along the
+    /// image's x and y axes (turned like the target).
+    fn linear_px(self) -> ((f64, f64), (f64, f64)) {
+        let k = self.px_per_image();
+        let x = self.orientation.to_screen_xy(k, 0.0);
+        let y = self.orientation.to_screen_xy(0.0, k);
+        (x, y)
     }
 
     /// Level-0 → physical pixel as an affine transform (for drawing
@@ -116,6 +126,23 @@ impl ViewTransform {
     /// target of its own (exports draw overlays band by band).
     pub fn band(self, row: u32, rows: u32) -> ViewTransform {
         let k = self.px_per_image();
+        if !self.orientation.is_quarter_turn() {
+            // The band's own bounding box, placed so that its pixels map as
+            // the target's rows `row..` do.
+            let (w, h) = (self.width * self.scale, self.height * self.scale);
+            let n = f64::from(rows);
+            let (aw, ah) = self.orientation.turned_extent(w, h);
+            let (bw, bh) = self.orientation.turned_extent(w, n);
+            let (sx, sy) = self
+                .orientation
+                .to_image_xy(0.0, (h - n) / 2.0 - f64::from(row));
+            return ViewTransform {
+                left: self.left - (sx - (aw - bw) / 2.0) / k,
+                top: self.top - (sy - (ah - bh) / 2.0) / k,
+                height: n / self.scale,
+                ..self
+            };
+        }
         let (width, height) = self.physical_size();
         let (aligned_width, aligned_height) = self.orientation.swap(width, height);
         let (x, y, _, _) =
@@ -590,7 +617,7 @@ pub fn draw_shape(
                 let mut builder = PathBuilder::new();
                 push_ring(&mut builder, view, &clipped);
                 builder.finish()
-            } else {
+            } else if view.orientation.is_quarter_turn() {
                 // A quarter turn keeps the ellipse axis-aligned on screen.
                 let (ax, ay) = view.to_px([cx - rx, cy - ry]);
                 let (bx, by) = view.to_px([cx + rx, cy + ry]);
@@ -598,6 +625,19 @@ pub fn draw_shape(
                 let (x1, y1) = (ax.max(bx), ay.max(by));
                 tiny_skia::Rect::from_ltrb(x0, y0, x1.max(x0 + 0.01), y1.max(y0 + 0.01))
                     .and_then(PathBuilder::from_oval)
+            } else {
+                // Other angles turn it: the oval about its centre, in
+                // level-0 units, mapped by the view's linear part.
+                let (centre_x, centre_y) = view.to_px([*cx, *cy]);
+                let ((ax, ay), (bx, by)) = view.linear_px();
+                let (rx, ry) = (rx.max(1e-9) as f32, ry.max(1e-9) as f32);
+                tiny_skia::Rect::from_ltrb(-rx, -ry, rx, ry)
+                    .and_then(PathBuilder::from_oval)
+                    .and_then(|oval| {
+                        oval.transform(Transform::from_row(
+                            ax as f32, ay as f32, bx as f32, by as f32, centre_x, centre_y,
+                        ))
+                    })
             };
             if let Some(path) = path {
                 fill_and_stroke(target, &path, style, stroke_px, decoration);
@@ -1161,6 +1201,15 @@ mod orientation_tests {
     use super::*;
     use eov_common::Viewport;
 
+    /// The quarter turns and some free angles.
+    fn orientations() -> Vec<Orientation> {
+        let mut all = Orientation::all().to_vec();
+        for (degrees, flipped) in [(30.0, false), (45.0, true), (137.5, false), (301.0, true)] {
+            all.push(Orientation::from_degrees(degrees, flipped).unwrap());
+        }
+        all
+    }
+
     fn view_of(viewport: &Viewport, scale: f64) -> ViewTransform {
         let bounds = viewport.bounds();
         ViewTransform {
@@ -1182,7 +1231,7 @@ mod orientation_tests {
         viewport.zoom = 0.5;
         viewport.center.x = 100.0;
         viewport.center.y = 80.0;
-        for orientation in Orientation::all() {
+        for orientation in orientations() {
             viewport.orientation = orientation;
             let view = view_of(&viewport, 2.0);
             for p in [[90.0, 70.0], [130.0, 95.0], [100.0, 80.0]] {
@@ -1232,6 +1281,15 @@ mod orientation_tests {
                             height: 9.0,
                         },
                     ),
+                    OverlayObject::new(
+                        "oval",
+                        Shape::Ellipse {
+                            cx: 90.0,
+                            cy: 88.0,
+                            rx: 12.0,
+                            ry: 5.0,
+                        },
+                    ),
                 ],
                 false,
             )
@@ -1244,7 +1302,7 @@ mod orientation_tests {
         viewport.zoom = 0.75;
         viewport.center.x = 100.0;
         viewport.center.y = 80.0;
-        for orientation in Orientation::all() {
+        for orientation in orientations() {
             viewport.orientation = orientation;
             let view = view_of(&viewport, 1.0);
             let whole = render(&view, &scene).unwrap();
@@ -1253,6 +1311,14 @@ mod orientation_tests {
             for row in (0..height).step_by(7) {
                 let rows = 7.min(height - row);
                 let band = view.band(row, rows);
+                // A band maps every point as the whole target does, `row`
+                // rows up.
+                for p in [[80.0, 60.0], [125.0, 100.0], [101.5, 77.25]] {
+                    let (wx, wy) = view.to_px(p);
+                    let (bx, by) = band.to_px(p);
+                    assert!((wx - bx).abs() < 1e-3, "{orientation:?}");
+                    assert!((wy - row as f32 - by).abs() < 1e-3, "{orientation:?}");
+                }
                 let mut pixmap = Pixmap::new(width, rows).unwrap();
                 render_into(&mut pixmap, &band, &scene);
                 bands.extend_from_slice(pixmap.data());
@@ -1263,8 +1329,91 @@ mod orientation_tests {
                 .zip(&bands)
                 .filter(|(a, b)| a.abs_diff(**b) > 8)
                 .count();
-            assert!(differing < 16, "{orientation:?}: {differing} bytes differ");
+            // Anti-aliasing where paths cross band edges differs a little.
+            assert!(differing < 100, "{orientation:?}: {differing} bytes differ");
             assert!(whole.data().iter().any(|&b| b > 0), "something is drawn");
+        }
+    }
+
+    /// At a free angle, shapes turn with the slide: a level-0 rectangle is
+    /// drawn as the turned quad of its corners, and an ellipse's outline
+    /// passes through its turned axis ends.
+    #[test]
+    fn shapes_turn_with_the_slide_at_any_angle() {
+        let mut viewport = Viewport::new(200.0, 160.0, 1000.0, 1000.0);
+        viewport.zoom = 2.0;
+        viewport.center.x = 500.0;
+        viewport.center.y = 500.0;
+        viewport.orientation = Orientation::from_degrees(30.0, false).unwrap();
+        let view = view_of(&viewport, 1.0);
+        let style = Style {
+            stroke: Rgba(255, 0, 0, 255),
+            stroke_width: 2.0,
+            fill: Rgba(0, 0, 0, 0),
+            ..Style::default()
+        };
+        for shape in [
+            Shape::Rectangle {
+                x: 470.0,
+                y: 480.0,
+                width: 50.0,
+                height: 30.0,
+            },
+            Shape::Ellipse {
+                cx: 500.0,
+                cy: 500.0,
+                rx: 30.0,
+                ry: 12.0,
+            },
+        ] {
+            let mut pixmap = Pixmap::new(200, 160).unwrap();
+            draw_shape(
+                &mut pixmap,
+                &view,
+                &shape,
+                &style,
+                HostDecoration::default(),
+                false,
+            );
+            // Points on the outline, through the view.
+            let outline: Vec<Point> = match &shape {
+                Shape::Rectangle {
+                    x,
+                    y,
+                    width,
+                    height,
+                } => vec![
+                    [*x, *y],
+                    [x + width, *y],
+                    [x + width, y + height],
+                    [*x, y + height],
+                    [x + width / 2.0, *y],
+                ],
+                Shape::Ellipse { cx, cy, rx, ry } => vec![
+                    [cx + rx, *cy],
+                    [cx - rx, *cy],
+                    [*cx, cy + ry],
+                    [*cx, cy - ry],
+                ],
+                _ => unreachable!(),
+            };
+            for p in outline {
+                let (x, y) = view.to_px(p);
+                let alpha = pixmap
+                    .pixel(x.round() as u32, y.round() as u32)
+                    .map(|c| c.alpha())
+                    .unwrap_or(0);
+                assert!(alpha > 100, "{shape:?}: nothing drawn at {p:?} ({x}, {y})");
+            }
+            // The centre stays empty (outlines only).
+            let (x, y) = view.to_px([500.0, 497.0]);
+            assert_eq!(
+                pixmap
+                    .pixel(x.round() as u32, y.round() as u32)
+                    .unwrap()
+                    .alpha(),
+                0
+            );
         }
     }
 }

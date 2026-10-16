@@ -10,7 +10,8 @@ use std::rc::Rc;
 pub(crate) struct PaneRenderCacheEntry {
     pub(crate) content: Option<Image>,
     pub(crate) minimap_thumbnail: Option<Image>,
-    /// How `minimap_thumbnail` is turned (it follows the pane's view).
+    /// How `minimap_thumbnail` is turned: the pane view's nearest quarter
+    /// turn.
     pub(crate) minimap_orientation: eov_common::viewport::Orientation,
     /// The colour profile `minimap_thumbnail` is converted from, if any.
     pub(crate) minimap_color: Option<u64>,
@@ -186,7 +187,7 @@ pub(crate) fn set_cached_pane_minimap(
 ) {
     with_pane_render_cache(pane.0 + 1, |cache| {
         cache[pane.0].minimap_thumbnail = image;
-        cache[pane.0].minimap_orientation = orientation;
+        cache[pane.0].minimap_orientation = orientation.quarter_part();
         cache[pane.0].minimap_color = color;
     });
 }

@@ -25,6 +25,12 @@
 
 use rayon::prelude::*;
 
+mod turned;
+pub use turned::{
+    FrameMap, blit_tile_lanczos3_turned, blit_tile_nearest_turned, blit_tile_trilinear_turned,
+    blit_tile_turned, reproject_frame_mapped,
+};
+
 #[derive(Clone, Copy)]
 struct LinearColSample {
     x0_4: usize,
@@ -874,7 +880,9 @@ pub enum BlitError {
 
 /// Copies `src`, a `width × height` RGBA frame drawn axis-aligned with the
 /// image, into `dst` as `orientation` shows it on screen: `dst` is
-/// `orientation.swap(width, height)` pixels. Exact (a permutation).
+/// `orientation.swap(width, height)` pixels. Exact (a permutation), for
+/// quarter turns; other angles turn by their nearest quarter turn (see
+/// [`FrameMap`] for drawing those).
 pub fn orient_frame(
     src: &[u8],
     width: u32,
@@ -882,6 +890,7 @@ pub fn orient_frame(
     orientation: crate::viewport::Orientation,
     dst: &mut [u8],
 ) {
+    let orientation = orientation.quarter_part();
     let need = width as usize * height as usize * 4;
     if src.len() < need || dst.len() < need || need == 0 {
         return;

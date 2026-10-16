@@ -475,10 +475,11 @@ impl HostApi {
             }
             methods::VIEW_ORIENTATION => {
                 let args: ViewOrientationArgs = parse(args)?;
+                // Any angle (eov keeps it to a millionth of a degree).
                 if eov_common::viewport::Orientation::from_degrees(args.rotation_deg, args.flipped)
                     .is_none()
                 {
-                    return Err(invalid("rotation_deg must be a multiple of 90"));
+                    return Err(invalid("rotation_deg must be a finite angle"));
                 }
                 self.push(Command::View(ViewCommand::Orientation(args)));
                 null

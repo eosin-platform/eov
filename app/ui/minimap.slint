@@ -53,7 +53,7 @@ export component Minimap inherits Rectangle {
         accessible-role: none;
     }
 
-    Rectangle {
+    if viewport-rect.outline == "": Rectangle {
         x: img-display-x + viewport-rect.x * img-display-width;
         y: img-display-y + viewport-rect.y * img-display-height;
         width: viewport-rect.width * img-display-width;
@@ -61,6 +61,22 @@ export component Minimap inherits Rectangle {
         background: transparent;
         border-width: Theme.high-contrast ? 3px : 2px;
         border-color: Theme.minimap-rect;
+    }
+
+    // A view turned by another angle: its outline, tilted.
+    if viewport-rect.outline != "": Path {
+        // Paths fit inside their stroke.
+        x: img-display-x - 1px;
+        y: img-display-y - 1px;
+        width: img-display-width + 2px;
+        height: img-display-height + 2px;
+        viewbox-width: 1000;
+        viewbox-height: 1000;
+        fit: fill;
+        commands: viewport-rect.outline;
+        stroke: Theme.minimap-rect;
+        stroke-width: 2px;
+        stroke-line-join: round;
     }
 
     touch := TouchArea {

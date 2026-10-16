@@ -219,7 +219,7 @@ pub(crate) fn view_info(state: &AppState, pane: PaneId, scale_factor: f64) -> Op
         width: viewport.width,
         height: viewport.height,
         scale_factor,
-        rotation_deg: f64::from(viewport.orientation.degrees()),
+        rotation_deg: viewport.orientation.degrees(),
         flipped: viewport.orientation.flipped(),
         visible: Rect {
             x: bounds.left,
@@ -464,6 +464,10 @@ impl UiHost {
                                 zoom: view.zoom,
                                 width: view.width,
                                 height: view.height,
+                                orientation: crate::rotation::saved_orientation(
+                                    view.rotation_deg,
+                                    view.flipped,
+                                ),
                             },
                         );
                         events.push((EventTarget::All, HostEvent::ViewChanged { view }));
@@ -673,14 +677,19 @@ mod tests {
     use super::*;
 
     /// Plugins' screen math (`ViewInfo::image_to_screen`) agrees with the
-    /// viewer's for every turn.
+    /// viewer's for every turn, at any angle.
     #[test]
     fn published_views_map_points_like_the_viewer() {
         let mut viewport = eov_common::Viewport::new(640.0, 480.0, 5000.0, 3000.0);
         viewport.zoom = 0.3;
         viewport.center.x = 2100.0;
         viewport.center.y = 1400.0;
-        for orientation in eov_common::viewport::Orientation::all() {
+        let mut orientations = eov_common::viewport::Orientation::all().to_vec();
+        for (degrees, flipped) in [(12.5, false), (45.0, true), (333.333333, false)] {
+            orientations
+                .push(eov_common::viewport::Orientation::from_degrees(degrees, flipped).unwrap());
+        }
+        for orientation in orientations {
             viewport.orientation = orientation;
             let view = ViewInfo {
                 center_x: viewport.center.x,
@@ -688,7 +697,7 @@ mod tests {
                 zoom: viewport.zoom,
                 width: viewport.width,
                 height: viewport.height,
-                rotation_deg: f64::from(orientation.degrees()),
+                rotation_deg: orientation.degrees(),
                 flipped: orientation.flipped(),
                 ..Default::default()
             };
