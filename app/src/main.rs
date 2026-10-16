@@ -130,6 +130,17 @@ fn request_render_loop(
     tile_cache: &Arc<TileCache>,
 ) {
     let should_start = {
+        // Taking the write lock while this thread already holds the state
+        // lock hangs the window (SH-1, PLG-2). Debug builds give up after a
+        // few seconds and say why instead (AUDIT §15.2).
+        #[cfg(debug_assertions)]
+        let mut state = state
+            .try_write_for(std::time::Duration::from_secs(5))
+            .expect(
+                "the app state stayed locked for 5 s: is it already locked further up this \
+                 thread's stack?",
+            );
+        #[cfg(not(debug_assertions))]
         let mut state = state.write();
         state.request_render();
         if state.render_loop_running {

@@ -1331,10 +1331,18 @@ fn copied_notice(copied: bool) {
                 None,
             );
         } else {
+            // The Flatpak has no X11 under Wayland, and eov's clipboard
+            // needs it for images (SH-10).
+            let flatpak_wayland = std::env::var_os("FLATPAK_ID").is_some()
+                && std::env::var_os("WAYLAND_DISPLAY").is_some();
             host.notify(
                 NotifyLevel::Error,
                 "Could not copy the image to the clipboard",
-                None,
+                Some(if flatpak_wayland {
+                    "The Flatpak cannot put images on the clipboard under Wayland yet. Export Image (Ctrl+E) saves the view to a file instead."
+                } else {
+                    "Export Image (Ctrl+E) saves the view to a file instead."
+                }),
                 None,
             );
         }
