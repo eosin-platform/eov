@@ -210,7 +210,8 @@ pub(crate) struct QueuedFrame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     /// How the draws, laid out axis-aligned with the slide (see
-    /// `Viewport::aligned`), turn onto the `width × height` surface.
+    /// `Viewport::aligned`: the turned view's bounding box), turn onto the
+    /// `width × height` surface. Any angle.
     pub(crate) orientation: Orientation,
     pub(crate) draws: Vec<TileDraw>,
     /// The pane's colour pipeline as the shaders' `EovColorParams` (stages
@@ -2043,17 +2044,22 @@ fn quad_vertices(draw: &TileDraw, params: &QuadParams) -> [Vertex; 6] {
     let x1 = draw.screen_x + draw.screen_w;
     let y1 = draw.screen_y + draw.screen_h;
 
-    // Draws are laid out in the aligned frame; turn each corner onto the
-    // surface about the frame centres.
+    // Draws are laid out in the aligned frame (the turned view's bounding
+    // box); turn each corner onto the surface about the frame centres. Any
+    // angle: the rasteriser draws the turned quad and interpolates its
+    // texture coordinates, which samples the slide once.
     let orientation = params.orientation;
-    let (aligned_w, aligned_h) = orientation.swap(vw, vh);
+    let (aligned_w, aligned_h) = orientation.turned_extent(f64::from(vw), f64::from(vh));
     let ndc = |x: f32, y: f32| -> [f32; 2] {
         let (px, py) = orientation.to_screen_xy(
-            f64::from(x - aligned_w / 2.0),
-            f64::from(y - aligned_h / 2.0),
+            f64::from(x) - aligned_w / 2.0,
+            f64::from(y) - aligned_h / 2.0,
         );
-        let (sx, sy) = (px as f32 + vw / 2.0, py as f32 + vh / 2.0);
-        [sx / vw * 2.0 - 1.0, 1.0 - sy / vh * 2.0]
+        let (sx, sy) = (px + f64::from(vw) / 2.0, py + f64::from(vh) / 2.0);
+        [
+            (sx / f64::from(vw) * 2.0 - 1.0) as f32,
+            (1.0 - sy / f64::from(vh) * 2.0) as f32,
+        ]
     };
     let top_left = ndc(x0, y0);
     let top_right = ndc(x1, y0);
@@ -2593,6 +2599,195 @@ mod tests {
             }
         }
         assert_eq!(differing, 0, "{differing} pixels sample another texel");
+    }
+
+    /// A synthetic slide of 2 × 2 tiles of `TILE` pixels whose borders hold
+    /// the neighbours' pixels (as `create_bordered_tile` makes them).
+    fn slide_tiles() -> Vec<Arc<TileData>> {
+        let side = TILE * 2;
+        let at = |x: i64, y: i64| {
+            let px = pattern(
+                x.clamp(0, i64::from(side) - 1) as u32,
+                y.clamp(0, i64::from(side) - 1) as u32,
+            );
+            [px[0], px[1], px[2], 255]
+        };
+        let mut tiles = Vec::new();
+        for ty in 0..2u32 {
+            for tx in 0..2u32 {
+                let mut data = Vec::new();
+                for y in -1..=i64::from(TILE) {
+                    for x in -1..=i64::from(TILE) {
+                        data.extend_from_slice(&at(
+                            i64::from(tx * TILE) + x,
+                            i64::from(ty * TILE) + y,
+                        ));
+                    }
+                }
+                tiles.push(Arc::new(TileData::new(
+                    TileCoord::new(1, 0, u64::from(tx), u64::from(ty), TILE),
+                    data,
+                    TILE,
+                    TILE,
+                    1,
+                )));
+            }
+        }
+        tiles
+    }
+
+    /// A slide turned by angles other than quarter turns renders on the GPU
+    /// as the CPU compositor renders it: the same pixels covered (the
+    /// tiles' turned quads, seamless), the same colours within the
+    /// interpolators' rounding (bilinear) and the same texels (the pixel
+    /// view). Pixel centres within a hair of the slide's edge, or of a
+    /// texel edge in the pixel view, depend on the rasteriser's sub-pixel
+    /// snapping and are left out.
+    #[test]
+    fn turned_gpu_frames_match_the_cpu_compositor() {
+        let Some(mut renderer) = headless_renderer() else {
+            eprintln!("no GPU adapter available; skipping the turned GPU/CPU comparison");
+            return;
+        };
+        let tiles = slide_tiles();
+        let side = f64::from(TILE * 2);
+        let (width, height) = (150u32, 110u32);
+        let background = crate::color::VIEWPORT_BACKGROUND;
+        let cases = [
+            (30.0, false, 1.21, false),
+            (45.0, true, 0.83, false),
+            (200.0, false, 1.6, false),
+            (330.0, true, 1.05, false),
+            (30.0, false, 2.37, true),
+            (113.0, true, 3.1, true),
+        ];
+        for (degrees, flipped, zoom, nearest) in cases {
+            let mut vp = eov_common::Viewport::new(f64::from(width), f64::from(height), side, side);
+            vp.zoom = zoom;
+            vp.center.x = 51.3;
+            vp.center.y = 44.7;
+            vp.orientation = Orientation::from_degrees(degrees, flipped).unwrap();
+            let bounds = vp.bounds();
+            let aligned = |v: f64, origin: f64| (v - origin) * zoom;
+            let mut draws = Vec::new();
+            let mut blits = Vec::new();
+            for tile in &tiles {
+                let (x0, y0) = (
+                    tile.coord.x as f64 * f64::from(TILE),
+                    tile.coord.y as f64 * f64::from(TILE),
+                );
+                let (x1, y1) = (x0 + f64::from(TILE), y0 + f64::from(TILE));
+                let (sx, sy) = (aligned(x0, bounds.left), aligned(y0, bounds.top));
+                let (ex, ey) = (aligned(x1, bounds.left), aligned(y1, bounds.top));
+                draws.push(TileDraw {
+                    tile: Arc::clone(tile),
+                    coarse_tile: None,
+                    screen_x: sx as f32,
+                    screen_y: sy as f32,
+                    screen_w: (ex as f32) - (sx as f32),
+                    screen_h: (ey as f32) - (sy as f32),
+                    coarse_uv_min: [0.0, 0.0],
+                    coarse_uv_max: [1.0, 1.0],
+                    mip_blend: 0.0,
+                    filtering_mode: FilteringMode::Bilinear,
+                });
+                blits.push(crate::render_pool::CpuBlitCommand {
+                    tile: Arc::clone(tile),
+                    rect: eov_common::blitter::BlitRect {
+                        x: sx.floor() as i32,
+                        y: sy.floor() as i32,
+                        width: ex.floor() as i32 - sx.floor() as i32,
+                        height: ey.floor() as i32 - sy.floor() as i32,
+                        exact_x: sx,
+                        exact_y: sy,
+                        exact_width: ex - sx,
+                        exact_height: ey - sy,
+                    },
+                    kind: if nearest {
+                        crate::render_pool::CpuBlitKind::Nearest
+                    } else {
+                        crate::render_pool::CpuBlitKind::Bilinear
+                    },
+                });
+            }
+
+            let slot = SurfaceSlot(2);
+            renderer.ensure_surface(slot, width, height).unwrap();
+            renderer.pending_frames.insert(
+                slot.index(),
+                QueuedFrame {
+                    width,
+                    height,
+                    orientation: vp.orientation,
+                    draws,
+                    color: ProcessingPipeline::identity().gpu_uniform(),
+                    icc: None,
+                    sharpness: 0.0,
+                    composite: true,
+                    nearest,
+                    readback: None,
+                },
+            );
+            renderer.flush_pending_frames();
+            let (_, _, gpu) = renderer.read_surface_rgba(slot).unwrap();
+
+            let map = eov_common::blitter::FrameMap::aligned_layout(&vp);
+            let mut cpu = vec![0u8; (width * height * 4) as usize];
+            crate::render_pool::composite_frame_turned(
+                &mut cpu,
+                width,
+                height,
+                &[],
+                &blits,
+                &map,
+                &|| false,
+            );
+            eov_common::processing::composite_onto(&mut cpu, background);
+
+            // The slide in the aligned layout, and how near a position is to
+            // a whole number (a texel edge in level-0 pixels).
+            let (left, top) = (aligned(0.0, bounds.left), aligned(0.0, bounds.top));
+            let (right, bottom) = (aligned(side, bounds.left), aligned(side, bounds.top));
+            let off_integer = |v: f64| (v - v.round()).abs();
+            let (mut compared, mut slide_pixels, mut worst) = (0, 0, 0u8);
+            for y in 0..height {
+                for x in 0..width {
+                    let a = map.at(f64::from(x), f64::from(y));
+                    let edge = [a[0] - left, right - a[0], a[1] - top, bottom - a[1]]
+                        .into_iter()
+                        .map(f64::abs)
+                        .fold(f64::INFINITY, f64::min);
+                    if edge < 0.02 {
+                        continue;
+                    }
+                    let level0 = [a[0] / zoom + bounds.left, a[1] / zoom + bounds.top];
+                    if nearest && (off_integer(level0[0]) < 0.01 || off_integer(level0[1]) < 0.01) {
+                        continue;
+                    }
+                    let inside = a[0] > left && a[0] < right && a[1] > top && a[1] < bottom;
+                    let i = ((y * width + x) * 4) as usize;
+                    let (g, c) = (&gpu[i..i + 3], &cpu[i..i + 3]);
+                    compared += 1;
+                    if !inside {
+                        assert_eq!(g, &background, "{degrees}°: {x},{y} is background");
+                        assert_eq!(c, &background, "{degrees}°: {x},{y} is background");
+                        continue;
+                    }
+                    slide_pixels += 1;
+                    let difference = max_difference(g, c);
+                    if nearest {
+                        assert_eq!(g, c, "{degrees}° pixel view: {x},{y} samples another texel");
+                    }
+                    worst = worst.max(difference);
+                }
+            }
+            assert!(
+                worst <= 1,
+                "{degrees}° (flipped {flipped}, zoom {zoom}): GPU and CPU differ by {worst}"
+            );
+            assert!(slide_pixels > 2000, "{degrees}°: the slide is on screen");
+            assert!(compared > (width * height) as usize * 9 / 10);
+        }
     }
 
     fn tagged_frame(width: u32, generation: u64) -> QueuedFrame {

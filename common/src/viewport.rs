@@ -92,7 +92,8 @@ impl Orientation {
 
     /// Whole quarter turns, when the rotation is one.
     pub fn quarter_turns(self) -> Option<u8> {
-        (self.micro_degrees % QUARTER_TURN == 0)
+        self.micro_degrees
+            .is_multiple_of(QUARTER_TURN)
             .then_some((self.micro_degrees / QUARTER_TURN) as u8)
     }
 

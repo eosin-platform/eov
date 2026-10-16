@@ -25,6 +25,12 @@
 
 use rayon::prelude::*;
 
+mod turned;
+pub use turned::{
+    FrameMap, blit_tile_lanczos3_turned, blit_tile_nearest_turned, blit_tile_trilinear_turned,
+    blit_tile_turned, reproject_frame_mapped,
+};
+
 #[derive(Clone, Copy)]
 struct LinearColSample {
     x0_4: usize,

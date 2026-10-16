@@ -37,9 +37,11 @@ pub struct CachedCpuFrame {
     /// finished again ([`CpuRenderPostProcess::finish`]).
     pub pixels: Vec<u8>,
     /// The same frame before colour processing, transparent outside the
-    /// slide, and axis-aligned with the slide (`viewport.aligned()`, not
-    /// turned). Interaction previews reproject this one, so that no pixel is
-    /// colour-processed twice. Empty for frames rendered on the GPU.
+    /// slide: axis-aligned with the slide for quarter turns
+    /// (`viewport.aligned()`, not turned), the turned frame itself for
+    /// other angles. Interaction previews reproject this one, so that no
+    /// pixel is colour-processed twice. Empty for frames rendered on the
+    /// GPU.
     pub source: Vec<u8>,
 }
 
@@ -337,6 +339,43 @@ pub fn composite_frame(
         });
 }
 
+/// [`composite_frame`] for a frame turned by an angle that is not a
+/// quarter turn: the blits, laid out axis-aligned with the slide, are drawn
+/// straight into the turned `width × height` frame, `map` saying where its
+/// pixels fall in their layout (see [`eov_common::blitter::FrameMap`]).
+pub fn composite_frame_turned(
+    buffer: &mut [u8],
+    width: u32,
+    height: u32,
+    fallback: &[CpuBlitCommand],
+    fine: &[CpuBlitCommand],
+    map: &eov_common::blitter::FrameMap,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) {
+    let stride = (width as usize) * 4;
+    if stride == 0 || height == 0 {
+        return;
+    }
+    let rows = rows_per_band(height);
+    buffer
+        .par_chunks_mut(rows * stride)
+        .enumerate()
+        .for_each(|(band, chunk)| {
+            if cancelled() {
+                return;
+            }
+            let chunk_height = (chunk.len() / stride) as u32;
+            let band_map = map.from_row((band * rows) as u32);
+            chunk.fill(0);
+            for command in fallback.iter().chain(fine) {
+                if cancelled() {
+                    return;
+                }
+                draw_turned_command(chunk, width, chunk_height, &band_map, command);
+            }
+        });
+}
+
 /// Fills each row band of `buffer` with `reproject(band, band_height,
 /// first_row)` (an earlier frame moved to this view), then composites the
 /// blits over it, in parallel.
@@ -366,13 +405,44 @@ pub fn composite_preview(
         });
 }
 
-/// Composites the job's tiles into `source` (axis-aligned with the slide,
-/// transparent outside it, unprocessed), turns that frame to the view's
-/// orientation into `buffer` and colour-processes `buffer` (still
-/// transparent outside the slide), and returns the frame to display: the
-/// plugin filters run over `buffer`'s pixels, then the background and the
-/// sharpening are added. `None` when a newer job for the pane superseded
-/// this one.
+/// [`composite_preview`] for a frame turned by an angle that is not a
+/// quarter turn (see [`composite_frame_turned`]).
+pub fn composite_preview_turned(
+    buffer: &mut [u8],
+    width: u32,
+    height: u32,
+    reproject: &(dyn Fn(&mut [u8], u32, u32) + Sync),
+    fallback: &[CpuBlitCommand],
+    fine: &[CpuBlitCommand],
+    map: &eov_common::blitter::FrameMap,
+) {
+    let stride = (width as usize) * 4;
+    if stride == 0 || height == 0 {
+        return;
+    }
+    let rows = rows_per_band(height);
+    buffer
+        .par_chunks_mut(rows * stride)
+        .enumerate()
+        .for_each(|(band, chunk)| {
+            let chunk_height = (chunk.len() / stride) as u32;
+            let first_row = (band * rows) as u32;
+            reproject(chunk, chunk_height, first_row);
+            let band_map = map.from_row(first_row);
+            for command in fallback.iter().chain(fine) {
+                draw_turned_command(chunk, width, chunk_height, &band_map, command);
+            }
+        });
+}
+
+/// Composites the job's tiles into `source` (transparent outside the
+/// slide, unprocessed): axis-aligned with the slide for quarter turns,
+/// then turned (exactly) to the view's orientation into `buffer`; straight
+/// into the turned frame for other angles, then copied to `buffer`. It
+/// colour-processes `buffer` (still transparent outside the slide), and
+/// returns the frame to display: the plugin filters run over `buffer`'s
+/// pixels, then the background and the sharpening are added. `None` when a
+/// newer job for the pane superseded this one.
 fn render_job(
     job: &CpuRenderJob,
     latest_jobs: &Mutex<HashMap<u32, u64>>,
@@ -384,23 +454,46 @@ fn render_job(
         return None;
     }
     let cancelled = || !current();
-    // The blits are laid out axis-aligned with the slide; the frame is
-    // turned to the view's orientation after compositing.
+    // The blits are laid out axis-aligned with the slide.
     let orientation = job.viewport.orientation;
-    let (aligned_width, aligned_height) = orientation.swap(job.width, job.height);
-    composite_frame(
-        source,
-        aligned_width,
-        aligned_height,
-        &job.fallback_blits,
-        &job.fine_blits,
-        &cancelled,
-    );
-    if !current() {
-        return None;
+    if orientation.is_quarter_turn() {
+        // Composited aligned, then turned exactly.
+        let (aligned_width, aligned_height) = orientation.swap(job.width, job.height);
+        composite_frame(
+            source,
+            aligned_width,
+            aligned_height,
+            &job.fallback_blits,
+            &job.fine_blits,
+            &cancelled,
+        );
+        if !current() {
+            return None;
+        }
+        eov_common::blitter::orient_frame(
+            source,
+            aligned_width,
+            aligned_height,
+            orientation,
+            buffer,
+        );
+    } else {
+        let map = eov_common::blitter::FrameMap::aligned_layout(&job.viewport);
+        composite_frame_turned(
+            source,
+            job.width,
+            job.height,
+            &job.fallback_blits,
+            &job.fine_blits,
+            &map,
+            &cancelled,
+        );
+        if !current() {
+            return None;
+        }
+        let len = buffer.len().min(source.len());
+        buffer[..len].copy_from_slice(&source[..len]);
     }
-
-    eov_common::blitter::orient_frame(source, aligned_width, aligned_height, orientation, buffer);
     job.postprocess.color(buffer);
     if !current() {
         return None;
@@ -415,6 +508,58 @@ fn render_job(
     }
     job.postprocess.finish(bytes, job.width, job.height);
     current().then_some(display)
+}
+
+/// Draws one blit into a band of a turned frame (`band_map` maps the
+/// band's pixels into the blits' layout).
+fn draw_turned_command(
+    chunk: &mut [u8],
+    width: u32,
+    chunk_height: u32,
+    band_map: &eov_common::blitter::FrameMap,
+    command: &CpuBlitCommand,
+) {
+    use eov_common::blitter as common;
+    let tile = blitter::TileSrc {
+        data: &command.tile.data,
+        width: command.tile.width,
+        height: command.tile.height,
+        border: command.tile.border,
+    };
+    let rect = command.rect;
+    match &command.kind {
+        CpuBlitKind::Nearest => {
+            common::blit_tile_nearest_turned(chunk, width, chunk_height, tile, rect, band_map)
+        }
+        CpuBlitKind::Bilinear => {
+            common::blit_tile_turned(chunk, width, chunk_height, tile, rect, band_map)
+        }
+        CpuBlitKind::Lanczos3 => {
+            common::blit_tile_lanczos3_turned(chunk, width, chunk_height, tile, rect, band_map)
+        }
+        CpuBlitKind::Trilinear {
+            coarse_tile,
+            uv_min,
+            uv_max,
+            blend,
+        } => common::blit_tile_trilinear_turned(
+            chunk,
+            width,
+            chunk_height,
+            tile,
+            &blitter::CoarseSrc {
+                data: &coarse_tile.data,
+                width: coarse_tile.width,
+                height: coarse_tile.height,
+                border: coarse_tile.border,
+                uv_min: *uv_min,
+                uv_max: *uv_max,
+                blend: *blend,
+            },
+            rect,
+            band_map,
+        ),
+    }
 }
 
 fn draw_command_into_chunk(
@@ -589,6 +734,58 @@ mod tests {
             assert_eq!(pixels, expected, "{orientation:?}");
             assert_eq!(source, aligned_source, "{orientation:?}");
         }
+    }
+
+    /// A view turned by another angle draws its tiles straight into the
+    /// turned frame, keeps that frame (unprocessed) as the source for
+    /// previews, and finishes it like any frame.
+    #[test]
+    fn freely_turned_jobs_draw_into_the_turned_frame() {
+        let pipeline =
+            ProcessingPipeline::new(None, ToneAdjustments::new(1.4, 0.0, 1.0), 0.0).unwrap();
+        let mut job = job_with_tile(pipeline.clone());
+        // A 6 × 6 view centred on the 2 × 2 tile, turned 30°.
+        job.width = 6;
+        job.height = 6;
+        job.viewport = Viewport::new(6.0, 6.0, 2.0, 2.0);
+        job.viewport.zoom = 2.0;
+        job.viewport.orientation =
+            eov_common::viewport::Orientation::from_degrees(30.0, false).unwrap();
+        let bounds = job.viewport.bounds();
+        let (x, y) = ((0.0 - bounds.left) * 2.0, (0.0 - bounds.top) * 2.0);
+        job.fine_blits[0].rect = blitter::BlitRect {
+            x: x.floor() as i32,
+            y: y.floor() as i32,
+            width: 4,
+            height: 4,
+            exact_x: x,
+            exact_y: y,
+            exact_width: 4.0,
+            exact_height: 4.0,
+        };
+        let latest = Mutex::new(HashMap::from([(3, 7)]));
+        let (mut pixels, mut source) = (vec![0u8; 6 * 6 * 4], vec![0u8; 6 * 6 * 4]);
+        let display = render_job(&job, &latest, &mut pixels, &mut source).unwrap();
+        let mut expected = vec![0u8; 6 * 6 * 4];
+        composite_frame_turned(
+            &mut expected,
+            6,
+            6,
+            &[],
+            &job.fine_blits,
+            &eov_common::blitter::FrameMap::aligned_layout(&job.viewport),
+            &|| false,
+        );
+        assert_eq!(source, expected, "the source is the turned frame");
+        // The slide is the tilted square in the middle: its pixels are
+        // processed, the corners are background.
+        let processed = pipeline.color_pixel([100, 150, 200]);
+        let bytes = display.as_bytes();
+        let pixel = |x: usize, y: usize| &bytes[(y * 6 + x) * 4..(y * 6 + x) * 4 + 4];
+        assert_eq!(&pixel(3, 3)[..3], &processed);
+        assert_eq!(pixel(0, 0), &[30, 30, 30, 255]);
+        assert_eq!(pixel(5, 5), &[30, 30, 30, 255]);
+        assert!(source[(3 * 6 + 3) * 4 + 3] == 255 && source[3] == 0);
     }
 
     /// Colour management follows the filters: they see the slide's own

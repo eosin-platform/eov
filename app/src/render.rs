@@ -2356,8 +2356,9 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         {
             return None;
         }
-        // Reprojection and compositing happen axis-aligned with the slide;
-        // the result is turned to the view's orientation.
+        // For quarter turns, reprojection and compositing happen
+        // axis-aligned with the slide; the result is turned to the view's
+        // orientation.
         let orientation = viewport.orientation;
         let (source_width, source_height) = orientation.swap(cpu_frame.width, cpu_frame.height);
         let (aligned_width, aligned_height) = orientation.swap(render_width, render_height);
@@ -2382,6 +2383,44 @@ fn render_cached_preview(input: RenderCachedPreview<'_>) -> Option<Image> {
         }
         let preview = &mut entry.preview_buffer[..needed];
         let source = &cpu_frame.source[..source_len];
+        if !orientation.is_quarter_turn() {
+            // Other angles keep the turned frame itself: it is resampled to
+            // the new view, and the tiles are drawn turned over it.
+            let (old, new) = (&cpu_frame.viewport, viewport);
+            let reprojection =
+                eov_common::blitter::FrameMap::sampled(render_width, render_height, |x, y| {
+                    let p = new.screen_to_image(x, y);
+                    old.image_to_screen(p.x, p.y)
+                });
+            let reproject = |band: &mut [u8], band_height: u32, first_row: u32| {
+                eov_common::blitter::reproject_frame_mapped(
+                    band,
+                    render_width,
+                    band_height,
+                    source,
+                    cpu_frame.width,
+                    cpu_frame.height,
+                    &reprojection.from_row(first_row),
+                    [0, 0, 0, 0],
+                );
+            };
+            crate::render_pool::composite_preview_turned(
+                preview,
+                render_width,
+                render_height,
+                &reproject,
+                fallback_commands,
+                fine_commands,
+                &eov_common::blitter::FrameMap::aligned_layout(viewport),
+            );
+            let mut frame =
+                slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(render_width, render_height);
+            let pixels = frame.make_mut_bytes();
+            pixels.copy_from_slice(preview);
+            let filters = frame_filters(filter_chain, file_id, pane_uid, viewport, scale);
+            postprocess.apply(pixels, render_width, render_height, filters.as_ref());
+            return Some(Image::from_rgba8(frame));
+        }
         let reproject = |band: &mut [u8], band_height: u32, first_row: u32| {
             eov_common::blitter::reproject_frame(
                 band,
@@ -2723,6 +2762,81 @@ mod tests {
             corner.covers(300.0, 300.0, 400.0, 400.0),
             "nothing of it is visible"
         );
+    }
+
+    /// Visible-tile selection uses the turned view's bounding box: at 30°
+    /// and 45° the tiles the loader wants and the renderer draws cover every
+    /// pixel of the pane, up to its corners.
+    #[test]
+    fn turned_views_select_every_tile_up_to_the_corners() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        eov_common::test_support::write_tiled_tiff(&path, 2048, 2048, 256, |x, y| {
+            [200, (x % 251) as u8, (y % 241) as u8]
+        })
+        .unwrap();
+        let manager = TileManager::new(eov_common::WsiFile::open(&path).unwrap(), 1);
+        let cache = Arc::new(TileCache::with_limits(1024, 512 << 20));
+        let (width, height) = (400u32, 300u32);
+        for degrees in [30.0, 45.0, 120.0] {
+            let mut vp = Viewport::new(f64::from(width), f64::from(height), 2048.0, 2048.0);
+            vp.zoom = 1.37;
+            vp.center.x = 900.0;
+            vp.center.y = 1100.0;
+            vp.orientation =
+                eov_common::viewport::Orientation::from_degrees(degrees, false).unwrap();
+            let bounds = vp.bounds();
+            let wanted: HashSet<_> = calculate_wanted_tiles(
+                &manager,
+                0,
+                bounds.left,
+                bounds.top,
+                bounds.right,
+                bounds.bottom,
+                0,
+            )
+            .into_iter()
+            .filter(|coord| coord.level == 0)
+            .collect();
+            for y in 0..height {
+                for x in 0..width {
+                    let p = vp.screen_to_image(f64::from(x) + 0.5, f64::from(y) + 0.5);
+                    let coord =
+                        TileCoord::new(1, 0, (p.x / 256.0) as u64, (p.y / 256.0) as u64, 256);
+                    assert!(
+                        wanted.contains(&coord),
+                        "{degrees}°: {x},{y} needs {coord:?}"
+                    );
+                }
+            }
+            // Loaded, they are drawn over the whole turned frame.
+            for coord in &wanted {
+                cache.insert(manager.load_tile_sync(*coord).unwrap());
+            }
+            let aligned = vp.aligned();
+            let trilinear =
+                calculate_trilinear_levels(manager.wsi(), vp.effective_downsample(), false);
+            assert_eq!(trilinear.level_fine, 0);
+            let cached =
+                collect_cached_visible_tiles(&manager, &cache, &aligned, trilinear, 0, false);
+            let level = manager.wsi().level(0).unwrap().clone();
+            let blits = fine_blits(&manager, &aligned, &level, trilinear, &cached, false, false);
+            let mut frame = vec![0u8; (width * height * 4) as usize];
+            crate::render_pool::composite_frame_turned(
+                &mut frame,
+                width,
+                height,
+                &[],
+                &blits,
+                &eov_common::blitter::FrameMap::aligned_layout(&vp),
+                &|| false,
+            );
+            let holes = frame
+                .chunks(4)
+                .filter(|p| p[3] != 255 || p[0] != 200)
+                .count();
+            assert_eq!(holes, 0, "{degrees}°: pixels without the slide");
+        }
     }
 
     /// RND-3: frames cover the pane's region at physical resolution, levels
