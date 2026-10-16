@@ -29,6 +29,7 @@ pub(crate) mod key_help;
 mod link;
 mod measurements_panel;
 mod menus;
+mod models;
 mod notices;
 mod overlays;
 mod panel;
@@ -142,6 +143,8 @@ pub(crate) struct UiHost {
     app_update: RefCell<Option<app_update::AppUpdate>>,
     /// Its status-bar job while it applies.
     app_update_job: RefCell<Option<String>>,
+    /// Models plugins asked for that are being confirmed or downloaded.
+    model_fetches: RefCell<models::ModelFetches>,
 }
 
 /// Owner recorded for host jobs in the status bar; no plugin id is empty.
@@ -213,6 +216,7 @@ pub(crate) fn init(
         plugin_updates: RefCell::new(HashMap::new()),
         app_update: RefCell::new(None),
         app_update_job: RefCell::new(None),
+        model_fetches: RefCell::new(models::ModelFetches::default()),
     });
     HOST.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&host)));
     host.publish_now();

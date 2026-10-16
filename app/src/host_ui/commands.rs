@@ -180,6 +180,10 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
         }
         // Batch runs happen in `eov batch`, never in the window.
         Command::BatchProgress(_) | Command::BatchFinish(_) => {}
+        Command::ModelFetch {
+            request_id,
+            request,
+        } => host.fetch_model(plugin_id, request_id, *request),
     }
 }
 

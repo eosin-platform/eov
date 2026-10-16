@@ -181,8 +181,14 @@ impl Headless {
             *set = false;
         }
         let mut finished = Vec::new();
+        let mut model_requests = Vec::new();
         for (plugin_id, command) in self.shared.take_commands() {
             match command {
+                // Answered from the model store; batch runs never download.
+                Command::ModelFetch {
+                    request_id,
+                    request,
+                } => model_requests.push((plugin_id, request_id, request)),
                 Command::Notify(args) => {
                     let level = match args.level {
                         NotifyLevel::Error => "error",
@@ -204,6 +210,14 @@ impl Headless {
                 Command::BatchFinish(args) => finished.push(args),
                 // Everything else needs a window.
                 _ => {}
+            }
+        }
+        if !model_requests.is_empty() {
+            let store = crate::model_store::ModelStore::for_user(crate::update::policy::current());
+            for (plugin_id, request_id, request) in model_requests {
+                let answer = crate::model_store::answer_from_store(&store, request_id, &request);
+                // A plugin that stops is reported by the run itself.
+                let _ = self.deliver(&plugin_id, &answer);
             }
         }
         finished
@@ -702,6 +716,88 @@ fn run_slide(
 mod tests {
     use super::*;
     use eov_plugin_api::protocol::BatchParam;
+
+    /// Batch runs answer `model.fetch` from the model store and never
+    /// download.
+    #[test]
+    fn batch_runs_answer_model_requests_from_the_store() {
+        use eov_plugin_api::prelude::{Host, ModelFetchArgs, Plugin, PluginInit};
+        static ASK: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+        static ANSWERS: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
+            std::sync::Mutex::new(Vec::new());
+        struct Asker {
+            host: Host,
+        }
+        impl Plugin for Asker {
+            fn create(host: Host, _init: PluginInit) -> Result<Self, String> {
+                Ok(Self { host })
+            }
+            fn on_event(&self, event: HostEvent) -> Result<(), String> {
+                match event {
+                    HostEvent::Ready { .. } => {
+                        for sha256 in ASK.lock().unwrap().iter() {
+                            self.host
+                                .fetch_model(ModelFetchArgs {
+                                    url: Some("https://models.example.org/m.onnx".into()),
+                                    sha256: sha256.clone(),
+                                    ..Default::default()
+                                })
+                                .map_err(String::from)?;
+                        }
+                    }
+                    HostEvent::ModelFetched { path, error, .. } => {
+                        ANSWERS.lock().unwrap().push((path, error));
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+        }
+        crate::paths::isolate_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("batch-model.onnx");
+        std::fs::write(&file, b"the model a batch run uses").unwrap();
+        let stored = crate::model_store::ModelStore::for_user(crate::update::policy::current())
+            .import(&file, None, &[], None, None, &Default::default())
+            .unwrap();
+        *ASK.lock().unwrap() = vec![stored.record.sha256.clone(), "b".repeat(64)];
+        let mut headless = Headless::new();
+        headless
+            .runtime
+            .start(
+                PluginInfo {
+                    id: "asker".into(),
+                    name: "Asker".into(),
+                    version: "1.0.0".into(),
+                    ..Default::default()
+                },
+                loader::Module::from_ref(eov_plugin_api::sdk::root_module::<Asker>()),
+                dir.path().join("data"),
+                dir.path().join("cache"),
+            )
+            .unwrap();
+        headless
+            .deliver(
+                "asker",
+                &HostEvent::Ready {
+                    restore_sidebar: false,
+                },
+            )
+            .unwrap();
+        headless.pump(Duration::from_millis(10));
+        let answers = ANSWERS.lock().unwrap().clone();
+        assert_eq!(answers.len(), 2);
+        assert_eq!(
+            answers[0],
+            (Some(stored.path().to_string_lossy().into_owned()), None)
+        );
+        let error = answers[1].1.as_deref().unwrap();
+        assert!(
+            answers[1].0.is_none() && error.contains("eov model fetch"),
+            "{error}"
+        );
+        headless.shutdown();
+    }
 
     /// The example plugin's tissue-stats command over two slides, one of
     /// which cannot be read, with a manifest that names no paths.
