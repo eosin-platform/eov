@@ -24,9 +24,11 @@ eovae 1.0 needs eov 1.0 or newer (plugin API 1.0).
 
 Open the sidebar with the VAE toolbar button.
 
-1. **Model → Load ONNX…** picks a model. eovae checks it can feed it, hashes
-   it with its external weights and prepares the inference engine in the
-   background; the sidebar shows the device it runs on.
+1. **Model → Load ONNX…** picks a model, or **Download the reference model**
+   gets HistoVAE's through eov (see [Downloading the reference
+   model](#downloading-the-reference-model)). eovae checks it can feed it,
+   hashes it with its external weights and prepares the inference engine in
+   the background; the sidebar shows the device it runs on.
 2. **Analysis** sets the **device** (Auto, CPU or CUDA; independent of how eov
    renders), the **resolution** (Auto gives the model tiles at exactly its
    training µm/px when the slide and the model both declare one, see below;
@@ -101,6 +103,47 @@ Example sidecar:
 The HistoVAE reference model (`HistoVAE/pretrained/HistoVae_reconstruct.onnx`
 with its `.onnx.data` weights) is recognised and declares 0.227 µm/px
 (CAMELYON17 level 0).
+
+### Downloading the reference model
+
+eovae's model card pins both files of the reference model by their own
+SHA-256:
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `HistoVae_reconstruct.onnx` | 418,269 | `70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92` |
+| `HistoVae_reconstruct.onnx.data` | 7,618,816 | `cd2735866bd69648eb17df97f196f266e6e2569f8c21fa1e9779fb7e3a233ef8` |
+
+While no model is loaded, **Download the reference model** asks eov for it
+by these hashes. eov keeps models in its [model
+store](../../README.md#models-for-ai-plugins), so a model downloaded once,
+by any plugin, or imported is used at once (the button then reads **Use
+the reference model**). Otherwise eov asks you before it downloads, shows
+the progress in the status bar and checks both files against their SHA-256;
+eovae then loads the model and keeps it as its model, for the viewer and
+for batch runs. A wrong or tampered copy is refused, wherever it comes
+from. eov says why a download failed, and the sidebar keeps the reason in
+view.
+
+HistoVAE publishes its PyTorch weights, not this ONNX export, and no public
+copy of the export could be verified, so eovae pins no address: your site
+serves the two files and says where they are, in one of three ways:
+
+- in the sidebar, **Address…**: the URL of the `.onnx` file; the
+  `.onnx.data` file is taken from the same folder;
+- for every user, in eov's policy file, `[model_urls]`, by the SHA-256
+  above (the files' addresses; eov then needs no address from eovae);
+- on a computer without network access, by importing the files:
+  `eov model import HistoVae_reconstruct.onnx --sha256 70a8deef…
+  --companion cd273586…=HistoVae_reconstruct.onnx.data` (the full hashes as
+  above).
+
+**Your own model.** Enter its SHA-256 under **Address…** with its URL and
+the button downloads that model instead (one `.onnx` file; a model with
+external weights is downloaded with `eov model fetch --companion …` and
+loaded with **Load ONNX…**). Both settings are kept with eovae's other
+settings. A host without a model store (eov before model downloads) shows
+no button.
 
 ### Resolution
 

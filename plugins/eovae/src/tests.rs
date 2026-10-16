@@ -1688,3 +1688,197 @@ fn resampled_pixels_land_where_they_belong() {
         assert!(checked >= 20, "{checked} points checked");
     }
 }
+
+/// A harness with no model chosen yet (and the fixture model on disk, to
+/// stand in for a downloaded one).
+fn setup_without_model(config: Value) -> (Setup, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let model_path = write_fixtures(dir.path(), "downloaded.onnx");
+    let mut init = test_init("eovae");
+    init.settings.insert("config".into(), config);
+    let (host, requests) = mock_host(dir.path(), Reads::Slide);
+    let s = Setup {
+        harness: Harness::with_host(host, init.clone()).unwrap(),
+        requests,
+        dir,
+        init,
+    };
+    (s, model_path)
+}
+
+impl Setup {
+    /// Starts eovae and opens its sidebar (no model loads).
+    fn open(&self) -> String {
+        self.harness
+            .send(HostEvent::Ready {
+                restore_sidebar: false,
+            })
+            .unwrap();
+        self.harness
+            .send(HostEvent::ToolbarButtonClicked {
+                button_id: crate::plugin::TOOLBAR_BUTTON.into(),
+            })
+            .unwrap();
+        self.sidebar_id().expect("the sidebar opened")
+    }
+}
+
+/// A store record for `path` as eov answers for the reference model.
+fn reference_record(path: &Path) -> ModelRecord {
+    let reference = crate::model::reference();
+    let weights = &reference.files[1];
+    ModelRecord {
+        sha256: reference.main().sha256.into(),
+        path: path.to_string_lossy().into_owned(),
+        file_name: reference.main().file_name.into(),
+        size: reference.main().size,
+        name: Some(reference.name.into()),
+        companions: vec![ModelCompanion {
+            file_name: weights.file_name.into(),
+            sha256: weights.sha256.into(),
+            size: weights.size,
+            path: path
+                .with_file_name(weights.file_name)
+                .to_string_lossy()
+                .into_owned(),
+        }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn the_reference_model_is_downloaded_through_eov_and_becomes_the_default() {
+    let url = "https://models.example.org/histovae/HistoVae_reconstruct.onnx";
+    let (s, model_path) = setup_without_model(json!({"device": "cpu", "download_url": url}));
+    let surface = s.open();
+    s.wait_property("the download button", "download-label", |v| {
+        v == &json!("Download the reference model")
+    });
+    let note = s.property("download-note");
+    assert!(
+        note.as_str().unwrap().contains("models.example.org"),
+        "{note}"
+    );
+    s.callback(&surface, "download-model", vec![]);
+    let (request, args) = s.harness.last_model_fetch().expect("eov was asked");
+    let reference = crate::model::reference();
+    assert_eq!(args.url.as_deref(), Some(url));
+    assert_eq!(args.sha256, reference.main().sha256);
+    assert_eq!(args.size, Some(reference.main().size));
+    assert_eq!(args.companions.len(), 1);
+    assert_eq!(args.companions[0].sha256, reference.files[1].sha256);
+    assert_eq!(
+        args.companions[0].file_name.as_deref(),
+        Some("HistoVae_reconstruct.onnx.data")
+    );
+    s.wait_property("busy", "download-busy", |v| v == &json!(true));
+    // A second click while eov asks does not ask again.
+    s.callback(&surface, "download-model", vec![]);
+    assert_eq!(s.harness.state().model_fetches.len(), 1);
+
+    s.harness
+        .finish_model_fetch(&request, Ok(reference_record(&model_path)))
+        .unwrap();
+    s.wait_property("the downloaded model", "model-state", |v| v == &json!(2));
+    s.wait_property("no download button", "download-label", |v| v == &json!(""));
+    // It is the default model now, for the next start and batch runs.
+    let saved = model_path.to_string_lossy().into_owned();
+    wait_until("the saved model path", || {
+        s.harness
+            .state()
+            .settings
+            .get("config")
+            .is_some_and(|c| c["model_path"] == json!(saved))
+    });
+}
+
+#[test]
+fn declined_and_failed_downloads_leave_the_sidebar_saying_so() {
+    let (s, _) = setup_without_model(json!({"device": "cpu"}));
+    let surface = s.open();
+    // No address: eov may still have the site's copy from its policy.
+    s.wait_property("the note", "download-note", |v| {
+        v.as_str().is_some_and(|t| t.contains("Address"))
+    });
+    s.callback(&surface, "download-model", vec![]);
+    let (request, args) = s.harness.last_model_fetch().unwrap();
+    assert_eq!(args.url, None);
+    s.harness.cancel_model_fetch(&request).unwrap();
+    s.wait_property("not busy", "download-busy", |v| v == &json!(false));
+    assert_eq!(s.property("download-note-error"), json!(false));
+
+    s.callback(&surface, "download-model", vec![]);
+    let (request, _) = s.harness.last_model_fetch().unwrap();
+    s.harness
+        .finish_model_fetch(
+            &request,
+            Err("no download address is set for HistoVAE reference (CAMELYON17)".into()),
+        )
+        .unwrap();
+    s.wait_property("the error", "download-note", |v| {
+        v.as_str()
+            .is_some_and(|t| t.contains("no download address"))
+    });
+    assert_eq!(s.property("download-note-error"), json!(true));
+    assert_eq!(s.property("model-state"), json!(0));
+    // eov reported it; eovae does not repeat it.
+    assert!(
+        s.harness
+            .state()
+            .notifications
+            .iter()
+            .all(|n| !n.message.contains("download address"))
+    );
+}
+
+#[test]
+fn a_stored_model_is_offered_and_a_site_model_can_be_set() {
+    let (s, model_path) = setup_without_model(json!({"device": "cpu"}));
+    s.harness.state().add_model(reference_record(&model_path));
+    let surface = s.open();
+    s.wait_property("the stored model", "download-label", |v| {
+        v == &json!("Use the reference model")
+    });
+    // A typo is refused and said; the setting stays as it was.
+    let reply = s.callback(&surface, "download-sha256-committed", vec![json!("abc")]);
+    assert_eq!(reply, json!(""));
+    s.wait_property("the refusal", "download-note-error", |v| v == &json!(true));
+    let site = "B".repeat(64);
+    let reply = s.callback(&surface, "download-sha256-committed", vec![json!(site)]);
+    assert_eq!(reply, json!("b".repeat(64)));
+    s.callback(
+        &surface,
+        "download-url-committed",
+        vec![json!(" https://models.example.org/our-vae.onnx ")],
+    );
+    s.wait_property("the site model", "download-label", |v| {
+        v == &json!("Download your site's model")
+    });
+    s.callback(&surface, "download-model", vec![]);
+    let (_, args) = s.harness.last_model_fetch().unwrap();
+    assert_eq!(args.sha256, "b".repeat(64));
+    assert!(args.companions.is_empty());
+    assert_eq!(
+        args.url.as_deref(),
+        Some("https://models.example.org/our-vae.onnx")
+    );
+    assert!(args.name.unwrap().contains("our-vae.onnx"));
+}
+
+#[test]
+fn hosts_without_a_model_store_offer_no_download() {
+    let (s, _) = setup_without_model(json!({"device": "cpu"}));
+    s.harness
+        .state()
+        .unsupported
+        .extend(["model.fetch".to_string(), "model.resolve".to_string()]);
+    let surface = s.open();
+    s.wait_property("the empty sidebar", "model-state", |v| v == &json!(0));
+    wait_until("no download button", || {
+        s.property("download-label") == json!("")
+    });
+    // A click that was on its way when the button went is harmless.
+    s.callback(&surface, "download-model", vec![]);
+    assert!(s.harness.state().model_fetches.is_empty());
+    assert_eq!(s.property("download-busy"), json!(false));
+}
