@@ -134,7 +134,9 @@ mod tests {
         assert_eq!(default_case("TCGA-A1-A0SB-01Z-00-DX1.svs"), "TCGA-A1-A0SB");
         assert_eq!(default_case("patient_198_node_0.tif"), "patient_198");
         assert_eq!(default_case("S21-12345 A1 HE.svs"), "S21-12345");
+        assert_eq!(default_case("S21-12345-A1.svs"), "S21-12345");
         assert_eq!(default_case("case12_block3_HE.ome.tiff"), "case12");
+        assert_eq!(default_case("other-123-1.svs"), "other-123");
         assert_eq!(
             default_case("tumor_001.tif"),
             "tumor_001",
