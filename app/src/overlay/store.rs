@@ -490,6 +490,9 @@ pub struct PickParams {
     pub mpp: Option<f64>,
     /// Outline tolerance in logical pixels.
     pub tolerance_px: f64,
+    /// How the pane turns the slide: text, laid out along the screen,
+    /// turns with it in level-0 terms.
+    pub orientation: eov_common::viewport::Orientation,
 }
 
 /// A consistent view of the layers of one file for rendering.
@@ -1011,7 +1014,9 @@ fn pick_object(
             // Approximate the text box at the style's font size.
             let font = f64::from(style.font_size.max(1.0));
             let width_px = font * 0.6 * text.chars().count() as f64;
-            let (dx, dy) = (to_px(p[0] - x), to_px(p[1] - y));
+            // The text runs along the screen, whatever the view's turn.
+            let (dx, dy) = params.orientation.to_screen_xy(p[0] - x, p[1] - y);
+            let (dx, dy) = (to_px(dx), to_px(dy));
             let inside = dx >= 0.0 && dx <= width_px && dy >= 0.0 && dy <= font * 1.3;
             (dx >= -tolerance
                 && dx <= width_px + tolerance
@@ -1110,7 +1115,64 @@ mod tests {
             zoom: 1.0,
             mpp: None,
             tolerance_px: 4.0,
+            orientation: Default::default(),
         }
+    }
+
+    /// Hit-testing is in level-0 coordinates: turning the view changes
+    /// nothing for shapes, and a text label, which reads along the screen,
+    /// is found along its turned box.
+    #[test]
+    fn hits_follow_a_turned_view() {
+        let store = OverlayStore::new();
+        store
+            .create_layer(plugin(), LayerSpec::new("marks", 1))
+            .unwrap();
+        store
+            .upsert(
+                &plugin(),
+                "marks",
+                vec![
+                    square("a", 0.0, 0.0, 10.0),
+                    OverlayObject::new(
+                        "label",
+                        Shape::Text {
+                            x: 100.0,
+                            y: 100.0,
+                            text: "Mitosis".into(),
+                        },
+                    ),
+                ],
+                false,
+            )
+            .unwrap();
+        let turned = eov_common::viewport::Orientation::from_degrees(90.0, false).unwrap();
+        let tilted = eov_common::viewport::Orientation::from_degrees(30.0, true).unwrap();
+        for orientation in [Default::default(), turned, tilted] {
+            let at = |x, y| PickParams {
+                orientation,
+                ..pick(1, x, y)
+            };
+            assert_eq!(store.hit_test(at(5.0, 5.0), |_| true).len(), 1);
+            assert!(store.hit_test(at(50.0, 50.0), |_| true).is_empty());
+        }
+        // A few pixels along the label, as it reads on screen.
+        let along = |orientation: eov_common::viewport::Orientation| {
+            let (dx, dy) = orientation.to_image_xy(6.0, 4.0);
+            PickParams {
+                orientation,
+                ..pick(1, 100.0 + dx, 100.0 + dy)
+            }
+        };
+        for orientation in [Default::default(), turned, tilted] {
+            let hits = store.hit_test(along(orientation), |_| true);
+            assert_eq!(hits.len(), 1, "{orientation:?}");
+            assert!(hits[0].contains);
+        }
+        // Upright, that point is off a label turned a quarter.
+        let (dx, dy) = turned.to_image_xy(6.0, 4.0);
+        let hits = store.hit_test(pick(1, 100.0 + dx, 100.0 + dy), |_| true);
+        assert!(hits.iter().all(|hit| !hit.contains));
     }
 
     #[test]
