@@ -3,10 +3,14 @@
 //!
 //! `series_case_pattern` in `config.toml` is a regular expression whose
 //! first capture group (or whole match) is a slide's case, for example
-//! `"^(S\d{2}-\d+)"` for `S21-12345 A1 HE.svs`. Names it does not match, and
-//! every name without a pattern, use the default: a TCGA barcode gives its
-//! participant (`TCGA-A1-A0SB`), and other names lose their last part
-//! (`C3L-00011-21.svs` is case `C3L-00011`).
+//! `"^(S\d{2}-\d+)"`. Names it does not match, and every name without a
+//! pattern, use the default: a TCGA barcode gives its participant
+//! (`TCGA-A1-A0SB`); otherwise the name up to its first all-digit part is
+//! the case (`C3L-00011-21.svs` → `C3L-00011`, `S21-12345 A1 HE.svs` →
+//! `S21-12345`, `patient_198_node_0.tif` → `patient_198`), else up to its
+//! first part with a digit (`case12_block3_HE.svs` → `case12`); a number
+//! only at the end names the specimen (`tumor_001.tif` is its own case),
+//! and names without digits lose their last part.
 
 use regex::Regex;
 use std::sync::OnceLock;
@@ -52,10 +56,45 @@ fn default_case(filename: &str) -> String {
             return participant.join("-");
         }
     }
-    match stem.trim_end_matches(is_separator).rfind(is_separator) {
-        Some(end) => stem[..end].trim_end_matches(is_separator).to_string(),
-        None => stem.to_string(),
+    // Parts and where each ends.
+    let mut parts: Vec<(&str, usize)> = Vec::new();
+    let mut start = None;
+    for (index, c) in stem
+        .char_indices()
+        .chain(std::iter::once((stem.len(), '-')))
+    {
+        if is_separator(c) {
+            if let Some(begin) = start.take() {
+                parts.push((&stem[begin..index], index));
+            }
+        } else if start.is_none() {
+            start = Some(index);
+        }
     }
+    if parts.len() < 2 {
+        return stem.to_string();
+    }
+    let up_to = |end: usize| stem[..end].to_string();
+    // The case number: the first part that is all digits (not the last
+    // part, which numbers the slide within its case).
+    if let Some((_, end)) = parts[..parts.len() - 1]
+        .iter()
+        .find(|(part, _)| part.chars().all(|c| c.is_ascii_digit()))
+    {
+        return up_to(*end);
+    }
+    if let Some((_, end)) = parts[..parts.len() - 1]
+        .iter()
+        .find(|(part, _)| part.chars().any(|c| c.is_ascii_digit()))
+    {
+        return up_to(*end);
+    }
+    // Only the last part has digits ("tumor_001"): it names the specimen.
+    let (last, _) = parts[parts.len() - 1];
+    if last.chars().any(|c| c.is_ascii_digit()) {
+        return stem.to_string();
+    }
+    up_to(parts[parts.len() - 2].1)
 }
 
 /// The case `filename` belongs to, with `pattern` when it matches.
@@ -93,7 +132,15 @@ mod tests {
     fn cases_come_from_common_naming_schemes() {
         assert_eq!(default_case("C3L-00011-21.svs"), "C3L-00011");
         assert_eq!(default_case("TCGA-A1-A0SB-01Z-00-DX1.svs"), "TCGA-A1-A0SB");
-        assert_eq!(default_case("case12_block3_HE.ome.tiff"), "case12_block3");
+        assert_eq!(default_case("patient_198_node_0.tif"), "patient_198");
+        assert_eq!(default_case("S21-12345 A1 HE.svs"), "S21-12345");
+        assert_eq!(default_case("case12_block3_HE.ome.tiff"), "case12");
+        assert_eq!(
+            default_case("tumor_001.tif"),
+            "tumor_001",
+            "one slide per case"
+        );
+        assert_eq!(default_case("Sample A HE.svs"), "Sample A");
         assert_eq!(default_case("single.svs"), "single");
         assert_eq!(default_case("trailing-.svs"), "trailing-");
         let accession = Regex::new(r"^(S\d{2}-\d+)").unwrap();
@@ -102,8 +149,8 @@ mod tests {
             "S21-12345"
         );
         assert_eq!(
-            case_with("other-name-1.svs", Some(&accession)),
-            "other-name",
+            case_with("other-123-1.svs", Some(&accession)),
+            "other-123",
             "names the pattern misses use the default"
         );
         assert_eq!(name_within("C3L-00011-21.svs", "C3L-00011"), "21.svs");

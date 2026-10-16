@@ -127,6 +127,12 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
         .into_iter()
         .flat_map(|read_dir| read_dir.filter_map(Result::ok))
         .map(|entry| entry.path())
+        // Hidden files and folders (".git", ".cache") are not slides.
+        .filter(|path| {
+            !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+        })
         .filter(|path| path.is_dir() || (path.is_file() && is_supported_wsi_path(path)))
         .map(|path| crate::paths::canonical(&path))
         .collect();

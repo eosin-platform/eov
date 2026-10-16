@@ -384,9 +384,9 @@ export component SeriesBar inherits Rectangle {
                     }
                     changed has-hover => {
                         if self.has-hover {
-                            root.show-tooltip("Order: by name, newest first or by stain", sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
+                            root.show-tooltip("Order: by name, newest first, by stain or by case", sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
                         } else {
-                            root.clear-tooltip("Order: by name, newest first or by stain");
+                            root.clear-tooltip("Order: by name, newest first, by stain or by case");
                         }
                     }
                 }

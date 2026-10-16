@@ -670,7 +670,17 @@ fn navigate_series_to_folder(
 
 fn ensure_series_home_if_needed(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     let should_initialize = state.read().current_series_path().is_none();
-    if should_initialize && let Some(home) = default_series_home() {
+    // The folder of the slide in view (opened from the command line or a
+    // file manager), else the home folder.
+    let slide_folder = {
+        let state = state.read();
+        state
+            .active_file_id_for_pane(state.focused_pane)
+            .and_then(|id| state.get_file(id))
+            .and_then(|file| file.path.parent().map(std::path::Path::to_path_buf))
+            .filter(|folder| folder.is_dir())
+    };
+    if should_initialize && let Some(home) = slide_folder.or_else(default_series_home) {
         let home = crate::paths::canonical(&home);
         let revision = {
             let mut state = state.write();
