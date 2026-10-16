@@ -87,6 +87,27 @@ pub(crate) trait SlideSource: Send + Sync {
         }
     }
 
+    /// Time points the slide has (time series; 1 for most slides).
+    fn time_points(&self) -> u32 {
+        1
+    }
+
+    /// The time point reads come from.
+    fn time_point(&self) -> u32 {
+        0
+    }
+
+    /// Reads come from time point `t` from now on.
+    fn set_time_point(&self, t: u32) -> Result<()> {
+        if t == 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidArgument(
+                "the slide has one time point".to_string(),
+            ))
+        }
+    }
+
     /// Changes how the channels are drawn, for every later read.
     fn set_channel_display(&self, _display: ChannelDisplay) -> Result<()> {
         Err(Error::InvalidArgument(

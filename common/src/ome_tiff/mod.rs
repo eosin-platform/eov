@@ -13,7 +13,8 @@
 //! * pyramids stored as SubIFDs (the current OME convention), as separate
 //!   images of decreasing size, or as reduced-resolution IFDs in the main
 //!   chain; tiles or strips; the compressions of [`codec`];
-//! * the first focal plane and time point of Z-stacks and time series;
+//! * every focal plane and time point of Z-stacks and time series (one
+//!   shown at a time);
 //! * images named "label", "macro" or "thumbnail" as associated images.
 //!
 //! Multichannel reads are composited to RGB with the slide's
@@ -74,6 +75,9 @@ const MAX_EXTRA_IFDS: usize = 4096;
 const MAX_CHANNELS: usize = 1024;
 /// Focal planes offered at most (the rest of a deeper stack is not shown).
 const MAX_FOCAL_PLANES: u64 = 512;
+/// Planes (focal planes × time points) offered at most; later time points
+/// are not shown.
+const MAX_PLANE_STACKS: u64 = 4096;
 
 static NEXT_SLIDE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -244,11 +248,14 @@ struct Associated {
 pub(crate) struct OmeTiffSource {
     reader: ChunkReader,
     levels: Vec<Level>,
-    /// The planes of every level for each focal plane: `[z][level][channel]`
-    /// (`[0]` is the levels' own).
-    focal_planes: Vec<Vec<Vec<PlaneRef>>>,
-    /// The focal plane reads come from.
+    /// The planes of every level for each time point and focal plane:
+    /// `[t * size_z + z][level][channel]` (`[0]` is the levels' own).
+    stacks: Vec<Vec<Vec<PlaneRef>>>,
+    /// Focal planes per time point.
+    size_z: usize,
+    /// The focal plane and time point reads come from.
     focal_plane: AtomicUsize,
+    time_point: AtomicUsize,
     content: Content,
     background: [u8; 3],
     associated: Vec<Associated>,
@@ -316,14 +323,14 @@ fn main_image(doc: &OmeDocument) -> usize {
         .unwrap_or(0)
 }
 
-/// Where focal plane `z` (at the first time point) of every channel of
-/// `pixels` is stored.
+/// Where focal plane `z` at time point `t` of every channel of `pixels` is
+/// stored.
 fn image_planes(
     table: &mut IfdTable<'_>,
     pixels: &Pixels,
     own_file: &str,
     own_uuid: Option<&str>,
-    z: u64,
+    (z, t): (u64, u64),
 ) -> Result<ImagePlanes> {
     let channels = pixels.effective_size_c();
     if channels > MAX_CHANNELS as u64 {
@@ -336,7 +343,7 @@ fn image_planes(
     let sizes = (channels as u64, pixels.size_z.max(1), pixels.size_t.max(1));
     let mut ifds: Vec<Option<Arc<Ifd>>> = Vec::with_capacity(channels);
     for c in 0..channels {
-        let plane = pixels.dimension_order.plane_index((c as u64, z, 0), sizes);
+        let plane = pixels.dimension_order.plane_index((c as u64, z, t), sizes);
         ifds.push(match map.get(&plane) {
             Some(&index) => Some(table.by_index(index)?),
             None => None,
@@ -478,7 +485,7 @@ fn pyramid(
     main: usize,
     base: &ImagePlanes,
     own: (&str, Option<&str>),
-    z: u64,
+    zt: (u64, u64),
 ) -> (Vec<Vec<PlaneRef>>, PyramidKind) {
     let base_size = (base.planes[0].ifd.width, base.planes[0].ifd.height);
     let accept = |candidates: Vec<Vec<PlaneRef>>| -> Vec<Vec<PlaneRef>> {
@@ -541,7 +548,7 @@ fn pyramid(
     others.sort_by_key(|&i| std::cmp::Reverse(pixel_count(&doc.images[i].pixels)));
     let candidates: Vec<Vec<PlaneRef>> = others
         .into_iter()
-        .filter_map(|i| image_planes(table, &doc.images[i].pixels, own.0, own.1, z).ok())
+        .filter_map(|i| image_planes(table, &doc.images[i].pixels, own.0, own.1, zt).ok())
         .filter(|planes| planes.layout == base.layout)
         .map(|planes| planes.planes)
         .collect();
@@ -1135,9 +1142,9 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
 
     let main = main_image(&doc);
     let image = &doc.images[main];
-    let base = image_planes(&mut table, &image.pixels, own.0, own.1, 0)?;
+    let base = image_planes(&mut table, &image.pixels, own.0, own.1, (0, 0))?;
     check_decodable(&base.planes)?;
-    let (sub_levels, pyramid_kind) = pyramid(&mut table, &doc, main, &base, own, 0);
+    let (sub_levels, pyramid_kind) = pyramid(&mut table, &doc, main, &base, own, (0, 0));
 
     let base_ifd = Arc::clone(&base.planes[0].ifd);
     let (w0, h0) = (u64::from(base_ifd.width), u64::from(base_ifd.height));
@@ -1167,27 +1174,21 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         });
     }
 
-    // The other focal planes: the same levels, from their own IFDs. A plane
-    // that is stored elsewhere or does not match stops the list there.
-    let mut focal_planes: Vec<Vec<Vec<PlaneRef>>> =
-        vec![levels.iter().map(|level| level.planes.clone()).collect()];
-    for z in 1..image.pixels.size_z.clamp(1, MAX_FOCAL_PLANES) {
-        let planes = image_planes(&mut table, &image.pixels, own.0, own.1, z).and_then(|base_z| {
-            check_decodable(&base_z.planes)?;
-            Ok(base_z)
-        });
-        let base_z = match planes {
-            Ok(base_z) if base_z.layout == base.layout => base_z,
-            Ok(_) | Err(_) => {
-                warn!(
-                    "{file_name}: showing {z} of {} focal planes",
-                    image.pixels.size_z
-                );
-                break;
-            }
-        };
-        let (sub, _) = pyramid(&mut table, &doc, main, &base_z, own, z);
-        let mut by_level = vec![base_z.planes];
+    // The other focal planes and time points: the same levels, from their
+    // own IFDs. A plane that is stored elsewhere or does not match stops the
+    // focal planes there, or the time series at the last complete time point.
+    let mut stack_at = |z: u64, t: u64| -> std::result::Result<Vec<Vec<PlaneRef>>, String> {
+        let base_zt = image_planes(&mut table, &image.pixels, own.0, own.1, (z, t))
+            .and_then(|base_zt| {
+                check_decodable(&base_zt.planes)?;
+                Ok(base_zt)
+            })
+            .map_err(|error| error.to_string())?;
+        if base_zt.layout != base.layout {
+            return Err("it is stored differently from the first".to_string());
+        }
+        let (sub, _) = pyramid(&mut table, &doc, main, &base_zt, own, (z, t));
+        let mut by_level = vec![base_zt.planes];
         by_level.extend(sub);
         let matches = by_level.len() == levels.len()
             && by_level.iter().zip(&levels).all(|(planes, level)| {
@@ -1197,14 +1198,49 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
                             == (level.width, level.height)
                     })
             });
-        if !matches {
-            warn!(
-                "{file_name}: focal plane {z} is stored differently from the first; showing {z} of {} planes",
-                image.pixels.size_z
-            );
-            break;
+        if matches {
+            Ok(by_level)
+        } else {
+            Err("its levels differ from the first plane's".to_string())
         }
-        focal_planes.push(by_level);
+    };
+    let mut stacks: Vec<Vec<Vec<PlaneRef>>> =
+        vec![levels.iter().map(|level| level.planes.clone()).collect()];
+    for z in 1..image.pixels.size_z.clamp(1, MAX_FOCAL_PLANES) {
+        match stack_at(z, 0) {
+            Ok(stack) => stacks.push(stack),
+            Err(reason) => {
+                warn!(
+                    "{file_name}: focal plane {} cannot be shown ({reason}); showing {z} of {} focal planes",
+                    z + 1,
+                    image.pixels.size_z
+                );
+                break;
+            }
+        }
+    }
+    let size_z = stacks.len();
+    let declared_t = image.pixels.size_t.max(1);
+    let size_t = declared_t.min((MAX_PLANE_STACKS / size_z as u64).max(1));
+    if size_t < declared_t {
+        warn!("{file_name}: showing {size_t} of {declared_t} time points");
+    }
+    'time: for t in 1..size_t {
+        let mut time_point = Vec::with_capacity(size_z);
+        for z in 0..size_z as u64 {
+            match stack_at(z, t) {
+                Ok(stack) => time_point.push(stack),
+                Err(reason) => {
+                    warn!(
+                        "{file_name}: time point {} cannot be shown ({reason} at focal plane {}); showing {t} of {declared_t} time points",
+                        t + 1,
+                        z + 1
+                    );
+                    break 'time;
+                }
+            }
+        }
+        stacks.extend(time_point);
     }
 
     let mut associated = Vec::new();
@@ -1215,7 +1251,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         if associated.iter().any(|a: &Associated| a.name == name) {
             continue;
         }
-        let Ok(planes) = image_planes(&mut table, &other.pixels, own.0, own.1, 0) else {
+        let Ok(planes) = image_planes(&mut table, &other.pixels, own.0, own.1, (0, 0)) else {
             continue;
         };
         let ifd = Arc::clone(&planes.planes[0].ifd);
@@ -1355,8 +1391,10 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         source: Box::new(OmeTiffSource {
             reader,
             levels,
-            focal_planes,
+            stacks,
+            size_z,
             focal_plane: AtomicUsize::new(0),
+            time_point: AtomicUsize::new(0),
             content,
             background,
             associated,
@@ -1368,13 +1406,17 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
 }
 
 impl OmeTiffSource {
-    /// The planes of `level` in the current focal plane.
+    /// The planes of `level` at the current focal plane and time point.
     fn planes_of(&self, level: usize) -> &[PlaneRef] {
         let z = self
             .focal_plane
             .load(Ordering::Relaxed)
-            .min(self.focal_planes.len() - 1);
-        &self.focal_planes[z][level]
+            .min(self.size_z - 1);
+        let t = self
+            .time_point
+            .load(Ordering::Relaxed)
+            .min(self.stacks.len() / self.size_z - 1);
+        &self.stacks[t * self.size_z + z][level]
     }
 
     fn region_error(&self, error: ChunkError, region: Region) -> Error {
@@ -1601,7 +1643,7 @@ impl SlideSource for OmeTiffSource {
     }
 
     fn focal_planes(&self) -> u32 {
-        self.focal_planes.len() as u32
+        self.size_z as u32
     }
 
     fn focal_plane(&self) -> u32 {
@@ -1609,13 +1651,32 @@ impl SlideSource for OmeTiffSource {
     }
 
     fn set_focal_plane(&self, z: u32) -> Result<()> {
-        if z as usize >= self.focal_planes.len() {
+        if z as usize >= self.size_z {
             return Err(Error::InvalidArgument(format!(
                 "focal plane {z} (the slide has {})",
-                self.focal_planes.len()
+                self.size_z
             )));
         }
         self.focal_plane.store(z as usize, Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn time_points(&self) -> u32 {
+        (self.stacks.len() / self.size_z) as u32
+    }
+
+    fn time_point(&self) -> u32 {
+        self.time_point.load(Ordering::Relaxed) as u32
+    }
+
+    fn set_time_point(&self, t: u32) -> Result<()> {
+        let count = self.stacks.len() / self.size_z;
+        if t as usize >= count {
+            return Err(Error::InvalidArgument(format!(
+                "time point {t} (the slide has {count})"
+            )));
+        }
+        self.time_point.store(t as usize, Ordering::Relaxed);
         Ok(())
     }
 

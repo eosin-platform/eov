@@ -122,20 +122,35 @@ fn summary(wsi: &WsiFile) -> String {
         props.height,
         if levels == 1 { "level" } else { "levels" }
     );
-    let planes = wsi.focal_planes();
-    if planes > 1 {
+    use crate::shortcuts::Action;
+    let planes = [
+        (
+            wsi.focal_planes(),
+            wsi.focal_plane(),
+            "focal planes",
+            [Action::NextFocalPlane, Action::PreviousFocalPlane],
+        ),
+        (
+            wsi.time_points(),
+            wsi.time_point(),
+            "time points",
+            [Action::NextTimePoint, Action::PreviousTimePoint],
+        ),
+    ];
+    for (count, current, what, actions) in planes {
+        if count <= 1 {
+            continue;
+        }
         let shortcuts = crate::shortcuts::current();
-        let keys = [
-            shortcuts.label(crate::shortcuts::Action::NextFocalPlane),
-            shortcuts.label(crate::shortcuts::Action::PreviousFocalPlane),
-        ]
-        .into_iter()
-        .filter(|key| !key.is_empty())
-        .collect::<Vec<_>>()
-        .join(" / ");
+        let keys = actions
+            .map(|action| shortcuts.label(action))
+            .into_iter()
+            .filter(|key| !key.is_empty())
+            .collect::<Vec<_>>()
+            .join(" / ");
         text.push_str(&format!(
-            " · {planes} focal planes (showing {}{})",
-            wsi.focal_plane() + 1,
+            " · {count} {what} (showing {}{})",
+            current + 1,
             if keys.is_empty() {
                 String::new()
             } else {

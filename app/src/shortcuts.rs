@@ -28,6 +28,9 @@ pub(crate) enum Action {
     /// The next or previous focal plane of a Z-stack.
     NextFocalPlane,
     PreviousFocalPlane,
+    /// The next or previous time point of a time series.
+    NextTimePoint,
+    PreviousTimePoint,
     /// Colour management of the focused slide (its ICC profile to sRGB).
     ColorManagement,
     /// Slide pixels as squares above 100%.
@@ -163,6 +166,8 @@ pub(crate) const ACTIONS: &[ActionInfo] = &[
     info(A::Channels, "channels", "Channels of the slide", G::Slides, false, &[]),
     info(A::NextFocalPlane, "next-focal-plane", "Next focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowUp"]),
     info(A::PreviousFocalPlane, "previous-focal-plane", "Previous focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowDown"]),
+    info(A::NextTimePoint, "next-time-point", "Next time point of a time series", G::Navigation, true, &["Ctrl+ArrowRight"]),
+    info(A::PreviousTimePoint, "previous-time-point", "Previous time point of a time series", G::Navigation, true, &["Ctrl+ArrowLeft"]),
     // No default keys: users can bind them.
     info(A::ColorManagement, "color-management", "Convert the slide's colours to sRGB, or show them as scanned", G::Slides, false, &[]),
     info(A::PixelView, "pixel-view", "Show the slide's pixels as squares above 100%", G::Navigation, false, &[]),

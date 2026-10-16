@@ -617,6 +617,23 @@ impl WsiFile {
         self.shared.source.set_focal_plane(z)
     }
 
+    /// Time points the slide has (time series; 1 for most slides).
+    pub fn time_points(&self) -> u32 {
+        self.shared.source.time_points()
+    }
+
+    /// The time point shown (0 = the first).
+    pub fn time_point(&self) -> u32 {
+        self.shared.source.time_point()
+    }
+
+    /// Shows time point `t` from now on, for every reader of the slide; as
+    /// with [`set_focal_plane`](Self::set_focal_plane), cached tiles must be
+    /// dropped by the caller.
+    pub fn set_time_point(&self, t: u32) -> Result<()> {
+        self.shared.source.set_time_point(t)
+    }
+
     /// Get file properties. `levels` includes synthetic levels when this
     /// is a [`with_synthetic_levels`](Self::with_synthetic_levels) view.
     pub fn properties(&self) -> &WsiProperties {

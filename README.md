@@ -165,6 +165,7 @@ installed plugins. On macOS, **Ctrl** below means **⌘**.
 | F, Shift+F, +, - | Fit the slide, fit its tissue (without the empty glass), zoom in, zoom out |
 | Arrows (Shift: further) | Pan |
 | Ctrl+↑, Ctrl+↓ | Next or previous focal plane of a Z-stack |
+| Ctrl+→, Ctrl+← | Next or previous time point of a time series |
 | 1 2 3 4 5 6, 0 | Zoom to 1.25×, 2.5×, 5×, 10×, 20×, 40×; one screen pixel per slide pixel |
 | [, ], Shift+H | Rotate the view 90° left or right, mirror it |
 | Ctrl+L | Link the panes' slides, so they move together (different slides too) |
@@ -304,7 +305,7 @@ OpenSlide reads brightfield RGB slides only, so eov has its own reader for OME-T
 - pyramids stored as SubIFDs (the current OME convention), as separate images of decreasing size, or as reduced-resolution images in the main chain;
 - the pixel size (`PhysicalSizeX`/`PhysicalSizeY`, in any length unit) and the objective's nominal magnification; label, macro and thumbnail images; the OME metadata, as `ome.*` properties in Slide Information.
 
-A file eov cannot read, for example one with another compression or with channels stored in other files of a multi-file OME dataset, is refused when it opens, with the reason. A Z-stack shows its first focal plane; Ctrl+↑ and Ctrl+↓ step through the planes (Slide Information shows how many there are), and the minimap and copies follow. Time series show their first time point.
+A file eov cannot read, for example one with another compression or with channels stored in other files of a multi-file OME dataset, is refused when it opens, with the reason. A Z-stack shows its first focal plane; Ctrl+↑ and Ctrl+↓ step through the planes, and a time series shows its first time point, with Ctrl+→ and Ctrl+← to step through time (Slide Information and the Channels panel show how many there are and which is shown); the minimap and copies follow. A plane that cannot be read ends the stack there, and a time point with such a plane ends the series before it.
 
 Multichannel slides are shown as a composite: each visible channel adds its colour, scaled by where its value lies in the channel's display window and by a gamma. A slide opens with the colours its file gives the channels (else colours from the channel names, DAPI and Hoechst in blue, and emission wavelengths), auto-contrast windows (the 0.1 and 99.9 percentiles of a low-resolution level) and its first six channels shown. **Channels…** (right-click the slide, or the button in Slide Information; the `channels` shortcut action has no key by default) opens the Channels panel:
 
