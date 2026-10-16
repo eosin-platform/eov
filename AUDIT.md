@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `e41ebc9`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `8143678`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -63,7 +63,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 |---|---|---|---|---|---|
 | Plugin API and host runtime | 19 | 19 | – | – | – |
 | Core WSI, tiles, cache | 15 | 15 | – | – | – |
-| Rendering | 10 | 9 | – | 1 | – |
+| Rendering | 10 | 10 | – | – | – |
 | Colour, export, dataset | 20 | 20 | – | – | – |
 | App state and interaction | 16 | 16 | – | – | – |
 | Shell, CLI, config, docs | 20 | 19 | 1 | – | – |
@@ -72,25 +72,20 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | eovae plugin | 17 | 17 | – | – | – |
 | Cellaris plugin | 11 | 11 | – | – | – |
 | Gamepad plugin | 8 | 8 | – | – | – |
-| **Total** | **169** | **167** | **1** | **1** | **0** |
+| **Total** | **169** | **168** | **1** | **0** | **0** |
 
 ### What is still open
 
-- **RND-10** (in progress): All items but vsync and the residual `set_view` latency.
-- **SH-10** (partly fixed): The UI no longer freezes. Copying under Wayland in the Flatpak still needs arboard's `wayland-data-control` feature, whose crates were not available offline.
+- **SH-10** (partly fixed): The UI no longer freezes, and a failed copy says what to do instead. Copying images in the Flatpak under Wayland still needs arboard's `wayland-data-control` feature (its crates were not available offline) or X11 access in the Flatpak manifest.
 - §14.1 **Rotation and flip** (partly): Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented.
-- §14.1 **Colour management (ICC)** (in progress)
-- §14.1 **HiDPI, trackpad pinch/pan, pixel-level view above 1:1** (partly): HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress.
 - §14.2 **Interchange formats** (partly): GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported.
 - §14.3 **Philips iSyntax** (not done): Needs a reader outside OpenSlide (e.g. libisyntax).
 - §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
-- §14.3 **Z-stacks / focal planes** (not done): OME-TIFF Z-stacks and time series show their first plane.
+- §14.3 **Z-stacks / focal planes** (partly): OME-TIFF Z-stacks: Ctrl+↑/↓ step through the focal planes; time series show their first time point, and vendor Z-stacks (NDPI, VMS) are not read (OpenSlide exposes one plane).
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
 - §14.4 **Accessibility** (in progress): Final sweep after the other changes land.
 - §14.4 **Localisation** (in progress): Final sweep after the other changes land.
-- §14.5 **Stain normalisation as a workflow** (in progress)
-- §14.5 **Scripting** (in progress)
 - §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
 
 ### Per-finding status
@@ -140,7 +135,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | RND-7 | Medium | GPU memory grows without bound, and there is no wgpu error or device-lost handling | Fixed | `0e95988` |  |
 | RND-8 | Medium | Tile-loader threads poll, run per file, and are joined on the UI thread | Fixed | `de3a598` |  |
 | RND-9 | Medium | CPU render jobs are keyed by pane index, so inserting or removing a pane orphans them | Fixed | `3756cde` |  |
-| RND-10 | Low | Smaller rendering defects | **In progress** | `dff6415` `474f8e8` | All items but vsync and the residual `set_view` latency. |
+| RND-10 | Low | Smaller rendering defects | Fixed | `dff6415` `474f8e8` `ba51c6c` | All items. The render timer is still not vsync-aligned, because Slint 1.17 and winit 0.30 give applications no frame callback; frames are presented with vsync, so nothing tears, and `main.rs` says so. |
 | CLR-1 | High | Stain normalisation is re-fitted from whatever is on screen, per pane, every time a til… | Fixed | `e5ab235` `140f8ed` `7b55c1c` | Stain vectors are fitted once per slide from stored levels. |
 | CLR-2 | High | The tissue mask lets glass background into the fit, so glass-dominated views get recolo… | Fixed | `e5ab235` |  |
 | CLR-3 | High | Deconvolution after normalisation applies the *source* inverse to pixels that are alrea… | Fixed | `e5ab235` `140f8ed` |  |
@@ -186,7 +181,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | SH-7 | Medium | Launch arguments: one bad path aborts startup, commas split file names, and `file://` U… | Fixed | `3b5904d` |  |
 | SH-8 | Medium | No single-instance mode and no OS file associations | Fixed | `3b5904d` `6f0e048` | Single instance, `eov://` deep links and OS file associations. |
 | SH-9 | Medium | Drag-and-drop doesn't work on Wayland | Fixed | `81ee8b7` | winit does not deliver drops on Wayland; the limitation and the alternatives are documented. |
-| SH-10 | Medium | Copying an image to the clipboard freezes the UI for up to 2 s on Linux, and doesn't wo… | **Partly fixed** | `bbe4d29` | The UI no longer freezes. Copying under Wayland in the Flatpak still needs arboard's `wayland-data-control` feature, whose crates were not available offline. |
+| SH-10 | Medium | Copying an image to the clipboard freezes the UI for up to 2 s on Linux, and doesn't wo… | **Partly fixed** | `bbe4d29` `38a5911` | The UI no longer freezes, and a failed copy says what to do instead. Copying images in the Flatpak under Wayland still needs arboard's `wayland-data-control` feature (its crates were not available offline) or X11 access in the Flatpak manifest. |
 | SH-11 | Medium | Opening slides and browsing folders block the UI thread | Fixed | `de3a598` `2cedb1b` |  |
 | SH-12 | Medium | Plugin packages are extracted synchronously before the window appears, and the extracti… | Fixed | `1b61d70` |  |
 | SH-13 | Medium | One misbehaving plugin takes down the host, and there is no safe mode | Fixed | `34ba416` `383b52c` | `--safe-mode`; a plugin that panics is quarantined. |
@@ -284,10 +279,10 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Session restore, bookmarks and navigation history | Done | `9a522fe` `6952d6c` `c2ea078` |  |
 | Full-screen / presentation mode | Done | `877fcf0` | F11. |
 | Status bar and error reporting | Done | `383b52c` |  |
-| Colour management (ICC) | **In progress** |  |  |
+| Colour management (ICC) | Done | `04eed40` `6de4582` | Slides with an ICC profile are converted to sRGB on both renderers, in the viewport, minimap, copies and exports; the HUD's ICC badge switches to the colours as scanned. |
 | Indication that colours are altered | Done | `c5a942a` `bbe4d29` | HUD badge; burned into exports on request and recorded in their metadata. |
 | Full metadata/property browser | Done | `877fcf0` |  |
-| HiDPI, trackpad pinch/pan, pixel-level view above 1:1 | **Partly** | `33c0775` `383b52c` | HiDPI and pinch/pan are done; the nearest-neighbour view above 1:1 is in progress. |
+| HiDPI, trackpad pinch/pan, pixel-level view above 1:1 | Done | `33c0775` `383b52c` `1844472` | The pixel view shows the slide's pixels as squares above 100%. |
 | Copy/snapshot with scale bar and overlays | Done | `bbe4d29` |  |
 | Case and slide organisation | Done | `7849eee` `72abcf3` | The series bar filters, orders by name, date, stain or case (from the file name or `series_case_pattern`), and lists a DICOM series once. |
 | Runs without Vulkan/Metal | Done | `20bff5f` |  |
@@ -316,7 +311,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
 | Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
-| Z-stacks / focal planes | **Not done** |  | OME-TIFF Z-stacks and time series show their first plane. |
+| Z-stacks / focal planes | **Partly** | `52a367f` | OME-TIFF Z-stacks: Ctrl+↑/↓ step through the focal planes; time series show their first time point, and vendor Z-stacks (NDPI, VMS) are not read (OpenSlide exposes one plane). |
 | Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
 | Writing slides; de-identified copies | Done | `d64791d` `482fa9c` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles; de-identified copies drop the label, macro and thumbnail and keep an allow-list of metadata. Multichannel slides are copied as their RGB composite. |
 
@@ -341,10 +336,10 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 |---|---|---|---|
 | IHC quantification | Done | `bee393f` `3928774` | H-DAB and other presets, custom vectors, thresholds, positive fraction and H-score in a region. |
 | Tissue detection and QC | Done | `bb7fd46` `64ec600` `9ce8189` `23a3583` | Tissue masks drive fit-to-tissue, dataset filtering and stain fits; Check Tissue Quality and `eov qc` mark pen, possible folds and possibly out-of-focus cells (relative thresholds, for review), and datasets can leave patches over them out (`--exclude-qc`). |
-| Stain normalisation as a workflow | **In progress** |  |  |
+| Stain normalisation as a workflow | Done | `0051587` | Normalise to the reference H&E, to this slide or to its region of interest; targets are saved, shared and loaded, and `eov dataset patches --stain-target` uses them. |
 | Dataset extraction | Done | `bb7fd46` `8c53025` `0359c50` `23a3583` `e41ebc9` | Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr with `eov dataset pack`. HDF5 is not written (no HDF5 library offline). |
 | Headless and batch mode | Done | `fbf22f5` `7b39246` `c77eec6` | `eov batch run` with run manifests; `eovae:analyze` (per-tile scores, heat map) and `cellaris:predict` (per-cell marker means), with model hashes, preprocessing, resolution and device recorded. |
-| Scripting | **In progress** |  |  |
+| Scripting | Done | `c1f97a9` | JSON-RPC 2.0 on the local single-instance endpoint (authenticated, no network listener): slides, views, region reads, ROI, measurements, bookmarks, quantification and exports; `eov call` and a Python client. |
 | Model management | **Partly** | plugins | Model cards and metadata checks in cellaris and eovae; no download-and-verify of models. |
 
 **§14.6 Safety, privacy and intended use**
