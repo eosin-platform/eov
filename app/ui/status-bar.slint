@@ -119,7 +119,7 @@ export component StatusBar inherits Rectangle {
 
             messages-text := Text {
                 text: root.unread-notifications > 0 ? "● " + root.unread-notifications + " message" + (root.unread-notifications == 1 ? "" : "s") : "Messages";
-                color: root.unread-errors ? #ff6b6b : root.unread-notifications > 0 ? #f1c40f : Theme.text-secondary;
+                color: root.unread-errors ? Theme.danger : root.unread-notifications > 0 ? Theme.warning : Theme.text-secondary;
                 font-size: 11px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -149,7 +149,7 @@ export component NotificationsPopup inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 10px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Theme.shadow;
     clip: true;
 
     TouchArea { }
@@ -266,7 +266,7 @@ export component NotificationsPopup inherits Rectangle {
                     Rectangle {
                         width: 3px;
                         border-radius: 1px;
-                        background: item.level == 3 ? #ff6b6b : item.level == 2 ? #f1c40f : item.level == 1 ? #2ecc71 : Theme.accent;
+                        background: item.level == 3 ? Theme.danger : item.level == 2 ? Theme.warning : item.level == 1 ? Theme.success : Theme.accent;
                     }
 
                     VerticalLayout {

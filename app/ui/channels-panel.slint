@@ -33,7 +33,7 @@ component SmallButton inherits Rectangle {
 
     label := Text {
         text: root.text;
-        color: Theme.text-primary;
+        color: root.active ? Theme.text-on-accent : Theme.text-primary;
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -70,7 +70,7 @@ component Check inherits Rectangle {
         width: 100%;
         height: 100%;
         text: "✓";
-        color: #ffffff;
+        color: Theme.text-on-accent;
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -96,9 +96,9 @@ component ValueField inherits Rectangle {
     width: 58px;
     height: 22px;
     border-radius: 3px;
-    border-width: 1px;
+    border-width: root.editing ? Theme.focus-width : 1px;
     border-color: root.editing ? Theme.accent : Theme.border;
-    background: #0a0c10;
+    background: Theme.input-bg;
     accessible-role: spinbox;
     accessible-label: root.label;
     accessible-value: root.text;
@@ -191,7 +191,7 @@ component WindowSlider inherits Rectangle {
         width: root.track;
         height: root.height - 6px;
         border-radius: 2px;
-        background: #ffffff08;
+        background: Theme.subtle-fill;
         clip: true;
 
         Image {
@@ -208,7 +208,7 @@ component WindowSlider inherits Rectangle {
         y: root.height - 4px;
         width: root.track;
         height: 2px;
-        background: #ffffff20;
+        background: Theme.track;
     }
 
     Rectangle {
@@ -225,7 +225,7 @@ component WindowSlider inherits Rectangle {
         width: 4px;
         height: root.height;
         border-radius: 2px;
-        background: #ffffffd0;
+        background: Theme.handle;
         accessible-role: slider;
         accessible-label: end == 0 ? "Lower end of " + root.name : "Upper end of " + root.name;
         accessible-value: end == 0 ? root.low-text : root.high-text;
@@ -284,7 +284,7 @@ component GammaSlider inherits Rectangle {
         width: root.track;
         height: 3px;
         border-radius: 1.5px;
-        background: #ffffff20;
+        background: Theme.track;
     }
 
     // The middle mark: gamma 1.
@@ -293,7 +293,7 @@ component GammaSlider inherits Rectangle {
         y: (parent.height - 9px) / 2;
         width: 1px;
         height: 9px;
-        background: #ffffff40;
+        background: Theme.outline-strong;
     }
 
     Rectangle {
@@ -302,7 +302,7 @@ component GammaSlider inherits Rectangle {
         width: 10px;
         height: 10px;
         border-radius: 5px;
-        background: #ffffff;
+        background: Theme.handle;
         border-width: 1px;
         border-color: Theme.accent;
     }
@@ -341,7 +341,7 @@ export component ChannelsPanel inherits Rectangle {
     callback show-all-requested();
     callback palette-requested(string);
 
-    background: #00000030;
+    background: Theme.scrim-light;
 
     TouchArea {
         clicked => {
@@ -497,7 +497,7 @@ export component ChannelsPanel inherits Rectangle {
 
                             for row in root.rows: Rectangle {
                                 border-radius: 4px;
-                                background: Math.mod(row.index, 2) == 0 ? transparent : #ffffff05;
+                                background: Math.mod(row.index, 2) == 0 ? transparent : Theme.zebra;
 
                                 VerticalLayout {
                                     padding: 4px;
@@ -526,7 +526,7 @@ export component ChannelsPanel inherits Rectangle {
                                                 border-radius: 3px;
                                                 background: row.color;
                                                 border-width: 1px;
-                                                border-color: root.picker-row == row.index ? #ffffff : #ffffff40;
+                                                border-color: root.picker-row == row.index ? Theme.text-strong : Theme.outline-strong;
                                                 accessible-role: button;
                                                 accessible-label: "Colour of " + row.name;
                                                 accessible-expandable: true;
@@ -668,7 +668,7 @@ export component ChannelsPanel inherits Rectangle {
                                             border-radius: 3px;
                                             background: chip;
                                             border-width: 1px;
-                                            border-color: chip-touch.has-hover ? #ffffff : #ffffff30;
+                                            border-color: chip-touch.has-hover ? Theme.text-strong : Theme.outline-medium;
                                             accessible-role: button;
                                             accessible-label: "Colour " + (chip-index + 1) + " of " + root.chip-colors.length;
                                             accessible-action-default => {

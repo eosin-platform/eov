@@ -647,7 +647,7 @@ The packaged plugin buttons should appear in the toolbar, and the plugin sidebar
 
 eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 
-- `config.toml`: preferences (render backend, filtering mode, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
+- `config.toml`: preferences (render backend, filtering mode, the colour theme, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
 - `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
 - `plugins/`: installed plugin packages and their registry (`eov plugin …`).
 - `session.toml`: the slides, panes and views of the last session, reopened on a start without files (`restore_session = false` turns that off).
@@ -671,11 +671,14 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 
 The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
 
+**Theme.** The toolbar's theme button (the half-dark circle next to the scale bar toggle) switches between the dark theme (the default), a light theme and a high-contrast theme: black backgrounds, white text with a contrast of at least 7:1, and thicker focus and selection borders. The choice is kept as `theme = "dark"`, `"light"` or `"high-contrast"` in `config.toml` and applies at the next start too. The slides' own colours and those of overlays are not themed; plugin panels keep their own colours.
+
 Example config file:
 
 ```toml
 render_backend = "gpu"
 filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
+theme = "dark"                 # dark, light or high-contrast
 remember_recent_files = true
 restore_session = true
 single_instance = true         # false: every launch starts its own eov

@@ -22,7 +22,7 @@ export component PluginsPanel inherits Rectangle {
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -162,7 +162,7 @@ export component PluginsPanel inherits Rectangle {
 
                 if root.note != "": Text {
                     text: root.note;
-                    color: #f1c40f;
+                    color: Theme.warning;
                     font-size: 11px;
                     wrap: word-wrap;
                     height: self.preferred-height;
@@ -194,7 +194,7 @@ export component PluginsPanel inherits Rectangle {
                             border-radius: 6px;
                             background: Theme.background;
                             border-width: 1px;
-                            border-color: row.status-level >= 2 ? #ff6b6b80 : Theme.border-subtle;
+                            border-color: row.status-level >= 2 ? Theme.danger.with-alpha(0.5) : Theme.border-subtle;
 
                             row-layout := HorizontalLayout {
                                 x: 10px;
@@ -237,7 +237,7 @@ export component PluginsPanel inherits Rectangle {
 
                                     Text {
                                         text: row.status + (row.update != "" ? " · version " + row.update + " is available" : "");
-                                        color: row.status-level == 0 ? #2ecc71 : row.status-level == 1 ? Theme.text-secondary : #ff6b6b;
+                                        color: row.status-level == 0 ? Theme.success : row.status-level == 1 ? Theme.text-secondary : Theme.danger;
                                         font-size: 11px;
                                         wrap: word-wrap;
                                         height: self.preferred-height;
@@ -245,7 +245,7 @@ export component PluginsPanel inherits Rectangle {
 
                                     if row.detail != "": Text {
                                         text: row.detail;
-                                        color: #f1c40f;
+                                        color: Theme.warning;
                                         font-size: 11px;
                                         wrap: word-wrap;
                                         height: self.preferred-height;
@@ -268,7 +268,7 @@ export component PluginsPanel inherits Rectangle {
                                         width: update-text.preferred-width + 18px;
                                         height: 26px;
                                         border-radius: 4px;
-                                        background: update-touch.has-hover ? #1177bb : Theme.accent;
+                                        background: update-touch.has-hover ? Theme.accent-hover : Theme.accent;
                                         accessible-role: button;
                                         accessible-label: "Update " + row.name;
                                         accessible-description: row.update;
@@ -279,7 +279,7 @@ export component PluginsPanel inherits Rectangle {
                                         update-text := Text {
                                             text: "Update";
                                             accessible-role: none;
-                                            color: white;
+                                            color: Theme.text-on-accent;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                             vertical-alignment: center;
@@ -337,7 +337,7 @@ export component PluginsPanel inherits Rectangle {
                                         remove-text := Text {
                                             text: "Remove";
                                             accessible-role: none;
-                                            color: #ff8a8a;
+                                            color: Theme.danger;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                             vertical-alignment: center;

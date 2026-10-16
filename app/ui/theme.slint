@@ -1,25 +1,149 @@
 // EOV WSI Viewer - shared theme
+//
+// The window's colours, in three themes (`theme` in config.toml, or the
+// toolbar's theme menu). Every colour of the interface comes from here;
+// colours that are data (stains, channels, overlays, the colours offered
+// for annotations) stay where they are used. The high-contrast theme has
+// black backgrounds, white text and strong focus and selection borders:
+// its text has a contrast of at least 7:1 against what is behind it.
+
+export enum ThemeKind {
+    dark,
+    light,
+    high-contrast,
+}
 
 export global Theme {
-    out property <color> background: #1e1e1e;
-    out property <color> surface: #252526;
-    out property <color> surface-hover: #2a2d2e;
-    out property <color> border: #3e3e42;
-    out property <color> border-subtle: #00000066;
-    out property <color> text-primary: #cccccc;
-    out property <color> text-secondary: #969696;
-    out property <color> accent: #0e639c;
-    out property <color> accent-hover: #1177bb;
+    in-out property <ThemeKind> kind: ThemeKind.dark;
+    out property <bool> high-contrast: root.kind == ThemeKind.high-contrast;
+
+    // The colour of the current theme.
+    pure function pick(dark: color, light: color, high-contrast: color) -> color {
+        if root.kind == ThemeKind.high-contrast {
+            return high-contrast;
+        }
+        if root.kind == ThemeKind.light {
+            return light;
+        }
+        dark
+    }
+
+    // Surfaces.
+    out property <color> background: pick(#1e1e1e, #f3f3f3, #000000);
+    out property <color> surface: pick(#252526, #ffffff, #000000);
+    out property <color> surface-hover: pick(#2a2d2e, #e5e5e5, #2e2e2e);
+    /// The header and footer of the export dialog.
+    out property <color> surface-sunken: pick(#141414, #ebebeb, #000000);
+    out property <color> toolbar-bg: pick(#181818, #e8e8e8, #000000);
+    out property <color> tab-active: pick(#1e1e1e, #ffffff, #000000);
+    out property <color> tab-inactive: pick(#2d2d30, #dcdcdc, #1f1f1f);
+    /// Behind the slide (a neutral grey in the light theme).
+    out property <color> viewport-bg: pick(#1e1e1e, #c8c8c8, #000000);
+    out property <color> context-menu-bg: pick(#252526, #ffffff, #000000);
+    out property <color> context-menu-hover: pick(#094771, #cce4f7, #0a3a66);
+    out property <color> minimap-bg: pick(#1e1e1ecc, #ffffffcc, #000000e6);
+    out property <color> minimap-rect: pick(#3794ffaa, #0f6cbdcc, #ffff00);
+    /// Text fields.
+    out property <color> input-bg: pick(#0a0c10, #ffffff, #000000);
+    /// Behind images: previews, thumbnails, label and macro photos.
+    out property <color> image-well: pick(#0a0a0a, #e0e0e0, #000000);
+    /// The pattern behind the export preview.
+    out property <color> hatch: pick(#1a1a1a, #cfcfcf, #333333);
+    /// The toolbar, adjustments and metadata floating over the slide.
+    out property <color> hud-bg: pick(#101419cc, #ffffffd9, #000000);
+    out property <color> hud-panel-bg: pick(#101419dd, #ffffffeb, #000000);
+    out property <color> tooltip-bg: pick(#111111ee, #fafafaf5, #000000);
+
+    // Lines.
+    out property <color> border: pick(#3e3e42, #c4c4c4, #ffffff);
+    out property <color> border-subtle: pick(#00000066, #0000001f, #ffffff);
+    /// Between the sections of a panel.
+    out property <color> divider: pick(#ffffff12, #0000001a, #ffffff99);
+    /// Around panels and fields floating over the slide or in dialogs.
+    out property <color> outline: pick(#ffffff1a, #00000026, #ffffff);
+    out property <color> outline-medium: pick(#ffffff30, #00000040, #ffffff);
+    out property <color> outline-strong: pick(#ffffff40, #00000059, #ffffff);
+    out property <color> outline-hover: pick(#ffffffa0, #000000a0, #ffff00);
+    out property <color> tooltip-border: pick(#3e3e42, #c4c4c4, #ffffff);
+    /// The groove of sliders.
+    out property <color> track: pick(#ffffff20, #00000026, #ffffffb3);
+    /// The knob of sliders.
+    out property <color> handle: pick(#ffffff, #ffffff, #ffffff);
+
+    // Text.
+    out property <color> text-primary: pick(#cccccc, #1f1f1f, #ffffff);
+    out property <color> text-secondary: pick(#969696, #5c5c5c, #d0d0d0);
+    /// Headings and values that stand out (white on dark).
+    out property <color> text-strong: pick(#ffffff, #000000, #ffffff);
+    /// The names of settings in floating panels and dialogs.
+    out property <color> text-label: pick(#8ea0b2, #44546a, #ffffff);
+    out property <color> text-value: pick(#e0e0e0, #1f1f1f, #ffffff);
+    /// What to do to enable a section.
+    out property <color> text-hint: pick(#8ea0b260, #5f6b78, #d0d0d0);
+    out property <color> text-disabled: pick(#ffffff66, #00000070, #a6a6a6);
+    out property <color> text-on-accent: pick(#ffffff, #ffffff, #000000);
+    /// On `selected-fill`.
+    out property <color> text-selected: pick(#ffffff, #0b3a66, #000000);
+    out property <color> text-on-danger: pick(#ffffff, #ffffff, #000000);
+    out property <color> tooltip-text: pick(#ffffff, #1f1f1f, #ffffff);
     /// Text that acts as a link (readable on the background).
-    out property <color> link: #3794ff;
-    out property <color> tab-active: #1e1e1e;
-    out property <color> tab-inactive: #2d2d30;
-    out property <color> minimap-bg: #1e1e1ecc;
-    out property <color> minimap-rect: #3794ffaa;
-    out property <color> context-menu-bg: #252526;
-    out property <color> context-menu-hover: #094771;
-    out property <color> toolbar-bg: #181818;
-    out property <color> viewport-bg: #1e1e1e;
-    out property <color> error: #f44336;
-    out property <color> success: #4caf50;
+    out property <color> link: pick(#3794ff, #0b62c4, #ffff00);
+
+    // Accents and selection.
+    out property <color> accent: pick(#0e639c, #0e639c, #1aebff);
+    out property <color> accent-hover: pick(#1177bb, #1177bb, #8af5ff);
+    /// Sliders, chosen options and focused fields in floating panels and
+    /// dialogs.
+    out property <color> accent-bright: pick(#4da3d9, #0f6cbd, #1aebff);
+    /// The chosen one of a row of options.
+    out property <color> selected-fill: pick(#4da3d940, #0f6cbd26, #1aebff);
+    out property <color> hover-fill: pick(#ffffff15, #0000000f, #ffffff33);
+    out property <color> hover-fill-strong: pick(#ffffff22, #0000001a, #ffffff40);
+    /// Idle fields and chips in floating panels and dialogs.
+    out property <color> subtle-fill: pick(#ffffff0a, #00000008, #000000);
+    out property <color> field-fill: pick(#ffffff10, #0000000a, #000000);
+    /// Every other row of a list.
+    out property <color> zebra: pick(#ffffff06, #00000008, #ffffff14);
+    /// Focus and selection borders (thicker in high contrast).
+    out property <length> focus-width: root.high-contrast ? 2px : 1px;
+    out property <length> selected-width: root.high-contrast ? 2px : 1px;
+    /// Menus need an outline on light and black backgrounds.
+    out property <length> menu-border-width: root.kind == ThemeKind.dark ? 0px : 1px;
+
+    // States.
+    out property <color> error: pick(#f44336, #c62828, #ff8080);
+    out property <color> danger: pick(#ff6b6b, #c62828, #ff8080);
+    out property <color> danger-fill: pick(#e74c3c, #d32f2f, #ff8080);
+    out property <color> danger-fill-hover: pick(#c0392b, #b71c1c, #ffb3b3);
+    out property <color> close-hover: pick(#e81123, #e81123, #ff8080);
+    out property <color> warning: pick(#f1c40f, #7a5d00, #ffff00);
+    /// Notes about colour processing.
+    out property <color> notice: pick(#f5c26b, #7a4a00, #ffd966);
+    out property <color> success: pick(#2ecc71, #1a6e2e, #66ff99);
+    /// The region-of-interest tool (the region's colour on the slide).
+    out property <color> roi: pick(#f1c40f, #9a7d0a, #ffff00);
+    out property <color> roi-on-accent: pick(#f1c40f, #f1c40f, #000000);
+    /// The stains of colour deconvolution, as their controls show them.
+    out property <color> stain-hematoxylin: pick(#6a5acd, #5b4bc4, #b8acff);
+    out property <color> stain-eosin: pick(#e05070, #b83355, #ff9eb5);
+
+    // Overlays.
+    /// Behind dialogs.
+    out property <color> scrim: pick(#00000088, #00000066, #000000cc);
+    out property <color> scrim-strong: pick(#000000aa, #00000088, #000000e6);
+    /// Behind the Channels panel (the slide stays visible).
+    out property <color> scrim-light: pick(#00000030, #00000020, #00000080);
+    out property <color> shadow: pick(#00000080, #00000040, #000000);
+    /// Where a dragged tab or file would go.
+    out property <color> drop-fill: pick(#3794ff15, #0f6cbd14, #1aebff26);
+    out property <color> drop-zone-fill: pick(#3794ff33, #0f6cbd33, #1aebff40);
+    out property <color> drop-border: pick(#79b8ff, #0f6cbd, #1aebff);
+    out property <color> drop-scrim: pick(#0b122080, #ffffff99, #000000b3);
+    out property <color> drop-divider: pick(#ffffff66, #0f6cbd66, #ffffff);
+    out property <color> drop-text: pick(#ffffff, #0b3a66, #ffffff);
+    /// Labels and badges drawn over the slide (dark in every theme, to read
+    /// over tissue).
+    out property <color> slide-badge-bg: pick(#000000b8, #000000b8, #000000);
+    out property <color> slide-badge-text: pick(#ffffff, #ffffff, #ffffff);
+    out property <color> slide-badge-warning: pick(#f5c26b, #f5c26b, #ffff00);
 }

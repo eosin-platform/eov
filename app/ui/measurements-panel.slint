@@ -84,7 +84,7 @@ export component MeasurementsPanel inherits Rectangle {
     callback copy-all-requested();
     callback clear-requested();
 
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -178,7 +178,7 @@ export component MeasurementsPanel inherits Rectangle {
                             for row in root.rows: Rectangle {
                                 height: 30px;
                                 border-radius: 4px;
-                                background: row-touch.has-hover ? #ffffff08 : transparent;
+                                background: row-touch.has-hover ? Theme.subtle-fill : transparent;
                                 // A double click goes there.
                                 accessible-role: list-item;
                                 accessible-label: row.kind + ": " + row.value;

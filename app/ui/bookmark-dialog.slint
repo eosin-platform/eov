@@ -10,7 +10,7 @@ export component BookmarkDialog inherits Rectangle {
     callback accepted(string);
     callback cancelled();
 
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -63,9 +63,9 @@ export component BookmarkDialog inherits Rectangle {
                 Rectangle {
                     height: 30px;
                     border-radius: 4px;
-                    border-width: 1px;
+                    border-width: name-input.has-focus ? Theme.focus-width : 1px;
                     border-color: name-input.has-focus ? Theme.accent : Theme.border;
-                    background: #0a0c10;
+                    background: Theme.input-bg;
 
                     name-input := TextInput {
                         x: 8px;
@@ -124,7 +124,7 @@ export component BookmarkDialog inherits Rectangle {
                         min-width: add-text.preferred-width + 16px;
                         height: 28px;
                         border-radius: 4px;
-                        background: add-touch.has-hover ? #1177bb : Theme.accent;
+                        background: add-touch.has-hover ? Theme.accent-hover : Theme.accent;
                         accessible-role: button;
                         accessible-label: "Add";
                         accessible-action-default => {
@@ -140,7 +140,7 @@ export component BookmarkDialog inherits Rectangle {
                         add-text := Text {
                             text: "Add";
                             accessible-role: none;
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;

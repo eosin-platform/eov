@@ -1,6 +1,7 @@
 // EOV WSI Viewer - Main Application Window
 
 import { Theme } from "theme.slint";
+export { Theme, ThemeKind } from "theme.slint";
 import {
     BottomPanelKind,
     ChannelRow,
@@ -353,6 +354,8 @@ export component AppWindow inherits Window {
     callback redo-requested();
     callback hud-plugin-button-clicked(/* pane */ int, /* plugin */ string, /* button */ string, /* menu item */ string);
     callback measure-mode-menu-requested(length, length);
+    // The theme menu (dark, light, high contrast), at this window position.
+    callback theme-menu-requested(length, length);
     callback plugins-panel-requested();
     callback plugin-enable-requested(string, bool);
     callback plugins-folder-requested();
@@ -690,6 +693,9 @@ export component AppWindow inherits Window {
             }
             measure-mode-menu-requested(x, y) => {
                 root.measure-mode-menu-requested(x, y);
+            }
+            theme-menu-requested(x, y) => {
+                root.theme-menu-requested(x, y);
             }
             plugins-panel-requested => {
                 root.plugins-panel-requested();
@@ -1173,17 +1179,17 @@ export component AppWindow inherits Window {
         y: max(4px, min(root.height - self.height - 4px, root.hover-tooltip-y * 1px + 18px));
         width: min(360px, hover-tooltip.preferred-width + 12px);
         height: hover-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         hover-tooltip := Text {
             x: 6px;
             y: 3px;
             width: parent.width - 12px;
             text: root.hover-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
             wrap: word-wrap;
         }
@@ -1194,16 +1200,16 @@ export component AppWindow inherits Window {
         y: toolbar.hovered-tooltip-top-y;
         width: toolbar-tooltip.preferred-width + 12px;
         height: toolbar-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         toolbar-tooltip := Text {
             x: 6px;
             y: 3px;
             text: toolbar.hovered-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
         }
     }
@@ -1215,16 +1221,16 @@ export component AppWindow inherits Window {
         y: root.tab-tooltip-y;
         width: tab-path-tooltip.preferred-width + 12px;
         height: tab-path-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         tab-path-tooltip := Text {
             x: 6px;
             y: 3px;
             text: root.tab-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
         }
     }
@@ -1286,10 +1292,10 @@ export component AppWindow inherits Window {
         x: root.width / 2 - self.width / 2;
         width: toast-label.preferred-width + 28px;
         height: toast-label.preferred-height + 14px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: self.height / 2;
-        border-width: 1px;
-        border-color: root.toast-level == 3 ? #ff6b6b : root.toast-level == 2 ? #f1c40f : root.toast-level == 1 ? #2ecc71 : Theme.border;
+        border-width: Theme.selected-width;
+        border-color: root.toast-level == 3 ? Theme.danger : root.toast-level == 2 ? Theme.warning : root.toast-level == 1 ? Theme.success : Theme.tooltip-border;
         animate opacity { duration: 180ms; }
         animate y { duration: 220ms; }
         accessible-role: text;
@@ -1302,7 +1308,7 @@ export component AppWindow inherits Window {
             x: 14px;
             y: 7px;
             text: root.toast-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 12px;
             accessible-role: none;
         }
@@ -1441,7 +1447,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000088;
+        background: Theme.scrim;
 
         TouchArea {
             clicked => {
@@ -1572,7 +1578,7 @@ export component AppWindow inherits Window {
                             width: 72px;
                             height: 28px;
                             border-radius: 4px;
-                            background: confirm-touch.has-hover ? #1177bb : Theme.accent;
+                            background: confirm-touch.has-hover ? Theme.accent-hover : Theme.accent;
                             accessible-role: button;
                             accessible-label: "Confirm";
                             accessible-action-default => {
@@ -1591,7 +1597,7 @@ export component AppWindow inherits Window {
 
                             Text {
                                 text: "Confirm";
-                                color: white;
+                                color: Theme.text-on-accent;
                                 font-size: 12px;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
@@ -1609,7 +1615,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000088;
+        background: Theme.scrim;
 
         TouchArea {
             clicked => {
@@ -1715,8 +1721,8 @@ export component AppWindow inherits Window {
                             height: 28px;
                             border-radius: 4px;
                             background: root.plugin-confirm-destructive
-                                ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
-                                : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
+                                ? (plugin-confirm-touch.has-hover ? Theme.danger-fill-hover : Theme.danger-fill)
+                                : (plugin-confirm-touch.has-hover ? Theme.accent-hover : Theme.accent);
                             accessible-role: button;
                             accessible-label: root.plugin-confirm-confirm-label;
                             accessible-action-default => {
@@ -1733,7 +1739,7 @@ export component AppWindow inherits Window {
 
                             confirm-text := Text {
                                 text: root.plugin-confirm-confirm-label;
-                                color: white;
+                                color: root.plugin-confirm-destructive ? Theme.text-on-danger : Theme.text-on-accent;
                                 font-size: 12px;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
@@ -1854,7 +1860,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000088;
+        background: Theme.scrim;
 
         TouchArea { }
 
@@ -2089,7 +2095,7 @@ export component AppWindow inherits Window {
         width: 140px;
         height: 28px;
         border-radius: 4px;
-        background: #252526ee;
+        background: Theme.surface;
         border-width: 1px;
         border-color: Theme.accent;
 

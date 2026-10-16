@@ -39,7 +39,7 @@ export component ToolButton inherits Rectangle {
         alignment: center;
         Text {
             text: root.icon;
-            color: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+            color: is-active ? Theme.text-on-accent : (root.enabled ? Theme.text-primary : Theme.text-secondary);
             font-size: 14px;
             vertical-alignment: center;
             accessible-role: none;
@@ -94,7 +94,7 @@ export component SvgToolButton inherits Rectangle {
         height: 17px;
         source: root.icon-source;
         image-fit: contain;
-        colorize: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+        colorize: is-active ? Theme.text-on-accent : (root.enabled ? Theme.text-primary : Theme.text-secondary);
         accessible-role: none;
     }
 }
@@ -160,8 +160,8 @@ export component MinimapToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
-    property <color> viewport-color: root.is-active ? white : Theme.accent;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
+    property <color> viewport-color: root.is-active ? Theme.text-on-accent : Theme.accent;
 
     accessible-role: button;
     accessible-label: root.tooltip-text;
@@ -281,8 +281,8 @@ export component MetadataToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
-    property <color> accent-color: root.is-active ? white : #7fc7ff;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
+    property <color> accent-color: root.is-active ? Theme.text-on-accent : Theme.accent-bright;
 
     accessible-role: button;
     accessible-label: root.tooltip-text;
@@ -356,7 +356,7 @@ export component MeasureToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
 
     accessible-role: button;
     accessible-label: root.tooltip-text;
@@ -403,7 +403,7 @@ export component RoiToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? #F1C40F : Theme.text-secondary;
+    property <color> icon-color: !root.enabled ? Theme.text-secondary : root.is-active ? Theme.roi-on-accent : Theme.roi;
 
     accessible-role: button;
     accessible-label: root.tooltip-text;
@@ -1003,8 +1003,10 @@ export component ContextMenu inherits Rectangle {
     height: root.is-visible ? min(root.content-height, root.height-limit) : 0px;
     background: Theme.context-menu-bg;
     border-radius: 4px;
+    border-width: Theme.menu-border-width;
+    border-color: Theme.border;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #00000066;
+    drop-shadow-color: Theme.shadow;
     opacity: root.is-visible ? 1 : 0;
 
     if root.is-visible: Rectangle {

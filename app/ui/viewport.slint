@@ -128,17 +128,17 @@ export component Viewport inherits Rectangle {
             width: self.box-width;
             height: self.box-height;
             border-radius: label.backdrop ? self.height / 2 : 0px;
-            background: label.backdrop ? #1a1a1aee : transparent;
+            background: label.backdrop ? Theme.slide-badge-bg : transparent;
             border-width: label.backdrop ? 1px : 0px;
             border-color: label.backdrop ? label.color.with-alpha(0.5) : transparent;
             drop-shadow-blur: label.backdrop ? 4px : 0px;
-            drop-shadow-color: #00000066;
+            drop-shadow-color: Theme.shadow;
 
             label-text := Text {
                 x: label.backdrop ? 7px : 0px;
                 y: label.backdrop ? 3px : 0px;
                 text: label.text;
-                color: label.backdrop ? white : label.color;
+                color: label.backdrop ? Theme.slide-badge-text : label.color;
                 font-size: label.font-size * 1px;
                 font-weight: 500;
             }
@@ -260,7 +260,7 @@ export component Viewport inherits Rectangle {
         y: root.metadata-hud-height > 0px ? root.metadata-hud-height + 24px : 8px;
         width: 70px;
         height: 24px;
-        background: #000000aa;
+        background: Theme.slide-badge-bg;
         border-radius: 4px;
 
         Text {
@@ -386,7 +386,7 @@ export component Viewport inherits Rectangle {
         y: root.height - self.height - (root.show-scale-bar ? 56px : 16px);
         width: self.text-width + 16px;
         height: badge-text.height + warning-text.height + (self.both ? 2px : 0px) + 8px;
-        background: #000000b8;
+        background: Theme.slide-badge-bg;
         border-radius: 5px;
 
         badge-text := Text {
@@ -395,7 +395,7 @@ export component Viewport inherits Rectangle {
             width: parent.text-width;
             height: root.hud.color-badge != "" ? self.preferred-height : 0px;
             text: root.hud.color-badge;
-            color: white;
+            color: Theme.slide-badge-text;
             font-size: 12px;
             font-weight: 600;
             wrap: word-wrap;
@@ -407,7 +407,7 @@ export component Viewport inherits Rectangle {
             width: parent.text-width;
             height: root.hud.color-warning != "" ? self.preferred-height : 0px;
             text: root.hud.color-warning;
-            color: #f5c26b;
+            color: Theme.slide-badge-warning;
             font-size: 11px;
             wrap: word-wrap;
         }
@@ -419,17 +419,17 @@ export component Viewport inherits Rectangle {
         y: 12px;
         width: min(root.width - 48px, plugin-badge-text.preferred-width + 20px);
         height: plugin-badge-text.preferred-height + 10px;
-        background: #000000c8;
+        background: Theme.slide-badge-bg;
         border-radius: 5px;
         border-width: 1px;
-        border-color: #f5c26b80;
+        border-color: Theme.slide-badge-warning.with-alpha(0.5);
 
         plugin-badge-text := Text {
             x: 10px;
             y: 5px;
             width: parent.width - 20px;
             text: root.hud.plugin-badges;
-            color: #f5c26b;
+            color: Theme.slide-badge-warning;
             font-size: 12px;
             font-weight: 600;
             horizontal-alignment: center;

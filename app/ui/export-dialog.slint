@@ -74,14 +74,14 @@ component ExportSlider inherits Rectangle {
         width: root.track-width;
         height: 3px;
         border-radius: 1.5px;
-        background: #ffffff20;
+        background: Theme.track;
 
         Rectangle {
             x: 0px;
             width: root.normalized * parent.width;
             height: parent.height;
             border-radius: parent.border-radius;
-            background: #4da3d9;
+            background: Theme.accent-bright;
         }
     }
 
@@ -91,9 +91,9 @@ component ExportSlider inherits Rectangle {
         width: 12px;
         height: 12px;
         border-radius: 6px;
-        background: white;
+        background: Theme.handle;
         border-width: 1px;
-        border-color: #4da3d9;
+        border-color: Theme.accent-bright;
     }
 
     slider-touch := TouchArea {
@@ -126,14 +126,14 @@ component ExportSlider inherits Rectangle {
         width: root.track-right - 6px;
         height: 22px;
         border-radius: 3px;
-        background: root.editing ? #1a1f28 : (val-touch.has-hover ? #ffffff15 : #ffffff0a);
-        border-width: root.editing ? 1px : 0px;
-        border-color: #4da3d9;
+        background: root.editing ? Theme.input-bg : (val-touch.has-hover ? Theme.hover-fill : Theme.subtle-fill);
+        border-width: root.editing ? Theme.focus-width : 0px;
+        border-color: Theme.accent-bright;
 
         Text {
             visible: !root.editing;
             text: root.display-text;
-            color: #e0e0e0;
+            color: Theme.text-value;
             font-size: 11px;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -144,7 +144,7 @@ component ExportSlider inherits Rectangle {
             visible: root.editing;
             x: 4px;
             width: parent.width - 8px;
-            color: white;
+            color: Theme.text-strong;
             font-size: 11px;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -200,13 +200,13 @@ component SectionHeader inherits Rectangle {
             height: 16px;
             source: root.icon-source;
             image-fit: contain;
-            colorize: #4da3d9;
+            colorize: Theme.accent-bright;
             accessible-role: none;
         }
 
         Text {
             text: root.text;
-            color: white;
+            color: Theme.text-strong;
             font-size: 12px;
             font-weight: 600;
             vertical-alignment: center;
@@ -216,7 +216,7 @@ component SectionHeader inherits Rectangle {
 
 component SectionDivider inherits Rectangle {
     height: 1px;
-    background: #ffffff12;
+    background: Theme.divider;
 }
 
 component SegmentButton inherits Rectangle {
@@ -229,9 +229,9 @@ component SegmentButton inherits Rectangle {
 
     height: 26px;
     border-radius: 3px;
-    background: root.active ? #4da3d940 : seg-touch.has-hover ? #ffffff15 : transparent;
-    border-width: root.active ? 1px : 0px;
-    border-color: #4da3d9;
+    background: root.active ? Theme.selected-fill : seg-touch.has-hover ? Theme.hover-fill : transparent;
+    border-width: root.active ? Theme.selected-width : 0px;
+    border-color: Theme.accent-bright;
     accessible-role: radio-button;
     accessible-label: root.group != "" ? root.group + ": " + root.text : root.text;
     accessible-checkable: true;
@@ -248,7 +248,7 @@ component SegmentButton inherits Rectangle {
 
     Text {
         text: root.text;
-        color: root.active ? white : #cccccc;
+        color: root.active ? Theme.text-selected : Theme.text-primary;
         font-size: 10px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -265,9 +265,9 @@ component DpiChip inherits Rectangle {
     width: 42px;
     height: 22px;
     border-radius: 11px;
-    background: root.active ? #4da3d940 : chip-touch.has-hover ? #ffffff15 : #ffffff0a;
-    border-width: root.active ? 1px : 0px;
-    border-color: #4da3d9;
+    background: root.active ? Theme.selected-fill : chip-touch.has-hover ? Theme.hover-fill : Theme.subtle-fill;
+    border-width: root.active ? Theme.selected-width : 0px;
+    border-color: Theme.accent-bright;
     accessible-role: radio-button;
     accessible-label: root.chip-value + " DPI";
     accessible-checkable: true;
@@ -284,7 +284,7 @@ component DpiChip inherits Rectangle {
 
     Text {
         text: root.chip-value;
-        color: root.active ? white : #aaaaaa;
+        color: root.active ? Theme.text-selected : Theme.text-secondary;
         font-size: 10px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -299,7 +299,7 @@ component LabelRow inherits Rectangle {
     Text {
         x: 4px;
         text: root.label;
-        color: #8ea0b2;
+        color: Theme.text-label;
         font-size: 11px;
         vertical-alignment: center;
     }
@@ -335,7 +335,7 @@ component ToggleSwitch inherits Rectangle {
             width: 32px;
             height: 16px;
             border-radius: 8px;
-            background: root.checked ? #4da3d9 : #ffffff30;
+            background: root.checked ? Theme.accent-bright : Theme.outline-medium;
             animate background { duration: 150ms; }
 
             Rectangle {
@@ -344,7 +344,7 @@ component ToggleSwitch inherits Rectangle {
                 width: 12px;
                 height: 12px;
                 border-radius: 6px;
-                background: white;
+                background: Theme.handle;
                 animate x { duration: 150ms; }
             }
 
@@ -379,7 +379,7 @@ component PickerSwatch inherits Rectangle {
     border-radius: 4px;
     background: root.swatch-color;
     border-width: root.selected ? 2px : (swatch-ta.has-hover ? 1.5px : 1px);
-    border-color: root.selected ? white : (swatch-ta.has-hover ? #ffffffa0 : #ffffff30);
+    border-color: root.selected ? Theme.text-strong : (swatch-ta.has-hover ? Theme.outline-hover : Theme.outline-medium);
     accessible-role: button;
     accessible-label: root.name;
     accessible-checkable: true;
@@ -417,7 +417,7 @@ component ColorField inherits Rectangle {
             border-radius: 4px;
             background: root.current-color;
             border-width: 1px;
-            border-color: swatch-touch.has-hover ? #ffffff80 : #ffffff30;
+            border-color: swatch-touch.has-hover ? Theme.outline-hover : Theme.outline-medium;
             accessible-role: button;
             accessible-label: "Colour";
             accessible-description: "Opens the colours to choose from";
@@ -434,7 +434,7 @@ component ColorField inherits Rectangle {
 
         Text {
             text: "Opacity";
-            color: #8ea0b2;
+            color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
             accessible-role: none;
@@ -445,15 +445,15 @@ component ColorField inherits Rectangle {
             width: 48px;
             height: 22px;
             border-radius: 3px;
-            background: #ffffff10;
+            background: Theme.field-fill;
             border-width: 1px;
-            border-color: #ffffff1a;
+            border-color: Theme.outline;
 
             opacity-input := TextInput {
                 x: 4px;
                 width: parent.width - 20px;
                 text: Math.round(root.opacity-pct);
-                color: #e0e0e0;
+                color: Theme.text-value;
                 font-size: 10px;
                 horizontal-alignment: right;
                 vertical-alignment: center;
@@ -471,7 +471,7 @@ component ColorField inherits Rectangle {
             Text {
                 x: parent.width - 14px;
                 text: "%";
-                color: #8ea0b2;
+                color: Theme.text-label;
                 font-size: 10px;
                 vertical-alignment: center;
                 accessible-role: none;
@@ -486,12 +486,12 @@ component ColorField inherits Rectangle {
         Rectangle {
             width: 192px;
             height: 164px;
-            background: #2a2a2a;
+            background: Theme.context-menu-bg;
             border-radius: 8px;
             border-width: 1px;
-            border-color: #ffffff20;
+            border-color: Theme.outline;
             drop-shadow-blur: 16px;
-            drop-shadow-color: #00000080;
+            drop-shadow-color: Theme.shadow;
 
             VerticalLayout {
                 padding: 10px;
@@ -499,7 +499,7 @@ component ColorField inherits Rectangle {
 
                 Text {
                     text: "Pick a Color";
-                    color: #c0c0c0;
+                    color: Theme.text-primary;
                     font-size: 10px;
                     font-weight: 500;
                 }
@@ -721,7 +721,7 @@ component ColorField inherits Rectangle {
 
                     Text {
                         text: "R";
-                        color: #8ea0b2;
+                        color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
                         accessible-role: none;
@@ -731,16 +731,16 @@ component ColorField inherits Rectangle {
                         width: 38px;
                         height: 20px;
                         border-radius: 3px;
-                        background: #ffffff10;
+                        background: Theme.field-fill;
                         border-width: 1px;
-                        border-color: #ffffff1a;
+                        border-color: Theme.outline;
 
                         rgb-r-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
                             accessible-label: "Red (0–255)";
                             text: root.current-color.red;
-                            color: #e0e0e0;
+                            color: Theme.text-value;
                             font-size: 9px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -756,7 +756,7 @@ component ColorField inherits Rectangle {
 
                     Text {
                         text: "G";
-                        color: #8ea0b2;
+                        color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
                         accessible-role: none;
@@ -766,16 +766,16 @@ component ColorField inherits Rectangle {
                         width: 38px;
                         height: 20px;
                         border-radius: 3px;
-                        background: #ffffff10;
+                        background: Theme.field-fill;
                         border-width: 1px;
-                        border-color: #ffffff1a;
+                        border-color: Theme.outline;
 
                         rgb-g-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
                             accessible-label: "Green (0–255)";
                             text: root.current-color.green;
-                            color: #e0e0e0;
+                            color: Theme.text-value;
                             font-size: 9px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -791,7 +791,7 @@ component ColorField inherits Rectangle {
 
                     Text {
                         text: "B";
-                        color: #8ea0b2;
+                        color: Theme.text-label;
                         font-size: 9px;
                         vertical-alignment: center;
                         accessible-role: none;
@@ -801,16 +801,16 @@ component ColorField inherits Rectangle {
                         width: 38px;
                         height: 20px;
                         border-radius: 3px;
-                        background: #ffffff10;
+                        background: Theme.field-fill;
                         border-width: 1px;
-                        border-color: #ffffff1a;
+                        border-color: Theme.outline;
 
                         rgb-b-input := TextInput {
                             x: 2px;
                             width: parent.width - 4px;
                             accessible-label: "Blue (0–255)";
                             text: root.current-color.blue;
-                            color: #e0e0e0;
+                            color: Theme.text-value;
                             font-size: 9px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -840,9 +840,9 @@ component SmallTextInput inherits Rectangle {
     width: 48px;
     height: 22px;
     border-radius: 3px;
-    background: #ffffff10;
+    background: Theme.field-fill;
     border-width: 1px;
-    border-color: #ffffff1a;
+    border-color: Theme.outline;
 
     HorizontalLayout {
         padding-left: 4px;
@@ -850,7 +850,7 @@ component SmallTextInput inherits Rectangle {
 
         if root.label != "": Text {
             text: root.label;
-            color: #8ea0b2;
+            color: Theme.text-label;
             font-size: 9px;
             vertical-alignment: center;
             accessible-role: none;
@@ -859,7 +859,7 @@ component SmallTextInput inherits Rectangle {
         small-input := TextInput {
             text: Math.round(root.value * 10) / 10;
             accessible-label: root.name;
-            color: #e0e0e0;
+            color: Theme.text-value;
             font-size: 10px;
             horizontal-alignment: right;
             vertical-alignment: center;
@@ -892,7 +892,7 @@ component StrokeStyleSelector inherits Rectangle {
 
         Text {
             text: "Stroke";
-            color: #8ea0b2;
+            color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
             width: 46px;
@@ -983,7 +983,7 @@ component CapStyleSelector inherits Rectangle {
 
         Text {
             text: "Caps";
-            color: #8ea0b2;
+            color: Theme.text-label;
             font-size: 11px;
             vertical-alignment: center;
             width: 46px;
@@ -1073,7 +1073,7 @@ export component ExportDialog inherits Rectangle {
         y: root.toolbar-height;
         width: parent.width;
         height: parent.height - root.toolbar-height;
-        background: #000000aa;
+        background: Theme.scrim-strong;
 
         // Dismiss on outside click
         TouchArea {
@@ -1100,12 +1100,12 @@ export component ExportDialog inherits Rectangle {
             y: root.toolbar-height + 24px;
             width: min(560px, parent.width - 48px);
             height: min(parent.height - root.toolbar-height - 48px, dialog-layout.preferred-height);
-            background: #1e1e1e;
+            background: Theme.background;
             border-radius: 10px;
             border-width: 1px;
-            border-color: #ffffff1a;
+            border-color: Theme.outline;
             drop-shadow-blur: 32px;
-            drop-shadow-color: #000000aa;
+            drop-shadow-color: Theme.shadow;
 
             // Block clicks from dismissing through the card
             TouchArea { }
@@ -1119,7 +1119,7 @@ export component ExportDialog inherits Rectangle {
                 // ---------------------------------------------------------------
                 Rectangle {
                     height: root.preview-info.note != "" ? 256px : 240px;
-                    background: #141414;
+                    background: Theme.surface-sunken;
                     border-top-left-radius: 10px;
                     border-top-right-radius: 10px;
 
@@ -1130,7 +1130,7 @@ export component ExportDialog inherits Rectangle {
 
                         Text {
                             text: "Export Preview";
-                            color: white;
+                            color: Theme.text-strong;
                             font-size: 13px;
                             font-weight: 600;
                             horizontal-alignment: center;
@@ -1138,16 +1138,17 @@ export component ExportDialog inherits Rectangle {
 
                         Rectangle {
                             height: 140px;
-                            background: #0a0a0a;
+                            background: Theme.image-well;
                             border-radius: 6px;
                             border-width: 1px;
-                            border-color: #ffffff10;
+                            border-color: Theme.divider;
                             clip: true;
 
                             Image {
                                 width: parent.width;
                                 height: parent.height;
                                 source: @image-url("icons/crosshatch.svg");
+                                colorize: Theme.hatch;
                                 horizontal-tiling: repeat;
                                 vertical-tiling: repeat;
                                 image-rendering: pixelated;
@@ -1171,26 +1172,26 @@ export component ExportDialog inherits Rectangle {
 
                             Text {
                                 text: "Estimated Size: " + (Math.round(root.estimated-mb * 100) / 100) + " MB";
-                                color: #8ea0b2;
+                                color: Theme.text-label;
                                 font-size: 10px;
                             }
 
                             Text {
                                 text: root.export-width + " × " + root.export-height + " px";
-                                color: #8ea0b2;
+                                color: Theme.text-label;
                                 font-size: 10px;
                             }
 
                             if root.preview-info.rendering: Text {
                                 text: "Rendering preview…";
-                                color: #8ea0b2;
+                                color: Theme.text-label;
                                 font-size: 10px;
                             }
                         }
 
                         if root.preview-info.note != "": Text {
                             text: root.preview-info.note;
-                            color: #e0c080;
+                            color: Theme.notice;
                             font-size: 10px;
                             horizontal-alignment: center;
                             wrap: word-wrap;
@@ -1618,7 +1619,7 @@ export component ExportDialog inherits Rectangle {
                                 Text {
                                     x: 8px;
                                     text: "Measure a distance in the viewport to enable these settings.";
-                                    color: #8ea0b260;
+                                    color: Theme.text-hint;
                                     font-size: 10px;
                                     vertical-alignment: center;
                                     wrap: word-wrap;
@@ -1746,7 +1747,7 @@ export component ExportDialog inherits Rectangle {
                                 Text {
                                     x: 8px;
                                     text: "Select a region of interest in the viewport to enable these settings.";
-                                    color: #8ea0b260;
+                                    color: Theme.text-hint;
                                     font-size: 10px;
                                     vertical-alignment: center;
                                     wrap: word-wrap;
@@ -1988,7 +1989,7 @@ export component ExportDialog inherits Rectangle {
                 // ---------------------------------------------------------------
                 Rectangle {
                     height: 56px;
-                    background: #141414;
+                    background: Theme.surface-sunken;
                     border-bottom-left-radius: 10px;
                     border-bottom-right-radius: 10px;
 
@@ -2003,9 +2004,9 @@ export component ExportDialog inherits Rectangle {
                             width: reset-text.preferred-width + 20px;
                             height: 32px;
                             border-radius: 4px;
-                            background: reset-touch.has-hover ? #ffffff15 : transparent;
+                            background: reset-touch.has-hover ? Theme.hover-fill : transparent;
                             border-width: 1px;
-                            border-color: #ffffff1a;
+                            border-color: Theme.outline;
                             accessible-role: button;
                             accessible-label: "Reset";
                             accessible-description: "Restores the default export settings";
@@ -2070,7 +2071,7 @@ export component ExportDialog inherits Rectangle {
                             width: export-row.preferred-width + 20px;
                             height: 32px;
                             border-radius: 4px;
-                            background: export-touch.has-hover ? #1177bb : Theme.accent;
+                            background: export-touch.has-hover ? Theme.accent-hover : Theme.accent;
                             accessible-role: button;
                             accessible-label: "Export";
                             accessible-action-default => {
@@ -2095,14 +2096,14 @@ export component ExportDialog inherits Rectangle {
                                     height: 14px;
                                     source: @image-url("icons/export.svg");
                                     image-fit: contain;
-                                    colorize: white;
+                                    colorize: Theme.text-on-accent;
                                     accessible-role: none;
                                 }
 
                                 Text {
                                     text: "Export";
                                     accessible-role: none;
-                                    color: white;
+                                    color: Theme.text-on-accent;
                                     font-size: 12px;
                                     font-weight: 600;
                                     vertical-alignment: center;
@@ -2111,6 +2112,16 @@ export component ExportDialog inherits Rectangle {
                         }
                     }
                 }
+            }
+
+            // In high contrast the card's outline is drawn over its
+            // header and footer too.
+            if Theme.high-contrast: Rectangle {
+                width: 100%;
+                height: 100%;
+                border-radius: 10px;
+                border-width: 1px;
+                border-color: Theme.outline;
             }
         }
     }

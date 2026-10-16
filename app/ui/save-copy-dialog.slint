@@ -124,7 +124,7 @@ component DialogButton inherits Rectangle {
 
     label := Text {
         text: root.text;
-        color: root.primary ? white : Theme.text-primary;
+        color: root.primary ? Theme.text-on-accent : Theme.text-primary;
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -148,7 +148,7 @@ export component SaveCopyDialog inherits Rectangle {
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -303,7 +303,7 @@ export component SaveCopyDialog inherits Rectangle {
 
                         if root.settings.deidentify: Text {
                             text: "✓";
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 11px;
                             horizontal-alignment: center;
                             vertical-alignment: center;

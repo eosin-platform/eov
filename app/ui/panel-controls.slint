@@ -28,7 +28,7 @@ export component Chip inherits Rectangle {
 
     label := Text {
         text: root.text;
-        color: root.selected ? white : Theme.text-primary;
+        color: root.selected ? Theme.text-on-accent : Theme.text-primary;
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -66,9 +66,9 @@ export component NumberField inherits Rectangle {
         Rectangle {
             height: 24px;
             border-radius: 4px;
-            border-width: 1px;
+            border-width: input.has-focus ? Theme.focus-width : 1px;
             border-color: input.has-focus ? Theme.accent : Theme.border;
-            background: #0a0c10;
+            background: Theme.input-bg;
 
             input := TextInput {
                 x: 6px;
@@ -116,7 +116,7 @@ export component PanelButton inherits Rectangle {
 
     label := Text {
         text: root.text;
-        color: !root.enabled ? Theme.text-secondary : root.primary ? white : Theme.text-primary;
+        color: !root.enabled ? Theme.text-secondary : root.primary ? Theme.text-on-accent : Theme.text-primary;
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -187,7 +187,7 @@ export component PanelSlider inherits Rectangle {
         width: parent.width - 12px;
         height: 3px;
         border-radius: 1.5px;
-        background: #ffffff20;
+        background: Theme.track;
 
         Rectangle {
             x: 0px;
@@ -204,7 +204,7 @@ export component PanelSlider inherits Rectangle {
         width: 12px;
         height: 12px;
         border-radius: 6px;
-        background: white;
+        background: Theme.handle;
         border-width: focus.has-focus ? 2px : 1px;
         border-color: Theme.link;
     }
@@ -265,7 +265,7 @@ export component PanelCheck inherits Rectangle {
 
         if root.checked: Text {
             text: "✓";
-            color: white;
+            color: Theme.text-on-accent;
             font-size: 10px;
             horizontal-alignment: center;
             vertical-alignment: center;

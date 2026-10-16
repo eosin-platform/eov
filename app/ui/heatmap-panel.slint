@@ -48,7 +48,7 @@ export component HeatMapPanelView inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Theme.shadow;
     clip: true;
 
     // Keeps clicks on the panel off the viewport below.
@@ -142,7 +142,7 @@ export component HeatMapPanelView inherits Rectangle {
 
             Text {
                 text: HeatMapPanel.placement-note;
-                color: HeatMapPanel.placement-ok ? Theme.text-secondary : #f1c40f;
+                color: HeatMapPanel.placement-ok ? Theme.text-secondary : Theme.warning;
                 font-size: 10px;
                 wrap: word-wrap;
             }

@@ -284,6 +284,25 @@ pub fn load_restore_session() -> bool {
     .unwrap_or(true)
 }
 
+/// The colour theme (`theme = "dark" | "light" | "high-contrast"`; the dark
+/// one when there is none).
+pub fn load_theme() -> Option<crate::ThemeKind> {
+    with_document(theme_in).ok().flatten()
+}
+
+fn theme_in(path: &Path, document: &DocumentMut) -> Option<crate::ThemeKind> {
+    let found = string(document, "theme")?;
+    let kind = crate::ThemeKind::from_id(&found);
+    if kind.is_none() {
+        ignore_value(path, "theme", &found);
+    }
+    kind
+}
+
+pub fn save_theme(kind: crate::ThemeKind) -> Result<()> {
+    save(|document| document["theme"] = value(kind.id()))
+}
+
 /// `series_case_pattern`: a regular expression whose first group is a
 /// slide's case in the series bar's Case order.
 pub fn load_series_case_pattern() -> Option<String> {
@@ -433,6 +452,19 @@ mod tests {
         assert!(read_document(&path, true).is_none());
         assert!(!path.exists());
         assert!(dir.path().join("config.toml.broken").exists());
+    }
+
+    #[test]
+    fn the_theme_is_read_by_name() {
+        let read = |text: &str| theme_in(Path::new("config.toml"), &text.parse().unwrap());
+        assert_eq!(read(""), None);
+        assert_eq!(read("theme = \"light\""), Some(crate::ThemeKind::Light));
+        assert_eq!(
+            read("theme = \"high-contrast\""),
+            Some(crate::ThemeKind::HighContrast)
+        );
+        assert_eq!(read("theme = \"neon\""), None);
+        assert_eq!(read("theme = 3"), None);
     }
 
     #[test]

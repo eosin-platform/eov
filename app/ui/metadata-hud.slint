@@ -1,3 +1,4 @@
+import { Theme } from "theme.slint";
 import { MetadataItem } from "types.slint";
 
 export component MetadataHud inherits Rectangle {
@@ -7,19 +8,19 @@ export component MetadataHud inherits Rectangle {
 
     width: 292px;
     height: 52px + item-count * 22px;
-    background: #101419dd;
+    background: Theme.hud-panel-bg;
     border-radius: 8px;
     border-width: 1px;
-    border-color: #ffffff1a;
+    border-color: Theme.outline;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #00000070;
+    drop-shadow-color: Theme.shadow;
 
     Rectangle {
         x: 0px;
         y: 0px;
         width: parent.width;
         height: 3px;
-        background: #4da3d9;
+        background: Theme.accent-bright;
         border-top-left-radius: parent.border-radius;
         border-top-right-radius: parent.border-radius;
     }
@@ -28,7 +29,7 @@ export component MetadataHud inherits Rectangle {
         x: 16px;
         y: 12px;
         text: "Slide Metadata";
-        color: white;
+        color: Theme.text-strong;
         font-size: 12px;
         font-weight: 700;
     }
@@ -38,7 +39,7 @@ export component MetadataHud inherits Rectangle {
         y: 34px;
         width: parent.width - 32px;
         height: 1px;
-        background: #ffffff12;
+        background: Theme.divider;
     }
 
     for item[index] in root.items: Rectangle {
@@ -53,7 +54,7 @@ export component MetadataHud inherits Rectangle {
             y: 1px;
             width: 78px;
             text: item.label;
-            color: #8ea0b2;
+            color: Theme.text-label;
             font-size: 11px;
             font-weight: 600;
             vertical-alignment: center;
@@ -64,7 +65,7 @@ export component MetadataHud inherits Rectangle {
             y: 1px;
             width: parent.width - 86px;
             text: item.value;
-            color: #f3f6f8;
+            color: Theme.text-strong;
             font-size: 11px;
             font-weight: 500;
             overflow: elide;

@@ -51,6 +51,7 @@ mod slide_link;
 mod state;
 #[cfg(test)]
 mod test_support;
+mod theme;
 mod tile_loader;
 #[cfg(test)]
 mod ui_tests;
@@ -246,6 +247,7 @@ fn main() -> Result<()> {
         .inspect_err(backend::report_startup_error)?;
     info!("Application window created");
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));
+    theme::apply_saved(&ui);
 
     // Apply CLI window size override. This must happen after AppWindow::new() so it
     // takes priority over the preferred-width/preferred-height set in the .slint file.

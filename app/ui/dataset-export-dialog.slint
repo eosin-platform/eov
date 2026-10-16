@@ -28,7 +28,7 @@ export component DatasetExportDialog inherits Rectangle {
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -82,7 +82,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                 Rectangle {
                     height: 180px;
-                    background: #0a0c10;
+                    background: Theme.input-bg;
                     border-radius: 4px;
                     border-width: 1px;
                     border-color: Theme.border;
@@ -102,7 +102,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                             for item[idx] in root.settings.inputs: Rectangle {
                                 height: 22px;
-                                background: idx == root.selected-input-index ? #4da3d940 : item-touch.has-hover ? #ffffff10 : transparent;
+                                background: idx == root.selected-input-index ? Theme.selected-fill : item-touch.has-hover ? Theme.hover-fill : transparent;
                                 border-radius: 2px;
                                 accessible-role: list-item;
                                 accessible-label: item;
@@ -125,7 +125,7 @@ export component DatasetExportDialog inherits Rectangle {
                                     padding-right: 8px;
                                     Text {
                                         text: item;
-                                        color: idx == root.selected-input-index ? white : #cccccc;
+                                        color: idx == root.selected-input-index ? Theme.text-selected : Theme.text-primary;
                                         font-size: 11px;
                                         vertical-alignment: center;
                                         overflow: elide;
@@ -174,9 +174,9 @@ export component DatasetExportDialog inherits Rectangle {
                         width: 28px;
                         height: 24px;
                         border-radius: 3px;
-                        background: root.selected-input-index >= 0 ? (remove-touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
+                        background: root.selected-input-index >= 0 ? (remove-touch.has-hover ? Theme.surface-hover : Theme.surface) : Theme.subtle-fill;
                         border-width: 1px;
-                        border-color: root.selected-input-index >= 0 ? Theme.border : #ffffff15;
+                        border-color: root.selected-input-index >= 0 ? Theme.border : Theme.outline;
                         accessible-role: button;
                         accessible-label: "Remove the selected input";
                         accessible-enabled: root.selected-input-index >= 0;
@@ -220,7 +220,7 @@ export component DatasetExportDialog inherits Rectangle {
                     Rectangle {
                         horizontal-stretch: 1;
                         height: 28px;
-                        background: #0a0c10;
+                        background: Theme.input-bg;
                         border-radius: 4px;
                         border-width: 1px;
                         border-color: Theme.border;
@@ -230,7 +230,7 @@ export component DatasetExportDialog inherits Rectangle {
                             padding-right: 8px;
                             Text {
                                 text: root.settings.output-dir;
-                                color: #cccccc;
+                                color: Theme.text-primary;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 overflow: elide;
@@ -285,16 +285,16 @@ export component DatasetExportDialog inherits Rectangle {
 
                         Rectangle {
                             height: 28px;
-                            background: #0a0c10;
+                            background: Theme.input-bg;
                             border-radius: 4px;
-                            border-width: 1px;
-                            border-color: tile-size-input.has-focus ? #4da3d9 : Theme.border;
+                            border-width: tile-size-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: tile-size-input.has-focus ? Theme.accent-bright : Theme.border;
 
                             tile-size-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
                                 accessible-label: "Tile size";
-                                color: white;
+                                color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 input-type: InputType.number;
@@ -325,16 +325,16 @@ export component DatasetExportDialog inherits Rectangle {
 
                         Rectangle {
                             height: 28px;
-                            background: #0a0c10;
+                            background: Theme.input-bg;
                             border-radius: 4px;
-                            border-width: 1px;
-                            border-color: stride-input.has-focus ? #4da3d9 : Theme.border;
+                            border-width: stride-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: stride-input.has-focus ? Theme.accent-bright : Theme.border;
 
                             stride-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
                                 accessible-label: "Stride";
-                                color: white;
+                                color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 input-type: InputType.number;
@@ -365,16 +365,16 @@ export component DatasetExportDialog inherits Rectangle {
 
                         Rectangle {
                             height: 28px;
-                            background: #0a0c10;
+                            background: Theme.input-bg;
                             border-radius: 4px;
-                            border-width: 1px;
-                            border-color: threads-input.has-focus ? #4da3d9 : Theme.border;
+                            border-width: threads-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: threads-input.has-focus ? Theme.accent-bright : Theme.border;
 
                             threads-input := TextInput {
                                 x: 8px;
                                 width: parent.width - 16px;
                                 accessible-label: "Threads";
-                                color: white;
+                                color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 input-type: InputType.number;
@@ -431,7 +431,7 @@ export component DatasetExportDialog inherits Rectangle {
                             width: parent.width;
                             height: 4px;
                             border-radius: 2px;
-                            background: #333;
+                            background: Theme.track;
 
                             Rectangle {
                                 x: 0px;
@@ -448,7 +448,7 @@ export component DatasetExportDialog inherits Rectangle {
                             width: 14px;
                             height: 14px;
                             border-radius: 7px;
-                            background: white-slider-touch.pressed ? #eee : white-slider-touch.has-hover ? #ddd : #ccc;
+                            background: white-slider-touch.pressed ? Theme.handle : white-slider-touch.has-hover ? Theme.handle.darker(0.1) : Theme.handle.darker(0.2);
                         }
 
                         white-slider-touch := TouchArea {
@@ -470,10 +470,10 @@ export component DatasetExportDialog inherits Rectangle {
                     Rectangle {
                         width: 56px;
                         height: 28px;
-                        background: #0a0c10;
+                        background: Theme.input-bg;
                         border-radius: 4px;
-                        border-width: 1px;
-                        border-color: white-text-input.has-focus ? #4da3d9 : Theme.border;
+                        border-width: white-text-input.has-focus ? Theme.focus-width : 1px;
+                        border-color: white-text-input.has-focus ? Theme.accent-bright : Theme.border;
 
                         HorizontalLayout {
                             padding-left: 6px;
@@ -483,7 +483,7 @@ export component DatasetExportDialog inherits Rectangle {
                             white-text-input := TextInput {
                                 horizontal-stretch: 1;
                                 accessible-label: "White threshold (%)";
-                                color: white;
+                                color: Theme.text-strong;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 input-type: InputType.number;
@@ -534,7 +534,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                         if root.settings.tissue-only: Text {
                             text: "✓";
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 11px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -582,7 +582,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                         if root.settings.exclude-qc: Text {
                             text: "✓";
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 11px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -630,7 +630,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                         if root.settings.deidentify: Text {
                             text: "✓";
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 11px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -704,7 +704,7 @@ export component DatasetExportDialog inherits Rectangle {
                         width: 80px;
                         height: 30px;
                         border-radius: 4px;
-                        background: confirm-btn-touch.has-hover ? #1177bb : Theme.accent;
+                        background: confirm-btn-touch.has-hover ? Theme.accent-hover : Theme.accent;
                         accessible-role: button;
                         accessible-label: "Confirm";
                         accessible-description: "Starts the export";
@@ -720,7 +720,7 @@ export component DatasetExportDialog inherits Rectangle {
 
                         Text {
                             text: "Confirm";
-                            color: white;
+                            color: Theme.text-on-accent;
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;

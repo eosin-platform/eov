@@ -1,3 +1,4 @@
+import { Theme } from "theme.slint";
 import { ContextMenuItem, HudToolbarButtonData } from "types.slint";
 import { DialogKeys } from "dialog-keys.slint";
 
@@ -17,7 +18,7 @@ component HudButton inherits Rectangle {
     width: 38px;
     height: 38px;
     border-radius: 0px;
-    background: touch.has-hover ? #ffffff22 : active ? #ffffff15 : transparent;
+    background: touch.has-hover ? Theme.hover-fill-strong : active ? Theme.hover-fill : transparent;
     accessible-role: button;
     accessible-label: root.tooltip-text != "" ? root.tooltip-text : root.text;
     accessible-checkable: root.checkable;
@@ -46,7 +47,7 @@ component HudButton inherits Rectangle {
         height: 18px;
         source: root.icon-source;
         image-fit: contain;
-        colorize: root.active ? white : #cccccc;
+        colorize: root.active ? Theme.text-strong : Theme.text-primary;
         accessible-role: none;
     }
 
@@ -54,7 +55,7 @@ component HudButton inherits Rectangle {
         width: parent.width;
         height: parent.height;
         text: root.text;
-        color: root.active ? white : #cccccc;
+        color: root.active ? Theme.text-strong : Theme.text-primary;
         font-size: 18px;
         font-weight: 600;
         horizontal-alignment: center;
@@ -66,7 +67,7 @@ component HudButton inherits Rectangle {
 component HudSeparator inherits Rectangle {
     width: 1px;
     height: 38px;
-    background: #ffffff20;
+    background: Theme.track;
 }
 
 export component HudToolbar inherits Rectangle {
@@ -156,10 +157,10 @@ export component HudToolbar inherits Rectangle {
     bar := Rectangle {
         width: 100%;
         height: 100%;
-        background: #101419cc;
+        background: Theme.hud-bg;
         border-radius: 8px;
-        border-width: 0px;
-        border-color: transparent;
+        border-width: Theme.high-contrast ? 1px : 0px;
+        border-color: Theme.outline;
         clip: true;
 
         HorizontalLayout {
@@ -180,7 +181,7 @@ export component HudToolbar inherits Rectangle {
                 width: 72px;
                 height: 38px;
                 border-radius: 0px;
-                background: zoom-touch.has-hover || root.editing-zoom ? #ffffff15 : transparent;
+                background: zoom-touch.has-hover || root.editing-zoom ? Theme.hover-fill : transparent;
                 accessible-role: spinbox;
                 accessible-label: "Zoom";
                 accessible-description: root.zoom-tooltip;
@@ -198,7 +199,7 @@ export component HudToolbar inherits Rectangle {
                 Text {
                     visible: !root.editing-zoom;
                     text: root.zoom-display-text;
-                    color: #e0e0e0;
+                    color: Theme.text-value;
                     font-size: 15px;
                     font-weight: 600;
                     horizontal-alignment: center;
@@ -212,15 +213,15 @@ export component HudToolbar inherits Rectangle {
                     y: (parent.height - self.height) / 2;
                     width: parent.width - 8px;
                     height: 26px;
-                    background: root.editing-zoom ? #1a1f28 : transparent;
+                    background: root.editing-zoom ? Theme.input-bg : transparent;
                     border-radius: 4px;
-                    border-width: root.editing-zoom ? 1px : 0px;
-                    border-color: #4da3d9;
+                    border-width: root.editing-zoom ? Theme.focus-width : 0px;
+                    border-color: Theme.accent-bright;
 
                     zoom-text-input := TextInput {
                         x: 4px;
                         width: parent.width - 8px;
-                        color: white;
+                        color: Theme.text-strong;
                         font-size: 14px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -310,7 +311,7 @@ export component HudToolbar inherits Rectangle {
                 width: root.rotation-degrees != 0 ? 46px : 0px;
                 height: 38px;
                 visible: root.rotation-degrees != 0;
-                background: angle-touch.has-hover ? #ffffff22 : transparent;
+                background: angle-touch.has-hover ? Theme.hover-fill-strong : transparent;
                 accessible-role: button;
                 accessible-label: "Reset rotation";
                 accessible-description: root.rotation-degrees + "°";
@@ -320,7 +321,7 @@ export component HudToolbar inherits Rectangle {
 
                 Text {
                     text: root.rotation-degrees + "°";
-                    color: #e0e0e0;
+                    color: Theme.text-value;
                     font-size: 13px;
                     font-weight: 600;
                     horizontal-alignment: center;
@@ -396,16 +397,16 @@ export component HudToolbar inherits Rectangle {
         y: root.height + 6px;
         width: hud-tt-text.preferred-width + 12px;
         height: hud-tt-text.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: #ffffff30;
+        border-color: Theme.tooltip-border;
 
         hud-tt-text := Text {
             x: 6px;
             y: 3px;
             text: root.active-tooltip;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
         }
     }
@@ -416,10 +417,10 @@ export component HudToolbar inherits Rectangle {
         y: root.plugin-menu-y;
         width: 180px;
         height: self.items.length * 30px + max(0, self.items.length - 1) * 2px + 12px;
-        background: #11151cee;
+        background: Theme.hud-panel-bg;
         border-radius: 8px;
         border-width: 1px;
-        border-color: #ffffff24;
+        border-color: Theme.outline;
         clip: true;
 
         // The menu takes the keyboard: Escape closes it.
@@ -439,7 +440,7 @@ export component HudToolbar inherits Rectangle {
             for item in parent.items: Rectangle {
                 height: 30px;
                 border-radius: 4px;
-                background: item-touch.has-hover && item.enabled ? #ffffff16 : transparent;
+                background: item-touch.has-hover && item.enabled ? Theme.hover-fill : transparent;
                 accessible-role: button;
                 accessible-label: item.label;
                 accessible-description: item.shortcut;
@@ -458,7 +459,7 @@ export component HudToolbar inherits Rectangle {
                     width: 14px;
                     y: (parent.height - self.height) / 2;
                     text: item.icon == "check" ? "✓" : "";
-                    color: white;
+                    color: Theme.text-strong;
                     font-size: 12px;
                     accessible-role: none;
                 }
@@ -467,7 +468,7 @@ export component HudToolbar inherits Rectangle {
                     x: 26px;
                     y: (parent.height - self.height) / 2;
                     text: item.label;
-                    color: item.enabled ? white : #ffffff66;
+                    color: item.enabled ? Theme.text-strong : Theme.text-disabled;
                     font-size: 12px;
                     accessible-role: none;
                 }

@@ -28,7 +28,7 @@ export component QuantifyPanel inherits Rectangle {
     callback copy-requested();
     callback close-requested();
 
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -226,7 +226,7 @@ export component QuantifyPanel inherits Rectangle {
 
                 if root.note != "": Text {
                     text: root.note;
-                    color: #f1c40f;
+                    color: Theme.warning;
                     font-size: 11px;
                     wrap: word-wrap;
                     height: self.preferred-height;
