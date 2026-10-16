@@ -337,6 +337,11 @@ eov plugin disable|enable <PLUGIN>
 eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
+eov model fetch <URL> --sha256 <HEX> [--companion <SHA256=URL>]... [--name <NAME>] [--version <V>] [--size <BYTES>] [--json] [--allow-network]
+eov model list|ls [--json]
+eov model verify [--json]
+eov model remove|rm <SHA256|NAME> [--json] [-y]
+eov model import <FILE> [--sha256 <HEX>] [--companion <[SHA256=]FILE>]... [--name <NAME>] [--version <V>] [--json]
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
 eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 eov call <METHOD> [PARAMS] [--out <FILE>]
@@ -379,7 +384,7 @@ eov recent list
 - `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
 
-`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash, the channels of multichannel slides and every property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)).
+`eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash, the channels of multichannel slides and every property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)). `eov model` manages the models AI plugins use (see [Models for AI plugins](#models-for-ai-plugins)).
 
 ### Opening slides
 
@@ -476,9 +481,15 @@ allow_network = false                # only offline updates (eov update --from)
 require_signatures = true            # refuse unsigned release metadata
 plugin_dirs = ["/opt/eov/plugins"]   # read-only plugin directories for every user
 message = "Contact the service desk to request changes."
+allow_model_downloads = true         # models for AI plugins (unset: follows allow_network)
+model_url_prefixes = ["https://models.example.org/"]   # only from these servers
+model_dirs = ["/opt/eov/models"]     # read-only model stores for every user
+
+[model_urls]                         # the site's copies of model files, by SHA-256
+"70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92" = "https://models.example.org/histovae/HistoVae_reconstruct.onnx"
 ```
 
-`EOV_POLICY=<file>` selects another policy file. A policy file that cannot be read or parsed blocks everything it could restrict ("fails closed").
+`EOV_POLICY=<file>` selects another policy file. A policy file that cannot be read or parsed blocks everything it could restrict ("fails closed"). The model keys are explained in [Models for AI plugins](#models-for-ai-plugins).
 
 **Networks.** Proxies are taken from `HTTPS_PROXY` / `ALL_PROXY` (and `NO_PROXY`). The operating system's certificate store is trusted in addition to the bundled Mozilla roots, so TLS-inspecting firewalls work once their root certificate is installed; `SSL_CERT_FILE` / `SSL_CERT_DIR` select a CA bundle instead. `EOV_GITHUB_TOKEN` raises the GitHub API rate limit for third-party plugin lookups (it is only sent to api.github.com).
 
@@ -796,6 +807,36 @@ Each `.eop` package in that directory is treated as a plugin package: a tar arch
 
 The Plugins panel (the plugin button in the toolbar) does the same from the window. It lists each plugin with its version, origin and state, says why one failed or whether its package changed since it was installed, and lists packages eov cannot read. Plugins can be disabled, enabled and removed there. **Check for updates** asks before going online, then compares the installed plugins with the official catalog of this eov release; an update is installed after a confirmation and used from the next start.
 
+### Models for AI plugins
+
+AI plugins need model files that are not shipped with them. eov keeps them in one **model store** per user, `<data folder>/models` (`eov paths` lists it as `models`), by the SHA-256 of each model's main file: a model is downloaded once for every plugin, and every file is checked against the SHA-256 the plugin (or you) pinned before anything uses it. [eovae](plugins/eovae/README.md#models) offers the HistoVAE reference model, whose files its model card pins, and [cellaris](plugins/cellaris/README.md#installing) downloads the marker model your site names.
+
+**From a plugin.** A plugin's *Download model* action asks eov for the model by its SHA-256. A model already in the store is used at once. Otherwise eov asks first, naming the plugin, the model, its size and the servers, and downloads it only after a "yes", with progress and Cancel in the status bar; the plugin then loads it. Batch runs never download: they use the store.
+
+**From the command line.**
+
+```bash
+eov model fetch https://models.example.org/histovae/HistoVae_reconstruct.onnx \
+    --sha256 70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92 \
+    --companion cd2735866bd69648eb17df97f196f266e6e2569f8c21fa1e9779fb7e3a233ef8=HistoVae_reconstruct.onnx.data \
+    --name "HistoVAE reference (CAMELYON17)"
+eov model list                    # --json for scripts
+eov model verify                  # hash every stored file again; exit status 1 if one is damaged
+eov model remove HistoVAE         # by SHA-256 (or its first digits), name or file name
+eov model import /media/usb/markers.onnx --sha256 <HEX>    # a computer without network access
+```
+
+`--companion SHA256=URL` adds a file the model needs next to it, such as the external weights of an ONNX model (`model.onnx.data`); its URL is relative to the model's, so a file name in the same folder is enough (`import` takes `--companion [SHA256=]FILE`). `fetch` asks before going online unless `--allow-network` is given, as `eov update` does; `-y` never grants network access.
+
+**Integrity.** A download goes to `models/.partial/` first, is hashed as it arrives, and moves into the store only when its size and SHA-256 match; a file that does not match is deleted, and the message gives the expected and the actual SHA-256. A download that breaks off continues where it stopped next time (with an HTTP `Range` request, when the server supports it); a cancelled one starts over, and partial downloads nobody resumes are deleted after a month. A file whose size is not given may be at most 64 GiB. Every model has a folder named by its SHA-256 holding its files and `eov-model.json`: its name and version, where it came from (the URL without credentials or query), the size and SHA-256 of each file, when it was stored and which plugin asked for it. Downloads, imports and removals are recorded in the audit log. Models are downloaded with the network settings of updates (proxies, the operating system's certificates) over HTTPS; plain HTTP only reaches this computer or a server the policy names.
+
+**Managed and air-gapped sites.** In the [policy file](#application-and-plugin-updates):
+
+- `allow_model_downloads = false` refuses downloads; models can then only be imported. Left out, it follows `allow_network`: a policy without network access refuses model downloads too, unless it sets `allow_model_downloads = true` and names the site's own servers in `model_url_prefixes`.
+- `model_url_prefixes` allows downloads (and every redirect) only from these servers and folders.
+- `[model_urls]` maps the SHA-256 of a model file to the site's copy, which eov downloads instead of the URL a plugin or the command line gives, so a plugin's *Download model* works on a network that cannot reach the public copy. Companion files come from the same folder unless they have their own entry.
+- `model_dirs` are read-only stores provisioned for every user, with the layout `eov model import` writes: a folder per model, named by its SHA-256 (import into a scratch data folder with `EOV_DATA_DIR=<dir> eov model import …`, then copy `<dir>/models/*`).
+
 ### Manifest and Writing a Plugin
 
 Each package has a `plugin.toml` at its root:
@@ -835,7 +876,7 @@ eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 
 Logs go to standard error (`--log-level`, default warnings). GUI sessions also write `eov.log` at info level in the log folder (`~/.local/share/eov/logs` on Linux; **Open Log Folder** in the Messages popup), keeping the previous five sessions; a launch that hands its files to a running eov writes none. Info-level messages name files, not full paths. If eov crashes, it writes a `crash-<time>.txt` report there and mentions it at the next start.
 
-Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux), as do bookmarks and pixel sizes entered for slides. The series-bar thumbnail cache is not pruned; it is safe to delete. `EOV_HOME`, `EOV_CONFIG`, `EOV_DATA_DIR`, `EOV_CACHE_DIR`, `EOV_PLUGIN_DIR` and `EOV_RUNTIME_DIR` move these locations, for example for a portable installation.
+Plugin data and caches live in the platform's data and cache folders (for example `~/.local/share/eov` and `~/.cache/eov` on Linux), as do bookmarks, pixel sizes entered for slides and the models of AI plugins (`models/`, see [Models for AI plugins](#models-for-ai-plugins)). The series-bar thumbnail cache is not pruned; it is safe to delete. `EOV_HOME`, `EOV_CONFIG`, `EOV_DATA_DIR`, `EOV_CACHE_DIR`, `EOV_PLUGIN_DIR` and `EOV_RUNTIME_DIR` move these locations, for example for a portable installation.
 
 Programs eov starts (the file manager, `xdg-open`) get the environment eov was started with: in the AppImage without the AppImage runtime's `APPIMAGE`, `APPDIR`, `ARGV0` and `OWD`, and with library paths as they were at launch.
 

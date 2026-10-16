@@ -103,7 +103,32 @@ The `Host` methods, grouped (see the API docs for every type):
 | Undo | `push_undo`, `clear_undo` (one undo stack shared with eov, scoped by slide; you get `Undo`/`Redo` events) |
 | Filters | `register_filter`, `set_filter_enabled` (CPU RGBA filters run in the render path) |
 | Settings | `setting`, `set_setting`, `remove_setting` (persisted per plugin) |
+| Models | `fetch_model` (a model from eov's model store, downloaded and verified when it is not there yet; the answer arrives as `HostEvent::ModelFetched`), `resolve_model`, `models` |
 | Batch runs | `register_batch_command` (offered by `eov batch run <plugin>:<command> SLIDES --out DIR`; each slide arrives as `HostEvent::BatchRun` with its output folder and parameters), `batch_progress`, `finish_batch` (status, the files written and a summary for the run manifest); `PluginInit.headless` says when there is no window |
+
+**Models.** eov keeps the models of AI plugins in one store per user,
+by the SHA-256 of each model's main file, so a model is downloaded once
+for every plugin and checked against the hash you pin.
+`fetch_model(ModelFetchArgs { url, sha256, size, file_name, name,
+version, companions })` names the main file by its SHA-256 (and size,
+when known: a download stops as soon as it is larger) and lists files
+that must sit next to it, such as an ONNX model's external weights
+(`ModelFileSpec`: a SHA-256, and a URL relative to the main file's or
+just a `file_name` in the same folder). A model already stored is
+answered at once; otherwise eov asks the user, naming your plugin, the
+model and the servers, downloads it with progress in the status bar
+(resuming an interrupted download), verifies every file and answers
+`ModelFetched { request_id, path, model, error, cancelled }`. The
+administrator's policy can refuse downloads, restrict them to the
+site's servers or provide the site's copy of a file by its SHA-256, in
+which case `url` may be `None`. eov tells the user why a download
+failed, so treat `error` as state to show, not a message to repeat;
+`cancelled` means the user declined. Batch runs never download: they
+answer from the store. `resolve_model(sha256)` returns a stored model
+(`ModelRecord`: the main file's `path`, its companions, where it came
+from, when and for whom) without downloading, and `models()` lists the
+store. A host without a model store answers `HostError::is_unsupported`;
+let the user choose the file instead.
 
 Surfaces are `.slint` files compiled by eov's own Slint (see `[ui] slint` in
 the manifest); the exported component does not need to inherit `Window`.
@@ -227,6 +252,13 @@ assert_eq!(harness.state().notifications.len(), 1);
 
 `test_init()` gives each plugin instance its own temporary data and cache
 directories, so tests never touch a real eov installation.
+
+The mock keeps a model store too: put models in it with
+`state().add_model(record)` (what `resolve_model` and `models` answer),
+read the requests your plugin made from `state().model_fetches` (or
+`last_model_fetch()`), and answer them as eov would with
+`finish_model_fetch(request_id, Ok(record) | Err(message))` or
+`cancel_model_fetch(request_id)`.
 
 ## Related projects
 
