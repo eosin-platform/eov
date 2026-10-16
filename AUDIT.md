@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `8143678`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `09f3ce1`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -77,15 +77,12 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 ### What is still open
 
 - **SH-10** (partly fixed): The UI no longer freezes, and a failed copy says what to do instead. Copying images in the Flatpak under Wayland still needs arboard's `wayland-data-control` feature (its crates were not available offline) or X11 access in the Flatpak manifest.
-- §14.1 **Rotation and flip** (partly): Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented.
-- §14.2 **Interchange formats** (partly): GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported.
 - §14.3 **Philips iSyntax** (not done): Needs a reader outside OpenSlide (e.g. libisyntax).
 - §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
-- §14.3 **Z-stacks / focal planes** (partly): OME-TIFF Z-stacks: Ctrl+↑/↓ step through the focal planes; time series show their first time point, and vendor Z-stacks (NDPI, VMS) are not read (OpenSlide exposes one plane).
+- §14.3 **Z-stacks / focal planes** (partly): OME-TIFF Z-stacks and time series: Ctrl+↑/↓ step through the focal planes and Ctrl+→/← through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane.
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
-- §14.4 **Accessibility** (in progress): Final sweep after the other changes land.
-- §14.4 **Localisation** (in progress): Final sweep after the other changes land.
+- §14.4 **Localisation** (partly): The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English.
 - §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
 
 ### Per-finding status
@@ -269,7 +266,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Feature | Status | Where | Notes |
 |---|---|---|---|
 | Slide label and macro/overview image | Done | `877fcf0` | Slide Information panel; the label can be hidden. |
-| Rotation and flip | **Partly** | `19c217e` `a8c5dd1` `baa98a0` | Quarter turns and mirroring per pane, in the minimap and exports; free rotation is not implemented. |
+| Rotation and flip | Done | `19c217e` `a8c5dd1` `baa98a0` `699201b` `4c543d1` `9a22a45` `a8f8013` `8c6709d` `09f3ce1` | Any angle per pane (90° and 5° steps, typed angles) and mirroring; quarter turns exact. CPU and GPU (matched), overlays, minimap, exports, linked panes, bookmarks, history, session and scripting follow. |
 | Magnification presets | Done | `877fcf0` | 1–6 and 0 (actual pixels), from the objective power or calibrated MPP. |
 | Keyboard-driven navigation | Done | `e0d900e` | One remappable shortcut table (`[shortcuts]` in `config.toml`), listed with F1. |
 | Linked navigation across different slides | Done | `75dbe1c` `e6137c4` | Link panes (Ctrl+L), align by landmarks or by hand; alignments are kept per slide pair. |
@@ -297,7 +294,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Cell counting tool | Done | annotations | Click, Shift+click and Alt+click classes; per-class tallies, densities with intervals, two-class indices (Ki-67, PD-L1 TPS) and the PD-L1 combined positive score. |
 | HPF / field-area reticle | Done | annotations | From field number and objective, or mm²; stamping. |
 | Measurements on annotations | Done | annotations | In µm space, with missing or anisotropic MPP stated; CSV export. |
-| Interchange formats | **Partly** | annotations | GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import; DICOM SR / Bulk Simple Annotations are not supported. |
+| Interchange formats | Done | `08418ea` `124f85f` + annotations | GeoJSON (QuPath), ASAP and ImageScope XML in both directions, NDPA import, and DICOM Microscopy Bulk Simple Annotations in both directions (2D; what the standard has no place for, such as holes and text, is kept in private attributes for eov round trips). DICOM SR is not read or written. |
 | Review and provenance | Done | annotations | Author, timestamps, status, locking, comment threads, an audit table, blinded copies and a second-reader comparison. |
 | Annotation-driven dataset extraction | Done | `bb7fd46` | GeoJSON regions select and label patches; class masks are written. |
 | External analysis results as overlays | Done | `29d9d53` `55d9886` + annotations | Detections import as GeoJSON annotations into the retained overlay store; heat maps (PNG, JPEG, TIFF) are placed over the slide by fit, downsample or pixel size, coloured, and kept per slide. |
@@ -311,7 +308,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
 | Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
-| Z-stacks / focal planes | **Partly** | `52a367f` | OME-TIFF Z-stacks: Ctrl+↑/↓ step through the focal planes; time series show their first time point, and vendor Z-stacks (NDPI, VMS) are not read (OpenSlide exposes one plane). |
+| Z-stacks / focal planes | **Partly** | `52a367f` `5841b18` `8f2206b` | OME-TIFF Z-stacks and time series: Ctrl+↑/↓ step through the focal planes and Ctrl+→/← through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane. |
 | Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
 | Writing slides; de-identified copies | Done | `d64791d` `482fa9c` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles; de-identified copies drop the label, macro and thumbnail and keep an allow-list of metadata. Multichannel slides are copied as their RGB composite. |
 
@@ -319,15 +316,15 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 
 | Feature | Status | Where | Notes |
 |---|---|---|---|
-| Plugins panel | Done | `7951b47` | Versions, origin, state, errors; enable, disable, update and remove. No per-plugin resource use. |
+| Plugins panel | Done | `7951b47` `8306706` `8ab7c30` | Versions, origin, state, errors; enable, disable, update and remove; each running plugin's UI-thread and filter time, slide reads and overlay memory. |
 | Safe mode | Done | `34ba416` `383b52c` |  |
 | Updates from the GUI, dry run, JSON, offline, rollback | Done | `062bd7b` `21b6894` |  |
 | Enterprise networks | Done | `d2218eb` | Proxies and the OS certificate store. |
 | Signed binaries and metadata | **Partly** | `53fa2fc` `32001bd` | Verification and signing steps exist; no release key or certificates are configured yet (owner action). |
 | Managed deployment | Done | `53fa2fc` | `policy.toml`, system plugin directories, `eov plugin lock` / `sync`. |
 | Single instance and multi-instance safety | Done | `3b5904d` `53fa2fc` `2cedb1b` |  |
-| Accessibility | **In progress** |  | Final sweep after the other changes land. |
-| Localisation | **In progress** |  | Final sweep after the other changes land. |
+| Accessibility | Done | `cd7bc2d` `8db0f7b` `558fa52` `e5af868` `c634b7b` | Accessible roles, names, states and default actions on the window's controls (checked through Slint's testing backend; no screen reader was run), keyboard access to every dialog and panel, and light and high-contrast themes (contrast tested). |
+| Localisation | **Partly** | `260686e` | The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English. |
 | Diagnostics | Done | `3620def` | Session log, crash reports, Open Log Folder. |
 
 **§14.5 Analysis and research workflows**

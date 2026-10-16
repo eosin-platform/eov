@@ -1,0 +1,169 @@
+PLG-1 · CRITICAL · The binary contract is never version- or layout-checked, and both vtables cross the boundary by value
+PLG-2 · CRITICAL · Deterministic UI deadlock: filter-state sync calls into plugins while holding the `AppState` write lock, and eovae calls back into the host
+PLG-3 · HIGH · Plugin callbacks generally run with host locks held, and the host API is blocking and not re-entrant
+PLG-4 · HIGH · The newest plugin (cellaris) cannot load: `environment` became mandatory with no migration, and the README manifest format is wrong
+PLG-5 · HIGH · The overlay API copies every object every frame and on every pointer move, under the write lock, with no culling
+PLG-6 · HIGH · Plugin GPU viewport filters are not implemented; filters that declare GPU support get a hard-coded grayscale pass
+PLG-7 · MEDIUM · A panic on either side of the boundary aborts the whole process
+PLG-8 · MEDIUM · The host hard-codes behaviour for specific plugin ids and "magic" property names
+PLG-9 · MEDIUM · Annotation-specific concepts are baked into the ABI and host state, and generic primitives are missing
+PLG-10 · MEDIUM · Shared UI slots (sidebar, modal, confirmation, undo/redo) have no ownership
+PLG-11 · MEDIUM · `read_region` holds the global lock during slide I/O, has no size cap, silently shifts negative coordinates, and its coordinate and alpha conventions are undocumented
+PLG-12 · MEDIUM · Filter chain: global ids, random order, missed state changes, unchecked buffer contract
+PLG-13 · MEDIUM · Plugin ids are not validated, yet they build native-library paths and are parsed as delimiters
+PLG-14 · MEDIUM · Anything in the plugin directory is loaded without consent or an integrity check
+PLG-15 · MEDIUM · The runtime Slint UI plumbing is fragile and polling-based
+PLG-16 · MEDIUM · Cross-plugin ordering is nondeterministic, and polygon hit-testing selects the bottom-most shape
+PLG-17 · MEDIUM · Tool ownership between host and plugins is unarbitrated and invisible to plugins
+PLG-18 · LOW · Smaller host-runtime defects
+PLG-19 · LOW · Dead or misleading API surface and documentation
+WSI-1 · HIGH · OpenSlide errors are sticky: one bad tile silently disables a handle, with no detection or reopen
+WSI-2 · HIGH · Transparent, premultiplied OpenSlide pixels are never composited onto a background
+WSI-3 · HIGH · Thumbnails decode the *entire* coarsest level, on the UI thread, while holding the `AppState` write lock
+WSI-4 · HIGH · The tile cache is effectively FIFO, and the default budget is smaller than one frame's working set
+WSI-5 · MEDIUM · The visible-tile range is clamped with the 256-px grid instead of the level's real tile size
+WSI-6 · MEDIUM · The trilinear LOD bias is applied in level-index units, so 4× pyramids switch to a much finer level
+WSI-7 · MEDIUM · The CPU samplers use a top-left pixel convention, while the GPU and the overlays use pixel centres
+WSI-8 · MEDIUM · Lanczos-3, the export default, aliases when minifying, seams at tile borders, and is slow
+WSI-9 · MEDIUM · Up to 18 OpenSlide handles per slide, each with a private ~32 MB cache, and the native tile grid is ignored
+WSI-10 · MEDIUM · `visible_tiles` keeps the first 4096 tiles in row-major order and logs a warning on every call, so single-level slides load only a strip along the top
+WSI-11 · MEDIUM · Lock-order inversion between `stats` and `current_bytes` deadlocks the tile cache
+WSI-12 · MEDIUM · `blitter::reproject_frame` is a safe public function that does unchecked indexing without validating sizes
+WSI-13 · MEDIUM · The slide fingerprint, used as the key for annotations and eovae results, is weak and only covers the file that was opened
+WSI-14 · MEDIUM · `openslide.bounds-*` and `openslide.region[i]` are ignored
+WSI-15 · LOW · Other core defects
+RND-1 · HIGH · The render loop never goes idle in the default Trilinear mode, or while an ROI exists
+RND-2 · HIGH · GPU tile texture arrays hold fewer tiles than a single frame needs; the overflow is silently dropped
+RND-3 · HIGH · Rendering ignores the HiDPI scale factor, so imagery is half-resolution on Retina and 200% displays
+RND-4 · HIGH · eov cannot start without a GPU-backed Vulkan adapter (Windows/Linux) or Metal (macOS); the "CPU renderer" is not a fallback
+RND-5 · MEDIUM · Stale tile requests are never cancelled, and request priority is lost
+RND-6 · MEDIUM · CPU-only plugin filters quietly move the GPU backend onto a slow single-threaded CPU path
+RND-7 · MEDIUM · GPU memory grows without bound, and there is no wgpu error or device-lost handling
+RND-8 · MEDIUM · Tile-loader threads poll, run per file, and are joined on the UI thread
+RND-9 · MEDIUM · CPU render jobs are keyed by pane index, so inserting or removing a pane orphans them
+RND-10 · LOW · Smaller rendering defects
+CLR-1 · HIGH · Stain normalisation is re-fitted from whatever is on screen, per pane, every time a tile loads
+CLR-2 · HIGH · The tissue mask lets glass background into the fit, so glass-dominated views get recoloured
+CLR-3 · HIGH · Deconvolution after normalisation applies the *source* inverse to pixels that are already in the *target* basis
+CLR-4 · HIGH · Any non-default deconvolution slider recolours everything that is not pure H or E
+CLR-5 · MEDIUM · CPU and GPU output are not "matched" (contrary to README:115 and :171)
+CLR-6 · MEDIUM · The fitted stain matrix is never sanity-checked
+CLR-7 · MEDIUM · Stain fitting and the per-pixel passes are expensive, single-threaded and on the UI thread
+CLR-8 · MEDIUM · The H&E model is applied to IHC slides, turning DAB brown into eosin pink
+CLR-9 · MEDIUM · The "Adjustments" indicator ignores stain normalisation and deconvolution
+EXP-1 · HIGH · High-DPI exports silently drop full-resolution tiles beyond the first 4096
+EXP-2 · MEDIUM · Export (preview and final) runs synchronously on the UI thread, with unbounded memory
+EXP-3 · MEDIUM · Export ignores the JPEG quality setting and writes no resolution metadata
+EXP-4 · MEDIUM · The export dialog's RGB fields show values ×255, and editing one corrupts the other channels
+EXP-5 · LOW · Other export defects
+DS-1 · CRITICAL · In a multi-slide run, every slide after the first is read through the *first* slide's OpenSlide handle
+DS-2 · HIGH · Slides with the same file stem overwrite each other's tiles
+DS-3 · MEDIUM · A run is all-or-nothing, metadata is written only at the end, and exit codes are wrong
+DS-4 · MEDIUM · Parameters are unbounded: a tiny stride or a huge tile size aborts the process
+DS-5 · MEDIUM · Empty "no data" regions are exported as black or transparent patches
+DS-6 · LOW · Smaller dataset defects
+UI-1 · HIGH · Point/polygon clicks in an unfocused split pane are written to the *focused* pane's slide
+UI-2 · HIGH · Drag-to-split uses the source pane's index from before the new pane is inserted
+UI-3 · HIGH · The minimap's drag-start/end callbacks never reach Rust, so the pane is stuck "dragging": wheel zoom stops working and the render loop spins
+UI-4 · HIGH · Error messages are never shown: `status-text` is set everywhere but rendered nowhere
+UI-5 · HIGH · Measurement values are wrong when MPP is missing, only partly present, or anisotropic
+UI-6 · HIGH · Scale-bar labels are rounded to the wrong value in mm mode and below 1 µm
+UI-7 · MEDIUM · Esc, Enter and Ctrl+W go to the viewport while host dialogs are open, and Esc deletes the ROI and measurement
+UI-8 · MEDIUM · The window-level `f`/`m`/`+`/`-` shortcuts fire while the user is typing, and behind dialogs
+UI-9 · MEDIUM · On macOS, undo/redo is bound to Control instead of ⌘
+UI-10 · MEDIUM · In-progress tool state survives tab, pane and file changes, so one gesture can mix coordinates from two slides
+UI-11 · MEDIUM · "Split Right" on a Home tab reuses the same tab id, so opening a file collapses the split
+UI-12 · MEDIUM · Dropping a file on a pane edge can leave an empty pane, and the split drop zones don't work on macOS or Wayland
+UI-13 · MEDIUM · ROI and Measure tools: no toggle-off (the repo's `TODO`), results discarded on Navigate/Esc, one of each per file shared across panes, nothing persisted or undoable
+UI-14 · MEDIUM · The series bar does O(n²) `canonicalize` calls and synchronous folder scans on the UI thread, and its thumbnail workers are never cancelled
+UI-15 · MEDIUM · Scroll handling: the step ignores the scroll delta, horizontal scroll zooms out, and there is no pinch or trackpad pan
+UI-16 · LOW · Smaller interaction defects
+SH-1 · CRITICAL · Re-opening a file that is already open deadlocks the UI thread
+SH-2 · HIGH · On Windows, release builds discard all CLI output, prompts and startup errors
+SH-3 · MEDIUM · A malformed, hand-edited or newer `config.toml` stops the app from starting; saving drops unknown keys and isn't atomic
+SH-4 · MEDIUM · Unit tests write to the developer's real config, plugin config and cache, and did so during this audit
+SH-5 · MEDIUM · OpenSlide linking relies on the linker's default search path, which fails with rust-lld on common setups
+SH-6 · MEDIUM · Workspace manifest problems: `exclude` is a no-op, cellaris can't be built in-tree, and submodules are hard requirements
+SH-7 · MEDIUM · Launch arguments: one bad path aborts startup, commas split file names, and `file://` URIs are rejected
+SH-8 · MEDIUM · No single-instance mode and no OS file associations
+SH-9 · MEDIUM · Drag-and-drop doesn't work on Wayland
+SH-10 · MEDIUM · Copying an image to the clipboard freezes the UI for up to 2 s on Linux, and doesn't work in the Flatpak under Wayland
+SH-11 · MEDIUM · Opening slides and browsing folders block the UI thread
+SH-12 · MEDIUM · Plugin packages are extracted synchronously before the window appears, and the extraction cache is never pruned
+SH-13 · MEDIUM · One misbehaving plugin takes down the host, and there is no safe mode
+SH-14 · MEDIUM · Recent-files persistence is lossy, racy and leaks identifiers, and is documented in the wrong place
+SH-15 · MEDIUM · Windows paths and "Open containing folder" are fragile
+SH-16 · LOW · Logs go to stdout; there is no log file and no panic hook
+SH-17 · LOW · CLI ergonomics and limits
+SH-18 · LOW · A dead, hidden `plugin-window` subcommand loads any directory's native library outside the install and consent flow
+SH-19 · LOW · Packaging metadata drift and licence-compliance gaps
+SH-20 · LOW · Documentation drift
+UPD-1 · CRITICAL · Windows portable self-update replaces, then permanently deletes, the whole folder that contains `eov.exe`
+UPD-2 · HIGH · On a Mac without `brew` on PATH, updating a manually installed app bundle aborts
+UPD-3 · HIGH · Homebrew ownership detection cannot recognise the official tap's cask
+UPD-4 · HIGH · The macOS `eov-update-helper` keeps an absolute CI path to libopenslide, and is run from `$TMPDIR`
+UPD-5 · HIGH · The Flatpak sandbox breaks the updater, the gamepad plugin and folder-based workflows
+UPD-6 · HIGH · Plugin compatibility metadata cannot prevent installing or loading ABI-incompatible plugins
+UPD-7 · MEDIUM · Windows-specific update failures
+UPD-8 · MEDIUM · Homebrew "latest" delegation is never verified, yet plugins are aligned to the target version anyway
+UPD-9 · MEDIUM · A third-party GitHub install can silently replace an unrelated installed plugin
+UPD-10 · MEDIUM · One failing plugin aborts the whole `eov update`, including the app update
+UPD-11 · MEDIUM · Integrity relies only on hashes published in the same place as the artifacts; nothing is signed
+UPD-12 · MEDIUM · Plugin-cache invalidation can break a running GUI, and the cache and staging files leak without bound
+UPD-13 · MEDIUM · Network and platform reach
+UPD-14 · MEDIUM · CI exercises none of the platform-specific updater code, and supply-chain hygiene is weak
+UPD-15 · LOW · Smaller update and packaging defects
+ANN-1 · HIGH · Every write is a separate fsync'd transaction on the UI thread: seconds-to-minutes freezes, and multi-step edits aren't atomic
+ANN-2 · HIGH · The density/area panel goes stale after a polygon is reshaped or moved, or a point is moved
+ANN-3 · HIGH · Area and point counting use different rules for self-intersecting polygons, and nothing prevents such polygons
+ANN-4 · MEDIUM · A crafted or corrupted import makes eov abort every time that slide is opened
+ANN-5 · MEDIUM · Import isn't atomic: "Replace" can lose the existing layer, and "Cancel" makes already-imported layers impossible to undo
+ANN-6 · MEDIUM · All slides share one undo/redo stack, which can undo edits on a closed slide with nothing visible on screen
+ANN-7 · MEDIUM · The in-memory cache is keyed by path string and never invalidated, while the DB is keyed by fingerprint
+ANN-8 · MEDIUM · Slide identity is a sampled byte hash with no recovery path
+ANN-9 · MEDIUM · An import lands on whichever slide is active when the dialog is answered, not the slide it was started on
+ANN-10 · MEDIUM · Uncommitted metadata edits are lost, and global hotkeys can get stuck disabled
+ANN-11 · MEDIUM · The selection "pulse" thread forces about 8 full re-renders per second indefinitely, and the colour never actually pulses
+ANN-12 · MEDIUM · Overlay and sidebar costs grow with the total number of annotations
+ANN-13 · MEDIUM · Failures are retried every frame, a read-only database is unusable, and the sidebar can show the previous slide
+ANN-14 · MEDIUM · The first import or export hashes the whole slide file on the UI thread, while holding the plugin mutex
+ANN-15 · MEDIUM · Errors are never shown to the user
+ANN-16 · MEDIUM · The schema has no version, no migrations and no indexes
+ANN-17 · MEDIUM · The export format has no version or image context, and leaks the absolute local path
+ANN-18 · LOW · Smaller annotations defects
+VAE-1 · CRITICAL · See PLG-2
+VAE-2 · HIGH · Lock-order inversion between eovae's global mutex and the host's `AppState` lock
+VAE-3 · HIGH · The pyramid is assumed to halve at each level (downsample = 2^mip), which is wrong for Aperio SVS
+VAE-4 · HIGH · Pre- and post-processing don't match the model's contract
+VAE-5 · HIGH · Results are not keyed by slide, so overlays and statistics leak between slides and panes
+VAE-6 · HIGH · Memory grows without bound: about 448 KiB is kept forever for every analysed tile
+VAE-7 · HIGH · Every analysis error is reported as "Analysis cancelled" and never logged
+VAE-8 · HIGH · The inference device is tied to the viewer's render backend, and CUDA is strict by default
+VAE-9 · HIGH · The CPU path wastes 32× compute with the shipped static-batch model, and doesn't skip background
+VAE-10 · HIGH · On the GPU path, skipped background tiles are never recorded, so they stay "pending" forever and auto-analysis stalls
+VAE-11 · MEDIUM · Clicking Analyze builds a CUDA session synchronously on the UI thread, every time
+VAE-12 · MEDIUM · Persistence and caching correctness
+VAE-13 · MEDIUM · Performance: the UI thread is flooded and the per-frame filter cost is high
+VAE-14 · MEDIUM · Not portable, and provisioning is neither reproducible nor lean
+VAE-15 · MEDIUM · Model handling
+VAE-16 · MEDIUM · Host integration
+VAE-17 · LOW · Smaller eovae defects
+CEL-1 · HIGH · The current host rejects the plugin: `plugin.toml` has no `[environment]` (PLG-4)
+CEL-2 · HIGH · Once loadable, toggling the overlay hangs eov whenever eovae is also installed (PLG-2)
+CEL-3 · HIGH · Inference ignores the slide's pixel size (MPP)
+CEL-4 · HIGH · ONNX Runtime loading only works as documented on Windows, and a failure panics the worker
+CEL-5 · HIGH · Region-readout statistics are computed on unblended 256-px windows
+CEL-6 · MEDIUM · Failures are silent and sticky
+CEL-7 · MEDIUM · Correctness of what is painted and measured
+CEL-8 · MEDIUM · The overlay's cost lands on the UI thread, and it forces CPU rendering everywhere
+CEL-9 · MEDIUM · Clinical-safety and labelling gaps
+CEL-10 · MEDIUM · Build and release
+CEL-11 · LOW · Smaller cellaris defects
+GPD-1 · HIGH · The worker holds the plugin mutex while blocking on the UI thread, which deadlocks the whole app
+GPD-2 · HIGH · Input is not limited to when eov has focus, and the default mapping injects system-wide pointer motion
+GPD-3 · HIGH · In the Flatpak the plugin can't see any controllers
+GPD-4 · MEDIUM · Input handling defects
+GPD-5 · MEDIUM · Constant 83 Hz polling and repeated disk I/O, some of it on the UI thread
+GPD-6 · MEDIUM · Leftovers from the out-of-process window design
+GPD-7 · MEDIUM · Host-side window handling
+GPD-8 · LOW · Smaller gamepad defects
