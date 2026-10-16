@@ -28,6 +28,7 @@ export component HomeScreen inherits Rectangle {
                 text: "🔬";
                 font-size: 48px;
                 horizontal-alignment: center;
+                accessible-role: none;
             }
 
             Rectangle {
@@ -35,7 +36,7 @@ export component HomeScreen inherits Rectangle {
             }
 
             Text {
-                text: "Whole Slide Image Viewer";
+                text: @tr("Whole Slide Image Viewer");
                 color: Theme.text-secondary;
                 font-size: 14px;
                 horizontal-alignment: center;
@@ -53,6 +54,11 @@ export component HomeScreen inherits Rectangle {
                     height: 40px;
                     background: open-touch.has-hover ? Theme.accent-hover : Theme.accent;
                     border-radius: 6px;
+                    accessible-role: button;
+                    accessible-label: @tr("Open File");
+                    accessible-action-default => {
+                        root.open-file-requested();
+                    }
 
                     open-touch := TouchArea {
                         clicked => {
@@ -74,15 +80,17 @@ export component HomeScreen inherits Rectangle {
                                 height: 18px;
                                 source: @image-url("icons/open-file.svg");
                                 image-fit: contain;
+                                accessible-role: none;
                             }
                         }
 
                         Text {
-                            text: "Open File";
-                            color: white;
+                            text: @tr("Open File");
+                            color: Theme.text-on-accent;
                             font-size: 14px;
                             font-weight: 500;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
                 }
@@ -93,7 +101,7 @@ export component HomeScreen inherits Rectangle {
             }
 
             Text {
-                text: "or drag and drop WSI files or folders";
+                text: @tr("or drag and drop WSI files or folders");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -107,7 +115,7 @@ export component HomeScreen inherits Rectangle {
                     spacing: 8px;
 
                     Text {
-                        text: "Recently Opened";
+                        text: @tr("Recently Opened");
                         color: Theme.text-primary;
                         font-size: 13px;
                         font-weight: 600;
@@ -136,6 +144,12 @@ export component HomeScreen inherits Rectangle {
                                 height: 28px;
                                 background: file-touch.has-hover ? Theme.surface-hover : transparent;
                                 border-radius: 4px;
+                                accessible-role: button;
+                                accessible-label: file.name;
+                                accessible-description: file.path;
+                                accessible-action-default => {
+                                    root.open-recent-file(file.path);
+                                }
 
                                 file-touch := TouchArea {
                                     clicked => {
@@ -153,6 +167,7 @@ export component HomeScreen inherits Rectangle {
                                         text: "📄";
                                         font-size: 12px;
                                         vertical-alignment: center;
+                                        accessible-role: none;
                                     }
 
                                     Text {
@@ -162,6 +177,7 @@ export component HomeScreen inherits Rectangle {
                                         vertical-alignment: center;
                                         overflow: elide;
                                         horizontal-stretch: 1;
+                                        accessible-role: none;
                                     }
                                 }
                             }
@@ -192,7 +208,7 @@ export component HomeScreen inherits Rectangle {
         spacing: 4px;
 
         Text {
-            text: "For research and education. Not a medical device; not for primary diagnosis.";
+            text: @tr("For research and education. Not a medical device; not for primary diagnosis.");
             color: Theme.text-secondary;
             font-size: 10px;
             horizontal-alignment: center;
@@ -213,14 +229,15 @@ export component HomeScreen inherits Rectangle {
                 text: "·";
                 color: Theme.text-secondary;
                 font-size: 10px;
+                accessible-role: none;
             }
 
             Text {
-                text: "Check for Updates…";
+                text: @tr("Check for Updates…");
                 color: update-touch.has-hover ? Theme.text-primary : Theme.link;
                 font-size: 10px;
                 accessible-role: button;
-                accessible-label: "Check for eov updates";
+                accessible-label: @tr("Check for eov updates");
                 accessible-action-default => {
                     AppInfo.check-for-updates();
                 }

@@ -23,7 +23,7 @@ export component Viewport inherits Rectangle {
     in property <ViewportInfo> viewport-info;
     in property <string> zoom-display-text: "100%";
     in property <string> zoom-input-text: "100";
-    in property <string> zoom-tooltip: "100% = 1 image pixel per display pixel";
+    in property <string> zoom-tooltip: @tr("100% = 1 image pixel per display pixel");
     in property <image> minimap-thumbnail;
     in property <MinimapRect> minimap-rect;
     in property <bool> show-minimap: true;
@@ -86,6 +86,14 @@ export component Viewport inherits Rectangle {
     out property <length> viewport-height: self.height;
     property <length> metadata-hud-height: show-metadata && metadata-items.length > 0 ? 52px + metadata-items.length * 22px : 0px;
     private property <float> mouse-wheel-zoom-factor: 1.3225;
+    // The adjustments panel takes the keyboard while it is open; the slide
+    // gets it back when it closes.
+    property <bool> adjustments-open: root.hud.show-hud-toolbar && root.hud.hud-dropdown-open;
+    changed adjustments-open => {
+        if !self.adjustments-open {
+            focus-scope.focus();
+        }
+    }
 
     background: Theme.viewport-bg;
 
@@ -99,8 +107,10 @@ export component Viewport inherits Rectangle {
             height: 100%;
             source: content;
             image-fit: fill;
+            accessible-label: @tr("Slide view");
         }
 
+        // Annotations and measurements are listed in their panels.
         Image {
             x: root.overlay-x * 1px;
             y: root.overlay-y * 1px;
@@ -108,6 +118,7 @@ export component Viewport inherits Rectangle {
             height: root.overlay-height * 1px;
             source: root.overlay;
             image-fit: fill;
+            accessible-role: none;
         }
 
         for label in root.overlay-labels: Rectangle {
@@ -118,17 +129,17 @@ export component Viewport inherits Rectangle {
             width: self.box-width;
             height: self.box-height;
             border-radius: label.backdrop ? self.height / 2 : 0px;
-            background: label.backdrop ? #1a1a1aee : transparent;
+            background: label.backdrop ? Theme.slide-badge-bg : transparent;
             border-width: label.backdrop ? 1px : 0px;
             border-color: label.backdrop ? label.color.with-alpha(0.5) : transparent;
             drop-shadow-blur: label.backdrop ? 4px : 0px;
-            drop-shadow-color: #00000066;
+            drop-shadow-color: Theme.shadow;
 
             label-text := Text {
                 x: label.backdrop ? 7px : 0px;
                 y: label.backdrop ? 3px : 0px;
                 text: label.text;
-                color: label.backdrop ? white : label.color;
+                color: label.backdrop ? Theme.slide-badge-text : label.color;
                 font-size: label.font-size * 1px;
                 font-weight: 500;
             }
@@ -143,7 +154,7 @@ export component Viewport inherits Rectangle {
             border-radius: 8px;
 
             Text {
-                text: "Loading...";
+                text: @tr("Loading...");
                 color: Theme.text-primary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -250,7 +261,7 @@ export component Viewport inherits Rectangle {
         y: root.metadata-hud-height > 0px ? root.metadata-hud-height + 24px : 8px;
         width: 70px;
         height: 24px;
-        background: #000000aa;
+        background: Theme.slide-badge-bg;
         border-radius: 4px;
 
         Text {
@@ -306,6 +317,9 @@ export component Viewport inherits Rectangle {
         plugin-button-clicked(plugin-id, button-id, item-id) => {
             root.hud-plugin-button-clicked(plugin-id, button-id, item-id);
         }
+        release-keyboard => {
+            focus-scope.focus();
+        }
     }
 
     // HUD settings dropdown (below toolbar)
@@ -339,6 +353,9 @@ export component Viewport inherits Rectangle {
         }
         reset-adjustments => {
             root.hud-reset-adjustments();
+        }
+        close-requested => {
+            root.hud-toggle-dropdown();
         }
         deconv-hematoxylin-intensity: root.hud.deconv-hematoxylin-intensity;
         deconv-hematoxylin-visible: root.hud.deconv-hematoxylin-visible;
@@ -375,7 +392,7 @@ export component Viewport inherits Rectangle {
         y: root.height - self.height - (root.show-scale-bar ? 56px : 16px);
         width: self.text-width + 16px;
         height: badge-text.height + warning-text.height + (self.both ? 2px : 0px) + 8px;
-        background: #000000b8;
+        background: Theme.slide-badge-bg;
         border-radius: 5px;
 
         badge-text := Text {
@@ -384,7 +401,7 @@ export component Viewport inherits Rectangle {
             width: parent.text-width;
             height: root.hud.color-badge != "" ? self.preferred-height : 0px;
             text: root.hud.color-badge;
-            color: white;
+            color: Theme.slide-badge-text;
             font-size: 12px;
             font-weight: 600;
             wrap: word-wrap;
@@ -396,7 +413,7 @@ export component Viewport inherits Rectangle {
             width: parent.text-width;
             height: root.hud.color-warning != "" ? self.preferred-height : 0px;
             text: root.hud.color-warning;
-            color: #f5c26b;
+            color: Theme.slide-badge-warning;
             font-size: 11px;
             wrap: word-wrap;
         }
@@ -408,17 +425,17 @@ export component Viewport inherits Rectangle {
         y: 12px;
         width: min(root.width - 48px, plugin-badge-text.preferred-width + 20px);
         height: plugin-badge-text.preferred-height + 10px;
-        background: #000000c8;
+        background: Theme.slide-badge-bg;
         border-radius: 5px;
         border-width: 1px;
-        border-color: #f5c26b80;
+        border-color: Theme.slide-badge-warning.with-alpha(0.5);
 
         plugin-badge-text := Text {
             x: 10px;
             y: 5px;
             width: parent.width - 20px;
             text: root.hud.plugin-badges;
-            color: #f5c26b;
+            color: Theme.slide-badge-warning;
             font-size: 12px;
             font-weight: 600;
             horizontal-alignment: center;
@@ -439,13 +456,13 @@ export component Viewport inherits Rectangle {
         height: 0px;
         key-pressed(e) => {
             if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
-                accept
+                return accept;
             }
             reject
         }
         key-released(e) => {
             if root.key-input(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, false, false) {
-                accept
+                return accept;
             }
             reject
         }

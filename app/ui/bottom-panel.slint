@@ -12,7 +12,7 @@ export component BottomPanel inherits Rectangle {
     in property <bool> series-can-go-forward: false;
     in property <bool> series-can-go-up: false;
     in-out property <string> series-filter;
-    in property <string> series-sort-label: "A–Z";
+    in property <string> series-sort-label: @tr("A–Z");
     callback series-filter-edited(string);
     callback series-sort-cycled();
     in property <string> status-left: "";

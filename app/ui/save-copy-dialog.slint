@@ -1,6 +1,7 @@
 // EOV WSI Viewer - Save a Copy of the Slide dialog (AUDIT §14.3, §14.6)
 
 import { Theme } from "theme.slint";
+import { DialogKeys } from "dialog-keys.slint";
 
 export struct SaveCopySettings {
     // The slide's name, for the title.
@@ -32,6 +33,17 @@ component Choice inherits Rectangle {
 
     height: root.detail == "" ? 24px : 38px;
     opacity: root.enabled ? 1.0 : 0.45;
+    accessible-role: radio-button;
+    accessible-label: root.text;
+    accessible-description: root.detail;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     HorizontalLayout {
         spacing: 8px;
@@ -63,6 +75,7 @@ component Choice inherits Rectangle {
                 text: root.text;
                 color: Theme.text-primary;
                 font-size: 12px;
+                accessible-role: none;
             }
 
             if root.detail != "": Text {
@@ -70,6 +83,7 @@ component Choice inherits Rectangle {
                 color: Theme.text-secondary;
                 font-size: 11px;
                 overflow: elide;
+                accessible-role: none;
             }
         }
     }
@@ -102,13 +116,19 @@ component DialogButton inherits Rectangle {
     background: root.primary
         ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
         : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => {
+        root.clicked();
+    }
 
     label := Text {
         text: root.text;
-        color: root.primary ? white : Theme.text-primary;
+        color: root.primary ? Theme.text-on-accent : Theme.text-primary;
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 
     touch := TouchArea {
@@ -128,7 +148,7 @@ export component SaveCopyDialog inherits Rectangle {
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -136,195 +156,217 @@ export component SaveCopyDialog inherits Rectangle {
         }
     }
 
-    Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: min(parent.width - 40px, 480px);
-        height: min(parent.height - 40px, layout.preferred-height);
-        background: Theme.surface;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.border;
-        clip: true;
+    // Escape cancels, Enter saves.
+    DialogKeys {
+        title: @tr("Save a Copy of the Slide");
+        has-default-action: true;
+        cancel => {
+            root.cancel-requested();
+        }
+        default-action => {
+            root.save-requested();
+        }
 
-        TouchArea { }
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(parent.width - 40px, 480px);
+            height: min(parent.height - 40px, layout.preferred-height);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+            clip: true;
 
-        layout := VerticalLayout {
-            padding: 20px;
-            spacing: 10px;
+            TouchArea { }
 
-            Text {
-                text: "Save a Copy of the Slide";
-                color: Theme.text-primary;
-                font-size: 16px;
-                font-weight: 700;
-            }
+            layout := VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
 
-            Text {
-                text: root.settings.title;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                overflow: elide;
-            }
-
-            Heading {
-                text: "Area";
-            }
-
-            Choice {
-                text: "Whole slide";
-                detail: root.settings.whole-text;
-                checked: root.settings.area == 0;
-                clicked => {
-                    root.settings.area = 0;
-                    root.settings-changed(root.settings);
+                Text {
+                    text: @tr("Save a Copy of the Slide");
+                    color: Theme.text-primary;
+                    font-size: 16px;
+                    font-weight: 700;
                 }
-            }
 
-            Choice {
-                text: "Region of interest";
-                detail: root.settings.has-roi ? root.settings.roi-text : "Draw one with the region tool first";
-                checked: root.settings.area == 1;
-                enabled: root.settings.has-roi;
-                clicked => {
-                    root.settings.area = 1;
-                    root.settings-changed(root.settings);
+                Text {
+                    text: root.settings.title;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    overflow: elide;
                 }
-            }
 
-            Heading {
-                text: "Format";
-            }
-
-            Choice {
-                text: "Pyramidal TIFF";
-                detail: "Opens in eov, QuPath, OpenSlide and most WSI tools";
-                checked: root.settings.format == 0;
-                clicked => {
-                    root.settings.format = 0;
-                    root.settings-changed(root.settings);
+                Heading {
+                    text: @tr("Area");
                 }
-            }
 
-            Choice {
-                text: "OME-TIFF";
-                detail: "For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)";
-                checked: root.settings.format == 1;
-                clicked => {
-                    root.settings.format = 1;
-                    root.settings-changed(root.settings);
+                Choice {
+                    text: @tr("Whole slide");
+                    detail: root.settings.whole-text;
+                    checked: root.settings.area == 0;
+                    clicked => {
+                        root.settings.area = 0;
+                        root.settings-changed(root.settings);
+                    }
                 }
-            }
 
-            Heading {
-                text: "Compression";
-            }
-
-            Choice {
-                text: "JPEG, high quality (90)";
-                checked: root.settings.compression == 0;
-                clicked => {
-                    root.settings.compression = 0;
-                    root.settings-changed(root.settings);
+                Choice {
+                    text: @tr("Region of interest");
+                    detail: root.settings.has-roi ? root.settings.roi-text : @tr("Draw one with the region tool first");
+                    checked: root.settings.area == 1;
+                    enabled: root.settings.has-roi;
+                    clicked => {
+                        root.settings.area = 1;
+                        root.settings-changed(root.settings);
+                    }
                 }
-            }
 
-            Choice {
-                text: "JPEG, smaller files (80)";
-                checked: root.settings.compression == 1;
-                clicked => {
-                    root.settings.compression = 1;
-                    root.settings-changed(root.settings);
+                Heading {
+                    text: @tr("Format");
                 }
-            }
 
-            Choice {
-                text: "Lossless (Deflate)";
-                detail: "Exact pixels; several times larger";
-                checked: root.settings.compression == 2;
-                clicked => {
-                    root.settings.compression = 2;
-                    root.settings-changed(root.settings);
+                Choice {
+                    text: @tr("Pyramidal TIFF");
+                    detail: @tr("Opens in eov, QuPath, OpenSlide and most WSI tools");
+                    checked: root.settings.format == 0;
+                    clicked => {
+                        root.settings.format = 0;
+                        root.settings-changed(root.settings);
+                    }
                 }
-            }
 
-            // De-identification.
-            HorizontalLayout {
-                spacing: 8px;
-                height: 22px;
+                Choice {
+                    text: @tr("OME-TIFF");
+                    detail: @tr("For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)");
+                    checked: root.settings.format == 1;
+                    clicked => {
+                        root.settings.format = 1;
+                        root.settings-changed(root.settings);
+                    }
+                }
 
-                Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 3px;
-                    border-width: 1px;
-                    border-color: root.settings.deidentify ? Theme.accent : Theme.border;
-                    background: root.settings.deidentify ? Theme.accent : transparent;
+                Heading {
+                    text: @tr("Compression");
+                }
 
-                    if root.settings.deidentify: Text {
-                        text: "✓";
-                        color: white;
-                        font-size: 11px;
-                        horizontal-alignment: center;
+                Choice {
+                    text: @tr("JPEG, high quality (90)");
+                    checked: root.settings.compression == 0;
+                    clicked => {
+                        root.settings.compression = 0;
+                        root.settings-changed(root.settings);
+                    }
+                }
+
+                Choice {
+                    text: @tr("JPEG, smaller files (80)");
+                    checked: root.settings.compression == 1;
+                    clicked => {
+                        root.settings.compression = 1;
+                        root.settings-changed(root.settings);
+                    }
+                }
+
+                Choice {
+                    text: @tr("Lossless (Deflate)");
+                    detail: @tr("Exact pixels; several times larger");
+                    checked: root.settings.compression == 2;
+                    clicked => {
+                        root.settings.compression = 2;
+                        root.settings-changed(root.settings);
+                    }
+                }
+
+                // De-identification.
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 22px;
+                    accessible-role: checkbox;
+                    accessible-label: @tr("De-identify");
+                    accessible-checkable: true;
+                    accessible-checked: root.settings.deidentify;
+                    accessible-action-default => {
+                        root.settings.deidentify = !root.settings.deidentify;
+                        root.settings-changed(root.settings);
+                    }
+
+                    Rectangle {
+                        width: 16px;
+                        height: 16px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: root.settings.deidentify ? Theme.accent : Theme.border;
+                        background: root.settings.deidentify ? Theme.accent : transparent;
+
+                        if root.settings.deidentify: Text {
+                            text: "✓";
+                            color: Theme.text-on-accent;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+
+                    Text {
+                        text: @tr("De-identify");
+                        color: Theme.text-primary;
+                        font-size: 12px;
                         vertical-alignment: center;
+                        accessible-role: none;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.settings.deidentify = !root.settings.deidentify;
+                            root.settings-changed(root.settings);
+                        }
                     }
                 }
 
                 Text {
-                    text: "De-identify";
-                    color: Theme.text-primary;
-                    font-size: 12px;
-                    vertical-alignment: center;
+                    text: root.settings.deidentify
+                        ? @tr("No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed.")
+                        : @tr("The copy keeps the label and macro images and every property of the slide, which can identify the patient.");
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
                 }
 
-                TouchArea {
-                    clicked => {
-                        root.settings.deidentify = !root.settings.deidentify;
-                        root.settings-changed(root.settings);
+                if root.settings.summary != "": Text {
+                    text: root.settings.summary;
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                if root.settings.error != "": Text {
+                    text: root.settings.error;
+                    color: Theme.error;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    DialogButton {
+                        text: @tr("Cancel");
+                        clicked => {
+                            root.cancel-requested();
+                        }
                     }
-                }
-            }
 
-            Text {
-                text: root.settings.deidentify
-                    ? "No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed."
-                    : "The copy keeps the label and macro images and every property of the slide, which can identify the patient.";
-                color: Theme.text-secondary;
-                font-size: 11px;
-                wrap: word-wrap;
-            }
-
-            if root.settings.summary != "": Text {
-                text: root.settings.summary;
-                color: Theme.text-secondary;
-                font-size: 11px;
-                wrap: word-wrap;
-            }
-
-            if root.settings.error != "": Text {
-                text: root.settings.error;
-                color: Theme.error;
-                font-size: 11px;
-                wrap: word-wrap;
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: end;
-
-                DialogButton {
-                    text: "Cancel";
-                    clicked => {
-                        root.cancel-requested();
-                    }
-                }
-
-                DialogButton {
-                    text: "Save…";
-                    primary: true;
-                    clicked => {
-                        root.save-requested();
+                    DialogButton {
+                        text: @tr("Save…");
+                        primary: true;
+                        clicked => {
+                            root.save-requested();
+                        }
                     }
                 }
             }

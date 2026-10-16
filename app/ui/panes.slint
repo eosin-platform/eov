@@ -72,7 +72,7 @@ component PaneView inherits Rectangle {
 
     border-width: 0px;
     border-color: transparent;
-    background: dragging-tab-id != -1 && drop-target-pane == pane-data.id ? #ffffff08 : transparent;
+    background: dragging-tab-id != -1 && drop-target-pane == pane-data.id ? Theme.subtle-fill : transparent;
 
     VerticalLayout {
         pane-tab-bar := TabBar {
@@ -281,7 +281,7 @@ component PaneView inherits Rectangle {
         height: parent.height;
         background: transparent;
         border-width: 2px;
-        border-color: white;
+        border-color: Theme.text-strong;
     }
 
     // OS file drag hover: center zone (no split) - subtle highlight
@@ -290,9 +290,9 @@ component PaneView inherits Rectangle {
         y: 0px;
         width: parent.width;
         height: parent.height;
-        background: #3794ff15;
+        background: Theme.drop-fill;
         border-width: 2px;
-        border-color: #79b8ffff;
+        border-color: Theme.drop-border;
     }
 
     // OS file drag hover: split overlay (left or right)
@@ -301,7 +301,7 @@ component PaneView inherits Rectangle {
         y: 35px;
         width: parent.width;
         height: parent.height - 35px;
-        background: #0b122080;
+        background: Theme.drop-scrim;
 
         Rectangle {
             x: root.os-file-hover-side == 0 ? 10px : parent.width / 2 + 5px;
@@ -309,13 +309,13 @@ component PaneView inherits Rectangle {
             width: parent.width / 2 - 15px;
             height: parent.height - 20px;
             border-radius: 8px;
-            background: #3794ff33;
+            background: Theme.drop-zone-fill;
             border-width: 2px;
-            border-color: #79b8ffff;
+            border-color: Theme.drop-border;
 
             Text {
-                text: root.os-file-hover-side == 0 ? "Open Left" : "Open Right";
-                color: white;
+                text: root.os-file-hover-side == 0 ? @tr("Open Left") : @tr("Open Right");
+                color: Theme.drop-text;
                 font-size: 18px;
                 font-weight: 700;
                 horizontal-alignment: center;
@@ -328,7 +328,7 @@ component PaneView inherits Rectangle {
             y: 10px;
             width: 2px;
             height: parent.height - 20px;
-            background: #ffffff66;
+            background: Theme.drop-divider;
         }
     }
 
@@ -337,7 +337,7 @@ component PaneView inherits Rectangle {
         y: 35px;
         width: parent.width;
         height: parent.height - 35px;
-        background: #0b122080;
+        background: Theme.drop-scrim;
 
         Rectangle {
             x: root.split-drop-side == 0 ? 10px : parent.width / 2 + 5px;
@@ -345,13 +345,13 @@ component PaneView inherits Rectangle {
             width: parent.width / 2 - 15px;
             height: parent.height - 20px;
             border-radius: 8px;
-            background: #3794ff33;
+            background: Theme.drop-zone-fill;
             border-width: 2px;
-            border-color: #79b8ffff;
+            border-color: Theme.drop-border;
 
             Text {
-                text: root.split-drop-side == 0 ? "Create Left Pane" : "Create Right Pane";
-                color: white;
+                text: root.split-drop-side == 0 ? @tr("Create Left Pane") : @tr("Create Right Pane");
+                color: Theme.drop-text;
                 font-size: 18px;
                 font-weight: 700;
                 horizontal-alignment: center;
@@ -364,7 +364,7 @@ component PaneView inherits Rectangle {
             y: 10px;
             width: 2px;
             height: parent.height - 20px;
-            background: #ffffff66;
+            background: Theme.drop-divider;
         }
     }
 }

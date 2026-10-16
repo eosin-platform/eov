@@ -48,7 +48,7 @@ export component HeatMapPanelView inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Theme.shadow;
     clip: true;
 
     // Keeps clicks on the panel off the viewport below.
@@ -56,7 +56,7 @@ export component HeatMapPanelView inherits Rectangle {
 
     FocusScope {
         key-pressed(e) => {
-            if e.text == Key.Escape {
+            if e.text == Key.Escape || e.text == Key.Return {
                 HeatMapPanel.close-requested();
                 return accept;
             }
@@ -84,7 +84,7 @@ export component HeatMapPanelView inherits Rectangle {
                     border-radius: 4px;
                     background: close-touch.has-hover ? Theme.surface-hover : transparent;
                     accessible-role: button;
-                    accessible-label: "Close the heat map panel";
+                    accessible-label: @tr("Close the heat map panel");
                     accessible-action-default => {
                         HeatMapPanel.close-requested();
                     }
@@ -113,7 +113,7 @@ export component HeatMapPanelView inherits Rectangle {
             }
 
             Text {
-                text: "Placement";
+                text: @tr("Placement");
                 color: Theme.text-secondary;
                 font-size: 11px;
             }
@@ -142,13 +142,13 @@ export component HeatMapPanelView inherits Rectangle {
 
             Text {
                 text: HeatMapPanel.placement-note;
-                color: HeatMapPanel.placement-ok ? Theme.text-secondary : #f1c40f;
+                color: HeatMapPanel.placement-ok ? Theme.text-secondary : Theme.warning;
                 font-size: 10px;
                 wrap: word-wrap;
             }
 
             if HeatMapPanel.scalar: Text {
-                text: "Colours";
+                text: @tr("Colours");
                 color: Theme.text-secondary;
                 font-size: 11px;
             }
@@ -182,7 +182,7 @@ export component HeatMapPanelView inherits Rectangle {
                     horizontal-stretch: 1;
                     image-fit: fill;
                     accessible-role: image;
-                    accessible-label: "Colour scale from 0 to 1";
+                    accessible-label: @tr("Colour scale from 0 to 1");
                 }
 
                 Text {
@@ -194,19 +194,19 @@ export component HeatMapPanelView inherits Rectangle {
             }
 
             PanelSlider {
-                label: "Opacity";
+                label: @tr("Opacity");
                 value <=> HeatMapPanel.opacity;
-                value-text: round(HeatMapPanel.opacity * 100) + " %";
+                value-text: @tr("{} %", round(HeatMapPanel.opacity * 100));
                 changed => {
                     HeatMapPanel.style-changed();
                 }
             }
 
             if HeatMapPanel.scalar: PanelSlider {
-                label: "Hide values below";
+                label: @tr("Hide values below");
                 value <=> HeatMapPanel.threshold;
                 step: 0.01;
-                value-text: HeatMapPanel.threshold <= 0 ? "none (zero is background)" : "" + round(HeatMapPanel.threshold * 100) / 100;
+                value-text: HeatMapPanel.threshold <= 0 ? @tr("none (zero is background)") : "" + round(HeatMapPanel.threshold * 100) / 100;
                 changed => {
                     HeatMapPanel.style-changed();
                 }
@@ -217,7 +217,7 @@ export component HeatMapPanelView inherits Rectangle {
                 alignment: start;
 
                 PanelCheck {
-                    text: "Show";
+                    text: @tr("Show");
                     checked <=> HeatMapPanel.shown;
                     toggled => {
                         HeatMapPanel.style-changed();
@@ -225,7 +225,7 @@ export component HeatMapPanelView inherits Rectangle {
                 }
 
                 PanelCheck {
-                    text: "Smooth";
+                    text: @tr("Smooth");
                     checked <=> HeatMapPanel.smooth;
                     toggled => {
                         HeatMapPanel.style-changed();
@@ -238,21 +238,21 @@ export component HeatMapPanelView inherits Rectangle {
                 alignment: end;
 
                 PanelButton {
-                    text: "Other Image…";
+                    text: @tr("Other Image…");
                     clicked => {
                         HeatMapPanel.replace-requested();
                     }
                 }
 
                 PanelButton {
-                    text: "Remove";
+                    text: @tr("Remove");
                     clicked => {
                         HeatMapPanel.remove-requested();
                     }
                 }
 
                 PanelButton {
-                    text: "Done";
+                    text: @tr("Done");
                     primary: true;
                     clicked => {
                         HeatMapPanel.close-requested();

@@ -409,6 +409,12 @@ impl UiHost {
             }
             return true;
         }
+        if let Some(theme) = command.strip_prefix("theme:") {
+            if let (Some(theme), Some(ui)) = (crate::ThemeKind::from_id(theme), self.ui()) {
+                crate::theme::choose(&ui, theme);
+            }
+            return true;
+        }
         let Some(host_command) = command.strip_prefix("host:") else {
             return false;
         };
@@ -575,6 +581,21 @@ impl UiHost {
         ui.set_context_menu_visible(true);
     }
 
+    /// The toolbar's theme menu: dark, light or high contrast.
+    pub(crate) fn open_theme_menu(&self, x: f32, y: f32) {
+        let Some(ui) = self.ui() else {
+            return;
+        };
+        let items = crate::theme::menu_items(crate::theme::current(&ui));
+        *self.menu.borrow_mut() = None;
+        ui.set_context_menu_tab_id(-1);
+        ui.set_context_menu_series_path("".into());
+        ui.set_context_menu_x(x);
+        ui.set_context_menu_y(y);
+        ui.set_context_menu_items(ModelRc::from(Rc::new(VecModel::from(items))));
+        ui.set_context_menu_visible(true);
+    }
+
     pub(crate) fn set_measure_mode(&self, mode: MeasureMode) {
         self.measure_mode.set(mode);
         if let Err(error) = crate::config::save_measure_mode(mode.id()) {
@@ -608,6 +629,41 @@ mod tests {
             assert!(items.contains(&"host:channels".to_string()), "{items:?}");
             assert!(setup.host.context_menu_command("host:channels"));
             assert!(setup.ui.get_channels_panel_visible());
+        });
+    }
+
+    /// The toolbar's theme menu checks the current theme; choosing one
+    /// applies it and writes it to config.toml.
+    #[test]
+    fn the_theme_menu_switches_and_saves_the_theme() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let setup = crate::test_support::HostWithSlide::new();
+            setup.host.open_theme_menu(10.0, 40.0);
+            assert!(setup.ui.get_context_menu_visible());
+            let checked: Vec<String> = setup
+                .ui
+                .get_context_menu_items()
+                .iter()
+                .filter(|item| item.icon == "check")
+                .map(|item| item.id.to_string())
+                .collect();
+            assert_eq!(checked, vec!["theme:dark".to_string()]);
+            assert!(setup.host.context_menu_command("theme:high-contrast"));
+            assert_eq!(
+                crate::theme::current(&setup.ui),
+                crate::ThemeKind::HighContrast
+            );
+            assert_eq!(
+                crate::config::load_theme(),
+                Some(crate::ThemeKind::HighContrast)
+            );
+            assert!(
+                std::fs::read_to_string(crate::paths::config_file())
+                    .unwrap()
+                    .contains("theme = \"high-contrast\"")
+            );
+            assert!(setup.host.context_menu_command("theme:dark"));
+            assert_eq!(crate::config::load_theme(), Some(crate::ThemeKind::Dark));
         });
     }
 }

@@ -1,6 +1,7 @@
 // EOV WSI Viewer - Dataset Export Dialog
 
 import { Theme } from "theme.slint";
+import { DialogKeys } from "dialog-keys.slint";
 import { DatasetExportSettings } from "types.slint";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ export component DatasetExportDialog inherits Rectangle {
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -35,594 +36,696 @@ export component DatasetExportDialog inherits Rectangle {
         }
     }
 
-    Rectangle {
-        x: (parent.width - root.dialog-width) / 2;
-        y: (parent.height - root.dialog-height) / 2;
-        width: root.dialog-width;
-        height: root.dialog-height;
-        background: Theme.surface;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: Theme.border;
+    // Escape cancels, Enter starts the export (Enter in a field applies it).
+    DialogKeys {
+        title: @tr("Export Dataset");
+        has-default-action: true;
+        cancel => {
+            root.cancel-requested();
+        }
+        default-action => {
+            root.export-requested();
+        }
 
-        TouchArea { }
+        card := Rectangle {
+            x: (parent.width - root.dialog-width) / 2;
+            y: (parent.height - root.dialog-height) / 2;
+            width: root.dialog-width;
+            height: root.dialog-height;
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
 
-        VerticalLayout {
-            padding: 20px;
-            spacing: 14px;
+            TouchArea { }
 
-            // Title
-            Text {
-                text: "Export Dataset";
-                color: Theme.text-primary;
-                font-size: 16px;
-                font-weight: 700;
-                horizontal-alignment: left;
-            }
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
 
-            // --- Inputs Section ---
-            Text {
-                text: "Inputs";
-                color: Theme.text-primary;
-                font-size: 12px;
-                font-weight: 600;
-            }
+                // Title
+                Text {
+                    text: @tr("Export Dataset");
+                    color: Theme.text-primary;
+                    font-size: 16px;
+                    font-weight: 700;
+                    horizontal-alignment: left;
+                }
 
-            Rectangle {
-                height: 180px;
-                background: #0a0c10;
-                border-radius: 4px;
-                border-width: 1px;
-                border-color: Theme.border;
+                // --- Inputs Section ---
+                Text {
+                    text: @tr("Inputs");
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
 
-                Flickable {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
-                    viewport-height: input-list-layout.preferred-height;
+                Rectangle {
+                    height: 180px;
+                    background: Theme.input-bg;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Theme.border;
 
-                    input-list-layout := VerticalLayout {
-                        padding: 2px;
-                        spacing: 0px;
+                    Flickable {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width;
+                        height: parent.height;
+                        viewport-height: input-list-layout.preferred-height;
 
-                        for item[idx] in root.settings.inputs: Rectangle {
-                            height: 22px;
-                            background: idx == root.selected-input-index ? #4da3d940 : item-touch.has-hover ? #ffffff10 : transparent;
-                            border-radius: 2px;
+                        input-list-layout := VerticalLayout {
+                            padding: 2px;
+                            spacing: 0px;
+                            accessible-role: list;
+                            accessible-label: @tr("Inputs");
 
-                            item-touch := TouchArea {
-                                clicked => {
+                            for item[idx] in root.settings.inputs: Rectangle {
+                                height: 22px;
+                                background: idx == root.selected-input-index ? Theme.selected-fill : item-touch.has-hover ? Theme.hover-fill : transparent;
+                                border-radius: 2px;
+                                accessible-role: list-item;
+                                accessible-label: item;
+                                accessible-item-selectable: true;
+                                accessible-item-selected: idx == root.selected-input-index;
+                                accessible-item-index: idx;
+                                accessible-item-count: root.settings.inputs.length;
+                                accessible-action-default => {
                                     root.selected-input-index = idx;
                                 }
-                            }
 
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
-                                Text {
-                                    text: item;
-                                    color: idx == root.selected-input-index ? white : #cccccc;
-                                    font-size: 11px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
+                                item-touch := TouchArea {
+                                    clicked => {
+                                        root.selected-input-index = idx;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    Text {
+                                        text: item;
+                                        color: idx == root.selected-input-index ? Theme.text-selected : Theme.text-primary;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        accessible-role: none;
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: start;
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
 
-                Rectangle {
-                    width: 28px;
-                    height: 24px;
-                    border-radius: 3px;
-                    background: add-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    add-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: 28px;
+                        height: 24px;
+                        border-radius: 3px;
+                        background: add-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: @tr("Add slides or folders");
+                        accessible-action-default => {
                             root.add-input-requested();
                         }
-                    }
 
-                    Text {
-                        text: "+";
-                        color: Theme.text-primary;
-                        font-size: 14px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Rectangle {
-                    width: 28px;
-                    height: 24px;
-                    border-radius: 3px;
-                    background: root.selected-input-index >= 0 ? (remove-touch.has-hover ? Theme.surface-hover : Theme.surface) : #ffffff08;
-                    border-width: 1px;
-                    border-color: root.selected-input-index >= 0 ? Theme.border : #ffffff15;
-
-                    remove-touch := TouchArea {
-                        enabled: root.selected-input-index >= 0;
-                        clicked => {
-                            root.remove-input-requested(root.selected-input-index);
-                            root.selected-input-index = -1;
+                        add-touch := TouchArea {
+                            clicked => {
+                                root.add-input-requested();
+                            }
                         }
-                    }
 
-                    Text {
-                        text: "−";
-                        color: root.selected-input-index >= 0 ? Theme.text-primary : Theme.text-secondary;
-                        font-size: 14px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-            }
-
-            // --- Output Section ---
-            Text {
-                text: "Output";
-                color: Theme.text-primary;
-                font-size: 12px;
-                font-weight: 600;
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-
-                Rectangle {
-                    horizontal-stretch: 1;
-                    height: 28px;
-                    background: #0a0c10;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
                         Text {
-                            text: root.settings.output-dir;
-                            color: #cccccc;
-                            font-size: 11px;
+                            text: "+";
+                            color: Theme.text-primary;
+                            font-size: 14px;
+                            horizontal-alignment: center;
                             vertical-alignment: center;
-                            overflow: elide;
+                            accessible-role: none;
+                        }
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 24px;
+                        border-radius: 3px;
+                        background: root.selected-input-index >= 0 ? (remove-touch.has-hover ? Theme.surface-hover : Theme.surface) : Theme.subtle-fill;
+                        border-width: 1px;
+                        border-color: root.selected-input-index >= 0 ? Theme.border : Theme.outline;
+                        accessible-role: button;
+                        accessible-label: @tr("Remove the selected input");
+                        accessible-enabled: root.selected-input-index >= 0;
+                        accessible-action-default => {
+                            if root.selected-input-index >= 0 {
+                                root.remove-input-requested(root.selected-input-index);
+                                root.selected-input-index = -1;
+                            }
+                        }
+
+                        remove-touch := TouchArea {
+                            enabled: root.selected-input-index >= 0;
+                            clicked => {
+                                root.remove-input-requested(root.selected-input-index);
+                                root.selected-input-index = -1;
+                            }
+                        }
+
+                        Text {
+                            text: "−";
+                            color: root.selected-input-index >= 0 ? Theme.text-primary : Theme.text-secondary;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
                         }
                     }
                 }
 
-                Rectangle {
-                    width: 70px;
-                    height: 28px;
-                    border-radius: 4px;
-                    background: change-dir-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                // --- Output Section ---
+                Text {
+                    text: @tr("Output");
+                    color: Theme.text-primary;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
 
-                    change-dir-touch := TouchArea {
-                        clicked => {
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        background: Theme.input-bg;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            Text {
+                                text: root.settings.output-dir;
+                                color: Theme.text-primary;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                accessible-label: @tr("Output folder: {}", root.settings.output-dir);
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 70px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: change-dir-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: @tr("Change the output folder");
+                        accessible-action-default => {
                             root.change-output-dir-requested();
                         }
-                    }
 
-                    Text {
-                        text: "Change";
-                        color: Theme.text-primary;
-                        font-size: 12px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-            }
+                        change-dir-touch := TouchArea {
+                            clicked => {
+                                root.change-output-dir-requested();
+                            }
+                        }
 
-            // --- Tile Size / Stride / Threads ---
-            HorizontalLayout {
-                spacing: 12px;
-
-                VerticalLayout {
-                    spacing: 4px;
-                    horizontal-stretch: 1;
-
-                    Text {
-                        text: "Tile Size";
-                        color: Theme.text-secondary;
-                        font-size: 11px;
-                    }
-
-                    Rectangle {
-                        height: 28px;
-                        background: #0a0c10;
-                        border-radius: 4px;
-                        border-width: 1px;
-                        border-color: tile-size-input.has-focus ? #4da3d9 : Theme.border;
-
-                        tile-size-input := TextInput {
-                            x: 8px;
-                            width: parent.width - 16px;
-                            color: white;
-                            font-size: 11px;
+                        Text {
+                            text: @tr("Change");
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
                             vertical-alignment: center;
-                            input-type: InputType.number;
-                            text: root.settings.tile-size;
-
-                            accepted => {
-                                root.settings.tile-size = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
-
-                            edited => {
-                                root.settings.tile-size = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
+                            accessible-role: none;
                         }
                     }
                 }
 
-                VerticalLayout {
-                    spacing: 4px;
-                    horizontal-stretch: 1;
+                // --- Tile Size / Stride / Threads ---
+                HorizontalLayout {
+                    spacing: 12px;
 
-                    Text {
-                        text: "Stride";
-                        color: Theme.text-secondary;
-                        font-size: 11px;
-                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
 
-                    Rectangle {
-                        height: 28px;
-                        background: #0a0c10;
-                        border-radius: 4px;
-                        border-width: 1px;
-                        border-color: stride-input.has-focus ? #4da3d9 : Theme.border;
-
-                        stride-input := TextInput {
-                            x: 8px;
-                            width: parent.width - 16px;
-                            color: white;
+                        Text {
+                            text: @tr("Tile Size");
+                            color: Theme.text-secondary;
                             font-size: 11px;
-                            vertical-alignment: center;
-                            input-type: InputType.number;
-                            text: root.settings.stride;
-
-                            accepted => {
-                                root.settings.stride = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
-
-                            edited => {
-                                root.settings.stride = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
                         }
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 4px;
-                    horizontal-stretch: 1;
-
-                    Text {
-                        text: "Threads";
-                        color: Theme.text-secondary;
-                        font-size: 11px;
-                    }
-
-                    Rectangle {
-                        height: 28px;
-                        background: #0a0c10;
-                        border-radius: 4px;
-                        border-width: 1px;
-                        border-color: threads-input.has-focus ? #4da3d9 : Theme.border;
-
-                        threads-input := TextInput {
-                            x: 8px;
-                            width: parent.width - 16px;
-                            color: white;
-                            font-size: 11px;
-                            vertical-alignment: center;
-                            input-type: InputType.number;
-                            text: root.settings.threads;
-
-                            accepted => {
-                                root.settings.threads = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
-
-                            edited => {
-                                root.settings.threads = max(1, self.text.to-float());
-                                root.settings-changed(root.settings);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- White Threshold ---
-            Text {
-                text: "White Threshold";
-                color: Theme.text-secondary;
-                font-size: 11px;
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: stretch;
-
-                Rectangle {
-                    horizontal-stretch: 1;
-                    height: 28px;
-
-                    white-slider-track := Rectangle {
-                        x: 0px;
-                        y: (parent.height - self.height) / 2;
-                        width: parent.width;
-                        height: 4px;
-                        border-radius: 2px;
-                        background: #333;
 
                         Rectangle {
-                            x: 0px;
-                            width: parent.width * clamp(root.settings.white-threshold, 0, 1);
-                            height: parent.height;
-                            border-radius: parent.border-radius;
-                            background: Theme.accent;
+                            height: 28px;
+                            background: Theme.input-bg;
+                            border-radius: 4px;
+                            border-width: tile-size-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: tile-size-input.has-focus ? Theme.accent-bright : Theme.border;
+
+                            tile-size-input := TextInput {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                accessible-label: @tr("Tile size");
+                                color: Theme.text-strong;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                input-type: InputType.number;
+                                text: root.settings.tile-size;
+
+                                accepted => {
+                                    root.settings.tile-size = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+
+                                edited => {
+                                    root.settings.tile-size = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+                            }
                         }
                     }
 
-                    white-slider-thumb := Rectangle {
-                        x: clamp(root.settings.white-threshold, 0, 1) * (parent.width - self.width);
-                        y: (parent.height - self.height) / 2;
-                        width: 14px;
-                        height: 14px;
-                        border-radius: 7px;
-                        background: white-slider-touch.pressed ? #eee : white-slider-touch.has-hover ? #ddd : #ccc;
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: @tr("Stride");
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                        }
+
+                        Rectangle {
+                            height: 28px;
+                            background: Theme.input-bg;
+                            border-radius: 4px;
+                            border-width: stride-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: stride-input.has-focus ? Theme.accent-bright : Theme.border;
+
+                            stride-input := TextInput {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                accessible-label: @tr("Stride");
+                                color: Theme.text-strong;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                input-type: InputType.number;
+                                text: root.settings.stride;
+
+                                accepted => {
+                                    root.settings.stride = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+
+                                edited => {
+                                    root.settings.stride = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+                            }
+                        }
                     }
 
-                    white-slider-touch := TouchArea {
-                        moved => {
-                            if (self.pressed) {
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: @tr("Threads");
+                            color: Theme.text-secondary;
+                            font-size: 11px;
+                        }
+
+                        Rectangle {
+                            height: 28px;
+                            background: Theme.input-bg;
+                            border-radius: 4px;
+                            border-width: threads-input.has-focus ? Theme.focus-width : 1px;
+                            border-color: threads-input.has-focus ? Theme.accent-bright : Theme.border;
+
+                            threads-input := TextInput {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                accessible-label: @tr("Threads");
+                                color: Theme.text-strong;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                input-type: InputType.number;
+                                text: root.settings.threads;
+
+                                accepted => {
+                                    root.settings.threads = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+
+                                edited => {
+                                    root.settings.threads = max(1, self.text.to-float());
+                                    root.settings-changed(root.settings);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- White Threshold ---
+                Text {
+                    text: @tr("White Threshold");
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: stretch;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 28px;
+                        accessible-role: slider;
+                        accessible-label: @tr("White threshold");
+                        accessible-value: round(root.settings.white-threshold * 100) + "%";
+                        accessible-value-minimum: 0;
+                        accessible-value-maximum: 1;
+                        accessible-value-step: 0.01;
+                        accessible-action-increment => {
+                            root.settings.white-threshold = clamp(root.settings.white-threshold + 0.01, 0, 1);
+                            white-text-input.text = round(root.settings.white-threshold * 100);
+                            root.settings-changed(root.settings);
+                        }
+                        accessible-action-decrement => {
+                            root.settings.white-threshold = clamp(root.settings.white-threshold - 0.01, 0, 1);
+                            white-text-input.text = round(root.settings.white-threshold * 100);
+                            root.settings-changed(root.settings);
+                        }
+
+                        white-slider-track := Rectangle {
+                            x: 0px;
+                            y: (parent.height - self.height) / 2;
+                            width: parent.width;
+                            height: 4px;
+                            border-radius: 2px;
+                            background: Theme.track;
+
+                            Rectangle {
+                                x: 0px;
+                                width: parent.width * clamp(root.settings.white-threshold, 0, 1);
+                                height: parent.height;
+                                border-radius: parent.border-radius;
+                                background: Theme.accent;
+                            }
+                        }
+
+                        white-slider-thumb := Rectangle {
+                            x: clamp(root.settings.white-threshold, 0, 1) * (parent.width - self.width);
+                            y: (parent.height - self.height) / 2;
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 7px;
+                            background: white-slider-touch.pressed ? Theme.handle : white-slider-touch.has-hover ? Theme.handle.darker(0.1) : Theme.handle.darker(0.2);
+                        }
+
+                        white-slider-touch := TouchArea {
+                            moved => {
+                                if (self.pressed) {
+                                    root.settings.white-threshold = clamp((self.mouse-x - white-slider-thumb.width / 2) / (parent.width - white-slider-thumb.width), 0, 1);
+                                    white-text-input.text = round(root.settings.white-threshold * 100);
+                                    root.settings-changed(root.settings);
+                                }
+                            }
+                            clicked => {
                                 root.settings.white-threshold = clamp((self.mouse-x - white-slider-thumb.width / 2) / (parent.width - white-slider-thumb.width), 0, 1);
                                 white-text-input.text = round(root.settings.white-threshold * 100);
                                 root.settings-changed(root.settings);
                             }
                         }
+                    }
+
+                    Rectangle {
+                        width: 56px;
+                        height: 28px;
+                        background: Theme.input-bg;
+                        border-radius: 4px;
+                        border-width: white-text-input.has-focus ? Theme.focus-width : 1px;
+                        border-color: white-text-input.has-focus ? Theme.accent-bright : Theme.border;
+
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 2px;
+                            spacing: 0px;
+
+                            white-text-input := TextInput {
+                                horizontal-stretch: 1;
+                                accessible-label: @tr("White threshold (%)");
+                                color: Theme.text-strong;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                input-type: InputType.number;
+                                text: round(root.settings.white-threshold * 100);
+
+                                accepted => {
+                                    root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
+                                    root.settings-changed(root.settings);
+                                }
+
+                                edited => {
+                                    root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
+                                    root.settings-changed(root.settings);
+                                }
+                            }
+
+                            Text {
+                                text: "%";
+                                color: Theme.text-secondary;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // --- Tissue filter ---
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 22px;
+                    accessible-role: checkbox;
+                    accessible-label: @tr("Tissue only (skip patches that are mostly background)");
+                    accessible-checkable: true;
+                    accessible-checked: root.settings.tissue-only;
+                    accessible-action-default => {
+                        root.settings.tissue-only = !root.settings.tissue-only;
+                        root.settings-changed(root.settings);
+                    }
+
+                    Rectangle {
+                        width: 16px;
+                        height: 16px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: root.settings.tissue-only ? Theme.accent : Theme.border;
+                        background: root.settings.tissue-only ? Theme.accent : transparent;
+
+                        if root.settings.tissue-only: Text {
+                            text: "✓";
+                            color: Theme.text-on-accent;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+
+                    Text {
+                        text: @tr("Tissue only (skip patches that are mostly background)");
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+
+                    tissue-touch := TouchArea {
                         clicked => {
-                            root.settings.white-threshold = clamp((self.mouse-x - white-slider-thumb.width / 2) / (parent.width - white-slider-thumb.width), 0, 1);
-                            white-text-input.text = round(root.settings.white-threshold * 100);
+                            root.settings.tissue-only = !root.settings.tissue-only;
                             root.settings-changed(root.settings);
                         }
                     }
                 }
 
-                Rectangle {
-                    width: 56px;
-                    height: 28px;
-                    background: #0a0c10;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: white-text-input.has-focus ? #4da3d9 : Theme.border;
+                // --- Tissue QC ---
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 22px;
+                    accessible-role: checkbox;
+                    accessible-label: @tr("Leave out pen marks, folds and blurred areas");
+                    accessible-checkable: true;
+                    accessible-checked: root.settings.exclude-qc;
+                    accessible-action-default => {
+                        root.settings.exclude-qc = !root.settings.exclude-qc;
+                        root.settings-changed(root.settings);
+                    }
 
-                    HorizontalLayout {
-                        padding-left: 6px;
-                        padding-right: 2px;
-                        spacing: 0px;
+                    Rectangle {
+                        width: 16px;
+                        height: 16px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: root.settings.exclude-qc ? Theme.accent : Theme.border;
+                        background: root.settings.exclude-qc ? Theme.accent : transparent;
 
-                        white-text-input := TextInput {
-                            horizontal-stretch: 1;
-                            color: white;
+                        if root.settings.exclude-qc: Text {
+                            text: "✓";
+                            color: Theme.text-on-accent;
                             font-size: 11px;
+                            horizontal-alignment: center;
                             vertical-alignment: center;
-                            input-type: InputType.number;
-                            text: round(root.settings.white-threshold * 100);
+                            accessible-role: none;
+                        }
+                    }
 
-                            accepted => {
-                                root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
-                                root.settings-changed(root.settings);
-                            }
+                    Text {
+                        text: @tr("Leave out pen marks, folds and blurred areas (tissue QC)");
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
 
-                            edited => {
-                                root.settings.white-threshold = clamp(self.text.to-float() / 100, 0, 1);
-                                root.settings-changed(root.settings);
+                    qc-touch := TouchArea {
+                        clicked => {
+                            root.settings.exclude-qc = !root.settings.exclude-qc;
+                            root.settings-changed(root.settings);
+                        }
+                    }
+                }
+
+                // --- De-identification ---
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 22px;
+                    accessible-role: checkbox;
+                    accessible-label: @tr("De-identify (name slides by ids; write no file names or paths)");
+                    accessible-checkable: true;
+                    accessible-checked: root.settings.deidentify;
+                    accessible-action-default => {
+                        root.settings.deidentify = !root.settings.deidentify;
+                        root.settings-changed(root.settings);
+                    }
+
+                    Rectangle {
+                        width: 16px;
+                        height: 16px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 3px;
+                        border-width: 1px;
+                        border-color: root.settings.deidentify ? Theme.accent : Theme.border;
+                        background: root.settings.deidentify ? Theme.accent : transparent;
+
+                        if root.settings.deidentify: Text {
+                            text: "✓";
+                            color: Theme.text-on-accent;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+
+                    Text {
+                        text: @tr("De-identify (name slides by ids; write no file names or paths)");
+                        color: Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+
+                    deidentify-touch := TouchArea {
+                        clicked => {
+                            root.settings.deidentify = !root.settings.deidentify;
+                            root.settings-changed(root.settings);
+                        }
+                    }
+                }
+
+                // Spacer
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                if root.settings.error != "": Text {
+                    text: root.settings.error;
+                    color: Theme.error;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                // --- Action Buttons ---
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: 72px;
+                        height: 30px;
+                        border-radius: 4px;
+                        background: cancel-btn-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        accessible-role: button;
+                        accessible-label: @tr("Cancel");
+                        accessible-action-default => {
+                            root.cancel-requested();
+                        }
+
+                        cancel-btn-touch := TouchArea {
+                            clicked => {
+                                root.cancel-requested();
                             }
                         }
 
                         Text {
-                            text: "%";
-                            color: Theme.text-secondary;
-                            font-size: 11px;
+                            text: @tr("Cancel");
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            horizontal-alignment: center;
                             vertical-alignment: center;
-                        }
-                    }
-                }
-            }
-
-            // --- Tissue filter ---
-            HorizontalLayout {
-                spacing: 8px;
-                height: 22px;
-
-                Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 3px;
-                    border-width: 1px;
-                    border-color: root.settings.tissue-only ? Theme.accent : Theme.border;
-                    background: root.settings.tissue-only ? Theme.accent : transparent;
-
-                    if root.settings.tissue-only: Text {
-                        text: "✓";
-                        color: white;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Text {
-                    text: "Tissue only (skip patches that are mostly background)";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                tissue-touch := TouchArea {
-                    clicked => {
-                        root.settings.tissue-only = !root.settings.tissue-only;
-                        root.settings-changed(root.settings);
-                    }
-                }
-            }
-
-            // --- Tissue QC ---
-            HorizontalLayout {
-                spacing: 8px;
-                height: 22px;
-                accessible-role: checkbox;
-                accessible-label: "Leave out pen marks, folds and blurred areas";
-                accessible-checkable: true;
-                accessible-checked: root.settings.exclude-qc;
-                accessible-action-default => {
-                    root.settings.exclude-qc = !root.settings.exclude-qc;
-                    root.settings-changed(root.settings);
-                }
-
-                Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 3px;
-                    border-width: 1px;
-                    border-color: root.settings.exclude-qc ? Theme.accent : Theme.border;
-                    background: root.settings.exclude-qc ? Theme.accent : transparent;
-
-                    if root.settings.exclude-qc: Text {
-                        text: "✓";
-                        color: white;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Text {
-                    text: "Leave out pen marks, folds and blurred areas (tissue QC)";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                qc-touch := TouchArea {
-                    clicked => {
-                        root.settings.exclude-qc = !root.settings.exclude-qc;
-                        root.settings-changed(root.settings);
-                    }
-                }
-            }
-
-            // --- De-identification ---
-            HorizontalLayout {
-                spacing: 8px;
-                height: 22px;
-
-                Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 3px;
-                    border-width: 1px;
-                    border-color: root.settings.deidentify ? Theme.accent : Theme.border;
-                    background: root.settings.deidentify ? Theme.accent : transparent;
-
-                    if root.settings.deidentify: Text {
-                        text: "✓";
-                        color: white;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Text {
-                    text: "De-identify (name slides by ids; write no file names or paths)";
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-
-                deidentify-touch := TouchArea {
-                    clicked => {
-                        root.settings.deidentify = !root.settings.deidentify;
-                        root.settings-changed(root.settings);
-                    }
-                }
-            }
-
-            // Spacer
-            Rectangle {
-                vertical-stretch: 1;
-            }
-
-            if root.settings.error != "": Text {
-                text: root.settings.error;
-                color: Theme.error;
-                font-size: 11px;
-                wrap: word-wrap;
-            }
-
-            // --- Action Buttons ---
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: end;
-
-                Rectangle {
-                    width: 72px;
-                    height: 30px;
-                    border-radius: 4px;
-                    background: cancel-btn-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
-
-                    cancel-btn-touch := TouchArea {
-                        clicked => {
-                            root.cancel-requested();
+                            accessible-role: none;
                         }
                     }
 
-                    Text {
-                        text: "Cancel";
-                        color: Theme.text-primary;
-                        font-size: 12px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                Rectangle {
-                    width: 80px;
-                    height: 30px;
-                    border-radius: 4px;
-                    background: confirm-btn-touch.has-hover ? #1177bb : Theme.accent;
-
-                    confirm-btn-touch := TouchArea {
-                        clicked => {
+                    Rectangle {
+                        width: 80px;
+                        height: 30px;
+                        border-radius: 4px;
+                        background: confirm-btn-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: @tr("Confirm");
+                        accessible-description: @tr("Starts the export");
+                        accessible-action-default => {
                             root.export-requested();
                         }
-                    }
 
-                    Text {
-                        text: "Confirm";
-                        color: white;
-                        font-size: 12px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                        confirm-btn-touch := TouchArea {
+                            clicked => {
+                                root.export-requested();
+                            }
+                        }
+
+                        Text {
+                            text: @tr("Confirm");
+                            color: Theme.text-on-accent;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
                     }
                 }
             }

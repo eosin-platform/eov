@@ -191,6 +191,12 @@ Backspace and Tab keep their meaning in the viewport and dialogs.
 Plugins cannot bind a key eov uses. Changes apply when eov starts, and
 entries eov cannot use are reported in the Messages popup.
 
+A dialog or panel takes the keyboard while it is open: Escape cancels it
+(and closes a menu or pop-up), Enter does its main action (Export, Save…,
+Confirm, Quantify; a plugin's question only when the answer destroys
+nothing) unless a text field takes the Enter, and Tab moves through its
+fields. Every control has a name and role for screen readers.
+
 ## Screenshots
 
 <p align="center">
@@ -824,11 +830,22 @@ The in-tree plugins under `plugins/` are full examples. To try them:
 
 The packaged plugin buttons should appear in the toolbar, and the plugin sidebars/windows can then be opened from the app UI.
 
+## Translating the Interface
+
+The texts of eov's window (`app/ui/*.slint`) are marked for translation with `@tr`. A translation is a gettext catalog that is compiled into eov:
+
+1. Extract the texts into a template with Slint's extractor (`cargo install slint-tr-extractor`):
+   `find app/ui -name '*.slint' | xargs slint-tr-extractor -o app/translations/eov.pot`
+2. Start a catalog for the language from the template, for example with gettext's `msginit -i app/translations/eov.pot -o app/translations/de/LC_MESSAGES/eov.po -l de`, and translate it in any .po editor. A text's context is the component it appears in.
+3. Build eov: `app/build.rs` compiles every `app/translations/<language>/LC_MESSAGES/eov.po` in. eov shows the language of the system (`LANG`) when it has a catalog for it, and English otherwise (and when there is no catalog at all). When the texts change, update a catalog with `msgmerge -U app/translations/de/LC_MESSAGES/eov.po app/translations/eov.pot`.
+
+Only the window's own texts are translated. Messages that come from eov's Rust code (the status bar, notifications and toasts, menus built while eov runs, the dialogs' summaries, the command line) and the plugins' panels stay in English.
+
 ## Configuration And Persistence
 
 eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 
-- `config.toml`: preferences (render backend, filtering mode, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
+- `config.toml`: preferences (render backend, filtering mode, the colour theme, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
 - `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
 - `plugins/`: installed plugin packages and their registry (`eov plugin …`).
 - `session.toml`: the slides, panes and views of the last session, reopened on a start without files (`restore_session = false` turns that off).
@@ -853,11 +870,14 @@ eov also remembers, per slide, in that data folder, keyed by the slide's identit
 
 The slides open at exit, and where they were viewed, come back at the next start without files (`restore_session = false` turns this off).
 
+**Theme.** The toolbar's theme button (the half-dark circle next to the scale bar toggle) switches between the dark theme (the default), a light theme and a high-contrast theme: black backgrounds, white text with a contrast of at least 7:1, and thicker focus and selection borders. The choice is kept as `theme = "dark"`, `"light"` or `"high-contrast"` in `config.toml` and applies at the next start too. The slides' own colours and those of overlays are not themed; plugin panels keep their own colours.
+
 Example config file:
 
 ```toml
 render_backend = "gpu"
 filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
+theme = "dark"                 # dark, light or high-contrast
 remember_recent_files = true
 restore_session = true
 single_instance = true         # false: every launch starts its own eov

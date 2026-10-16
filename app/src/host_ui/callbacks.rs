@@ -280,6 +280,9 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
     ui.on_measure_mode_menu_requested(|x, y| {
         with_host(|host| host.open_measure_mode_menu(x, y));
     });
+    ui.on_theme_menu_requested(|x, y| {
+        with_host(|host| host.open_theme_menu(x, y));
+    });
     ui.on_shortcuts_copy_config_path(|| {
         with_host(|host| host.copy_config_path());
     });

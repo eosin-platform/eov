@@ -18,6 +18,14 @@ component SeriesCard inherits Rectangle {
     height: 150px;
     border-radius: 8px;
     background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    accessible-role: list-item;
+    accessible-label: root.item.is-directory ? @tr("Folder {}", root.item.name) : root.item.name;
+    accessible-description: root.item.metadata-tooltip;
+    accessible-item-selectable: !root.item.is-directory;
+    accessible-item-selected: root.selected;
+    accessible-action-default => {
+        root.activated(root.item.path);
+    }
 
     touch := TouchArea {
         clicked => {
@@ -72,6 +80,7 @@ component SeriesCard inherits Rectangle {
                 font-size: 11px;
                 font-weight: 700;
                 vertical-alignment: center;
+                accessible-role: none;
             }
 
             Text {
@@ -83,13 +92,14 @@ component SeriesCard inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
+                accessible-role: none;
             }
         }
 
         Rectangle {
             height: 112px;
             border-radius: 6px;
-            background: #111318;
+            background: Theme.image-well;
             border-width: 1px;
             border-color: selected ? Theme.accent : Theme.border-subtle;
             clip: true;
@@ -102,6 +112,7 @@ component SeriesCard inherits Rectangle {
                 source: @image-url("icons/open-file.svg");
                 image-fit: contain;
                 opacity: 0.92;
+                accessible-role: none;
             }
 
             if !item.is-directory && !item.is-loading && item.has-thumbnail: Image {
@@ -111,6 +122,7 @@ component SeriesCard inherits Rectangle {
                 height: parent.height;
                 source: item.thumbnail;
                 image-fit: contain;
+                accessible-role: none;
             }
 
             if !item.is-directory && item.objective_label != "": Rectangle {
@@ -119,15 +131,16 @@ component SeriesCard inherits Rectangle {
                 height: 20px;
                 width: objective-text.width + 10px;
                 border-radius: 4px;
-                background: #0f141bcc;
+                background: Theme.slide-badge-bg;
 
                 objective-text := Text {
                     x: 5px;
                     y: 3px;
                     text: item.objective_label;
-                    color: white;
+                    color: Theme.slide-badge-text;
                     font-size: 11px;
                     font-weight: 700;
+                    accessible-role: none;
                 }
             }
 
@@ -137,15 +150,16 @@ component SeriesCard inherits Rectangle {
                 width: stain-text.width + 10px;
                 x: parent.width - self.width - 8px;
                 border-radius: 4px;
-                background: #0f141bcc;
+                background: Theme.slide-badge-bg;
 
                 stain-text := Text {
                     x: 5px;
                     y: 3px;
                     text: item.stain_label;
-                    color: white;
+                    color: Theme.slide-badge-text;
                     font-size: 11px;
                     font-weight: 600;
+                    accessible-role: none;
                 }
             }
 
@@ -155,11 +169,11 @@ component SeriesCard inherits Rectangle {
                 width: parent.width - 20px;
                 height: 28px;
                 border-radius: 14px;
-                background: #ffffff10;
+                background: Theme.field-fill;
                 opacity: 0.55;
 
                 Text {
-                    text: "Loading thumbnail";
+                    text: @tr("Loading thumbnail");
                     color: Theme.text-secondary;
                     font-size: 11px;
                     horizontal-alignment: center;
@@ -168,7 +182,7 @@ component SeriesCard inherits Rectangle {
             }
 
             if !item.is-directory && !item.is-loading && !item.has-thumbnail: Text {
-                text: "No Preview";
+                text: @tr("No Preview");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -188,7 +202,7 @@ export component SeriesBar inherits Rectangle {
     /// Only entries containing this (name, stain, objective) are shown.
     in-out property <string> filter;
     /// The current order ("A–Z", "Newest", "Stain").
-    in property <string> sort-label: "A–Z";
+    in property <string> sort-label: @tr("A–Z");
     callback filter-edited(string);
     callback sort-cycled();
     callback open-folder-requested();
@@ -242,7 +256,7 @@ export component SeriesBar inherits Rectangle {
 
             back-button := SvgIconButton {
                 icon-source: @image-url("icons/back.svg");
-                tooltip-text: "Back";
+                tooltip-text: @tr("Back");
                 enabled: root.can-go-back;
                 clicked => {
                     root.go-back();
@@ -258,7 +272,7 @@ export component SeriesBar inherits Rectangle {
 
             forward-button := SvgIconButton {
                 icon-source: @image-url("icons/forward.svg");
-                tooltip-text: "Forward";
+                tooltip-text: @tr("Forward");
                 enabled: root.can-go-forward;
                 clicked => {
                     root.go-forward();
@@ -274,7 +288,7 @@ export component SeriesBar inherits Rectangle {
 
             up-button := SvgIconButton {
                 icon-source: @image-url("icons/up.svg");
-                tooltip-text: "Up";
+                tooltip-text: @tr("Up");
                 enabled: root.can-go-up;
                 clicked => {
                     root.go-up();
@@ -297,7 +311,7 @@ export component SeriesBar inherits Rectangle {
 
             open-folder-button := SvgIconButton {
                 icon-source: @image-url("icons/open-file.svg");
-                tooltip-text: "Open Folder";
+                tooltip-text: @tr("Open Folder");
                 clicked => {
                     root.open-folder-requested();
                 }
@@ -324,9 +338,9 @@ export component SeriesBar inherits Rectangle {
                 height: 22px;
                 y: (parent.height - self.height) / 2;
                 border-radius: 4px;
-                border-width: 1px;
+                border-width: filter-input.has-focus ? Theme.focus-width : 1px;
                 border-color: filter-input.has-focus ? Theme.accent : Theme.border;
-                background: #0a0c10;
+                background: Theme.input-bg;
 
                 filter-input := TextInput {
                     x: 6px;
@@ -337,6 +351,8 @@ export component SeriesBar inherits Rectangle {
                     font-size: 11px;
                     vertical-alignment: center;
                     single-line: true;
+                    accessible-label: @tr("Filter the series");
+                    accessible-placeholder-text: @tr("Filter (name, stain)");
                     edited => {
                         root.filter-edited(self.text);
                     }
@@ -353,10 +369,11 @@ export component SeriesBar inherits Rectangle {
                 if root.filter == "": Text {
                     x: 6px;
                     height: parent.height;
-                    text: "Filter (name, stain)";
+                    text: @tr("Filter (name, stain)");
                     color: Theme.text-secondary;
                     font-size: 11px;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
             }
 
@@ -369,6 +386,12 @@ export component SeriesBar inherits Rectangle {
                 border-width: 1px;
                 border-color: Theme.border;
                 background: sort-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Order: {}", root.sort-label);
+                accessible-description: @tr("Order: by name, newest first, by stain or by case");
+                accessible-action-default => {
+                    root.sort-cycled();
+                }
 
                 sort-text := Text {
                     text: "↕ " + root.sort-label;
@@ -376,6 +399,7 @@ export component SeriesBar inherits Rectangle {
                     font-size: 11px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
 
                 sort-touch := TouchArea {
@@ -384,9 +408,9 @@ export component SeriesBar inherits Rectangle {
                     }
                     changed has-hover => {
                         if self.has-hover {
-                            root.show-tooltip("Order: by name, newest first, by stain or by case", sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
+                            root.show-tooltip(@tr("Order: by name, newest first, by stain or by case"), sort-button.absolute-position.x + sort-button.width / 2, sort-button.absolute-position.y - 8px);
                         } else {
-                            root.clear-tooltip("Order: by name, newest first, by stain or by case");
+                            root.clear-tooltip(@tr("Order: by name, newest first, by stain or by case"));
                         }
                     }
                 }
@@ -394,7 +418,7 @@ export component SeriesBar inherits Rectangle {
 
             hide-button := SvgIconButton {
                 icon-source: @image-url("icons/hide-series.svg");
-                tooltip-text: "Hide Series Bar";
+                tooltip-text: @tr("Hide Series Bar");
                 clicked => {
                     root.hide-requested();
                 }
@@ -417,14 +441,14 @@ export component SeriesBar inherits Rectangle {
         border-radius: 10px;
         border-width: 1px;
         border-color: Theme.border;
-        background: #111318;
+        background: Theme.image-well;
 
         VerticalLayout {
             alignment: center;
             spacing: 8px;
 
             Text {
-                text: "Empty folder";
+                text: @tr("Empty folder");
                 color: Theme.text-primary;
                 font-size: 15px;
                 font-weight: 600;
@@ -432,7 +456,7 @@ export component SeriesBar inherits Rectangle {
             }
 
             Text {
-                text: "No folders or supported WSI files are visible here.";
+                text: @tr("No folders or supported WSI files are visible here.");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
@@ -462,6 +486,8 @@ export component SeriesBar inherits Rectangle {
 
         series-layout := HorizontalLayout {
             x: -root.scroll-x;
+            accessible-role: list;
+            accessible-label: @tr("Slides and folders");
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 12px;
@@ -502,10 +528,10 @@ export component SeriesBar inherits Rectangle {
         y: max(8px, root.tooltip-y - self.height);
         width: min(360px, tooltip-text.preferred-width + 16px);
         height: tooltip-text.height + 12px;
-        background: #101216f2;
+        background: Theme.tooltip-bg;
         border-radius: 6px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         tooltip-text := Text {
             x: 8px;
@@ -514,7 +540,7 @@ export component SeriesBar inherits Rectangle {
             // Wrapped text in an `if` needs its height set (Slint 1.17).
             height: self.preferred-height;
             text: root.active-tooltip;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
             wrap: word-wrap;
         }

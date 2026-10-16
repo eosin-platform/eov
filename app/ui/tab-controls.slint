@@ -6,6 +6,9 @@ export component ToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -14,6 +17,16 @@ export component ToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
     border-width: is-active ? 0px : 0px;
+    accessible-role: button;
+    accessible-label: root.tooltip-text != "" ? root.tooltip-text : root.icon;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -26,9 +39,10 @@ export component ToolButton inherits Rectangle {
         alignment: center;
         Text {
             text: root.icon;
-            color: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+            color: is-active ? Theme.text-on-accent : (root.enabled ? Theme.text-primary : Theme.text-secondary);
             font-size: 14px;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 }
@@ -38,6 +52,9 @@ export component SvgToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
     // Right click, with the window position of the pointer.
@@ -47,6 +64,16 @@ export component SvgToolButton inherits Rectangle {
     height: 28px;
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -67,7 +94,8 @@ export component SvgToolButton inherits Rectangle {
         height: 17px;
         source: root.icon-source;
         image-fit: contain;
-        colorize: is-active ? white : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+        colorize: is-active ? Theme.text-on-accent : (root.enabled ? Theme.text-primary : Theme.text-secondary);
+        accessible-role: none;
     }
 }
 
@@ -83,6 +111,14 @@ export component SvgIconButton inherits Rectangle {
     height: 28px;
     border-radius: 3px;
     background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -105,6 +141,7 @@ export component SvgIconButton inherits Rectangle {
         source: root.icon-source;
         image-fit: contain;
         colorize: root.enabled ? Theme.text-primary : Theme.text-secondary;
+        accessible-role: none;
     }
 }
 
@@ -112,6 +149,9 @@ export component MinimapToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -120,8 +160,19 @@ export component MinimapToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
-    property <color> viewport-color: root.is-active ? white : Theme.accent;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
+    property <color> viewport-color: root.is-active ? Theme.text-on-accent : Theme.accent;
+
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -181,6 +232,14 @@ export component OpenFileToolButton inherits Rectangle {
     height: 28px;
     border-radius: 4px;
     background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -203,6 +262,7 @@ export component OpenFileToolButton inherits Rectangle {
         source: @image-url("icons/open-file.svg");
         image-fit: contain;
         opacity: root.enabled ? 1.0 : 0.45;
+        accessible-role: none;
     }
 }
 
@@ -210,6 +270,9 @@ export component MetadataToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -218,8 +281,19 @@ export component MetadataToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
-    property <color> accent-color: root.is-active ? white : #7fc7ff;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
+    property <color> accent-color: root.is-active ? Theme.text-on-accent : Theme.accent-bright;
+
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -271,6 +345,9 @@ export component MeasureToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -279,7 +356,18 @@ export component MeasureToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? (root.is-active ? white : Theme.text-primary) : Theme.text-secondary;
+    property <color> icon-color: root.enabled ? (root.is-active ? Theme.text-on-accent : Theme.text-primary) : Theme.text-secondary;
+
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -304,6 +392,9 @@ export component RoiToolButton inherits Rectangle {
     in property <string> tooltip-text;
     in property <bool> is-active: false;
     in property <bool> enabled: true;
+    /// A toggle (or one of a set of choices): assistive technology is told
+    /// whether it is on (`is-active`).
+    in property <bool> checkable: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
@@ -312,7 +403,18 @@ export component RoiToolButton inherits Rectangle {
     border-radius: 3px;
     background: is-active ? Theme.accent : (touch.has-hover && enabled ? Theme.surface-hover : transparent);
 
-    property <color> icon-color: root.enabled ? #F1C40F : Theme.text-secondary;
+    property <color> icon-color: !root.enabled ? Theme.text-secondary : root.is-active ? Theme.roi-on-accent : Theme.roi;
+
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.is-active;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -436,6 +538,14 @@ export component ZoomInToolButton inherits Rectangle {
     height: 28px;
     border-radius: 3px;
     background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip-text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     property <color> icon-color: root.enabled ? Theme.text-primary : Theme.text-secondary;
 
@@ -478,6 +588,14 @@ export component IconButton inherits Rectangle {
     height: 28px;
     border-radius: 3px;
     background: touch.has-hover && enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip-text != "" ? root.tooltip-text : root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
 
     touch := TouchArea {
         enabled: root.enabled;
@@ -501,6 +619,7 @@ export component IconButton inherits Rectangle {
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -526,6 +645,14 @@ component Tab inherits Rectangle {
     border-width: 0px;
     border-color: transparent;
     opacity: is-dragging ? 0.35 : 1.0;
+    accessible-role: tab;
+    accessible-label: root.data.is-modified ? @tr("{} (modified)", root.data.title) : root.data.title;
+    accessible-description: root.data.path;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.data.is-active;
+    accessible-action-default => {
+        root.activated(root.data.id);
+    }
 
     if data.is-focused: Rectangle {
         x: 0px;
@@ -624,6 +751,7 @@ component Tab inherits Rectangle {
             text: "🏠";
             font-size: 12px;
             vertical-alignment: center;
+            accessible-role: none;
         }
 
         Text {
@@ -633,10 +761,16 @@ component Tab inherits Rectangle {
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
+            accessible-role: none;
         }
 
         Rectangle {
             width: self.height;
+            accessible-role: button;
+            accessible-label: @tr("Close {}", data.title);
+            accessible-action-default => {
+                root.close-requested(data.id);
+            }
 
             Rectangle {
                 width: 100%;
@@ -662,6 +796,7 @@ component Tab inherits Rectangle {
                 font-size: 14px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                accessible-role: none;
             }
         }
     }
@@ -694,6 +829,8 @@ export component TabBar inherits Rectangle {
 
     height: 35px;
     background: Theme.surface;
+    accessible-role: tab-list;
+    accessible-label: @tr("Tabs");
 
     Rectangle {
         y: 0px;
@@ -780,6 +917,11 @@ export component TabBar inherits Rectangle {
                 width: 35px;
                 height: 35px;
                 background: inline-new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("New tab");
+                accessible-action-default => {
+                    root.new-tab-requested(root.pane-id);
+                }
 
                 inline-new-tab-touch := TouchArea {
                     clicked => {
@@ -794,6 +936,7 @@ export component TabBar inherits Rectangle {
                     font-weight: 400;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
             }
 
@@ -819,6 +962,11 @@ export component TabBar inherits Rectangle {
         width: 35px;
         height: 35px;
         background: new-tab-touch.has-hover ? Theme.surface-hover : transparent;
+        accessible-role: button;
+        accessible-label: @tr("New tab");
+        accessible-action-default => {
+            root.new-tab-requested(root.pane-id);
+        }
 
         new-tab-touch := TouchArea {
             clicked => {
@@ -833,6 +981,7 @@ export component TabBar inherits Rectangle {
             font-weight: 400;
             horizontal-alignment: center;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 }
@@ -854,8 +1003,10 @@ export component ContextMenu inherits Rectangle {
     height: root.is-visible ? min(root.content-height, root.height-limit) : 0px;
     background: Theme.context-menu-bg;
     border-radius: 4px;
+    border-width: Theme.menu-border-width;
+    border-color: Theme.border;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #00000066;
+    drop-shadow-color: Theme.shadow;
     opacity: root.is-visible ? 1 : 0;
 
     if root.is-visible: Rectangle {
@@ -878,6 +1029,19 @@ export component ContextMenu inherits Rectangle {
             for item in items: Rectangle {
                 height: 28px;
                 background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
+                // Slint has no menu-item role: items are buttons, the chosen
+                // one of a set of choices is "pressed".
+                accessible-role: button;
+                accessible-label: item.label;
+                accessible-description: item.shortcut;
+                accessible-enabled: item.enabled;
+                accessible-checkable: item.icon == "check";
+                accessible-checked: item.icon == "check";
+                accessible-action-default => {
+                    if item.enabled {
+                        root.item-clicked(item.id);
+                    }
+                }
 
                 if item.separator-after: Rectangle {
                     y: parent.height - 1px;
@@ -908,6 +1072,7 @@ export component ContextMenu inherits Rectangle {
                             text: "✓";
                             color: item.enabled ? Theme.text-primary : Theme.text-secondary;
                             font-size: 12px;
+                            accessible-role: none;
                         }
 
                         // Unknown names (plugins may send any) show no icon.
@@ -926,6 +1091,7 @@ export component ContextMenu inherits Rectangle {
                                 : @image-url("icons/open-file.svg");
                             image-fit: contain;
                             colorize: item.enabled ? Theme.text-primary : Theme.text-secondary;
+                            accessible-role: none;
                         }
                     }
 
@@ -936,6 +1102,7 @@ export component ContextMenu inherits Rectangle {
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                         overflow: elide;
+                        accessible-role: none;
                     }
 
                     Text {
@@ -943,6 +1110,7 @@ export component ContextMenu inherits Rectangle {
                         color: Theme.text-secondary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }

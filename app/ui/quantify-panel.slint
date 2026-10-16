@@ -4,6 +4,7 @@
 import { Theme } from "theme.slint";
 import { ChoiceItem, ResultRow } from "types.slint";
 import { Chip, NumberField, PanelButton } from "panel-controls.slint";
+import { DialogKeys } from "dialog-keys.slint";
 
 export component QuantifyPanel inherits Rectangle {
     in property <string> title;
@@ -27,7 +28,7 @@ export component QuantifyPanel inherits Rectangle {
     callback copy-requested();
     callback close-requested();
 
-    background: #00000088;
+    background: Theme.scrim;
 
     TouchArea {
         clicked => {
@@ -35,16 +36,14 @@ export component QuantifyPanel inherits Rectangle {
         }
     }
 
-    FocusScope {
-        init => {
-            self.focus();
+    DialogKeys {
+        title: root.title;
+        has-default-action: !root.running;
+        cancel => {
+            root.close-requested();
         }
-        key-pressed(e) => {
-            if e.text == Key.Escape {
-                root.close-requested();
-                return accept;
-            }
-            reject
+        default-action => {
+            root.run-requested();
         }
 
         Rectangle {
@@ -80,6 +79,11 @@ export component QuantifyPanel inherits Rectangle {
                         height: 24px;
                         border-radius: 4px;
                         background: close-touch.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: @tr("Close");
+                        accessible-action-default => {
+                            root.close-requested();
+                        }
 
                         Text {
                             text: "✕";
@@ -87,6 +91,7 @@ export component QuantifyPanel inherits Rectangle {
                             font-size: 12px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            accessible-role: none;
                         }
 
                         close-touch := TouchArea {
@@ -105,7 +110,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Stain model";
+                    text: @tr("Stain model");
                     color: Theme.text-secondary;
                     font-size: 11px;
                 }
@@ -124,7 +129,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Stain to measure";
+                    text: @tr("Stain to measure");
                     color: Theme.text-secondary;
                     font-size: 11px;
                 }
@@ -147,7 +152,12 @@ export component QuantifyPanel inherits Rectangle {
                     alignment: start;
 
                     NumberField {
-                        label: "Weak (1+) from";
+                        label: @tr("Weak (1+) from");
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.weak;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);
@@ -155,7 +165,12 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
-                        label: "Moderate (2+) from";
+                        label: @tr("Moderate (2+) from");
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.moderate;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);
@@ -163,7 +178,12 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
-                        label: "Strong (3+) from";
+                        label: @tr("Strong (3+) from");
+                        accepted => {
+                            if !root.running {
+                                root.run-requested();
+                            }
+                        }
                         text <=> root.strong;
                         edited => {
                             root.thresholds-edited(root.weak, root.moderate, root.strong);
@@ -172,7 +192,7 @@ export component QuantifyPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: "Thresholds are stain concentrations (optical density along the stain's vector), as the deconvolution view shows them.";
+                    text: @tr("Thresholds are stain concentrations (optical density along the stain's vector), as the deconvolution view shows them.");
                     color: Theme.text-secondary;
                     font-size: 10px;
                     wrap: word-wrap;
@@ -206,7 +226,7 @@ export component QuantifyPanel inherits Rectangle {
 
                 if root.note != "": Text {
                     text: root.note;
-                    color: #f1c40f;
+                    color: Theme.warning;
                     font-size: 11px;
                     wrap: word-wrap;
                     height: self.preferred-height;
@@ -217,7 +237,7 @@ export component QuantifyPanel inherits Rectangle {
                     alignment: end;
 
                     PanelButton {
-                        text: "Copy Results";
+                        text: @tr("Copy Results");
                         enabled: root.results.length > 0;
                         clicked => {
                             root.copy-requested();
@@ -225,7 +245,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     PanelButton {
-                        text: root.running ? "Measuring…" : "Quantify";
+                        text: root.running ? @tr("Measuring…") : @tr("Quantify");
                         primary: true;
                         enabled: !root.running;
                         clicked => {

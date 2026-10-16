@@ -1,6 +1,7 @@
 // EOV WSI Viewer - Main Application Window
 
 import { Theme } from "theme.slint";
+export { Theme, ThemeKind } from "theme.slint";
 import {
     BottomPanelKind,
     ChannelRow,
@@ -32,6 +33,7 @@ import {
     ViewportInfo,
 } from "types.slint";
 import { ContextMenu } from "tab-controls.slint";
+import { DialogFocus, DialogKeys } from "dialog-keys.slint";
 import {
     DatasetExportDialog,
 } from "dataset-export-dialog.slint";
@@ -77,7 +79,7 @@ export component AppWindow inherits Window {
     in-out property <image> secondary-minimap-thumbnail;
     in-out property <MinimapRect> minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
     in-out property <MinimapRect> secondary-minimap-rect: { x: 0, y: 0, width: 1, height: 1 };
-    in-out property <string> status-text: "Ready";
+    in-out property <string> status-text: @tr("Ready");
     in-out property <bool> is-loading: false;
     in-out property <bool> split-enabled: false;
     in-out property <int> focused-pane: 0;
@@ -145,8 +147,8 @@ export component AppWindow inherits Window {
     in-out property <bool> plugin-confirm-visible: false;
     in-out property <string> plugin-confirm-title: "";
     in-out property <string> plugin-confirm-message: "";
-    in-out property <string> plugin-confirm-confirm-label: "Confirm";
-    in-out property <string> plugin-confirm-cancel-label: "Cancel";
+    in-out property <string> plugin-confirm-confirm-label: @tr("Confirm");
+    in-out property <string> plugin-confirm-cancel-label: @tr("Cancel");
     in-out property <bool> plugin-confirm-destructive: false;
     in-out property <bool> show-plugin-modal: false;
     in-out property <float> plugin-modal-width: 0;
@@ -276,7 +278,7 @@ export component AppWindow inherits Window {
     callback save-copy-settings-changed(SaveCopySettings);
 
     in-out property <ToolType> current-tool: ToolType.navigate;
-    in-out property <string> measure-mode-label: "Distance";
+    in-out property <string> measure-mode-label: @tr("Distance");
 
     in-out property <bool> debug-mode: false;
     in-out property <float> fps: 0;
@@ -294,7 +296,7 @@ export component AppWindow inherits Window {
     in-out property <float> bottom-panel-height: 0;
     in-out property <[SeriesItemData]> series-items: [];
     in-out property <string> series-filter;
-    in-out property <string> series-sort-label: "A–Z";
+    in-out property <string> series-sort-label: @tr("A–Z");
     callback series-filter-edited(string);
     callback series-sort-cycled();
     in-out property <string> series-selected-path: "";
@@ -355,6 +357,8 @@ export component AppWindow inherits Window {
     callback redo-requested();
     callback hud-plugin-button-clicked(/* pane */ int, /* plugin */ string, /* button */ string, /* menu item */ string);
     callback measure-mode-menu-requested(length, length);
+    // The theme menu (dark, light, high contrast), at this window position.
+    callback theme-menu-requested(length, length);
     callback plugins-panel-requested();
     callback plugin-enable-requested(string, bool);
     callback plugins-folder-requested();
@@ -486,70 +490,140 @@ export component AppWindow inherits Window {
         global-keys.focus();
     }
 
+    // The dialogs and panels that take the keyboard while they are open
+    // (the heat map panel's sliders and fields do when used) give it back
+    // to the window when they close.
+    property <bool> keyboard-surface-open: root.export-dialog-visible || root.dataset-export-dialog-visible
+        || root.slide-info-visible || root.save-copy-dialog-visible || root.plugin-confirm-visible
+        || root.lanczos-confirm-visible || root.plugins-panel-visible || root.bookmark-dialog-visible
+        || root.shortcuts-panel-visible || root.measurements-panel-visible || root.quantify-visible
+        || root.channels-panel-visible || root.show-plugin-modal || HeatMapPanel.visible;
+    changed keyboard-surface-open => {
+        if !self.keyboard-surface-open {
+            global-keys.focus();
+        }
+    }
+
+    changed plugin-confirm-visible => {
+        if !self.plugin-confirm-visible {
+            root.return-keyboard();
+        }
+    }
+    changed lanczos-confirm-visible => {
+        if !self.lanczos-confirm-visible {
+            root.return-keyboard();
+        }
+    }
+
+    // To the window, and to the dialog a confirmation was shown over.
+    function return-keyboard() {
+        global-keys.focus();
+        DialogFocus.restore-count += 1;
+    }
+
+    function cancel-lanczos-confirm() {
+        root.lanczos-confirm-visible = false;
+        root.lanczos-confirm-cancelled();
+        root.lanczos-confirm-from-backend-switch = false;
+    }
+
     global-keys := FocusScope {
         width: 100%;
         height: 100%;
 
-        key-pressed(e) => {
-            if e.text == Key.Escape && root.save-copy-dialog-visible {
-                root.save-copy-dialog-visible = false;
-                accept
+        // Menus and pop-ups close on Escape whatever has the keyboard (the
+        // slide would take it otherwise).
+        capture-key-pressed(e) => {
+            if e.text == Key.Escape && root.context-menu-visible {
+                root.context-menu-visible = false;
+                root.context-menu-series-path = "";
+                return accept;
             }
-            if e.text == Key.Escape && root.slide-info-visible {
-                root.slide-info-visible = false;
-                accept
-            }
-            if e.text == Key.Escape && root.dataset-export-dialog-visible {
-                root.dataset-export-dialog-visible = false;
-                root.dataset-export-cancel-requested();
-                accept
-            }
-            if e.text == Key.Escape && root.export-dialog-visible {
-                root.export-dialog-visible = false;
-                root.export-dialog-cancel-requested();
-                accept
-            }
-            if e.text == Key.Escape && root.plugin-confirm-visible {
-                root.plugin-confirm-visible = false;
-                root.plugin-confirm-cancelled();
-                accept
-            }
-            if e.text == Key.Escape && root.bookmark-dialog-visible {
-                root.bookmark-dialog-cancelled();
-                accept
-            }
-            if e.text == Key.Escape && root.shortcuts-panel-visible {
-                root.shortcuts-panel-visible = false;
-                accept
-            }
-            if e.text == Key.Escape && root.measurements-panel-visible {
-                root.measurements-panel-visible = false;
-                accept
-            }
-            if e.text == Key.Escape && root.channels-panel-visible {
-                root.channels-panel-visible = false;
-                root.channels-closed();
-                accept
-            }
-            if e.text == Key.Escape && root.quantify-visible {
-                root.quantify-close();
-                accept
-            }
-            if e.text == Key.Escape && root.show-plugin-modal {
-                root.plugin-modal-dismiss-requested();
-                accept
-            }
-            if e.text == Key.Escape && root.plugins-panel-visible {
-                root.plugins-panel-visible = false;
-                accept
+            if e.text == Key.Escape && root.filter-popup-visible {
+                root.filter-popup-visible = false;
+                return accept;
             }
             if e.text == Key.Escape && root.notifications-visible {
                 root.notifications-visible = false;
-                accept
+                return accept;
             }
-            if e.text == Key.Escape && root.context-menu-visible {
-                root.context-menu-visible = false;
-                accept
+            reject
+        }
+
+        // A branch ends the handler only with `return` (a bare `accept` in
+        // an `if` is not the handler's result).
+        key-pressed(e) => {
+            // Escape closes the surface on top first (the order they are
+            // drawn in, top first), if it did not take the key itself.
+            if e.text == Key.Escape {
+                if root.plugin-confirm-visible {
+                    root.plugin-confirm-visible = false;
+                    root.plugin-confirm-cancelled();
+                    return accept;
+                }
+                if root.lanczos-confirm-visible {
+                    root.cancel-lanczos-confirm();
+                    return accept;
+                }
+                if root.plugins-panel-visible {
+                    root.plugins-panel-visible = false;
+                    return accept;
+                }
+                if root.channels-panel-visible {
+                    root.channels-panel-visible = false;
+                    root.channels-closed();
+                    return accept;
+                }
+                if root.save-copy-dialog-visible {
+                    root.save-copy-dialog-visible = false;
+                    return accept;
+                }
+                if root.slide-info-visible {
+                    root.slide-info-visible = false;
+                    return accept;
+                }
+                if root.dataset-export-dialog-visible {
+                    root.dataset-export-dialog-visible = false;
+                    root.dataset-export-cancel-requested();
+                    return accept;
+                }
+                if root.export-dialog-visible {
+                    root.export-dialog-visible = false;
+                    root.export-dialog-cancel-requested();
+                    return accept;
+                }
+                if root.show-plugin-modal {
+                    root.plugin-modal-dismiss-requested();
+                    return accept;
+                }
+                if root.shortcuts-panel-visible {
+                    root.shortcuts-panel-visible = false;
+                    return accept;
+                }
+                if root.measurements-panel-visible {
+                    root.measurements-panel-visible = false;
+                    return accept;
+                }
+                if HeatMapPanel.visible {
+                    HeatMapPanel.close-requested();
+                    return accept;
+                }
+                if root.quantify-visible {
+                    root.quantify-close();
+                    return accept;
+                }
+                if root.bookmark-dialog-visible {
+                    root.bookmark-dialog-cancelled();
+                    return accept;
+                }
+                if root.notifications-visible {
+                    root.notifications-visible = false;
+                    return accept;
+                }
+                if root.context-menu-visible {
+                    root.context-menu-visible = false;
+                    return accept;
+                }
             }
             // Modal surfaces own the keyboard (UI-7).
             if root.export-dialog-visible || root.dataset-export-dialog-visible || root.slide-info-visible
@@ -557,17 +631,17 @@ export component AppWindow inherits Window {
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
                 || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
                 || root.quantify-visible || root.channels-panel-visible {
-                reject
+                return reject;
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
-                accept
+                return accept;
             }
             reject
         }
 
         key-released(e) => {
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, false, false) {
-                accept
+                return accept;
             }
             reject
         }
@@ -647,6 +721,9 @@ export component AppWindow inherits Window {
             measure-mode-menu-requested(x, y) => {
                 root.measure-mode-menu-requested(x, y);
             }
+            theme-menu-requested(x, y) => {
+                root.theme-menu-requested(x, y);
+            }
             plugins-panel-requested => {
                 root.plugins-panel-requested();
             }
@@ -686,13 +763,13 @@ export component AppWindow inherits Window {
                     focus-on-click: false;
                     key-pressed(e) => {
                         if root.plugin-sidebar-captures-keyboard && e.text != Key.Escape {
-                            accept
+                            return accept;
                         }
                         reject
                     }
                     key-released(e) => {
                         if root.plugin-sidebar-captures-keyboard && e.text != Key.Escape {
-                            accept
+                            return accept;
                         }
                         reject
                     }
@@ -760,7 +837,7 @@ export component AppWindow inherits Window {
                         root.context-menu-items = [
                             {
                                 id: "close",
-                                label: "Close",
+                                label: @tr("Close"),
                                 icon: "",
                                 shortcut: root.shortcut-labels.close-tab,
                                 enabled: true,
@@ -768,7 +845,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-others",
-                                label: "Close Others",
+                                label: @tr("Close Others"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: pane >= 0 && pane < root.panes.length ? root.panes[pane].tabs.length > 1 : false,
@@ -776,7 +853,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-right",
-                                label: "Close to the Right",
+                                label: @tr("Close to the Right"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -784,7 +861,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "close-all",
-                                label: "Close All",
+                                label: @tr("Close All"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -792,7 +869,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "open-folder",
-                                label: "Open Containing Folder",
+                                label: @tr("Open Containing Folder"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -800,7 +877,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "copy-path",
-                                label: "Copy Path",
+                                label: @tr("Copy Path"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -808,7 +885,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "slide-info",
-                                label: "Slide Information",
+                                label: @tr("Slide Information"),
                                 icon: "",
                                 shortcut: root.shortcut-labels.slide-info,
                                 enabled: true,
@@ -816,7 +893,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "save-copy",
-                                label: "Save a Copy of the Slide…",
+                                label: @tr("Save a Copy of the Slide…"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -824,7 +901,7 @@ export component AppWindow inherits Window {
                             },
                             {
                                 id: "split-right",
-                                label: "Split Right",
+                                label: @tr("Split Right"),
                                 icon: "",
                                 shortcut: "",
                                 enabled: true,
@@ -1057,7 +1134,7 @@ export component AppWindow inherits Window {
                     root.context-menu-items = [
                         {
                             id: "series-open",
-                            label: "Open",
+                            label: @tr("Open"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1065,7 +1142,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-open-new-tab",
-                            label: "Open in New Tab",
+                            label: @tr("Open in New Tab"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1073,7 +1150,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-open-folder",
-                            label: "Open Containing Folder",
+                            label: @tr("Open Containing Folder"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1081,7 +1158,7 @@ export component AppWindow inherits Window {
                         },
                         {
                             id: "series-copy-path",
-                            label: "Copy Path",
+                            label: @tr("Copy Path"),
                             icon: "",
                             shortcut: "",
                             enabled: true,
@@ -1132,17 +1209,17 @@ export component AppWindow inherits Window {
         y: max(4px, min(root.height - self.height - 4px, root.hover-tooltip-y * 1px + 18px));
         width: min(360px, hover-tooltip.preferred-width + 12px);
         height: hover-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         hover-tooltip := Text {
             x: 6px;
             y: 3px;
             width: parent.width - 12px;
             text: root.hover-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
             wrap: word-wrap;
         }
@@ -1153,16 +1230,16 @@ export component AppWindow inherits Window {
         y: toolbar.hovered-tooltip-top-y;
         width: toolbar-tooltip.preferred-width + 12px;
         height: toolbar-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         toolbar-tooltip := Text {
             x: 6px;
             y: 3px;
             text: toolbar.hovered-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
         }
     }
@@ -1174,16 +1251,16 @@ export component AppWindow inherits Window {
         y: root.tab-tooltip-y;
         width: tab-path-tooltip.preferred-width + 12px;
         height: tab-path-tooltip.preferred-height + 6px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: Theme.tooltip-border;
 
         tab-path-tooltip := Text {
             x: 6px;
             y: 3px;
             text: root.tab-tooltip-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 11px;
         }
     }
@@ -1245,19 +1322,25 @@ export component AppWindow inherits Window {
         x: root.width / 2 - self.width / 2;
         width: toast-label.preferred-width + 28px;
         height: toast-label.preferred-height + 14px;
-        background: #111111ee;
+        background: Theme.tooltip-bg;
         border-radius: self.height / 2;
-        border-width: 1px;
-        border-color: root.toast-level == 3 ? #ff6b6b : root.toast-level == 2 ? #f1c40f : root.toast-level == 1 ? #2ecc71 : Theme.border;
+        border-width: Theme.selected-width;
+        border-color: root.toast-level == 3 ? Theme.danger : root.toast-level == 2 ? Theme.warning : root.toast-level == 1 ? Theme.success : Theme.tooltip-border;
         animate opacity { duration: 180ms; }
         animate y { duration: 220ms; }
+        accessible-role: text;
+        accessible-label: root.toast-text;
+        // The border's colour, for assistive technology.
+        accessible-description: root.toast-level == 3 ? @tr("Error") : root.toast-level == 2 ? @tr("Warning") : "";
+        accessible-live-region: polite;
 
         toast-label := Text {
             x: 14px;
             y: 7px;
             text: root.toast-text;
-            color: white;
+            color: Theme.tooltip-text;
             font-size: 12px;
+            accessible-role: none;
         }
     }
 
@@ -1294,6 +1377,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: bilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: @tr("Bilinear (Low Quality)");
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.bilinear;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.bilinear);
+                }
 
                 bilinear-touch := TouchArea {
                     clicked => {
@@ -1305,10 +1396,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.bilinear ? "✓ Bilinear (Low Quality)" : "   Bilinear (Low Quality)";
+                        text: (root.filtering-mode == FilteringMode.bilinear ? "✓ " : "   ") + @tr("Bilinear (Low Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1317,6 +1409,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: trilinear-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: @tr("Trilinear (Balanced)");
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.trilinear;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.trilinear);
+                }
 
                 trilinear-touch := TouchArea {
                     clicked => {
@@ -1328,10 +1428,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.trilinear ? "✓ Trilinear (Balanced)" : "   Trilinear (Balanced)";
+                        text: (root.filtering-mode == FilteringMode.trilinear ? "✓ " : "   ") + @tr("Trilinear (Balanced)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1340,6 +1441,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: lanczos3-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: radio-button;
+                accessible-label: @tr("Lanczos-3 (High Quality)");
+                accessible-checkable: true;
+                accessible-checked: root.filtering-mode == FilteringMode.lanczos3;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.filtering-mode-selected(FilteringMode.lanczos3);
+                }
 
                 lanczos3-touch := TouchArea {
                     clicked => {
@@ -1351,10 +1460,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.filtering-mode == FilteringMode.lanczos3 ? "✓ Lanczos-3 (High Quality)" : "   Lanczos-3 (High Quality)";
+                        text: (root.filtering-mode == FilteringMode.lanczos3 ? "✓ " : "   ") + @tr("Lanczos-3 (High Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
+                        accessible-role: none;
                     }
                 }
             }
@@ -1370,6 +1480,14 @@ export component AppWindow inherits Window {
                 height: 26px;
                 background: pixel-view-touch.has-hover ? Theme.context-menu-hover : transparent;
                 border-radius: 2px;
+                accessible-role: checkbox;
+                accessible-label: @tr("Show Pixels Above 100%");
+                accessible-checkable: true;
+                accessible-checked: root.pixel-view;
+                accessible-action-default => {
+                    root.filter-popup-visible = false;
+                    root.pixel-view-toggled();
+                }
 
                 pixel-view-touch := TouchArea {
                     clicked => {
@@ -1381,144 +1499,11 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 8px;
                     Text {
-                        text: root.pixel-view ? "✓ Show Pixels Above 100%" : "   Show Pixels Above 100%";
+                        text: (root.pixel-view ? "✓ " : "   ") + @tr("Show Pixels Above 100%");
                         color: Theme.text-primary;
                         font-size: 11px;
                         vertical-alignment: center;
-                    }
-                }
-            }
-        }
-    }
-
-    // Lanczos CPU confirmation dialog (centered modal)
-    if root.lanczos-confirm-visible: Rectangle {
-        x: 0px;
-        y: 0px;
-        width: root.width;
-        height: root.height;
-        background: #00000088;
-
-        TouchArea {
-            clicked => {
-                root.lanczos-confirm-visible = false;
-                root.lanczos-confirm-cancelled();
-                root.lanczos-confirm-from-backend-switch = false;
-            }
-        }
-
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 420px;
-            height: 200px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
-
-            // Block clicks from dismissing through the card
-            TouchArea { }
-
-            VerticalLayout {
-                padding: 20px;
-                spacing: 12px;
-
-                Text {
-                    text: "Lanczos Filtering (CPU)";
-                    color: Theme.text-primary;
-                    font-size: 14px;
-                    font-weight: 600;
-                    horizontal-alignment: left;
-                }
-
-                Text {
-                    text: "Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?";
-                    color: Theme.text-secondary;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                    horizontal-alignment: left;
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
-
-                    Rectangle {
-                        width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-
-                        cancel-touch := TouchArea {
-                            clicked => {
-                                root.lanczos-confirm-visible = false;
-                                root.lanczos-confirm-cancelled();
-                                root.lanczos-confirm-from-backend-switch = false;
-                            }
-                        }
-
-                        Text {
-                            text: "Cancel";
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    Rectangle {
-                        min-width: use-trilinear-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: use-trilinear-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
-
-                        use-trilinear-touch := TouchArea {
-                            clicked => {
-                                root.lanczos-confirm-visible = false;
-                                root.lanczos-confirm-use-trilinear();
-                                root.lanczos-confirm-from-backend-switch = false;
-                            }
-                        }
-
-                        use-trilinear-text := Text {
-                            text: "Use Trilinear";
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 72px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: confirm-touch.has-hover ? #1177bb : Theme.accent;
-
-                        confirm-touch := TouchArea {
-                            clicked => {
-                                root.lanczos-confirm-visible = false;
-                                root.lanczos-confirm-accepted();
-                                root.lanczos-confirm-from-backend-switch = false;
-                            }
-                        }
-
-                        Text {
-                            text: "Confirm";
-                            color: white;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
+                        accessible-role: none;
                     }
                 }
             }
@@ -1633,7 +1618,7 @@ export component AppWindow inherits Window {
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000088;
+        background: Theme.scrim;
 
         TouchArea { }
 
@@ -1654,13 +1639,13 @@ export component AppWindow inherits Window {
                 focus-on-click: false;
                 key-pressed(e) => {
                     if root.plugin-modal-captures-keyboard && e.text != Key.Escape {
-                        accept
+                        return accept;
                     }
                     reject
                 }
                 key-released(e) => {
                     if root.plugin-modal-captures-keyboard && e.text != Key.Escape {
-                        accept
+                        return accept;
                     }
                     reject
                 }
@@ -1862,15 +1847,184 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Confirmations (the host's and plugins'): above every panel, since
-    // panels ask for them too (the Plugins panel's Check for Updates and
-    // Remove).
+    // The confirmations are drawn over every other surface: they are asked
+    // from the panels (Remove a plugin?) and over the dialogs.
+    // Lanczos CPU confirmation dialog (centered modal)
+    if root.lanczos-confirm-visible: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: Theme.scrim;
+
+        TouchArea {
+            clicked => {
+                root.cancel-lanczos-confirm();
+            }
+        }
+
+        DialogKeys {
+            title: @tr("Lanczos Filtering (CPU)");
+            takes-back: false;
+            has-default-action: true;
+            cancel => {
+                root.cancel-lanczos-confirm();
+            }
+            default-action => {
+                root.lanczos-confirm-visible = false;
+                root.lanczos-confirm-accepted();
+                root.lanczos-confirm-from-backend-switch = false;
+            }
+
+            lanczos-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 420px;
+                height: 200px;
+                background: Theme.surface;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                // Block clicks from dismissing through the card
+                TouchArea { }
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    Text {
+                        text: @tr("Lanczos Filtering (CPU)");
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: left;
+                    }
+
+                    Text {
+                        text: @tr("Lanczos-3 filtering on the CPU renderer is very slow and will significantly degrade rendering performance. It is highly recommended to use Trilinear filtering on CPU.\n\nAre you sure you want to enable it?");
+                        color: Theme.text-secondary;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        Rectangle {
+                            width: 72px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: @tr("Cancel");
+                            accessible-action-default => {
+                                root.lanczos-confirm-visible = false;
+                                root.lanczos-confirm-cancelled();
+                                root.lanczos-confirm-from-backend-switch = false;
+                            }
+
+                            cancel-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-cancelled();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            Text {
+                                text: @tr("Cancel");
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+
+                        Rectangle {
+                            min-width: use-trilinear-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: use-trilinear-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: @tr("Use Trilinear");
+                            accessible-action-default => {
+                                root.lanczos-confirm-visible = false;
+                                root.lanczos-confirm-use-trilinear();
+                                root.lanczos-confirm-from-backend-switch = false;
+                            }
+
+                            use-trilinear-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-use-trilinear();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            use-trilinear-text := Text {
+                                text: @tr("Use Trilinear");
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+
+                        Rectangle {
+                            width: 72px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: confirm-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                            accessible-role: button;
+                            accessible-label: @tr("Confirm");
+                            accessible-action-default => {
+                                root.lanczos-confirm-visible = false;
+                                root.lanczos-confirm-accepted();
+                                root.lanczos-confirm-from-backend-switch = false;
+                            }
+
+                            confirm-touch := TouchArea {
+                                clicked => {
+                                    root.lanczos-confirm-visible = false;
+                                    root.lanczos-confirm-accepted();
+                                    root.lanczos-confirm-from-backend-switch = false;
+                                }
+                            }
+
+                            Text {
+                                text: @tr("Confirm");
+                                color: Theme.text-on-accent;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if root.plugin-confirm-visible: Rectangle {
         x: 0px;
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000088;
+        background: Theme.scrim;
 
         TouchArea {
             clicked => {
@@ -1879,100 +2033,128 @@ export component AppWindow inherits Window {
             }
         }
 
-        Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 640px;
-            height: 360px;
-            background: Theme.surface;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Theme.border;
+        DialogKeys {
+            title: root.plugin-confirm-title;
+            takes-back: false;
+            has-default-action: !root.plugin-confirm-destructive;
+            cancel => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-cancelled();
+            }
+            default-action => {
+                root.plugin-confirm-visible = false;
+                root.plugin-confirm-accepted();
+            }
 
-            TouchArea { }
+            plugin-confirm-card := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 640px;
+                height: 360px;
+                background: Theme.surface;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.border;
 
-            VerticalLayout {
-                padding: 20px;
-                spacing: 12px;
+                TouchArea { }
 
-                Text {
-                    text: root.plugin-confirm-title;
-                    color: Theme.text-primary;
-                    font-size: 14px;
-                    font-weight: 600;
-                    horizontal-alignment: left;
-                }
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
 
-                Flickable {
-                    height: 180px;
-                    viewport-height: plugin-confirm-scroll-content.preferred-height;
+                    Text {
+                        text: root.plugin-confirm-title;
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: left;
+                    }
 
-                    plugin-confirm-scroll-content := VerticalLayout {
-                        padding: 8px;
+                    Flickable {
+                        height: 180px;
+                        viewport-height: plugin-confirm-scroll-content.preferred-height;
 
-                        Text {
-                            text: root.plugin-confirm-message;
-                            color: Theme.text-secondary;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            horizontal-alignment: left;
+                        plugin-confirm-scroll-content := VerticalLayout {
+                            padding: 8px;
+
+                            Text {
+                                text: root.plugin-confirm-message;
+                                color: Theme.text-secondary;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                horizontal-alignment: left;
+                            }
                         }
                     }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
 
                     Rectangle {
-                        min-width: cancel-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
-                        border-width: 1px;
-                        border-color: Theme.border;
+                        vertical-stretch: 1;
+                    }
 
-                        plugin-cancel-touch := TouchArea {
-                            clicked => {
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+
+                        Rectangle {
+                            min-width: cancel-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: plugin-cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            accessible-role: button;
+                            accessible-label: root.plugin-confirm-cancel-label;
+                            accessible-action-default => {
                                 root.plugin-confirm-visible = false;
                                 root.plugin-confirm-cancelled();
                             }
-                        }
 
-                        cancel-text := Text {
-                            text: root.plugin-confirm-cancel-label;
-                            color: Theme.text-primary;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
+                            plugin-cancel-touch := TouchArea {
+                                clicked => {
+                                    root.plugin-confirm-visible = false;
+                                    root.plugin-confirm-cancelled();
+                                }
+                            }
 
-                    Rectangle {
-                        min-width: confirm-text.preferred-width + 16px;
-                        height: 28px;
-                        border-radius: 4px;
-                        background: root.plugin-confirm-destructive
-                            ? (plugin-confirm-touch.has-hover ? #c0392b : #e74c3c)
-                            : (plugin-confirm-touch.has-hover ? #1177bb : Theme.accent);
-
-                        plugin-confirm-touch := TouchArea {
-                            clicked => {
-                                root.plugin-confirm-visible = false;
-                                root.plugin-confirm-accepted();
+                            cancel-text := Text {
+                                text: root.plugin-confirm-cancel-label;
+                                color: Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
                             }
                         }
 
-                        confirm-text := Text {
-                            text: root.plugin-confirm-confirm-label;
-                            color: white;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        Rectangle {
+                            min-width: confirm-text.preferred-width + 16px;
+                            height: 28px;
+                            border-radius: 4px;
+                            background: root.plugin-confirm-destructive
+                                ? (plugin-confirm-touch.has-hover ? Theme.danger-fill-hover : Theme.danger-fill)
+                                : (plugin-confirm-touch.has-hover ? Theme.accent-hover : Theme.accent);
+                            accessible-role: button;
+                            accessible-label: root.plugin-confirm-confirm-label;
+                            accessible-action-default => {
+                                root.plugin-confirm-visible = false;
+                                root.plugin-confirm-accepted();
+                            }
+
+                            plugin-confirm-touch := TouchArea {
+                                clicked => {
+                                    root.plugin-confirm-visible = false;
+                                    root.plugin-confirm-accepted();
+                                }
+                            }
+
+                            confirm-text := Text {
+                                text: root.plugin-confirm-confirm-label;
+                                color: root.plugin-confirm-destructive ? Theme.text-on-danger : Theme.text-on-accent;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
                         }
                     }
                 }
@@ -1986,7 +2168,7 @@ export component AppWindow inherits Window {
         width: 140px;
         height: 28px;
         border-radius: 4px;
-        background: #252526ee;
+        background: Theme.surface;
         border-width: 1px;
         border-color: Theme.accent;
 
