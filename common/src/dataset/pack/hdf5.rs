@@ -57,7 +57,8 @@ fn write(
     Ok(file.map(|file| patches.report(file, Some(hdf5.describe()))))
 }
 
-fn layout(chunk: &[u64], shuffle: bool) -> Layout<'_> {
+/// Chunks of `chunk`, deflated (after the shuffle filter with `shuffle`).
+pub(super) fn layout(chunk: &[u64], shuffle: bool) -> Layout<'_> {
     Layout {
         chunk,
         shuffle,

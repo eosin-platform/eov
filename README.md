@@ -338,7 +338,7 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
-eov dataset pack <DIR> [--format zarr|hdf5] [--hdf5-library <PATH>]
+eov dataset pack <DIR> [--format zarr|hdf5|clam] [--hdf5-library <PATH>]
 eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 eov call <METHOD> [PARAMS] [--out <FILE>]
 eov script-endpoint [--json]
@@ -537,6 +537,7 @@ ds/
   dataset.json     # parameters, inputs and totals of the run (also for resuming)
   patches.zarr/    # after `eov dataset pack ds/` (see below)
   patches.h5       # after `eov dataset pack ds/ --format hdf5`
+  clam/            # after `eov dataset pack ds/ --format clam`
 ```
 
 With `--deidentify`, `<slide-stem>` is replaced by an opaque `slide-<id>`.
@@ -556,7 +557,9 @@ with h5py.File("ds/patches.h5") as f:
     classes = json.loads(f.attrs["classes"])      # {"0": "background", "1": "Tumor", ...}
 ```
 
-The file is written by the HDF5 C library itself, version 1.10 or newer, which eov loads when the command runs; eov is not built with it, and `--format zarr` needs nothing. eov uses the library named by `--hdf5-library <PATH>` or `EOV_HDF5_LIBRARY` (the file, or a folder with it), and otherwise looks in `$HDF5_DIR/lib`, `$CONDA_PREFIX/lib` (`%CONDA_PREFIX%\Library\bin` on Windows) and then for the system's library: `libhdf5.so`, `libhdf5_serial.so` and the sonames of 1.10, 1.12 and 1.14 on Linux; `libhdf5.dylib`, also in `/opt/homebrew/lib`, `/usr/local/lib` and `/opt/local/lib`, on macOS; `hdf5.dll` on Windows. Install it with `sudo apt install libhdf5-310` (`libhdf5-103-1t64` on Ubuntu 24.04, `libhdf5-103-1` on Debian 12), `sudo dnf install hdf5`, `brew install hdf5` or `conda install -c conda-forge hdf5`. Without one, the command lists where it looked and what to install.
+`eov dataset pack ds/ --format clam` writes only the patches' coordinates, one file per slide in the format of [CLAM](https://github.com/mahmoodlab/CLAM)'s patching step, for its feature extraction and other tools that read CLAM's coordinates: `ds/clam/<slide>.h5` holds `coords` (N, 2) int64, the level-0 x and y of the slide's patches, with CLAM's attributes on it: `patch_level` 0, `patch_size` the patches' width in level-0 pixels, `downsample` (1, 1), `level_dim` and `downsampled_level_dim` the slide's size, and `name`. The files are named after the slides' ids, which are their file stems (made unique when two slides share one). Giving the size at level 0 keeps it right at any extraction resolution: 256-pixel patches at 0.5 µm/px from a 0.25 µm/px slide have a `patch_size` of 512, which CLAM reads at level 0 and resizes for its model. CLAM's `extract_features_fp.py` looks for the files in `<data_h5_dir>/patches/`.
+
+`patches.h5` and the CLAM files are written by the HDF5 C library itself, version 1.10 or newer, which eov loads when the command runs; eov is not built with it, and `--format zarr` needs nothing. eov uses the library named by `--hdf5-library <PATH>` or `EOV_HDF5_LIBRARY` (the file, or a folder with it), and otherwise looks in `$HDF5_DIR/lib`, `$CONDA_PREFIX/lib` (`%CONDA_PREFIX%\Library\bin` on Windows) and then for the system's library: `libhdf5.so`, `libhdf5_serial.so` and the sonames of 1.10, 1.12 and 1.14 on Linux; `libhdf5.dylib`, also in `/opt/homebrew/lib`, `/usr/local/lib` and `/opt/local/lib`, on macOS; `hdf5.dll` on Windows. Install it with `sudo apt install libhdf5-310` (`libhdf5-103-1t64` on Ubuntu 24.04, `libhdf5-103-1` on Debian 12), `sudo dnf install hdf5`, `brew install hdf5` or `conda install -c conda-forge hdf5`. Without one, the command lists where it looked and what to install.
 
 ### Metadata
 

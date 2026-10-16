@@ -19,7 +19,7 @@
 //!   slides.csv | slides.jsonl                                   one record per slide
 //!   dataset.json                                                parameters, status, totals
 //!   classes.json                                                mask class indices (optional)
-//!   patches.zarr/ | patches.h5                                  after `eov dataset pack` ([`pack`])
+//!   patches.zarr/ | patches.h5 | clam/                          after `eov dataset pack` ([`pack`])
 //! ```
 
 mod annotations;
@@ -53,7 +53,9 @@ pub use hashing::slide_sha256;
 pub use manifest::{DatasetManifest, ExtractionParameters, RunStatus, RunTotals};
 pub use metadata::{SlideRecord, SlideStatus, TileRecord};
 pub use output::{deidentified_key, unique_slide_keys_for};
-pub use pack::{HDF5_FILE, PackFormat, PackOptions, PackReport, ZARR_STORE, pack, pack_zarr};
+pub use pack::{
+    CLAM_FOLDER, HDF5_FILE, PackFormat, PackOptions, PackReport, ZARR_STORE, pack, pack_zarr,
+};
 pub use pipeline::{
     DatasetControl, DatasetError, DatasetPatchesProgress, DatasetPatchesReport, DatasetPhase,
     DatasetPlan, PlannedSlide, SlideGeometry, SlideReport, SlideSkipReason, plan_dataset,

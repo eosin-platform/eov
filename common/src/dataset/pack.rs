@@ -1,6 +1,6 @@
 //! Packing a dataset into one zarr store or HDF5 file (AUDIT §14.5), for
 //! training code that reads arrays rather than many files:
-//! `eov dataset pack <dir> [--format zarr|hdf5]`.
+//! `eov dataset pack <dir> [--format zarr|hdf5|clam]`.
 //!
 //! [`pack`] reads the dataset's patch records (`metadata.jsonl`, else
 //! `metadata.csv`, else `metadata.json`), decodes every patch and mask, and
@@ -14,8 +14,11 @@
 //!   ([`crate::hdf5`]); readable with h5py (`h5py.File("patches.h5")`).
 //!   Chunks are deflated (level 4), `coords` and `slide` with the shuffle
 //!   filter first. The file uses the HDF5 1.8 format.
+//! * [`PackFormat::Clam`]: only the patches' coordinates, one file per
+//!   slide in the format of CLAM's patching step, `<dir>/clam/<slide
+//!   id>.h5`, also written by the HDF5 library (see `pack/clam.rs`).
 //!
-//! Both hold the same arrays:
+//! The store and `patches.h5` hold the same arrays:
 //!
 //! | Array    | Shape          | Type   | Contents |
 //! |----------|----------------|--------|----------|
@@ -37,6 +40,7 @@
 //! and renamed when complete, replacing an earlier one; a cancelled or
 //! failed pack leaves an earlier one as it was.
 
+mod clam;
 mod hdf5;
 mod zarr;
 
@@ -50,6 +54,8 @@ use std::sync::atomic::AtomicBool;
 pub const ZARR_STORE: &str = "patches.zarr";
 /// The HDF5 file's name.
 pub const HDF5_FILE: &str = "patches.h5";
+/// The folder of the CLAM coordinate files.
+pub const CLAM_FOLDER: &str = "clam";
 /// Rows of the one-dimensional arrays per chunk.
 const ROW_CHUNK: usize = 65_536;
 
@@ -61,6 +67,9 @@ pub enum PackFormat {
     Zarr,
     /// `patches.h5`, which needs the HDF5 library (1.10 or newer).
     Hdf5,
+    /// `clam/<slide id>.h5`, each slide's patch coordinates for CLAM,
+    /// which also needs the HDF5 library.
+    Clam,
 }
 
 /// How [`pack`] packs.
@@ -76,7 +85,7 @@ pub struct PackOptions {
 /// What [`pack`] wrote.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackReport {
-    /// The store or file written.
+    /// The store, file or folder written.
     pub store: PathBuf,
     pub patches: usize,
     pub tile_size: u32,
@@ -94,12 +103,11 @@ pub fn pack(
     options: &PackOptions,
     cancel: &AtomicBool,
 ) -> std::io::Result<Option<PackReport>> {
+    let search = || crate::hdf5::LibrarySearch::from_env(options.hdf5_library.as_deref());
     match options.format {
         PackFormat::Zarr => zarr::pack(&Patches::read(dir)?, cancel),
-        PackFormat::Hdf5 => {
-            let search = crate::hdf5::LibrarySearch::from_env(options.hdf5_library.as_deref());
-            hdf5::pack(&Patches::read(dir)?, &search, cancel)
-        }
+        PackFormat::Hdf5 => hdf5::pack(&Patches::read(dir)?, &search(), cancel),
+        PackFormat::Clam => clam::pack(&Patches::read(dir)?, &search(), cancel),
     }
 }
 

@@ -266,24 +266,38 @@ impl Hdf5 {
                 self.check(status, "H5Awrite", &what)?;
                 attribute.close(&what)
             }
-            AttrValue::Int(value) => self.scalar_attribute(location, &c_name, &what, *value),
-            AttrValue::Float(value) => self.scalar_attribute(location, &c_name, &what, *value),
+            AttrValue::Int(value) => {
+                self.numeric_attribute(location, &c_name, &what, std::slice::from_ref(value), true)
+            }
+            AttrValue::Float(value) => {
+                self.numeric_attribute(location, &c_name, &what, std::slice::from_ref(value), true)
+            }
+            AttrValue::Ints(values) => {
+                self.numeric_attribute(location, &c_name, &what, values, false)
+            }
+            AttrValue::Floats(values) => {
+                self.numeric_attribute(location, &c_name, &what, values, false)
+            }
         }
     }
 
-    fn scalar_attribute<T: Element>(
+    /// A numeric attribute: a scalar (`scalar` and one value) or a list.
+    fn numeric_attribute<T: Element>(
         &self,
         location: hid_t,
         name: &CStr,
         what: &str,
-        value: T,
+        values: &[T],
+        scalar: bool,
     ) -> Result<()> {
-        let space = self.scalar_space(what)?;
+        let space = match values {
+            [_] if scalar => self.scalar_space(what)?,
+            _ => self.dataspace(&[values.len() as u64], what)?,
+        };
         let (memory, stored) = T::types(self.g());
         let attribute = self.create_attribute(location, name, stored, &space, what)?;
-        // SAFETY: one value for the scalar dataspace.
-        let status =
-            unsafe { (self.f().H5Awrite)(attribute.id, memory, (&value as *const T).cast()) };
+        // SAFETY: one value per element of `space`.
+        let status = unsafe { (self.f().H5Awrite)(attribute.id, memory, values.as_ptr().cast()) };
         self.check(status, "H5Awrite", what)?;
         attribute.close(what)
     }
@@ -564,12 +578,14 @@ impl Element for f64 {
 }
 
 /// An attribute's value: text is a variable-length UTF-8 string (h5py
-/// reads it as `str`), numbers are 64-bit scalars.
+/// reads it as `str`), numbers are 64-bit, lists one-dimensional.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum AttrValue<'a> {
     Text(&'a str),
     Int(i64),
     Float(f64),
+    Ints(&'a [i64]),
+    Floats(&'a [f64]),
 }
 
 /// How a dataset is stored: chunks of `chunk` elements, with the shuffle
@@ -778,6 +794,13 @@ impl Dataset<'_> {
             )
         };
         hdf5.check(status, "H5Dwrite_chunk", &self.what)
+    }
+
+    /// Writes an attribute of the dataset.
+    pub(crate) fn set_attribute(&self, name: &str, value: &AttrValue<'_>) -> Result<()> {
+        self.handle
+            .hdf5
+            .set_attribute(self.handle.id, &self.what, name, value)
     }
 
     /// Closes the dataset, reporting a failure to write what HDF5 still
@@ -1032,6 +1055,20 @@ pub(crate) mod testing {
             Ok(values)
         }
 
+        /// The rank of an attribute's dataspace (0 for a scalar).
+        pub(crate) fn rank(&self, object: Option<&str>, name: &str) -> Result<usize> {
+            let object = self.object(object)?;
+            let attribute = self.attribute(&object, name)?;
+            // SAFETY: an open attribute.
+            let space: Handle<'_, DataspaceId> = Handle::new(
+                self.handle.hdf5,
+                unsafe { (self.r().H5Aget_space)(attribute.id) },
+                "H5Aget_space",
+                name,
+            )?;
+            Ok(self.dims(&space).len())
+        }
+
         /// A text attribute, which must be a variable-length UTF-8 string.
         pub(crate) fn text(&self, object: Option<&str>, name: &str) -> Result<String> {
             let hdf5 = self.handle.hdf5;
@@ -1190,6 +1227,14 @@ mod tests {
             table.write_all(&coords).unwrap();
             assert!(table.write_all(&coords[..4]).is_err(), "too few values");
             assert!(table.write_rows(4, &coords[..4]).is_err(), "past the end");
+            table
+                .set_attribute("downsample", &AttrValue::Floats(&[2.0, 2.5]))
+                .unwrap();
+            table
+                .set_attribute("level", &AttrValue::Ints(&[1]))
+                .unwrap();
+            table.set_attribute("empty", &AttrValue::Ints(&[])).unwrap();
+            table.set_attribute("name", &AttrValue::Text("")).unwrap();
             table.close().unwrap();
             file.close().unwrap();
         }
@@ -1220,6 +1265,20 @@ mod tests {
             [2, 1]
         );
         assert_eq!((stored.size, stored.signed), (8, true));
+        assert_eq!(
+            file.numbers::<f64>(Some("coords"), "downsample").unwrap(),
+            [2.0, 2.5]
+        );
+        // A list of one stays a list (h5py reads an array, not a number).
+        assert_eq!(file.numbers::<i64>(Some("coords"), "level").unwrap(), [1]);
+        assert_eq!(file.rank(Some("coords"), "level").unwrap(), 1);
+        assert_eq!(file.rank(None, "int").unwrap(), 0);
+        assert!(
+            file.numbers::<i64>(Some("coords"), "empty")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(file.text(Some("coords"), "name").unwrap(), "");
         assert!(file.exists("coords") && !file.exists("masks"));
         drop(file);
         assert_eq!(hdf5.open_objects(), 0);

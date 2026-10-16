@@ -142,6 +142,9 @@ enum CliPackFormat {
     Zarr,
     /// <DIR>/patches.h5, written by the HDF5 library (1.10 or newer).
     Hdf5,
+    /// <DIR>/clam/<slide>.h5: each slide's patch coordinates for CLAM (also
+    /// written by the HDF5 library).
+    Clam,
 }
 
 impl CliPackFormat {
@@ -149,6 +152,7 @@ impl CliPackFormat {
         match self {
             Self::Zarr => dataset::PackFormat::Zarr,
             Self::Hdf5 => dataset::PackFormat::Hdf5,
+            Self::Clam => dataset::PackFormat::Clam,
         }
     }
 }
@@ -187,7 +191,8 @@ EXIT STATUS:\n  \
   2    invalid arguments, no slides found, or an incompatible output directory\n  \
   130  cancelled with Ctrl-C (metadata so far is kept; re-run to resume)")]
     Patches(Box<DatasetPatchesArgs>),
-    /// Pack a dataset's patches into one zarr store or HDF5 file.
+    /// Pack a dataset's patches into a zarr store or an HDF5 file, or write
+    /// their coordinates for CLAM.
     ///
     /// Writes <DIR>/patches.zarr (--format zarr, the default: zarr v2 with
     /// zstd chunks, readable with zarr-python) or <DIR>/patches.h5 (--format
@@ -198,9 +203,16 @@ EXIT STATUS:\n  \
     /// (in HDF5 as JSON text: json.loads(f.attrs["slides"])). Patches keep
     /// the order of the metadata; an earlier store or file is replaced once
     /// the new one is complete.
+    ///
+    /// --format clam writes only the coordinates, one file per slide in the
+    /// format of CLAM's patching step: <DIR>/clam/<slide>.h5 with coords
+    /// (N, 2) int64, the level-0 x and y of the slide's patches, and the
+    /// attributes patch_level (0), patch_size (the patches' width in level-0
+    /// pixels), downsample, level_dim, downsampled_level_dim and name. The
+    /// files are named after the slides' ids, their file stems.
     #[command(after_help = "HDF5:\n  \
-  --format hdf5 loads the HDF5 C library (1.10 or newer) when it runs: eov is\n  \
-  not built with it. It is looked for in this order:\n    \
+  --format hdf5 and --format clam load the HDF5 C library (1.10 or newer) when\n  \
+  they run: eov is not built with it. It is looked for in this order:\n    \
     --hdf5-library <PATH> or EOV_HDF5_LIBRARY (only that library, when given)\n    \
     $HDF5_DIR/lib, then $CONDA_PREFIX/lib (Windows: %CONDA_PREFIX%\\Library\\bin)\n    \
     the system's library: libhdf5.so, libhdf5_serial.so and the sonames of\n    \
@@ -1602,19 +1614,29 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
                 });
             }
             match dataset::pack(dir, options, &cancel)? {
-                Some(report) => println!(
-                    "Packed {} patch(es) of {} px from {} slide(s){} into {}{}",
-                    report.patches,
-                    report.tile_size,
-                    report.slides,
-                    if report.with_masks { " with masks" } else { "" },
-                    report.store.display(),
-                    report
+                Some(report) => {
+                    let library = report
                         .library
                         .as_ref()
                         .map(|library| format!(" (written by {library})"))
-                        .unwrap_or_default()
-                ),
+                        .unwrap_or_default();
+                    match options.format {
+                        dataset::PackFormat::Clam => println!(
+                            "Wrote the coordinates of {} patch(es) from {} slide(s) to {}{library}",
+                            report.patches,
+                            report.slides,
+                            report.store.display()
+                        ),
+                        _ => println!(
+                            "Packed {} patch(es) of {} px from {} slide(s){} into {}{library}",
+                            report.patches,
+                            report.tile_size,
+                            report.slides,
+                            if report.with_masks { " with masks" } else { "" },
+                            report.store.display()
+                        ),
+                    }
+                }
                 None => {
                     eprintln!("Cancelled; nothing was changed.");
                     std::process::exit(130);
@@ -2420,6 +2442,14 @@ mod tests {
             options.hdf5_library.as_deref(),
             Some(Path::new("/opt/hdf5/lib/libhdf5.so"))
         );
+        let CommandAction::DatasetPack { options, .. } =
+            parse(&["dataset", "pack", "ds", "--format", "clam"])
+                .unwrap()
+                .command
+        else {
+            panic!("not dataset pack");
+        };
+        assert_eq!(options.format, dataset::PackFormat::Clam);
         assert!(parse(&["dataset", "pack", "ds", "--format", "hdf4"]).is_err());
     }
 
