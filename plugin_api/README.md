@@ -226,9 +226,10 @@ are ignored.
 - **Failures.** An `Err` fails that read (the tile is tried again later); a
   panic fails it, makes the plugin's slides fail from then on, and stops the
   plugin, as a panicking event handler does.
-- **Where.** Slides open in eov's window and in `eov batch`. `eov dataset`,
-  `eov qc`, `eov convert` and `eov probe` do not run plugins, so they report
-  such files as unsupported. Only files are opened for now: URI schemes
+- **Where.** Slides open in eov's window and in the commands that read
+  slides (`eov batch`, `eov dataset patches`, `eov qc`, `eov convert`,
+  `eov probe`), which start the installed plugins with formats without a
+  window. Only files are opened for now: URI schemes
   (`schemes = ["omero"]`) are accepted in the manifest but not yet offered.
 - **Compatibility.** Libraries built before slide sources were added (their
   root module lacks the `slide_source` field) still load, without formats;

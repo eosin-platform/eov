@@ -303,7 +303,7 @@ eov opens slides through [OpenSlide](https://openslide.org/), so it opens the fo
 - `.btf`, `.tf2`, `.tf8` (BigTIFF, as in `.ome.btf`)
 - `.qptiff` (Akoya; read by eov itself, see below)
 
-If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)). Plugins can add formats eov does not read itself (Philips iSyntax or Olympus VSI readers, for example): their extensions then appear in the file picker and the series bar, and the plugin opens those slides in the window and in `eov batch` (see [Slide formats](plugin_api/README.md#slide-formats)). eov's own readers keep the formats they read.
+If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)). Plugins can add formats eov does not read itself (Philips iSyntax or Olympus VSI readers, for example): their extensions then appear in the file picker and the series bar, and the plugin opens those slides in the window and in the commands that read slides (`eov batch`, `eov dataset patches`, `eov qc`, `eov convert`, `eov probe`; see [Slide formats](plugin_api/README.md#slide-formats)). eov's own readers keep the formats they read.
 
 ### OME-TIFF, fluorescence and multiplex
 

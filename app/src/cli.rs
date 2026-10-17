@@ -1593,10 +1593,14 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
         CommandAction::Probe { file, json } => {
+            let _readers = crate::batch::SlideReaders::start(&launch_options.plugin_dir);
             crate::probe::run(file, *json)?;
             Ok(true)
         }
-        CommandAction::Qc(run) => crate::qc_cli::run(run).map(|_| true),
+        CommandAction::Qc(run) => {
+            let _readers = crate::batch::SlideReaders::start(&launch_options.plugin_dir);
+            crate::qc_cli::run(run).map(|_| true)
+        }
         CommandAction::RecentList => {
             print_recent_files();
             Ok(true)
@@ -1614,6 +1618,7 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
         CommandAction::DatasetPatches(job) => {
+            let _readers = crate::batch::SlideReaders::start(&launch_options.plugin_dir);
             run_dataset_patches_cli(job)?;
             Ok(true)
         }
@@ -1657,6 +1662,7 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
             Ok(true)
         }
         CommandAction::Convert(args) => {
+            let _readers = crate::batch::SlideReaders::start(&launch_options.plugin_dir);
             run_convert_cli(args);
             Ok(true)
         }

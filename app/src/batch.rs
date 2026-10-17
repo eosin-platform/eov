@@ -276,6 +276,28 @@ impl Headless {
     }
 }
 
+/// The installed plugins that read slide formats, started without a window
+/// for a command that opens slides (`eov probe`, `qc`, `dataset patches`,
+/// `convert`), so their formats open there as in the window. They stop
+/// when this is dropped.
+pub(crate) struct SlideReaders(Option<Headless>);
+
+impl SlideReaders {
+    pub(crate) fn start(plugin_dir: &Path) -> Self {
+        let mut headless = Headless::new();
+        headless.start_slide_readers(plugin_dir, "");
+        Self(Some(headless))
+    }
+}
+
+impl Drop for SlideReaders {
+    fn drop(&mut self) {
+        if let Some(headless) = self.0.take() {
+            headless.shutdown();
+        }
+    }
+}
+
 /// `eov batch list`: the batch commands of every installed plugin.
 pub(crate) fn list(plugin_dir: &Path, json: bool) -> Result<()> {
     let policy = crate::update::policy::current();
