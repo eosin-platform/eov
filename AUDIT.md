@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `f1fe858`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `7f67d4e`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -83,7 +83,6 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
 - §14.4 **Localisation** (partly): The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English.
-- §14.5 **Model management** (partly): Model cards and metadata checks in cellaris and eovae; no download-and-verify of models.
 
 ### Per-finding status
 
@@ -337,7 +336,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Dataset extraction | Done | `bb7fd46` `8c53025` `0359c50` `23a3583` `e41ebc9` `3947e01` `7de56f1` `c6fbf40` | Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr or HDF5 (`eov dataset pack --format hdf5`, through the HDF5 library loaded at run time), and per-slide coordinate files for CLAM (`--format clam`). |
 | Headless and batch mode | Done | `fbf22f5` `7b39246` `c77eec6` | `eov batch run` with run manifests; `eovae:analyze` (per-tile scores, heat map) and `cellaris:predict` (per-cell marker means), with model hashes, preprocessing, resolution and device recorded. |
 | Scripting | Done | `c1f97a9` | JSON-RPC 2.0 on the local single-instance endpoint (authenticated, no network listener): slides, views, region reads, ROI, measurements, bookmarks, quantification and exports; `eov call` and a Python client. |
-| Model management | **Partly** | plugins | Model cards and metadata checks in cellaris and eovae; no download-and-verify of models. |
+| Model management | Done | `188e9f8` `ca16821` `062daf3` `d087675` `ecdf4ae` `23ce531` `90182d2` | Model cards and metadata checks in cellaris and eovae; eov's model store keeps models by SHA-256 (`eov model fetch|import|list|verify|remove`, policy keys), and plugins ask it for models (`model.fetch`, `model.resolve`) after the user agrees. eovae downloads its HistoVAE reference model by pinned hash; cellaris takes a site's address and hash (no public address for its model). |
 
 **§14.6 Safety, privacy and intended use**
 

@@ -61,7 +61,7 @@ FEATURES = [
   ("Dataset extraction", "F", "bb7fd46 8c53025 0359c50 23a3583 e41ebc9 3947e01 7de56f1 c6fbf40", "Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr or HDF5 (`eov dataset pack --format hdf5`, through the HDF5 library loaded at run time), and per-slide coordinate files for CLAM (`--format clam`)."),
   ("Headless and batch mode", "F", "fbf22f5 7b39246 c77eec6", "`eov batch run` with run manifests; `eovae:analyze` (per-tile scores, heat map) and `cellaris:predict` (per-cell marker means), with model hashes, preprocessing, resolution and device recorded."),
   ("Scripting", "F", "c1f97a9", "JSON-RPC 2.0 on the local single-instance endpoint (authenticated, no network listener): slides, views, region reads, ROI, measurements, bookmarks, quantification and exports; `eov call` and a Python client."),
-  ("Model management", "P", "plugins", "Model cards and metadata checks in cellaris and eovae; no download-and-verify of models."),
+  ("Model management", "F", "188e9f8 ca16821 062daf3 d087675 ecdf4ae 23ce531 90182d2", "Model cards and metadata checks in cellaris and eovae; eov's model store keeps models by SHA-256 (`eov model fetch|import|list|verify|remove`, policy keys), and plugins ask it for models (`model.fetch`, `model.resolve`) after the user agrees. eovae downloads its HistoVAE reference model by pinned hash; cellaris takes a site's address and hash (no public address for its model)."),
  ]),
  ("14.6 Safety, privacy and intended use", [
   ("Intended use stated", "F", "3620def + cellaris", "README, the Home screen and the AI plugins' badges."),

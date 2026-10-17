@@ -11,26 +11,6 @@ Work that was stopped before it was finished. Each branch is in a git
 worktree under `.claude/worktrees/`; its last commit is marked `WIP` when it
 holds unfinished, untested changes.
 
-### Model store: `worktree-agent-afa8da3ca208fa577`
-
-Downloading and verifying models for AI plugins (AUDIT §14.5, §12.2).
-
-- **Done**, 5 commits:
-  - a content-addressed store under `<data>/models/`;
-  - the `eov model fetch|list|verify|remove|import` commands;
-  - the plugin API's `model.fetch`, `model.resolve` and `model.list`;
-  - policy keys;
-  - eovae downloading the HistoVAE reference model.
-- **WIP:** the cellaris side is in that worktree's own clone,
-  `plugins/cellaris`, on branch `models` (commit `6bee97f`).
-- **Left:**
-  - eovae tests for the download flow.
-  - Finish cellaris's "Download model…".
-  - Review, and merge both the superproject and the cellaris branch, then
-    record the submodule pointer.
-  - There is no verified public URL for either model, so sites configure a
-    URL and SHA-256 themselves.
-
 ### Slide-source plugin type: `worktree-agent-a82d87b0b13804a70`
 
 Only an API sketch (`b225f73`) exists. This mechanism would let plugins add
@@ -96,10 +76,9 @@ the host offline (AUDIT §14.3). Design:
 
 ## Housekeeping
 
-- **Unpushed commits:** master, and the submodules annotations (master),
-  cellaris (main) and gamepad (master), are ahead of their remotes.
-
-  Push the submodules before the superproject that points at them.
+- **Unpushed commits:** master is ahead of origin/master, and the cellaris
+  submodule's `improvements/prepare-v1.0.0` ahead of its remote branch.
+  Push the submodule before the superproject that points at it.
 - **Leftovers in the home directory.** An early test run, before tests were
   isolated, wrote:
   - `[active_sidebar]` in `~/.eov/config.toml`;
@@ -107,6 +86,7 @@ the host offline (AUDIT §14.3). Design:
   - about 25 fixture directories in `~/.cache/eov/plugin-packages`.
 
   Review them and remove them if they are unwanted.
-- **Worktrees:** `.claude/worktrees/` holds the agents' worktrees. Remove the
-  merged ones with `git worktree remove`; the branches keep their commits.
+- **Worktrees:** `.claude/worktrees/` holds the agents' worktrees; all but
+  the slide-source one (`worktree-agent-a82d87b0b13804a70`) are merged.
+  Remove them with `git worktree remove`; the branches keep their commits.
   Their build directories have been cleaned.
