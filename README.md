@@ -349,11 +349,11 @@ eov plugin disable|enable <PLUGIN>
 eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
-eov model fetch <URL> --sha256 <HEX> [--companion <SHA256=URL>]... [--name <NAME>] [--version <V>] [--size <BYTES>] [--json] [--allow-network]
+eov model fetch <URL> --sha256 <HEX> [--companion <SHA256=URL>]... [--name <NAME>] [--model-version <V>] [--size <BYTES>] [--json] [--allow-network]
 eov model list|ls [--json]
 eov model verify [--json]
 eov model remove|rm <SHA256|NAME> [--json] [-y]
-eov model import <FILE> [--sha256 <HEX>] [--companion <[SHA256=]FILE>]... [--name <NAME>] [--version <V>] [--json]
+eov model import <FILE> [--sha256 <HEX>] [--companion <[SHA256=]FILE>]... [--name <NAME>] [--model-version <V>] [--json]
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
 eov dataset pack <DIR> [--format zarr|hdf5|clam] [--hdf5-library <PATH>]
 eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]

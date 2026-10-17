@@ -2395,6 +2395,26 @@ mod tests {
         launch_options(cli)
     }
 
+    /// clap checks a command's definition only when it is parsed, so check
+    /// every subcommand's (clashing names such as a `--version` option next
+    /// to the `--version` flag every command gets) without running them.
+    #[test]
+    fn every_command_is_well_defined() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+        let LaunchOptions { command, .. } = parse(&[
+            "model",
+            "import",
+            "model.onnx",
+            "--name",
+            "Reference",
+            "--model-version",
+            "2",
+        ])
+        .unwrap();
+        assert!(matches!(command, CommandAction::Model(_)));
+    }
+
     #[test]
     fn files_panes_and_views_are_parsed() {
         let options = parse(&[

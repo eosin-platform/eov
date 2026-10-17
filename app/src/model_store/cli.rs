@@ -79,8 +79,8 @@ pub(crate) struct FetchArgs {
     /// What the model is called (shown by `eov model list`).
     #[arg(long, value_name = "NAME")]
     name: Option<String>,
-    /// The model's version.
-    #[arg(long, value_name = "VERSION")]
+    /// The model's version (`--version` is eov's own).
+    #[arg(id = "model-version", long = "model-version", value_name = "VERSION")]
     version: Option<String>,
     /// The file's size in bytes (checked; a larger download stops early).
     #[arg(long, value_name = "BYTES")]
@@ -112,8 +112,8 @@ pub(crate) struct ImportArgs {
     /// What the model is called.
     #[arg(long, value_name = "NAME")]
     name: Option<String>,
-    /// The model's version.
-    #[arg(long, value_name = "VERSION")]
+    /// The model's version (`--version` is eov's own).
+    #[arg(id = "model-version", long = "model-version", value_name = "VERSION")]
     version: Option<String>,
     /// A file the model needs next to it (FILE, or SHA256=FILE to check
     /// it). Repeat for more.
