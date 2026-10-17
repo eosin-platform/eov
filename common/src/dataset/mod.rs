@@ -46,7 +46,7 @@ pub use config::{
 pub use discovery::{
     DICOM_WSI_SOP_CLASS, DicomHeader, Discovery, SUPPORTED_SLIDE_EXTENSIONS, SkippedInput,
     SlideInput, dicom_series_uid, dicom_series_uid_within, discover_slides, expand_inputs,
-    is_supported_slide_extension, non_slide_dicom_reason, non_slide_tiff_reason,
+    is_supported_slide_extension, non_slide_dicom_reason, non_slide_tiff_reason, slide_extensions,
 };
 pub use grid::{PatchCoord, PatchGrid, generate_patch_coords};
 pub use hashing::slide_sha256;

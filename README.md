@@ -303,7 +303,7 @@ eov opens slides through [OpenSlide](https://openslide.org/), so it opens the fo
 - `.btf`, `.tf2`, `.tf8` (BigTIFF, as in `.ome.btf`)
 - `.qptiff` (Akoya; read by eov itself, see below)
 
-If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)).
+If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)). Plugins can add formats eov does not read itself (Philips iSyntax or Olympus VSI readers, for example): their extensions then appear in the file picker and the series bar, and the plugin opens those slides in the window and in `eov batch` (see [Slide formats](plugin_api/README.md#slide-formats)). eov's own readers keep the formats they read.
 
 ### OME-TIFF, fluorescence and multiplex
 
@@ -812,7 +812,7 @@ eov call quantify '{"model": "h-dab", "stain": "DAB", "thresholds": [0.2, 0.6, 1
 
 ## Plugins
 
-Plugins extend eov with tools, overlays, panels, filters and analyses. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
+Plugins extend eov with tools, overlays, panels, filters, analyses and slide formats. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
 
 ### Annotations Plugin
 

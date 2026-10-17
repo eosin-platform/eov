@@ -8,7 +8,10 @@
 //! - a CPU viewport filter,
 //! - persisted settings and a background job with progress,
 //! - a batch command for headless runs over many slides (`eov batch run
-//!   example_plugin:tissue-stats SLIDES --out DIR`).
+//!   example_plugin:tissue-stats SLIDES --out DIR`),
+//! - a slide format: `.excheck` files, whose first line is
+//!   `eov-example-checker`, open as an 8192 × 6144 checkerboard slide with
+//!   three levels (`[[slide_formats]]` in `plugin.toml`, [`CheckerSlide`]).
 //!
 //! Build it with `cargo build --release -p eov-example-plugin` and package
 //! `plugin.toml`, `ui/` and the library into a tar archive named
@@ -274,7 +277,82 @@ fn tissue_stats(
     }))
 }
 
+/// The first line of an `.excheck` file.
+pub const CHECKER_HEADER: &str = "eov-example-checker";
+
+/// A slide of the example format: 256-pixel squares (at full resolution)
+/// in two colours, on three levels.
+pub struct CheckerSlide;
+
+impl CheckerSlide {
+    const WIDTH: u64 = 8192;
+    const HEIGHT: u64 = 6144;
+    const SQUARE: u64 = 256;
+    const DARK: [u8; 4] = [150, 60, 120, 255];
+    const LIGHT: [u8; 4] = [240, 220, 235, 255];
+
+    /// The colour at level-0 pixel (`x`, `y`).
+    pub fn color(x: u64, y: u64) -> [u8; 4] {
+        if (x / Self::SQUARE + y / Self::SQUARE).is_multiple_of(2) {
+            Self::DARK
+        } else {
+            Self::LIGHT
+        }
+    }
+}
+
+impl SlideReader for CheckerSlide {
+    fn info(&self) -> SlideInfo {
+        SlideInfo {
+            levels: (0..3)
+                .map(|level| SlideLevel {
+                    width: Self::WIDTH >> (2 * level),
+                    height: Self::HEIGHT >> (2 * level),
+                    downsample: Some(f64::from(1u32 << (2 * level))),
+                    tile_width: Some(256),
+                    tile_height: Some(256),
+                })
+                .collect(),
+            vendor: Some("example-checker".into()),
+            mpp_x: Some(0.5),
+            mpp_y: Some(0.5),
+            objective_power: Some(20.0),
+            ..Default::default()
+        }
+    }
+
+    fn read_region(&self, region: &SlideRegion, out: &mut [u8]) -> Result<(), String> {
+        let downsample = 1u64 << (2 * region.level);
+        for (row, line) in out.chunks_exact_mut(region.width as usize * 4).enumerate() {
+            let y = (region.y + row as u64) * downsample;
+            for (col, px) in line.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                let x = (region.x + col as u64) * downsample;
+                *px = Self::color(x, y);
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Plugin for ExamplePlugin {
+    /// Opens `.excheck` files that start with [`CHECKER_HEADER`].
+    fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
+        use std::io::Read;
+        let mut start = Vec::with_capacity(CHECKER_HEADER.len());
+        std::fs::File::open(&request.location)
+            .and_then(|file| {
+                file.take(CHECKER_HEADER.len() as u64)
+                    .read_to_end(&mut start)
+            })
+            .map_err(|error| error.to_string())?;
+        if start != CHECKER_HEADER.as_bytes() {
+            return Err(format!(
+                "not an example checkerboard (it must start with {CHECKER_HEADER})"
+            ));
+        }
+        Ok(Box::new(CheckerSlide))
+    }
+
     fn create(host: Host, init: PluginInit) -> Result<Self, String> {
         host.add_toolbar_button(ToolbarButtonSpec {
             button_id: SIDEBAR_BUTTON.into(),
@@ -594,5 +672,61 @@ mod tests {
         h.apply_filter(FILTER, &mut pixels, 1, 1, FilterView::default())
             .unwrap();
         assert_eq!(pixels, vec![255, 245, 0, 255]);
+    }
+}
+
+#[cfg(test)]
+mod slide_tests {
+    use super::*;
+    use eov_plugin_api::testing::TestHarness;
+
+    fn request(path: &std::path::Path) -> SlideOpenRequest {
+        SlideOpenRequest {
+            format_id: "checker".into(),
+            location: path.to_string_lossy().into_owned(),
+            is_uri: false,
+        }
+    }
+
+    #[test]
+    fn checkerboard_slides_open_through_the_slide_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("board.excheck");
+        std::fs::write(&path, format!("{CHECKER_HEADER}\n")).unwrap();
+        let harness = TestHarness::<ExamplePlugin>::new().unwrap();
+        let slide = harness.open_slide(&request(&path)).unwrap();
+        let info = slide.info().unwrap();
+        assert_eq!(info.levels.len(), 3);
+        assert_eq!((info.levels[2].width, info.levels[2].height), (512, 384));
+        // Level 0 at a square's corner, and level 2 (16 level-0 pixels per
+        // pixel) across a square boundary.
+        let corner = slide
+            .read_region(SlideRegion {
+                level: 0,
+                x: 255,
+                y: 0,
+                width: 2,
+                height: 1,
+            })
+            .unwrap();
+        assert_eq!(&corner[..4], CheckerSlide::DARK);
+        assert_eq!(&corner[4..8], CheckerSlide::LIGHT);
+        let coarse = slide
+            .read_region(SlideRegion {
+                level: 2,
+                x: 15,
+                y: 0,
+                width: 2,
+                height: 1,
+            })
+            .unwrap();
+        assert_eq!(&coarse[..4], CheckerSlide::DARK);
+        assert_eq!(&coarse[4..8], CheckerSlide::LIGHT);
+
+        // Other files are refused with the reason.
+        let other = dir.path().join("other.excheck");
+        std::fs::write(&other, "something else").unwrap();
+        let error = harness.open_slide(&request(&other)).err().unwrap();
+        assert!(error.message.contains(CHECKER_HEADER), "{}", error.message);
     }
 }

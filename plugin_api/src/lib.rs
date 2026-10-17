@@ -43,9 +43,11 @@ pub use manifest::PluginManifest;
 
 /// Everything a plugin usually needs: `use eov_plugin_api::prelude::*;`.
 pub mod prelude {
-    pub use crate::abi::{FfiErrorKind, FilterView, RegionRequest};
+    pub use crate::abi::{FfiErrorKind, FilterView, RegionRequest, SlideRegion};
     pub use crate::protocol::*;
-    pub use crate::sdk::{Frame, Host, HostError, HostResult, Image, Job, Layer, Plugin, Surface};
+    pub use crate::sdk::{
+        Frame, Host, HostError, HostResult, Image, Job, Layer, Plugin, SlideReader, Surface,
+    };
     pub use serde_json::{Map, Value, json};
 }
 

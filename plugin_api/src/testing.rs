@@ -44,7 +44,7 @@ use crate::abi::{
     PluginBox, RasterUpload, RegionRequest,
 };
 use crate::protocol::{methods, *};
-use crate::sdk::{Image, Plugin, create_plugin};
+use crate::sdk::{Image, Plugin, create_plugin, slide_source_of};
 use abi_stable::{
     sabi_trait::TD_Opaque,
     std_types::{RErr, ROk, RSliceMut, RStr, RString},
@@ -796,6 +796,15 @@ impl<P: Plugin> TestHarness<P> {
     }
 
     /// Invokes a surface callback.
+    /// Opens a slide through the plugin's slide source as eov does, through
+    /// the FFI: what [`TestSlide`] returns is what eov would get.
+    pub fn open_slide(&self, request: &SlideOpenRequest) -> Result<TestSlide, FfiError> {
+        let source = slide_source_of::<P>(&self.instance).into_result()?;
+        let json = serde_json::to_string(request).map_err(|e| FfiError::failed(e.to_string()))?;
+        let slide = source.open(RStr::from_str(&json)).into_result()?;
+        Ok(TestSlide { slide })
+    }
+
     pub fn ui_callback(
         &self,
         surface_id: &str,
@@ -884,6 +893,38 @@ impl<P: Plugin> TestHarness<P> {
 impl<P: Plugin> Drop for TestHarness<P> {
     fn drop(&mut self) {
         self.instance.shutdown();
+    }
+}
+
+/// A slide opened with [`TestHarness::open_slide`].
+pub struct TestSlide {
+    slide: crate::abi::SlideBox,
+}
+
+impl TestSlide {
+    /// The slide's metadata, checked as eov checks it.
+    pub fn info(&self) -> Result<SlideInfo, String> {
+        let json = self
+            .slide
+            .info()
+            .into_result()
+            .map_err(|e| e.message.into_string())?;
+        let info: SlideInfo = serde_json::from_str(json.as_str()).map_err(|e| e.to_string())?;
+        info.validate()?;
+        Ok(info)
+    }
+
+    /// The RGBA pixels of `region`, read into a zeroed buffer as eov reads
+    /// them.
+    pub fn read_region(&self, region: crate::abi::SlideRegion) -> Result<Vec<u8>, FfiError> {
+        let mut out = vec![0u8; region.width as usize * region.height as usize * 4];
+        self.slide
+            .read_region(
+                region,
+                abi_stable::std_types::RSliceMut::from_mut_slice(&mut out),
+            )
+            .into_result()?;
+        Ok(out)
     }
 }
 

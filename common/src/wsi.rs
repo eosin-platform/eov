@@ -42,6 +42,7 @@
 //! [`Error::HandlePoisoned`]. [`WsiFile::health`] reports what happened so
 //! a UI can tell the user.
 
+pub mod external;
 pub(crate) mod health;
 pub(crate) mod metadata;
 mod openslide_source;

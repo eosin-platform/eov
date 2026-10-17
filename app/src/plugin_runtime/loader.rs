@@ -6,9 +6,16 @@
 //! the interface before any plugin code runs (PLG-1). Unlike
 //! `RootModule::load_from_file`, this keeps one module per library, so any
 //! number of plugins can be loaded.
+//!
+//! abi_stable refuses a module with fewer fields than the host's copy of
+//! its type, so the root module is checked as plugin API 1.0 defined it
+//! (every 1.x module extends that) and, for libraries whose module has the
+//! fields added since (the slide source), once more with
+//! the full layout.
 
+use abi_stable::prefix_type::PrefixRefTrait;
 use abi_stable::std_types::RStr;
-use eov_plugin_api::abi::{self, HostBox, PluginBox, PluginModuleRef};
+use eov_plugin_api::abi::{self, HostBox, PluginBox, PluginModuleRef, SlideSourceBox};
 use eov_plugin_api::protocol::PluginInit;
 use semver::Version;
 use std::path::{Path, PathBuf};
@@ -41,28 +48,71 @@ impl std::error::Error for LoadError {}
 /// A loaded, version-checked root module.
 #[derive(Clone, Copy)]
 pub struct Module {
-    module: PluginModuleRef,
+    module: Root,
+}
+
+#[derive(Clone, Copy)]
+enum Root {
+    /// Built before slide sources were added.
+    V1_0(abi::v1_0::PluginModuleRef),
+    Full(PluginModuleRef),
 }
 
 impl Module {
     /// Wraps a module obtained in-process (tests, statically linked plugins).
     pub fn from_ref(module: PluginModuleRef) -> Result<Self, LoadError> {
         check_versions(module.abi_version(), module.api_version().as_str())?;
-        Ok(Self { module })
+        Ok(Self {
+            module: Root::Full(module),
+        })
+    }
+
+    /// Wraps a module that has only plugin API 1.0's fields.
+    pub fn from_1_0(module: abi::v1_0::PluginModuleRef) -> Result<Self, LoadError> {
+        check_versions(module.abi_version(), module.api_version().as_str())?;
+        Ok(Self {
+            module: Root::V1_0(module),
+        })
     }
 
     pub fn api_version(&self) -> &'static str {
-        self.module.api_version().as_str()
+        match self.module {
+            Root::V1_0(module) => module.api_version().as_str(),
+            Root::Full(module) => module.api_version().as_str(),
+        }
     }
 
     /// Calls the plugin's `create`.
     pub fn instantiate(&self, host: HostBox, init: &PluginInit) -> Result<PluginBox, LoadError> {
         let init_json =
             serde_json::to_string(init).map_err(|e| LoadError::Create(e.to_string()))?;
-        let create = self.module.create();
+        let create = match self.module {
+            Root::V1_0(module) => module.create(),
+            Root::Full(module) => module.create(),
+        };
         create(host, RStr::from_str(&init_json))
             .into_result()
             .map_err(|e| LoadError::Create(e.message.into_string()))
+    }
+
+    /// Whether the library was built with slide sources.
+    #[cfg(test)]
+    pub fn has_slide_source(&self) -> bool {
+        matches!(self.module, Root::Full(module) if module.slide_source().is_some())
+    }
+
+    /// The slide source of `instance`, which this module created; `None`
+    /// for libraries built before slide sources were added.
+    pub fn slide_source(&self, instance: &PluginBox) -> Option<Result<SlideSourceBox, String>> {
+        let Root::Full(module) = self.module else {
+            return None;
+        };
+        let get = module.slide_source()?;
+        Some(
+            get(instance)
+                .into_result()
+                .map_err(|error| error.message.into_string()),
+        )
     }
 }
 
@@ -116,16 +166,33 @@ pub fn library_path(package_root: &Path, id: &str) -> Result<PathBuf, LoadError>
 pub fn load_library(path: &Path) -> Result<Module, LoadError> {
     let header = abi_stable::library::lib_header_from_path(path)
         .map_err(|e| LoadError::Open(e.to_string()))?;
-    let module = header
-        .init_root_module::<PluginModuleRef>()
-        .map_err(|e| match e {
-            abi_stable::library::LibraryError::IncompatibleVersionNumber { .. }
-            | abi_stable::library::LibraryError::AbiInstability(_) => {
-                LoadError::Incompatible(e.to_string())
-            }
-            other => LoadError::Open(other.to_string()),
-        })?;
-    Module::from_ref(module)
+    let incompatible = |e: abi_stable::library::LibraryError| match e {
+        abi_stable::library::LibraryError::IncompatibleVersionNumber { .. }
+        | abi_stable::library::LibraryError::AbiInstability(_) => {
+            LoadError::Incompatible(e.to_string())
+        }
+        other => LoadError::Open(other.to_string()),
+    };
+    // The layout every 1.x module extends; then the newer fields, when the
+    // library has them.
+    let base = header
+        .init_root_module::<abi::v1_0::PluginModuleRef>()
+        .map_err(incompatible)?;
+    let has_newer = base
+        .to_prefix_ref()
+        .field_accessibility()
+        .at(abi::SLIDE_SOURCE_FIELD)
+        .is_accessible();
+    if has_newer {
+        match header.init_root_module::<PluginModuleRef>() {
+            Ok(full) => return Module::from_ref(full),
+            Err(error) => tracing::warn!(
+                "{}: its slide formats cannot be used: {error}",
+                path.display()
+            ),
+        }
+    }
+    Module::from_1_0(base)
 }
 
 #[cfg(test)]

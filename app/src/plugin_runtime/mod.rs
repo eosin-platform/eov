@@ -13,6 +13,7 @@ pub mod host_api;
 pub mod loader;
 pub mod settings;
 pub mod shared;
+pub mod slide_sources;
 pub mod undo;
 pub mod usage;
 
@@ -66,6 +67,8 @@ pub struct PluginInfo {
     pub root: PathBuf,
     /// The `.eop` the plugin came from, if any.
     pub package: Option<PathBuf>,
+    /// The slide formats its manifest declares (`[[slide_formats]]`).
+    pub slide_formats: Vec<eov_plugin_api::manifest::SlideFormatSpec>,
 }
 
 pub struct PluginSlot {
@@ -230,6 +233,27 @@ impl PluginRuntime {
                     info.version,
                     module.api_version()
                 );
+                if !info.slide_formats.is_empty() {
+                    match module.slide_source(&instance) {
+                        Some(Ok(source)) => {
+                            slide_sources::restarted(&info.id);
+                            slide_sources::register(
+                                &info.id,
+                                &info.name,
+                                &info.slide_formats,
+                                source,
+                            );
+                        }
+                        Some(Err(error)) => tracing::warn!(
+                            "Plugin '{}' declares slide formats but gave no slide source: {error}",
+                            info.id
+                        ),
+                        None => tracing::warn!(
+                            "Plugin '{}' declares slide formats but was built before slide sources were added; they are not available",
+                            info.id
+                        ),
+                    }
+                }
                 self.insert_slot(PluginSlot {
                     info,
                     status: PluginStatus::Active,
@@ -395,6 +419,9 @@ impl PluginRuntime {
         }
         slot.status = status;
         let instance = slot.instance.take();
+        if !slot.info.slide_formats.is_empty() {
+            slide_sources::unregister(plugin_id);
+        }
         self.shared.forget_plugin(plugin_id);
         self.rebuild_filters();
         if let Some(instance) = instance {
@@ -528,6 +555,237 @@ mod tests {
             dir.join(id).join("data"),
             dir.join(id).join("cache"),
         )
+    }
+
+    /// A plugin reading `.<id>` files: a 600 × 400 gradient (the pixel at
+    /// level `l`, (`x`, `y`) is `[x % 256, y % 256, 100·l, 255]`) with two
+    /// levels; a read at x = 13 panics.
+    struct Synth;
+
+    struct SynthSlide;
+
+    impl SlideReader for SynthSlide {
+        fn info(&self) -> SlideInfo {
+            SlideInfo {
+                levels: vec![
+                    SlideLevel {
+                        width: 600,
+                        height: 400,
+                        ..Default::default()
+                    },
+                    SlideLevel {
+                        width: 150,
+                        height: 100,
+                        ..Default::default()
+                    },
+                ],
+                vendor: Some("synthetic".into()),
+                mpp_x: Some(0.25),
+                mpp_y: Some(0.25),
+                ..Default::default()
+            }
+        }
+
+        fn read_region(&self, region: &SlideRegion, out: &mut [u8]) -> Result<(), String> {
+            if region.x == 13 {
+                panic!("the decoder fell over");
+            }
+            for row in 0..u64::from(region.height) {
+                for col in 0..u64::from(region.width) {
+                    let at = ((row * u64::from(region.width) + col) * 4) as usize;
+                    out[at..at + 4].copy_from_slice(&[
+                        ((region.x + col) % 256) as u8,
+                        ((region.y + row) % 256) as u8,
+                        (region.level * 100) as u8,
+                        255,
+                    ]);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl Plugin for Synth {
+        fn create(_host: Host, _init: PluginInit) -> Result<Self, String> {
+            Ok(Self)
+        }
+
+        fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
+            std::fs::metadata(&request.location).map_err(|e| e.to_string())?;
+            Ok(Box::new(SynthSlide))
+        }
+    }
+
+    /// Starts `Synth` as plugin `id` reading `.<id>` files.
+    fn start_synth(rt: &mut PluginRuntime, dir: &std::path::Path, id: &str) {
+        let module = Module::from_ref(eov_plugin_api::sdk::root_module::<Synth>());
+        rt.start(
+            PluginInfo {
+                id: id.into(),
+                name: format!("Synth {id}"),
+                version: "1.0.0".into(),
+                root: dir.to_path_buf(),
+                slide_formats: vec![eov_plugin_api::manifest::SlideFormatSpec {
+                    id: "synthetic".into(),
+                    name: "Synthetic slides".into(),
+                    extensions: vec![id.to_ascii_uppercase()],
+                    schemes: vec![],
+                }],
+                ..Default::default()
+            },
+            module,
+            dir.join(id).join("data"),
+            dir.join(id).join("cache"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn slide_formats_of_plugins_open_through_wsi_file() {
+        let (dir, mut rt) = runtime();
+        let path = dir.path().join("slide.synthone");
+        std::fs::write(&path, b"synthetic").unwrap();
+        assert!(eov_common::WsiFile::open(&path).is_err(), "unknown before");
+        start_synth(&mut rt, dir.path(), "synthone");
+        assert!(eov_common::dataset::is_supported_slide_extension(&path));
+        assert!(eov_common::dataset::slide_extensions().contains(&"synthone".to_string()));
+
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        let props = wsi.properties();
+        assert_eq!(
+            (props.width, props.height, props.levels.len()),
+            (600, 400, 2)
+        );
+        assert_eq!(props.vendor.as_deref(), Some("synthetic"));
+        assert_eq!(props.levels[1].downsample, 4.0, "from the sizes");
+        assert_eq!(
+            wsi.read_region(20, 30, 0, 2, 1).unwrap()[..4],
+            [20, 30, 0, 255]
+        );
+        assert_eq!(
+            wsi.read_region(400, 80, 1, 1, 1).unwrap()[..4],
+            [100, 20, 100, 255]
+        );
+        // Render workers read from several threads at once.
+        std::thread::scope(|scope| {
+            for t in 0..4i64 {
+                let wsi = wsi.clone();
+                scope.spawn(move || {
+                    for i in 0..10i64 {
+                        let x = 100 + t * 10 + i;
+                        assert_eq!(
+                            wsi.read_region(x, 7, 0, 1, 1).unwrap()[..4],
+                            [(x % 256) as u8, 7, 0, 255]
+                        );
+                    }
+                });
+            }
+        });
+
+        // Disabled, the plugin opens nothing, and its slides fail fast.
+        rt.disable("synthone");
+        assert!(!eov_common::dataset::is_supported_slide_extension(&path));
+        assert!(wsi.read_region(20, 30, 0, 2, 1).is_err());
+    }
+
+    /// The in-tree example plugin's checkerboard format, declared in its
+    /// own plugin.toml, through the host as a window or `eov batch` uses it.
+    #[test]
+    fn the_example_plugins_format_opens_as_declared() {
+        let manifest = eov_plugin_api::PluginManifest::from_toml(
+            include_str!("../../../plugin_api/example-plugin/plugin.toml"),
+            "example_plugin",
+        )
+        .unwrap();
+        assert_eq!(manifest.slide_formats[0].extensions, ["excheck"]);
+        let (dir, mut rt) = runtime();
+        rt.start(
+            PluginInfo {
+                id: manifest.id.clone(),
+                name: manifest.name.clone(),
+                version: manifest.version.clone(),
+                root: dir.path().to_path_buf(),
+                slide_formats: manifest.slide_formats.clone(),
+                ..Default::default()
+            },
+            Module::from_ref(example_plugin::module()),
+            dir.path().join("data"),
+            dir.path().join("cache"),
+        )
+        .unwrap();
+        let path = dir.path().join("board.excheck");
+        std::fs::write(&path, format!("{}\n", example_plugin::CHECKER_HEADER)).unwrap();
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        assert_eq!(wsi.properties().levels.len(), 3);
+        assert_eq!(wsi.properties().objective_power, Some(20.0));
+        let pixels = wsi.read_region(255, 0, 0, 2, 1).unwrap();
+        assert_eq!(pixels[..4], example_plugin::CheckerSlide::color(255, 0));
+        assert_eq!(pixels[4..8], example_plugin::CheckerSlide::color(256, 0));
+        // A file of another kind is refused with the plugin's reason.
+        let other = dir.path().join("other.excheck");
+        std::fs::write(&other, "not a board").unwrap();
+        let error = eov_common::WsiFile::open(&other).unwrap_err().to_string();
+        assert!(error.contains(example_plugin::CHECKER_HEADER), "{error}");
+        rt.disable(&manifest.id);
+    }
+
+    #[test]
+    fn a_slide_source_that_panics_is_reported_and_stopped() {
+        let (dir, mut rt) = runtime();
+        let path = dir.path().join("slide.synthtwo");
+        std::fs::write(&path, b"synthetic").unwrap();
+        start_synth(&mut rt, dir.path(), "synthtwo");
+        let wsi = eov_common::WsiFile::open(&path).unwrap();
+        let error = wsi.read_region(13, 0, 0, 1, 1).unwrap_err().to_string();
+        assert!(error.contains("panicked"), "{error}");
+        let panics = slide_sources::take_panics();
+        assert!(
+            panics
+                .iter()
+                .any(|(id, message)| &**id == "synthtwo" && message.contains("fell over")),
+            "{panics:?}"
+        );
+        // Later reads fail at once; the UI thread quarantines the plugin.
+        assert!(wsi.read_region(20, 30, 0, 2, 1).is_err());
+        assert!(rt.quarantine("synthtwo", "its slide source panicked"));
+        assert!(!eov_common::dataset::is_supported_slide_extension(&path));
+    }
+
+    /// Loads and starts real plugin libraries (`lib<id>.so` and the like)
+    /// named in `EOV_TEST_PLUGIN_LIBS`, paths separated as in `PATH`:
+    /// `EOV_TEST_PLUGIN_LIBS=… cargo test -p eov --bin eov real_plugin -- --ignored`.
+    /// Libraries built before slide sources were added load without one.
+    #[test]
+    #[ignore = "needs EOV_TEST_PLUGIN_LIBS"]
+    fn real_plugin_libraries_load_and_start() {
+        let Some(paths) = std::env::var_os("EOV_TEST_PLUGIN_LIBS") else {
+            return;
+        };
+        for path in std::env::split_paths(&paths) {
+            let (dir, mut rt) = runtime();
+            let module = loader::load_library(&path)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            eprintln!(
+                "{}: plugin API {}, built with slide sources: {}",
+                path.display(),
+                module.api_version(),
+                module.has_slide_source()
+            );
+            rt.start(
+                PluginInfo {
+                    id: "real".into(),
+                    name: "real".into(),
+                    version: "1.0.0".into(),
+                    root: dir.path().to_path_buf(),
+                    ..Default::default()
+                },
+                Ok(module),
+                dir.path().join("data"),
+                dir.path().join("cache"),
+            )
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            assert!(rt.is_active("real"));
+        }
     }
 
     #[test]

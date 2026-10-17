@@ -76,7 +76,8 @@ pub(crate) fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
 
 /// Adds slides chosen in a file dialog.
 pub(crate) fn add_inputs(ui: &AppWindow) {
-    let extensions: Vec<&str> = dataset::SUPPORTED_SLIDE_EXTENSIONS.to_vec();
+    let extensions = dataset::slide_extensions();
+    let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
     let Some(paths) = rfd::FileDialog::new()
         .add_filter("Slides", &extensions)
         .add_filter("All files", &["*"])

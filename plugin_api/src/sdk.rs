@@ -35,16 +35,61 @@
 //! Every call into the plugin is wrapped in `catch_unwind`: a panic becomes an
 //! error the host reports (and the host disables the plugin) instead of
 //! aborting eov.
+//!
+//! # Slide formats
+//!
+//! A plugin that reads slides eov cannot read itself declares the formats
+//! in its manifest (`[[slide_formats]]`), implements
+//! [`Plugin::open_slide`] and returns a [`SlideReader`] per slide;
+//! [`crate::export_plugin!`] exports the rest:
+//!
+//! ```no_run
+//! use eov_plugin_api::prelude::*;
+//!
+//! struct Flat;
+//!
+//! impl SlideReader for Flat {
+//!     fn info(&self) -> SlideInfo {
+//!         SlideInfo {
+//!             levels: vec![SlideLevel { width: 1024, height: 1024, ..Default::default() }],
+//!             ..Default::default()
+//!         }
+//!     }
+//!
+//!     fn read_region(&self, _region: &SlideRegion, out: &mut [u8]) -> Result<(), String> {
+//!         for px in out.chunks_exact_mut(4) {
+//!             px.copy_from_slice(&[230, 200, 220, 255]);
+//!         }
+//!         Ok(())
+//!     }
+//! }
+//!
+//! struct FlatFormat;
+//!
+//! impl Plugin for FlatFormat {
+//!     fn create(_host: Host, _init: PluginInit) -> Result<Self, String> {
+//!         Ok(Self)
+//!     }
+//!
+//!     fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
+//!         std::fs::metadata(&request.location).map_err(|e| e.to_string())?;
+//!         Ok(Box::new(Flat))
+//!     }
+//! }
+//!
+//! eov_plugin_api::export_plugin!(FlatFormat);
+//! ```
 
 use crate::abi::{
-    self, FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostBox, PluginBox,
-    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterUpload, RegionRequest,
+    self, FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostBox, Pixels, PluginBox,
+    PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterUpload, RegionRequest, SlideBox,
+    SlideFfi, SlideFfi_TO, SlideRegion, SlideSourceBox, SlideSourceFfi, SlideSourceFfi_TO,
 };
 use crate::protocol::{methods, *};
 use abi_stable::{
     prefix_type::PrefixTypeTrait,
-    sabi_trait::TD_Opaque,
-    std_types::{RErr, ROk, RStr, RString},
+    sabi_trait::{TD_CanDowncast, TD_Opaque},
+    std_types::{RErr, ROk, RSliceMut, RStr, RString},
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
@@ -100,8 +145,50 @@ pub trait Plugin: Send + Sync + Sized + 'static {
         Ok(())
     }
 
+    /// Opens a slide of one of the formats the manifest declares
+    /// (`[[slide_formats]]`): a file whose extension, or a
+    /// URI whose scheme, matched the format `request.format_id`.
+    ///
+    /// Called on worker threads, possibly several at once, with no host
+    /// locks held; it may take a while (a network round trip), but it must
+    /// return. An error is shown to the user as the reason the slide did
+    /// not open; a panic stops the plugin.
+    fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
+        Err(format!(
+            "this plugin reads no slide formats (asked for '{}')",
+            request.format_id
+        ))
+    }
+
     /// Called once before the plugin is unloaded. Stop your threads here.
+    /// Slides the plugin opened may still be read (and dropped) afterwards,
+    /// until eov has let go of them.
     fn shutdown(&self) {}
+}
+
+/// One slide opened by [`Plugin::open_slide`].
+///
+/// eov reads regions from its render workers, several threads at once on
+/// the same reader, so it is `Send + Sync`: guard non-thread-safe decoders
+/// with a lock of your own. Every call runs inside `catch_unwind`; a panic
+/// fails the call and stops the plugin, an `Err` fails only that read (the
+/// tile shows as missing and is tried again later).
+pub trait SlideReader: Send + Sync + 'static {
+    /// The slide's metadata, asked for once right after opening. eov checks
+    /// it ([`SlideInfo::validate`]) and refuses slides it cannot use.
+    fn info(&self) -> SlideInfo;
+
+    /// Fills `out` with the pixels of `region`, which lies inside its level
+    /// (in pixels of that level, see [`SlideRegion`]): `width·height·4`
+    /// bytes of RGBA with straight alpha, rows top to bottom. `out` arrives
+    /// transparent; leave pixels without image data as they are.
+    fn read_region(&self, region: &SlideRegion, out: &mut [u8]) -> Result<(), String>;
+
+    /// Decodes an associated image listed in [`SlideInfo::associated_images`]
+    /// at the size listed there, as RGBA with straight alpha.
+    fn read_associated_image(&self, name: &str) -> Result<Image, String> {
+        Err(format!("no associated image '{name}'"))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1167,7 +1254,8 @@ fn guarded<T>(f: impl FnOnce() -> Result<T, FfiError>) -> FfiResult<T> {
 
 #[doc(hidden)]
 pub struct Adapter<P: Plugin> {
-    plugin: P,
+    /// Shared with the slide source ([`slide_source`]).
+    plugin: Arc<P>,
 }
 
 impl<P: Plugin> Adapter<P> {
@@ -1246,10 +1334,109 @@ impl<P: Plugin> PluginFfi for Adapter<P> {
     }
 }
 
-/// Wraps a plugin value in the FFI instance type.
+/// Wraps a plugin value in the FFI instance type. It can be downcast, so
+/// [`slide_source`] finds the plugin again (only this library does that:
+/// the host never sees the type).
 #[doc(hidden)]
 pub fn into_plugin_box<P: Plugin>(plugin: P) -> PluginBox {
-    PluginFfi_TO::from_value(Adapter { plugin }, TD_Opaque)
+    PluginFfi_TO::from_value(
+        Adapter {
+            plugin: Arc::new(plugin),
+        },
+        TD_CanDowncast,
+    )
+}
+
+/// The slide source of an instance: its
+/// [`Plugin::open_slide`].
+extern "C" fn slide_source<P: Plugin>(instance: &PluginBox) -> FfiResult<SlideSourceBox> {
+    slide_source_of::<P>(instance)
+}
+
+/// [`slide_source`] for the test harness.
+#[doc(hidden)]
+pub fn slide_source_of<P: Plugin>(instance: &PluginBox) -> FfiResult<SlideSourceBox> {
+    guarded(|| {
+        let adapter = instance
+            .obj
+            .downcast_as::<Adapter<P>>()
+            .map_err(|_| FfiError::failed("the instance was not created by this plugin library"))?;
+        Ok(SlideSourceFfi_TO::from_value(
+            SourceAdapter {
+                plugin: Arc::clone(&adapter.plugin),
+            },
+            TD_Opaque,
+        ))
+    })
+}
+
+struct SourceAdapter<P: Plugin> {
+    plugin: Arc<P>,
+}
+
+impl<P: Plugin> SlideSourceFfi for SourceAdapter<P> {
+    fn open(&self, request_json: RStr<'_>) -> FfiResult<SlideBox> {
+        guarded(|| {
+            let request: SlideOpenRequest =
+                serde_json::from_str(request_json.as_str()).map_err(|e| {
+                    FfiError::new(FfiErrorKind::InvalidArguments, format!("bad request: {e}"))
+                })?;
+            let reader = self.plugin.open_slide(&request).map_err(FfiError::failed)?;
+            Ok(SlideFfi_TO::from_value(SlideAdapter { reader }, TD_Opaque))
+        })
+    }
+}
+
+struct SlideAdapter {
+    reader: Box<dyn SlideReader>,
+}
+
+impl SlideFfi for SlideAdapter {
+    fn info(&self) -> FfiResult<RString> {
+        guarded(|| to_json(&self.reader.info()).map(RString::from))
+    }
+
+    fn read_region(&self, region: SlideRegion, out: RSliceMut<'_, u8>) -> FfiResult<()> {
+        guarded(|| {
+            let out = out.into_mut_slice();
+            let expected = region.width as usize * region.height as usize * 4;
+            if out.len() != expected {
+                return Err(FfiError::new(
+                    FfiErrorKind::InvalidArguments,
+                    format!(
+                        "the buffer holds {} bytes; {}×{} RGBA needs {expected}",
+                        out.len(),
+                        region.width,
+                        region.height
+                    ),
+                ));
+            }
+            self.reader
+                .read_region(&region, out)
+                .map_err(FfiError::failed)
+        })
+    }
+
+    fn read_associated_image(&self, name: RStr<'_>) -> FfiResult<Pixels> {
+        guarded(|| {
+            let image = self
+                .reader
+                .read_associated_image(name.as_str())
+                .map_err(FfiError::failed)?;
+            Ok(Pixels {
+                width: image.width,
+                height: image.height,
+                data: image.data.into(),
+            })
+        })
+    }
+
+    fn call(&self, method: RStr<'_>, _args_json: RStr<'_>) -> FfiResult<RString> {
+        RErr(FfiError::new(
+            FfiErrorKind::Unsupported,
+            format!("the slide has no method '{}'", method.as_str()),
+        ))
+    }
 }
 
 /// Creates a plugin through the same code path the host uses.
@@ -1278,6 +1465,7 @@ pub fn root_module<P: Plugin>() -> PluginModuleRef {
         abi_version: abi::ABI_VERSION,
         api_version: RStr::from_str(abi::API_VERSION),
         create: create_instance::<P>,
+        slide_source: slide_source::<P>,
     }
     .leak_into_prefix()
 }

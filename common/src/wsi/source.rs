@@ -4,7 +4,9 @@
 //! ([`crate::ome_tiff`]) for OME-TIFF and Akoya QPTIFF, recognised by their
 //! extensions or by OME-XML or PerkinElmer-QPI XML in the first
 //! ImageDescription, and OpenSlide
-//! ([`super::openslide_source`]) for everything else. The rest of eov only
+//! ([`super::openslide_source`]) for everything else; files OpenSlide
+//! cannot open go to an external reader that claims their extension
+//! ([`super::external`]: plugins' slide sources). The rest of eov only
 //! sees `WsiFile`: a backend reads regions of real levels and associated
 //! images, and `WsiFile` builds synthetic levels, thumbnails and tiles on
 //! top, the same way for every backend.
@@ -185,5 +187,12 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
             }
         }
     }
-    super::openslide_source::open(path)
+    match super::openslide_source::open(path) {
+        Ok(opened) => Ok(opened),
+        // Formats eov does not read: a plugin's slide source may.
+        Err(error) => match super::external::opener_for(path) {
+            Some(opener) => super::external::open(path, opener.as_ref()),
+            None => Err(error),
+        },
+    }
 }

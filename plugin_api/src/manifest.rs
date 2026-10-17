@@ -17,11 +17,19 @@
 //!
 //! [ui]                               # optional
 //! slint = ">=1.17"                   # Slint version the .slint files need
+//!
+//! [[slide_formats]]                  # optional, repeatable
+//! id = "gradient"                    # ^[a-z0-9][a-z0-9_-]{0,63}$, unique here
+//! name = "Synthetic gradient slide"  # shown in the file picker
+//! extensions = ["gradient"]          # file extensions, without the dot
+//! schemes = []                       # URI schemes (`omero` for omero://…)
 //! ```
 //!
 //! The plugin library must be named after the id (`lib<id>.so`,
 //! `lib<id>.dylib` or `<id>.dll`) and sit next to `plugin.toml`. Unknown keys
-//! are ignored so that manifests written for newer hosts still load.
+//! are ignored so that manifests written for newer hosts still load (an eov
+//! without slide sources runs a plugin with `[[slide_formats]]`, without its
+//! formats).
 
 use crate::{IconDescriptor, PluginError, PluginResult};
 use semver::{Version, VersionReq};
@@ -53,6 +61,120 @@ pub struct PluginUi {
     pub slint: Option<String>,
 }
 
+/// Most `[[slide_formats]]` a manifest may declare.
+pub const MAX_SLIDE_FORMATS: usize = 16;
+
+/// URI schemes no plugin may claim: local files and eov's own links.
+pub const RESERVED_SCHEMES: &[&str] = &["file", "eov"];
+
+/// A slide format the plugin reads, declared so that eov
+/// knows its file extensions and URI schemes without running plugin code:
+/// the file picker, the series bar, folder scans and `eov batch` offer
+/// them, and opening a matching slide asks the plugin's slide source.
+///
+/// eov's own readers keep the extensions they read (`svs`, `tif`, `dcm`,
+/// …): a plugin claiming one of them is asked only for files those readers
+/// cannot open.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SlideFormatSpec {
+    /// Unique within the plugin (`^[a-z0-9][a-z0-9_-]{0,63}$`); the slide
+    /// source learns which format matched from it.
+    pub id: String,
+    /// Shown in the file picker, e.g. "Philips iSyntax".
+    pub name: String,
+    /// File extensions without the dot (`["isyntax"]`): 1–16 ASCII letters
+    /// or digits, matched without regard to case.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// URI schemes for slides that are not local files (`["omero"]` claims
+    /// `omero://…`): a letter, then letters, digits, `+`, `-` or `.`, 2–32
+    /// characters in all. `file` and `eov` are reserved.
+    #[serde(default)]
+    pub schemes: Vec<String>,
+}
+
+impl SlideFormatSpec {
+    /// The extensions in lower case.
+    pub fn normalized_extensions(&self) -> Vec<String> {
+        self.extensions
+            .iter()
+            .map(|ext| ext.to_ascii_lowercase())
+            .collect()
+    }
+
+    /// The schemes in lower case.
+    pub fn normalized_schemes(&self) -> Vec<String> {
+        self.schemes
+            .iter()
+            .map(|scheme| scheme.to_ascii_lowercase())
+            .collect()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        let mut id = self.id.chars();
+        if !(matches!(id.next(), Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit())
+            && self.id.len() <= 64
+            && id.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'))
+        {
+            return Err(format!(
+                "slide format ids are 1–64 lowercase letters, digits, '_' or '-', got '{}'",
+                self.id
+            ));
+        }
+        if self.name.trim().is_empty() || self.name.chars().count() > 100 {
+            return Err(format!(
+                "slide format '{}' needs a name of 1–100 characters",
+                self.id
+            ));
+        }
+        if self.extensions.is_empty() && self.schemes.is_empty() {
+            return Err(format!(
+                "slide format '{}' declares neither extensions nor schemes",
+                self.id
+            ));
+        }
+        if self.extensions.len() > 32 || self.schemes.len() > 8 {
+            return Err(format!(
+                "slide format '{}' declares too many extensions (at most 32) or schemes (at most 8)",
+                self.id
+            ));
+        }
+        for extension in &self.extensions {
+            if extension.is_empty()
+                || extension.len() > 16
+                || !extension.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                return Err(format!(
+                    "slide format '{}': extensions are 1–16 letters or digits without the dot, got '{extension}'",
+                    self.id
+                ));
+            }
+        }
+        for scheme in &self.schemes {
+            let mut chars = scheme.chars();
+            let valid = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic())
+                && (2..=32).contains(&scheme.len())
+                && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+            if !valid {
+                return Err(format!(
+                    "slide format '{}': '{scheme}' is not a URI scheme (a letter, then letters, digits, '+', '-' or '.', 2–32 characters)",
+                    self.id
+                ));
+            }
+            if RESERVED_SCHEMES
+                .iter()
+                .any(|reserved| scheme.eq_ignore_ascii_case(reserved))
+            {
+                return Err(format!(
+                    "slide format '{}': the '{scheme}' scheme is eov's own",
+                    self.id
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The parsed contents of a `plugin.toml` manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginManifest {
@@ -81,6 +203,9 @@ pub struct PluginManifest {
     pub declares_environment: bool,
     #[serde(default)]
     pub ui: PluginUi,
+    /// Slide formats the plugin reads.
+    #[serde(default)]
+    pub slide_formats: Vec<SlideFormatSpec>,
 }
 
 /// Name of the manifest file inside each plugin directory.
@@ -180,6 +305,20 @@ impl PluginManifest {
                 return Err(self.error("inline icon SVG must be at most 64 KiB"));
             }
             _ => {}
+        }
+        if self.slide_formats.len() > MAX_SLIDE_FORMATS {
+            return Err(self.error(format!(
+                "at most {MAX_SLIDE_FORMATS} [[slide_formats]] may be declared"
+            )));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for format in &self.slide_formats {
+            format.validate().map_err(|message| self.error(message))?;
+            if !ids.insert(format.id.as_str()) {
+                return Err(
+                    self.error(format!("slide format id '{}' is declared twice", format.id))
+                );
+            }
         }
         Ok(())
     }
@@ -373,5 +512,44 @@ version = ">=0.4.1"
         let m = parse(&example).unwrap();
         assert_eq!(m.id, "example_plugin");
         assert!(m.declares_environment);
+        assert_eq!(m.slide_formats.len(), 1);
+        assert_eq!(m.slide_formats[0].extensions, ["gradient"]);
+    }
+
+    #[test]
+    fn slide_formats_are_declared_and_validated() {
+        let base = "id = \"reader\"\nname = \"Reader\"\nversion = \"1.1.0\"\n";
+        let m = parse(&format!(
+            "{base}[[slide_formats]]\nid = \"isyntax\"\nname = \"Philips iSyntax\"\nextensions = [\"iSyntax\"]\n\
+             [[slide_formats]]\nid = \"omero\"\nname = \"OMERO\"\nschemes = [\"omero\", \"omero+https\"]\n"
+        ))
+        .unwrap();
+        assert_eq!(m.slide_formats.len(), 2);
+        assert_eq!(m.slide_formats[0].normalized_extensions(), ["isyntax"]);
+        assert_eq!(
+            m.slide_formats[1].normalized_schemes(),
+            ["omero", "omero+https"]
+        );
+        // Manifests without formats have none.
+        assert!(parse(base).unwrap().slide_formats.is_empty());
+
+        for bad in [
+            // Neither extensions nor schemes.
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\n",
+            // Ids, names, extensions and schemes are checked.
+            "[[slide_formats]]\nid = \"Bad Id\"\nname = \"A\"\nextensions = [\"a\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"\"\nextensions = [\"a\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nextensions = [\".svs\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nextensions = [\"ome.zarr\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nschemes = [\"c\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nschemes = [\"9p\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nschemes = [\"file\"]\n",
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nschemes = [\"EOV\"]\n",
+            // Duplicate ids.
+            "[[slide_formats]]\nid = \"a\"\nname = \"A\"\nextensions = [\"a\"]\n\
+             [[slide_formats]]\nid = \"a\"\nname = \"B\"\nextensions = [\"b\"]\n",
+        ] {
+            assert!(parse(&format!("{base}{bad}")).is_err(), "accepted:\n{bad}");
+        }
     }
 }

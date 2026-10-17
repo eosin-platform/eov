@@ -2236,6 +2236,218 @@ impl ModelFetchArgs {
 /// Slide-wide JSON map type used by `file.properties`.
 pub type PropertyMap = BTreeMap<String, String>;
 
+// ---------------------------------------------------------------------------
+// Slide formats
+// ---------------------------------------------------------------------------
+
+/// Most pyramid levels a [`SlideInfo`] may list.
+pub const MAX_SLIDE_LEVELS: usize = 64;
+
+/// Longest side, in pixels, of a slide eov accepts (2^24 = 16,777,216).
+pub const MAX_SLIDE_SIDE: u64 = 1 << 24;
+
+/// Most associated images a [`SlideInfo`] may list.
+pub const MAX_ASSOCIATED_IMAGES: usize = 32;
+
+/// Most pixels of one associated image (2^28).
+pub const MAX_ASSOCIATED_IMAGE_PIXELS: u64 = 1 << 28;
+
+/// What the host asks a plugin's slide source to open
+/// ([`crate::abi::SlideSourceFfi::open`], `Plugin::open_slide` in the SDK).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SlideOpenRequest {
+    /// The `id` of the manifest's `[[slide_formats]]` entry whose extension
+    /// or URI scheme matched.
+    pub format_id: String,
+    /// The slide: an absolute file path, or the URI as the user gave it.
+    pub location: String,
+    /// Whether `location` is a URI (`scheme://…`) rather than a file path.
+    #[serde(default)]
+    pub is_uri: bool,
+}
+
+/// One pyramid level of a slide a plugin opened.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct SlideLevel {
+    pub width: u64,
+    pub height: u64,
+    /// Level-0 size divided by this level's size (1 for level 0). When
+    /// absent it is computed from the sizes, as OpenSlide does (the mean of
+    /// the two ratios).
+    #[serde(default)]
+    pub downsample: Option<f64>,
+    /// The format's native tile size, if it has a tile grid (a hint: eov
+    /// aligns its reads with it).
+    #[serde(default)]
+    pub tile_width: Option<u32>,
+    #[serde(default)]
+    pub tile_height: Option<u32>,
+}
+
+/// An associated image (`label`, `macro`, `thumbnail`, …) of a slide.
+///
+/// The label often shows the accession number or the patient's name; eov
+/// treats it as protected health information (it can be hidden, and
+/// de-identified copies leave it out).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AssociatedImageInfo {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The metadata of a slide a plugin opened
+/// ([`crate::abi::SlideFfi::info`], `SlideReader::info` in the SDK).
+///
+/// eov refuses a slide whose levels or associated images are inconsistent
+/// (see [`validate`](Self::validate)), and ignores optional values it
+/// cannot use (a pixel size that is not a positive number, a tile size
+/// above 8192, bounds outside the slide, …).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct SlideInfo {
+    /// The pyramid, full resolution first: sizes never grow and downsamples
+    /// never shrink from one level to the next.
+    pub levels: Vec<SlideLevel>,
+    /// The scanner vendor or format (`"philips"`, `"olympus"`); the format
+    /// id when absent.
+    #[serde(default)]
+    pub vendor: Option<String>,
+    /// Micrometres per level-0 pixel.
+    #[serde(default)]
+    pub mpp_x: Option<f64>,
+    #[serde(default)]
+    pub mpp_y: Option<f64>,
+    /// The objective's magnification (20, 40, 2.5, …).
+    #[serde(default)]
+    pub objective_power: Option<f64>,
+    /// The scan date as the format records it.
+    #[serde(default)]
+    pub scan_date: Option<String>,
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// The stain (`"H&E"`), if the format records it.
+    #[serde(default)]
+    pub stain: Option<String>,
+    /// Colour of areas without image data, `[r, g, b]`; white when absent.
+    #[serde(default)]
+    pub background: Option<[u8; 3]>,
+    /// The level-0 rectangle that holds image data, if smaller than the
+    /// slide (for fitting the view and thumbnails).
+    #[serde(default)]
+    pub bounds: Option<Rect>,
+    /// Every property of the slide, shown in Slide Information. Keys under
+    /// `openslide.` and `eov.` are set by eov from the fields above.
+    #[serde(default)]
+    pub properties: PropertyMap,
+    #[serde(default)]
+    pub associated_images: Vec<AssociatedImageInfo>,
+    /// For slides opened from a URI, which have no file eov could hash: a
+    /// stable, globally unique id of the image (e.g.
+    /// `omero:omero.example.org:image:1234`), the key bookmarks,
+    /// annotations and results are kept under. Without it the URI is the
+    /// key. Ignored for files, which are identified by their content.
+    #[serde(default)]
+    pub identity: Option<String>,
+    /// Other files the slide consists of (absolute, or relative to the
+    /// opened file's folder), hashed into its identity together with the
+    /// opened file, e.g. the `.ets` files of a VSI slide.
+    #[serde(default)]
+    pub member_files: Vec<String>,
+}
+
+impl SlideInfo {
+    /// The checks eov refuses a slide for: 1–[`MAX_SLIDE_LEVELS`] levels,
+    /// sides of 1–[`MAX_SLIDE_SIDE`] pixels that never grow, finite
+    /// downsamples that never shrink (1 for level 0) and lie within a
+    /// factor of two of the size ratio, and at most
+    /// [`MAX_ASSOCIATED_IMAGES`] uniquely named associated images of at
+    /// most [`MAX_ASSOCIATED_IMAGE_PIXELS`] pixels.
+    pub fn validate(&self) -> Result<(), String> {
+        let count = self.levels.len();
+        if count == 0 || count > MAX_SLIDE_LEVELS {
+            return Err(format!(
+                "a slide has 1–{MAX_SLIDE_LEVELS} levels, not {count}"
+            ));
+        }
+        let base = self.levels[0];
+        let mut previous: Option<(SlideLevel, f64)> = None;
+        for (index, level) in self.levels.iter().enumerate() {
+            if level.width == 0
+                || level.height == 0
+                || level.width > MAX_SLIDE_SIDE
+                || level.height > MAX_SLIDE_SIDE
+            {
+                return Err(format!(
+                    "level {index} is {}×{}; sides must be 1–{MAX_SLIDE_SIDE} pixels",
+                    level.width, level.height
+                ));
+            }
+            let ratio = (base.width as f64 / level.width as f64
+                + base.height as f64 / level.height as f64)
+                / 2.0;
+            let downsample = level.downsample.unwrap_or(ratio);
+            if !downsample.is_finite() || downsample < 1.0 {
+                return Err(format!(
+                    "level {index} has downsample {downsample}; it must be a number of at least 1"
+                ));
+            }
+            if index == 0 && (downsample - 1.0).abs() > 1e-6 {
+                return Err(format!("level 0 has downsample {downsample}, not 1"));
+            }
+            if downsample > ratio * 2.0 || downsample < ratio / 2.0 {
+                return Err(format!(
+                    "level {index} is {}×{} but has downsample {downsample}",
+                    level.width, level.height
+                ));
+            }
+            if let Some((prev, prev_downsample)) = previous {
+                if level.width > prev.width || level.height > prev.height {
+                    return Err(format!(
+                        "level {index} ({}×{}) is larger than level {} ({}×{})",
+                        level.width,
+                        level.height,
+                        index - 1,
+                        prev.width,
+                        prev.height
+                    ));
+                }
+                if downsample < prev_downsample {
+                    return Err(format!(
+                        "level {index} has a smaller downsample than level {}",
+                        index - 1
+                    ));
+                }
+            }
+            previous = Some((*level, downsample));
+        }
+        if self.associated_images.len() > MAX_ASSOCIATED_IMAGES {
+            return Err(format!(
+                "a slide has at most {MAX_ASSOCIATED_IMAGES} associated images"
+            ));
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for image in &self.associated_images {
+            let name = image.name.as_str();
+            if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control) {
+                return Err(format!(
+                    "associated image names are 1–64 printable characters, not {name:?}"
+                ));
+            }
+            if !names.insert(name) {
+                return Err(format!("associated image {name:?} is listed twice"));
+            }
+            let pixels = u64::from(image.width) * u64::from(image.height);
+            if pixels == 0 || pixels > MAX_ASSOCIATED_IMAGE_PIXELS {
+                return Err(format!(
+                    "associated image {name:?} is {}×{}",
+                    image.width, image.height
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2339,6 +2551,58 @@ mod tests {
             "{text}"
         );
         assert_eq!(serde_json::from_str::<FileInfo>(&text).unwrap(), file);
+    }
+
+    fn level(width: u64, height: u64, downsample: Option<f64>) -> SlideLevel {
+        SlideLevel {
+            width,
+            height,
+            downsample,
+            ..SlideLevel::default()
+        }
+    }
+
+    #[test]
+    fn slide_infos_are_validated_as_eov_does() {
+        let good = SlideInfo {
+            levels: vec![
+                level(1000, 800, None),
+                level(250, 200, Some(4.0)),
+                level(63, 50, None),
+            ],
+            associated_images: vec![AssociatedImageInfo {
+                name: "label".into(),
+                width: 10,
+                height: 10,
+            }],
+            ..SlideInfo::default()
+        };
+        assert_eq!(good.validate(), Ok(()));
+        // Sparse JSON is enough.
+        let parsed: SlideInfo =
+            serde_json::from_str(r#"{"levels":[{"width":10,"height":10}]}"#).unwrap();
+        assert_eq!(parsed.validate(), Ok(()));
+
+        let bad = |change: &dyn Fn(&mut SlideInfo)| {
+            let mut info = good.clone();
+            change(&mut info);
+            info.validate().unwrap_err()
+        };
+        assert!(bad(&|i| i.levels.clear()).contains("levels"));
+        assert!(bad(&|i| i.levels[0].width = 0).contains("sides"));
+        assert!(bad(&|i| i.levels[0].height = MAX_SLIDE_SIDE + 1).contains("sides"));
+        assert!(bad(&|i| i.levels[1].width = 2000).contains("larger"));
+        assert!(bad(&|i| i.levels[0].downsample = Some(2.0)).contains("level 0"));
+        assert!(bad(&|i| i.levels[1].downsample = Some(f64::NAN)).contains("downsample"));
+        assert!(bad(&|i| i.levels[1].downsample = Some(40.0)).contains("downsample 40"));
+        // A level of the previous one's size with a smaller downsample.
+        assert!(bad(&|i| i.levels[2] = level(250, 200, Some(3.9))).contains("smaller downsample"));
+        assert!(bad(&|i| i.levels[2].downsample = Some(3.5)).contains("downsample 3.5"));
+        assert!(
+            bad(&|i| i.associated_images.push(i.associated_images[0].clone())).contains("twice")
+        );
+        assert!(bad(&|i| i.associated_images[0].width = 0).contains("label"));
+        assert!(bad(&|i| i.associated_images[0].name = String::new()).contains("names"));
     }
 
     #[test]

@@ -8,20 +8,52 @@
 //! The ABI is deliberately small. Almost everything travels as JSON messages
 //! defined in [`crate::protocol`]; only pixel data crosses as binary.
 //!
-//! - The root module ([`PluginModule`]) is an `abi_stable` *prefix type*. The
-//!   host loads it with `LibHeader::init_root_module`, which checks the
+//! - abi_stable 0.11's load-time layout check accepts a library whose
+//!   prefix type (a module or a `#[sabi_trait]` vtable) has **more** fields
+//!   than the host's copy, but rejects one with **fewer** ("too many
+//!   fields": a 1.0 library in a host whose copy has one more field).
+//! - The root module ([`PluginModule`]) is an `abi_stable` *prefix type*.
+//!   The host loads it with `LibHeader::init_root_module`, which checks the
 //!   `eov-plugin-api` major version and the layout of every type reachable
-//!   from the module before any plugin code runs.
+//!   from the module before any plugin code runs. Because of the rule above
+//!   it checks every library against the root module's base layout
+//!   ([`v1_0::PluginModule`]: the fields plugin API 1.0 was first built
+//!   with, which every 1.x module has), and then the fields added since (so
+//!   far [`PluginModule::slide_source`]) with the full layout, only when the
+//!   library's module has them. A library built before a field was added
+//!   therefore loads unchanged, and a newer one loads into an older eov,
+//!   without its additions.
 //! - [`PluginFfi`] and [`HostFfi`] are `#[sabi_trait]` objects. Their
-//!   vtables are **frozen for 1.x**: abi_stable's load-time layout check
-//!   rejects a plugin whose copy of a vtable is shorter than the host's (a
-//!   1.0 plugin in a host with one more method), so methods cannot be
-//!   appended within a major version. New capabilities are JSON methods on
-//!   [`HostFfi::call`] and new [`crate::protocol::HostEvent`]s, which older
-//!   peers answer with `Unsupported` or receive as `Unknown`; pixel data
-//!   keeps using the existing binary calls.
+//!   vtables are **frozen for 1.x**: by the rule above, a method appended
+//!   to one would make every older plugin fail the check. New capabilities
+//!   are JSON methods on [`HostFfi::call`] and new
+//!   [`crate::protocol::HostEvent`]s, which older peers answer with
+//!   `Unsupported` or receive as `Unknown`; pixel data keeps using the
+//!   existing binary calls. The same holds for [`SlideSourceFfi`] and
+//!   [`SlideFfi`]: new slide features go through
+//!   [`SlideFfi::call`], or through new root-module fields checked the same
+//!   way.
 //! - [`ABI_VERSION`] is an additional explicit handshake; it only changes
 //!   together with the crate's major version.
+//!
+//! # Slide sources
+//!
+//! A plugin can read slide formats eov does not read itself (Philips
+//! iSyntax, Olympus VSI, Leica LIF, remote sources such as DICOMweb or
+//! OMERO). It declares them in its manifest (`[[slide_formats]]`, see
+//! [`crate::manifest::SlideFormatSpec`]), so eov knows the extensions and URI
+//! schemes without running plugin code, and the SDK exports the root
+//! module's [`PluginModule::slide_source`], which hands the host the
+//! instance's [`SlideSourceFfi`]. Opening a slide returns a [`SlideFfi`]
+//! handle: the metadata as JSON ([`crate::protocol::SlideInfo`]), region
+//! reads into a host buffer and associated images.
+//!
+//! Threading: a slide source and its slides are `Send + Sync` and are
+//! called from worker threads (slide openers, render workers, exports,
+//! batch runs), several at once and on the same handle. eov holds none of
+//! its locks while it calls them. A call that panics fails (the SDK turns
+//! the panic into [`FfiErrorKind::Panicked`]) and the plugin is stopped;
+//! one that returns an error fails only that read.
 
 // `#[sabi_trait]` expands to impls inside an anonymous const, which trips this
 // lint on current compilers; the generated code is correct.
@@ -47,6 +79,14 @@ pub const MAX_REGION_PIXELS: u64 = 8192 * 8192;
 
 /// Largest raster, in pixels, a single [`HostFfi::put_raster`] may upload.
 pub const MAX_RASTER_PIXELS: u64 = 4096 * 4096;
+
+/// Largest region, in pixels, the host asks a [`SlideFfi::read_region`]
+/// for at once (larger reads arrive in parts).
+pub const MAX_SLIDE_READ_PIXELS: u64 = 4096 * 4096;
+
+/// The index of [`PluginModule::slide_source`] among the root module's
+/// fields (the first field added after plugin API 1.0).
+pub const SLIDE_SOURCE_FIELD: usize = 3;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -274,11 +314,87 @@ pub trait HostFfi: Send + Sync {
 pub type HostBox = HostFfi_TO<'static, RBox<()>>;
 
 // ---------------------------------------------------------------------------
+// Slide sources (implemented by plugins, called by the host)
+// ---------------------------------------------------------------------------
+
+/// A region of one pyramid level, in pixels **of that level** (unlike
+/// [`RegionRequest`], whose corner is in level-0 pixels).
+///
+/// The host only asks for regions inside the level (`x + width` and
+/// `y + height` within the level's size, as [`crate::protocol::SlideInfo`]
+/// gives it) of at most [`MAX_SLIDE_READ_PIXELS`] pixels; it reads areas
+/// past the edges as "no data" itself.
+#[repr(C)]
+#[derive(StableAbi, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SlideRegion {
+    /// Index into [`crate::protocol::SlideInfo::levels`].
+    pub level: u32,
+    /// Top-left corner, in pixels of `level`.
+    pub x: u64,
+    pub y: u64,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The slide formats one plugin instance reads (see the
+/// [module documentation](self#slide-sources-plugin-api-11)).
+///
+/// `Send + Sync`: the host opens slides from worker threads, several at
+/// once, with none of its locks held.
+#[sabi_trait]
+pub trait SlideSourceFfi: Send + Sync {
+    /// Opens a slide. `request_json` is a JSON
+    /// [`crate::protocol::SlideOpenRequest`]: which of the manifest's
+    /// formats matched, and the file path or URI.
+    #[sabi(last_prefix_field)]
+    fn open(&self, request_json: RStr<'_>) -> FfiResult<SlideBox>;
+}
+
+/// An owned slide source.
+pub type SlideSourceBox = SlideSourceFfi_TO<'static, RBox<()>>;
+
+/// One open slide.
+///
+/// `Send + Sync`: render workers read regions concurrently, from several
+/// threads at once on the same handle, with none of the host's locks held.
+/// The host drops the handle (from any thread, possibly after the plugin's
+/// `shutdown`) when the slide is closed everywhere.
+#[sabi_trait]
+pub trait SlideFfi: Send + Sync {
+    /// The slide's metadata as a JSON [`crate::protocol::SlideInfo`].
+    /// Called once, right after opening; the host validates it.
+    fn info(&self) -> FfiResult<RString>;
+
+    /// Writes `region` into `out`: `region.width·region.height·4` bytes of
+    /// RGBA with straight alpha, rows top to bottom, no padding. `out`
+    /// arrives zeroed, i.e. transparent: pixels without image data may be
+    /// left alone (the host shows them as the slide's background).
+    fn read_region(&self, region: SlideRegion, out: RSliceMut<'_, u8>) -> FfiResult<()>;
+
+    /// Decodes the associated image `name` (one listed in
+    /// [`crate::protocol::SlideInfo::associated_images`], at the size listed
+    /// there) as RGBA with straight alpha.
+    fn read_associated_image(&self, name: RStr<'_>) -> FfiResult<Pixels>;
+
+    /// A JSON method for slide features added later (the vtable is frozen); unknown methods answer [`FfiErrorKind::Unsupported`].
+    #[sabi(last_prefix_field)]
+    fn call(&self, method: RStr<'_>, args_json: RStr<'_>) -> FfiResult<RString>;
+}
+
+/// An owned slide handle.
+pub type SlideBox = SlideFfi_TO<'static, RBox<()>>;
+
+// ---------------------------------------------------------------------------
 // Root module
 // ---------------------------------------------------------------------------
 
 /// The root module every plugin library exports (via
 /// [`crate::export_plugin!`]).
+///
+/// Fields after `create` were added in later 1.x versions; a module built
+/// against an older version does not have them (see the
+/// [compatibility rules](self#compatibility-rules)), so their accessors
+/// return `Option`.
 #[repr(C)]
 #[derive(StableAbi)]
 #[sabi(kind(Prefix(prefix_ref = PluginModuleRef)))]
@@ -292,6 +408,12 @@ pub struct PluginModule {
     /// [`crate::protocol::PluginInit`].
     #[sabi(last_prefix_field)]
     pub create: extern "C" fn(host: HostBox, init_json: RStr<'_>) -> FfiResult<PluginBox>,
+    /// The slide source of an instance this module created (missing in
+    /// libraries built before slide sources were added)
+    /// (the formats of the manifest's `[[slide_formats]]`). The host asks
+    /// for it once, after `create`, for plugins that declare formats.
+    #[sabi(missing_field(option))]
+    pub slide_source: extern "C" fn(instance: &PluginBox) -> FfiResult<SlideSourceBox>,
 }
 
 impl RootModule for PluginModuleRef {
@@ -299,6 +421,37 @@ impl RootModule for PluginModuleRef {
     const BASE_NAME: &'static str = "eov_plugin";
     const NAME: &'static str = "eov plugin";
     const VERSION_STRINGS: VersionStrings = package_version_strings!();
+}
+
+/// The root module as plugin API 1.0 defined it, frozen: the layout the
+/// host checks every plugin library against first (see the
+/// [compatibility rules](self#compatibility-rules)). Plugins never use it.
+pub mod v1_0 {
+    use super::{FfiResult, HostBox, PluginBox};
+    use abi_stable::{
+        StableAbi, declare_root_module_statics, library::RootModule, package_version_strings,
+        sabi_types::VersionStrings, std_types::RStr,
+    };
+
+    /// [`super::PluginModule`] without the fields added after 1.0. Its
+    /// name, field names and types must never change.
+    #[repr(C)]
+    #[derive(StableAbi)]
+    #[sabi(kind(Prefix(prefix_ref = PluginModuleRef)))]
+    #[sabi(missing_field(panic))]
+    pub struct PluginModule {
+        pub abi_version: u32,
+        pub api_version: RStr<'static>,
+        #[sabi(last_prefix_field)]
+        pub create: extern "C" fn(host: HostBox, init_json: RStr<'_>) -> FfiResult<PluginBox>,
+    }
+
+    impl RootModule for PluginModuleRef {
+        declare_root_module_statics! {PluginModuleRef}
+        const BASE_NAME: &'static str = "eov_plugin";
+        const NAME: &'static str = "eov plugin";
+        const VERSION_STRINGS: VersionStrings = package_version_strings!();
+    }
 }
 
 /// Returns the expected shared-library file name for a plugin id on the
@@ -338,6 +491,70 @@ mod tests {
             FfiError::new(FfiErrorKind::Unsupported, "y").kind(),
             FfiErrorKind::Unsupported
         );
+    }
+
+    extern "C" fn refuse(_host: HostBox, _init_json: RStr<'_>) -> FfiResult<PluginBox> {
+        abi_stable::std_types::RErr(FfiError::failed("test module"))
+    }
+
+    extern "C" fn no_source(_instance: &PluginBox) -> FfiResult<SlideSourceBox> {
+        abi_stable::std_types::RErr(FfiError::failed("test module"))
+    }
+
+    /// A root module as a plugin built against plugin API 1.0 exports it.
+    fn module_1_0() -> v1_0::PluginModuleRef {
+        use abi_stable::prefix_type::PrefixTypeTrait;
+        v1_0::PluginModule {
+            abi_version: ABI_VERSION,
+            api_version: RStr::from_str("1.0.0"),
+            create: refuse,
+        }
+        .leak_into_prefix()
+    }
+
+    fn module_1_1() -> PluginModuleRef {
+        use abi_stable::prefix_type::PrefixTypeTrait;
+        PluginModule {
+            abi_version: ABI_VERSION,
+            api_version: RStr::from_str(API_VERSION),
+            create: refuse,
+            slide_source: no_source,
+        }
+        .leak_into_prefix()
+    }
+
+    fn has_slide_source<M: abi_stable::prefix_type::PrefixRefTrait>(module: M) -> bool {
+        module
+            .to_prefix_ref()
+            .field_accessibility()
+            .at(SLIDE_SOURCE_FIELD)
+            .is_accessible()
+    }
+
+    #[test]
+    fn hosts_check_plugins_against_the_frozen_1_0_root_module() {
+        use abi_stable::library::LibHeader;
+        // abi_stable rejects a module with fewer fields than the host's
+        // copy of its type ...
+        let old = LibHeader::from_module(module_1_0());
+        let error = old
+            .init_root_module::<PluginModuleRef>()
+            .err()
+            .expect("a 1.0 module fails the 1.1 layout")
+            .to_string();
+        assert!(error.contains("too many fields"), "{error}");
+        // ... so the host checks the 1.0 layout, which every 1.x module
+        // extends, and looks for the newer fields itself.
+        let loaded = old.init_root_module::<v1_0::PluginModuleRef>().unwrap();
+        assert_eq!(loaded.api_version().as_str(), "1.0.0");
+        assert!(!has_slide_source(loaded));
+
+        // A 1.1 module passes both (the first is what a 1.0 eov checks).
+        let new = LibHeader::from_module(module_1_1());
+        let base = new.init_root_module::<v1_0::PluginModuleRef>().unwrap();
+        assert!(has_slide_source(base));
+        let full = new.init_root_module::<PluginModuleRef>().unwrap();
+        assert!(full.slide_source().is_some());
     }
 
     #[test]

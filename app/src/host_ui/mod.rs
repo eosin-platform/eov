@@ -242,6 +242,7 @@ fn inactive_info(package: &crate::update::plugins::InstalledPackage) -> PluginIn
         repository: package.provenance.repository.clone(),
         root: PathBuf::new(),
         package: Some(package.package_path.clone()),
+        slide_formats: Vec::new(),
     }
 }
 
@@ -304,6 +305,7 @@ impl UiHost {
                 repository: manifest.repository.clone(),
                 root: descriptor.root.clone(),
                 package: Some(package.package_path.clone()),
+                slide_formats: manifest.slide_formats.clone(),
             };
             if options.safe_mode || package.disabled {
                 runtime.add_inactive(info, PluginStatus::Disabled);
@@ -662,6 +664,12 @@ impl UiHost {
     }
 
     fn handle_filter_failures(&self) {
+        // Slide sources that panicked on a render worker.
+        for (plugin_id, message) in crate::plugin_runtime::slide_sources::take_panics() {
+            if self.runtime.borrow_mut().quarantine(&plugin_id, &message) {
+                self.plugin_failed(&plugin_id, FfiErrorKind::Panicked, &message);
+            }
+        }
         let failures = self.filters.take_failures();
         if failures.is_empty() {
             return;

@@ -24,10 +24,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-/// The slide formats eov opens (also in the file dialog, the dataset
-/// extractor and the operating system's file associations).
-const WSI_EXTENSIONS: &[&str] = eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS;
-
 pub struct OpenFileUiContext<'a> {
     pub pane_render_cache: &'a mut Vec<PaneRenderCacheEntry>,
     pub pane_ui_models: &'a mut Vec<PaneUiModels>,
@@ -110,15 +106,9 @@ fn place_in_launch_order(state: &mut AppState, pane: PaneId, tab_id: i32, placem
     });
 }
 
+/// Whether eov opens files like `path`, plugins' slide formats included.
 pub fn is_supported_wsi_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| {
-            WSI_EXTENSIONS
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(ext))
-        })
-        .unwrap_or(false)
+    eov_common::dataset::is_supported_slide_extension(path)
 }
 
 fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {

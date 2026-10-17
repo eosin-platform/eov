@@ -13,3 +13,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 eov-plugin-api = { path = "..", version = "1.0.0" }
+
+[dev-dependencies]
+tempfile = "3"

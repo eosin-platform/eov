@@ -861,8 +861,10 @@ pub fn setup_callbacks(
         ui.on_open_file_requested(move || {
             let ui = ui_weak.upgrade().unwrap();
 
+            // Plugins' slide formats included.
+            let extensions = eov_common::dataset::slide_extensions();
             let dialog = FileDialog::new()
-                .add_filter("WSI Files", eov_common::dataset::SUPPORTED_SLIDE_EXTENSIONS)
+                .add_filter("WSI Files", &extensions)
                 .add_filter("All Files", &["*"]);
 
             if let Some(path) = dialog.pick_file() {

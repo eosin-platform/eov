@@ -83,6 +83,32 @@ impl Headless {
         }
     }
 
+    /// Starts the other installed plugins that read slide formats, so the
+    /// run opens their slides too (`except` runs already).
+    fn start_slide_readers(&mut self, plugin_dir: &Path, except: &str) {
+        let policy = crate::update::policy::current();
+        let host = crate::update::compat::host_version();
+        let Ok(inventory) =
+            crate::update::plugins::inventory(plugin_dir, &policy.plugin_dirs, &host)
+        else {
+            return;
+        };
+        for package in inventory
+            .packages
+            .iter()
+            .filter(|p| p.selected && p.compatible && !p.disabled && p.id != except)
+        {
+            let reads_slides = crate::plugins::discovery::load_descriptor(&package.package_path)
+                .is_ok_and(|descriptor| !descriptor.manifest.slide_formats.is_empty());
+            if reads_slides && let Err(error) = self.start(plugin_dir, &package.id) {
+                eprintln!(
+                    "warning: the slide formats of plugin '{}' are not available: {error:#}",
+                    package.id
+                );
+            }
+        }
+    }
+
     /// Loads and starts an installed plugin, with the checks the window
     /// makes (deployment policy for third-party plugins, the plugin API
     /// version). Returns its package's SHA-256 and origin.
@@ -117,6 +143,7 @@ impl Headless {
             repository: manifest.repository.clone(),
             root: descriptor.root.clone(),
             package: Some(package.package_path.clone()),
+            slide_formats: manifest.slide_formats.clone(),
         };
         let module = loader::library_path(&descriptor.root, &manifest.id)
             .and_then(|path| loader::load_library(&path));
@@ -438,6 +465,7 @@ pub(crate) fn run(plugin_dir: &Path, options: &RunOptions) -> Result<bool> {
     };
     let mut headless = Headless::new();
     let package = headless.start(plugin_dir, plugin_id)?;
+    headless.start_slide_readers(plugin_dir, plugin_id);
     run_started(headless, package, options)
 }
 
@@ -876,6 +904,63 @@ mod tests {
             !text.contains("case-42") && !text.contains("tissue.tif"),
             "{text}"
         );
+    }
+
+    /// A run over slides of a plugin's format: the example plugin reads the
+    /// checkerboard it measures.
+    #[test]
+    fn batch_runs_read_slides_of_plugin_formats() {
+        crate::paths::isolate_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let slides = dir.path().join("slides");
+        std::fs::create_dir_all(&slides).unwrap();
+        std::fs::write(
+            slides.join("board.excheck"),
+            format!("{}\n", example_plugin::CHECKER_HEADER),
+        )
+        .unwrap();
+        let manifest = eov_plugin_api::PluginManifest::from_toml(
+            include_str!("../../plugin_api/example-plugin/plugin.toml"),
+            "example_plugin",
+        )
+        .unwrap();
+        let mut headless = Headless::new();
+        headless
+            .runtime
+            .start(
+                PluginInfo {
+                    id: "example_plugin".into(),
+                    name: "Example".into(),
+                    version: "1.0.0".into(),
+                    root: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../plugin_api/example-plugin"),
+                    slide_formats: manifest.slide_formats.clone(),
+                    ..Default::default()
+                },
+                loader::Module::from_ref(example_plugin::module()),
+                dir.path().join("data"),
+                dir.path().join("cache"),
+            )
+            .unwrap();
+        let out = dir.path().join("out");
+        let options = RunOptions {
+            target: "example_plugin:tissue-stats".into(),
+            inputs: vec![slides],
+            out: out.clone(),
+            params: vec!["max_pixels=1000000".into()],
+            timeout: Some(Duration::from_secs(60)),
+            deidentify: false,
+        };
+        let all_ok = run_started(
+            headless,
+            ("1.0.0".into(), "abc".into(), "local".into()),
+            &options,
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(out.join("batch.json")).unwrap();
+        assert!(all_ok, "{text}");
+        let manifest: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(manifest["slides"][0]["status"], "ok", "{text}");
     }
 
     #[test]

@@ -1693,6 +1693,7 @@ name = "eov-example-plugin"
 version = "1.0.0"
 dependencies = [
  "eov-plugin-api",
+ "tempfile",
 ]
 
 [[package]]

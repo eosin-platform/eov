@@ -33,7 +33,25 @@ const MAX_DEPTH: usize = 64;
 
 /// Returns `true` if the file extension is a known slide format.
 pub fn is_supported_slide_extension(path: &Path) -> bool {
-    extension(path).is_some_and(|ext| SUPPORTED_SLIDE_EXTENSIONS.contains(&ext.as_str()))
+    extension(path).is_some_and(|ext| {
+        SUPPORTED_SLIDE_EXTENSIONS.contains(&ext.as_str())
+            || crate::wsi::external::external_extensions().contains(&ext)
+    })
+}
+
+/// Every extension eov opens now: [`SUPPORTED_SLIDE_EXTENSIONS`] and those
+/// of the plugins' slide sources that run ([`crate::wsi::external`]).
+pub fn slide_extensions() -> Vec<String> {
+    let mut extensions: Vec<String> = SUPPORTED_SLIDE_EXTENSIONS
+        .iter()
+        .map(|ext| ext.to_string())
+        .collect();
+    for ext in crate::wsi::external::external_extensions() {
+        if !extensions.contains(&ext) {
+            extensions.push(ext);
+        }
+    }
+    extensions
 }
 
 fn extension(path: &Path) -> Option<String> {

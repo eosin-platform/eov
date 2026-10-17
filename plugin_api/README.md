@@ -178,6 +178,66 @@ exports it converted to sRGB unless the user turns that off;
 `DisplayAdjustments::color_managed` (from `display_adjustments`, and in
 `HostEvent::DisplayChanged`) says whether a pane does.
 
+## Slide formats
+
+A plugin can read slide formats eov does not read itself, such as Philips
+iSyntax or Olympus VSI: declare them in the manifest, so eov knows their
+file extensions without running any plugin code, and implement
+`Plugin::open_slide`:
+
+```toml
+[[slide_formats]]
+id = "isyntax"                 # unique within the plugin
+name = "Philips iSyntax"       # shown in the file picker
+extensions = ["isyntax"]       # without the dot, any case
+```
+
+```rust
+impl Plugin for MyFormats {
+    fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
+        // request.format_id names the [[slide_formats]] entry,
+        // request.location the file (an absolute path).
+        Ok(Box::new(MySlide::open(&request.location)?))
+    }
+    // create, on_event, … as usual
+}
+
+impl SlideReader for MySlide {
+    fn info(&self) -> SlideInfo { /* levels, mpp, objective, properties, associated images */ }
+    fn read_region(&self, region: &SlideRegion, out: &mut [u8]) -> Result<(), String> {
+        /* region.width × region.height RGBA (straight alpha) of level
+           region.level, at (region.x, region.y) in that level's pixels */
+    }
+}
+```
+
+Then the file picker, the series bar, folder scans and `eov batch` offer
+those files, and opening one asks the plugin. eov's own readers keep the
+formats they read: a plugin that claims `tif` is asked only for TIFFs they
+cannot open. `SlideInfo::validate` lists what eov refuses (levels that grow,
+inconsistent downsamples, oversized images); optional values it cannot use
+are ignored.
+
+- **Threads.** eov reads regions from its render workers, several threads at
+  once on the same reader, with none of its locks held: a reader is
+  `Send + Sync` (guard a decoder that is not with a lock of your own). Reads
+  are at most 4096 × 4096 pixels and lie inside their level; areas outside
+  the slide never reach the plugin.
+- **Failures.** An `Err` fails that read (the tile is tried again later); a
+  panic fails it, makes the plugin's slides fail from then on, and stops the
+  plugin, as a panicking event handler does.
+- **Where.** Slides open in eov's window and in `eov batch`. `eov dataset`,
+  `eov qc`, `eov convert` and `eov probe` do not run plugins, so they report
+  such files as unsupported. Only files are opened for now: URI schemes
+  (`schemes = ["omero"]`) are accepted in the manifest but not yet offered.
+- **Compatibility.** Libraries built before slide sources were added (their
+  root module lacks the `slide_source` field) still load, without formats;
+  a library with formats loads into an eov without them, which ignores
+  `[[slide_formats]]`.
+- **Testing.** `TestHarness::open_slide` opens a slide through the same FFI
+  path eov uses; the example plugin's checkerboard format
+  (`example-plugin`, `.excheck` files) shows the whole thing.
+
 ## Plugin manifest
 
 Each package has a `plugin.toml` at its root:
