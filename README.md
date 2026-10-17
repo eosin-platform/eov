@@ -145,7 +145,7 @@ Current capabilities include:
 - Tissue QC: pen marks, possible folds and out-of-focus areas marked over the slide, summarised per slide and cohort (`eov qc`), and left out of datasets on request (see [Tissue QC](#tissue-qc)).
 - A series bar for the slides of a folder: filter, order by name, date, stain or case (the case is read from the file name: `C3L-00011-21.svs` belongs to `C3L-00011` and `patient_198_node_0.tif` to `patient_198`, a TCGA barcode to its participant, or what `series_case_pattern` in `config.toml` captures), one entry per DICOM series (DICOM annotations and reports in the folder are not listed), and PageUp/PageDown to step through them.
 - Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
-- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering and tissue-QC exclusion, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata, optional de-identification and packing into a zarr store (from the toolbar or the CLI).
+- Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering and tissue-QC exclusion, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata, optional de-identification and packing into a zarr store or an HDF5 file (from the toolbar or the CLI).
 - Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
 - Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`, or Check for Updates on the Home screen).
 - Scripting: drive the running viewer and read slide regions from Python or the shell, over a local, authenticated endpoint (see [Scripting](#scripting)).
@@ -347,6 +347,7 @@ eov plugin lock [-o <FILE>]
 eov plugin sync <LOCKFILE> [--from <DIR>] [--prune] [--dry-run] [--allow-network] [-y]
 eov plugin gc
 eov dataset patches <INPUTS>... --out <DIR> --tile-size <PX> --stride <PX>
+eov dataset pack <DIR> [--format zarr|hdf5|clam] [--hdf5-library <PATH>]
 eov convert <INPUT> <OUTPUT> [--region <X,Y,W,H>] [--level <N> | --mpp <UM>] [--compression jpeg|deflate] [--quality <Q>] [--tile-size 256|512] [--format tiff|ome-tiff] [--deidentify] [--overwrite]
 eov call <METHOD> [PARAMS] [--out <FILE>]
 eov script-endpoint [--json]
@@ -544,13 +545,30 @@ ds/
   slides.csv       # per slide
   dataset.json     # parameters, inputs and totals of the run (also for resuming)
   patches.zarr/    # after `eov dataset pack ds/` (see below)
+  patches.h5       # after `eov dataset pack ds/ --format hdf5`
+  clam/            # after `eov dataset pack ds/ --format clam`
 ```
 
 With `--deidentify`, `<slide-stem>` is replaced by an opaque `slide-<id>`.
 
 Tile filenames encode the origin coordinates and tile size with zero-padded values for lexical sorting. Tiles from different slides are placed in separate subdirectories so filenames cannot collide.
 
-`eov dataset pack ds/` packs a finished dataset into `ds/patches.zarr`, a zarr v2 store (zstd chunks, consolidated metadata) for training code that reads arrays: `images` (N, H, W, 3) uint8 with one chunk per patch, `masks` (N, H, W) when the dataset has them, `coords` (N, 2) level-0 x and y, `slide` (N,) and `label` (N,) indices, and attributes listing the slides (id, pixel size, level and downsample read) and the classes. Patches keep the order of `metadata.jsonl`; packing again replaces the store. (HDF5 is not written.)
+`eov dataset pack ds/` packs a finished dataset into `ds/patches.zarr`, a zarr v2 store (zstd chunks, consolidated metadata) for training code that reads arrays: `images` (N, H, W, 3) uint8 with one chunk per patch, `masks` (N, H, W) when the dataset has them, `coords` (N, 2) level-0 x and y, `slide` (N,) and `label` (N,) indices, and attributes listing the slides (id, pixel size, level and downsample read) and the classes. Patches keep the order of `metadata.jsonl`; packing again replaces the store once the new one is complete, and Ctrl-C leaves the earlier one.
+
+`eov dataset pack ds/ --format hdf5` writes the same arrays and attributes to `ds/patches.h5` instead, for h5py and other HDF5 readers: images and masks in one deflated chunk per patch, the other arrays in chunks of 65 536 rows (`coords` and `slide` with the shuffle filter), in the HDF5 1.8 file format. There `slides` and `classes` are JSON text (UTF-8 strings), as HDF5 attributes have no nested lists and maps:
+
+```python
+import h5py, json
+
+with h5py.File("ds/patches.h5") as f:
+    images, labels = f["images"], f["label"][:]   # images[i] is patch i, read on access
+    slides = json.loads(f.attrs["slides"])
+    classes = json.loads(f.attrs["classes"])      # {"0": "background", "1": "Tumor", ...}
+```
+
+`eov dataset pack ds/ --format clam` writes only the patches' coordinates, one file per slide in the format of [CLAM](https://github.com/mahmoodlab/CLAM)'s patching step, for its feature extraction and other tools that read CLAM's coordinates: `ds/clam/<slide>.h5` holds `coords` (N, 2) int64, the level-0 x and y of the slide's patches, with CLAM's attributes on it: `patch_level` 0, `patch_size` the patches' width in level-0 pixels, `downsample` (1, 1), `level_dim` and `downsampled_level_dim` the slide's size, and `name`. The files are named after the slides' ids, which are their file stems (made unique when two slides share one). Giving the size at level 0 keeps it right at any extraction resolution: 256-pixel patches at 0.5 µm/px from a 0.25 µm/px slide have a `patch_size` of 512, which CLAM reads at level 0 and resizes for its model. CLAM's `extract_features_fp.py` looks for the files in `<data_h5_dir>/patches/`.
+
+`patches.h5` and the CLAM files are written by the HDF5 C library itself, version 1.10 or newer, which eov loads when the command runs; eov is not built with it, and `--format zarr` needs nothing. eov uses the library named by `--hdf5-library <PATH>` or `EOV_HDF5_LIBRARY` (the file, or a folder with it), and otherwise looks in `$HDF5_DIR/lib`, `$CONDA_PREFIX/lib` (`%CONDA_PREFIX%\Library\bin` on Windows) and then for the system's library: `libhdf5.so`, `libhdf5_serial.so` and the sonames of 1.10, 1.12 and 1.14 on Linux; `libhdf5.dylib`, also in `/opt/homebrew/lib`, `/usr/local/lib` and `/opt/local/lib`, on macOS; `hdf5.dll` on Windows. Install it with `sudo apt install libhdf5-310` (`libhdf5-103-1t64` on Ubuntu 24.04, `libhdf5-103-1` on Debian 12), `sudo dnf install hdf5`, `brew install hdf5` or `conda install -c conda-forge hdf5`. Without one, the command lists where it looked and what to install.
 
 ### Metadata
 

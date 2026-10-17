@@ -56,6 +56,9 @@ zune-jpeg = "0.5"
 zstd = { version = "0.13", default-features = false }
 # ICC colour management (slide profiles to sRGB, see `color_management`)
 moxcms = "0.7"
+# Loads the HDF5 C library at run time for `eov dataset pack --format hdf5`
+# (see `hdf5`); the same libloading wgpu's Vulkan loader uses.
+libloading = "0.8"
 
 [build-dependencies]
 pkg-config = "0.3"

@@ -33,6 +33,7 @@ pub mod error;
 pub mod export;
 pub mod file_id;
 pub mod formatting;
+pub(crate) mod hdf5;
 pub mod heatmap;
 pub mod imaging;
 pub mod job;
