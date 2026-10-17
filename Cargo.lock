@@ -1620,6 +1620,7 @@ dependencies = [
  "objc",
  "open",
  "parking_lot",
+ "percent-encoding",
  "raw-window-handle",
  "rayon",
  "regex",

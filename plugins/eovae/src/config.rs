@@ -64,6 +64,12 @@ pub struct Config {
     pub outputs: BTreeMap<String, String>,
     /// Preprocessing overrides per model (by SHA-256).
     pub overrides: BTreeMap<String, ContractOverride>,
+    /// Where the site keeps the model "Download" fetches: the `.onnx` file
+    /// (the reference model's weights come from the same folder).
+    pub download_url: Option<String>,
+    /// SHA-256 of the site's own model at `download_url`; `None` downloads
+    /// the reference model, checked against its card.
+    pub download_sha256: Option<String>,
 }
 
 impl Default for Config {
@@ -71,6 +77,8 @@ impl Default for Config {
         Self {
             model_path: None,
             runtime_path: None,
+            download_url: None,
+            download_sha256: None,
             device: DevicePreference::Auto,
             threads: 0,
             batch_size: 16,
@@ -125,7 +133,34 @@ impl Config {
         }
         self.model_path = self.model_path.filter(|p| !p.trim().is_empty());
         self.runtime_path = self.runtime_path.filter(|p| !p.trim().is_empty());
+        self.download_url = Self::parse_download_url(self.download_url.as_deref().unwrap_or(""));
+        self.download_sha256 = self
+            .download_sha256
+            .as_deref()
+            .and_then(|text| Self::parse_sha256(text).ok())
+            .flatten();
         self
+    }
+
+    /// A typed download address: trimmed, `None` when empty.
+    pub fn parse_download_url(text: &str) -> Option<String> {
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    }
+
+    /// A typed SHA-256: `Ok(None)` when empty, lower case when valid.
+    pub fn parse_sha256(text: &str) -> Result<Option<String>, String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        if eov_plugin_api::protocol::is_sha256_hex(text) {
+            Ok(Some(text.to_ascii_lowercase()))
+        } else {
+            Err(format!(
+                "'{text}' is not a SHA-256 (64 hex digits); the reference model is downloaded"
+            ))
+        }
     }
 
     pub fn effective_threads(&self) -> usize {
@@ -229,6 +264,29 @@ mod tests {
         assert_eq!(Config::parse_threads("2", 6), 2.min(max_threads()));
         assert_eq!(Config::parse_batch("0", 16), 1);
         assert_eq!(Config::parse_batch("x", 16), 16);
+    }
+
+    #[test]
+    fn download_settings_are_checked() {
+        let mut settings = Map::new();
+        settings.insert(
+            SETTINGS_KEY.into(),
+            json!({
+                "download_url": "  https://models.example.org/vae.onnx ",
+                "download_sha256": "not a hash"
+            }),
+        );
+        let (config, _) = Config::from_settings(&settings);
+        assert_eq!(
+            config.download_url.as_deref(),
+            Some("https://models.example.org/vae.onnx")
+        );
+        assert_eq!(config.download_sha256, None);
+        let upper = "A".repeat(64);
+        assert_eq!(Config::parse_sha256(&upper), Ok(Some("a".repeat(64))));
+        assert_eq!(Config::parse_sha256(" "), Ok(None));
+        assert!(Config::parse_sha256("abc").is_err());
+        assert_eq!(Config::parse_download_url("  "), None);
     }
 
     #[test]

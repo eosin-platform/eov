@@ -138,6 +138,12 @@ pub(crate) fn calibrations_file() -> PathBuf {
     data_dir().join("calibrations.toml")
 }
 
+/// The model store: models downloaded or imported for plugins
+/// (`<data>/models`, see `eov model`).
+pub(crate) fn models_dir() -> PathBuf {
+    data_dir().join("models")
+}
+
 /// What is kept at a [`StorageLocation`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -163,6 +169,7 @@ pub(crate) fn storage_locations(
     plugin_dir: &Path,
     policy_file: Option<&Path>,
     managed_plugin_dirs: &[PathBuf],
+    managed_model_dirs: &[PathBuf],
 ) -> Vec<StorageLocation> {
     use StorageKind::{File, Folder};
     let mut locations = Vec::new();
@@ -216,6 +223,20 @@ pub(crate) fn storage_locations(
         calibrations_file(),
         File,
     );
+    add(
+        "models",
+        "Models downloaded or imported for plugins (`eov model list`)",
+        models_dir(),
+        Folder,
+    );
+    for (index, dir) in managed_model_dirs.iter().enumerate() {
+        add(
+            &format!("managed-models-{index}"),
+            "Models from the administrator (read-only)",
+            dir.clone(),
+            Folder,
+        );
+    }
     add("logs", "Logs and crash reports", log_dir(), Folder);
     let plugin_data = data_dir().join("plugins");
     add(
@@ -330,7 +351,7 @@ mod tests {
         let root = isolate_for_tests();
         let config = root.join("custom.toml");
         let plugins = root.join("my-plugins");
-        let locations = storage_locations(&config, &plugins, None, &[]);
+        let locations = storage_locations(&config, &plugins, None, &[], &[]);
         let ids: Vec<&str> = locations
             .iter()
             .map(|location| location.id.as_str())
@@ -343,6 +364,7 @@ mod tests {
             "updates",
             "bookmarks",
             "calibrations",
+            "models",
             "logs",
             "plugin-data",
             "plugin-packages-cache",

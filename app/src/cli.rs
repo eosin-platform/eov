@@ -698,6 +698,12 @@ enum CliCommand {
         #[command(subcommand)]
         command: PluginCommand,
     },
+    /// Download, import, list, verify and remove the models AI plugins
+    /// use (kept by SHA-256 and shared by every plugin).
+    Model {
+        #[command(subcommand)]
+        command: crate::model_store::cli::ModelCommand,
+    },
     /// Print a slide's metadata.
     ///
     /// Size, pyramid levels, pixel size, objective, stain, scanned bounds
@@ -1230,6 +1236,7 @@ enum CommandAction {
     LaunchUi,
     ApplicationUpdate(UpdateArgs),
     Plugin(PluginCommand),
+    Model(crate::model_store::cli::ModelCommand),
     Probe {
         file: PathBuf,
         json: bool,
@@ -1386,6 +1393,7 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
     let command = match cli.command {
         Some(CliCommand::Update(args)) => CommandAction::ApplicationUpdate(args),
         Some(CliCommand::Plugin { command }) => CommandAction::Plugin(command),
+        Some(CliCommand::Model { command }) => CommandAction::Model(command),
         Some(CliCommand::Probe { file, json }) => {
             validate_input_file(&file)?;
             CommandAction::Probe { file, json }
@@ -1578,6 +1586,10 @@ pub(crate) fn maybe_run_cli_command(launch_options: &LaunchOptions) -> Result<bo
         }
         CommandAction::Plugin(command) => {
             run_plugin_command(&launch_options.plugin_dir, command)?;
+            Ok(true)
+        }
+        CommandAction::Model(command) => {
+            crate::model_store::cli::run_cli(command)?;
             Ok(true)
         }
         CommandAction::Probe { file, json } => {
@@ -2254,7 +2266,7 @@ fn validate_input_file(path: &Path) -> Result<()> {
 }
 
 /// A size for people (`1.5 GiB`).
-fn format_bytes(bytes: u64) -> String {
+pub(crate) fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["bytes", "KiB", "MiB", "GiB", "TiB"];
     let mut value = bytes as f64;
     let mut unit = 0;
@@ -2273,11 +2285,13 @@ fn format_bytes(bytes: u64) -> String {
 /// size on disk.
 fn print_storage_locations(plugin_dir: &Path, json: bool) -> Result<()> {
     let policy_file = update::policy::policy_path();
+    let policy = update::policy::current();
     let locations = crate::paths::storage_locations(
         &config::resolve_config_path()?,
         plugin_dir,
         policy_file.as_deref(),
-        &update::policy::current().plugin_dirs,
+        &policy.plugin_dirs,
+        &policy.model_dirs,
     );
     if json {
         let entries: Vec<serde_json::Value> = locations

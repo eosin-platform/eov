@@ -105,6 +105,61 @@ fn scaling_at(index: i64) -> Option<Scaling> {
     }
 }
 
+/// The server of an address, for the sidebar.
+fn host_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    host.rsplit('@').next().unwrap_or(host)
+}
+
+/// The download button's label (empty: no button), the note under it and
+/// whether the note is an error.
+fn download_text(state: &crate::plugin::State) -> (String, String, bool) {
+    // Shown while no model is ready, on hosts that keep models.
+    if !state.model_store
+        || matches!(
+            state.model,
+            ModelState::Ready { .. } | ModelState::Loading { .. }
+        )
+    {
+        return (String::new(), String::new(), false);
+    }
+    let config = &state.config;
+    let reference = crate::model::reference();
+    let args = crate::plugin::download_args(config);
+    let site = args.sha256 != reference.main().sha256;
+    let stored = state.download_stored.is_some();
+    let label = match (site, stored) {
+        (false, false) => "Download the reference model",
+        (false, true) => "Use the reference model",
+        (true, false) => "Download your site's model",
+        (true, true) => "Use your site's model",
+    };
+    let what = if site {
+        format!("Your site's model (SHA-256 {}…)", &args.sha256[..12])
+    } else {
+        format!("{} ({})", reference.name, mib(reference.bytes()))
+    };
+    let (note, error) = match (&state.model_fetch, &state.download_note) {
+        (Some(_), _) => (
+            "eov is asking you, or downloading it (see the status bar)…".to_string(),
+            false,
+        ),
+        (None, Some(note)) => (note.clone(), true),
+        (None, None) if stored => (format!("{what} is in eov's model store."), false),
+        (None, None) => match &args.url {
+            Some(url) => (format!("{what}, from {}.", host_of(url)), false),
+            None => (
+                format!(
+                    "{what}: from your site's copy. Set its address (Address…), unless your administrator has given it to eov."
+                ),
+                false,
+            ),
+        },
+    };
+    (label.to_string(), note, error)
+}
+
 fn mib(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
     if mb >= 1024.0 {
@@ -213,6 +268,19 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
         ),
     );
     set("runtime-label", json!(core.backend.runtime_label()));
+    let (label, note, note_error) = download_text(&state);
+    set("download-label", json!(label));
+    set("download-note", json!(note));
+    set("download-note-error", json!(note_error));
+    set("download-busy", json!(state.model_fetch.is_some()));
+    set(
+        "download-url",
+        json!(config.download_url.clone().unwrap_or_default()),
+    );
+    set(
+        "download-sha256",
+        json!(config.download_sha256.clone().unwrap_or_default()),
+    );
     match &model {
         Some(info) => {
             let mut detail = vec![
@@ -810,6 +878,7 @@ pub fn callback<B: Backend>(
     let mut reply = Value::Null;
     let mut rebuild_engine = false;
     let mut refresh_overlays = false;
+    let mut refresh_download = false;
     match name {
         "load-model" => {
             let id = core
@@ -852,6 +921,37 @@ pub fn callback<B: Backend>(
             lock(&core.state).runtime_dialog = Some(id);
         }
         "clear-model" => core.clear_model(),
+        "download-model" => core.download_model(),
+        "download-url-committed" => {
+            let mut state = lock(&core.state);
+            if let Some(text) = arg_str(args) {
+                let url = crate::config::Config::parse_download_url(text);
+                if url != state.config.download_url {
+                    state.config.download_url = url;
+                    state.download_note = None;
+                    state.touch_config();
+                    refresh_download = true;
+                }
+            }
+            reply = json!(state.config.download_url.clone().unwrap_or_default());
+        }
+        "download-sha256-committed" => {
+            let mut state = lock(&core.state);
+            if let Some(text) = arg_str(args) {
+                match crate::config::Config::parse_sha256(text) {
+                    Ok(sha256) => {
+                        if sha256 != state.config.download_sha256 {
+                            state.config.download_sha256 = sha256;
+                            state.download_note = None;
+                            state.touch_config();
+                            refresh_download = true;
+                        }
+                    }
+                    Err(error) => state.download_note = Some(error),
+                }
+            }
+            reply = json!(state.config.download_sha256.clone().unwrap_or_default());
+        }
         "output-selected" => {
             let mut state = lock(&core.state);
             if let (Some(index), Some(model)) = (arg_int(args), state.model_info().cloned())
@@ -1219,6 +1319,9 @@ pub fn callback<B: Backend>(
             d.all_overlays = true;
             d.hud = true;
         });
+    }
+    if refresh_download {
+        core.refresh_download();
     }
     core.dirty.mark(|d| d.sidebar = true);
     Ok(reply)

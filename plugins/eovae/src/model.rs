@@ -91,22 +91,82 @@ impl ModelInfo {
     }
 }
 
+/// One file of a model card, by its own SHA-256: what eov's model store
+/// keeps it under and checks a download or an import against.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CardFile {
+    pub file_name: &'static str,
+    pub sha256: &'static str,
+    pub size: u64,
+}
+
 /// A model eovae knows by its weights.
 struct ModelCard {
+    /// eovae's identity of the model: over every file (see
+    /// [`hash_model_files`]).
     sha256: &'static str,
     name: &'static str,
     /// Applied on top of HistoVAE's defaults.
     declarations: &'static [(&'static str, &'static str)],
+    /// Its files, the `.onnx` first.
+    files: &'static [CardFile],
+    /// A public copy of the files, checked against `files`; `None` when
+    /// there is none to check, and the site sets where to download it.
+    url: Option<&'static str>,
 }
 
-/// The reference model shipped with HistoVAE
+/// The reference model exported from HistoVAE
 /// (`pretrained/HistoVae_reconstruct.onnx` + `.onnx.data`), trained on
-/// CAMELYON17 level 0 (about 0.23 µm/px).
+/// CAMELYON17 level 0 (about 0.23 µm/px). HistoVAE publishes its PyTorch
+/// weights, not this export, so no public URL is pinned: the files'
+/// SHA-256 verify whatever a site serves or imports.
 const CARDS: &[ModelCard] = &[ModelCard {
     sha256: "cc2e3e5bb22ea87b2d30b00503b97bc1115b2b89aa30b708970054464a47c94c",
     name: "HistoVAE reference (CAMELYON17)",
     declarations: &[("mpp", "0.227")],
+    files: &[
+        CardFile {
+            file_name: "HistoVae_reconstruct.onnx",
+            sha256: "70a8deef1f01716efbc87feb181ea398425d08b5e4984ad9d4ab2b83fd354f92",
+            size: 418_269,
+        },
+        CardFile {
+            file_name: "HistoVae_reconstruct.onnx.data",
+            sha256: "cd2735866bd69648eb17df97f196f266e6e2569f8c21fa1e9779fb7e3a233ef8",
+            size: 7_618_816,
+        },
+    ],
+    url: None,
 }];
+
+/// The model "Download the reference model" fetches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reference {
+    pub name: &'static str,
+    /// The `.onnx` first, then its weights.
+    pub files: &'static [CardFile],
+    pub url: Option<&'static str>,
+}
+
+impl Reference {
+    pub fn main(&self) -> &'static CardFile {
+        &self.files[0]
+    }
+
+    pub fn bytes(&self) -> u64 {
+        self.files.iter().map(|f| f.size).sum()
+    }
+}
+
+/// eovae's reference model.
+pub fn reference() -> Reference {
+    let card = &CARDS[0];
+    Reference {
+        name: card.name,
+        files: card.files,
+        url: card.url,
+    }
+}
 
 /// Splits a 4-D input shape into (layout, height, width, batch).
 fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), String> {
@@ -713,5 +773,33 @@ pub(crate) mod tests {
         assert_eq!(info.contract.mpp, Some(0.227));
         assert_eq!(info.fixed_batch, Some(32));
         assert_eq!(info.tile_size, 256);
+        // The files a download is checked against are these files.
+        for file in reference().files {
+            let bytes = std::fs::read(path.with_file_name(file.file_name)).unwrap();
+            let digest: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            assert_eq!(digest, file.sha256, "{}", file.file_name);
+            assert_eq!(bytes.len() as u64, file.size, "{}", file.file_name);
+        }
+    }
+
+    #[test]
+    fn the_reference_card_pins_both_files() {
+        let reference = reference();
+        assert_eq!(reference.main().file_name, "HistoVae_reconstruct.onnx");
+        assert_eq!(reference.files.len(), 2);
+        assert!(
+            reference.files[1]
+                .file_name
+                .starts_with(reference.main().file_name),
+            "the weights sit next to the model under the name it records"
+        );
+        for file in reference.files {
+            assert!(eov_plugin_api::protocol::is_sha256_hex(file.sha256));
+        }
+        assert_eq!(reference.bytes(), 8_037_085);
+        assert_eq!(reference.url, None, "no public copy has been checked");
     }
 }

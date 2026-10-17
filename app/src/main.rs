@@ -31,6 +31,7 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod macos_open;
 mod measurement_store;
+mod model_store;
 mod overlay;
 mod pane_ui;
 mod paths;

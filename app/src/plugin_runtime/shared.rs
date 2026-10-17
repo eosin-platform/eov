@@ -172,6 +172,12 @@ pub enum Command {
     BatchProgress(BatchProgressArgs),
     /// For a headless batch run: a slide is done.
     BatchFinish(BatchFinishArgs),
+    /// Make a model available (`model.fetch`); answered with
+    /// `ModelFetched`.
+    ModelFetch {
+        request_id: String,
+        request: Box<crate::model_store::ModelRequest>,
+    },
 }
 
 type Wake = Box<dyn Fn() + Send + Sync>;

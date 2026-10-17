@@ -629,6 +629,33 @@ impl Host {
             .map(|r| r.request_id)
     }
 
+    // -- models ----------------------------------------------------------------
+
+    /// Makes a model available in eov's model store: answered at once when
+    /// it is stored already, otherwise downloaded once the user agrees and
+    /// verified against its SHA-256. The answer arrives as
+    /// [`HostEvent::ModelFetched`] with the returned request id. Hosts
+    /// without a model store answer [`HostError::is_unsupported`].
+    pub fn fetch_model(&self, args: ModelFetchArgs) -> HostResult<String> {
+        self.call::<_, RequestId>(methods::MODEL_FETCH, &args)
+            .map(|r| r.request_id)
+    }
+
+    /// The stored model whose main file has this SHA-256, if any.
+    pub fn resolve_model(&self, sha256: &str) -> HostResult<Option<ModelRecord>> {
+        self.call(
+            methods::MODEL_RESOLVE,
+            &ModelResolveArgs {
+                sha256: sha256.to_ascii_lowercase(),
+            },
+        )
+    }
+
+    /// Every model in eov's model store.
+    pub fn models(&self) -> HostResult<Vec<ModelRecord>> {
+        self.call(methods::MODEL_LIST, &Map::new())
+    }
+
     // -- navigation --------------------------------------------------------------
 
     pub fn set_view(&self, args: ViewSetArgs) -> HostResult<()> {

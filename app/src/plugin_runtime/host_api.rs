@@ -6,6 +6,7 @@
 //! wrote; visible effects are queued as [`Command`]s.
 
 use super::shared::{Command, HostShared, PluginContext, SurfaceCommand, ViewCommand};
+use crate::model_store::{ModelRequest, ModelStore, StoredModel};
 use crate::overlay::store::StoredRaster;
 use crate::overlay::{Owner, raster::premultiply};
 use abi_stable::{
@@ -679,6 +680,39 @@ impl HostApi {
                 self.push(Command::Post(args.token));
                 null
             }
+            methods::MODEL_FETCH => {
+                let args: ModelFetchArgs = parse(args)?;
+                let request = ModelRequest::from_args(&args, &self.ctx.id).map_err(invalid)?;
+                // Companions' URLs may be relative to this one.
+                if let Some(url) = &request.main.url {
+                    url::Url::parse(url)
+                        .map_err(|error| invalid(format!("'{url}' is not a URL: {error}")))?;
+                }
+                let request_id = self.shared.fresh_id(&format!("{}-model", self.ctx.id));
+                self.push(Command::ModelFetch {
+                    request_id: request_id.clone(),
+                    request: Box::new(request),
+                });
+                to_value(&RequestId { request_id })?
+            }
+            methods::MODEL_RESOLVE => {
+                let args: ModelResolveArgs = parse(args)?;
+                if !is_sha256_hex(&args.sha256) {
+                    return Err(invalid("sha256 must be 64 hex digits"));
+                }
+                let store = ModelStore::for_user(crate::update::policy::current());
+                to_value(&store.resolve(&args.sha256).map(|model| model.to_protocol()))?
+            }
+            methods::MODEL_LIST => {
+                let store = ModelStore::for_user(crate::update::policy::current());
+                to_value(
+                    &store
+                        .list()
+                        .iter()
+                        .map(StoredModel::to_protocol)
+                        .collect::<Vec<_>>(),
+                )?
+            }
             methods::EVENTS_SUBSCRIBE => {
                 let args: SubscribeArgs = parse(args)?;
                 let events: HashSet<String> = args.events.into_iter().collect();
@@ -1159,6 +1193,84 @@ mod tests {
         );
         host.set_setting("k", &"v").unwrap();
         assert_eq!(host.setting::<String>("k").unwrap().as_deref(), Some("v"));
+    }
+
+    #[test]
+    fn models_are_resolved_from_the_store_and_fetched_through_the_window() {
+        let (dir, shared, _ctx, host) = setup();
+        let file = dir.path().join("host-api-model.onnx");
+        std::fs::write(&file, b"a model only the host API test stores").unwrap();
+        let store = ModelStore::for_user(crate::update::policy::current());
+        let model = store
+            .import(
+                &file,
+                None,
+                &[],
+                Some("Host API test"),
+                None,
+                &std::sync::atomic::AtomicBool::new(false),
+            )
+            .unwrap();
+        let resolved = host
+            .resolve_model(&model.record.sha256.to_ascii_uppercase())
+            .unwrap()
+            .expect("the stored model");
+        assert_eq!(resolved.path, model.path().to_string_lossy());
+        assert_eq!(resolved.name.as_deref(), Some("Host API test"));
+        assert!(
+            host.models()
+                .unwrap()
+                .iter()
+                .any(|m| m.sha256 == model.record.sha256)
+        );
+        assert_eq!(host.resolve_model(&"0".repeat(64)).unwrap(), None);
+        assert_eq!(
+            host.resolve_model("nope").unwrap_err().kind,
+            FfiErrorKind::InvalidArguments
+        );
+        // Fetches are answered later, from the window.
+        let id = host
+            .fetch_model(ModelFetchArgs {
+                url: Some("https://models.example.org/m.onnx".into()),
+                sha256: "a".repeat(64),
+                ..Default::default()
+            })
+            .unwrap();
+        let commands = shared.take_commands();
+        match &commands[..] {
+            [
+                (
+                    owner,
+                    Command::ModelFetch {
+                        request_id,
+                        request,
+                    },
+                ),
+            ] => {
+                assert_eq!(**owner, *"p");
+                assert_eq!(*request_id, id);
+                assert_eq!(request.requested_by, "p");
+                assert_eq!(request.main.sha256, "a".repeat(64));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        for bad in [
+            ModelFetchArgs {
+                url: Some("not a url".into()),
+                sha256: "a".repeat(64),
+                ..Default::default()
+            },
+            ModelFetchArgs {
+                sha256: "a".repeat(63),
+                ..Default::default()
+            },
+        ] {
+            assert_eq!(
+                host.fetch_model(bad).unwrap_err().kind,
+                FfiErrorKind::InvalidArguments
+            );
+        }
+        assert!(shared.take_commands().is_empty());
     }
 
     #[test]

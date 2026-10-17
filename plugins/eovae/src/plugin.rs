@@ -231,11 +231,24 @@ pub struct State {
     /// (`layer.set_pane_visibility`); without it every pane of a slide shows
     /// the same overlay.
     pub pane_layers: bool,
+    /// The `model.fetch` request waiting for eov's answer.
+    pub model_fetch: Option<String>,
+    /// Why the last download did not happen (eov has told the user too).
+    pub download_note: Option<String>,
+    /// The main file of the download target, when eov's model store has
+    /// it (looked up when eovae starts and after the address changes).
+    pub download_stored: Option<String>,
+    /// The host keeps models (eov with `model.fetch`).
+    pub model_store: bool,
 }
 
 impl State {
     fn new(config: Config) -> Self {
         Self {
+            model_fetch: None,
+            download_note: None,
+            download_stored: None,
+            model_store: true,
             config,
             config_changed: None,
             model: ModelState::None,
@@ -287,6 +300,57 @@ impl State {
     /// The file a pane shows.
     pub fn pane_file(&self, pane: PaneId) -> Option<FileId> {
         self.panes.get(&pane).and_then(|p| p.file_id)
+    }
+}
+
+/// What "Download" asks eov for: the site's own model when its SHA-256 is
+/// set, else the reference model, whose card pins both files. Without an
+/// address here, eov uses the site's copy named in its policy, if any.
+pub fn download_args(config: &Config) -> ModelFetchArgs {
+    let reference = model::reference();
+    match &config.download_sha256 {
+        Some(sha256) if *sha256 != reference.main().sha256 => {
+            let file = config.download_url.as_deref().and_then(|url| {
+                url.split(['?', '#'])
+                    .next()
+                    .and_then(|path| path.rsplit('/').next())
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+            });
+            ModelFetchArgs {
+                url: config.download_url.clone(),
+                sha256: sha256.clone(),
+                name: Some(match file {
+                    Some(file) => format!("the site's VAE model {file}"),
+                    None => "the site's VAE model".to_string(),
+                }),
+                ..Default::default()
+            }
+        }
+        _ => {
+            let main = reference.main();
+            ModelFetchArgs {
+                url: config
+                    .download_url
+                    .clone()
+                    .or(reference.url.map(str::to_string)),
+                sha256: main.sha256.to_string(),
+                size: Some(main.size),
+                file_name: Some(main.file_name.to_string()),
+                name: Some(reference.name.to_string()),
+                version: None,
+                // The weights, from the same folder as the model.
+                companions: reference.files[1..]
+                    .iter()
+                    .map(|file| ModelFileSpec {
+                        sha256: file.sha256.to_string(),
+                        url: None,
+                        file_name: Some(file.file_name.to_string()),
+                        size: Some(file.size),
+                    })
+                    .collect(),
+            }
+        }
     }
 }
 
@@ -633,6 +697,13 @@ impl<B: Backend> Core<B> {
                 request_id,
                 confirmed,
             } => self.on_confirm(&request_id, confirmed),
+            HostEvent::ModelFetched {
+                request_id,
+                path,
+                error,
+                cancelled,
+                ..
+            } => self.on_model_fetched(&request_id, path, error, cancelled),
             HostEvent::JobCancelRequested { job_id } => {
                 let state = lock(&self.state);
                 if let Some(job) = state
@@ -713,6 +784,9 @@ impl<B: Backend> Core<B> {
         };
         if let Some(path) = model_path {
             self.load_model(PathBuf::from(path), false);
+        }
+        if !self.headless {
+            self.refresh_download();
         }
         self.dirty.everything();
         Ok(())
@@ -1177,6 +1251,92 @@ impl<B: Backend> Core<B> {
                 None => core.prebuild(),
             }
         });
+    }
+
+    // -- model downloads -------------------------------------------------------
+
+    /// Looks the download target up in eov's model store.
+    pub fn refresh_download(&self) {
+        let args = download_args(&lock(&self.state).config);
+        let found = self.host.resolve_model(&args.sha256);
+        let mut state = lock(&self.state);
+        match found {
+            Ok(record) => {
+                state.model_store = true;
+                state.download_stored = record
+                    .filter(|record| {
+                        args.companions.iter().all(|c| {
+                            record.has_companion(&c.sha256, c.file_name.as_deref().unwrap_or(""))
+                        })
+                    })
+                    .map(|record| record.path);
+            }
+            Err(error) => {
+                state.model_store = !error.is_unsupported();
+                state.download_stored = None;
+            }
+        }
+        drop(state);
+        self.dirty.mark(|d| d.sidebar = true);
+    }
+
+    /// "Download": asks eov for the model. eov answers at once when it has
+    /// it; otherwise it asks the user and downloads it, and the answer
+    /// arrives as `ModelFetched`.
+    pub fn download_model(self: &Arc<Self>) {
+        let args = {
+            let state = lock(&self.state);
+            if state.model_fetch.is_some() {
+                return;
+            }
+            download_args(&state.config)
+        };
+        let asked = self.host.fetch_model(args);
+        let mut state = lock(&self.state);
+        match asked {
+            Ok(request) => {
+                state.model_fetch = Some(request);
+                state.download_note = None;
+            }
+            Err(error) if error.is_unsupported() => {
+                state.model_store = false;
+                state.download_note = Some(
+                    "This eov cannot download models: load the model file with Load ONNX…"
+                        .to_string(),
+                );
+            }
+            Err(error) => state.download_note = Some(error.to_string()),
+        }
+        drop(state);
+        self.dirty.mark(|d| d.sidebar = true);
+    }
+
+    fn on_model_fetched(
+        self: &Arc<Self>,
+        request_id: &str,
+        path: Option<String>,
+        error: Option<String>,
+        cancelled: bool,
+    ) -> Result<(), String> {
+        {
+            let mut state = lock(&self.state);
+            if state.model_fetch.as_deref() != Some(request_id) {
+                return Ok(());
+            }
+            state.model_fetch = None;
+            // eov has told the user why; the sidebar keeps it in view.
+            state.download_note = error.filter(|_| path.is_none() && !cancelled);
+            if path.is_some() {
+                state.download_stored = path.clone();
+            }
+        }
+        if let Some(path) = path {
+            // The downloaded model becomes the default, here and in batch
+            // runs.
+            self.load_model(PathBuf::from(path), true);
+        }
+        self.dirty.mark(|d| d.sidebar = true);
+        Ok(())
     }
 
     pub fn clear_model(self: &Arc<Self>) {
