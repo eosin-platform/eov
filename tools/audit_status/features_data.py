@@ -35,11 +35,11 @@ FEATURES = [
  ]),
  ("14.3 Formats and imaging modalities", [
   ("Multichannel fluorescence / OME-TIFF", "F", "076ae1d bf47c9e", "OME-TIFF (BigTIFF, pyramids, common compressions) and Akoya QPTIFF, additive channel compositing with colour, window and gamma, a Channels panel kept per slide; CZI fluorescence is not read."),
-  ("Philips iSyntax", "N", "", "Needs a reader outside OpenSlide (e.g. libisyntax)."),
-  ("Olympus/Evident VSI, Leica LIF", "N", "", "Needs a Bio-Formats-class reader."),
+  ("Philips iSyntax", "N", "89f2f08", "Plugins can now add slide formats (`[[slide_formats]]`); a reader needs a library outside OpenSlide (e.g. libisyntax), and none ships."),
+  ("Olympus/Evident VSI, Leica LIF", "N", "89f2f08", "Plugins can now add slide formats; a reader needs a Bio-Formats-class library, and none ships."),
   ("DICOM WSI series", "F", "7849eee 0359c50", "A series is listed and extracted once."),
   ("Z-stacks / focal planes", "P", "52a367f 5841b18 8f2206b", "OME-TIFF Z-stacks and time series: Ctrl+↑/↓ and the HUD's Z stepper step through the focal planes, Ctrl+→/← and the T stepper through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane."),
-  ("Remote slides (DICOMweb, HTTP, OMERO)", "N", "", "Deliberately out of scope for the offline design."),
+  ("Remote slides (DICOMweb, HTTP, OMERO)", "N", "89f2f08", "Out of scope for the offline host; slide-format plugins are the way (the audit's suggestion), but eov opens only files through them so far, not URIs."),
   ("Writing slides; de-identified copies", "F", "d64791d 482fa9c", "`eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles; de-identified copies drop the label, macro and thumbnail and keep an allow-list of metadata. Multichannel slides are copied as their RGB composite."),
  ]),
  ("14.4 Platform, plugins and administration", [

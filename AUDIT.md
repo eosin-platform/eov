@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `7f67d4e`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `89f2f08`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -77,10 +77,10 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 ### What is still open
 
 - **SH-10** (partly fixed): The UI no longer freezes, and a failed copy says what to do instead. Copying images in the Flatpak under Wayland still needs arboard's `wayland-data-control` feature (its crates were not available offline) or X11 access in the Flatpak manifest.
-- §14.3 **Philips iSyntax** (not done): Needs a reader outside OpenSlide (e.g. libisyntax).
-- §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Needs a Bio-Formats-class reader.
+- §14.3 **Philips iSyntax** (not done): Plugins can now add slide formats (`[[slide_formats]]`); a reader needs a library outside OpenSlide (e.g. libisyntax), and none ships.
+- §14.3 **Olympus/Evident VSI, Leica LIF** (not done): Plugins can now add slide formats; a reader needs a Bio-Formats-class library, and none ships.
 - §14.3 **Z-stacks / focal planes** (partly): OME-TIFF Z-stacks and time series: Ctrl+↑/↓ and the HUD's Z stepper step through the focal planes, Ctrl+→/← and the T stepper through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane.
-- §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Deliberately out of scope for the offline design.
+- §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Out of scope for the offline host; slide-format plugins are the way (the audit's suggestion), but eov opens only files through them so far, not URIs.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
 - §14.4 **Localisation** (partly): The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English.
 
@@ -304,11 +304,11 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Feature | Status | Where | Notes |
 |---|---|---|---|
 | Multichannel fluorescence / OME-TIFF | Done | `076ae1d` `bf47c9e` | OME-TIFF (BigTIFF, pyramids, common compressions) and Akoya QPTIFF, additive channel compositing with colour, window and gamma, a Channels panel kept per slide; CZI fluorescence is not read. |
-| Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
-| Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
+| Philips iSyntax | **Not done** | `89f2f08` | Plugins can now add slide formats (`[[slide_formats]]`); a reader needs a library outside OpenSlide (e.g. libisyntax), and none ships. |
+| Olympus/Evident VSI, Leica LIF | **Not done** | `89f2f08` | Plugins can now add slide formats; a reader needs a Bio-Formats-class library, and none ships. |
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
 | Z-stacks / focal planes | **Partly** | `52a367f` `5841b18` `8f2206b` | OME-TIFF Z-stacks and time series: Ctrl+↑/↓ and the HUD's Z stepper step through the focal planes, Ctrl+→/← and the T stepper through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane. |
-| Remote slides (DICOMweb, HTTP, OMERO) | **Not done** |  | Deliberately out of scope for the offline design. |
+| Remote slides (DICOMweb, HTTP, OMERO) | **Not done** | `89f2f08` | Out of scope for the offline host; slide-format plugins are the way (the audit's suggestion), but eov opens only files through them so far, not URIs. |
 | Writing slides; de-identified copies | Done | `d64791d` `482fa9c` | `eov convert` and Save a Copy of the Slide: pyramidal (Big)TIFF and OME-TIFF copies of a slide or region, at full resolution, a stored level or a pixel size, with JPEG or lossless tiles; de-identified copies drop the label, macro and thumbnail and keep an allow-list of metadata. Multichannel slides are copied as their RGB composite. |
 
 **§14.4 Platform, plugins and administration**

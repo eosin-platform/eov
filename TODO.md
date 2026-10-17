@@ -5,37 +5,6 @@ lists every finding and §14 feature; regenerate it after a change with
 `python3 tools/audit_status/gen_status.py` (edit `status_data.py` or
 `features_data.py` next to it first). Nothing below has been pushed.
 
-## Unmerged branches
-
-Work that was stopped before it was finished. Each branch is in a git
-worktree under `.claude/worktrees/`; its last commit is marked `WIP` when it
-holds unfinished, untested changes.
-
-### Slide-source plugin type: `worktree-agent-a82d87b0b13804a70`
-
-Only an API sketch (`b225f73`) exists. This mechanism would let plugins add
-formats the host cannot read (iSyntax, VSI, LIF, DICOMweb or OMERO), keeping
-the host offline (AUDIT §14.3). Design:
-
-- **Entry point:** an optional field appended to the root module
-  `PluginModule` after its last prefix field (abi_stable prefix type). It
-  returns a new `#[sabi_trait]` source object. The frozen `PluginFfi` and
-  `HostFfi` vtables are untouched, so 1.0 plugins still load; add a test
-  that proves it.
-- **Handle:** opens a path or URI. It gives info as JSON (levels,
-  downsamples, mpp, objective, properties, associated images), reads
-  regions as RGBA `Pixels`, and reads associated images.
-  - It must be Send + Sync, because render workers read concurrently.
-  - The plugin is never called with host locks held.
-  - A panic quarantines the plugin and fails the read.
-- **Manifest:** declares the extensions and URI schemes so the host knows
-  them without loading code.
-- **Precedence:** built-in readers win for formats they read.
-- **Discovery:** the file picker, series bar, drag and drop, command line,
-  and dataset and batch discovery accept registered extensions. CLI commands
-  that do not load plugins refuse those formats with a clear message.
-- **Tests:** an in-tree synthetic format.
-
 ## Open features
 
 - **SH-10:** Copy View cannot put images on the clipboard in the Flatpak
@@ -44,8 +13,17 @@ the host offline (AUDIT §14.3). Design:
 - **Vendor Z-stacks** (NDPI, VMS, multi-focal DICOM) show one plane:
   OpenSlide exposes only one.
 - **Readers for iSyntax, Olympus/Evident VSI, Leica LIF and CZI
-  fluorescence**, and remote slides (DICOMweb, OMERO). These would come as
-  slide-source plugins once that type lands.
+  fluorescence**: plugins can now add slide formats (`[[slide_formats]]`,
+  see plugin_api/README.md), but no such reader exists yet.
+- **Slide formats from plugins, what is left:**
+  - URI schemes (remote slides such as DICOMweb or OMERO): manifests may
+    declare them, but eov opens files only. `WsiFile::open` would need to
+    take URIs, and slide identity would need `SlideInfo::identity`.
+  - `eov dataset`, `eov qc`, `eov convert` and `eov probe` do not run
+    plugins, so they report plugin formats as unsupported; `eov batch` and
+    the window read them.
+  - `eov batch` runs do not record the versions of the plugins that read
+    the slides, only the plugin that analysed them.
 - **DICOM SR** is neither read nor written. DICOM Microscopy Bulk Simple
   Annotations are.
 - **Localisation:**
@@ -86,7 +64,7 @@ the host offline (AUDIT §14.3). Design:
   - about 25 fixture directories in `~/.cache/eov/plugin-packages`.
 
   Review them and remove them if they are unwanted.
-- **Worktrees:** `.claude/worktrees/` holds the agents' worktrees; all but
-  the slide-source one (`worktree-agent-a82d87b0b13804a70`) are merged.
-  Remove them with `git worktree remove`; the branches keep their commits.
-  Their build directories have been cleaned.
+- **Worktrees:** `.claude/worktrees/` holds the agents' worktrees. Their
+  work is merged (the slide-source sketch was finished on master), so they
+  can be removed with `git worktree remove`; the branches keep their
+  commits. Their build directories have been cleaned.
