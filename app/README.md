@@ -121,7 +121,7 @@ Directories are searched recursively for supported slide formats. Partial edge t
 
 Format support is provided by OpenSlide and depends on the OpenSlide version available on the host system. Common extensions exposed by `eov` include:
 
-`.svs`, `.tif`, `.tiff`, `.dcm`, `.ndpi`, `.vms`, `.vmu`, `.scn`, `.mrxs`, `.svslide`, `.bif`, and `.czi`.
+`.svs`, `.tif`, `.tiff`, `.dcm`, `.ndpi`, `.vms`, `.vmu`, `.scn`, `.mrxs`, `.svslide`, `.bif`, `.czi`, `.btf`, `.tf2`, `.tf8`, and `.qptiff`.
 
 If OpenSlide can open a file, `eov` should be able to load it.
 

@@ -53,6 +53,7 @@
         <string>jp.co.sakura.svslide</string>
         <string>com.ventana.bif</string>
         <string>com.zeiss.czi</string>
+        <string>com.akoya.qptiff</string>
       </array>
     </dict>
     <dict>
@@ -267,6 +268,28 @@
         <key>public.mime-type</key>
         <array>
           <string>image/x-zeiss-czi</string>
+        </array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.akoya.qptiff</string>
+      <key>UTTypeDescription</key>
+      <string>Akoya QPTIFF whole-slide image</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.image</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>qptiff</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>image/x-akoya-qptiff</string>
         </array>
       </dict>
     </dict>

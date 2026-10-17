@@ -1222,3 +1222,127 @@ fn time_points_of_a_time_series_can_be_shown_one_by_one() {
     assert_eq!(flat.time_points(), 1);
     assert!(flat.set_time_point(0).is_ok() && flat.set_time_point(1).is_err());
 }
+
+/// The extra images an Akoya scanner stores: thumbnail, overview, label.
+fn qptiff_extras() -> Vec<OmeExtraImage> {
+    [
+        ("thumbnail", [1, 2, 3]),
+        ("macro", [40, 50, 60]),
+        ("label", [10, 20, 30]),
+    ]
+    .into_iter()
+    .map(|(name, color)| OmeExtraImage {
+        name: name.into(),
+        width: 40,
+        height: 20,
+        color,
+    })
+    .collect()
+}
+
+#[test]
+fn qptiff_slides_open_with_their_channels_pyramid_and_images() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut spec = three_channels();
+    spec.channels[1].fluor = Some("Opal 520".into());
+    spec.extra_images = qptiff_extras();
+    let ome = write(dir.path(), "same.ome.tif", &spec);
+    spec.qptiff = true;
+    let path = write(dir.path(), "slide.qptiff", &spec);
+
+    let wsi = WsiFile::open(&path).unwrap();
+    let props = wsi.properties();
+    assert_eq!(props.vendor.as_deref(), Some(QPTIFF_VENDOR));
+    assert_eq!((props.width, props.height), (300, 200));
+    assert_eq!(props.levels.len(), 3, "reduced-resolution IFDs are levels");
+    assert!(
+        (props.mpp_x.unwrap() - 0.5).abs() < 1e-9,
+        "from the resolution tags"
+    );
+    assert_eq!(props.objective_power, Some(20.0));
+    let channels = wsi.channels().unwrap();
+    let names: Vec<&str> = channels.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["DAPI", "CD45", "Pan-CK"],
+        "the marker names a channel"
+    );
+    assert_eq!(channels.channels[1].fluor.as_deref(), Some("Opal 520"));
+    assert_eq!(channels.channels[0].color, Some(BLUE));
+    let associated: Vec<&str> = wsi
+        .associated_images()
+        .iter()
+        .map(|image| image.name.as_str())
+        .collect();
+    assert_eq!(associated, ["label", "macro", "thumbnail"]);
+    assert_eq!(wsi.property("qptiff.AcquisitionSoftware"), Some("eov test"));
+    assert_eq!(wsi.property("qptiff.channel[1].fluor"), Some("Opal 520"));
+    assert_eq!(wsi.property("ome.image-count"), None);
+
+    // The pixels are those of the same slide written as OME-TIFF.
+    let same = WsiFile::open(&ome).unwrap();
+    for level in 0..3 {
+        assert_eq!(
+            wsi.read_region(30, 40, level, 64, 32).unwrap(),
+            same.read_region(30, 40, level, 64, 32).unwrap(),
+            "level {level}"
+        );
+    }
+    let label = wsi.read_associated_image("label").unwrap();
+    assert_eq!(&label.pixels[..4], [10, 20, 30, 255]);
+
+    // A QPTIFF named .tif is recognised by its description, and directory
+    // scans keep it although its planes have one sample each.
+    let tif = write(dir.path(), "slide.tif", &spec);
+    assert!(is_own_tiff(&tif));
+    assert_eq!(
+        WsiFile::open(&tif).unwrap().properties().vendor.as_deref(),
+        Some(QPTIFF_VENDOR)
+    );
+    assert_eq!(crate::dataset::non_slide_tiff_reason(&tif), None);
+}
+
+#[test]
+fn brightfield_qptiffs_are_rgb() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut spec = OmeTiffSpec::rgb(300, 200, 64, 2);
+    let ome = write(dir.path(), "same.ome.tif", &spec);
+    spec.qptiff = true;
+    let wsi = WsiFile::open(write(dir.path(), "bright.qptiff", &spec)).unwrap();
+    assert!(wsi.channels().is_none());
+    assert_eq!(wsi.properties().levels.len(), 2);
+    let same = WsiFile::open(&ome).unwrap();
+    assert_eq!(
+        wsi.read_region(10, 20, 1, 50, 40).unwrap(),
+        same.read_region(10, 20, 1, 50, 40).unwrap()
+    );
+}
+
+#[test]
+fn qptiffs_without_a_full_resolution_image_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut spec = three_channels();
+    spec.qptiff = true;
+    spec.levels = 1;
+    let path = write(dir.path(), "broken.qptiff", &spec);
+    // Rewrite every description as a thumbnail's.
+    let text = std::fs::read(&path).unwrap();
+    let from = b"FullResolution";
+    let to = b"Thumbnail_____";
+    let mut patched = text.clone();
+    let mut at = 0;
+    while let Some(pos) = patched[at..].windows(from.len()).position(|w| w == from) {
+        let start = at + pos;
+        patched[start..start + to.len()].copy_from_slice(to);
+        at = start + to.len();
+    }
+    std::fs::write(&path, &patched).unwrap();
+    // eov's reader refuses it (WsiFile::open then tries OpenSlide).
+    let Err(error) = open(&path) else {
+        panic!("a QPTIFF without a full-resolution image was opened");
+    };
+    assert!(
+        error.to_string().contains("no full-resolution image"),
+        "{error}"
+    );
+}

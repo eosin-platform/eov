@@ -1,8 +1,9 @@
 //! The backends a [`WsiFile`](super::WsiFile) reads slides through.
 //!
 //! [`open`] picks one per file: eov's OME-TIFF reader
-//! ([`crate::ome_tiff`]) for OME-TIFF, recognised by its extension or by
-//! OME-XML in the first ImageDescription, and OpenSlide
+//! ([`crate::ome_tiff`]) for OME-TIFF and Akoya QPTIFF, recognised by their
+//! extensions or by OME-XML or PerkinElmer-QPI XML in the first
+//! ImageDescription, and OpenSlide
 //! ([`super::openslide_source`]) for everything else. The rest of eov only
 //! sees `WsiFile`: a backend reads regions of real levels and associated
 //! images, and `WsiFile` builds synthetic levels, thumbnails and tiles on
@@ -166,7 +167,7 @@ pub(crate) struct Opened {
 /// (it reads some RGB OME-TIFFs, e.g. with compressions eov does not
 /// decode); when both fail, the OME-TIFF reader's error says more.
 pub(crate) fn open(path: &Path) -> Result<Opened> {
-    if crate::ome_tiff::has_ome_extension(path) || crate::ome_tiff::is_ome_tiff(path) {
+    if crate::ome_tiff::has_own_extension(path) || crate::ome_tiff::is_own_tiff(path) {
         match crate::ome_tiff::open(path) {
             Ok(opened) => return Ok(opened),
             Err(ome_error) => {

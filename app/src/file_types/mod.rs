@@ -188,6 +188,13 @@ pub(crate) const SLIDE_TYPES: &[SlideType] = &[
         "Zeiss CZI whole-slide image",
         false,
     ),
+    vendor(
+        "qptiff",
+        "image/x-akoya-qptiff",
+        "com.akoya.qptiff",
+        "Akoya QPTIFF whole-slide image",
+        true,
+    ),
     shared("tif", "image/tiff", "public.tiff"),
     shared("tiff", "image/tiff", "public.tiff"),
     shared("dcm", "application/dicom", "org.nema.dicom"),

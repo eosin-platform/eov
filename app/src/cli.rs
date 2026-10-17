@@ -168,8 +168,8 @@ enum DatasetCommand {
     /// command again.
     ///
     /// Supported slide formats: .svs, .tif, .tiff, .ndpi, .vms, .vmu,
-    /// .scn, .mrxs, .svslide, .bif, .czi, .dcm (DICOM instances of one
-    /// series are treated as one slide).
+    /// .scn, .mrxs, .svslide, .bif, .czi, .btf, .tf2, .tf8, .qptiff, .dcm
+    /// (DICOM instances of one series are treated as one slide).
     ///
     /// Examples:
     ///   eov dataset patches slide.svs --out ds/ --tile-size 512 --stride 512

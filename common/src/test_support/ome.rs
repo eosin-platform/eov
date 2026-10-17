@@ -6,7 +6,8 @@
 //! or as reduced-resolution IFDs in the main chain, TIFF or BigTIFF in
 //! either byte order, and every compression the reader decodes. Values come
 //! from a function of (channel, x, y) at level 0; lower levels sample it at
-//! the matching level-0 pixel, so tests can predict every pixel.
+//! the matching level-0 pixel, so tests can predict every pixel. With
+//! [`OmeTiffSpec::qptiff`] it writes an Akoya QPTIFF instead.
 
 use std::io::Write;
 use std::path::Path;
@@ -82,6 +83,9 @@ pub struct OmeChannelSpec {
     /// `Channel@Color` as RGB (alpha 255).
     pub color: Option<[u8; 3]>,
     pub emission_nm: Option<f64>,
+    /// QPTIFF only: the fluor, written as the `Name` with `name` as the
+    /// `Biomarker`.
+    pub fluor: Option<String>,
 }
 
 impl OmeChannelSpec {
@@ -90,6 +94,7 @@ impl OmeChannelSpec {
             name: name.to_string(),
             color,
             emission_nm: None,
+            fluor: None,
         }
     }
 }
@@ -136,6 +141,13 @@ pub struct OmeTiffSpec {
     pub omit_tiff_data: bool,
     /// The OME-XML to write instead of the generated one.
     pub xml: Option<String>,
+    /// Write an Akoya QPTIFF instead: no OME-XML but a PerkinElmer-QPI
+    /// description in every IFD (`FullResolution` with the channel's name,
+    /// colour and the objective, `ReducedResolution`, and `Thumbnail`,
+    /// `Overview` or `Label` for extra images named so, `macro` meaning
+    /// the overview), resolution tags for the pixel size, and the pyramid as
+    /// reduced-resolution IFDs whatever `pyramid` says.
+    pub qptiff: bool,
 }
 
 impl OmeTiffSpec {
@@ -173,6 +185,7 @@ impl OmeTiffSpec {
             corrupt_tiles: Vec::new(),
             omit_tiff_data: false,
             xml: None,
+            qptiff: false,
         }
     }
 
@@ -215,6 +228,7 @@ enum Value {
     Ifd(Vec<u64>),
     Ascii(String),
     Undefined(Vec<u8>),
+    Rational(Vec<(u32, u32)>),
 }
 
 struct Writer {
@@ -309,6 +323,13 @@ impl Writer {
                 s.bytes().chain(std::iter::once(0)).collect(),
             ),
             Value::Undefined(v) => (7, v.len() as u64, v.clone()),
+            Value::Rational(v) => (
+                5,
+                v.len() as u64,
+                v.iter()
+                    .flat_map(|(num, den)| self.u32(*num).into_iter().chain(self.u32(*den)))
+                    .collect(),
+            ),
         }
     }
 
@@ -671,6 +692,72 @@ fn color_attr(color: [u8; 3]) -> String {
 
 /// The generated OME-XML. `ifd_of` gives the main-chain IFD of the first
 /// plane of each image (main, pyramid images, extra images).
+/// A PerkinElmer-QPI description of one IFD: `image_type`, and for
+/// `channel` its name, colour and the objective.
+fn qpi_description(spec: &OmeTiffSpec, image_type: &str, channel: Option<usize>) -> String {
+    let mut xml = String::from(
+        "<?xml version=\"1.0\" encoding=\"utf-16\"?>\r\n\
+         <PerkinElmer-QPI-ImageDescription>\r\n\
+         <DescriptionVersion>2</DescriptionVersion>\r\n\
+         <AcquisitionSoftware>eov test</AcquisitionSoftware>\r\n",
+    );
+    xml.push_str(&format!("<ImageType>{image_type}</ImageType>\r\n"));
+    if let Some(index) = channel {
+        match spec.channels.get(index) {
+            Some(channel) if spec.sample != OmeSample::Rgb8 => {
+                match &channel.fluor {
+                    Some(fluor) => {
+                        xml.push_str(&format!("<Name>{}</Name>\r\n", escape_xml(fluor)));
+                        xml.push_str(&format!(
+                            "<Biomarker>{}</Biomarker>\r\n",
+                            escape_xml(&channel.name)
+                        ));
+                    }
+                    None => {
+                        xml.push_str(&format!("<Name>{}</Name>\r\n", escape_xml(&channel.name)))
+                    }
+                }
+                if let Some([r, g, b]) = channel.color {
+                    xml.push_str(&format!("<Color>{r},{g},{b}</Color>\r\n"));
+                }
+            }
+            _ => {}
+        }
+        if image_type == "FullResolution"
+            && let Some(power) = spec.objective
+        {
+            xml.push_str(&format!("<Objective>{power}x</Objective>\r\n"));
+        }
+    }
+    xml.push_str("</PerkinElmer-QPI-ImageDescription>");
+    xml
+}
+
+/// Resolution tags (pixels per centimetre) of a level, from a pixel size in
+/// micrometres.
+fn qpi_resolution(spec: &OmeTiffSpec, level: u32) -> Vec<(u16, Value)> {
+    let Some((um, unit)) = &spec.physical_size else {
+        return Vec::new();
+    };
+    if !matches!(unit.as_str(), "µm" | "um") || *um <= 0.0 {
+        return Vec::new();
+    }
+    let per_cm = 10_000.0 / (um * f64::from(1u32 << level));
+    // Three decimals: exact for the pixel sizes tests use.
+    let rational = ((per_cm * 1000.0).round() as u32, 1000);
+    vec![
+        (282, Value::Rational(vec![rational])),
+        (283, Value::Rational(vec![rational])),
+        (296, Value::Short(vec![3])),
+    ]
+}
+
+fn escape_xml(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 fn ome_xml(spec: &OmeTiffSpec, image_ifds: &[(String, u32, u32, u64, usize)]) -> String {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -758,6 +845,13 @@ pub fn write_ome_tiff(
 ) -> std::io::Result<()> {
     let rgb = spec.sample == OmeSample::Rgb8;
     let channel_count = spec.channel_count();
+    let pyramid = if spec.qptiff {
+        OmePyramid::ReducedIfds
+    } else {
+        spec.pyramid
+    };
+    // QPTIFF: each IFD's description, in chain order.
+    let mut qpi: Vec<Option<String>> = Vec::new();
     let mut w = Writer {
         buf: Vec::new(),
         big: spec.big_tiff,
@@ -813,7 +907,7 @@ pub fn write_ome_tiff(
             value,
             &mut jpeg_tables,
         );
-        if spec.pyramid == OmePyramid::SubIfds && spec.levels > 1 {
+        if pyramid == OmePyramid::SubIfds && spec.levels > 1 {
             let mut subs = Vec::new();
             for level in 1..spec.levels {
                 let sub_tags = write_plane(
@@ -833,12 +927,16 @@ pub fn write_ome_tiff(
             }
             tags.push((330, Value::Ifd(subs)));
         }
+        if spec.qptiff {
+            tags.extend(qpi_resolution(spec, 0));
+            qpi.push(Some(qpi_description(spec, "FullResolution", Some(index))));
+        }
         chain.push(tags);
     }
-    if spec.pyramid != OmePyramid::SubIfds {
+    if pyramid != OmePyramid::SubIfds {
         for level in 1..spec.levels {
             let (lw, lh) = spec.level_size(level);
-            if spec.pyramid == OmePyramid::Images {
+            if pyramid == OmePyramid::Images {
                 image_ifds.push((
                     format!("test level {level}"),
                     lw,
@@ -848,18 +946,27 @@ pub fn write_ome_tiff(
                 ));
             }
             for (index, channels) in base_planes.iter().enumerate() {
-                chain.push(write_plane(
+                let mut tags = write_plane(
                     &mut w,
                     spec,
                     &PlaneIfd {
                         level,
                         channels: channels.clone(),
                         channel: index,
-                        reduced: spec.pyramid == OmePyramid::ReducedIfds,
+                        reduced: pyramid == OmePyramid::ReducedIfds,
                     },
                     value,
                     &mut jpeg_tables,
-                ));
+                );
+                if spec.qptiff {
+                    tags.extend(qpi_resolution(spec, level));
+                    qpi.push(Some(qpi_description(
+                        spec,
+                        "ReducedResolution",
+                        Some(index),
+                    )));
+                }
+                chain.push(tags);
             }
         }
     }
@@ -888,13 +995,34 @@ pub fn write_ome_tiff(
             (278, Value::Long(vec![extra.height])),
             (279, w.offsets(vec![pixels.len() as u64])),
         ]);
+        if spec.qptiff {
+            let name = extra.name.to_ascii_lowercase();
+            let kind = if name.contains("thumbnail") {
+                Some("Thumbnail")
+            } else if name.contains("macro") || name.contains("overview") {
+                Some("Overview")
+            } else if name.contains("label") {
+                Some("Label")
+            } else {
+                None
+            };
+            qpi.push(kind.map(|kind| qpi_description(spec, kind, None)));
+        }
     }
 
-    let xml = spec
-        .xml
-        .clone()
-        .unwrap_or_else(|| ome_xml(spec, &image_ifds));
-    chain[0].push((270, Value::Ascii(xml)));
+    if spec.qptiff {
+        for (tags, description) in chain.iter_mut().zip(qpi) {
+            if let Some(description) = description {
+                tags.push((270, Value::Ascii(description)));
+            }
+        }
+    } else {
+        let xml = spec
+            .xml
+            .clone()
+            .unwrap_or_else(|| ome_xml(spec, &image_ifds));
+        chain[0].push((270, Value::Ascii(xml)));
+    }
     let mut previous_next: Option<usize> = None;
     for tags in chain {
         let (offset, next) = w.ifd(tags);

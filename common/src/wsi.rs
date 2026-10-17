@@ -74,6 +74,7 @@ pub use thumbnail::{Thumbnail, ThumbnailOptions, ThumbnailRegion, ThumbnailSourc
 
 /// [`WsiProperties::vendor`] (and `openslide.vendor`) of slides read by
 /// eov's OME-TIFF reader.
+pub use crate::ome_tiff::QPTIFF_VENDOR;
 pub use crate::ome_tiff::VENDOR as OME_TIFF_VENDOR;
 
 #[cfg(test)]

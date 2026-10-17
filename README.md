@@ -301,6 +301,7 @@ eov opens slides through [OpenSlide](https://openslide.org/), so it opens the fo
 - `.bif`
 - `.czi`
 - `.btf`, `.tf2`, `.tf8` (BigTIFF, as in `.ome.btf`)
+- `.qptiff` (Akoya; read by eov itself, see below)
 
 If OpenSlide can open the file, eov should be able to load it. File managers offer eov for these formats once it is registered with the operating system (see [File associations](#file-associations)).
 
@@ -312,6 +313,8 @@ OpenSlide reads brightfield RGB slides only, so eov has its own reader for OME-T
 - TIFF and BigTIFF in either byte order, tiled or in strips, uncompressed or compressed with LZW, Deflate, PackBits, Zstandard or JPEG;
 - pyramids stored as SubIFDs (the current OME convention), as separate images of decreasing size, or as reduced-resolution images in the main chain;
 - the pixel size (`PhysicalSizeX`/`PhysicalSizeY`, in any length unit) and the objective's nominal magnification; label, macro and thumbnail images; the OME metadata, as `ome.*` properties in Slide Information.
+
+It also reads Akoya QPTIFF (Vectra, Polaris and PhenoImager scanners; `.qptiff`, or a TIFF whose first image description is PerkinElmer-QPI XML): multiplex immunofluorescence with one image per channel, named after the channel's marker (`Biomarker`, with the fluor kept as the channel's fluor) or its `Name`, in the colour the file gives it, and brightfield RGB; the reduced-resolution images as the pyramid; the pixel size from the TIFF resolution; the objective; the thumbnail, overview (as the macro image) and label; and the first channel's description fields as `qptiff.*` properties.
 
 A file eov cannot read, for example one with another compression or with channels stored in other files of a multi-file OME dataset, is refused when it opens, with the reason. A Z-stack shows its first focal plane; Ctrl+↑ and Ctrl+↓ step through the planes, and a time series shows its first time point, with Ctrl+→ and Ctrl+← to step through time (Slide Information and the Channels panel show how many there are and which is shown); the minimap and copies follow. A plane that cannot be read ends the stack there, and a time point with such a plane ends the series before it.
 
@@ -420,7 +423,7 @@ The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost po
 | macOS | Automatic: the app declares the formats and the `eov` URL scheme in its `Info.plist`, and macOS registers them when it first sees the app (for example after moving it to Applications). |
 | Windows (portable zip) | Run `eov register-file-types` once. It writes only `HKEY_CURRENT_USER\Software\Classes`: an `eov.Slide` file type, an "Open with" entry for every slide extension, `Applications\eov.exe` and the `eov` URL protocol. eov becomes the default program only for the vendor formats (`.svs`, `.ndpi`, `.mrxs`, ...) that have none; TIFF and DICOM keep theirs. Run it again after moving the eov folder; `eov unregister-file-types` removes exactly these entries. |
 
-`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`) and for BigTIFF (`image/x-bigtiff`: `.btf`, `.tf2`, `.tf8`, for which eov is only offered, as for TIFF and DICOM); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
+`--dry-run` shows what either command would change. The slide types are TIFF (`image/tiff`), DICOM (`application/dicom`) and eov's own MIME types for the vendor formats (`image/x-aperio-svs`, `image/x-hamamatsu-ndpi`, `image/x-hamamatsu-vms`, `image/x-hamamatsu-vmu`, `image/x-leica-scn`, `image/x-mirax`, `image/x-sakura-svslide`, `image/x-ventana-bif`, `image/x-zeiss-czi`, `image/x-akoya-qptiff`) and for BigTIFF (`image/x-bigtiff`: `.btf`, `.tf2`, `.tf8`, for which eov is only offered, as for TIFF and DICOM); a Leica `.scn` is told apart from a Godot scene by its TIFF header.
 
 On macOS, slides opened from the Finder or the Dock and `eov://` links arrive as Apple events rather than on the command line. winit 0.30, the windowing library under Slint, does not pass these on, so eov adds the `application:openURLs:` handler to winit's application delegate at startup (winit patches AppKit the same way) and opens what arrives like files handed over by a second eov. Two consequences: a slide double-clicked while eov is not running opens as a tab next to the restored last session, because macOS starts the app without arguments first; and if a future winit implements the handler itself, eov keeps winit's and logs a warning (files from the Finder would then be ignored until eov is updated).
 

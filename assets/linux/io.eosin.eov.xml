@@ -65,6 +65,12 @@
     <generic-icon name="image-x-generic"/>
     <glob pattern="*.czi"/>
   </mime-type>
+  <mime-type type="image/x-akoya-qptiff">
+    <comment>Akoya QPTIFF whole-slide image</comment>
+    <sub-class-of type="image/tiff"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.qptiff"/>
+  </mime-type>
   <mime-type type="image/x-bigtiff">
     <comment>BigTIFF image</comment>
     <generic-icon name="image-x-generic"/>

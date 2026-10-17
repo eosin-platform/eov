@@ -17,6 +17,10 @@
 //!   shown at a time);
 //! * images named "label", "macro" or "thumbnail" as associated images.
 //!
+//! It also opens Akoya QPTIFF (`.qptiff`, or a TIFF whose first
+//! ImageDescription is PerkinElmer-QPI XML) by describing it as an OME
+//! document ([`qptiff`]).
+//!
 //! Multichannel reads are composited to RGB with the slide's
 //! [`ChannelDisplay`] (see [`crate::channels`]); decoded tiles are cached
 //! as raw samples in [`cache::CHUNKS`], so changing the display costs no
@@ -26,6 +30,7 @@
 
 pub(crate) mod cache;
 pub(crate) mod codec;
+pub(crate) mod qptiff;
 pub(crate) mod tiff;
 pub(crate) mod xml;
 
@@ -53,6 +58,8 @@ use tracing::{debug, warn};
 
 /// `openslide.vendor` of slides this reader opens.
 pub const VENDOR: &str = "ome-tiff";
+/// `openslide.vendor` of the Akoya QPTIFF slides it opens.
+pub const QPTIFF_VENDOR: &str = "qptiff";
 
 /// File name endings that mean OME-TIFF.
 const OME_SUFFIXES: &[&str] = &[".ome.tif", ".ome.tiff", ".ome.tf2", ".ome.tf8", ".ome.btf"];
@@ -90,15 +97,38 @@ pub(crate) fn has_ome_extension(path: &Path) -> bool {
     OME_SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
 }
 
+/// Whether the file name ends in an extension this reader owns (OME-TIFF
+/// or QPTIFF).
+pub(crate) fn has_own_extension(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    has_ome_extension(path) || qptiff::SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
+}
+
 /// Whether `path` is a TIFF whose first ImageDescription is OME-XML. Reads
 /// the header, one directory and the start of the description.
+#[cfg(test)]
 pub(crate) fn is_ome_tiff(path: &Path) -> bool {
+    first_description_matches(path, xml::looks_like_ome)
+}
+
+/// Whether `path` is a TIFF this reader opens rather than OpenSlide: its
+/// first ImageDescription is OME-XML or PerkinElmer-QPI XML (QPTIFF).
+pub(crate) fn is_own_tiff(path: &Path) -> bool {
+    first_description_matches(path, |text| {
+        xml::looks_like_ome(text) || qptiff::looks_like_qptiff(text)
+    })
+}
+
+fn first_description_matches(path: &Path, test: impl Fn(&str) -> bool) -> bool {
     let Ok(tiff) = TiffFile::open(path) else {
         return false;
     };
     matches!(
         tiff.first_description_start(SNIFF_BYTES),
-        Ok(Some(text)) if xml::looks_like_ome(&text)
+        Ok(Some(text)) if test(&text)
     )
 }
 
@@ -947,6 +977,7 @@ fn property_map(
     properties: &WsiProperties,
     pyramid: PyramidKind,
     associated: &[Associated],
+    qptiff: Option<&qptiff::Description>,
 ) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let mut set = |key: String, value: String| {
@@ -954,7 +985,10 @@ fn property_map(
             map.insert(key, value);
         }
     };
-    set("openslide.vendor".into(), VENDOR.into());
+    set(
+        "openslide.vendor".into(),
+        properties.vendor.clone().unwrap_or_default(),
+    );
     set("openslide.level-count".into(), levels.len().to_string());
     for (index, level) in levels.iter().enumerate() {
         let ifd = &level.planes[0].ifd;
@@ -989,76 +1023,93 @@ fn property_map(
     );
 
     let text = |value: &Option<String>| value.clone().unwrap_or_default();
-    set("ome.creator".into(), text(&doc.creator));
-    set("ome.uuid".into(), text(&doc.uuid));
-    set("ome.image-count".into(), doc.images.len().to_string());
-    for (index, other) in doc.images.iter().enumerate() {
-        set(
-            format!("ome.image[{index}].name"),
-            other.name.clone().unwrap_or_else(|| other.id.clone()),
-        );
-        set(
-            format!("ome.image[{index}].size"),
-            format!("{} x {}", other.pixels.size_x, other.pixels.size_y),
-        );
+    // A QPTIFF's OME document is eov's own description of it: its file's
+    // fields are what to show.
+    let prefix = if qptiff.is_some() { "qptiff" } else { "ome" };
+    if let Some(description) = qptiff {
+        for (key, value) in &description.fields {
+            // Per channel: listed with the channels below.
+            if !matches!(key.as_str(), "Name" | "Biomarker" | "Color" | "ImageType") {
+                set(format!("qptiff.{key}"), value.clone());
+            }
+        }
+        set("qptiff.pyramid".into(), pyramid.name().into());
     }
-    set("ome.image.id".into(), image.id.clone());
-    set("ome.image.name".into(), text(&image.name));
-    set(
-        "ome.image.acquisition-date".into(),
-        text(&image.acquisition_date),
-    );
-    set("ome.image.description".into(), text(&image.description));
     let pixels = &image.pixels;
-    set("ome.pixels.type".into(), text(&pixels.pixel_type));
-    set(
-        "ome.pixels.dimension-order".into(),
-        pixels.dimension_order.name().into(),
-    );
-    for (key, value) in [
-        ("size-x", pixels.size_x),
-        ("size-y", pixels.size_y),
-        ("size-z", pixels.size_z),
-        ("size-c", pixels.size_c),
-        ("size-t", pixels.size_t),
-    ] {
-        set(format!("ome.pixels.{key}"), value.to_string());
-    }
-    for (key, length) in [
-        ("physical-size-x", &pixels.physical_size_x),
-        ("physical-size-y", &pixels.physical_size_y),
-        ("physical-size-z", &pixels.physical_size_z),
-    ] {
-        if let Some(length) = length {
-            set(format!("ome.pixels.{key}"), length.display());
+    if qptiff.is_none() {
+        set("ome.creator".into(), text(&doc.creator));
+        set("ome.uuid".into(), text(&doc.uuid));
+        set("ome.image-count".into(), doc.images.len().to_string());
+        for (index, other) in doc.images.iter().enumerate() {
+            set(
+                format!("ome.image[{index}].name"),
+                other.name.clone().unwrap_or_else(|| other.id.clone()),
+            );
+            set(
+                format!("ome.image[{index}].size"),
+                format!("{} x {}", other.pixels.size_x, other.pixels.size_y),
+            );
+        }
+        set("ome.image.id".into(), image.id.clone());
+        set("ome.image.name".into(), text(&image.name));
+        set(
+            "ome.image.acquisition-date".into(),
+            text(&image.acquisition_date),
+        );
+        set("ome.image.description".into(), text(&image.description));
+        set("ome.pixels.type".into(), text(&pixels.pixel_type));
+        set(
+            "ome.pixels.dimension-order".into(),
+            pixels.dimension_order.name().into(),
+        );
+        for (key, value) in [
+            ("size-x", pixels.size_x),
+            ("size-y", pixels.size_y),
+            ("size-z", pixels.size_z),
+            ("size-c", pixels.size_c),
+            ("size-t", pixels.size_t),
+        ] {
+            set(format!("ome.pixels.{key}"), value.to_string());
+        }
+        for (key, length) in [
+            ("physical-size-x", &pixels.physical_size_x),
+            ("physical-size-y", &pixels.physical_size_y),
+            ("physical-size-z", &pixels.physical_size_z),
+        ] {
+            if let Some(length) = length {
+                set(format!("ome.pixels.{key}"), length.display());
+            }
+        }
+        if let Some(bits) = pixels.significant_bits {
+            set("ome.pixels.significant-bits".into(), bits.to_string());
+        }
+        set("ome.pyramid".into(), pyramid.name().into());
+        if let Some(objective) = doc.objective_of(image) {
+            let number = |v: Option<f64>| v.map(|v| format!("{v}")).unwrap_or_default();
+            set(
+                "ome.objective.nominal-magnification".into(),
+                number(objective.nominal_magnification),
+            );
+            set(
+                "ome.objective.calibrated-magnification".into(),
+                number(objective.calibrated_magnification),
+            );
+            set("ome.objective.lens-na".into(), number(objective.lens_na));
+            set("ome.objective.model".into(), text(&objective.model));
+            set(
+                "ome.objective.manufacturer".into(),
+                text(&objective.manufacturer),
+            );
+            set("ome.objective.immersion".into(), text(&objective.immersion));
         }
     }
-    if let Some(bits) = pixels.significant_bits {
-        set("ome.pixels.significant-bits".into(), bits.to_string());
-    }
-    set("ome.pyramid".into(), pyramid.name().into());
-    if let Some(objective) = doc.objective_of(image) {
-        let number = |v: Option<f64>| v.map(|v| format!("{v}")).unwrap_or_default();
-        set(
-            "ome.objective.nominal-magnification".into(),
-            number(objective.nominal_magnification),
-        );
-        set(
-            "ome.objective.calibrated-magnification".into(),
-            number(objective.calibrated_magnification),
-        );
-        set("ome.objective.lens-na".into(), number(objective.lens_na));
-        set("ome.objective.model".into(), text(&objective.model));
-        set(
-            "ome.objective.manufacturer".into(),
-            text(&objective.manufacturer),
-        );
-        set("ome.objective.immersion".into(), text(&objective.immersion));
-    }
     if let Some(channels) = channels {
-        set("ome.channel-count".into(), channels.len().to_string());
+        set(
+            format!("{prefix}.channel-count"),
+            channels.len().to_string(),
+        );
         for (index, channel) in channels.iter().enumerate() {
-            let prefix = format!("ome.channel[{index}]");
+            let prefix = format!("{prefix}.channel[{index}]");
             set(format!("{prefix}.name"), channel.name.clone());
             if let Some([r, g, b]) = channel.color {
                 set(format!("{prefix}.color"), format!("#{r:02X}{g:02X}{b:02X}"));
@@ -1119,17 +1170,25 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut first = tiff.ifd(tiff.first_ifd)?;
-    let description = first
+    let is_qptiff = first
         .description
-        .take()
-        .filter(|text| xml::looks_like_ome(text))
-        .ok_or_else(|| {
-            Error::UnsupportedFormat(format!(
-                "{file_name}: the first ImageDescription is not OME-XML"
-            ))
-        })?;
-    let doc = xml::parse(&description).map_err(|error| tiff.invalid(error))?;
-    drop(description);
+        .as_deref()
+        .is_some_and(qptiff::looks_like_qptiff);
+    // OME-XML can run to megabytes: parsed, it is not kept.
+    let ome = if is_qptiff {
+        None
+    } else {
+        let description = first
+            .description
+            .take()
+            .filter(|text| xml::looks_like_ome(text))
+            .ok_or_else(|| {
+                Error::UnsupportedFormat(format!(
+                    "{file_name}: the first ImageDescription is not OME-XML"
+                ))
+            })?;
+        Some(xml::parse(&description).map_err(|error| tiff.invalid(error))?)
+    };
     let chain = tiff.chain()?;
     let mut table = IfdTable {
         tiff: &tiff,
@@ -1138,6 +1197,14 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
     };
     let first = Arc::new(first);
     table.parsed.insert(first.offset, Arc::clone(&first));
+    let (doc, qptiff_description) = match ome {
+        Some(doc) => (doc, None),
+        None => {
+            let (doc, description) = qptiff::document(&mut table, &file_name)?;
+            (doc, Some(description))
+        }
+    };
+    let vendor = if is_qptiff { QPTIFF_VENDOR } else { VENDOR };
     let own = (file_name.as_str(), doc.uuid.as_deref());
 
     let main = main_image(&doc);
@@ -1312,7 +1379,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
     let properties = WsiProperties {
         path: path.to_path_buf(),
         filename: file_name.clone(),
-        vendor: Some(VENDOR.to_string()),
+        vendor: Some(vendor.to_string()),
         mpp_x: mpp(pixels.physical_size_x.as_ref()).or(resolution_mpp(&base_ifd).0),
         mpp_y: mpp(pixels.physical_size_y.as_ref()).or(resolution_mpp(&base_ifd).1),
         objective_power: doc.objective_of(image).and_then(|objective| {
@@ -1367,6 +1434,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         &properties,
         pyramid_kind,
         &associated,
+        qptiff_description.as_ref(),
     );
     let associated_images = associated
         .iter()
@@ -1378,7 +1446,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         })
         .collect();
     debug!(
-        "{file_name}: OME-TIFF, {} levels ({}), {}",
+        "{file_name}: {vendor}, {} levels ({}), {}",
         levels.len(),
         pyramid_kind.name(),
         match &content {

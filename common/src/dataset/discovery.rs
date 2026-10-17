@@ -4,8 +4,8 @@
 //!   (Series Instance UID) form **one** slide.
 //! * During directory scans, TIFFs that cannot be slides — single-channel
 //!   images (masks, label maps) or untiled images — are skipped and
-//!   reported. OME-TIFFs are never skipped: their channels are
-//!   single-sample planes by design. DICOM files of another storage class
+//!   reported. OME-TIFFs and QPTIFFs are never skipped: their channels
+//!   are single-sample planes by design. DICOM files of another storage class
 //!   than whole-slide images (exported annotations, reports) are skipped
 //!   the same way. Files given explicitly are always used.
 //! * Directory symlink loops are detected; hidden entries are ignored.
@@ -20,12 +20,12 @@ use std::path::{Path, PathBuf};
 use tracing::debug;
 
 /// File extensions that EOV can open as whole-slide images (via OpenSlide,
-/// or eov's OME-TIFF reader for `.ome.tif`, `.ome.tiff` and the BigTIFF
-/// `.btf`, `.tf2`, `.tf8`). Keep in sync with the file-picker filter in the
-/// app.
+/// or eov's OME-TIFF reader for `.ome.tif`, `.ome.tiff`, the BigTIFF
+/// `.btf`, `.tf2`, `.tf8` and Akoya's `.qptiff`). Keep in sync with the
+/// file-picker filter in the app.
 pub const SUPPORTED_SLIDE_EXTENSIONS: &[&str] = &[
     "svs", "tif", "tiff", "dcm", "ndpi", "vms", "vmu", "scn", "mrxs", "svslide", "bif", "czi",
-    "btf", "tf2", "tf8",
+    "btf", "tf2", "tf8", "qptiff",
 ];
 
 /// Maximum directory depth searched.
@@ -400,9 +400,10 @@ fn ui_value(body: &[u8], group: u16, element: u16) -> Option<String> {
 
 /// Why a TIFF found by a directory scan is not a slide, if it clearly is
 /// not: one sample per pixel (masks, label images) or no tiles (OpenSlide's
-/// TIFF drivers need tiled images). OME-TIFFs are slides either way.
+/// TIFF drivers need tiled images). OME-TIFFs and QPTIFFs are slides
+/// either way.
 pub fn non_slide_tiff_reason(path: &Path) -> Option<String> {
-    if crate::ome_tiff::is_ome_tiff(path) {
+    if crate::ome_tiff::is_own_tiff(path) {
         return None;
     }
     let mut buf = Vec::with_capacity(1 << 16);

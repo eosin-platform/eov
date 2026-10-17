@@ -112,6 +112,7 @@ fn summary(wsi: &WsiFile) -> String {
     let props = wsi.real_properties();
     let format = match props.vendor.as_deref() {
         Some(eov_common::wsi::OME_TIFF_VENDOR) => "OME-TIFF".to_string(),
+        Some(eov_common::wsi::QPTIFF_VENDOR) => "QPTIFF".to_string(),
         Some(vendor) => vendor.to_string(),
         None => "Slide".to_string(),
     };
