@@ -18,6 +18,15 @@ impl ThemeKind {
         }
     }
 
+    /// The colour around the slide, as `Theme.viewport-bg` in theme.slint.
+    pub(crate) fn viewport_background(self) -> [u8; 3] {
+        match self {
+            ThemeKind::Dark => crate::color::VIEWPORT_BACKGROUND,
+            ThemeKind::Light => [0xc8, 0xc8, 0xc8],
+            ThemeKind::HighContrast => [0, 0, 0],
+        }
+    }
+
     pub(crate) fn label(self) -> &'static str {
         match self {
             ThemeKind::Dark => "Dark",
@@ -45,13 +54,31 @@ pub(crate) fn current(ui: &AppWindow) -> ThemeKind {
 /// The theme in config.toml (the dark one when there is none).
 pub(crate) fn apply_saved(ui: &AppWindow) {
     if let Some(kind) = crate::config::load_theme() {
-        ui.global::<Theme>().set_kind(kind);
+        apply(ui, kind);
+    }
+}
+
+/// Shows the window and the slides' surroundings in `kind`.
+fn apply(ui: &AppWindow, kind: ThemeKind) {
+    ui.global::<Theme>().set_kind(kind);
+    if crate::color::set_viewport_background(kind.viewport_background()) {
+        // Frames already drawn have the old surroundings.
+        crate::host_ui::with_host(|host| {
+            {
+                let mut state = host.state.write();
+                for file in state.open_files.iter_mut() {
+                    file.invalidate_render_state();
+                }
+                state.request_render();
+            }
+            host.request_render();
+        });
     }
 }
 
 /// Switches to `kind` and remembers it.
 pub(crate) fn choose(ui: &AppWindow, kind: ThemeKind) {
-    ui.global::<Theme>().set_kind(kind);
+    apply(ui, kind);
     if let Err(error) = crate::config::save_theme(kind) {
         tracing::warn!("Could not save the theme: {error}");
     }

@@ -75,12 +75,8 @@ the host offline (AUDIT §14.3). Design:
   - No `.pot` template ships, because slint-tr-extractor was not available
     offline.
 - **Themes:**
-  - In the light theme, the area around the slide stays dark grey (the
-    renderer draws it).
   - Some dark-theme secondary texts are below 4.5:1 contrast.
   - Panels provided by plugins are not themed or translated.
-- **Plugins panel:** a grey strip showed below the panel before the
-  accessibility branch was merged. Check whether it is still there.
 - **Signed binaries:** the owner has to provide the release signing key,
   Authenticode and notarization certificates.
 

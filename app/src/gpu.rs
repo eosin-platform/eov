@@ -16,13 +16,17 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Colour of the viewport outside the slide (the same as the CPU path's).
-const CLEAR_COLOR: wgpu::Color = wgpu::Color {
-    r: crate::color::VIEWPORT_BACKGROUND[0] as f64 / 255.0,
-    g: crate::color::VIEWPORT_BACKGROUND[1] as f64 / 255.0,
-    b: crate::color::VIEWPORT_BACKGROUND[2] as f64 / 255.0,
-    a: 1.0,
-};
+/// Colour of the viewport outside the slide (the same as the CPU path's:
+/// the theme's).
+fn background_color() -> wgpu::Color {
+    let [r, g, b] = crate::color::viewport_background();
+    wgpu::Color {
+        r: f64::from(r) / 255.0,
+        g: f64::from(g) / 255.0,
+        b: f64::from(b) / 255.0,
+        a: 1.0,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Shaders
@@ -301,6 +305,8 @@ impl QueuedFrame {
         }
         self.sharpness.to_bits().hash(&mut hasher);
         self.composite.hash(&mut hasher);
+        // The theme's colour around the slide.
+        crate::color::viewport_background().hash(&mut hasher);
         self.nearest.hash(&mut hasher);
         self.icc.as_ref().map(|icc| icc.id()).hash(&mut hasher);
         self.draws.len().hash(&mut hasher);
@@ -332,7 +338,7 @@ impl QueuedFrame {
     /// frame that the filter job finishes.
     fn clear_color(&self) -> wgpu::Color {
         if self.composite {
-            CLEAR_COLOR
+            background_color()
         } else {
             wgpu::Color::TRANSPARENT
         }
@@ -2008,7 +2014,7 @@ impl GpuRenderer {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
+                        load: wgpu::LoadOp::Clear(background_color()),
                         store: wgpu::StoreOp::Store,
                     },
                 })],

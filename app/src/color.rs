@@ -31,8 +31,26 @@ use tracing::{debug, warn};
 
 use crate::state::{HudSettings, IsolatedChannel, OpenFile, PaneId};
 
-/// Colour of the viewport outside the slide (stage 5 of the pipeline).
+/// Colour of the viewport outside the slide (stage 5 of the pipeline) in the
+/// dark theme; [`viewport_background`] is the current theme's.
 pub(crate) const VIEWPORT_BACKGROUND: [u8; 3] = [30, 30, 30];
+
+/// The theme's viewport background, as 0xRRGGBB.
+static THEME_BACKGROUND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x1e1e1e);
+
+/// Colour of the viewport outside the slide in the current theme: what the
+/// renderers fill around the slide, read for every frame.
+pub(crate) fn viewport_background() -> [u8; 3] {
+    let rgb = THEME_BACKGROUND.load(std::sync::atomic::Ordering::Relaxed);
+    [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]
+}
+
+/// Sets the viewport background (the theme changed); returns whether it
+/// changed.
+pub(crate) fn set_viewport_background([r, g, b]: [u8; 3]) -> bool {
+    let rgb = (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
+    THEME_BACKGROUND.swap(rgb, std::sync::atomic::Ordering::Relaxed) != rgb
+}
 
 /// The colour settings a pane's HUD describes, normalising to the stain
 /// target in use ([`crate::stain_target`]).

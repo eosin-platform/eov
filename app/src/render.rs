@@ -1794,7 +1794,7 @@ fn render_cpu_pane_from_snapshot(
 
     let postprocess = CpuRenderPostProcess {
         pipeline: Arc::clone(&snapshot.color.pipeline),
-        background: crate::color::VIEWPORT_BACKGROUND,
+        background: crate::color::viewport_background(),
     };
     if filters_changed
         && !snapshot.file_switched
@@ -2261,7 +2261,7 @@ fn render_pane_gpu(
     let filtered = filter_chain.read().has_enabled_cpu_filters();
     let finish = CpuRenderPostProcess {
         pipeline: Arc::clone(&color.pipeline),
-        background: crate::color::VIEWPORT_BACKGROUND,
+        background: crate::color::viewport_background(),
     };
     let readback = if filtered {
         let current = crate::with_pane_render_cache(pane.0 + 1, |cache| {
