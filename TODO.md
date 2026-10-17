@@ -19,8 +19,6 @@ lists every finding and §14 feature; regenerate it after a change with
   - URI schemes (remote slides such as DICOMweb or OMERO): manifests may
     declare them, but eov opens files only. `WsiFile::open` would need to
     take URIs, and slide identity would need `SlideInfo::identity`.
-  - `eov batch` runs do not record the versions of the plugins that read
-    the slides, only the plugin that analysed them.
 - **DICOM SR** is neither read nor written. DICOM Microscopy Bulk Simple
   Annotations are.
 - **Localisation:**

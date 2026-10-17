@@ -56,6 +56,9 @@ struct Headless {
     /// Set by plugins' calls (`set_wake`), so the loop sleeps until there is
     /// something to do.
     signal: Arc<(Mutex<bool>, Condvar)>,
+    /// The plugins started for their slide formats, as the manifest
+    /// records them.
+    slide_readers: Vec<Value>,
 }
 
 impl Headless {
@@ -80,6 +83,7 @@ impl Headless {
             shared,
             runtime,
             signal,
+            slide_readers: Vec::new(),
         }
     }
 
@@ -100,11 +104,20 @@ impl Headless {
         {
             let reads_slides = crate::plugins::discovery::load_descriptor(&package.package_path)
                 .is_ok_and(|descriptor| !descriptor.manifest.slide_formats.is_empty());
-            if reads_slides && let Err(error) = self.start(plugin_dir, &package.id) {
-                eprintln!(
+            if !reads_slides {
+                continue;
+            }
+            match self.start(plugin_dir, &package.id) {
+                Ok((version, sha256, origin)) => self.slide_readers.push(serde_json::json!({
+                    "id": package.id,
+                    "version": version,
+                    "sha256": sha256,
+                    "origin": origin,
+                })),
+                Err(error) => eprintln!(
                     "warning: the slide formats of plugin '{}' are not available: {error:#}",
                     package.id
-                );
+                ),
             }
         }
     }
@@ -412,6 +425,10 @@ struct Manifest {
     format_version: u32,
     eov: String,
     plugin: Value,
+    /// The other plugins that read the slides' formats (id, version,
+    /// SHA-256, origin).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    slide_readers: Vec<Value>,
     command: String,
     params: Map<String, Value>,
     deidentified: bool,
@@ -537,6 +554,7 @@ fn run_started(
             "sha256": sha256,
             "origin": origin,
         }),
+        slide_readers: headless.slide_readers.clone(),
         command: command_id.to_string(),
         params: recorded_params(&params, options.deidentify),
         deidentified: options.deidentify,
