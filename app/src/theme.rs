@@ -188,7 +188,10 @@ mod tests {
                     theme.get_selected_fill(),
                     theme.get_surface(),
                 );
-                assert!(selected >= minimum, "{kind:?}: selected text: {selected:.2}");
+                assert!(
+                    selected >= minimum,
+                    "{kind:?}: selected text: {selected:.2}"
+                );
                 pairs.extend([
                     (
                         "text on the accent".into(),
