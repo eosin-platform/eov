@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `09f3ce1`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `c92ca51`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -334,7 +334,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | IHC quantification | Done | `bee393f` `3928774` | H-DAB and other presets, custom vectors, thresholds, positive fraction and H-score in a region. |
 | Tissue detection and QC | Done | `bb7fd46` `64ec600` `9ce8189` `23a3583` | Tissue masks drive fit-to-tissue, dataset filtering and stain fits; Check Tissue Quality and `eov qc` mark pen, possible folds and possibly out-of-focus cells (relative thresholds, for review), and datasets can leave patches over them out (`--exclude-qc`). |
 | Stain normalisation as a workflow | Done | `0051587` | Normalise to the reference H&E, to this slide or to its region of interest; targets are saved, shared and loaded, and `eov dataset patches --stain-target` uses them. |
-| Dataset extraction | Done | `bb7fd46` `8c53025` `0359c50` `23a3583` `e41ebc9` | Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr with `eov dataset pack`. HDF5 is not written (no HDF5 library offline). |
+| Dataset extraction | Done | `bb7fd46` `8c53025` `0359c50` `23a3583` `e41ebc9` `3947e01` `7de56f1` `c6fbf40` | Target MPP, tissue fraction, tissue-QC exclusion, annotation labels and masks, normalisation, caps and seeded sampling, resume, rich metadata, de-identification; PNG or JPEG patches, packed into zarr or HDF5 (`eov dataset pack --format hdf5`, through the HDF5 library loaded at run time), and per-slide coordinate files for CLAM (`--format clam`). |
 | Headless and batch mode | Done | `fbf22f5` `7b39246` `c77eec6` | `eov batch run` with run manifests; `eovae:analyze` (per-tile scores, heat map) and `cellaris:predict` (per-cell marker means), with model hashes, preprocessing, resolution and device recorded. |
 | Scripting | Done | `c1f97a9` | JSON-RPC 2.0 on the local single-instance endpoint (authenticated, no network listener): slides, views, region reads, ROI, measurements, bookmarks, quantification and exports; `eov call` and a Python client. |
 | Model management | **Partly** | plugins | Model cards and metadata checks in cellaris and eovae; no download-and-verify of models. |

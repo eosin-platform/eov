@@ -11,23 +11,6 @@ Work that was stopped before it was finished. Each branch is in a git
 worktree under `.claude/worktrees/`; its last commit is marked `WIP` when it
 holds unfinished, untested changes.
 
-### HDF5 dataset packing: `worktree-agent-a340c90225cbf0327`
-
-- **Goal:** `eov dataset pack <DIR> --format hdf5` writes `patches.h5`, with
-  the same arrays and attributes as `patches.zarr`.
-- **Design:** the HDF5 library is loaded at run time (libloading), so eov
-  has no build-time HDF5 dependency.
-- **Done:**
-  - `3947e01`: shared patch-record decoding between pack formats.
-  - `7de56f1`: the HDF5 writer.
-- **WIP:** `c6fbf40`, CLAM-style per-slide coordinate files
-  (`--format clam`).
-- **Left:**
-  - Finish or drop the CLAM part.
-  - Run the tests; libhdf5 1.10 is installed on the dev machine, and the
-    tests skip themselves where it is missing.
-  - Review, merge, and update the README's Dataset section.
-
 ### Model store: `worktree-agent-afa8da3ca208fa577`
 
 Downloading and verifying models for AI plugins (AUDIT §14.5, §12.2).
