@@ -142,15 +142,20 @@ mod tests {
     }
 
     /// The text of the high-contrast theme has a contrast of at least 7:1
-    /// against what it is drawn on, that of the light theme at least 4.5:1;
-    /// a light slide is behind the panels that float over it.
+    /// against what it is drawn on, that of the dark and light themes at
+    /// least 4.5:1 (WCAG AA); a light slide is behind the panels that float
+    /// over it.
     #[test]
-    fn text_is_readable_in_the_light_and_high_contrast_themes() {
+    fn text_is_readable_in_every_theme() {
         crate::test_support::run_on_slint_ui_test_thread(|| {
             let ui = AppWindow::new().unwrap();
             let theme = ui.global::<Theme>();
             let slide = slint::Color::from_rgb_u8(0xf0, 0xe6, 0xee);
-            for (kind, minimum) in [(ThemeKind::Light, 4.5), (ThemeKind::HighContrast, 7.0)] {
+            for (kind, minimum) in [
+                (ThemeKind::Dark, 4.5),
+                (ThemeKind::Light, 4.5),
+                (ThemeKind::HighContrast, 7.0),
+            ] {
                 theme.set_kind(kind);
                 let surfaces = [
                     ("background", theme.get_background()),
@@ -177,16 +182,18 @@ mod tests {
                         pairs.push((format!("{name} text on {surface}"), text, background));
                     }
                 }
+                // Selected rows are in lists on a panel's surface.
+                let selected = contrast(
+                    theme.get_text_selected(),
+                    theme.get_selected_fill(),
+                    theme.get_surface(),
+                );
+                assert!(selected >= minimum, "{kind:?}: selected text: {selected:.2}");
                 pairs.extend([
                     (
                         "text on the accent".into(),
                         theme.get_text_on_accent(),
                         theme.get_accent(),
-                    ),
-                    (
-                        "selected text".into(),
-                        theme.get_text_selected(),
-                        theme.get_selected_fill(),
                     ),
                     (
                         "menu item under the pointer".into(),

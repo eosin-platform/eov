@@ -74,9 +74,7 @@ the host offline (AUDIT §14.3). Design:
     the theme menu and the plugin usage line.
   - No `.pot` template ships, because slint-tr-extractor was not available
     offline.
-- **Themes:**
-  - Some dark-theme secondary texts are below 4.5:1 contrast.
-  - Panels provided by plugins are not themed or translated.
+- **Themes:** panels provided by plugins are not themed or translated.
 - **Signed binaries:** the owner has to provide the release signing key,
   Authenticode and notarization certificates.
 
