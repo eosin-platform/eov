@@ -56,23 +56,6 @@ the host offline (AUDIT §14.3). Design:
   that do not load plugins refuse those formats with a clear message.
 - **Tests:** an in-tree synthetic format.
 
-### QPTIFF reader: `wip/qptiff` (in the main repository)
-
-Reads Akoya multiplex IF and brightfield QPTIFF. The OME-TIFF reader builds
-an OME document from the PerkinElmer-QPI descriptions (`7ba85ea`).
-
-- **Left:**
-  - A QPTIFF mode in `common/src/test_support/ome.rs`: a QPI description
-    per IFD, resolution tags (it needs a RATIONAL value), and
-    reduced-resolution IFDs.
-  - Tests for channels, colours, pyramid, mpp, objective, associated
-    images, brightfield RGB, and discovery not skipping a `.tif` QPTIFF.
-  - The `qptiff` entry in `app/src/file_types`. Regenerate the Linux files
-    with `cargo test -p eov --bin eov write_linux_assets -- --ignored` and
-    add the `com.akoya.qptiff` UTI to `assets/macos/Info.plist`.
-  - README and `app/README.md`, and the `eov dataset` help text in
-    `app/src/cli.rs`.
-
 ## Open features
 
 - **Focal plane / time point control in the HUD.** The audit asked for a

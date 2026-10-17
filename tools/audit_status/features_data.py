@@ -34,7 +34,7 @@ FEATURES = [
   ("Backup and portability", "F", "annotations", "Export all, backup, merge, relink, per-slide undo."),
  ]),
  ("14.3 Formats and imaging modalities", [
-  ("Multichannel fluorescence / OME-TIFF", "F", "076ae1d", "OME-TIFF (BigTIFF, pyramids, common compressions), additive channel compositing with colour, window and gamma, a Channels panel kept per slide; QPTIFF and CZI fluorescence are not read."),
+  ("Multichannel fluorescence / OME-TIFF", "F", "076ae1d bf47c9e", "OME-TIFF (BigTIFF, pyramids, common compressions) and Akoya QPTIFF, additive channel compositing with colour, window and gamma, a Channels panel kept per slide; CZI fluorescence is not read."),
   ("Philips iSyntax", "N", "", "Needs a reader outside OpenSlide (e.g. libisyntax)."),
   ("Olympus/Evident VSI, Leica LIF", "N", "", "Needs a Bio-Formats-class reader."),
   ("DICOM WSI series", "F", "7849eee 0359c50", "A series is listed and extracted once."),

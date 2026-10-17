@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `c92ca51`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-10-15, at `eov` master @ `bf47c9e`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -304,7 +304,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 
 | Feature | Status | Where | Notes |
 |---|---|---|---|
-| Multichannel fluorescence / OME-TIFF | Done | `076ae1d` | OME-TIFF (BigTIFF, pyramids, common compressions), additive channel compositing with colour, window and gamma, a Channels panel kept per slide; QPTIFF and CZI fluorescence are not read. |
+| Multichannel fluorescence / OME-TIFF | Done | `076ae1d` `bf47c9e` | OME-TIFF (BigTIFF, pyramids, common compressions) and Akoya QPTIFF, additive channel compositing with colour, window and gamma, a Channels panel kept per slide; CZI fluorescence is not read. |
 | Philips iSyntax | **Not done** |  | Needs a reader outside OpenSlide (e.g. libisyntax). |
 | Olympus/Evident VSI, Leica LIF | **Not done** |  | Needs a Bio-Formats-class reader. |
 | DICOM WSI series | Done | `7849eee` `0359c50` | A series is listed and extracted once. |
