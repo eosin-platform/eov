@@ -157,6 +157,9 @@ fn fill(ui: &AppWindow) {
             scale_bar_label: "100 µm".into(),
             color_management: 1,
             color_management_tooltip: "Colour management is on".into(),
+            focal_plane: 1,
+            focal_planes: 3,
+            time_points: 1,
             ..Default::default()
         },
         hud_buttons: model(vec![HudToolbarButtonData {
@@ -262,6 +265,19 @@ fn slide_view_controls_report_their_state() {
         });
         find(&ui, AccessibleRole::Slider, "Gamma").invoke_accessible_increment_action();
         assert!((gamma.get() - 1.05).abs() < 1e-4, "{}", gamma.get());
+
+        // A Z-stack's focal planes step from the HUD.
+        let focus = find(&ui, AccessibleRole::Spinbox, "Focal plane");
+        assert_eq!(focus.accessible_value().as_deref(), Some("2 / 3"));
+        let steps = Rc::new(std::cell::RefCell::new(Vec::new()));
+        ui.on_hud_plane_step({
+            let steps = Rc::clone(&steps);
+            move |pane, axis, delta| steps.borrow_mut().push((pane, axis, delta))
+        });
+        focus.invoke_accessible_increment_action();
+        find(&ui, AccessibleRole::Button, "Previous focal plane")
+            .invoke_accessible_default_action();
+        assert_eq!(*steps.borrow(), [(0, 0, 1), (0, 0, -1)]);
 
         // The colour management chip turns the slide's profile on and off.
         let icc = find(&ui, AccessibleRole::Button, "Colour management");

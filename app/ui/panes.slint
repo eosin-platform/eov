@@ -62,6 +62,7 @@ component PaneView inherits Rectangle {
     callback hud-orientation-changed(int, int);
     callback hud-rotation-input(int, string);
     callback hud-color-management-toggled(int);
+    callback hud-plane-step(/* pane */ int, /* axis */ int, /* delta */ int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
     callback hud-deconv-e-intensity-changed(int, float);
@@ -234,6 +235,10 @@ component PaneView inherits Rectangle {
                 }
                 hud-color-management-toggled => {
                     root.hud-color-management-toggled(root.pane-data.id);
+                }
+                hud-plane-step(axis, delta) => {
+                    root.pane-focused(root.pane-data.id);
+                    root.hud-plane-step(root.pane-data.id, axis, delta);
                 }
                 hud-orientation-changed(action) => {
                     root.pane-focused(root.pane-data.id);
@@ -443,6 +448,7 @@ export component SplitPaneContainer inherits Rectangle {
     callback hud-orientation-changed(int, int);
     callback hud-rotation-input(int, string);
     callback hud-color-management-toggled(int);
+    callback hud-plane-step(/* pane */ int, /* axis */ int, /* delta */ int);
     callback hud-zoom-out(int);
     callback hud-deconv-h-intensity-changed(int, float);
     callback hud-deconv-e-intensity-changed(int, float);
@@ -579,6 +585,9 @@ export component SplitPaneContainer inherits Rectangle {
             }
             hud-color-management-toggled(pane-id) => {
                 root.hud-color-management-toggled(pane-id);
+            }
+            hud-plane-step(pane-id, axis, delta) => {
+                root.hud-plane-step(pane-id, axis, delta);
             }
             hud-zoom-out(pane-id) => {
                 root.hud-zoom-out(pane-id);

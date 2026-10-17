@@ -75,6 +75,7 @@ export component Viewport inherits Rectangle {
     // An angle typed into the HUD's angle field.
     callback hud-rotation-input(string);
     callback hud-color-management-toggled();
+    callback hud-plane-step(/* axis */ int, /* delta */ int);
     callback hud-zoom-out();
     callback hud-deconv-h-intensity-changed(float);
     callback hud-deconv-e-intensity-changed(float);
@@ -305,6 +306,13 @@ export component Viewport inherits Rectangle {
         color-management-tooltip: root.hud.color-management-tooltip;
         color-management-toggled => {
             root.hud-color-management-toggled();
+        }
+        focal-plane: root.hud.focal-plane;
+        focal-planes: root.hud.focal-planes;
+        time-point: root.hud.time-point;
+        time-points: root.hud.time-points;
+        plane-step(axis, delta) => {
+            root.hud-plane-step(axis, delta);
         }
         fit-to-view => {
             root.fit-to-view();

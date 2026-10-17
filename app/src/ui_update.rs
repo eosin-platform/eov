@@ -423,6 +423,10 @@ pub fn update_tabs(
                         })
                         .unwrap_or_default()
                         .into();
+                        hud.focal_plane = file.wsi.focal_plane() as i32;
+                        hud.focal_planes = file.wsi.focal_planes() as i32;
+                        hud.time_point = file.wsi.time_point() as i32;
+                        hud.time_points = file.wsi.time_points() as i32;
                         // Along the screen's x axis, whatever the turn.
                         if let Some((um_x, um_y, _)) = spacing
                             && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
@@ -781,6 +785,11 @@ fn ui_hud_settings(
         scale_bar_width: 0.0,
         scale_bar_label: SharedString::new(),
         plugin_badges: SharedString::new(),
+        // Filled in from the slide by the caller.
+        focal_plane: 0,
+        focal_planes: 1,
+        time_point: 0,
+        time_points: 1,
     }
 }
 

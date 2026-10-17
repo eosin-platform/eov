@@ -383,6 +383,20 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
         }
         with_host(|host| host.watch_plugin_usage());
     });
+    // The HUD's focal plane and time point steppers, for the pane's slide.
+    ui.on_hud_plane_step(|pane, axis, delta| {
+        with_host(|host| {
+            host.state
+                .write()
+                .set_focused_pane(crate::state::PaneId(pane.max(0) as usize));
+            let axis = if axis == 0 {
+                super::input::PlaneAxis::Focus
+            } else {
+                super::input::PlaneAxis::Time
+            };
+            host.step_plane(axis, i64::from(delta));
+        });
+    });
     ui.on_plugin_enable_requested(|plugin_id, enable| {
         with_host(|host| host.set_plugin_enabled(&plugin_id, enable));
     });

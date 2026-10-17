@@ -58,12 +58,6 @@ the host offline (AUDIT §14.3). Design:
 
 ## Open features
 
-- **Focal plane / time point control in the HUD.** The audit asked for a
-  focus slider; today only the keys exist (Ctrl+↑/↓ and Ctrl+→/←).
-  - Add `HudSettings` fields, e.g. "Z 2/3" and "T 1/5", filled in
-    `ui_update.rs`.
-  - Add small step controls in `hud-toolbar.slint`, with accessible labels
-    and theme tokens.
 - **SH-10:** Copy View cannot put images on the clipboard in the Flatpak
   under Wayland. Either enable arboard's `wayland-data-control` feature
   (its crates were not available offline) or give the Flatpak X11 access.

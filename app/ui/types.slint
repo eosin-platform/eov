@@ -293,6 +293,12 @@ export struct HudSettings {
     scale-bar-label: string,
     // Plugin badges for this pane's slide, one per line.
     plugin-badges: string,
+    // The focal plane and time point shown (0-based) and how many the
+    // slide has (Z-stacks, time series); 0 or 1 means none to step through.
+    focal-plane: int,
+    focal-planes: int,
+    time-point: int,
+    time-points: int,
 }
 
 export struct PaneViewData {

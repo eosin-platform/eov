@@ -521,7 +521,7 @@ impl UiHost {
     /// focused slide's Z-stack.
     /// Shows the focused slide's next (`delta` 1) or previous (-1) focal
     /// plane or time point.
-    fn step_plane(&self, axis: PlaneAxis, delta: i64) {
+    pub(crate) fn step_plane(&self, axis: PlaneAxis, delta: i64) {
         let found = {
             let state = self.state.read();
             let pane = state.active_viewport_pane();
@@ -875,7 +875,7 @@ mod tests {
 
 /// What [`UiHost::step_plane`] steps through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlaneAxis {
+pub(crate) enum PlaneAxis {
     Focus,
     Time,
 }

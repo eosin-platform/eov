@@ -64,6 +64,65 @@ component HudButton inherits Rectangle {
     }
 }
 
+/// Steps through the focal planes or time points of a slide: the previous
+/// and next buttons around "Z 2/3". `index` is 0-based.
+component PlaneStepper inherits Rectangle {
+    in property <string> label;
+    in property <string> name;
+    in property <int> index;
+    in property <int> count;
+    in property <string> previous-text;
+    in property <string> next-text;
+    in property <string> previous-tooltip;
+    in property <string> next-tooltip;
+    out property <bool> hovered: previous.hovered || next.hovered;
+    out property <string> tooltip: previous.hovered ? root.previous-tooltip : root.next-tooltip;
+    callback step(int);
+
+    height: 38px;
+    accessible-role: spinbox;
+    accessible-label: root.name;
+    accessible-value: (root.index + 1) + " / " + root.count;
+    accessible-value-minimum: 1;
+    accessible-value-maximum: root.count;
+    accessible-value-step: 1;
+    accessible-action-increment => {
+        root.step(1);
+    }
+    accessible-action-decrement => {
+        root.step(-1);
+    }
+
+    HorizontalLayout {
+        previous := HudButton {
+            width: 24px;
+            text: root.previous-text;
+            tooltip-text: root.previous-tooltip;
+            clicked => {
+                root.step(-1);
+            }
+        }
+
+        Text {
+            text: root.label + " " + (root.index + 1) + "/" + root.count;
+            color: Theme.text-value;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        next := HudButton {
+            width: 24px;
+            text: root.next-text;
+            tooltip-text: root.next-tooltip;
+            clicked => {
+                root.step(1);
+            }
+        }
+    }
+}
+
 component HudSeparator inherits Rectangle {
     width: 1px;
     height: 38px;
@@ -84,6 +143,12 @@ export component HudToolbar inherits Rectangle {
     in property <string> rotation-text: "0";
     in property <string> rotation-input-text: "0";
     in property <bool> flipped: false;
+    // The focal plane and time point shown, 0-based, and how many there
+    // are (see `HudSettings`); the steppers show for more than one.
+    in property <int> focal-plane: 0;
+    in property <int> focal-planes: 1;
+    in property <int> time-point: 0;
+    in property <int> time-points: 1;
     // Colour management (see `HudSettings.color-management`).
     in property <int> color-management: 0;
     in property <string> color-management-tooltip: "";
@@ -100,6 +165,8 @@ export component HudToolbar inherits Rectangle {
     // An angle typed into the angle field (degrees clockwise).
     callback rotation-input(string);
     callback color-management-toggled();
+    // A step through the focal planes (axis 0) or time points (axis 1).
+    callback plane-step(/* axis */ int, /* delta */ int);
     /// The zoom field or the plugin menu, which had the keyboard, is done
     /// with it.
     callback release-keyboard();
@@ -126,6 +193,8 @@ export component HudToolbar inherits Rectangle {
         : rotate-right-btn.hovered ? rotate-right-btn.tooltip-text
         : flip-btn.hovered ? flip-btn.tooltip-text
         : angle-touch.has-hover ? @tr("Rotation: click to type an angle")
+        : focus-stepper.hovered ? focus-stepper.tooltip
+        : time-stepper.hovered ? time-stepper.tooltip
         : icc-touch.has-hover ? root.color-management-tooltip
         : adjust-btn.hovered ? adjust-btn.tooltip-text
         : root.hovered-plugin >= 0 && root.hovered-plugin < root.plugin-buttons.length && !root.plugin-menu-open
@@ -139,6 +208,8 @@ export component HudToolbar inherits Rectangle {
         : rotate-right-btn.hovered ? rotate-right-btn.absolute-position.x - root.absolute-position.x + rotate-right-btn.width / 2
         : flip-btn.hovered ? flip-btn.absolute-position.x - root.absolute-position.x + flip-btn.width / 2
         : angle-touch.has-hover ? angle-label.absolute-position.x - root.absolute-position.x + angle-label.width / 2
+        : focus-stepper.hovered ? focus-stepper.absolute-position.x - root.absolute-position.x + focus-stepper.width / 2
+        : time-stepper.hovered ? time-stepper.absolute-position.x - root.absolute-position.x + time-stepper.width / 2
         : icc-touch.has-hover ? icc-chip.absolute-position.x - root.absolute-position.x + icc-chip.width / 2
         : adjust-btn.hovered ? adjust-btn.absolute-position.x - root.absolute-position.x + adjust-btn.width / 2
         : root.hovered-plugin-x;
@@ -409,6 +480,39 @@ export component HudToolbar inherits Rectangle {
                         angle-text-input.focus();
                         angle-text-input.select-all();
                     }
+                }
+            }
+
+            // Z-stacks and time series: which plane is shown.
+            focus-stepper := PlaneStepper {
+                width: root.focal-planes > 1 ? self.preferred-width : 0px;
+                visible: root.focal-planes > 1;
+                label: "Z";
+                name: @tr("Focal plane");
+                index: root.focal-plane;
+                count: root.focal-planes;
+                previous-text: "‹";
+                next-text: "›";
+                previous-tooltip: @tr("Previous focal plane");
+                next-tooltip: @tr("Next focal plane");
+                step(delta) => {
+                    root.plane-step(0, delta);
+                }
+            }
+
+            time-stepper := PlaneStepper {
+                width: root.time-points > 1 ? self.preferred-width : 0px;
+                visible: root.time-points > 1;
+                label: "T";
+                name: @tr("Time point");
+                index: root.time-point;
+                count: root.time-points;
+                previous-text: "‹";
+                next-text: "›";
+                previous-tooltip: @tr("Previous time point");
+                next-tooltip: @tr("Next time point");
+                step(delta) => {
+                    root.plane-step(1, delta);
                 }
             }
 
