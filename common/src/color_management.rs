@@ -98,7 +98,7 @@ impl DisplayTransform {
     /// Samples the conversion of `profile` (the bytes of an ICC profile) to
     /// sRGB.
     pub fn from_icc(profile: &[u8]) -> Result<Self, ColorProfileError> {
-        let source = ColorProfile::new_from_slice(profile)
+        let source = ColorProfile::new_from_slice_with_options(profile, moxcms::ParsingOptions { max_profile_size: 32 * 1024 * 1024, ..Default::default() })
             .map_err(|error| ColorProfileError::Unreadable(format!("{error:?}")))?;
         if source.color_space != DataColorSpace::Rgb {
             return Err(ColorProfileError::NotRgb(format!(
