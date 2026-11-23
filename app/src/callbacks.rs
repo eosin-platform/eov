@@ -2880,9 +2880,9 @@ pub fn setup_callbacks(
         let state_handle = Arc::clone(&state);
         let last_cursor = Rc::new(Cell::new((0.0f64, 0.0f64)));
         let modifiers = Rc::new(Cell::new(winit::keyboard::ModifiersState::default()));
+        // Where the left button went down (physical pixels), until the pointer
+        // has moved far enough to tell whether it drags the window.
         let drag_press: Rc<Cell<Option<(f64, f64)>>> = Rc::new(Cell::new(None));
-        let last_press_time = Rc::new(Cell::new(std::time::Instant::now()));
-        let dbl_count = Rc::new(Cell::new(0u32));
         let os_file_hovering = Rc::new(Cell::new(false));
         let dnd_poll_timer = Rc::new(Timer::default());
 
@@ -2890,8 +2890,6 @@ pub fn setup_callbacks(
             let last_cursor = Rc::clone(&last_cursor);
             let modifiers = Rc::clone(&modifiers);
             let drag_press = Rc::clone(&drag_press);
-            let last_press_time = Rc::clone(&last_press_time);
-            let dbl_count = Rc::clone(&dbl_count);
             let os_file_hovering = Rc::clone(&os_file_hovering);
             let dnd_poll_timer = Rc::clone(&dnd_poll_timer);
             let ui_weak = ui_weak.clone();
@@ -2948,21 +2946,26 @@ pub fn setup_callbacks(
                         let dy = position.y - py;
                         if dx * dx + dy * dy > 25.0 {
                             drag_press.set(None);
-
-                            let scale = slint_window.scale_factor();
-                            let lx = (px / scale as f64) as f32;
-                            let ly = (py / scale as f64) as f32;
-                            let _ = slint_window.try_dispatch_event(
-                                slint::platform::WindowEvent::PointerReleased {
-                                    position: slint::LogicalPosition::new(lx, ly),
-                                    button: slint::platform::PointerEventButton::Left,
-                                },
-                            );
-
-                            slint_window.with_winit_window(|w| {
-                                let _ = w.drag_window();
-                            });
-                            return EventResult::PreventDefault;
+                            // Slint has handled the press by now: only one on
+                            // the title bar where there is no control (its
+                            // strip along the top, the logo, the space between
+                            // and after the buttons) moves the window. A
+                            // double click there maximizes it (the toolbar's
+                            // drag handler).
+                            let on_title_bar = ui_weak
+                                .upgrade()
+                                .is_some_and(|ui| ui.get_title_bar_drag_pressed());
+                            if on_title_bar {
+                                // The window system has the pointer until the
+                                // button goes up: Slint lets go of the press
+                                // without taking it for a click.
+                                let _ = slint_window
+                                    .try_dispatch_event(slint::platform::WindowEvent::PointerExited);
+                                slint_window.with_winit_window(|w| {
+                                    let _ = w.drag_window();
+                                });
+                                return EventResult::PreventDefault;
+                            }
                         }
                     }
                     EventResult::Propagate
@@ -2972,40 +2975,11 @@ pub fn setup_callbacks(
                     button: winit::event::MouseButton::Left,
                     ..
                 } => {
-                    let (cx, cy) = last_cursor.get();
-                    let scale = slint_window.scale_factor() as f64;
-                    let ly = cy / scale;
-                    let lx = cx / scale;
-
-                    let toolbar_height = 40.0;
-                    let in_drag_area = if let Some(ui) = ui_weak.upgrade() {
-                        let drag_start = ui.get_toolbar_drag_area_x() as f64;
-                        let drag_end = drag_start + ui.get_toolbar_drag_area_width() as f64;
-
-                        ly < toolbar_height && lx >= drag_start && lx < drag_end
-                    } else {
-                        false
-                    };
-
-                    if in_drag_area {
-                        drag_press.set(Some((cx, cy)));
-
-                        let now = std::time::Instant::now();
-                        if now.duration_since(last_press_time.get()).as_millis() < 400 {
-                            dbl_count.set(dbl_count.get() + 1);
-                        } else {
-                            dbl_count.set(1);
-                        }
-                        last_press_time.set(now);
-
-                        if dbl_count.get() >= 2 {
-                            dbl_count.set(0);
-                            drag_press.set(None);
-                            let maximized = slint_window.is_maximized();
-                            slint_window.set_maximized(!maximized);
-                            return EventResult::PreventDefault;
-                        }
-                    }
+                    // Slint takes the press after this; whether it landed on
+                    // the title bar's empty space is asked once the pointer
+                    // moves. Presses in the resize border never reach Slint's
+                    // items, so they resize instead.
+                    drag_press.set(Some(last_cursor.get()));
                     EventResult::Propagate
                 }
                 winit::event::WindowEvent::MouseInput {

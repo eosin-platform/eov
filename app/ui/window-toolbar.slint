@@ -15,6 +15,35 @@ import {
     ToolButton,
 } from "tab-controls.slint";
 
+// The line between two groups of toolbar buttons, left out where its group
+// starts a row (when the buttons wrap).
+component GroupSeparator {
+    in property <bool> shown: true;
+
+    width: 1px;
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 1px;
+        height: 24px;
+        background: Theme.border;
+        visible: root.shown;
+    }
+}
+
+// Holds a button that can be disabled. A disabled button ignores the
+// pointer, which would hand its presses to the title bar's drag handler
+// behind it (a double click on a greyed-out Undo would maximize the window):
+// the touch area under the button takes them instead.
+component GuardedSlot {
+    width: 32px;
+    height: 28px;
+
+    TouchArea { }
+
+    @children
+}
+
 export component WindowToolbar inherits Rectangle {
     in property <ToolType> current-tool: ToolType.navigate;
     in property <RenderMode> render-mode: RenderMode.cpu;
@@ -74,8 +103,9 @@ export component WindowToolbar inherits Rectangle {
     callback window-maximize();
     callback window-close();
 
-    out property <float> drag-area-x: drag-area.x / 1px;
-    out property <float> drag-area-width: drag-area.width / 1px;
+    // Pressed on the title bar where there is no control: the window moves
+    // when the pointer goes on to move (callbacks.rs).
+    out property <bool> drag-handle-pressed: drag-touch.pressed;
     out property <length> filter-combo-abs-x: filter-combo-area.absolute-position.x;
     out property <length> filter-combo-abs-y: filter-combo-area.absolute-position.y + filter-combo-area.height + 2px;
     out property <length> filter-combo-width: filter-combo-area.width;
@@ -87,9 +117,37 @@ export component WindowToolbar inherits Rectangle {
     out property <length> hovered-tooltip-top-y:
         open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px : undo-button.hovered ? undo-button.absolute-position.y + undo-button.height + 6px : redo-button.hovered ? redo-button.absolute-position.y + redo-button.height + 6px : series-button.hovered ? series-button.absolute-position.y + series-button.height + 6px : minimap-button.hovered ? minimap-button.absolute-position.y + minimap-button.height + 6px : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.y + viewport-lock-button.height + 6px : link-button.hovered ? link-button.absolute-position.y + link-button.height + 6px : align-button.hovered ? align-button.absolute-position.y + align-button.height + 6px : navigate-button.hovered ? navigate-button.absolute-position.y + navigate-button.height + 6px : roi-button.hovered ? roi-button.absolute-position.y + roi-button.height + 6px : measure-button.hovered ? measure-button.absolute-position.y + measure-button.height + 6px : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px : scale-bar-button.hovered ? scale-bar-button.absolute-position.y + scale-bar-button.height + 6px : theme-button.hovered ? theme-button.absolute-position.y + theme-button.height + 6px : dataset-export-button.hovered ? dataset-export-button.absolute-position.y + dataset-export-button.height + 6px : plugins-button.hovered ? plugins-button.absolute-position.y + plugins-button.height + 6px : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-top-y : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize_control.height + 6px : !root.use-native-window-controls && maximize-touch.has-hover ? maximize_control.absolute-position.y + maximize_control.height + 6px : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close_control.height + 6px : 0px;
 
-    height: 40px;
+    // The strip along the top of the title bar, above the first row of
+    // buttons, moves the window like the rest of its empty space. Without
+    // the system's title bar (Windows, Linux) the window resizes from its top
+    // 5px unless maximized (`resize-border-width` in app-window.slint), so
+    // the strip is 2px taller there to leave a few pixels to grab below that
+    // border. With the system's title bar (macOS) it stays the 6px above the
+    // buttons, which keeps the first row where the traffic lights are aligned
+    // to it (MACOS_TOOLBAR_HEIGHT in callbacks.rs).
+    property <length> top-strip: root.use-native-window-controls ? 6px : 8px;
+    // Where each row of buttons starts.
+    property <length> row-start: 6px;
+    property <length> button-height: 28px;
+    // The strip, the first row of buttons and the padding under them.
+    property <length> first-row-height: root.top-strip + root.button-height + 6px;
+
+    // The title bar grows a row for each row of buttons (vertical-stretch:
+    // it never takes more height than they need).
+    vertical-stretch: 0;
     background: Theme.toolbar-bg;
     border-width: 0px;
+
+    // Behind everything: pressing where there is no control (the strip along
+    // the top, the logo, the gaps between buttons, the rest of a row) and
+    // dragging moves the window (callbacks.rs starts the move once the
+    // pointer has moved a few pixels); a double click maximizes or restores
+    // it.
+    drag-touch := TouchArea {
+        double-clicked => {
+            root.window-maximize();
+        }
+    }
 
     Rectangle {
         y: parent.height - 1px;
@@ -101,14 +159,24 @@ export component WindowToolbar inherits Rectangle {
     HorizontalLayout {
         spacing: 0px;
 
-        HorizontalLayout {
-            padding: 6px;
-            spacing: 4px;
+        // The buttons, wrapped onto further rows when they do not fit.
+        FlexboxLayout {
             horizontal-stretch: 1;
+            flex-wrap: wrap;
+            alignment: start;
+            align-content: start;
+            cross-axis-alignment: center;
+            padding-left: root.row-start;
+            padding-right: 6px;
+            padding-top: root.top-strip;
+            padding-bottom: 6px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
 
-            Rectangle {
-                visible: root.use-native-window-controls;
-                width: root.use-native-window-controls ? 74px : 0px;
+            // Room for the system's window buttons (macOS), on the first row.
+            if root.use-native-window-controls: Rectangle {
+                width: 74px;
+                height: root.button-height;
             }
 
             action-cluster := HorizontalLayout {
@@ -124,21 +192,25 @@ export component WindowToolbar inherits Rectangle {
                     }
                 }
 
-                undo-button := SvgToolButton {
-                    icon-source: @image-url("icons/undo.svg");
-                    tooltip-text: root.undo-tooltip-text;
-                    enabled: root.undo-enabled;
-                    clicked => {
-                        root.undo-requested();
+                GuardedSlot {
+                    undo-button := SvgToolButton {
+                        icon-source: @image-url("icons/undo.svg");
+                        tooltip-text: root.undo-tooltip-text;
+                        enabled: root.undo-enabled;
+                        clicked => {
+                            root.undo-requested();
+                        }
                     }
                 }
 
-                redo-button := SvgToolButton {
-                    icon-source: @image-url("icons/redo.svg");
-                    tooltip-text: root.redo-tooltip-text;
-                    enabled: root.redo-enabled;
-                    clicked => {
-                        root.redo-requested();
+                GuardedSlot {
+                    redo-button := SvgToolButton {
+                        icon-source: @image-url("icons/redo.svg");
+                        tooltip-text: root.redo-tooltip-text;
+                        enabled: root.redo-enabled;
+                        clicked => {
+                            root.redo-requested();
+                        }
                     }
                 }
 
@@ -195,14 +267,13 @@ export component WindowToolbar inherits Rectangle {
                         root.toggle-alignment-adjust-requested();
                     }
                 }
+            }
 
-                VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 1px;
-                        height: 24px;
-                        background: Theme.border;
-                    }
+            tool-group := HorizontalLayout {
+                spacing: 4px;
+
+                GroupSeparator {
+                    shown: tool-group.x > root.row-start + 1px;
                 }
 
                 navigate-button := SvgToolButton {
@@ -238,14 +309,13 @@ export component WindowToolbar inherits Rectangle {
                         root.measure-mode-menu-requested(x, y);
                     }
                 }
+            }
 
-                VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 1px;
-                        height: 24px;
-                        background: Theme.border;
-                    }
+            view-group := HorizontalLayout {
+                spacing: 4px;
+
+                GroupSeparator {
+                    shown: view-group.x > root.row-start + 1px;
                 }
 
                 metadata-button := MetadataToolButton {
@@ -283,14 +353,13 @@ export component WindowToolbar inherits Rectangle {
                         root.dataset-export-requested();
                     }
                 }
+            }
 
-                VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 1px;
-                        height: 24px;
-                        background: Theme.border;
-                    }
+            render-group := HorizontalLayout {
+                spacing: 4px;
+
+                GroupSeparator {
+                    shown: render-group.x > root.row-start + 1px;
                 }
 
                 cpu-button := ToolButton {
@@ -304,16 +373,20 @@ export component WindowToolbar inherits Rectangle {
                     }
                 }
 
-                gpu-button := ToolButton {
+                GuardedSlot {
                     width: 40px;
-                    icon: @tr("GPU");
-                    tooltip-text: root.gpu-rendering-available ? @tr("Use GPU renderer") : @tr("GPU renderer unavailable");
-                    enabled: root.gpu-rendering-available;
-                    is-active: root.render-mode == RenderMode.gpu;
-                    checkable: true;
-                    clicked => {
-                        if root.gpu-rendering-available {
-                            root.render-backend-selected(RenderMode.gpu);
+
+                    gpu-button := ToolButton {
+                        width: 40px;
+                        icon: @tr("GPU");
+                        tooltip-text: root.gpu-rendering-available ? @tr("Use GPU renderer") : @tr("GPU renderer unavailable");
+                        enabled: root.gpu-rendering-available;
+                        is-active: root.render-mode == RenderMode.gpu;
+                        checkable: true;
+                        clicked => {
+                            if root.gpu-rendering-available {
+                                root.render-backend-selected(RenderMode.gpu);
+                            }
                         }
                     }
                 }
@@ -372,153 +445,167 @@ export component WindowToolbar inherits Rectangle {
                 }
             }
 
-            for btn[idx] in root.plugin-buttons: HorizontalLayout {
+            // Each plugin's buttons start with a separator; a row breaks
+            // between any two of them.
+            for btn[idx] in root.plugin-buttons: plugin-item := HorizontalLayout {
                 spacing: 4px;
 
-                if btn.show-left-separator : VerticalLayout {
-                    alignment: center;
-                    Rectangle {
-                        width: 1px;
-                        height: 24px;
-                        background: Theme.border;
-                    }
+                if btn.show-left-separator: GroupSeparator {
+                    shown: plugin-item.x > root.row-start + 1px;
                 }
 
-                SvgToolButton {
-                    width: 32px;
-                    icon-source: btn.icon;
-                    tooltip-text: btn.tooltip;
-                    is-active: btn.active;
-                    checkable: btn.is-tool || btn.active;
-                    enabled: btn.enabled;
-                    changed hovered => {
-                        if self.hovered {
-                            root.plugin-hovered-tooltip-text = btn.tooltip;
-                            root.plugin-hovered-tooltip-center-x = self.absolute-position.x + self.width / 2;
-                            root.plugin-hovered-tooltip-top-y = self.absolute-position.y + self.height + 6px;
-                        } else if root.plugin-hovered-tooltip-text == btn.tooltip {
-                            root.plugin-hovered-tooltip-text = "";
-                            root.plugin-hovered-tooltip-center-x = 0px;
-                            root.plugin-hovered-tooltip-top-y = 0px;
+                GuardedSlot {
+                    SvgToolButton {
+                        width: 32px;
+                        icon-source: btn.icon;
+                        tooltip-text: btn.tooltip;
+                        is-active: btn.active;
+                        checkable: btn.is-tool || btn.active;
+                        enabled: btn.enabled;
+                        changed hovered => {
+                            if self.hovered {
+                                root.plugin-hovered-tooltip-text = btn.tooltip;
+                                root.plugin-hovered-tooltip-center-x = self.absolute-position.x + self.width / 2;
+                                root.plugin-hovered-tooltip-top-y = self.absolute-position.y + self.height + 6px;
+                            } else if root.plugin-hovered-tooltip-text == btn.tooltip {
+                                root.plugin-hovered-tooltip-text = "";
+                                root.plugin-hovered-tooltip-center-x = 0px;
+                                root.plugin-hovered-tooltip-top-y = 0px;
+                            }
+                        }
+                        clicked => {
+                            root.plugin-button-clicked(btn.plugin-id, btn.button-id, btn.is-tool);
                         }
                     }
+                }
+            }
+
+            plugins-group := HorizontalLayout {
+                spacing: 4px;
+
+                GroupSeparator {
+                    shown: plugins-group.x > root.row-start + 1px;
+                }
+
+                plugins-button := SvgToolButton {
+                    icon-source: @image-url("icons/plugin.svg");
+                    tooltip-text: root.plugin-problems ? @tr("Plugins (some could not be started)") : @tr("Plugins ({})", root.plugin-count);
+                    is-active: root.plugin-problems;
                     clicked => {
-                        root.plugin-button-clicked(btn.plugin-id, btn.button-id, btn.is-tool);
+                        root.plugins-panel-requested();
                     }
                 }
             }
-
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 1px;
-                    height: 24px;
-                    background: Theme.border;
-                }
-            }
-
-            plugins-button := SvgToolButton {
-                icon-source: @image-url("icons/plugin.svg");
-                tooltip-text: root.plugin-problems ? @tr("Plugins (some could not be started)") : @tr("Plugins ({})", root.plugin-count);
-                is-active: root.plugin-problems;
-                clicked => {
-                    root.plugins-panel-requested();
-                }
-            }
-
-            drag-area := Rectangle {
-                horizontal-stretch: 1;
-
-                Image {
-                    source: @image-url("icons/logo.png");
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    height: 20px;
-                    image-fit: contain;
-                    accessible-role: none;
-                }
-            }
         }
 
-        minimize-control := Rectangle {
-            width: 46px;
-            visible: !root.use-native-window-controls;
-            background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
-            border-radius: 0px;
-            accessible-role: button;
-            accessible-label: @tr("Minimize window");
-            accessible-action-default => {
-                root.window-minimize();
-            }
+        // The logo and the window's own buttons stay on the first row at the
+        // right, however narrow the window. The system draws the window's
+        // buttons on macOS (top left), so there these take no room.
+        VerticalLayout {
+            alignment: start;
 
-            minimize-touch := TouchArea {
-                clicked => {
-                    root.window-minimize();
+            HorizontalLayout {
+                height: root.first-row-height;
+
+                logo := Rectangle {
+                    width: 64px;
+
+                    Image {
+                        source: @image-url("icons/logo.png");
+                        x: (parent.width - self.width) / 2;
+                        y: root.top-strip + (root.button-height - self.height) / 2;
+                        height: 20px;
+                        image-fit: contain;
+                        accessible-role: none;
+                    }
                 }
-            }
 
-            Text {
-                text: "─";
-                color: Theme.text-primary;
-                font-size: 12px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                accessible-role: none;
-            }
-        }
+                minimize-control := Rectangle {
+                    width: root.use-native-window-controls ? 0px : 46px;
+                    visible: !root.use-native-window-controls;
+                    background: minimize-touch.has-hover ? Theme.surface-hover : transparent;
+                    border-radius: 0px;
+                    accessible-role: button;
+                    accessible-label: @tr("Minimize window");
+                    accessible-action-default => {
+                        root.window-minimize();
+                    }
 
-        maximize-control := Rectangle {
-            width: 46px;
-            visible: !root.use-native-window-controls;
-            background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
-            border-radius: 0px;
-            accessible-role: button;
-            accessible-label: @tr("Maximize window");
-            accessible-action-default => {
-                root.window-maximize();
-            }
+                    minimize-touch := TouchArea {
+                        clicked => {
+                            root.window-minimize();
+                        }
+                    }
 
-            maximize-touch := TouchArea {
-                clicked => {
-                    root.window-maximize();
+                    // The glyphs sit on the line of the toolbar's icons.
+                    Text {
+                        y: root.top-strip;
+                        height: root.button-height;
+                        text: "─";
+                        color: Theme.text-primary;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
                 }
-            }
 
-            Text {
-                text: "☐";
-                color: Theme.text-primary;
-                font-size: 13px;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                accessible-role: none;
-            }
-        }
+                maximize-control := Rectangle {
+                    width: root.use-native-window-controls ? 0px : 46px;
+                    visible: !root.use-native-window-controls;
+                    background: maximize-touch.has-hover ? Theme.surface-hover : transparent;
+                    border-radius: 0px;
+                    accessible-role: button;
+                    accessible-label: @tr("Maximize window");
+                    accessible-action-default => {
+                        root.window-maximize();
+                    }
 
-        close-control := Rectangle {
-            width: 46px;
-            visible: !root.use-native-window-controls;
-            background: close-win-touch.has-hover ? Theme.close-hover : transparent;
-            border-radius: 0px;
-            accessible-role: button;
-            accessible-label: @tr("Close window");
-            accessible-action-default => {
-                root.window-close();
-            }
+                    maximize-touch := TouchArea {
+                        clicked => {
+                            root.window-maximize();
+                        }
+                    }
 
-            close-win-touch := TouchArea {
-                clicked => {
-                    root.window-close();
+                    Text {
+                        y: root.top-strip;
+                        height: root.button-height;
+                        text: "☐";
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
                 }
-            }
 
-            Path {
-                width: 10px;
-                height: 10px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                stroke: close-win-touch.has-hover ? Theme.text-on-danger : Theme.text-primary;
-                stroke-width: 1.2px;
-                commands: "M 0 0 L 10 10 M 10 0 L 0 10";
+                close-control := Rectangle {
+                    width: root.use-native-window-controls ? 0px : 46px;
+                    visible: !root.use-native-window-controls;
+                    background: close-win-touch.has-hover ? Theme.close-hover : transparent;
+                    border-radius: 0px;
+                    accessible-role: button;
+                    accessible-label: @tr("Close window");
+                    accessible-action-default => {
+                        root.window-close();
+                    }
+
+                    close-win-touch := TouchArea {
+                        clicked => {
+                            root.window-close();
+                        }
+                    }
+
+                    Path {
+                        width: 10px;
+                        height: 10px;
+                        x: (parent.width - self.width) / 2;
+                        y: root.top-strip + (root.button-height - self.height) / 2;
+                        stroke: close-win-touch.has-hover ? Theme.text-on-danger : Theme.text-primary;
+                        stroke-width: 1.2px;
+                        commands: "M 0 0 L 10 10 M 10 0 L 0 10";
+                    }
+                }
             }
         }
     }

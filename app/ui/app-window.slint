@@ -60,7 +60,11 @@ export component AppWindow inherits Window {
     icon: @image-url("icons/logo_full.png");
     in property <bool> use-native-window-controls: false;
     no-frame: !use-native-window-controls;
-    resize-border-width: 5px;
+    // Without the system's frame the window resizes from its outer 5px,
+    // except while maximized or full screen, where it cannot be resized: the
+    // top edge then moves the window like the rest of the title bar's strip
+    // (window-toolbar.slint), and the close button reaches the corner.
+    resize-border-width: root.maximized || root.full-screen ? 0px : 5px;
     min-width: 800px;
     min-height: 600px;
     preferred-width: 1280px;
@@ -98,8 +102,9 @@ export component AppWindow inherits Window {
     in-out property <int> split-drop-side: -1;
     in-out property <int> os-file-hover-pane: -1;
     in-out property <int> os-file-hover-side: -1;
-    out property <float> toolbar-drag-area-x: toolbar.drag-area-x;
-    out property <float> toolbar-drag-area-width: toolbar.drag-area-width;
+    // Pressed on the title bar where there is no control: moving the pointer
+    // on moves the window (callbacks.rs).
+    out property <bool> title-bar-drag-pressed: toolbar.drag-handle-pressed;
 
     in-out property <bool> context-menu-visible: false;
     in-out property <length> context-menu-x: 0px;
@@ -407,7 +412,8 @@ export component AppWindow inherits Window {
     callback hud-deconv-h-view-toggled(int);
     callback hud-deconv-e-view-toggled(int);
 
-    property <length> toolbar-height: 40px;
+    // The title bar's height: it grows a row for each row of buttons.
+    property <length> toolbar-height: toolbar.height;
     // As panes.slint lays the panes out (and PANE_GAP in state.rs).
     property <length> pane-gap: 6px;
     property <length> plugin-sidebar-width-length: plugin-sidebar-width * 1px;

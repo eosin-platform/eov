@@ -843,3 +843,233 @@ fn the_slide_gets_the_keyboard_back_from_its_hud() {
         ui.hide().unwrap();
     });
 }
+
+/// A window at its narrowest (800 px wide) with `count` plugin buttons in
+/// the toolbar, eight per plugin, the last of each a plain button.
+fn narrow_window_with_plugin_buttons(count: usize) -> AppWindow {
+    let ui = AppWindow::new().unwrap();
+    ui.window().set_size(slint::PhysicalSize::new(800, 600));
+    ui.show().unwrap();
+    let buttons = (0..count)
+        .map(|i| crate::PluginButtonData {
+            plugin_id: format!("plugin-{}", i / 8).into(),
+            button_id: format!("button-{i}").into(),
+            tooltip: format!("Plugin button {i}").into(),
+            enabled: true,
+            is_tool: i % 8 != 7,
+            show_left_separator: i % 8 == 0,
+            ..Default::default()
+        })
+        .collect();
+    ui.set_plugin_buttons(model(buttons));
+    settle(&ui);
+    ui
+}
+
+/// Where an element is in the window: (left, top, right, bottom).
+fn bounds(element: &ElementHandle) -> (f32, f32, f32, f32) {
+    let (position, size) = (element.absolute_position(), element.size());
+    (
+        position.x,
+        position.y,
+        position.x + size.width,
+        position.y + size.height,
+    )
+}
+
+fn center(bounds: (f32, f32, f32, f32)) -> (f32, f32) {
+    ((bounds.0 + bounds.2) / 2.0, (bounds.1 + bounds.3) / 2.0)
+}
+
+fn title_bar_height(ui: &AppWindow) -> f32 {
+    ElementHandle::find_by_element_type_name(ui, "WindowToolbar")
+        .next()
+        .unwrap()
+        .size()
+        .height
+}
+
+fn logo(ui: &AppWindow) -> (f32, f32, f32, f32) {
+    bounds(
+        &ElementHandle::find_by_element_id(ui, "WindowToolbar::logo")
+            .next()
+            .expect("the title bar's logo"),
+    )
+}
+
+#[test]
+fn the_title_bar_wraps_its_buttons_and_keeps_the_logo_and_window_buttons_in_view() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let one_row = title_bar_height(&ui);
+        ui.hide().unwrap();
+
+        let ui = narrow_window_with_plugin_buttons(24);
+        // The window's own buttons stay in the top right corner, the logo
+        // beside them.
+        let mut right = 800.0;
+        for label in ["Close window", "Maximize window", "Minimize window"] {
+            let (left, top, end, _) = bounds(&find(&ui, AccessibleRole::Button, label));
+            assert_eq!((top, end), (0.0, right), "{label}");
+            right = left;
+        }
+        let logo = logo(&ui);
+        assert_eq!((logo.1, logo.2), (0.0, right), "the logo");
+        assert!(logo.0 < logo.2);
+
+        // What does not fit beside the first row wraps onto rows below it,
+        // left of the logo, each button after the one before.
+        let first_row = bounds(&find(&ui, AccessibleRole::Button, "Toggle minimap")).1;
+        let height = title_bar_height(&ui);
+        let buttons: Vec<_> = (0..24)
+            .map(|i| bounds(&find(&ui, AccessibleRole::Button, &format!("Plugin button {i}"))))
+            .collect();
+        let mut rows: Vec<f32> = buttons.iter().map(|button| button.1).collect();
+        rows.dedup();
+        assert!(rows.len() >= 2, "rows at {rows:?}");
+        assert!(rows.iter().all(|&top| top > first_row), "rows at {rows:?}");
+        for (i, &(left, _, end, bottom)) in buttons.iter().enumerate() {
+            assert!(
+                left >= 0.0 && end <= logo.0 && bottom <= height,
+                "button {i} at {:?}",
+                buttons[i]
+            );
+        }
+        for pair in buttons.windows(2) {
+            let (before, after) = (pair[0], pair[1]);
+            assert!(
+                after.1 > before.1 || after.0 >= before.2,
+                "{before:?} then {after:?}"
+            );
+        }
+        let plugins = bounds(&find(&ui, AccessibleRole::Button, "Plugins (0)"));
+        assert!(plugins.2 <= logo.0 && plugins.3 <= height, "{plugins:?}");
+        // The title bar grows by a row of buttons for each row.
+        assert!(
+            height >= one_row + rows.len() as f32 * 28.0,
+            "{one_row} -> {height}"
+        );
+
+        // A button on a wrapped row works.
+        let clicked = Rc::new(std::cell::RefCell::new(None));
+        ui.on_plugin_button_clicked({
+            let clicked = Rc::clone(&clicked);
+            move |plugin, button, is_tool| {
+                *clicked.borrow_mut() = Some((plugin.to_string(), button.to_string(), is_tool));
+            }
+        });
+        find(&ui, AccessibleRole::Button, "Plugin button 23")
+            .mock_single_click(slint::platform::PointerEventButton::Left);
+        assert_eq!(
+            clicked.borrow().clone(),
+            Some(("plugin-2".to_string(), "button-23".to_string(), false))
+        );
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn the_title_bars_empty_space_moves_and_maximizes_the_window() {
+    use slint::platform::{PointerEventButton, WindowEvent};
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = narrow_window_with_plugin_buttons(24);
+        let (maximized, tick) = counter();
+        ui.on_window_maximize(tick);
+        // A click; whether its press would move the window (callbacks.rs
+        // starts the move when the pointer then moves).
+        let click = |(x, y): (f32, f32)| {
+            let position = slint::LogicalPosition::new(x, y);
+            let button = PointerEventButton::Left;
+            ui.window()
+                .dispatch_event(WindowEvent::PointerMoved { position });
+            ui.window()
+                .dispatch_event(WindowEvent::PointerPressed { position, button });
+            let moves_window = ui.get_title_bar_drag_pressed();
+            ui.window()
+                .dispatch_event(WindowEvent::PointerReleased { position, button });
+            moves_window
+        };
+        // Long enough after the last click not to make a double click.
+        let pause = || {
+            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(1));
+            settle(&ui);
+        };
+        let press = |at: (f32, f32)| {
+            let moves_window = click(at);
+            pause();
+            moves_window
+        };
+        let double_click = |at: (f32, f32)| {
+            click(at);
+            click(at);
+            pause();
+        };
+
+        let minimize = bounds(&find(&ui, AccessibleRole::Button, "Minimize window"));
+        let maximize = bounds(&find(&ui, AccessibleRole::Button, "Maximize window"));
+        let logo = logo(&ui);
+        let undo = bounds(&find(&ui, AccessibleRole::Button, "Undo"));
+        let redo = bounds(&find(&ui, AccessibleRole::Button, "Redo"));
+        let minimap = bounds(&find(&ui, AccessibleRole::Button, "Toggle minimap"));
+        let dataset = bounds(&find(&ui, AccessibleRole::Button, "Export Dataset"));
+        let height = title_bar_height(&ui);
+
+        // The strip along the top, from the left edge to the window's
+        // buttons, down to the first row of buttons.
+        for x in [1.0, 400.0, minimize.0 - 1.0] {
+            assert!(press((x, 1.0)), "top edge at x {x}");
+            assert!(press((x, minimap.1 - 1.0)), "above the buttons at x {x}");
+        }
+        // The logo, a gap between two buttons, the rest of the first row and
+        // the bottom edge.
+        assert!(press(center(logo)), "logo");
+        assert!(press(((undo.2 + redo.0) / 2.0, center(undo).1)), "between buttons");
+        assert!(press(((dataset.2 + logo.0) / 2.0, center(dataset).1)), "after the first row");
+        assert!(press((400.0, height - 2.0)), "bottom edge");
+        // Not the buttons, disabled ones included, nor the window's buttons
+        // where the strip meets them, nor the slides below.
+        assert!(!press(center(minimap)), "a button");
+        assert!(!press(center(undo)), "a disabled button");
+        assert!(!press((center(minimize).0, 1.0)), "a window button");
+        assert!(!press((400.0, height + 10.0)), "below the title bar");
+        assert_eq!(maximized.get(), 0);
+
+        // A double click there maximizes or restores the window, as the
+        // window's maximize button does at the top of the title bar.
+        double_click((400.0, 1.0));
+        assert_eq!(maximized.get(), 1, "the strip");
+        double_click(center(logo));
+        assert_eq!(maximized.get(), 2, "the logo");
+        double_click(center(undo));
+        assert_eq!(maximized.get(), 2, "a disabled button");
+        press((center(maximize).0, 1.0));
+        assert_eq!(maximized.get(), 3, "the maximize button");
+        ui.hide().unwrap();
+    });
+}
+
+#[test]
+fn with_the_systems_window_buttons_the_title_bar_leaves_them_room() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = narrow_window_with_plugin_buttons(24);
+        ui.set_use_native_window_controls(true);
+        settle(&ui);
+        // macOS draws its window buttons at the top left: the toolbar starts
+        // after them, its first row where they are aligned to it (40 px).
+        let open = bounds(&find(
+            &ui,
+            AccessibleRole::Button,
+            "Open file (right-click for folder or recent)",
+        ));
+        assert_eq!((open.0, open.1, open.3), (84.0, 6.0, 34.0));
+        // eov's own window buttons take no room: the logo ends the first row.
+        let logo = logo(&ui);
+        assert_eq!(logo.2, 800.0);
+        // The rest still wraps, rows below the first starting at the left.
+        let wrapped = bounds(&find(&ui, AccessibleRole::Button, "Plugin button 23"));
+        assert!(wrapped.1 > open.1 && wrapped.2 <= logo.0, "{wrapped:?}");
+        let render = bounds(&find(&ui, AccessibleRole::Button, "Use CPU renderer"));
+        assert!(render.1 > open.1 && render.0 < 20.0, "{render:?}");
+        ui.hide().unwrap();
+    });
+}
