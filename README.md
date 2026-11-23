@@ -59,7 +59,7 @@ brew install --cask eov@0.4.9
 `brew uninstall --zap --cask eov` also removes eov's settings, plugins and caches (`~/.eov`, `~/Library/Application Support/eov`, `~/Library/Caches/eov`).
 
 #### Manual Installation (macOS)
-The `.app` file is available. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle (the bundle declares the oldest macOS it runs on; macOS and Homebrew enforce it):
+A standalone `.app` file is available containing all dependencies. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle (the bundle declares the oldest macOS it runs on; macOS and Homebrew enforce it):
 - [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-arm64.zip) (all Macs released since June 2023)
 - [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
