@@ -55,6 +55,9 @@ slint = { version = "1.19.0", default-features = false, features = [
 # The interpreter's property and callback types (same pinned version as the
 # interpreter uses).
 i-slint-compiler = { version = "=1.19.0", default-features = false }
+# Its `InternalToken` opens the interpreter's compiler configuration, so that
+# plugin surfaces do not depend on SLINT_ENABLE_EXPERIMENTAL_FEATURES.
+i-slint-core = { version = "=1.19.0", default-features = false }
 
 # Slint interpreter for runtime plugin UI loading
 slint-interpreter = { version = "1.19.0", default-features = false, features = [

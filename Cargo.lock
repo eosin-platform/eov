@@ -1384,6 +1384,7 @@ dependencies = [
  "hmac",
  "i-slint-backend-testing",
  "i-slint-compiler",
+ "i-slint-core",
  "image",
  "indicatif",
  "libc",

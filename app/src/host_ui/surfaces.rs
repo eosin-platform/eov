@@ -240,12 +240,32 @@ pub(super) struct Surfaces {
     confirm_queue: VecDeque<PendingConfirm>,
 }
 
+/// A compiler for plugin surfaces: they get the language eov defines,
+/// whatever the environment says. Slint reads
+/// SLINT_ENABLE_EXPERIMENTAL_FEATURES when a compiler is made, and since 1.19
+/// a value it does not know (such as the `1` older versions took) fails every
+/// surface.
+fn surface_compiler() -> slint_interpreter::Compiler {
+    without_experimental_features(slint_interpreter::Compiler::default())
+}
+
+/// `compiler` without the experimental features (known or not) it took from
+/// the environment.
+fn without_experimental_features(
+    mut compiler: slint_interpreter::Compiler,
+) -> slint_interpreter::Compiler {
+    let config = compiler.compiler_configuration(i_slint_core::InternalToken);
+    config.experimental_features = Default::default();
+    config.unknown_experimental_features.clear();
+    compiler
+}
+
 fn compile(
     path: &Path,
     component: &str,
     plugin_root: Option<&Path>,
 ) -> Result<ComponentDefinition, String> {
-    let mut compiler = slint_interpreter::Compiler::default();
+    let mut compiler = surface_compiler();
     if let Some(root) = plugin_root {
         compiler.set_include_paths(vec![root.to_path_buf()]);
     }
@@ -743,7 +763,7 @@ mod tests {
                 if path.extension().and_then(|e| e.to_str()) != Some("slint") {
                     continue;
                 }
-                let mut compiler = slint_interpreter::Compiler::default();
+                let mut compiler = surface_compiler();
                 compiler.set_include_paths(vec![root.clone()]);
                 let result = spin_on(compiler.build_from_path(&path));
                 // Files of globals and widgets (no component of their own)
@@ -810,6 +830,39 @@ mod tests {
             assert_eq!(model.row_data(1), Some(Value::String("c".into())));
             assert!(!set(serde_json::json!({"missing": 1})).is_empty());
         });
+    }
+
+    /// SLINT_ENABLE_EXPERIMENTAL_FEATURES does not reach plugin surfaces:
+    /// Slint 1.19 refuses the `1` older versions took, which made every
+    /// surface fail for a user who had it set.
+    #[test]
+    fn surfaces_ignore_experimental_features_from_the_environment() {
+        let from_environment = || {
+            let mut compiler = slint_interpreter::Compiler::default();
+            // What Slint takes from SLINT_ENABLE_EXPERIMENTAL_FEATURES=1.
+            compiler
+                .compiler_configuration(i_slint_core::InternalToken)
+                .unknown_experimental_features = vec!["1".into()];
+            compiler
+        };
+        let errors = |compiler: slint_interpreter::Compiler| {
+            let source = "export component Panel { in property <string> name; }";
+            spin_on(compiler.build_from_source(source.into(), "panel.slint".into()))
+                .diagnostics()
+                .filter(|d| d.level() == slint_interpreter::DiagnosticLevel::Error)
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            errors(from_environment())
+                .iter()
+                .any(|e| e.contains("unknown feature '1'")),
+            "the value fails a surface"
+        );
+        assert_eq!(
+            errors(without_experimental_features(from_environment())),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

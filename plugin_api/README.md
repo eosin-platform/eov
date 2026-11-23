@@ -137,6 +137,8 @@ unless `capture_keyboard` is off. eov compiles surfaces without a Slint
 edition, so the behavior changes that Slint ties to an edition do not apply
 to them. One pitfall that remains: wrapped `Text` inside `if` or `for`
 needs `height: self.preferred-height`, or it is sized for the wrong width.
+Experimental Slint features are not available to surfaces: eov ignores
+`SLINT_ENABLE_EXPERIMENTAL_FEATURES`.
 
 Hotkeys (of tools, buttons and `register_hotkey`) cannot take a key eov
 uses: the keys in its Keyboard Shortcuts panel (F1), which users can
