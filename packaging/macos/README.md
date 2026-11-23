@@ -6,17 +6,46 @@ and produces the zipped release artifact. The recommended way to install eov
 on macOS is the Homebrew cask (`brew install --cask eosin-platform/eov/eov`);
 the zip is what the cask installs.
 
+## What the build bundles
+
+Every library eov loads, directly or through other libraries, that does not
+come with macOS (`/usr/lib`, `/System`) is copied into `Contents/Frameworks`.
+References are resolved the way dyld resolves them on the build machine:
+absolute paths, `@loader_path`, `@executable_path`, and `@rpath` through the
+`LC_RPATH` entries of the library and of the libraries that load it. Homebrew
+libraries reference their siblings through `@rpath` or `@loader_path`
+(`libwebp.7.dylib` links `@rpath/libsharpyuv.0.dylib`, found through
+`LC_RPATH @loader_path/../lib`).
+dyld's fallback paths (`/usr/local/lib`, Homebrew's prefix on Intel Macs) are
+deliberately not searched, so a library found only there fails the build
+instead of being missing on users' Macs. eov then references the copies as
+`@executable_path/../Frameworks/<name>`, and the libraries reference each
+other as `@loader_path/<name>`. The `LC_RPATH` entries that point outside the
+bundle are deleted, so nothing in the bundle depends on `@rpath`.
+
 ## What the build checks
 
-- **Linkage (`otool -L`).** Every reference in `eov` and the bundled dylibs
-  must be a system library (`/usr/lib`, `/System`) or a file inside the
-  bundle; absolute paths such as `/opt/homebrew/...` or the CI build prefix
-  fail the build, as do absolute `LC_RPATH` entries. `eov-update-helper` may
-  only link system libraries: during an update eov runs it from a private
-  temporary directory, where `@executable_path/../Frameworks` does not exist.
-- **Smoke tests.** `eov --version` runs from the finished bundle, and
-  `eov-update-helper --self-test` runs from a temporary copy, both without
-  `DYLD_LIBRARY_PATH`.
+- **Linkage (`otool -l`).** Every library `eov` and the bundled dylibs load
+  must be a system library or a file inside the bundle, referenced through
+  `@executable_path` or `@loader_path`. Absolute paths such as
+  `/opt/homebrew/...` or the CI build prefix fail the build, as do `@rpath`
+  references and `LC_RPATH` entries that point outside the bundle.
+  `eov-update-helper` may only link system libraries: during an update eov
+  runs it from a private temporary directory, where
+  `@executable_path/../Frameworks` does not exist.
+- **Smoke tests.** `eov --version` runs from a copy of the finished bundle in
+  a temporary directory, without `DYLD_LIBRARY_PATH` and with dyld's fallback
+  limited to `/usr/lib`, the way it starts on a Mac without Homebrew.
+  `DYLD_PRINT_LIBRARIES` lists every image dyld loads, and each must come
+  from the copy or from macOS (dyld ignores the variable under the hardened
+  runtime; the build warns and checks only that eov starts).
+  `eov-update-helper --self-test` runs from a temporary copy.
+- **Tests without a Mac.** `test-bundle-libraries.sh` builds Mach-O libraries
+  laid out like Homebrew's, bundles them with `build.sh`'s functions and
+  checks the result, and that the linkage check rejects broken bundles. It
+  runs on macOS with the Xcode tools and elsewhere with LLVM's `clang`,
+  `ld64.lld`, `llvm-otool` and `llvm-install-name-tool` (Debian and Ubuntu:
+  `apt install clang lld llvm`); CI runs it on Linux.
 - **Minimum macOS version.** eov, the helper, OpenSlide and libdicom are built
   for `MACOSX_DEPLOYMENT_TARGET` (default: `LSMinimumSystemVersion` in
   `assets/macos/Info.plist`, 11.0). Libraries taken from Homebrew are built

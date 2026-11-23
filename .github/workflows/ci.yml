@@ -70,7 +70,8 @@ jobs:
           tar -xJf "$tools/shellcheck.tar.xz" -C "$tools" --strip-components=1 shellcheck-v0.11.0/shellcheck
           echo "$tools" >> "$GITHUB_PATH"
           sudo apt-get update
-          sudo apt-get install -y appstream desktop-file-utils
+          # clang, lld and llvm: Mach-O tools for test-bundle-libraries.sh.
+          sudo apt-get install -y appstream desktop-file-utils clang lld llvm
       - name: actionlint
         run: actionlint
       - name: shellcheck
@@ -81,10 +82,14 @@ jobs:
           shellcheck --severity=warning \
             packaging/appimage/AppRun \
             packaging/appimage/*.sh \
-            packaging/macos/build.sh \
+            packaging/macos/*.sh \
             packaging/flatpak/build.sh \
             packaging/shared/build-openslide.sh \
             scripts/*.sh
+      # build.sh's library bundling and linkage check, on Mach-O libraries
+      # laid out like Homebrew's (packaging/macos/README.md).
+      - name: macOS library bundling
+        run: packaging/macos/test-bundle-libraries.sh
       - name: Pins, notices and permissions
         run: python3 scripts/check_packaging.py
       - name: Desktop entry and AppStream metadata
