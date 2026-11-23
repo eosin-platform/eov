@@ -101,17 +101,23 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: '3.12'
+      # release.yml signs releases with the runner's python3 and Ubuntu's
+      # python3-cryptography; test scripts/release_signing.py against the same
+      # (a setup-python interpreter cannot see apt packages).
+      - name: Install python3-cryptography
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3-cryptography
       - name: Unit tests
         working-directory: scripts
-        run: python -m unittest discover -p 'test_*.py' -v
+        run: python3 -m unittest discover -p 'test_*.py' -v
       # Offline; the live tests run in the Rust suite (scripting::tests),
       # against a test eov.
       - name: Scripting client tests
         working-directory: clients/python
-        run: python -m unittest discover -p 'test_*.py' -v
+        run: python3 -m unittest discover -p 'test_*.py' -v
 
   check:
     name: Clippy and tests (Linux)
