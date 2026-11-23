@@ -470,7 +470,7 @@ impl TileCache {
         if let Some(entry) = self.map.get(coord) {
             let _ = entry
                 .pins
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pins| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |pins| {
                     pins.checked_sub(1)
                 });
             self.policy_changed();
