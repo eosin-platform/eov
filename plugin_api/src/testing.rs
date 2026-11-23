@@ -1065,7 +1065,8 @@ mod tests {
     #[test]
     fn create_registers_contributions() {
         let harness = TestHarness::<Probe>::new().unwrap();
-        assert!(harness.state().toolbar_buttons.contains_key("go"));
+        // Built with `..Default::default()`, it arrives enabled.
+        assert!(harness.state().toolbar_buttons["go"].enabled);
     }
 
     #[test]
@@ -1131,6 +1132,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(items[0].item_id, "at-5");
+        assert!(items[0].enabled, "built with `..Default::default()`");
         let reply = harness
             .ui_callback("surface-1", "clicked", vec![json!(1), json!("x")])
             .unwrap();

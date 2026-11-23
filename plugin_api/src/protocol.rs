@@ -154,7 +154,7 @@ pub struct FileInfo {
 }
 
 /// The visible state of a pane showing a slide.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ViewInfo {
     pub pane: PaneId,
     pub file_id: FileId,
@@ -186,6 +186,28 @@ pub struct ViewInfo {
 
 fn default_scale_factor() -> f64 {
     1.0
+}
+
+// `Default` is written out here, as for `MenuItem` and `ToolbarButtonSpec`,
+// so that it is what a message leaving the optional fields out deserializes
+// to: a derived one sets `false`/`0` where the wire format defaults to
+// `true`/`1`, and plugins build their values with `..Default::default()`.
+impl Default for ViewInfo {
+    fn default() -> Self {
+        Self {
+            pane: Default::default(),
+            file_id: Default::default(),
+            center_x: 0.0,
+            center_y: 0.0,
+            zoom: 0.0,
+            width: 0.0,
+            height: 0.0,
+            scale_factor: default_scale_factor(),
+            rotation_deg: 0.0,
+            flipped: false,
+            visible: Rect::default(),
+        }
+    }
 }
 
 impl ViewInfo {
@@ -533,8 +555,9 @@ pub struct MeasurementInfo {
     pub angle_deg: Option<f64>,
 }
 
-/// An entry of a menu (context menu, HUD drop-down).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// An entry of a menu (context menu, HUD drop-down). Enabled unless
+/// `enabled` says otherwise, also when built with `..Default::default()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MenuItem {
     pub item_id: String,
     pub label: String,
@@ -556,6 +579,20 @@ pub struct MenuItem {
 
 fn default_true() -> bool {
     true
+}
+
+impl Default for MenuItem {
+    fn default() -> Self {
+        Self {
+            item_id: String::new(),
+            label: String::new(),
+            icon: String::new(),
+            enabled: default_true(),
+            checked: None,
+            shortcut: String::new(),
+            separator_after: false,
+        }
+    }
 }
 
 /// The name of a key as [`Hotkey::key`] and [`ToolSpec::keys`] write it,
@@ -871,8 +908,9 @@ pub struct LayerUpdate {
 // UI contributions
 // ---------------------------------------------------------------------------
 
-/// A button in the main window toolbar.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// A button in the main window toolbar. Enabled unless `enabled` says
+/// otherwise, also when built with `..Default::default()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolbarButtonSpec {
     pub button_id: String,
     pub tooltip: String,
@@ -891,6 +929,21 @@ pub struct ToolbarButtonSpec {
     /// Ordering among this plugin's buttons.
     #[serde(default)]
     pub order: i32,
+}
+
+impl Default for ToolbarButtonSpec {
+    fn default() -> Self {
+        Self {
+            button_id: String::new(),
+            tooltip: String::new(),
+            icon_svg: String::new(),
+            toggled_icon_svg: None,
+            active: false,
+            enabled: default_true(),
+            hotkey: None,
+            order: 0,
+        }
+    }
 }
 
 /// Partial update of a toolbar or HUD button.
@@ -2530,6 +2583,41 @@ mod tests {
         assert!(spec.visible);
         assert_eq!(spec.opacity, 1.0);
         assert_eq!(spec.style, Style::default());
+    }
+
+    /// `..Default::default()` builds what a message without the optional
+    /// fields deserializes to. Plugins build their buttons and menu items
+    /// that way, and derived defaults (`enabled: false`) left every plugin
+    /// toolbar button disabled.
+    #[test]
+    fn defaults_are_what_absent_fields_deserialize_to() {
+        let button: ToolbarButtonSpec =
+            serde_json::from_str(r#"{"button_id":"","tooltip":"","icon_svg":""}"#).unwrap();
+        assert_eq!(button, ToolbarButtonSpec::default());
+        assert!(button.enabled);
+        let item: MenuItem = serde_json::from_str(r#"{"item_id":"","label":""}"#).unwrap();
+        assert_eq!(item, MenuItem::default());
+        assert!(item.enabled);
+        let view: ViewInfo = serde_json::from_str(
+            r#"{"pane":0,"file_id":0,"center_x":0,"center_y":0,"zoom":0,"width":0,"height":0,
+                "visible":{"x":0,"y":0,"width":0,"height":0}}"#,
+        )
+        .unwrap();
+        assert_eq!(view, ViewInfo::default());
+        assert_eq!(view.scale_factor, 1.0);
+
+        // Built from the default, a button still says it is enabled on the
+        // wire, and an explicit `false` still disables it.
+        let sent = serde_json::to_value(ToolbarButtonSpec {
+            button_id: "b".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(sent["enabled"], true);
+        let disabled: ToolbarButtonSpec =
+            serde_json::from_str(r#"{"button_id":"b","tooltip":"","icon_svg":"","enabled":false}"#)
+                .unwrap();
+        assert!(!disabled.enabled);
     }
 
     #[test]
