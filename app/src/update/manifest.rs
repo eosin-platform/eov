@@ -9,7 +9,7 @@
 //!   tables give each artifact's `version`, `sha256` and immutable `url`.
 //! - eov releases carry the official plugin catalog in `[plugins.<id>]`, which
 //!   pins each plugin's version, `release_tag` and `environment`, and, since
-//!   eov 1.0.1, the SHA-256 of every per-platform plugin artifact in
+//!   eov 1.0.0, the SHA-256 of every per-platform plugin artifact in
 //!   `[plugins.<id>.platform.<os>.<arch>]`. Official plugins are therefore
 //!   verified against the (signed) eov catalog, not only against hashes
 //!   published by the plugin repository itself.
@@ -75,7 +75,7 @@ pub struct OfficialPluginCatalogEntry {
     /// The plugin release tag (defaults to `v<version>`).
     pub release_tag: Option<String>,
     /// Per-platform artifacts pinned by the eov release, keyed like
-    /// `platform.linux.x86_64`. Empty for catalogs older than eov 1.0.1.
+    /// `platform.linux.x86_64`. Empty for catalogs older than eov 1.0.0.
     pub artifacts: BTreeMap<String, PlatformArtifact>,
 }
 
