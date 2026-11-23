@@ -814,7 +814,8 @@ mod tests {
 
     #[test]
     fn slint_version_matches_the_lockfile() {
-        let lock = include_str!("../../../Cargo.lock");
+        // Git may check text files out with CRLF on Windows.
+        let lock = include_str!("../../../Cargo.lock").replace("\r\n", "\n");
         let version = lock
             .split("[[package]]")
             .find(|block| block.contains("\nname = \"slint\"\n"))

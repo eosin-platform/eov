@@ -1,0 +1,4 @@
+# The signing fixtures are verified byte for byte against minisign
+# signatures. Never convert their line endings (Git checks text out with
+# CRLF on Windows by default), or every signature over them breaks.
+app/tests/data/signing/** -text

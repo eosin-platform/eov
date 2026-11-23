@@ -212,6 +212,8 @@ mod tests {
     use super::test_keys::TEST_KEY;
     use super::*;
 
+    // Signed byte for byte: .gitattributes stops Git from converting its
+    // line endings to CRLF on Windows checkouts.
     const MANIFEST: &str = include_str!("../../tests/data/signing/release.toml");
     const SIGNATURE: &str = include_str!("../../tests/data/signing/release.toml.minisig");
     const WRONG_IDENTITY: &str =
