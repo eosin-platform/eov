@@ -1,11 +1,6 @@
 [advisories]
 
-# quick-xml 0.39.x is pulled in by wayland-scanner 0.31.10.
-# wayland-scanner uses it at build time to parse Wayland protocol XML;
-# EOV does not expose quick-xml to untrusted runtime input.
-# No released wayland-scanner version currently upgrades to quick-xml >= 0.41.
-# Revisit when wayland-rs updates wayland-scanner.
-ignore = [
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
-]
+# No advisories are ignored. quick-xml 0.39 (RUSTSEC-2026-0194/0195, used at
+# build time by wayland-scanner) was ignored here until wayland-scanner 0.31.11
+# moved to quick-xml 0.41.
+ignore = []
