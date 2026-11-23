@@ -34,7 +34,6 @@ dashmap = "6"
 parking_lot = "0.12"
 # Error handling
 thiserror = "2"
-anyhow = "1"
 # Logging
 tracing = "0.1"
 # Math utilities

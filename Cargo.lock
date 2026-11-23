@@ -1538,7 +1538,6 @@ name = "eov-common"
 version = "1.0.0"
 dependencies = [
  "ab_glyph",
- "anyhow",
  "criterion",
  "csv",
  "dashmap",
