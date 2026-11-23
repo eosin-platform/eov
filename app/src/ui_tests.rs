@@ -922,7 +922,13 @@ fn the_title_bar_wraps_its_buttons_and_keeps_the_logo_and_window_buttons_in_view
         let first_row = bounds(&find(&ui, AccessibleRole::Button, "Toggle minimap")).1;
         let height = title_bar_height(&ui);
         let buttons: Vec<_> = (0..24)
-            .map(|i| bounds(&find(&ui, AccessibleRole::Button, &format!("Plugin button {i}"))))
+            .map(|i| {
+                bounds(&find(
+                    &ui,
+                    AccessibleRole::Button,
+                    &format!("Plugin button {i}"),
+                ))
+            })
             .collect();
         let mut rows: Vec<f32> = buttons.iter().map(|button| button.1).collect();
         rows.dedup();
@@ -1023,8 +1029,14 @@ fn the_title_bars_empty_space_moves_and_maximizes_the_window() {
         // The logo, a gap between two buttons, the rest of the first row and
         // the bottom edge.
         assert!(press(center(logo)), "logo");
-        assert!(press(((undo.2 + redo.0) / 2.0, center(undo).1)), "between buttons");
-        assert!(press(((dataset.2 + logo.0) / 2.0, center(dataset).1)), "after the first row");
+        assert!(
+            press(((undo.2 + redo.0) / 2.0, center(undo).1)),
+            "between buttons"
+        );
+        assert!(
+            press(((dataset.2 + logo.0) / 2.0, center(dataset).1)),
+            "after the first row"
+        );
         assert!(press((400.0, height - 2.0)), "bottom edge");
         // Not the buttons, disabled ones included, nor the window's buttons
         // where the strip meets them, nor the slides below.

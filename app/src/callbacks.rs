@@ -2959,8 +2959,9 @@ pub fn setup_callbacks(
                                 // The window system has the pointer until the
                                 // button goes up: Slint lets go of the press
                                 // without taking it for a click.
-                                let _ = slint_window
-                                    .try_dispatch_event(slint::platform::WindowEvent::PointerExited);
+                                let _ = slint_window.try_dispatch_event(
+                                    slint::platform::WindowEvent::PointerExited,
+                                );
                                 slint_window.with_winit_window(|w| {
                                     let _ = w.drag_window();
                                 });
