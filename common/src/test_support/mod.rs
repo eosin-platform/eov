@@ -67,6 +67,10 @@ pub struct TiffStripped {
     pub height: u32,
     pub description: String,
     pub color: [u8; 3],
+    /// TIFF NewSubfileType. Aperio writes 1 for the label and 9 for the
+    /// macro, which is how OpenSlide 4.0.1 and newer name them; the thumbnail
+    /// is 0 and is recognised by its position.
+    pub subfile_type: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -125,6 +129,7 @@ impl TiffSpec {
                 height: (height / 8).max(1),
                 description: "Aperio Image Library v12.0.11\nthumbnail".to_string(),
                 color: [200, 180, 210],
+                subfile_type: 0,
             }),
             trailing: vec![
                 TiffStripped {
@@ -132,12 +137,14 @@ impl TiffSpec {
                     height: 16,
                     description: "Aperio Image Library v12.0.11\nlabel 24x16".to_string(),
                     color: [10, 20, 30],
+                    subfile_type: 1,
                 },
                 TiffStripped {
                     width: 48,
                     height: 16,
                     description: "Aperio Image Library v12.0.11\nmacro 48x16".to_string(),
                     color: [40, 50, 60],
+                    subfile_type: 9,
                 },
             ],
             ..Self::default()
@@ -289,7 +296,7 @@ pub fn write_tiff(
         }
         DirPlan {
             tags: vec![
-                (254, Value::Long(vec![0])),
+                (254, Value::Long(vec![image.subfile_type])),
                 (256, Value::Long(vec![image.width])),
                 (257, Value::Long(vec![image.height])),
                 (258, Value::Short(vec![8, 8, 8])),
