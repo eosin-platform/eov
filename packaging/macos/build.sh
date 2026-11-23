@@ -4,17 +4,22 @@
 # - eov, eov-update-helper and the libraries built here (OpenSlide, libdicom)
 #   target MACOSX_DEPLOYMENT_TARGET (default: the template's
 #   LSMinimumSystemVersion).
-# - Non-system dylibs are bundled into Contents/Frameworks and referenced
-#   through @executable_path; the build fails if any binary still references
-#   a library outside the bundle and the OS (e.g. /opt/homebrew or a CI path),
-#   or if eov-update-helper links anything but system libraries (it runs from
-#   a temporary directory during updates).
+# - Every library eov loads that does not come with macOS is bundled into
+#   Contents/Frameworks, including the ones Homebrew libraries reference
+#   through @rpath or @loader_path (libwebp -> @rpath/libsharpyuv.0.dylib),
+#   and referenced relative to the bundle (@executable_path, @loader_path).
+#   The build fails if any binary still references a library outside the
+#   bundle and the OS (e.g. /opt/homebrew, a CI path or @rpath), or if
+#   eov-update-helper links anything but system libraries (it runs from a
+#   temporary directory during updates).
 # - LSMinimumSystemVersion is raised to the newest `minos` of any shipped
 #   binary (Homebrew bottles target the build machine's macOS), so macOS
 #   refuses to start eov on a release it cannot run on instead of failing in
 #   dyld. MACOS_STRICT_MINIMUM=1 makes that an error instead.
-# - The bundle is smoke-tested: `eov --version` from the bundle and
-#   `eov-update-helper --self-test` from a temporary copy.
+# - The bundle is smoke-tested: `eov --version` from a copy of the bundle,
+#   with dyld kept from falling back to libraries outside the bundle and macOS
+#   and every library it loads checked, and `eov-update-helper --self-test`
+#   from a temporary copy.
 # - With CODESIGN_IDENTITY set to a Developer ID identity the bundle is signed
 #   with the hardened runtime, and with NOTARIZE=1 it is notarized and
 #   stapled (credentials: see packaging/macos/README.md).
@@ -271,92 +276,235 @@ render_info_plist() {
     plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
 }
 
-is_system_dependency() {
+# Libraries that come with macOS (from the dyld shared cache, not on disk).
+is_system_library() {
     case "$1" in
-        /usr/lib/*|/System/*|@rpath/*|@executable_path/*|@loader_path/*)
+        /usr/lib/*|/System/*)
             return 0
             ;;
+    esac
+    return 1
+}
+
+# The libraries a Mach-O file loads (LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB, ...),
+# one per line; unlike `otool -L`, without a dylib's own install name.
+linked_libraries() {
+    otool -l "$1" | awk '
+        $1 == "cmd" { cmd = $2; next }
+        $1 == "name" && cmd ~ /^LC_(LOAD|LOAD_WEAK|REEXPORT|LOAD_UPWARD|LAZY_LOAD)_DYLIB$/ {
+            sub(/^[ \t]*name /, ""); sub(/ \(offset [0-9]+\)$/, ""); print
+        }'
+}
+
+# The LC_RPATH entries of a Mach-O file, one per line, in search order.
+rpaths_of() {
+    otool -l "$1" | awk '
+        $1 == "cmd" { cmd = $2; next }
+        $1 == "path" && cmd == "LC_RPATH" {
+            sub(/^[ \t]*path /, ""); sub(/ \(offset [0-9]+\)$/, ""); print
+        }'
+}
+
+# The canonical form of a path whose directory exists, with symlinks and ".."
+# resolved (macOS has no realpath(1) before 13, no readlink -f before 12.3).
+canonical_path() {
+    local path="$1" target dir hops=0
+    [[ -n "$path" ]] || return 1
+    while [[ -L "$path" ]]; do
+        hops=$((hops + 1))
+        [[ "$hops" -le 32 ]] || return 1
+        target="$(readlink "$path")"
+        case "$target" in
+            /*) path="$target" ;;
+            *) path="$(dirname "$path")/$target" ;;
+        esac
+    done
+    if [[ -d "$path" ]]; then
+        (CDPATH='' cd -P -- "$path" && pwd -P)
+        return
+    fi
+    dir="$(CDPATH='' cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd -P)" || return 1
+    printf '%s/%s\n' "${dir%/}" "$(basename -- "$path")"
+}
+
+# Whether the existing file or directory `path` is inside the directory `root`.
+is_inside() {
+    local root path
+    root="$(canonical_path "$1")" || return 1
+    path="$(canonical_path "$2" 2>/dev/null)" || return 1
+    [[ -e "$path" && "$path" == "$root/"* ]]
+}
+
+# A load command or LC_RPATH of the Mach-O file `image` with @loader_path
+# (the directory of `image`) and @executable_path (Contents/MacOS) expanded.
+expand_load_path() {
+    local path="$1" image="$2"
+    case "$path" in
+        @loader_path|@loader_path/*)
+            printf '%s%s\n' "$(dirname "$image")" "${path#@loader_path}"
+            ;;
+        @executable_path|@executable_path/*)
+            printf '%s%s\n' "$MACOS_DIR" "${path#@executable_path}"
+            ;;
         *)
+            printf '%s\n' "$path"
+            ;;
+    esac
+}
+
+# The canonical path of the file dyld loads for the load command `reference`
+# of the Mach-O file at `origin`, @rpath standing for each directory in
+# `rpaths` (one per line: the file's own LC_RPATHs, then those of the files
+# that load it). Unlike dyld, nothing falls back to DYLD_FALLBACK_LIBRARY_PATH:
+# a library found only there (/usr/local/lib is a default, and Homebrew's
+# prefix on Intel Macs) is missing on Macs without it.
+resolve_reference() {
+    local reference="$1" origin="$2" rpaths="$3" dir candidate
+    case "$reference" in
+        @rpath/*)
+            while IFS= read -r dir; do
+                candidate="$dir/${reference#@rpath/}"
+                if [[ -n "$dir" && -f "$candidate" ]]; then
+                    canonical_path "$candidate"
+                    return
+                fi
+            done <<<"$rpaths"
+            return 1
+            ;;
+        @loader_path/*|@executable_path/*|/*)
+            candidate="$(expand_load_path "$reference" "$origin")"
+            [[ -f "$candidate" ]] || return 1
+            canonical_path "$candidate"
+            ;;
+        *)
+            # A bare file name, which dyld looks up in the current directory.
             return 1
             ;;
     esac
 }
 
-linked_libraries() {
-    otool -L "$1" | tail -n +2 | awk '{print $1}'
+# The name in Contents/Frameworks of the library copied from the canonical
+# path $1, if it is bundled (BUNDLED_SOURCES: name<TAB>source lines).
+bundled_name() {
+    [[ -f "$BUNDLED_SOURCES" ]] || return 1
+    awk -F '\t' -v source="$1" '$2 == source { print $1; found = 1; exit } END { exit !found }' \
+        "$BUNDLED_SOURCES"
 }
 
-bundle_direct_dependencies() {
-    log "Bundling non-system dynamic libraries"
-
-    while IFS= read -r dylib; do
-        [[ -n "$dylib" ]] || continue
-        if is_system_dependency "$dylib"; then
-            continue
-        fi
-        if [[ ! -f "$dylib" ]]; then
-            continue
-        fi
-
-        local base
-        base="$(basename "$dylib")"
-        if [[ ! -f "$FRAMEWORKS_DIR/$base" ]]; then
-            log "  bundling: $base"
-            printf '%s\n' "$dylib" >> "$BUNDLED_SOURCES"
-            cp "$dylib" "$FRAMEWORKS_DIR/$base"
-            chmod 644 "$FRAMEWORKS_DIR/$base"
-        fi
-
-        install_name_tool -change \
-            "$dylib" \
-            "@executable_path/../Frameworks/$base" \
-            "$MACOS_BINARY_PATH"
-    done < <(linked_libraries "$MACOS_BINARY_PATH")
+# Where the library bundled as Contents/Frameworks/$1 was copied from.
+bundled_source() {
+    [[ -f "$BUNDLED_SOURCES" ]] || return 1
+    awk -F '\t' -v name="$1" '$1 == name { print $2; found = 1; exit } END { exit !found }' \
+        "$BUNDLED_SOURCES"
 }
 
-bundle_transitive_dependencies() {
-    local changed=true
-
-    while $changed; do
-        changed=false
-
-        for fw in "$FRAMEWORKS_DIR"/*.dylib; do
-            [[ -f "$fw" ]] || continue
-
-            while IFS= read -r dep; do
-                [[ -n "$dep" ]] || continue
-                if is_system_dependency "$dep"; then
-                    continue
-                fi
-                if [[ ! -f "$dep" ]]; then
-                    continue
-                fi
-
-                local dep_base
-                dep_base="$(basename "$dep")"
-                if [[ ! -f "$FRAMEWORKS_DIR/$dep_base" ]]; then
-                    log "  bundling (transitive): $dep_base"
-                    printf '%s\n' "$dep" >> "$BUNDLED_SOURCES"
-                    cp "$dep" "$FRAMEWORKS_DIR/$dep_base"
-                    chmod 644 "$FRAMEWORKS_DIR/$dep_base"
-                    changed=true
-                fi
-
-                install_name_tool -change \
-                    "$dep" \
-                    "@executable_path/../Frameworks/$dep_base" \
-                    "$fw"
-            done < <(linked_libraries "$fw")
-        done
+# Deletes the LC_RPATHs of a bundled binary that point outside the bundle and
+# macOS. One at a time: Apple's install_name_tool deletes every entry with the
+# path, LLVM's only the first.
+delete_foreign_rpaths() {
+    local binary="$1" rpath foreign before
+    while :; do
+        foreign=""
+        while IFS= read -r rpath; do
+            [[ -n "$rpath" ]] || continue
+            is_system_library "$rpath" && continue
+            is_inside "$APP_BUNDLE_PATH" "$(expand_load_path "$rpath" "$binary")" && continue
+            foreign="$rpath"
+            break
+        done < <(rpaths_of "$binary")
+        [[ -n "$foreign" ]] || return 0
+        before="$(rpaths_of "$binary" | wc -l)"
+        install_name_tool -delete_rpath "$foreign" "$binary"
+        [[ "$(rpaths_of "$binary" | wc -l)" -lt "$before" ]] \
+            || fail "could not delete the LC_RPATH $foreign of $binary"
     done
 }
 
-rewrite_framework_ids() {
-    for fw in "$FRAMEWORKS_DIR"/*.dylib; do
-        [[ -f "$fw" ]] || continue
-        local base
-        base="$(basename "$fw")"
-        install_name_tool -id "@executable_path/../Frameworks/$base" "$fw"
+# Copies every library eov loads, directly or through other libraries, that
+# does not come with macOS into Contents/Frameworks, and points the references
+# at the copies: @executable_path/../Frameworks/<name> in eov and
+# @loader_path/<name> between the libraries. References are resolved the way
+# dyld resolves them on the build machine, so the libraries Homebrew's
+# libraries reference through @rpath or @loader_path are bundled too. The
+# LC_RPATHs that point outside the bundle and macOS are deleted; nothing in the
+# bundle uses @rpath afterwards.
+bundle_libraries() {
+    log "Bundling non-system dynamic libraries"
+    local frameworks
+    frameworks="$(canonical_path "$FRAMEWORKS_DIR")"
+    # The files left to process: the path in the bundle, the path the file
+    # was copied from (@loader_path and its LC_RPATHs refer to that one), and
+    # the directories in the LC_RPATHs of the files that load it, which dyld
+    # searches after its own.
+    local -a images=("$MACOS_BINARY_PATH") origins=("$MACOS_BINARY_PATH") inherited=("")
+    local -a changes
+    local count=1 index=0
+    local image origin rpaths rpath references reference source name target searched
+
+    while [[ "$index" -lt "$count" ]]; do
+        image="${images[index]}"
+        origin="${origins[index]}"
+        rpaths=""
+        while IFS= read -r rpath; do
+            if [[ -n "$rpath" ]]; then
+                rpaths="$rpaths$(expand_load_path "$rpath" "$origin")"$'\n'
+            fi
+        done < <(rpaths_of "$origin")
+        rpaths="$rpaths${inherited[index]}"
+
+        changes=()
+        # Read before install_name_tool rewrites the file.
+        references="$(linked_libraries "$image")"
+        while IFS= read -r reference; do
+            [[ -n "$reference" ]] || continue
+            is_system_library "$reference" && continue
+            if ! source="$(resolve_reference "$reference" "$origin" "$rpaths")"; then
+                case "$reference" in
+                    @rpath/*)
+                        searched="$(printf '%s' "$rpaths" | tr '\n' ' ')"
+                        searched="${searched% }"
+                        fail "$origin links $reference, which is in none of the LC_RPATHs of it and the libraries that load it (${searched:-none})"
+                        ;;
+                    *)
+                        fail "$origin links $reference, which does not exist"
+                        ;;
+                esac
+            fi
+
+            if [[ "$(dirname "$source")" == "$frameworks" ]]; then
+                name="$(basename "$source")"
+            elif ! name="$(bundled_name "$source")"; then
+                name="$(basename "$reference")"
+                [[ ! -e "$FRAMEWORKS_DIR/$name" ]] \
+                    || fail "two different libraries are called $name: $(bundled_source "$name") and $source"
+                log "  bundling $name ($source)"
+                cp "$source" "$FRAMEWORKS_DIR/$name"
+                chmod 644 "$FRAMEWORKS_DIR/$name"
+                printf '%s\t%s\n' "$name" "$source" >> "$BUNDLED_SOURCES"
+                images[count]="$FRAMEWORKS_DIR/$name"
+                origins[count]="$source"
+                inherited[count]="$rpaths"
+                count=$((count + 1))
+            fi
+
+            if [[ "$image" == "$MACOS_BINARY_PATH" ]]; then
+                target="@executable_path/../Frameworks/$name"
+            else
+                target="@loader_path/$name"
+            fi
+            if [[ "$reference" != "$target" ]]; then
+                changes+=(-change "$reference" "$target")
+            fi
+        done <<<"$references"
+
+        if [[ "$image" != "$MACOS_BINARY_PATH" ]]; then
+            changes+=(-id "@executable_path/../Frameworks/$(basename "$image")")
+        fi
+        if [[ "${#changes[@]}" -gt 0 ]]; then
+            install_name_tool "${changes[@]}" "$image"
+        fi
+        delete_foreign_rpaths "$image"
+        index=$((index + 1))
     done
 }
 
@@ -364,12 +512,12 @@ rewrite_framework_ids() {
 # licence files in the root of its keg (Cellar/<formula>/<version>/), and the
 # OpenSlide and libdicom sources built here carry their own.
 collect_bundled_licenses() {
-    local dest="$RESOURCES_DIR/licenses/third-party" source real keg formula file
+    local dest="$RESOURCES_DIR/licenses/third-party" real keg formula file
     mkdir -p "$dest"
     log "Collecting licence files of the bundled libraries"
     if [[ -f "$BUNDLED_SOURCES" ]]; then
-        while IFS= read -r source; do
-            real="$(readlink -f "$source" 2>/dev/null || printf '%s' "$source")"
+        # Canonical paths, e.g. /opt/homebrew/Cellar/webp/1.6.0/lib/libwebp.7.dylib.
+        while IFS=$'\t' read -r _ real; do
             case "$real" in
                 */Cellar/*/*/lib/*)
                     keg="${real%%/lib/*}"
@@ -411,56 +559,48 @@ bundle_binaries() {
     return 0
 }
 
-# Every reference must be a system library or a file inside the bundle; the
-# helper may only use system libraries. Fails on absolute paths such as
-# /opt/homebrew/... or the CI build prefix (UPD-4).
+# Every library a shipped binary loads must come with macOS or be a file in
+# the bundle referenced relative to it (@executable_path, @loader_path), and
+# the helper may only use system libraries. Fails on absolute paths such as
+# /opt/homebrew/... or the CI build prefix (UPD-4), on @rpath references (the
+# library they find depends on LC_RPATHs and, failing those, on what is
+# installed on the Mac) and on LC_RPATHs that point outside the bundle.
 verify_linkage() {
-    log "Verifying dynamic library references (otool -L)"
-    local errors=0 binary dep resolved
+    log "Verifying dynamic library references (otool -l)"
+    local errors=0 binary label reference resolved rpath
 
     while IFS= read -r binary; do
-        while IFS= read -r dep; do
-            [[ -n "$dep" ]] || continue
-            case "$dep" in
-                /usr/lib/*|/System/Library/*)
-                    continue
-                    ;;
-            esac
+        label="${binary#"$CONTENTS_DIR"/}"
+        while IFS= read -r reference; do
+            [[ -n "$reference" ]] || continue
+            is_system_library "$reference" && continue
             if [[ "$binary" == "$MACOS_HELPER_PATH" ]]; then
-                echo "[macos] error: eov-update-helper links $dep; it must only use system libraries" >&2
+                echo "[macos] error: eov-update-helper links $reference; it must only use system libraries" >&2
                 errors=$((errors + 1))
                 continue
             fi
-            case "$dep" in
-                @executable_path/*)
-                    resolved="$MACOS_DIR/${dep#@executable_path/}"
-                    ;;
-                @loader_path/*)
-                    resolved="$(dirname "$binary")/${dep#@loader_path/}"
+            case "$reference" in
+                @executable_path/*|@loader_path/*)
+                    resolved="$(expand_load_path "$reference" "$binary")"
+                    if [[ -f "$resolved" ]] && is_inside "$APP_BUNDLE_PATH" "$resolved"; then
+                        continue
+                    fi
+                    echo "[macos] error: $label links $reference, which is not in the bundle" >&2
                     ;;
                 *)
-                    echo "[macos] error: $(basename "$binary") references $dep outside the bundle" >&2
-                    errors=$((errors + 1))
-                    continue
+                    echo "[macos] error: $label links $reference, outside the bundle" >&2
                     ;;
             esac
-            if [[ ! -f "$resolved" ]]; then
-                echo "[macos] error: $(basename "$binary") references $dep, which is not in the bundle" >&2
-                errors=$((errors + 1))
-            fi
+            errors=$((errors + 1))
         done < <(linked_libraries "$binary")
 
-        while IFS= read -r dep; do
-            [[ -n "$dep" ]] || continue
-            case "$dep" in
-                @executable_path/*|@loader_path/*|/usr/lib/*|/System/*) ;;
-                *)
-                    echo "[macos] error: $(basename "$binary") has the LC_RPATH $dep" >&2
-                    errors=$((errors + 1))
-                    ;;
-            esac
-        done < <(otool -l "$binary" | awk '$1 == "cmd" && $2 == "LC_RPATH" { rpath = 1; next }
-                                         rpath && $1 == "path" { print $2; rpath = 0 }')
+        while IFS= read -r rpath; do
+            [[ -n "$rpath" ]] || continue
+            is_system_library "$rpath" && continue
+            is_inside "$APP_BUNDLE_PATH" "$(expand_load_path "$rpath" "$binary")" && continue
+            echo "[macos] error: $label has the LC_RPATH $rpath, outside the bundle" >&2
+            errors=$((errors + 1))
+        done < <(rpaths_of "$binary")
     done < <(bundle_binaries)
 
     [[ "$errors" -eq 0 ]] || fail "$errors unresolved or non-portable library reference(s)"
@@ -528,19 +668,60 @@ codesign_bundle() {
     codesign --verify --strict --verbose=2 "$APP_BUNDLE_PATH"
 }
 
+# Runs a command the way it runs on a Mac without Homebrew or this build tree:
+# without the build's DYLD_LIBRARY_PATH, and with dyld's fallback limited to
+# macOS's own directories. By default dyld also falls back to /usr/local/lib,
+# Homebrew's prefix on Intel Macs, which hides a library missing from the
+# bundle on an Intel build machine.
+run_isolated() {
+    env -u DYLD_LIBRARY_PATH -u DYLD_FRAMEWORK_PATH -u DYLD_INSERT_LIBRARIES \
+        DYLD_FALLBACK_LIBRARY_PATH=/usr/lib \
+        DYLD_FALLBACK_FRAMEWORK_PATH=/System/Library/Frameworks \
+        "$@"
+}
+
+# Starts eov from a copy of the bundle in a temporary directory (nothing may
+# depend on the staging path) and checks that every image dyld loaded
+# (DYLD_PRINT_LIBRARIES) is in the copy or part of macOS. Then runs
+# eov-update-helper --self-test from a temporary directory, where the updater
+# runs it (app/src/update/handoff.rs).
 smoke_test_bundle() {
     log "Smoke-testing the bundle"
-    local output
-    output="$(env -u DYLD_LIBRARY_PATH "$MACOS_BINARY_PATH" --version)" \
-        || fail "$APP_BUNDLE_NAME does not start: eov --version failed"
+    local scratch app output image loaded=0 errors=0
+    scratch="$(mktemp -d)"
+    scratch="$(canonical_path "$scratch")"
+    app="$scratch/$APP_BUNDLE_NAME"
+    ditto "$APP_BUNDLE_PATH" "$app"
+
+    if ! output="$(run_isolated DYLD_PRINT_LIBRARIES=1 "$app/Contents/MacOS/$EXECUTABLE_NAME" --version \
+            2>"$scratch/stderr.log")"; then
+        cat "$scratch/stderr.log" >&2
+        rm -rf "$scratch"
+        fail "$APP_BUNDLE_NAME does not start: eov --version failed"
+    fi
     log "  $output"
 
-    # The updater runs the helper from a private temporary directory, away
-    # from the bundle (app/src/update/handoff.rs); it must work from there.
-    local scratch
-    scratch="$(mktemp -d)"
+    # dyld 4 prints "dyld[<pid>]: <path>", dyld 3 "dyld: loaded: <path>".
+    while IFS= read -r image; do
+        loaded=$((loaded + 1))
+        is_system_library "$image" && continue
+        is_inside "$app" "$image" && continue
+        echo "[macos] error: eov loaded $image, which is neither in the bundle nor part of macOS" >&2
+        errors=$((errors + 1))
+    done < <(sed -n 's|^dyld[^/]*\(/.*\)$|\1|p' "$scratch/stderr.log")
+    if [[ "$errors" -gt 0 ]]; then
+        rm -rf "$scratch"
+        fail "eov loaded $errors image(s) from outside the bundle and macOS"
+    fi
+    if [[ "$loaded" -eq 0 ]]; then
+        warn "dyld ignored DYLD_PRINT_LIBRARIES (hardened runtime?), so only the start of eov was checked"
+    else
+        log "  dyld loaded $loaded images, each from the bundle or macOS"
+    fi
+
     cp "$MACOS_HELPER_PATH" "$scratch/eov-update-helper"
-    if ! output="$(env -u DYLD_LIBRARY_PATH "$scratch/eov-update-helper" --self-test)"; then
+    if ! output="$(run_isolated "$scratch/eov-update-helper" --self-test 2>"$scratch/stderr.log")"; then
+        cat "$scratch/stderr.log" >&2
         rm -rf "$scratch"
         fail "eov-update-helper --self-test failed when run outside the bundle"
     fi
@@ -588,7 +769,7 @@ create_zip_archive() {
 
 print_summary() {
     log "Bundle contents:"
-    ls -la "$CONTENTS_DIR" "$MACOS_DIR"
+    ls -la "$CONTENTS_DIR" "$MACOS_DIR" "$FRAMEWORKS_DIR"
     log "LSMinimumSystemVersion: $(plist_value "$CONTENTS_DIR/Info.plist" LSMinimumSystemVersion)"
 
     if compgen -G "$DIST_DIR/${ARCHIVE_BASENAME}*" >/dev/null; then
@@ -610,9 +791,7 @@ main() {
     generate_bundle_icon
     copy_licenses
     render_info_plist
-    bundle_direct_dependencies
-    bundle_transitive_dependencies
-    rewrite_framework_ids
+    bundle_libraries
     collect_bundled_licenses
     verify_linkage
     check_minimum_system_version
@@ -627,4 +806,8 @@ main() {
     print_summary
 }
 
-main "$@"
+# Sourced (packaging/macos/test-bundle-libraries.sh), the script only defines
+# its functions.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
