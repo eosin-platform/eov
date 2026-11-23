@@ -4,7 +4,8 @@
 - Every GitHub Action is pinned to a full commit SHA (UPD-14).
 - The OpenSlide fork commit and the libdicom/uthash checksums agree between
   packaging/shared/build-openslide.sh, the Flatpak manifest and the
-  third-party notices (SH-19).
+  third-party notices (SH-19), and the openslide/ submodule records the same
+  fork and commit.
 - AppRun does not export LD_LIBRARY_PATH (UPD-13) or any variable without
   saving its launch value for the programs eov starts (SH-15), and the
   desktop entry's StartupWMClass matches the app id eov sets (SH-19).
@@ -18,6 +19,7 @@ Exit status 1 lists every problem found.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -94,6 +96,32 @@ def check_openslide_pins(problems: list[str]) -> None:
         problems.append(f"assets/COPYING.third-party does not name the OpenSlide fork {fork}")
     if f"libdicom {pins['DEFAULT_LIBDICOM_VERSION']}" not in notices:
         problems.append("assets/COPYING.third-party names a different libdicom version")
+    check_openslide_submodule(problems, pins["DEFAULT_OPENSLIDE_REPO_URL"], commit)
+
+
+def check_openslide_submodule(problems: list[str], url: str, commit: str) -> None:
+    # The submodule is where the fork is developed; the packages build the
+    # pinned commit, so the two must not drift apart. The index is read
+    # rather than HEAD so the check also covers a staged submodule update.
+    sections = re.split(r"^\[submodule ", read(".gitmodules"), flags=re.MULTILINE)
+    section = next((s for s in sections if re.search(r"^\s*path\s*=\s*openslide\s*$", s, re.MULTILINE)), None)
+    declared = re.search(r"^\s*url\s*=\s*(\S+)\s*$", section, re.MULTILINE) if section else None
+    if declared is None:
+        problems.append(".gitmodules has no openslide submodule")
+    elif declared.group(1) != url:
+        problems.append(f".gitmodules: the openslide submodule URL {declared.group(1)} differs from {url}")
+    entry = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--stage", "--", "openslide"],
+        capture_output=True,
+        text=True,
+    )
+    fields = entry.stdout.split()
+    if entry.returncode != 0 or len(fields) < 2 or fields[0] != "160000":
+        problems.append("the openslide submodule is not recorded in the git index")
+    elif fields[1] != commit:
+        problems.append(
+            f"the openslide submodule records {fields[1]}, but build-openslide.sh pins {commit}"
+        )
 
 
 def check_linux_metadata(problems: list[str]) -> None:

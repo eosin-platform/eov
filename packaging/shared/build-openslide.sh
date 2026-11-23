@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Builds the OpenSlide fork eov ships, plus the libdicom and uthash it needs,
-# into OPENSLIDE_PREFIX. Used by the AppImage, macOS, Windows (MSYS2) and CI
-# builds; the Flatpak manifest pins the same sources.
+# Builds the OpenSlide fork eov ships (github.com/eosin-platform/openslide:
+# upstream OpenSlide plus a Ventana BIF fix by Yanstart), plus the libdicom
+# and uthash it needs, into OPENSLIDE_PREFIX. Used by the AppImage, macOS,
+# Windows (MSYS2) and CI builds; the Flatpak manifest pins the same sources.
 #
 # Every input is pinned: the OpenSlide fork by full commit id (verified after
 # checkout), libdicom and uthash by version and SHA-256. Keep these values in
-# sync with packaging/flatpak/io.eosin.eov.yml and assets/COPYING.third-party
-# (CI checks that they agree).
+# sync with packaging/flatpak/io.eosin.eov.yml, assets/COPYING.third-party and
+# the openslide/ submodule (CI checks that they agree).
 set -euo pipefail
 
-DEFAULT_OPENSLIDE_REPO_URL="https://github.com/Yanstart/openslide.git"
-DEFAULT_OPENSLIDE_COMMIT="00bebfb6a412485f7fbfe7fdb5919a3868594c13"
-DEFAULT_LIBDICOM_VERSION="1.2.0"
-DEFAULT_LIBDICOM_SHA256="3b8c05ceb6bf667fed997f23b476dd32c3dc6380eee1998185c211d86a7b4918"
+DEFAULT_OPENSLIDE_REPO_URL="https://github.com/eosin-platform/openslide.git"
+DEFAULT_OPENSLIDE_COMMIT="eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8"
+DEFAULT_LIBDICOM_VERSION="1.3.0"
+DEFAULT_LIBDICOM_SHA256="75f1167f5153c659cdd58f2b432d2592bf0477abe0087e195bc621b5594ef10a"
 DEFAULT_UTHASH_VERSION="2.3.0"
 DEFAULT_UTHASH_SHA256="e10382ab75518bad8319eb922ad04f907cb20cccb451a3aa980c9d005e661acc"
 

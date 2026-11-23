@@ -38,7 +38,6 @@ runs:
           ${{ inputs.msys2-prefix }}-ninja
           ${{ inputs.msys2-prefix }}-pkg-config
           ${{ inputs.msys2-prefix }}-cairo
-          ${{ inputs.msys2-prefix }}-gdk-pixbuf2
           ${{ inputs.msys2-prefix }}-glib2
           ${{ inputs.msys2-prefix }}-libjpeg-turbo
           ${{ inputs.msys2-prefix }}-libpng

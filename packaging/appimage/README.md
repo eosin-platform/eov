@@ -67,7 +67,7 @@ in `PATH`:
 On Debian or Ubuntu, a typical starting point is:
 
 ```bash
-sudo apt install build-essential curl git libcairo2-dev libfontconfig-dev libgdk-pixbuf-2.0-dev libglib2.0-dev libjpeg-turbo8-dev libopenjp2-7-dev libpng-dev libsqlite3-dev libtiff-dev libxml2-dev libzstd-dev meson ninja-build patchelf pkg-config zlib1g-dev
+sudo apt install build-essential curl git libcairo2-dev libfontconfig-dev libglib2.0-dev libjpeg-turbo8-dev libopenjp2-7-dev libpng-dev libsqlite3-dev libtiff-dev libxml2-dev libzstd-dev meson ninja-build patchelf pkg-config zlib1g-dev
 ```
 
 A local build reports its glibc requirement but only enforces one when
@@ -85,7 +85,7 @@ Useful overrides:
 ## Notes
 
 - By default the script builds OpenSlide from
-  `Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13` with
+  `eosin-platform/openslide@eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8` with
   `packaging/shared/build-openslide.sh` (pinned commit and checksums) into a
   private prefix before building eov.
 - If this project ever carries local OpenSlide patches, those patches must be

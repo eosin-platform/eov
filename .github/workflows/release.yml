@@ -425,7 +425,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential curl git libcairo2-dev libfontconfig-dev libgdk-pixbuf-2.0-dev \
+            build-essential curl git libcairo2-dev libfontconfig-dev \
             libglib2.0-dev libjpeg-turbo8-dev libopenjp2-7-dev libpng-dev libsqlite3-dev \
             libtiff-dev libxml2-dev libzstd-dev meson ninja-build pkg-config zlib1g-dev
       - name: Build OpenSlide from source

@@ -30,7 +30,6 @@ dnf -y install \
     freetype-devel \
     gcc \
     gcc-c++ \
-    gdk-pixbuf2-devel \
     git-core \
     glib2-devel \
     gzip \

@@ -3,7 +3,7 @@
 This directory contains the Flatpak manifest for eov (`io.eosin.eov.yml`).
 
 OpenSlide stays dynamically linked for LGPL-2.1 compliance: the manifest builds
-the pinned OpenSlide fork (`Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13`),
+the pinned OpenSlide fork (`eosin-platform/openslide@eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8`),
 libdicom and uthash as separate modules, and OpenSlide ships as
 `/app/lib/libopenslide.so.1`. The licence texts and third-party notices are
 installed to `/app/share/doc/eov` and `/app/share/licenses/io.eosin.eov`.

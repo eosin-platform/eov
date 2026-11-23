@@ -47,7 +47,7 @@ the zip is what the cask installs.
 Typical Homebrew dependencies:
 
 ```bash
-brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite zstd
+brew install cairo glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite zstd
 ```
 
 ## Usage
@@ -74,7 +74,7 @@ Useful environment overrides:
 - `NOTARIZE`, `APPLE_API_KEY_PATH`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`
 
 By default, `build.sh` compiles OpenSlide from
-`Yanstart/openslide@00bebfb6a412485f7fbfe7fdb5919a3868594c13` (pinned commit
+`eosin-platform/openslide@eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8` (pinned commit
 and checksums, see `packaging/shared/build-openslide.sh`) into a private
 staging prefix before building the app.
 

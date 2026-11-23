@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install cairo gdk-pixbuf glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite zstd
+          brew install cairo glib jpeg-turbo libpng libtiff libxml2 meson ninja openjpeg pkg-config sqlite zstd
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)

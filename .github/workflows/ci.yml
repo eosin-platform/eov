@@ -131,7 +131,6 @@ jobs:
             curl \
             git \
             libcairo2-dev \
-            libgdk-pixbuf-2.0-dev \
             libglib2.0-dev \
             libjpeg-turbo8-dev \
             libopenjp2-7-dev \

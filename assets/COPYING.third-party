@@ -14,15 +14,18 @@ Lesser General Public License, version 2.1 (LGPL-2.1). The full licence text
 is in licenses/LGPL-2.1.txt next to this file.
 
 The OpenSlide in eov packages is not an upstream release. It is built from a
-fork, at a fixed commit:
+fork, at a fixed commit. The fork is upstream OpenSlide (main at commit
+174630bf, November 2026) with one change, by Yanstart
+(https://github.com/Yanstart/openslide): Ventana BIF slides whose tile joints
+use the LEFT direction are read like RIGHT.
 
-  Fork:     https://github.com/Yanstart/openslide
-  Commit:   00bebfb6a412485f7fbfe7fdb5919a3868594c13
+  Fork:     https://github.com/eosin-platform/openslide
+  Commit:   eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8
   Upstream: https://openslide.org/ (https://github.com/openslide/openslide)
 
 The complete source of that commit is published with every eov release, next
 to the packages, as
-openslide-00bebfb6a412485f7fbfe7fdb5919a3868594c13-source.tar.gz
+openslide-eb6dcaeca5503e4574f1187e5ff65e9cea28e2d8-source.tar.gz
 (https://github.com/eosin-platform/eov/releases). The build recipe is
 packaging/shared/build-openslide.sh (and, for the Flatpak,
 packaging/flatpak/io.eosin.eov.yml) in the eov source of the same release.
@@ -42,15 +45,15 @@ interface. On macOS, re-sign the bundle afterwards
 Other libraries
 ---------------
 
-OpenSlide is built with libdicom 1.2.0 (MIT licence,
+OpenSlide is built with libdicom 1.3.0 (MIT licence,
 https://github.com/ImagingDataCommons/libdicom) and the uthash 2.3.0 headers
 (BSD licence, https://troydhanson.github.io/uthash/).
 
 The packages also contain the shared libraries OpenSlide and eov depend on, as
 built by the platform the package is made on (AlmaLinux 8 for the AppImage,
 the Freedesktop SDK for the Flatpak, Homebrew for macOS and MSYS2 for
-Windows). Depending on the platform these include GLib, gdk-pixbuf and cairo
-(LGPL-2.1 or later; cairo alternatively MPL-1.1), pixman, libxml2, libffi and
+Windows). Depending on the platform these include GLib and cairo (LGPL-2.1
+or later; cairo alternatively MPL-1.1), pixman, libxml2, libffi and
 libdeflate (MIT), libjpeg-turbo (IJG, BSD-3-Clause and zlib licences),
 OpenJPEG (BSD-2-Clause), libtiff (libtiff licence), libpng (libpng licence),
 zlib (zlib licence), PCRE2 and zstd (BSD-3-Clause), SQLite and xz/liblzma

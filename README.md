@@ -1031,7 +1031,7 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 | macOS app | `packaging/macos/build.sh` | `otool -L` and deployment-target checks, helper smoke test, optional Developer ID signing and notarization; `Info.plist` declares the slide formats and the `eov` URL scheme. |
 | Windows zip | `.github/workflows/build-windows-zip.yml` | `eov.exe`, `eov.com`, `eov-update-helper.exe` and DLLs, smoke-tested; optional Authenticode signing. |
 
-- Every package ships OpenSlide as a separate shared library (LGPL-2.1), built from a pinned commit of the [Yanstart fork](https://github.com/Yanstart/openslide) by `packaging/shared/build-openslide.sh`, whose inputs are all verified by checksum. The OpenSlide source of each release is published with it.
+- Every package ships OpenSlide as a separate shared library (LGPL-2.1), built from a pinned commit of the [eosin-platform fork](https://github.com/eosin-platform/openslide) (upstream OpenSlide plus a Ventana BIF fix by [Yanstart](https://github.com/Yanstart/openslide)) by `packaging/shared/build-openslide.sh`, whose inputs are all verified by checksum. The OpenSlide source of each release is published with it.
 - Every package contains eov's licences, `COPYING.third-party` (which names the fork, its commit and the other bundled libraries), the LGPL-2.1 text, and the licence files of the bundled libraries.
 - Release tooling: `scripts/release_infrastructure.py` (manifests, catalog, casks, README links; tested by `scripts/test_release_*.py`), `scripts/release_signing.py` (minisign-compatible signing; its docstring explains how to create the signing key and the `EOV_RELEASE_SIGNING_KEY` secret), and `scripts/check_packaging.py` (consistency checks run by CI).
 

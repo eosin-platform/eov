@@ -179,7 +179,7 @@ derive_deployment_target() {
 
 configure_build_env() {
     if [[ -z "${OPENSLIDE_LIB_DIR:-}" ]]; then
-        log "Building OpenSlide from the pinned Yanstart fork commit"
+        log "Building OpenSlide from the pinned eosin-platform fork commit"
         OPENSLIDE_PREFIX="$OPENSLIDE_PREFIX" \
         OPENSLIDE_BUILD_ROOT="$OPENSLIDE_BUILD_ROOT" \
             bash "$REPO_ROOT/packaging/shared/build-openslide.sh"
