@@ -309,7 +309,8 @@ export component HudToolbar inherits Rectangle {
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         text: root.zoom-input-text;
-                        accessible-label: @tr("Zoom");
+                        // The zoom field around it speaks for it.
+                        accessible-role: none;
 
                         accepted => {
                             root.cancel-zoom-edit = false;

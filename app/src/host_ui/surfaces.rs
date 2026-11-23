@@ -26,7 +26,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 /// The Slint version plugin surfaces are compiled with.
-pub(crate) const SLINT_VERSION: &str = "1.17.1";
+pub(crate) const SLINT_VERSION: &str = "1.19.0";
 
 const DEFAULT_SIDEBAR_WIDTH: f32 = 300.0;
 

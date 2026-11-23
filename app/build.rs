@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // The plugin surfaces are shown in `ComponentContainer`s, which are still
+    // an experimental Slint feature. Slint takes experimental features by
+    // name (an unknown name is an error).
     unsafe {
-        std::env::set_var("SLINT_ENABLE_EXPERIMENTAL_FEATURES", "1");
+        std::env::set_var("SLINT_ENABLE_EXPERIMENTAL_FEATURES", "component-container");
     }
     // The UI tests find elements by their accessible names and roles
     // (i-slint-backend-testing's ElementHandle), which needs the element

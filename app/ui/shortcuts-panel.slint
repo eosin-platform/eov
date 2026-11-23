@@ -98,7 +98,7 @@ export component ShortcutsPanel inherits Rectangle {
                         Flickable {
                             width: parent.width;
                             height: parent.height;
-                            viewport-height: list.preferred-height;
+                            content-height: list.preferred-height;
 
                             list := VerticalLayout {
                                 for row in root.rows: Rectangle {

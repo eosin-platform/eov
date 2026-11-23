@@ -11,7 +11,7 @@
 
 use anyhow::Result;
 use slint::BackendSelector;
-use slint::wgpu_29::wgpu;
+use slint::wgpu_30::wgpu;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WindowGeometry {
@@ -32,7 +32,7 @@ pub(crate) enum UiRenderer {
 }
 
 pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<UiRenderer> {
-    let mut settings = slint::wgpu_29::WGPUSettings::default();
+    let mut settings = slint::wgpu_30::WGPUSettings::default();
     settings.backends = preferred_backends();
 
     let reason = if software_requested() {
@@ -43,7 +43,7 @@ pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<UiRender
                 tracing::info!("Drawing with the GPU: {adapter}");
                 match winit_backend_selector(window_geometry)
                     .renderer_name("femtovg-wgpu".to_string())
-                    .require_wgpu_29(slint::wgpu_29::WGPUConfiguration::Automatic(settings))
+                    .require_wgpu_30(slint::wgpu_30::WGPUConfiguration::Automatic(settings))
                     .select()
                 {
                     Ok(()) => return Ok(UiRenderer::Gpu),
@@ -114,7 +114,7 @@ fn preferred_backends() -> wgpu::Backends {
 /// The adapter femtovg-wgpu would draw with, or why there is none. Applies
 /// the same test as Slint, which refuses to start femtovg-wgpu otherwise:
 /// a GPU adapter, or a software one with `SLINT_WGPU_CPU` set.
-fn gpu_adapter(settings: &slint::wgpu_29::WGPUSettings) -> Result<String, String> {
+fn gpu_adapter(settings: &slint::wgpu_30::WGPUSettings) -> Result<String, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: settings.backends,
         flags: settings.instance_flags,
@@ -222,7 +222,8 @@ mod tests {
             backend: wgpu::Backend::Vulkan,
             subgroup_min_size: 0,
             subgroup_max_size: 0,
-            transient_saves_memory: false,
+            transient_saves_memory: None,
+            limit_bucket: None,
         }
     }
 

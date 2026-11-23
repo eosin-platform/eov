@@ -103,7 +103,7 @@ slint::include_modules!();
 /// Frame rate for viewport updates.
 ///
 /// Frame pacing: the render loop is a repeating 16 ms Slint timer, not
-/// vsync-aligned. Slint 1.17 has no frame callback for applications (its
+/// vsync-aligned. Slint 1.19 has no frame callback for applications (its
 /// rendering notifier runs inside the window's rendering, too late to
 /// change that frame's properties), and winit 0.30 has none on X11 or
 /// Windows. Slint presents the window with `AutoVsync`, so frames are never

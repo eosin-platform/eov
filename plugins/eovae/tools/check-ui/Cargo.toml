@@ -11,6 +11,6 @@ description = "Compiles eovae's .slint sidebar with the Slint version eov uses a
 
 [dependencies]
 # Keep in step with eov's slint-interpreter (app/Cargo.toml).
-slint-interpreter = { version = "=1.17.1", default-features = false, features = ["compat-1-2", "std", "internal", "internal-json"] }
-i-slint-compiler = { version = "=1.17.1", default-features = false }
+slint-interpreter = { version = "=1.19.0", default-features = false, features = ["compat-1-2", "std", "internal", "internal-json"] }
+i-slint-compiler = { version = "=1.19.0", default-features = false }
 serde_json = "1"

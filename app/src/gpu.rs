@@ -6,7 +6,7 @@ use eov_common::processing::{GpuColorUniform, wgsl};
 use eov_common::viewport::Orientation;
 use eov_common::{FilteringMode, TileCoord, TileData};
 use slint::ComponentHandle;
-use slint::wgpu_29::wgpu;
+use slint::wgpu_30::wgpu;
 use slint::{GraphicsAPI, Image, RenderingState};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -272,23 +272,23 @@ struct PendingReadback {
 }
 
 impl PendingReadback {
-    fn into_frame(self) -> ReadbackFrame {
+    /// The mapped copy as a frame, or why its memory could not be read.
+    fn into_frame(self) -> Result<ReadbackFrame, wgpu::MapRangeError> {
         let row = self.width as usize * 4;
         let mut pixels = vec![0u8; row * self.height as usize];
-        {
-            let mapped = self.buffer.slice(..).get_mapped_range();
+        let copied = self.buffer.slice(..).get_mapped_range().map(|mapped| {
             for (y, dst) in pixels.chunks_exact_mut(row).enumerate() {
                 let src = y * self.padded_bytes_per_row as usize;
                 dst.copy_from_slice(&mapped[src..src + row]);
             }
-        }
+        });
         self.buffer.unmap();
-        ReadbackFrame {
+        copied.map(|()| ReadbackFrame {
             tag: self.tag,
             width: self.width,
             height: self.height,
             pixels,
-        }
+        })
     }
 }
 
@@ -1071,6 +1071,7 @@ impl GpuRuntime {
                 6 => Float32x2,  // fine_tex_size
             ],
         };
+        let vertex_buffers = [Some(vertex_layout)];
 
         let color_target = [Some(wgpu::ColorTargetState {
             format: wgpu::TextureFormat::Rgba8Unorm,
@@ -1085,7 +1086,7 @@ impl GpuRuntime {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: std::slice::from_ref(&vertex_layout),
+                buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -1127,7 +1128,7 @@ impl GpuRuntime {
                 module: &lanczos_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[vertex_layout],
+                buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &lanczos_shader,
@@ -1457,7 +1458,7 @@ impl GpuRenderer {
             return;
         }
 
-        let GraphicsAPI::WGPU29 { device, queue, .. } = graphics_api else {
+        let GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api else {
             record_failure("the window does not render with wgpu".to_string());
             return;
         };
@@ -1635,7 +1636,7 @@ impl GpuRenderer {
         let _ = runtime.device.poll(wgpu::PollType::wait_indefinitely());
         rx.recv().ok()?.ok()?;
 
-        let mapped = slice.get_mapped_range();
+        let mapped = slice.get_mapped_range().ok()?;
         let mut pixels = vec![0; (surface.width as usize) * (surface.height as usize) * 4];
         let src_stride = padded_bytes_per_row as usize;
         let dst_stride = bytes_per_row as usize;
@@ -1769,7 +1770,13 @@ impl GpuRenderer {
                 0 => index += 1,
                 1 => {
                     let pending = self.pending_readbacks.swap_remove(index);
-                    done.push(pending.into_frame());
+                    let pane_uid = pending.tag.pane_uid;
+                    match pending.into_frame() {
+                        Ok(frame) => done.push(frame),
+                        Err(error) => tracing::warn!(
+                            "reading pane {pane_uid} back from the GPU failed: {error}"
+                        ),
+                    }
                 }
                 _ => {
                     let pending = self.pending_readbacks.swap_remove(index);

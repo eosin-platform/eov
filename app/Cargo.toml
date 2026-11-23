@@ -41,23 +41,23 @@ abi_stable = { version = "0.11", default-features = false }
 clap = { version = "4.6", features = ["derive"] }
 
 # Slint UI
-slint = { version = "1.17.1", default-features = false, features = [
+slint = { version = "1.19.0", default-features = false, features = [
     "std",
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg-wgpu",
     # Draws the window when no GPU adapter is usable (RND-4).
     "renderer-software",
-    "unstable-wgpu-29",
+    "unstable-wgpu-30",
     "unstable-winit-030",
 ] }
 
 # The interpreter's property and callback types (same pinned version as the
 # interpreter uses).
-i-slint-compiler = { version = "=1.17.1", default-features = false }
+i-slint-compiler = { version = "=1.19.0", default-features = false }
 
 # Slint interpreter for runtime plugin UI loading
-slint-interpreter = { version = "1.17.1", default-features = false, features = [
+slint-interpreter = { version = "1.19.0", default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg-wgpu",
@@ -179,14 +179,14 @@ raw-window-handle = "0.6"
 objc = "0.2"
 
 [build-dependencies]
-slint-build = "1.17.1"
+slint-build = "1.19.0"
 
 [dev-dependencies]
 eov-common = { path = "../common", features = ["test-support"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
-i-slint-backend-testing = { version = "1.17.1" }
+i-slint-backend-testing = { version = "1.19.0" }
 # Validates the viewer's WGSL (the same naga as wgpu's).
-naga = { version = "29", features = ["wgsl-in"] }
+naga = { version = "30", features = ["wgsl-in"] }
 
 [features]
 default = ["distribution-cargo"]

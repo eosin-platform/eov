@@ -133,9 +133,10 @@ let the user choose the file instead.
 Surfaces are `.slint` files compiled by eov's own Slint (see `[ui] slint` in
 the manifest); the exported component does not need to inherit `Window`.
 eov keeps keys typed into a surface's text fields away from its shortcuts
-unless `capture_keyboard` is off. One Slint 1.17 pitfall: wrapped `Text`
-inside `if` or `for` needs `height: self.preferred-height`, or it is sized
-for the wrong width.
+unless `capture_keyboard` is off. eov compiles surfaces without a Slint
+edition, so the behavior changes that Slint ties to an edition do not apply
+to them. One pitfall that remains: wrapped `Text` inside `if` or `for`
+needs `height: self.preferred-height`, or it is sized for the wrong width.
 
 Hotkeys (of tools, buttons and `register_hotkey`) cannot take a key eov
 uses: the keys in its Keyboard Shortcuts panel (F1), which users can

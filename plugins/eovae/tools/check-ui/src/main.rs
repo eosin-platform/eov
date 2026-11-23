@@ -26,7 +26,12 @@ fn main() {
     compiler.set_include_paths(vec![root]);
     let result = spin_on(compiler.build_from_path(&path));
     let mut errors = 0;
-    for d in result.diagnostics() {
+    // Notes (such as that no edition is set: eov sets none) are skipped, as
+    // Slint's build does.
+    for d in result
+        .diagnostics()
+        .filter(|d| d.level() != slint_interpreter::DiagnosticLevel::Info)
+    {
         println!("{:?}: {}", d.level(), d);
         if d.level() == slint_interpreter::DiagnosticLevel::Error {
             errors += 1;

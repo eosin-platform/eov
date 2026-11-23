@@ -160,13 +160,11 @@ export component WindowToolbar inherits Rectangle {
         spacing: 0px;
 
         // The buttons, wrapped onto further rows when they do not fit.
-        // (FlexboxLayout is still experimental in Slint 1.17: build.rs
-        // enables Slint's experimental features.)
         FlexboxLayout {
             horizontal-stretch: 1;
             flex-wrap: wrap;
             alignment: start;
-            align-content: start;
+            cross-axis-line-alignment: start;
             cross-axis-alignment: center;
             padding-left: root.row-start;
             padding-right: 6px;

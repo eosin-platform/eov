@@ -149,7 +149,8 @@ component ValueField inherits Rectangle {
         horizontal-alignment: right;
         vertical-alignment: center;
         single-line: true;
-        accessible-label: root.label;
+        // The field around it speaks for it.
+        accessible-role: none;
         init => {
             self.focus();
             self.select-all();
@@ -490,7 +491,7 @@ export component ChannelsPanel inherits Rectangle {
                     Flickable {
                         width: parent.width;
                         height: parent.height;
-                        viewport-height: list.preferred-height;
+                        content-height: list.preferred-height;
 
                         list := VerticalLayout {
                             spacing: 4px;

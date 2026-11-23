@@ -37,11 +37,22 @@ fn stderr_filter(log_level: Option<CliLogLevel>) -> EnvFilter {
 }
 
 fn quiet_noisy_crates(filter: EnvFilter) -> EnvFilter {
-    filter.add_directive(
-        "sctk_adwaita::buttons=error"
-            .parse()
-            .expect("valid sctk_adwaita buttons log directive"),
-    )
+    filter
+        .add_directive(
+            "sctk_adwaita::buttons=error"
+                .parse()
+                .expect("valid sctk_adwaita buttons log directive"),
+        )
+        // Slint asks wgpu for every feature the adapter has, and on a
+        // discrete GPU wgpu then warns at each start that
+        // MAPPABLE_PRIMARY_BUFFERS is "a massive performance footgun". The
+        // feature only allows mappable buffers with other usages, which
+        // neither eov nor Slint creates.
+        .add_directive(
+            "wgpu_core::instance=error"
+                .parse()
+                .expect("valid wgpu_core instance log directive"),
+        )
 }
 
 /// Renames `eov.log` to `eov.1.log` and so on, dropping the oldest.
