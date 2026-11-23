@@ -16,3 +16,5 @@ dist
 build
 __pycache__
 release-files/
+DEPENDENCIES.md
+.claude/

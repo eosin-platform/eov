@@ -16,3 +16,6 @@
 [submodule "plugins/cellaris"]
 	path = plugins/cellaris
 	url = https://github.com/eosin-platform/eov-cellaris-plugin.git
+[submodule "openslide"]
+	path = openslide
+	url = https://github.com/eosin-platform/openslide.git
